@@ -1,0 +1,33 @@
+name: Cox checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - run: npm install --global pnpm@12.14.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter cox exec playwright-core install --with-deps --only-shell chromium
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm exec vp test run --project root packages --maxWorkers=4
+      - run: pnpm --filter cox exec vp test run --fileParallelism --maxWorkers=4
+      - run: pnpm --filter @t3tools/client-runtime test
+      - run: pnpm --filter @t3tools/web exec vp test run --project unit --project browser --maxWorkers=2
+      - run: pnpm release:pack
+      - run: pnpm test:smoke
+      - run: pnpm test:dev-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-distribution
+          path: release/*

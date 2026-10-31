@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Cox",
+  "short_name": "Cox",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#161616",
+  "theme_color": "#161616",
+  "icons": [
+    {
+      "src": "/cox.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

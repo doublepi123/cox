@@ -1,0 +1,408 @@
+import { useAtomValue } from "@effect/atom-react";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  type PreviewEvent,
+  type PreviewListResult,
+  type PreviewSessionSnapshot,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
+import { PREVIEW_RECENT_URL_LIMIT } from "./components/preview/previewConstants";
+import { appAtomRegistry } from "./rpc/atomRegistry";
+export interface ThreadPreviewState {
+  snapshot: PreviewSessionSnapshot | null;
+  sessions: Record<string, PreviewSessionSnapshot>;
+  /** Tabs intentionally closed by this client. Stale list snapshots must not resurrect them. */
+  suppressedTabIds: ReadonlySet<string>;
+  activeTabId: string | null;
+  recentlySeenUrls: string[];
+  listLoaded: boolean;
+  serverEpoch: string | null;
+  serverRevision: number;
+}
+const EMPTY_THREAD_PREVIEW_STATE: ThreadPreviewState = Object.freeze({
+  snapshot: null,
+  sessions: {},
+  suppressedTabIds: new Set<string>(),
+  activeTabId: null,
+  recentlySeenUrls: [] as string[],
+  listLoaded: false,
+  serverEpoch: null,
+  serverRevision: 0,
+});
+const emptyPreviewStateAtom = Atom.make<ThreadPreviewState>(EMPTY_THREAD_PREVIEW_STATE).pipe(
+  Atom.withLabel("preview:empty-thread"),
+);
+export const previewStateAtom = Atom.family((threadKey: string) =>
+  Atom.make<ThreadPreviewState>(EMPTY_THREAD_PREVIEW_STATE).pipe(
+    Atom.keepAlive,
+    Atom.withLabel(`preview:thread:${threadKey}`),
+  ),
+);
+// Separate the cross-thread index to avoid unrelated preview subscriptions.
+interface ActivePreviewThreadIndex {
+  readonly keys: ReadonlySet<string>;
+}
+const activePreviewThreadKeysAtom = Atom.make<ActivePreviewThreadIndex>({
+  keys: new Set<string>(),
+}).pipe(Atom.keepAlive, Atom.withLabel("preview:active-thread-keys"));
+const activePreviewSessionsAtom = Atom.make((get) => {
+  const byThreadKey: Record<string, ThreadPreviewState> = {};
+  for (const threadKey of get(activePreviewThreadKeysAtom).keys) {
+    const state = get(previewStateAtom(threadKey));
+    if (Object.keys(state.sessions).length > 0) {
+      byThreadKey[threadKey] = state;
+    }
+  }
+  return byThreadKey;
+}).pipe(Atom.withLabel("preview:active-sessions"));
+/**
+ * Every thread whose preview state has been written. Panel tabs and the mini
+ * player follow those threads' states from a store this one cannot import
+ * (rightPanelStore -> closedViewStore -> lib/utils -> composerDraftStore ->
+ * previewStateStore is a cycle), so they subscribe through this index.
+ */
+export const previewThreadRefsAtom = Atom.make<ReadonlyMap<string, ScopedThreadRef>>(
+  new Map(),
+).pipe(Atom.keepAlive, Atom.withLabel("preview:thread-refs"));
+function syncActivePreviewThread(threadKey: string, state: ThreadPreviewState): void {
+  const active = Object.keys(state.sessions).length > 0;
+  appAtomRegistry.update(activePreviewThreadKeysAtom, (current) => {
+    if (current.keys.has(threadKey) === active) return current;
+    const next = new Set(current.keys);
+    if (active) next.add(threadKey);
+    else next.delete(threadKey);
+    return { keys: next };
+  });
+}
+function updateThreadPreviewState(
+  ref: ScopedThreadRef,
+  update: (current: ThreadPreviewState) => ThreadPreviewState,
+): void {
+  const threadKey = scopedThreadKey(ref);
+  // Indexed before the write so a new thread's subscribers see this change.
+  appAtomRegistry.update(previewThreadRefsAtom, (refs) =>
+    refs.has(threadKey) ? refs : new Map(refs).set(threadKey, ref),
+  );
+  const atom = previewStateAtom(threadKey);
+  let nextState = appAtomRegistry.get(atom);
+  const changed = appAtomRegistry.modify(atom, (current) => {
+    nextState = update(current);
+    return [nextState !== current, nextState];
+  });
+  if (changed) syncActivePreviewThread(threadKey, nextState);
+}
+const dedupeRecentUrls = (existing: string[], url: string): string[] => {
+  const next = [url, ...existing.filter((entry) => entry !== url)];
+  return next.slice(0, PREVIEW_RECENT_URL_LIMIT);
+};
+const rememberSnapshotUrl = (
+  recentlySeenUrls: string[],
+  snapshot: PreviewSessionSnapshot,
+): string[] =>
+  snapshot.navStatus._tag === "Idle"
+    ? recentlySeenUrls
+    : dedupeRecentUrls(recentlySeenUrls, snapshot.navStatus.url);
+const latestSnapshot = (
+  sessions: Record<string, PreviewSessionSnapshot>,
+): PreviewSessionSnapshot | null =>
+  Object.values(sessions)
+    .toSorted((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+    .at(-1) ?? null;
+const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPreviewState => {
+  if (!current.sessions[tabId]) return current;
+  const { [tabId]: _closed, ...sessions } = current.sessions;
+  const nextSnapshot = latestSnapshot(sessions);
+  const activeTabId =
+    current.activeTabId === tabId ? (nextSnapshot?.tabId ?? null) : current.activeTabId;
+  const snapshot = activeTabId ? (sessions[activeTabId] ?? nextSnapshot) : nextSnapshot;
+  return {
+    ...current,
+    sessions,
+    activeTabId: snapshot?.tabId ?? null,
+    snapshot,
+  };
+};
+export function useThreadPreviewState(ref: ScopedThreadRef | null | undefined): ThreadPreviewState {
+  const atom = ref ? previewStateAtom(scopedThreadKey(ref)) : emptyPreviewStateAtom;
+  return useAtomValue(atom);
+}
+export function useActivePreviewSessions(): Record<string, ThreadPreviewState> {
+  return useAtomValue(activePreviewSessionsAtom);
+}
+export function readActivePreviewSessions(): Record<string, ThreadPreviewState> {
+  return appAtomRegistry.get(activePreviewSessionsAtom);
+}
+export function readThreadPreviewState(ref: ScopedThreadRef): ThreadPreviewState {
+  return appAtomRegistry.get(previewStateAtom(scopedThreadKey(ref)));
+}
+export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEvent): void {
+  updateThreadPreviewState(ref, (current) => {
+    if (current.serverEpoch !== null && event.serverEpoch !== current.serverEpoch) return current;
+    if (event.revision < current.serverRevision) return current;
+    const next = (() => {
+      switch (event.type) {
+        case "opened":
+        case "navigated":
+        case "resized": {
+          const snapshot = event.snapshot;
+          if (current.suppressedTabIds.has(snapshot.tabId)) return current;
+          const recentlySeenUrls =
+            snapshot.navStatus._tag === "Idle"
+              ? current.recentlySeenUrls
+              : dedupeRecentUrls(current.recentlySeenUrls, snapshot.navStatus.url);
+          const sessions = { ...current.sessions, [snapshot.tabId]: snapshot };
+          const activeTabId = event.type === "opened" ? snapshot.tabId : current.activeTabId;
+          const activeSnapshot = sessions[activeTabId ?? snapshot.tabId] ?? snapshot;
+          return {
+            ...current,
+            sessions,
+            activeTabId: activeTabId ?? snapshot.tabId,
+            snapshot: activeSnapshot,
+            recentlySeenUrls,
+          };
+        }
+        case "failed": {
+          const existing = current.sessions[event.tabId];
+          if (!existing) return current;
+          const failedSnapshot = {
+            ...existing,
+            navStatus: {
+              _tag: "LoadFailed" as const,
+              url: event.url,
+              title: event.title,
+              code: event.code,
+              description: event.description,
+              ...(event.download === undefined ? {} : { download: event.download }),
+            },
+            updatedAt: event.createdAt,
+          };
+          const sessions = { ...current.sessions, [event.tabId]: failedSnapshot };
+          return {
+            ...current,
+            sessions,
+            snapshot: current.activeTabId === event.tabId ? failedSnapshot : current.snapshot,
+          };
+        }
+        case "closed": {
+          const closed = removeSession(current, event.tabId);
+          if (!closed.suppressedTabIds.has(event.tabId)) return closed;
+          const suppressedTabIds = new Set(closed.suppressedTabIds);
+          suppressedTabIds.delete(event.tabId);
+          return { ...closed, suppressedTabIds };
+        }
+      }
+    })();
+    return next.serverRevision === event.revision && next.serverEpoch === event.serverEpoch
+      ? next
+      : {
+          ...next,
+          serverEpoch: event.serverEpoch,
+          serverRevision: event.revision,
+        };
+  });
+}
+export function applyPreviewServerSnapshot(
+  ref: ScopedThreadRef,
+  snapshot: PreviewSessionSnapshot | null,
+): void {
+  updateThreadPreviewState(ref, (current) => {
+    if (!snapshot && current.snapshot === null) return current;
+    if (!snapshot) {
+      return {
+        ...current,
+        snapshot: null,
+        sessions: {},
+        activeTabId: null,
+      };
+    }
+    if (current.suppressedTabIds.has(snapshot.tabId)) return current;
+    const existing = current.sessions[snapshot.tabId];
+    if (existing && existing.updatedAt > snapshot.updatedAt) return current;
+    const recentlySeenUrls = rememberSnapshotUrl(current.recentlySeenUrls, snapshot);
+    return {
+      ...current,
+      snapshot,
+      sessions: { ...current.sessions, [snapshot.tabId]: snapshot },
+      activeTabId: snapshot.tabId,
+      recentlySeenUrls,
+    };
+  });
+}
+/** Updates background tabs without focusing them. */
+export function updatePreviewServerSnapshot(
+  ref: ScopedThreadRef,
+  snapshot: PreviewSessionSnapshot,
+): void {
+  updateThreadPreviewState(ref, (current) => {
+    if (current.suppressedTabIds.has(snapshot.tabId)) return current;
+    const existing = current.sessions[snapshot.tabId];
+    if (existing && existing.updatedAt > snapshot.updatedAt) return current;
+    const sessions = { ...current.sessions, [snapshot.tabId]: snapshot };
+    const activeTabId =
+      current.activeTabId && sessions[current.activeTabId] ? current.activeTabId : snapshot.tabId;
+    const activeSnapshot = sessions[activeTabId] ?? snapshot;
+    return {
+      ...current,
+      sessions,
+      activeTabId,
+      snapshot: activeSnapshot,
+      recentlySeenUrls: rememberSnapshotUrl(current.recentlySeenUrls, snapshot),
+    };
+  });
+}
+export function reconcilePreviewServerSessions(
+  ref: ScopedThreadRef,
+  result: PreviewListResult,
+): void {
+  updateThreadPreviewState(ref, (current) => {
+    const sameServer = current.serverEpoch === result.serverEpoch;
+    if (sameServer && result.revision < current.serverRevision) {
+      return current;
+    }
+    const snapshots = result.sessions;
+    const sessions: Record<string, PreviewSessionSnapshot> = {};
+    const currentSuppressedTabIds = sameServer ? current.suppressedTabIds : new Set<string>();
+    let recentlySeenUrls = current.recentlySeenUrls;
+    for (const snapshot of snapshots) {
+      if (currentSuppressedTabIds.has(snapshot.tabId)) continue;
+      const existing = sameServer ? current.sessions[snapshot.tabId] : undefined;
+      const next = existing && existing.updatedAt > snapshot.updatedAt ? existing : snapshot;
+      sessions[next.tabId] = next;
+      recentlySeenUrls = rememberSnapshotUrl(recentlySeenUrls, next);
+    }
+    const fallback = latestSnapshot(sessions);
+    const activeTabId =
+      current.activeTabId && sessions[current.activeTabId]
+        ? current.activeTabId
+        : (fallback?.tabId ?? null);
+    const snapshot = activeTabId ? (sessions[activeTabId] ?? null) : null;
+    const suppressedTabIds = new Set(
+      [...currentSuppressedTabIds].filter((tabId) =>
+        snapshots.some((snapshot) => snapshot.tabId === tabId),
+      ),
+    );
+    if (
+      sameServer &&
+      current.listLoaded &&
+      current.serverRevision === result.revision &&
+      current.activeTabId === activeTabId &&
+      current.snapshot === snapshot &&
+      current.recentlySeenUrls === recentlySeenUrls &&
+      haveSameValues(current.sessions, sessions) &&
+      current.suppressedTabIds.size === suppressedTabIds.size
+    ) {
+      return current;
+    }
+    return {
+      ...current,
+      sessions,
+      suppressedTabIds,
+      activeTabId,
+      snapshot,
+      recentlySeenUrls,
+      listLoaded: true,
+      serverEpoch: result.serverEpoch,
+      serverRevision: result.revision,
+    };
+  });
+}
+function haveSameValues<T>(left: Record<string, T>, right: Record<string, T>): boolean {
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
+}
+export function beginPreviewSessionClose(ref: ScopedThreadRef, tabId: string): void {
+  updateThreadPreviewState(ref, (current) => {
+    const suppressedTabIds = new Set(current.suppressedTabIds);
+    suppressedTabIds.add(tabId);
+    return {
+      ...removeSession(current, tabId),
+      suppressedTabIds,
+    };
+  });
+}
+export function cancelPreviewSessionClose(
+  ref: ScopedThreadRef,
+  snapshot: PreviewSessionSnapshot | null,
+  tabId: string,
+): void {
+  updateThreadPreviewState(ref, (current) => {
+    if (!current.suppressedTabIds.has(tabId)) return current;
+    const suppressedTabIds = new Set(current.suppressedTabIds);
+    suppressedTabIds.delete(tabId);
+    if (!snapshot) {
+      return { ...current, suppressedTabIds };
+    }
+    const recentlySeenUrls =
+      snapshot.navStatus._tag !== "Idle"
+        ? dedupeRecentUrls(current.recentlySeenUrls, snapshot.navStatus.url)
+        : current.recentlySeenUrls;
+    return {
+      ...current,
+      snapshot,
+      sessions: { ...current.sessions, [snapshot.tabId]: snapshot },
+      suppressedTabIds,
+      activeTabId: snapshot.tabId,
+      recentlySeenUrls,
+    };
+  });
+}
+export function setActivePreviewTab(ref: ScopedThreadRef, tabId: string): void {
+  updateThreadPreviewState(ref, (current) => {
+    const snapshot = current.sessions[tabId];
+    if (!snapshot || current.activeTabId === tabId) return current;
+    return {
+      ...current,
+      activeTabId: tabId,
+      snapshot,
+    };
+  });
+}
+/** Runs once the tab is known; popup opened events can arrive after their announcing stream. */
+export function whenPreviewTabKnown(
+  ref: ScopedThreadRef,
+  tabId: string,
+  action: () => void,
+  timeoutMs = 5000,
+): () => void {
+  const atom = previewStateAtom(scopedThreadKey(ref));
+  if (appAtomRegistry.get(atom).sessions[tabId]) {
+    action();
+    return () => {};
+  }
+  const stop = () => {
+    clearTimeout(timer);
+    unsubscribe();
+  };
+  const unsubscribe = appAtomRegistry.subscribe(atom, (state) => {
+    if (!state.sessions[tabId]) return;
+    stop();
+    action();
+  });
+  const timer = setTimeout(stop, timeoutMs);
+  return stop;
+}
+export function rememberPreviewUrl(ref: ScopedThreadRef, url: string): void {
+  if (url.trim().length === 0) return;
+  updateThreadPreviewState(ref, (current) => ({
+    ...current,
+    recentlySeenUrls: dedupeRecentUrls(current.recentlySeenUrls, url),
+  }));
+}
+/** Releases the local preview session state. */
+export function clearThreadPreviewState(ref: ScopedThreadRef): void {
+  updateThreadPreviewState(ref, (current) =>
+    Object.keys(current.sessions).length === 0 ? current : EMPTY_THREAD_PREVIEW_STATE,
+  );
+}
+export function resetPreviewStateForTests(): void {
+  for (const threadKey of appAtomRegistry.get(previewThreadRefsAtom).keys()) {
+    appAtomRegistry.set(previewStateAtom(threadKey), EMPTY_THREAD_PREVIEW_STATE);
+  }
+  appAtomRegistry.set(previewThreadRefsAtom, new Map());
+  appAtomRegistry.set(activePreviewThreadKeysAtom, { keys: new Set<string>() });
+}
+export const __testing = {
+  EMPTY_THREAD_PREVIEW_STATE,
+  RECENT_URL_LIMIT: PREVIEW_RECENT_URL_LIMIT,
+};

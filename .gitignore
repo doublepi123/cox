@@ -1,0 +1,17 @@
+node_modules/
+.cox/
+.env
+.env.*
+!.env.example
+**/dist/
+**/dist-exe/
+**/.vite-plus/
+**/.tanstack/
+**/*.tsbuildinfo
+*.log
+.DS_Store
+.pnpm-store/
+playwright-report/
+test-results/
+release/
+native/**/target/

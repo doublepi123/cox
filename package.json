@@ -1,0 +1,33 @@
+{
+  "name": "cox-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-runner.ts dev",
+    "dev:server": "node scripts/dev-runner.ts dev:server",
+    "dev:web": "node scripts/dev-runner.ts dev:web",
+    "build": "pnpm --filter @t3tools/web build && pnpm --filter cox build",
+    "start": "pnpm --filter cox start",
+    "release:pack": "pnpm build && node scripts/package-release.ts",
+    "test:smoke": "node scripts/runtime-smoke.mjs",
+    "test:dev-smoke": "node scripts/dev-smoke.mjs",
+    "typecheck": "pnpm -r --if-present typecheck && pnpm --filter @t3tools/web exec tsc --noEmit",
+    "test": "vp test run --project root scripts/dev-runner.test.ts scripts/local-only.test.ts scripts/package-release.test.ts scripts/lib/third-party-licenses.test.ts packages/provider-core/src/server/orchestrationInstructions.test.ts",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "build:resource-monitor": "cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml"
+  },
+  "devDependencies": {
+    "@shadcn/lint": "0.1.5",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": "26.12.1"
+  },
+  "packageManager": "pnpm@12.14.0"
+}

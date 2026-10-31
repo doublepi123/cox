@@ -1,0 +1,34 @@
+# Releasing Cox
+
+## Distribution
+
+The `cox-v<VERSION>.tar.gz` release asset contains the tracked source, frozen pnpm lockfile,
+prebuilt Web UI and Node server, upstream license, third-party notices and `RELEASE.json`
+with the exact source commit. It does not contain dependencies, credentials or user data.
+It is **not** a standalone executable: install the required Node and pnpm versions and run
+`pnpm install --frozen-lockfile` before `pnpm start`. No build is needed for this asset.
+GitHub's automatic source archives do not include prebuilt assets and require `pnpm build`.
+
+Linux x64 is the initially validated platform. Other platforms require compatible native
+dependency binaries or a local compiler; no cross-platform binary support is claimed.
+Headless preview browsing requires a separately installed Playwright Chromium browser.
+On Ubuntu hosts restricting user namespaces, `cox browser setup` can install a Cox-specific
+AppArmor profile for Cox's separately named browser directory. This is an explicit host
+administration step, never an automatic release-install action; it does not replace T3's profile.
+
+## Maintainer checklist
+
+1. Keep the root and `apps/server` package versions aligned.
+2. Install with `pnpm install --frozen-lockfile`.
+3. Run `pnpm typecheck`, `pnpm test` and the server, Web and client-runtime package tests.
+4. After building, run `pnpm test:smoke` and `pnpm test:dev-smoke` to verify local auth,
+   same-origin HTTP/WebSocket access, removed endpoints, isolated state and child cleanup.
+5. Commit reviewed source. `pnpm release:pack` rejects an uncommitted source tree.
+6. Run `pnpm release:pack`; it builds production assets and creates `release/` artifacts.
+7. Extract the archive in a fresh directory, verify `sha256sum -c SHA256SUMS`, install frozen
+   dependencies and smoke-test startup with a temporary home/data directory and free port.
+8. Push the commit and version tag, then create a GitHub Release with the archive and
+   `SHA256SUMS`. Verify the uploaded checksums and release commit before announcing it.
+
+The GitHub workflow validates and packages source, but does not publish automatically.
+Releases and repository visibility remain explicit maintainer actions.

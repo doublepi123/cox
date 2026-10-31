@@ -1,0 +1,400 @@
+import type {
+  ResourceMonitorProcessSample,
+  ResourceMonitorSnapshotEvent,
+  ResourceTelemetryAggregate,
+  ResourceTelemetryProcess,
+  ResourceTelemetryProcessCategory,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
+
+const MAX_DELTA_INTERVAL_MS = 30_000;
+
+export interface ProcessState {
+  readonly process: ResourceTelemetryProcess;
+  readonly sampledAtMs: number;
+}
+
+export interface GroupCounters {
+  readonly cpuTimeMs: number;
+  readonly ioReadBytes: number;
+  readonly ioWriteBytes: number;
+  readonly processStarts: number;
+  readonly processExits: number;
+}
+
+export interface TelemetryCounters {
+  readonly backend: GroupCounters;
+  readonly monitor: GroupCounters;
+  readonly allT3: GroupCounters;
+}
+
+export interface ProcessDelta {
+  readonly identityKey: string;
+  readonly category: ResourceTelemetryProcessCategory;
+  readonly cpuTimeMs: number;
+  readonly ioReadBytes: number;
+  readonly ioWriteBytes: number;
+}
+
+export interface MergeProcessesInput {
+  readonly serverPid: number;
+  readonly sidecarPid: Option.Option<number>;
+  readonly fallbackSampledAtMs: number;
+  readonly nativeSnapshot: Option.Option<ResourceMonitorSnapshotEvent>;
+  readonly previous: ReadonlyMap<string, ProcessState>;
+  readonly counters: TelemetryCounters;
+  readonly updatePrevious: boolean;
+  readonly accumulateCounters?: boolean;
+}
+
+export interface MergeProcessesResult {
+  readonly sampledAtMs: number;
+  readonly processes: ReadonlyArray<ResourceTelemetryProcess>;
+  readonly previous: ReadonlyMap<string, ProcessState>;
+  readonly counters: TelemetryCounters;
+  readonly groups: {
+    readonly backend: ResourceTelemetryAggregate;
+    readonly monitor: ResourceTelemetryAggregate;
+    readonly allT3: ResourceTelemetryAggregate;
+  };
+  readonly deltas: ReadonlyArray<ProcessDelta>;
+}
+
+const emptyGroupCounters = (): GroupCounters => ({
+  cpuTimeMs: 0,
+  ioReadBytes: 0,
+  ioWriteBytes: 0,
+  processStarts: 0,
+  processExits: 0,
+});
+
+export const emptyTelemetryCounters = (): TelemetryCounters => ({
+  backend: emptyGroupCounters(),
+  monitor: emptyGroupCounters(),
+  allT3: emptyGroupCounters(),
+});
+
+export function processIdentityKey(pid: number, startTimeMs: number): string {
+  return `${pid}:${startTimeMs}`;
+}
+
+function finiteNonNegative(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function categoryGroup(category: ResourceTelemetryProcessCategory): "backend" | "monitor" {
+  if (category === "resource-monitor") return "monitor";
+  return "backend";
+}
+
+function processDepths(
+  processes: ReadonlyArray<ResourceMonitorProcessSample>,
+  roots: ReadonlySet<number>,
+): ReadonlyMap<number, number> {
+  const childrenByParent = new Map<number, number[]>();
+  for (const process of processes) {
+    const children = childrenByParent.get(process.ppid) ?? [];
+    children.push(process.pid);
+    childrenByParent.set(process.ppid, children);
+  }
+
+  const depths = new Map<number, number>();
+  const queue = [...roots].map((pid) => ({ pid, depth: 0 }));
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || depths.has(current.pid)) continue;
+    depths.set(current.pid, current.depth);
+    for (const childPid of childrenByParent.get(current.pid) ?? []) {
+      queue.push({ pid: childPid, depth: current.depth + 1 });
+    }
+  }
+  return depths;
+}
+
+function orderProcessTree(
+  processes: ReadonlyArray<ResourceTelemetryProcess>,
+  rootPids: ReadonlyArray<number>,
+): ReadonlyArray<ResourceTelemetryProcess> {
+  const processesByPid = new Map(processes.map((process) => [process.identity.pid, process]));
+  const childrenByParent = new Map<number, ResourceTelemetryProcess[]>();
+  for (const process of processes) {
+    const children = childrenByParent.get(process.ppid) ?? [];
+    children.push(process);
+    childrenByParent.set(process.ppid, children);
+  }
+  for (const children of childrenByParent.values()) {
+    children.sort((left, right) => left.identity.pid - right.identity.pid);
+  }
+
+  const ordered: ResourceTelemetryProcess[] = [];
+  const visited = new Set<number>();
+  const visit = (process: ResourceTelemetryProcess): void => {
+    if (visited.has(process.identity.pid)) return;
+    visited.add(process.identity.pid);
+    ordered.push(process);
+    for (const child of childrenByParent.get(process.identity.pid) ?? []) {
+      visit(child);
+    }
+  };
+
+  for (const rootPid of rootPids) {
+    const root = processesByPid.get(rootPid);
+    if (root) visit(root);
+  }
+  for (const process of processes.toSorted(
+    (left, right) => left.depth - right.depth || left.identity.pid - right.identity.pid,
+  )) {
+    visit(process);
+  }
+  return ordered;
+}
+
+function delta(input: {
+  readonly current: number;
+  readonly previous: number;
+  readonly elapsedMs: number;
+}): number {
+  if (
+    input.elapsedMs <= 0 ||
+    input.elapsedMs > MAX_DELTA_INTERVAL_MS ||
+    input.current < input.previous
+  ) {
+    return 0;
+  }
+  return input.current - input.previous;
+}
+
+function incrementCounters(counters: GroupCounters, update: Partial<GroupCounters>): GroupCounters {
+  return {
+    cpuTimeMs: counters.cpuTimeMs + (update.cpuTimeMs ?? 0),
+    ioReadBytes: counters.ioReadBytes + (update.ioReadBytes ?? 0),
+    ioWriteBytes: counters.ioWriteBytes + (update.ioWriteBytes ?? 0),
+    processStarts: counters.processStarts + (update.processStarts ?? 0),
+    processExits: counters.processExits + (update.processExits ?? 0),
+  };
+}
+
+function applyLifecycleCounters(input: {
+  readonly counters: TelemetryCounters;
+  readonly deltas: ReadonlyArray<ProcessDelta>;
+  readonly current: ReadonlyMap<string, ProcessState>;
+  readonly previous: ReadonlyMap<string, ProcessState>;
+}): TelemetryCounters {
+  let backend = input.counters.backend;
+  let monitor = input.counters.monitor;
+  let allT3 = input.counters.allT3;
+  for (const processDelta of input.deltas) {
+    const group = categoryGroup(processDelta.category);
+    switch (group) {
+      case "backend":
+        backend = incrementCounters(backend, processDelta);
+        break;
+      case "monitor":
+        monitor = incrementCounters(monitor, processDelta);
+        break;
+    }
+    allT3 = incrementCounters(allT3, processDelta);
+  }
+
+  for (const [identityKey, current] of input.current) {
+    if (input.previous.has(identityKey)) continue;
+    const group = categoryGroup(current.process.category);
+    switch (group) {
+      case "backend":
+        backend = incrementCounters(backend, { processStarts: 1 });
+        break;
+      case "monitor":
+        monitor = incrementCounters(monitor, { processStarts: 1 });
+        break;
+    }
+    allT3 = incrementCounters(allT3, { processStarts: 1 });
+  }
+
+  for (const [identityKey, previous] of input.previous) {
+    if (input.current.has(identityKey)) continue;
+    const group = categoryGroup(previous.process.category);
+    switch (group) {
+      case "backend":
+        backend = incrementCounters(backend, { processExits: 1 });
+        break;
+      case "monitor":
+        monitor = incrementCounters(monitor, { processExits: 1 });
+        break;
+    }
+    allT3 = incrementCounters(allT3, { processExits: 1 });
+  }
+
+  return { backend, monitor, allT3 };
+}
+
+function aggregate(
+  processes: ReadonlyArray<ResourceTelemetryProcess>,
+  counters: GroupCounters,
+): ResourceTelemetryAggregate {
+  return {
+    processCount: processes.length,
+    currentCpuPercent: processes.reduce((total, process) => total + process.cpuPercent, 0),
+    cpuTimeMs: counters.cpuTimeMs,
+    currentRssBytes: processes.reduce((total, process) => total + process.residentBytes, 0),
+    peakRssBytes: processes.reduce((total, process) => total + process.peakResidentBytes, 0),
+    ioReadBytes: counters.ioReadBytes,
+    ioWriteBytes: counters.ioWriteBytes,
+    ioReadBytesPerSecond: processes.reduce(
+      (total, process) => total + process.ioReadBytesPerSecond,
+      0,
+    ),
+    ioWriteBytesPerSecond: processes.reduce(
+      (total, process) => total + process.ioWriteBytesPerSecond,
+      0,
+    ),
+    processStarts: counters.processStarts,
+    processExits: counters.processExits,
+  };
+}
+
+export function mergeProcesses(input: MergeProcessesInput): MergeProcessesResult {
+  const nativeProcesses = Option.match(input.nativeSnapshot, {
+    onNone: () => [] as ReadonlyArray<ResourceMonitorProcessSample>,
+    onSome: (snapshot) => snapshot.processes,
+  });
+  const sampledAtMs = Option.match(input.nativeSnapshot, {
+    onNone: () => input.fallbackSampledAtMs,
+    onSome: (snapshot) => snapshot.sampledAtUnixMs,
+  });
+  const nativeSampledAtMs = Option.map(
+    input.nativeSnapshot,
+    (snapshot) => snapshot.sampledAtUnixMs,
+  );
+  const processes = nativeProcesses;
+  const rootPids = [input.serverPid];
+  const roots = new Set(rootPids);
+  const depths = processDepths(processes, roots);
+  const childrenByParent = new Map<number, number[]>();
+  for (const process of processes) {
+    const children = childrenByParent.get(process.ppid) ?? [];
+    children.push(process.pid);
+    childrenByParent.set(process.ppid, children);
+  }
+
+  const nextPrevious = new Map<string, ProcessState>();
+  const processDeltas: ProcessDelta[] = [];
+  const normalized = processes.map((process): ResourceTelemetryProcess => {
+    const identityKey = processIdentityKey(process.pid, process.startTimeMs);
+    const previous = input.previous.get(identityKey);
+    const counterSampledAtMs = Option.getOrElse(nativeSampledAtMs, () => sampledAtMs);
+    const elapsedMs = previous ? counterSampledAtMs - previous.sampledAtMs : 0;
+    const cpuTimeDelta = previous
+      ? delta({
+          current: process.cpuTimeMs,
+          previous: previous.process.cpuTimeMs,
+          elapsedMs,
+        })
+      : 0;
+    const ioReadDelta = previous
+      ? delta({
+          current: process.ioReadBytes,
+          previous: previous.process.ioReadBytes,
+          elapsedMs,
+        })
+      : 0;
+    const ioWriteDelta = previous
+      ? delta({
+          current: process.ioWriteBytes,
+          previous: previous.process.ioWriteBytes,
+          elapsedMs,
+        })
+      : 0;
+    const category: ResourceTelemetryProcessCategory =
+      process.pid === input.serverPid
+        ? "server"
+        : Option.contains(input.sidecarPid, process.pid)
+          ? "resource-monitor"
+          : "server-child";
+    const firstSeenAt = previous?.process.firstSeenAt ?? DateTime.makeUnsafe(sampledAtMs);
+    const preservePreviousRates = !input.updatePrevious && previous !== undefined;
+    const cpuPercent = preservePreviousRates
+      ? previous.process.cpuPercent
+      : previous && elapsedMs > 0 && elapsedMs <= MAX_DELTA_INTERVAL_MS
+        ? (cpuTimeDelta / elapsedMs) * 100
+        : finiteNonNegative(process.cpuPercent);
+    const normalizedProcess: ResourceTelemetryProcess = {
+      identity: {
+        pid: process.pid,
+        startTimeMs: process.startTimeMs,
+      },
+      ppid: process.ppid,
+      childPids: [...(childrenByParent.get(process.pid) ?? [])].toSorted(
+        (left, right) => left - right,
+      ),
+      depth: depths.get(process.pid) ?? 0,
+      name: process.name,
+      command: process.command,
+      status: process.status,
+      category,
+      cpuPercent: finiteNonNegative(cpuPercent),
+      cpuTimeMs: process.cpuTimeMs,
+      residentBytes: process.residentBytes,
+      peakResidentBytes: Math.max(process.residentBytes, previous?.process.peakResidentBytes ?? 0),
+      virtualBytes: process.virtualBytes,
+      ioReadBytes: process.ioReadBytes,
+      ioWriteBytes: process.ioWriteBytes,
+      ioReadBytesPerSecond: preservePreviousRates
+        ? previous.process.ioReadBytesPerSecond
+        : elapsedMs > 0
+          ? finiteNonNegative((ioReadDelta * 1_000) / elapsedMs)
+          : 0,
+      ioWriteBytesPerSecond: preservePreviousRates
+        ? previous.process.ioWriteBytesPerSecond
+        : elapsedMs > 0
+          ? finiteNonNegative((ioWriteDelta * 1_000) / elapsedMs)
+          : 0,
+      ioSemantics: process.ioSemantics,
+      runTimeMs: process.runTimeMs,
+      firstSeenAt,
+      lastSeenAt: DateTime.makeUnsafe(sampledAtMs),
+    };
+    nextPrevious.set(identityKey, {
+      process: normalizedProcess,
+      sampledAtMs: counterSampledAtMs,
+    });
+    processDeltas.push({
+      identityKey,
+      category,
+      cpuTimeMs: cpuTimeDelta,
+      ioReadBytes: ioReadDelta,
+      ioWriteBytes: ioWriteDelta,
+    });
+    return normalizedProcess;
+  });
+  const ordered = orderProcessTree(normalized, rootPids);
+
+  const counters =
+    input.updatePrevious && input.accumulateCounters !== false
+      ? applyLifecycleCounters({
+          counters: input.counters,
+          deltas: processDeltas,
+          current: nextPrevious,
+          previous: input.previous,
+        })
+      : input.counters;
+  const backendProcesses = ordered.filter(
+    (process) => categoryGroup(process.category) === "backend",
+  );
+  const monitorProcesses = ordered.filter(
+    (process) => categoryGroup(process.category) === "monitor",
+  );
+
+  return {
+    sampledAtMs,
+    processes: ordered,
+    previous: input.updatePrevious ? nextPrevious : input.previous,
+    counters,
+    groups: {
+      backend: aggregate(backendProcesses, counters.backend),
+      monitor: aggregate(monitorProcesses, counters.monitor),
+      allT3: aggregate(ordered, counters.allT3),
+    },
+    deltas: processDeltas,
+  };
+}
