@@ -10,6 +10,13 @@ const { refresh, assetUrlState } = vi.hoisted(() => ({
   assetUrlState: vi.fn<() => import("~/assets/assetUrls").AssetUrlState>(),
 }));
 
+vi.mock(import("pdfjs-dist/build/pdf.worker.min.mjs?url"), async () => {
+  const { default: source } = await import("pdfjs-dist/build/pdf.worker.min.mjs?raw");
+  return {
+    default: URL.createObjectURL(new Blob([source], { type: "text/javascript" })),
+  };
+});
+
 vi.mock(import("~/assets/assetUrls"), async (original) => ({
   ...(await original()),
   useAssetUrlRefresh: () => refresh,

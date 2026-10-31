@@ -1,0 +1,12 @@
+name: Set up Cox workspace
+description: Install the pinned Node and pnpm toolchain and frozen workspace dependencies.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 26.12.1
+    - shell: bash
+      run: npm install --global pnpm@12.14.0
+    - shell: bash
+      run: pnpm install --frozen-lockfile
