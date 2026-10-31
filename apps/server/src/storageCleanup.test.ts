@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 import type * as Path from "effect/Path";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import { ExitCode } from "effect/process/ChildProcessSpawner";
 import { SCAN_CACHE_FILE_NAME } from "./usage/usageScanCache.ts";
 import { TestClock } from "effect/testing";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -2017,6 +2018,38 @@ describe("storage cleanup reports and local file policies", () => {
       }),
     ),
   );
+  it.live.each([
+    ["fatal: not a git repository: /missing-git-directory", "kept"],
+    ["fatal: gitfile does not point to a valid repository: /worktree/.git", "kept"],
+    ["fatal: unable to read the repository: Permission denied", "failed"],
+  ] as const)("preserves a worktree after Git reports %s", ([stderr, outcome]) =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const git = yield* GitVcsDriver.GitVcsDriver;
+        const fixture = yield* cleanupFixture().pipe(
+          Effect.provideService(GitVcsDriver.GitVcsDriver, {
+            ...git,
+            execute: (input) =>
+              input.operation === "StorageCleanup.branchChanged"
+                ? Effect.succeed({
+                    exitCode: ExitCode(128),
+                    stdout: "",
+                    stderr,
+                    stdoutTruncated: false,
+                    stderrTruncated: false,
+                  })
+                : git.execute(input),
+          }),
+        );
+        expect((yield* fixture.service.runNow).entries[0]).toMatchObject({ outcome });
+        expect(yield* fixture.fs.exists(fixture.worktree)).toBe(true);
+        expect(yield* fixture.fs.readFileString(`${fixture.worktree}/tracked.txt`)).toBe(
+          "original\n",
+        );
+      }),
+    ),
+  );
+
   it.live("compares the checked-out branch without a full status", () =>
     runCleanupTest(
       Effect.gen(function* () {
