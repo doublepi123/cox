@@ -5,6 +5,51 @@ import { describe, expect, it } from "vite-plus/test";
 const root = NodePath.resolve(import.meta.dirname, "..");
 
 describe("local-only distribution boundary", () => {
+  it("uses a single Cox SVG for the favicon, splash and in-app icon", () => {
+    const html = NodeFS.readFileSync(NodePath.join(root, "apps/web/index.html"), "utf8");
+    const component = NodeFS.readFileSync(
+      NodePath.join(root, "apps/web/src/components/CoxAppIcon.tsx"),
+      "utf8",
+    );
+    const manifest = JSON.parse(
+      NodeFS.readFileSync(NodePath.join(root, "apps/web/public/manifest.webmanifest"), "utf8"),
+    );
+    expect(html).toContain('href="/cox.svg"');
+    expect(html).toContain('id="boot-shell-logo" src="/cox.svg"');
+    expect(component).toContain('src="/cox.svg" alt="Cox"');
+    expect(manifest.icons).toEqual([
+      { src: "/cox.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+    ]);
+  });
+
+  it("ships Cox PNG sizes and a valid multi-resolution ICO fallback", () => {
+    for (const [filename, size] of [
+      ["favicon-16x16.png", 16],
+      ["favicon-32x32.png", 32],
+      ["apple-touch-icon.png", 180],
+      ["icon-192.png", 192],
+      ["icon-512.png", 512],
+    ] as const) {
+      const image = NodeFS.readFileSync(NodePath.join(root, "apps/web/public", filename));
+      expect(image.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+      expect(image.readUInt32BE(16), filename).toBe(size);
+      expect(image.readUInt32BE(20), filename).toBe(size);
+    }
+    const ico = NodeFS.readFileSync(NodePath.join(root, "apps/web/public/favicon.ico"));
+    expect(ico.readUInt16LE(0)).toBe(0);
+    expect(ico.readUInt16LE(2)).toBe(1);
+    expect(ico.readUInt16LE(4)).toBe(2);
+    for (const index of [0, 1]) {
+      const offset = 6 + index * 16;
+      const start = ico.readUInt32LE(offset + 12);
+      const length = ico.readUInt32LE(offset + 8);
+      expect(start + length).toBeLessThanOrEqual(ico.length);
+      expect(ico.subarray(start, start + 8).toString("hex")).toBe("89504e470d0a1a0a");
+    }
+  });
+
   it("retains only the browser fixes in the Legend list patch", () => {
     const patch = NodeFS.readFileSync(
       NodePath.join(root, "patches/@legendapp__list@3.3.5.patch"),

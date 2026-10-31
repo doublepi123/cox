@@ -84,6 +84,10 @@ The full server suite (`pnpm --filter cox test`) additionally needs a C compiler
 
 Internal `@t3tools/*` package identifiers are retained to keep the derived source compatible; they do not imply a connection to T3 cloud services.
 
+The Cox icon is maintained in `apps/web/public/cox.svg` and reused by the interface, splash
+and browser favicon. After editing it, run `node scripts/generate-icons.mjs` to regenerate
+the PNG and ICO variants. This maintenance command requires Playwright's headless Chromium.
+
 ## Attribution
 
 This project retains the upstream MIT license and third-party notices. See [LICENSE](LICENSE). Cox is a derivative project, not an official T3 release.
