@@ -16,6 +16,20 @@ On Ubuntu hosts restricting user namespaces, `cox browser setup` can install a C
 AppArmor profile for Cox's separately named browser directory. This is an explicit host
 administration step, never an automatic release-install action; it does not replace T3's profile.
 
+## Android server bundle
+
+`cox-<version>-android-linux-<arch>-musl.tar.gz` is a self-contained server tree for the Android
+app, which extracts it into Alpine (musl) inside PRoot and starts it with `node bin.mjs`. It
+contains `bin.mjs`, `client/`, `node_modules/`, `package.json` and `ANDROID-BUNDLE.json`
+(`version`, `arch`, `libc`, `nodeEngine`, `builtWith`, `server`); only `apk add nodejs` is needed
+on the device. Native modules are built against musl on the runner's own architecture, so x64 and
+arm64 are produced separately and cannot be cross-built without emulation.
+
+`.github/workflows/android-bundle.yml` builds and smoke-tests both bundles, then attaches them to
+the release for the pushed `v*` tag, creating the release when it is missing, and merges their
+checksums into the release's `SHA256SUMS`. Run it with `workflow_dispatch` and a tag to rebuild
+the bundles of an existing release.
+
 ## Maintainer checklist
 
 1. Keep the root and `apps/server` package versions aligned.
@@ -28,7 +42,9 @@ administration step, never an automatic release-install action; it does not repl
 7. Extract the archive in a fresh directory, verify `sha256sum -c SHA256SUMS`, install frozen
    dependencies and smoke-test startup with a temporary home/data directory and free port.
 8. Push the commit and version tag, then create a GitHub Release with the archive and
-   `SHA256SUMS`. Verify the uploaded checksums and release commit before announcing it.
+   `SHA256SUMS`. Verify the uploaded checksums and release commit before announcing it. The tag
+   also triggers the Android bundle workflow, which attaches the two musl bundles and their
+   checksums to that release.
 
-The GitHub workflow validates and packages source, but does not publish automatically.
+The source workflow validates and packages source, but does not publish automatically.
 Releases and repository visibility remain explicit maintainer actions.

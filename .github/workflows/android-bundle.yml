@@ -1,0 +1,116 @@
+name: Android server bundle
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build bundles for, for example v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-bundle-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-dist
+          path: apps/server/dist
+          if-no-files-found: error
+
+  bundle:
+    needs: server
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: apps/server/dist
+      - name: Build musl bundle
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          expected="$(node -p 'require("./apps/server/package.json").version')"
+          if [ "$version" != "$expected" ]; then
+            echo "::warning::tag $tag does not match the server version $expected"
+          fi
+          ./scripts/build-android-server-bundle.sh \
+            --dist apps/server/dist \
+            --version "$version" \
+            --arch "${{ matrix.arch }}" \
+            --output-dir release-android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-android-${{ matrix.arch }}
+          path: release-android/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cox-android-*
+          merge-multiple: true
+          path: release-android
+      - name: Attach bundles and checksums to the release
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          cd release-android
+          files=(*.tar.gz)
+          if [ "${#files[@]}" -ne 2 ]; then
+            echo "expected two bundles, found ${#files[@]}" >&2
+            exit 1
+          fi
+
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "$tag" --generate-notes
+          fi
+
+          work="$(mktemp -d)"
+          if gh release download "$tag" --pattern SHA256SUMS --dir "$work" 2>/dev/null; then
+            cp "$work/SHA256SUMS" SHA256SUMS
+          else
+            : >SHA256SUMS
+          fi
+          for file in "${files[@]}"; do
+            { grep -v -F "  $file" SHA256SUMS || true; } >SHA256SUMS.tmp
+            mv SHA256SUMS.tmp SHA256SUMS
+            sha256sum "$file" >>SHA256SUMS
+          done
+          cat SHA256SUMS
+
+          gh release upload "$tag" "${files[@]}" SHA256SUMS --clobber

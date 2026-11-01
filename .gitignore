@@ -14,4 +14,5 @@ node_modules/
 playwright-report/
 test-results/
 release/
+release-android/
 native/**/target/
