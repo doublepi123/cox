@@ -33,9 +33,8 @@ export function ServerAuthGate({
       await onAuthenticated();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("Authentication failed."));
-    } finally {
-      setSubmitting(false);
     }
+    setSubmitting(false);
   }
 
   return (

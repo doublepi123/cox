@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6 — 2026-11-01
+
+- Keep the restored sign-in form compatible with React Compiler by using its supported
+  asynchronous error-handling syntax, without changing credential submission or retry behavior.
+
 ## 0.1.5 — 2026-11-01
 
 - Show the local authentication form before the chat or welcome screen when the browser is not
