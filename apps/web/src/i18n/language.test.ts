@@ -50,6 +50,14 @@ describe("translation resources", () => {
     expect(translate("zh", "toString")).toBe("toString");
   });
 
+  it("preserves interpolation placeholders in every translation", () => {
+    const placeholders = (value: string) =>
+      [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+    for (const [key, value] of Object.entries(zh)) {
+      expect(placeholders(value), key).toEqual(placeholders(key));
+    }
+  });
+
   it("interpolates explicit values without evaluating them", () => {
     expect(translate("zh", "File {name}: {count}", { name: "<script>", count: 2 })).toBe(
       "File <script>: 2",

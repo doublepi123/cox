@@ -9,6 +9,7 @@ import {
 import * as DateTime from "effect/DateTime";
 
 import {
+  deriveActiveSubagentInstances,
   deriveWorkflowGroups,
   isWorkflowScriptMessage,
   projectedSubagentsToRuntime,
@@ -47,6 +48,66 @@ const member = (
 
 const groupsOf = (subagents: ReadonlyArray<ProjectedSubagent>) =>
   deriveWorkflowGroups(projectedSubagentsToRuntime(subagents));
+
+describe("deriveActiveSubagentInstances", () => {
+  const instance = (overrides: Partial<ProjectedSubagent> = {}) => ({
+    ...subagent(overrides),
+    driver: ProviderDriverKind.make("codex"),
+    providerInstanceId: ProviderInstanceId.make("review"),
+    origin: "app_owned" as const,
+  });
+
+  it("retains only queued, running and waiting instances with provider identity", () => {
+    const statuses = [
+      "idle",
+      "pending",
+      "running",
+      "waiting",
+      "completed",
+      "failed",
+      "cancelled",
+      "interrupted",
+    ] as const;
+    const active = deriveActiveSubagentInstances(
+      statuses.map((status) => instance({ id: status, status })),
+    );
+    expect(active.map((agent) => agent.status)).toEqual(["pending", "running", "waiting"]);
+    expect(active[0]).toMatchObject({
+      driver: "codex",
+      providerInstanceId: "review",
+      origin: "app_owned",
+    });
+    expect(deriveActiveSubagentInstances([])).toEqual([]);
+  });
+
+  it("counts workflow workers instead of their coordinator and inherits the model", () => {
+    const active = deriveActiveSubagentInstances([
+      instance({
+        workflow: {
+          phases: [],
+          agents: [
+            member(),
+            member({ index: 2, state: "queued" }),
+            member({ index: 3, state: "completed" }),
+          ],
+        },
+      }),
+    ]);
+    expect(active).toHaveLength(2);
+    expect(active.map((agent) => agent.kind)).toEqual(["workflow_agent", "workflow_agent"]);
+    expect(active.map((agent) => agent.model)).toEqual(["claude-opus-5[1m]", "claude-opus-5[1m]"]);
+  });
+
+  it("keeps an active coordinator without active workers and removes settled owners", () => {
+    const workflow = { phases: [], agents: [member({ state: "completed" })] };
+    expect(deriveActiveSubagentInstances([instance({ workflow })])[0]?.kind).toBe("workflow");
+    expect(
+      deriveActiveSubagentInstances([
+        instance({ status: "completed", workflow: { phases: [], agents: [member()] } }),
+      ]),
+    ).toEqual([]);
+  });
+});
 
 describe("projectedSubagentsToRuntime workflow expansion", () => {
   it("uses a settled member's wall-clock completion separately from its execution duration", () => {

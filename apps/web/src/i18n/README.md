@@ -12,6 +12,9 @@ messages, agent responses, prompts, source code, file paths, project names or pr
 Use explicit interpolation values for dynamic interface text; never replace text in the DOM.
 
 Core navigation, local agent onboarding, projects, chat actions and settings are translated.
+Thread details include localized editor, script and Git actions, changed-file counts, and active
+subagent statuses. Source-control settings and scope selectors also update with the language.
+Subagent titles, progress, provider instance names and model names remain unchanged.
 Technical diagnostics, external provider errors, API model descriptions and some advanced
 settings retain English. New interface strings need entries in both resources.
 

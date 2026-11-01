@@ -1,4 +1,5 @@
 import { ChevronDownIcon } from "lucide-react";
+import { useTranslation } from "../../i18n";
 
 import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { ThreadDetailsItemsMenuItems } from "../chat/ThreadDetailsItemsMenu";
@@ -14,6 +15,7 @@ import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
 export function ThreadDetailsItemsRow() {
+  const { t } = useTranslation();
   const visibility = useClientSettings(resolveThreadDetailsVisibility);
   const enabled = THREAD_DETAILS_ITEMS.filter((item) => visibility[item.id]).length;
   return (
@@ -36,11 +38,14 @@ export function ThreadDetailsItemsRow() {
                 variant="outline"
                 size="sm"
                 className="w-full justify-between sm:w-40"
-                aria-label={`Thread details: ${enabled} of ${THREAD_DETAILS_ITEMS.length} on`}
+                aria-label={t("Thread details: {enabled} of {total} on", {
+                  enabled,
+                  total: THREAD_DETAILS_ITEMS.length,
+                })}
               />
             }
           >
-            {enabled} of {THREAD_DETAILS_ITEMS.length} on
+            {t("{enabled} of {total} on", { enabled, total: THREAD_DETAILS_ITEMS.length })}
             <ChevronDownIcon aria-hidden />
           </MenuTrigger>
           <MenuPopup align="end">

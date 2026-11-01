@@ -621,4 +621,416 @@ export const zh = {
   "Float preview over chat": "在聊天上方浮动预览",
   "Hard reload": "强制重新加载",
   "Preview menu": "预览菜单",
+  "Applying settings for": "设置应用于",
+  "All projects": "所有项目",
+  "Project scope": "项目范围",
+  "Unavailable project": "项目不可用",
+  "No matches found.": "未找到匹配项。",
+  Offline: "离线",
+  "Reset {setting} to default": "将{setting}恢复为默认值",
+  "Open in editor": "在编辑器中打开",
+  "Open in {editor}": "在 {editor} 中打开",
+  "Opened in {editor}": "已在 {editor} 中打开",
+  "Open file in preferred editor": "在首选编辑器中打开文件",
+  "Choose editor": "选择编辑器",
+  "No installed editors found": "未找到已安装的编辑器",
+  "Open in…": "打开方式…",
+  "Add project script": "添加项目脚本",
+  "Add action": "添加操作",
+  "Script actions": "脚本操作",
+  "From t3.json": "来自 t3.json",
+  "Edit {name}": "编辑 {name}",
+  "Run {name}": "运行 {name}",
+  "Pair this client again with permission to run terminal commands.":
+    "请重新配对此客户端，并授予运行终端命令的权限。",
+  "{count} changed file": "{count} 个文件已更改",
+  "{count} changed files": "{count} 个文件已更改",
+  "Show in thread details": "在对话详情中显示",
+  "Environment and worktree": "环境与工作树",
+  "Branch and pull request": "分支与拉取请求",
+  "Git actions": "Git 操作",
+  "Git action options": "Git 操作选项",
+  Servers: "服务器",
+  Automations: "自动化",
+  Lineage: "派生关系",
+  "Side chats": "旁支对话",
+  "Thread details: {enabled} of {total} on": "对话详情：已启用 {enabled}/{total} 项",
+  "{enabled} of {total} on": "已启用 {enabled}/{total} 项",
+  now: "刚刚",
+  "just now": "刚刚",
+  "{count}m": "{count}分钟",
+  "{count}h": "{count}小时",
+  "{count}d": "{count}天",
+  "{time} ago": "{time}前",
+  Worked: "已完成工作",
+  "Worked for {duration}": "用时 {duration}",
+  Continued: "已继续执行",
+  "Continued for {duration}": "继续执行了 {duration}",
+  "You stopped this response": "你已停止此回复",
+  "You stopped after {duration}": "你在 {duration} 后停止了回复",
+  "Superseded attempt": "已被替代的尝试",
+  "Publish repository": "发布仓库",
+  "Publish repository...": "发布仓库…",
+  "Initialize Git": "初始化 Git",
+  "Initializing...": "正在初始化…",
+  "Commit & push": "提交并推送",
+  "Create PR": "创建 PR",
+  "Create MR": "创建 MR",
+  "Commit, push & PR": "提交、推送并创建 PR",
+  "Commit, push & MR": "提交、推送并创建 MR",
+  "Push & create PR": "推送并创建 PR",
+  "Push & create MR": "推送并创建 MR",
+  "Sync ref": "同步引用",
+  "Git action in progress.": "Git 操作正在进行。",
+  "Git status is unavailable.": "Git 状态不可用。",
+  "Branch is up to date. No action needed.": "分支已是最新，无需操作。",
+  "No local commits to push.": "没有可推送的本地提交。",
+  "Branch has diverged from upstream. Rebase/merge first.": "分支已与上游分叉，请先变基或合并。",
+  "Behind upstream. Pull/rebase first.": "落后于上游，请先拉取或变基。",
+  "This connection cannot change source control.": "此连接无权更改源码管理状态。",
+  "This action is currently unavailable.": "此操作当前不可用。",
+  "Default branch": "默认分支",
+  Excluded: "已排除",
+  "Open {path} in editor": "在编辑器中打开 {path}",
+  "Commit message (optional)": "提交说明（可选）",
+  "Leave empty to auto-generate": "留空以自动生成",
+  Repositories: "仓库",
+  "Automatically pull": "自动拉取",
+  "Keeps this project's default branch current when the checkout has no local changes or commits.":
+    "检出目录没有本地更改或提交时，自动更新此项目的默认分支。",
+  "Keeps the default branch current when the checkout has no local changes or commits. Projects can override it.":
+    "检出目录没有本地更改或提交时，自动更新默认分支。各项目可单独覆盖此设置。",
+  "Default automatic pull": "默认自动拉取",
+  "default automatic pull": "默认自动拉取",
+  "Reset automatic pull to off": "关闭自动拉取",
+  "Remove agent credits when merging": "合并时移除 Agent 署名",
+  "Remove recognized agent credit lines from merge and squash messages on hosts that support it, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits.":
+    "在支持此功能的托管平台上，从合并和压缩合并说明中移除可识别的 Agent 署名，保留人类共同作者。适用于自动合并，但不适用于合并队列、堆叠合并和已有提交。",
+  "agent credit removal": "Agent 署名移除",
+  "Keep agent credits": "保留 Agent 署名",
+  "Default merge method": "默认合并方式",
+  "default merge method": "默认合并方式",
+  "Pull requests in this project start with this method.": "此项目的拉取请求默认使用此合并方式。",
+  "Pull requests start with this method. Last selected reuses whatever you chose most recently on this device.":
+    "拉取请求默认使用此合并方式。“上次选择”会沿用你在此设备上最近选择的方式。",
+  "Default pull request merge method": "默认拉取请求合并方式",
+  "Reset to last selected": "恢复为上次选择",
+  "Last selected": "上次选择",
+  Mixed: "不一致",
+  "Squash and merge": "压缩并合并",
+  "Rebase and merge": "变基并合并",
+  "Version Control": "版本控制",
+  "Source control providers": "源码托管平台",
+  "Coming Soon": "即将支持",
+  "Support for {provider} is coming soon.": "即将支持 {provider}。",
+  "Available. {hint}": "可用。{hint}",
+  "Status unknown": "状态未知",
+  as: "账号",
+  "Not available on this server: {hint}": "此服务器上不可用：{hint}",
+  "Every {provider} host is turned off.": "所有 {provider} 主机均已关闭。",
+  "{provider} is not authenticated on this server. Sign in or configure credentials using the {tool} tool on the server host to enable change request features.":
+    "此服务器上的 {provider} 尚未认证。请在服务器主机上使用 {tool} 工具登录或配置凭据，以启用变更请求功能。",
+  "Could not verify {provider}. {detail}": "无法验证 {provider}。{detail}",
+  "Toggle {provider} details": "展开或收起 {provider} 详情",
+  "{provider} availability": "{provider} 可用状态",
+  "Could not scan the server environment": "无法扫描服务器环境",
+  "Nothing detected yet": "尚未检测到工具",
+  "Install Git on the server, add optional hosting integrations or credentials your workspace needs, then rescan.":
+    "请在服务器上安装 Git，按需添加源码托管集成或凭据，然后重新扫描。",
+  Scan: "扫描",
+  "Rescan server environment": "重新扫描服务器环境",
+  "Rescan Git and hosting integrations": "重新扫描 Git 和源码托管集成",
+  "Connect an environment to inspect its version control tools and hosting integrations.":
+    "连接环境后即可查看其版本控制工具和源码托管集成。",
+  "Repository conventions": "遵循仓库惯例",
+  "In each project, matches recent change descriptions and change request titles.":
+    "在各项目中沿用近期变更说明和变更请求标题的风格。",
+  "Conventional Commits": "约定式提交",
+  "Use Conventional Commit prefixes and keep change request text concise.":
+    "使用约定式提交前缀，并保持变更请求文本简洁。",
+  "Custom instructions": "自定义指令",
+  "Use your instructions for change descriptions and change requests in every project.":
+    "在所有项目的变更说明和变更请求中使用你的自定义指令。",
+  "Source control writing style": "源码管理文案风格",
+  "Source control writer model": "源码管理文案模型",
+  "Review guide model": "审查指南模型",
+  "Review guide instructions": "审查指南指令",
+  "Review guides": "审查指南",
+  "Review guides (beta)": "审查指南（测试版）",
+  "Follow change request templates": "遵循变更请求模板",
+  "Use the repository's template for change request descriptions when available.":
+    "如仓库提供变更请求描述模板，则优先使用。",
+  "Model for source control text and branch or bookmark names. Off uses the environment's text generation model.":
+    "用于源码管理文案、分支名和书签名的模型。关闭时使用环境的文本生成模型。",
+  "Model that reads a pull request to write its review guide. It reads the change itself over many steps, so a stronger model helps. Off uses the source control writer model.":
+    "读取拉取请求并编写审查指南的模型。它会分多步分析变更，能力更强的模型效果更好。关闭时使用源码管理文案模型。",
+  "Your preferences for review guides: what to show first, dwell on, or skip. The guide's format and coverage stay the same.":
+    "设置审查指南的重点：先看什么、详细讲解什么，以及跳过什么。指南的格式和覆盖范围保持不变。",
+  "Adds a Guide tab to pull requests: an agent writes a tour of the change, stop by stop, with the calls a maintainer should make.":
+    "为拉取请求添加指南标签页：由 Agent 逐步讲解变更，并指出维护者需要作出的判断。",
+  "Choose what the thread details card shows. You can also right-click the card.":
+    "选择对话详情卡片显示的内容，也可右键单击卡片进行设置。",
+  "thread details": "对话详情",
+  "API keys, base URLs, and other per-instance CLI settings.":
+    "API 密钥、基础 URL 和各实例的 CLI 设置。",
+  "Adjust the contrast of colors and borders across the interface.":
+    "调整整个界面中颜色与边框的对比度。",
+  "Also include skills in the / command menu. Skills always appear when you type $.":
+    "在 / 命令菜单中也显示技能。输入 $ 时始终显示技能。",
+  "Any new activity un-settles a thread automatically.": "出现新活动时，对话会自动取消归档。",
+  App: "应用",
+  "Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added.":
+    "附加到命名提示词后。模型返回完整分支名，不再额外添加前缀或后缀。",
+  "Appended to the prompt for new and regenerated thread titles.":
+    "附加到新建或重新生成对话标题的提示词后。",
+  "Archived threads": "已归档对话",
+  Arguments: "参数",
+  "Ask before deleting a thread and its chat history.": "删除对话及其聊天记录前进行确认。",
+  "Ask before unpinning a thread from the pinned section.": "从置顶区域取消置顶对话前进行确认。",
+  "Auto-settle": "自动归档",
+  "Auto-show floating preview": "自动显示浮动预览",
+  "Automatically resume interrupted threads after an update, crash, or machine restart on the selected environments.":
+    "在所选环境更新、崩溃或重启后，自动恢复被中断的对话。",
+  Beta: "测试版",
+  "Binary path": "可执行文件路径",
+  Branches: "分支",
+  "Brand & content": "品牌与内容",
+  "Browser profiles": "浏览器配置",
+  "Browser recording frame rate": "浏览器录制帧率",
+  "CODEX_HOME path": "CODEX_HOME 路径",
+  "ChatGPT account": "ChatGPT 账号",
+  Checkouts: "检出目录",
+  "Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today.":
+    "设置所有稍后处理菜单中的选项，按时间由近到远排列。星期几指今天之后的下一个对应日期。",
+  "Choose colors for additions and deletions, including change counts.":
+    "选择新增和删除内容的颜色，包括变更数量。",
+  "Choose how new worktree branches are named from your first message.":
+    "选择如何根据首条消息为新工作树分支命名。",
+  "Choose one environment to edit its list. Adding an action here adds it on every selected environment.":
+    "选择一个环境以编辑其操作列表。在此添加操作会将其添加到所有已选环境。",
+  "Choose when Enter sends a prompt or inserts a new line": "选择 Enter 键何时发送提示词、何时换行",
+  "Clicking a pull request link opens it in Cox. Turn off to open pull request links like any other link, on your git host.":
+    "点击拉取请求链接时在 Cox 中打开。关闭后将像其他链接一样，在 Git 托管平台上打开。",
+  "Code blocks, diffs, file previews, and the terminal.": "用于代码块、差异、文件预览和终端。",
+  "Colors & themes": "颜色与主题",
+  "Combine matching repositories across environments.": "合并显示不同环境中的同一仓库。",
+  "Commands that run in this project's checkout or its worktree, with optional shortcuts.":
+    "在此项目的检出目录或工作树中运行的命令，可配置快捷键。",
+  Composer: "输入框",
+  Confirmations: "确认操作",
+  Context: "上下文",
+  "Context window indicator (legacy)": "上下文窗口指示器（旧版）",
+  "Cox keeps your coding workspace on the local server. Provider requests follow the provider account settings.":
+    "Cox 将编程工作区保存在本地服务器上。提供商请求遵循相应账号设置。",
+  Creation: "创建",
+  "Current version of Cox.": "当前 Cox 版本。",
+  "Cursor account": "Cursor 账号",
+  "Cursor account usage": "Cursor 账号用量",
+  Danger: "危险操作",
+  Database: "数据库",
+  "Default browser appearance": "默认浏览器外观",
+  "Default browser profile": "默认浏览器配置",
+  "Default browser viewport": "默认浏览器视口",
+  "Default browser zoom": "默认浏览器缩放",
+  "Delete confirmation": "删除确认",
+  "Delete inactive rotated log files after this many days. Current logs are kept.":
+    "达到指定天数后删除不再写入的轮转日志文件，保留当前日志。",
+  "Delete saved browser captures after this many days. Older capture links will no longer open.":
+    "达到指定天数后删除已保存的浏览器捕获内容。过期捕获链接将无法打开。",
+  "Device that runs this provider.": "运行此提供商的设备。",
+  "Device unavailable": "设备不可用",
+  "Different actions across environments": "各环境的操作不一致",
+  Diffs: "差异",
+  Display: "显示",
+  Driver: "驱动",
+  "Each account has its own Codex instance and sign-in. Choose the other account on the sign-in page.":
+    "每个账号都有独立的 Codex 实例和登录状态。请在登录页面选择另一个账号。",
+  "Enter an HTTP or HTTPS endpoint, or leave empty to disable export.":
+    "输入 HTTP 或 HTTPS 端点，留空则禁用导出。",
+  "Environment identification": "环境标识",
+  "Everything outside code blocks and the terminal.": "用于代码块和终端之外的界面内容。",
+  "Fallback model": "备用模型",
+  "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.":
+    "将运行中和监控中的对话折叠到运行中分区。需要你处理时，它们会返回收件箱顶部。实验室的极简侧栏不显示运行中分区。",
+  "Follow-ups": "后续操作",
+  "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.":
+    "例如，t3 或 t3/ 会生成 t3/add-search。留空则不添加前缀。",
+  Foundation: "基础设置",
+  "Git fetch interval": "Git 获取间隔",
+  "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.":
+    "将侧栏对话按项目分组。置顶对话保留在顶部，稍后处理和已归档对话显示在项目分组下方。",
+  Headers: "请求头",
+  "Health check interval": "健康检查间隔",
+  "Higher values make menus, dialogs, and the composer more solid.":
+    "数值越大，菜单、对话框和输入框越不透明。",
+  "Host & collection": "主机与采集",
+  "In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent.":
+    "在极简侧栏中用两行显示项目内对话：第一行显示标题，第二行显示分支、拉取请求和 Agent。",
+  "Inactivity does not settle threads with a pull request. Merge and close still do.":
+    "带有拉取请求的对话不会因闲置而归档，但在合并或关闭时仍会归档。",
+  Interface: "界面",
+  "Keep branch and worktree controls below the composer after a thread starts.":
+    "对话开始后，仍在输入框下方显示分支和工作树控件。",
+  "Last run": "上次运行",
+  Legal: "法律信息",
+  "Limited permissions": "权限受限",
+  "Live Processes": "实时进程",
+  "Live process tree": "实时进程树",
+  "Loading scheduled tasks…": "正在加载计划任务…",
+  Models: "模型",
+  "Monospace font": "等宽字体",
+  "Native sessions": "原生会话",
+  Navigation: "导航",
+  "New keybinding": "新建快捷键",
+  "No hubs configured.": "尚未配置中心。",
+  "No secret providers configured.": "尚未配置密钥提供商。",
+  "No tasks match this environment and project selection.": "没有与所选环境和项目匹配的任务。",
+  "Notices for dependencies, assets, and optional tools used by Cox.":
+    "Cox 使用的依赖、资源和可选工具的第三方声明。",
+  "Old history is cleaned up automatically, but these databases still hold the freed space. Run the command locally to return it to disk; it pauses and restarts the background service.":
+    "旧历史会自动清理，但数据库仍会占用已释放的空间。在本机运行命令可回收磁盘空间；此操作会暂停并重启后台服务。",
+  "One literal argument per row, in launch order.": "每行填写一个原样传递的参数，按启动顺序排列。",
+  "Only the box you write prompts in. Mono works well here.":
+    "仅用于输入提示词的输入框。等宽字体适合此区域。",
+  "Open linked pull requests first. Otherwise, open Changes for edits to at least 3 files or 50 lines.":
+    "优先打开关联的拉取请求。否则，在改动达到 3 个文件或 50 行时打开更改面板。",
+  "Open links in": "链接打开方式",
+  "Open pull requests in Cox": "在 Cox 中打开拉取请求",
+  "Open source licenses": "开源许可证",
+  "Optional marker shown in the picker.": "显示在选择器中的可选标记。",
+  Other: "其他",
+  "Preview & diff": "预览与差异",
+  "Privacy policy": "隐私政策",
+  "Project icon": "项目图标",
+  "Project scripts": "项目脚本",
+  "Project source": "项目来源",
+  "Provider setup is read-only.": "提供商设置为只读。",
+  Query: "查询",
+  "Read your existing Cursor CLI login from macOS Keychain to show account history and monthly limits. macOS may ask you to allow access.":
+    "从 macOS 钥匙串读取现有 Cursor CLI 登录信息，以显示账号历史和月度限额。macOS 可能会请求你授权访问。",
+  "Reclaim freed database space": "回收数据库空闲空间",
+  "Reconnect this device to set up its provider, or select another device.":
+    "请重新连接此设备以设置提供商，或选择其他设备。",
+  "Refresh provider status, versions, and models in the background. Set to 0 to disable.":
+    "在后台刷新提供商状态、版本和模型。设为 0 可禁用。",
+  "Remove unused worktrees when active or archived threads are deleted. Worktrees with local changes are kept.":
+    "删除活跃或已归档对话时，移除不再使用的工作树。保留包含本地更改的工作树。",
+  "Remove worktrees after their threads have been inactive for this many days. Branches and thread history are kept.":
+    "对话闲置达到指定天数后移除工作树，保留分支和对话历史。",
+  "Remove worktrees this many days after their thread settles. Set 0 days to remove them at the next cleanup. Branches and thread history are kept.":
+    "对话归档达到指定天数后移除工作树。设为 0 天时在下次清理时移除，保留分支和对话历史。",
+  "Remove worktrees whose pull request is merged and whose commits are included in the default branch.":
+    "移除拉取请求已合并且提交已包含在默认分支中的工作树。",
+  "Remove worktrees with no commits beyond the default branch.":
+    "移除没有超出默认分支的提交的工作树。",
+  "Require a second click on the inline archive action before a thread is archived.":
+    "使用行内归档操作时，需要再次点击确认才会归档对话。",
+  "Resource History": "资源历史",
+  "Resource monitor": "资源监控",
+  "Resource timeline": "资源时间线",
+  "Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.":
+    "在报告的限额重置时间到达后，恢复因用量限制而停止的对话。每个对话都可取消计划中的继续执行。",
+  "Search engine": "搜索引擎",
+  "Secret providers": "密钥提供商",
+  "Selected by Cox.": "由 Cox 选择。",
+  "Server environment": "服务器环境",
+  "Set how fast panels open and close.": "设置面板打开和关闭的速度。",
+  "Set how wide messages and the composer can grow on large screens.":
+    "设置大屏幕上消息和输入框的最大宽度。",
+  "Set the prompt, code, and terminal fonts separately instead of one monospace font.":
+    "分别设置提示词、代码和终端字体，而不是共用一种等宽字体。",
+  "Set whether the diff panel ignores whitespace-only edits by default.":
+    "设置差异面板是否默认忽略仅空白字符变化的改动。",
+  "Settle a thread when its pull request merges. Closed pull requests still settle automatically.":
+    "拉取请求合并时归档对话。拉取请求关闭时也仍会自动归档。",
+  "Shadow home path": "影子主目录路径",
+  "Shared Codex config, sessions, and state.": "共享的 Codex 配置、会话和状态。",
+  "Show diffs stacked or side by side. The toggle in the diff toolbar changes this too.":
+    "选择上下排列或并排显示差异，也可使用差异工具栏中的切换按钮。",
+  "Show formatted Markdown as you type.": "输入时显示格式化的 Markdown。",
+  "Show key presses in recordings": "在录制中显示按键",
+  "Show mouse presses in recordings": "在录制中显示鼠标点击",
+  "Show reasoning effort in the composer as its name, such as High, or as bars.":
+    "在输入框中以名称（如“高”）或条形图显示推理强度。",
+  "Show the floating preview when an agent opens a browser unless the agent says otherwise.":
+    "Agent 打开浏览器时显示浮动预览，除非 Agent 明确要求不显示。",
+  "Shown in the provider list and model picker.": "显示在提供商列表和模型选择器中。",
+  "Shows context window usage as a circular indicator in the composer.":
+    "在输入框中以圆形指示器显示上下文窗口用量。",
+  "Sidebar threads with no activity for this long settle automatically.":
+    "侧栏对话闲置达到指定时间后自动归档。",
+  "Snooze usage-limit stops until reset. Pair with resume to continue on wake.":
+    "将因用量限制停止的对话暂缓至限额重置。配合恢复功能可在唤醒时继续执行。",
+  "Start with files expanded or collapsed when opening diffs or a pull request's Code tab.":
+    "打开差异或拉取请求的代码标签页时，默认展开或折叠文件。",
+  "System default follows your browser or OS clock preference.":
+    "系统默认遵循浏览器或操作系统的时钟偏好。",
+  "Terminal output, independent from code blocks and diffs.": "用于终端输出，独立于代码块和差异。",
+  "Text generation": "文本生成",
+  "The shared name for this project group in the sidebar and thread lists.":
+    "此项目分组在侧栏和对话列表中使用的共享名称。",
+  "Third-party notices": "第三方声明",
+  "This machine": "此设备",
+  "This task no longer exists or is outside the selected project scope.":
+    "此任务已不存在，或不在所选项目范围内。",
+  "Typeset LaTeX math, such as $x^2$ or \\[x^2\\], in messages and Markdown previews. The composer keeps TeX source editable.":
+    "在消息和 Markdown 预览中排版 LaTeX 数学公式，例如 $x^2$ 或 \\[x^2\\]。输入框中仍可编辑 TeX 源码。",
+  Typography: "字体排版",
+  "Usage providers": "用量提供商",
+  "Use %s where the search terms go.": "使用 %s 作为搜索词占位符。",
+  "Use thinner grayscale text smoothing instead of the macOS default.":
+    "使用更纤细的灰度字体平滑，替代 macOS 默认效果。",
+  "Used for new threads when the default model's provider is out of usage.":
+    "默认模型的提供商用量耗尽时，用于新对话。",
+  "Used for thread titles and other generated text on connected devices with this provider. Source control can override it.":
+    "用于此提供商在已连接设备上生成对话标题等文本。源码管理可单独覆盖此设置。",
+  "Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing.":
+    "使用基础分支所跟踪的远端分支的最新提交，即使名称不同。否则使用 origin 上的同名分支；若远端不存在该分支，则使用本地分支。",
+  "Using CURSOR_API_KEY. Remove it from this provider's environment to use browser sign-in.":
+    "正在使用 CURSOR_API_KEY。如需使用浏览器登录，请从此提供商的环境变量中移除它。",
+  Variables: "变量",
+  Version: "版本",
+  "What the address bar searches when you type something that isn't a URL.":
+    "在地址栏输入非 URL 内容时使用的搜索引擎。",
+  "When to compact an idle Claude thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Each Claude provider can override this.":
+    "设置何时压缩超过 200,000 token 的闲置 Claude 对话：返回后、提示词缓存即将过期前，或从不压缩。各 Claude 提供商可单独覆盖此设置。",
+  "Worktree branch naming": "工作树分支命名",
+  "Wrap long lines in code blocks, diffs, and file previews by default.":
+    "默认对代码块、差异和文件预览中的长行自动换行。",
+  "Writing & review": "文案与审查",
+  "Active subagents": "活跃子 Agent",
+  "{count} active subagents": "{count} 个活跃子 Agent",
+  "Untitled subagent": "未命名子 Agent",
+  "Model not reported": "未报告模型",
+  "Open subagent {title}": "打开子 Agent：{title}",
+  "Elapsed: {duration}": "已用时：{duration}",
+  "{count}s": "{count}秒",
+  "yesterday at {time}": "昨天 {time}",
+  "Choose what to show": "选择显示内容",
+  Queued: "排队中",
+  Running: "运行中",
+  Waiting: "等待中",
+  "Custom source control instructions for all selected environments":
+    "所有选定环境的自定义源码管理指令",
+  "Write the instructions each selected environment should use.": "编写应用于每个选定环境的指令。",
+  "Apply instructions to all": "将指令应用到全部",
+  "Write custom instructions for all": "为全部环境编写自定义指令",
+  "Keep titles concise. Use short bullet points in descriptions.":
+    "标题保持简洁，描述使用简短的要点。",
+  "Custom source control writing instructions": "自定义源码管理写作指令",
+  "Connect an environment to choose its review guide model.": "连接环境后可选择其审查指南模型。",
+  "Review guide model not saved": "审查指南模型未保存",
+  "Use a separate review guide model": "使用独立的审查指南模型",
+  "Mixed. Enter instructions to apply to all selected targets.":
+    "设置不一致。输入指令以应用于所有选定目标。",
+  "Show service interfaces before implementations. Skip test files unless they change behavior. Keep summaries to two sentences.":
+    "先展示服务接口，再展示实现。除非测试文件改变了行为，否则跳过。摘要不超过两句话。",
+  "Connect an environment to choose its source control writer model.":
+    "连接环境后可选择其源码管理写作模型。",
+  "Source control writer model not saved": "源码管理写作模型未保存",
+  "Use a separate source control writer model": "使用独立的源码管理写作模型",
+  "Or use your own credentials": "或使用你自己的凭据",
+  "change request templates": "变更请求模板",
+  "review guide instructions": "审查指南指令",
+  "source control writing style": "源码管理写作风格",
 } as const;

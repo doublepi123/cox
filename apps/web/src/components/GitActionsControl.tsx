@@ -1318,8 +1318,8 @@ export default function GitActionsControl({
     if (quickAction.kind === "show_hint") {
       toastManager.add({
         type: "info",
-        title: quickAction.label,
-        description: quickAction.hint,
+        title: t(quickAction.label),
+        description: quickAction.hint ? t(quickAction.hint) : undefined,
         data: threadToastData,
       });
       return;
@@ -1416,7 +1416,7 @@ export default function GitActionsControl({
         });
         if (item.disabled && disabledReason) {
           return (
-            <Popover key={`${item.id}-${item.label}`}>
+            <Popover key={`${item.id}-${t(item.label)}`}>
               <PopoverTrigger
                 openOnHover
                 nativeButton={false}
@@ -1424,11 +1424,11 @@ export default function GitActionsControl({
               >
                 <MenuItem className="w-full" disabled>
                   <GitActionItemIcon icon={item.icon} SourceControlIcon={SourceControlIcon} />
-                  <MenuItemLabel>{item.label}</MenuItemLabel>
+                  <MenuItemLabel>{t(item.label)}</MenuItemLabel>
                 </MenuItem>
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="left" align="center">
-                {disabledReason}
+                {t(disabledReason)}
               </PopoverPopup>
             </Popover>
           );
@@ -1436,14 +1436,14 @@ export default function GitActionsControl({
 
         return (
           <MenuItem
-            key={`${item.id}-${item.label}`}
+            key={`${item.id}-${t(item.label)}`}
             disabled={!canWriteSourceControl || item.disabled}
             onClick={() => {
               openDialogForMenuItem(item);
             }}
           >
             <GitActionItemIcon icon={item.icon} SourceControlIcon={SourceControlIcon} />
-            <MenuItemLabel>{item.label}</MenuItemLabel>
+            <MenuItemLabel>{t(item.label)}</MenuItemLabel>
           </MenuItem>
         );
       })}
@@ -1455,7 +1455,7 @@ export default function GitActionsControl({
           }}
         >
           <CloudUploadIcon />
-          <MenuItemLabel>Publish repository...</MenuItemLabel>
+          <MenuItemLabel>{t("Publish repository...")}</MenuItemLabel>
         </MenuItem>
       ) : null}
       {gitStatusForActions?.refName === null && (
@@ -1469,7 +1469,9 @@ export default function GitActionsControl({
         !gitStatusForActions.hasWorkingTreeChanges &&
         gitStatusForActions.behindCount > 0 &&
         gitStatusForActions.aheadCount === 0 && (
-          <p className="px-2 py-1.5 text-xs text-warning">Behind upstream. Pull/rebase first.</p>
+          <p className="px-2 py-1.5 text-xs text-warning">
+            {t("Behind upstream. Pull/rebase first.")}
+          </p>
         )}
       {gitStatusError && <p className="px-2 py-1.5 text-xs text-destructive">{gitStatusError}</p>}
     </>
@@ -1490,13 +1492,13 @@ export default function GitActionsControl({
         >
           <GitBranchPlusIcon className="size-3.5" aria-hidden />
           <span className={cn("ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
-            {initAction.isPending ? "Initializing..." : "Initialize Git"}
+            {t(initAction.isPending ? "Initializing..." : "Initialize Git")}
           </span>
         </ThreadDetailsControl>
       ) : quietEmptyDraft || (compact && !gitActionProgress && !visibleInlineSuccess) ? null : (
         <div
           role="group"
-          aria-label="Git actions"
+          aria-label={t("Git actions")}
           ref={panelAnchorRef}
           className={cn(
             "shrink-0",
@@ -1549,11 +1551,11 @@ export default function GitActionsControl({
                     cn("not-sr-only ml-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
                   )}
                 >
-                  {quickAction.label}
+                  {t(quickAction.label)}
                 </span>
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="bottom" align="start">
-                {quickActionDisabledReason}
+                {t(quickActionDisabledReason)}
               </PopoverPopup>
             </Popover>
           ) : (
@@ -1576,7 +1578,7 @@ export default function GitActionsControl({
                   cn("not-sr-only ml-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
                 )}
               >
-                {quickAction.label}
+                {t(quickAction.label)}
               </span>
             </ThreadDetailsControl>
           )}
@@ -1598,7 +1600,7 @@ export default function GitActionsControl({
                 <MenuTrigger
                   render={
                     <ThreadDetailsControl
-                      aria-label="Git action options"
+                      aria-label={t("Git action options")}
                       size="sm"
                       variant="ghost"
                       part="secondary"
@@ -1679,7 +1681,9 @@ export default function GitActionsControl({
                   <span className="font-medium">
                     {gitStatusForActions?.refName ?? "(detached HEAD)"}
                   </span>
-                  {isDefaultRef && <span className="text-right text-warning">Default branch</span>}
+                  {isDefaultRef && (
+                    <span className="text-right text-warning">{t("Default branch")}</span>
+                  )}
                 </span>
               </div>
               <div className="space-y-1">
@@ -1714,7 +1718,7 @@ export default function GitActionsControl({
                   )}
                 </div>
                 {!gitStatusForActions || allFiles.length === 0 ? (
-                  <p className="font-medium">none</p>
+                  <p className="font-medium">{t("None")}</p>
                 ) : (
                   <div className="space-y-2">
                     <div className="h-44 rounded-lg bg-card ring-1 ring-black/5 dark:bg-white/[0.025] dark:ring-white/5">
@@ -1747,7 +1751,7 @@ export default function GitActionsControl({
                                   type="button"
                                   className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left enabled:cursor-pointer"
                                   disabled={!canOperateThread || workingTreeRoot === null}
-                                  aria-label={`Open ${file.path} in editor`}
+                                  aria-label={t("Open {path} in editor", { path: file.path })}
                                   onClick={() => openChangedFileInEditor(file.path)}
                                 >
                                   <StartTruncatedPath
@@ -1756,7 +1760,7 @@ export default function GitActionsControl({
                                   />
                                   <span className="shrink-0">
                                     {isExcluded ? (
-                                      <span className="text-muted-foreground">Excluded</span>
+                                      <span className="text-muted-foreground">{t("Excluded")}</span>
                                     ) : (
                                       <>
                                         <span className="text-diff-addition">
@@ -1790,11 +1794,11 @@ export default function GitActionsControl({
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium">Commit message (optional)</p>
+              <p className="text-sm font-medium">{t("Commit message (optional)")}</p>
               <Textarea
                 value={dialogCommitMessage}
                 onChange={(event) => setDialogCommitMessage(event.target.value)}
-                placeholder="Leave empty to auto-generate"
+                placeholder={t("Leave empty to auto-generate")}
                 size="sm"
               />
             </div>

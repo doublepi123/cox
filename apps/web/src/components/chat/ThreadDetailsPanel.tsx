@@ -24,6 +24,7 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
+import { ThreadSubagentsPanel } from "./ThreadSubagentsPanel";
 import {
   ThreadDetailsContext,
   ThreadDetailsUsage,
@@ -232,6 +233,13 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 </ThreadDetailsSection>
               ) : null}
 
+              {!props.draftId && visible.subagents ? (
+                <ThreadSubagentsPanel
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                />
+              ) : null}
+
               {density === "full" && !props.draftId && visible.servers ? (
                 <ThreadServersPanel environmentId={props.environmentId} threadId={props.threadId} />
               ) : null}
@@ -272,7 +280,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 >
                   <SlidersHorizontalIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
                   <span className={cn("ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
-                    Choose what to show
+                    {t("Choose what to show")}
                   </span>
                 </ThreadDetailsControl>
               </div>

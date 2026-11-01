@@ -144,7 +144,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
               instanceEntries={entries}
               modelOptionsByInstance={modelOptions}
               triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-              {...(mixedModel ? { triggerLabel: "Mixed" } : {})}
+              {...(mixedModel ? { triggerLabel: t("Mixed") } : {})}
               getModelDisabledReason={modelDisabledReason}
               onOpenProviderSetup={(instanceId) => {
                 if (representative)
@@ -213,7 +213,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
                   ? resolveEnvModeLabel(value)
                   : unavailable
                     ? "Unavailable"
-                    : "Mixed"
+                    : t("Mixed")
               }
             </SelectValue>
           </SelectTrigger>
@@ -254,7 +254,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
             triggerAriaLabel="Fallback model"
             {...(mixedFallback
-              ? { triggerLabel: "Mixed" }
+              ? { triggerLabel: t("Mixed") }
               : settings.fallbackModelSelection === null
                 ? { triggerLabel: "None" }
                 : {})}
@@ -381,7 +381,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             }
             control={
               <Switch
-                aria-label="Default automatic pull"
+                aria-label={t("Default automatic pull")}
                 mixed={mixedAutoPull}
                 checked={mixedAutoPull ? false : settings.defaultAutoPull}
                 onCheckedChange={(enabled) => updateSettings({ defaultAutoPull: enabled })}
@@ -405,7 +405,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             }
             control={
               <Switch
-                aria-label="Remove agent credits when merging"
+                aria-label={t("Remove agent credits when merging")}
                 mixed={mixedAgentCredits}
                 checked={mixedAgentCredits ? false : settings.removeAgentCreditsOnMerge}
                 onCheckedChange={(enabled) =>
@@ -442,22 +442,26 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
                     updateSettings({ pullRequestMergeMethod: value });
                 }}
               >
-                <SelectTrigger size="sm" aria-label="Default pull request merge method">
+                <SelectTrigger size="sm" aria-label={t("Default pull request merge method")}>
                   <SelectValue>
                     {(value: string | null) =>
                       value === "merge" || value === "squash" || value === "rebase"
-                        ? PULL_REQUEST_MERGE_METHOD_LABELS[value]
+                        ? t(PULL_REQUEST_MERGE_METHOD_LABELS[value])
                         : value === "last"
-                          ? "Last selected"
-                          : "Mixed"
+                          ? t("Last selected")
+                          : t("Mixed")
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
-                  <SelectItem value="last">Last selected</SelectItem>
-                  <SelectItem value="merge">{PULL_REQUEST_MERGE_METHOD_LABELS.merge}</SelectItem>
-                  <SelectItem value="squash">{PULL_REQUEST_MERGE_METHOD_LABELS.squash}</SelectItem>
-                  <SelectItem value="rebase">{PULL_REQUEST_MERGE_METHOD_LABELS.rebase}</SelectItem>
+                  <SelectItem value="last">{t("Last selected")}</SelectItem>
+                  <SelectItem value="merge">{t(PULL_REQUEST_MERGE_METHOD_LABELS.merge)}</SelectItem>
+                  <SelectItem value="squash">
+                    {t(PULL_REQUEST_MERGE_METHOD_LABELS.squash)}
+                  </SelectItem>
+                  <SelectItem value="rebase">
+                    {t(PULL_REQUEST_MERGE_METHOD_LABELS.rebase)}
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             }
@@ -469,6 +473,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
 }
 
 export function WorktreeSubmodulesRow() {
+  const { t } = useTranslation();
   const { scope, target, connectedEnvironments } = useSettingsScope();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -512,7 +517,7 @@ export function WorktreeSubmodulesRow() {
                   ? WORKTREE_SUBMODULES_LABELS[value]
                   : unavailable
                     ? "Unavailable"
-                    : "Mixed"
+                    : t("Mixed")
               }
             </SelectValue>
           </SelectTrigger>

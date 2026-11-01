@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { useTranslation } from "../../i18n";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -21,6 +22,7 @@ export function TimelineRowTimestamp({
   className?: string;
   alwaysVisible?: boolean;
 }) {
+  const { language } = useTranslation();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -34,9 +36,11 @@ export function TimelineRowTimestamp({
           />
         }
       >
-        {formatDayAwareTimestamp(createdAt, timestampFormat)}
+        {formatDayAwareTimestamp(createdAt, timestampFormat, undefined, language)}
       </TooltipTrigger>
-      <TooltipPopup>{formatChatTimestampTooltip(createdAt, timestampFormat)}</TooltipPopup>
+      <TooltipPopup>
+        {formatChatTimestampTooltip(createdAt, timestampFormat, language)}
+      </TooltipPopup>
     </Tooltip>
   );
 }

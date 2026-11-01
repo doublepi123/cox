@@ -235,6 +235,34 @@ export function projectedSubagentsToRuntime(
   });
 }
 
+export interface ActiveSubagentInstance extends RuntimeSubagent {
+  readonly driver: OrchestrationV2Subagent["driver"];
+  readonly providerInstanceId: OrchestrationV2Subagent["providerInstanceId"];
+  readonly origin: OrchestrationV2Subagent["origin"];
+}
+
+type ProjectedSubagentInstance = Parameters<typeof projectedSubagentsToRuntime>[0][number] &
+  Pick<OrchestrationV2Subagent, "driver" | "providerInstanceId" | "origin">;
+
+export function deriveActiveSubagentInstances(
+  subagents: ReadonlyArray<ProjectedSubagentInstance>,
+): ReadonlyArray<ActiveSubagentInstance> {
+  return subagents.flatMap((source) => {
+    if (!isActiveSubagentStatus(source.status)) return [];
+    const active = projectedSubagentsToRuntime([source]).filter((agent) =>
+      isActiveSubagentStatus(agent.status),
+    );
+    const members = active.filter((agent) => agent.kind === "workflow_agent");
+    return (members.length > 0 ? members : active).map((agent) => ({
+      ...agent,
+      model: agent.model ?? source.model,
+      driver: source.driver,
+      providerInstanceId: source.providerInstanceId,
+      origin: source.origin,
+    }));
+  });
+}
+
 export function deriveWorkflowGroups(
   agents: ReadonlyArray<RuntimeSubagent>,
 ): ReadonlyArray<SubagentWorkflowGroup> {

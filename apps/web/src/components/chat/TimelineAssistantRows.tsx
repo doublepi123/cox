@@ -165,6 +165,7 @@ function AssistantMessageMeta({
   copyStreaming: boolean;
   alwaysVisible?: boolean;
 }) {
+  const { language } = useTranslation();
   const ctx = use(TimelineRowCtx);
 
   return (
@@ -193,10 +194,10 @@ function AssistantMessageMeta({
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-            {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
+            {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat, undefined, language)}
           </TooltipTrigger>
           <TooltipPopup>
-            {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat)}
+            {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat, language)}
           </TooltipPopup>
         </Tooltip>
       )}

@@ -212,18 +212,18 @@ export function SourceControlWritingSettingsSection() {
             <SelectTrigger
               size="sm"
               className="w-full sm:w-56"
-              aria-label="Source control writing style"
+              aria-label={t("Source control writing style")}
             >
               <SelectValue>
                 {(value: SourceControlWritingStyleMode | null) =>
-                  value === null ? "Mixed" : MODE_OPTIONS[value].label
+                  value === null ? t("Mixed") : t(MODE_OPTIONS[value].label)
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               {(Object.keys(MODE_OPTIONS) as SourceControlWritingStyleMode[]).map((mode) => (
                 <SelectItem key={mode} hideIndicator value={mode}>
-                  {MODE_OPTIONS[mode].label}
+                  {t(MODE_OPTIONS[mode].label)}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -238,8 +238,8 @@ export function SourceControlWritingSettingsSection() {
                   value={allInstructions ?? ""}
                   onChange={(event) => setAllInstructions(event.target.value)}
                   rows={4}
-                  aria-label="Custom source control instructions for all selected environments"
-                  placeholder="Write the instructions each selected environment should use."
+                  aria-label={t("Custom source control instructions for all selected environments")}
+                  placeholder={t("Write the instructions each selected environment should use.")}
                 />
                 <Button
                   size="sm"
@@ -256,7 +256,7 @@ export function SourceControlWritingSettingsSection() {
                     setEditingAllInstructions(false);
                   }}
                 >
-                  Apply instructions to all
+                  {t("Apply instructions to all")}
                 </Button>
               </>
             ) : (
@@ -268,7 +268,7 @@ export function SourceControlWritingSettingsSection() {
                   setEditingAllInstructions(true);
                 }}
               >
-                Write custom instructions for all
+                {t("Write custom instructions for all")}
               </Button>
             )}
           </div>
@@ -285,8 +285,8 @@ export function SourceControlWritingSettingsSection() {
                 }
               }}
               rows={4}
-              placeholder="Keep titles concise. Use short bullet points in descriptions."
-              aria-label="Custom source control writing instructions"
+              placeholder={t("Keep titles concise. Use short bullet points in descriptions.")}
+              aria-label={t("Custom source control writing instructions")}
             />
           </div>
         ) : null}
@@ -303,7 +303,7 @@ export function SourceControlWritingSettingsSection() {
             mixed={mixedReviewGuidesEnabled}
             checked={mixedReviewGuidesEnabled ? false : settings.reviewGuidesEnabled}
             onCheckedChange={(checked) => updateSettings({ reviewGuidesEnabled: Boolean(checked) })}
-            aria-label="Review guides"
+            aria-label={t("Review guides")}
           />
         }
       />
@@ -318,7 +318,7 @@ export function SourceControlWritingSettingsSection() {
             control={
               !hasServerTargets ? (
                 <span className="text-sm text-muted-foreground">
-                  Connect an environment to choose its review guide model.
+                  {t("Connect an environment to choose its review guide model.")}
                 </span>
               ) : (
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -331,15 +331,15 @@ export function SourceControlWritingSettingsSection() {
                       instanceEntries={instanceEntries}
                       modelOptionsByInstance={reviewGuideModelOptionsByInstance}
                       triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                      triggerAriaLabel="Review guide model"
-                      {...(mixedReviewGuideModel ? { triggerLabel: "Mixed" } : {})}
+                      triggerAriaLabel={t("Review guide model")}
+                      {...(mixedReviewGuideModel ? { triggerLabel: t("Mixed") } : {})}
                       getModelDisabledReason={writerModelDisabledReason}
                       onInstanceModelChange={(instanceId, model) => {
                         const reason = writerModelDisabledReason(instanceId, model);
                         if (reason) {
                           toastManager.add({
                             type: "error",
-                            title: "Review guide model not saved",
+                            title: t("Review guide model not saved"),
                             description: reason,
                           });
                           return;
@@ -391,7 +391,7 @@ export function SourceControlWritingSettingsSection() {
                       if (reason) {
                         toastManager.add({
                           type: "error",
-                          title: "Review guide model not saved",
+                          title: t("Review guide model not saved"),
                           description: reason,
                         });
                         return;
@@ -404,7 +404,7 @@ export function SourceControlWritingSettingsSection() {
                         ),
                       });
                     }}
-                    aria-label="Use a separate review guide model"
+                    aria-label={t("Use a separate review guide model")}
                   />
                 </div>
               )
@@ -428,17 +428,17 @@ export function SourceControlWritingSettingsSection() {
             <div className="mt-3 max-w-2xl pb-3.5">
               <Textarea
                 key={`${scopeKey}:${mixedReviewGuideInstructions}:${settings.reviewGuideInstructions}`}
-                aria-label="Review guide instructions"
+                aria-label={t("Review guide instructions")}
                 onChange={() => {
                   reviewGuideInstructionsEdited.current = true;
                 }}
                 rows={4}
                 defaultValue={mixedReviewGuideInstructions ? "" : settings.reviewGuideInstructions}
-                placeholder={
+                placeholder={t(
                   mixedReviewGuideInstructions
                     ? "Mixed. Enter instructions to apply to all selected targets."
-                    : "Show service interfaces before implementations. Skip test files unless they change behavior. Keep summaries to two sentences."
-                }
+                    : "Show service interfaces before implementations. Skip test files unless they change behavior. Keep summaries to two sentences.",
+                )}
                 onBlur={(event) => {
                   const value = event.target.value.trim();
                   if (
@@ -491,7 +491,7 @@ export function SourceControlWritingSettingsSection() {
                   },
                 })
               }
-              aria-label="Follow change request templates"
+              aria-label={t("Follow change request templates")}
             />
           }
         />
@@ -504,7 +504,7 @@ export function SourceControlWritingSettingsSection() {
           control={
             !hasServerTargets ? (
               <span className="text-sm text-muted-foreground">
-                Connect an environment to choose its source control writer model.
+                {t("Connect an environment to choose its source control writer model.")}
               </span>
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -522,7 +522,7 @@ export function SourceControlWritingSettingsSection() {
                     instanceEntries={instanceEntries}
                     modelOptionsByInstance={modelOptionsByInstance}
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                    triggerAriaLabel="Source control writer model"
+                    triggerAriaLabel={t("Source control writer model")}
                     {...(mixedWriterModel ? { triggerLabel: "Mixed" } : {})}
                     {...(environmentId
                       ? {
@@ -540,7 +540,7 @@ export function SourceControlWritingSettingsSection() {
                       if (reason) {
                         toastManager.add({
                           type: "error",
-                          title: "Source control writer model not saved",
+                          title: t("Source control writer model not saved"),
                           description: reason,
                         });
                         return;
@@ -590,7 +590,7 @@ export function SourceControlWritingSettingsSection() {
                         : null,
                     })
                   }
-                  aria-label="Use a separate source control writer model"
+                  aria-label={t("Use a separate source control writer model")}
                 />
               </div>
             )

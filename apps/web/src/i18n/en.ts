@@ -629,4 +629,430 @@ export const en = {
   "Float preview over chat": "Float preview over chat",
   "Hard reload": "Hard reload",
   "Preview menu": "Preview menu",
+  "Applying settings for": "Applying settings for",
+  "All projects": "All projects",
+  "Project scope": "Project scope",
+  "Unavailable project": "Unavailable project",
+  "No matches found.": "No matches found.",
+  Offline: "Offline",
+  "Reset {setting} to default": "Reset {setting} to default",
+  "Open in editor": "Open in editor",
+  "Open in {editor}": "Open in {editor}",
+  "Opened in {editor}": "Opened in {editor}",
+  "Open file in preferred editor": "Open file in preferred editor",
+  "Choose editor": "Choose editor",
+  "No installed editors found": "No installed editors found",
+  "Open in…": "Open in…",
+  "Add project script": "Add project script",
+  "Add action": "Add action",
+  "Script actions": "Script actions",
+  "From t3.json": "From t3.json",
+  "Edit {name}": "Edit {name}",
+  "Run {name}": "Run {name}",
+  "Pair this client again with permission to run terminal commands.":
+    "Pair this client again with permission to run terminal commands.",
+  "{count} changed file": "{count} changed file",
+  "{count} changed files": "{count} changed files",
+  "Show in thread details": "Show in thread details",
+  "Environment and worktree": "Environment and worktree",
+  "Branch and pull request": "Branch and pull request",
+  "Git actions": "Git actions",
+  "Git action options": "Git action options",
+  Servers: "Servers",
+  Automations: "Automations",
+  Lineage: "Lineage",
+  "Side chats": "Side chats",
+  "Thread details: {enabled} of {total} on": "Thread details: {enabled} of {total} on",
+  "{enabled} of {total} on": "{enabled} of {total} on",
+  now: "now",
+  "just now": "just now",
+  "{count}m": "{count}m",
+  "{count}h": "{count}h",
+  "{count}d": "{count}d",
+  "{time} ago": "{time} ago",
+  Worked: "Worked",
+  "Worked for {duration}": "Worked for {duration}",
+  Continued: "Continued",
+  "Continued for {duration}": "Continued for {duration}",
+  "You stopped this response": "You stopped this response",
+  "You stopped after {duration}": "You stopped after {duration}",
+  "Superseded attempt": "Superseded attempt",
+  "Publish repository": "Publish repository",
+  "Publish repository...": "Publish repository...",
+  "Initialize Git": "Initialize Git",
+  "Initializing...": "Initializing...",
+  "Commit & push": "Commit & push",
+  "Create PR": "Create PR",
+  "Create MR": "Create MR",
+  "Commit, push & PR": "Commit, push & PR",
+  "Commit, push & MR": "Commit, push & MR",
+  "Push & create PR": "Push & create PR",
+  "Push & create MR": "Push & create MR",
+  "Sync ref": "Sync ref",
+  "Git action in progress.": "Git action in progress.",
+  "Git status is unavailable.": "Git status is unavailable.",
+  "Branch is up to date. No action needed.": "Branch is up to date. No action needed.",
+  "No local commits to push.": "No local commits to push.",
+  "Branch has diverged from upstream. Rebase/merge first.":
+    "Branch has diverged from upstream. Rebase/merge first.",
+  "Behind upstream. Pull/rebase first.": "Behind upstream. Pull/rebase first.",
+  "This connection cannot change source control.": "This connection cannot change source control.",
+  "This action is currently unavailable.": "This action is currently unavailable.",
+  "Default branch": "Default branch",
+  Excluded: "Excluded",
+  "Open {path} in editor": "Open {path} in editor",
+  "Commit message (optional)": "Commit message (optional)",
+  "Leave empty to auto-generate": "Leave empty to auto-generate",
+  Repositories: "Repositories",
+  "Automatically pull": "Automatically pull",
+  "Keeps this project's default branch current when the checkout has no local changes or commits.":
+    "Keeps this project's default branch current when the checkout has no local changes or commits.",
+  "Keeps the default branch current when the checkout has no local changes or commits. Projects can override it.":
+    "Keeps the default branch current when the checkout has no local changes or commits. Projects can override it.",
+  "Default automatic pull": "Default automatic pull",
+  "default automatic pull": "default automatic pull",
+  "Reset automatic pull to off": "Reset automatic pull to off",
+  "Remove agent credits when merging": "Remove agent credits when merging",
+  "Remove recognized agent credit lines from merge and squash messages on hosts that support it, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits.":
+    "Remove recognized agent credit lines from merge and squash messages on hosts that support it, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits.",
+  "agent credit removal": "agent credit removal",
+  "Keep agent credits": "Keep agent credits",
+  "Default merge method": "Default merge method",
+  "default merge method": "default merge method",
+  "Pull requests in this project start with this method.":
+    "Pull requests in this project start with this method.",
+  "Pull requests start with this method. Last selected reuses whatever you chose most recently on this device.":
+    "Pull requests start with this method. Last selected reuses whatever you chose most recently on this device.",
+  "Default pull request merge method": "Default pull request merge method",
+  "Reset to last selected": "Reset to last selected",
+  "Last selected": "Last selected",
+  Mixed: "Mixed",
+  "Squash and merge": "Squash and merge",
+  "Rebase and merge": "Rebase and merge",
+  "Version Control": "Version Control",
+  "Source control providers": "Source control providers",
+  "Coming Soon": "Coming Soon",
+  "Support for {provider} is coming soon.": "Support for {provider} is coming soon.",
+  "Available. {hint}": "Available. {hint}",
+  "Status unknown": "Status unknown",
+  as: "as",
+  "Not available on this server: {hint}": "Not available on this server: {hint}",
+  "Every {provider} host is turned off.": "Every {provider} host is turned off.",
+  "{provider} is not authenticated on this server. Sign in or configure credentials using the {tool} tool on the server host to enable change request features.":
+    "{provider} is not authenticated on this server. Sign in or configure credentials using the {tool} tool on the server host to enable change request features.",
+  "Could not verify {provider}. {detail}": "Could not verify {provider}. {detail}",
+  "Toggle {provider} details": "Toggle {provider} details",
+  "{provider} availability": "{provider} availability",
+  "Could not scan the server environment": "Could not scan the server environment",
+  "Nothing detected yet": "Nothing detected yet",
+  "Install Git on the server, add optional hosting integrations or credentials your workspace needs, then rescan.":
+    "Install Git on the server, add optional hosting integrations or credentials your workspace needs, then rescan.",
+  Scan: "Scan",
+  "Rescan server environment": "Rescan server environment",
+  "Rescan Git and hosting integrations": "Rescan Git and hosting integrations",
+  "Connect an environment to inspect its version control tools and hosting integrations.":
+    "Connect an environment to inspect its version control tools and hosting integrations.",
+  "Repository conventions": "Repository conventions",
+  "In each project, matches recent change descriptions and change request titles.":
+    "In each project, matches recent change descriptions and change request titles.",
+  "Conventional Commits": "Conventional Commits",
+  "Use Conventional Commit prefixes and keep change request text concise.":
+    "Use Conventional Commit prefixes and keep change request text concise.",
+  "Custom instructions": "Custom instructions",
+  "Use your instructions for change descriptions and change requests in every project.":
+    "Use your instructions for change descriptions and change requests in every project.",
+  "Source control writing style": "Source control writing style",
+  "Source control writer model": "Source control writer model",
+  "Review guide model": "Review guide model",
+  "Review guide instructions": "Review guide instructions",
+  "Review guides": "Review guides",
+  "Review guides (beta)": "Review guides (beta)",
+  "Follow change request templates": "Follow change request templates",
+  "Use the repository's template for change request descriptions when available.":
+    "Use the repository's template for change request descriptions when available.",
+  "Model for source control text and branch or bookmark names. Off uses the environment's text generation model.":
+    "Model for source control text and branch or bookmark names. Off uses the environment's text generation model.",
+  "Model that reads a pull request to write its review guide. It reads the change itself over many steps, so a stronger model helps. Off uses the source control writer model.":
+    "Model that reads a pull request to write its review guide. It reads the change itself over many steps, so a stronger model helps. Off uses the source control writer model.",
+  "Your preferences for review guides: what to show first, dwell on, or skip. The guide's format and coverage stay the same.":
+    "Your preferences for review guides: what to show first, dwell on, or skip. The guide's format and coverage stay the same.",
+  "Adds a Guide tab to pull requests: an agent writes a tour of the change, stop by stop, with the calls a maintainer should make.":
+    "Adds a Guide tab to pull requests: an agent writes a tour of the change, stop by stop, with the calls a maintainer should make.",
+  "Choose what the thread details card shows. You can also right-click the card.":
+    "Choose what the thread details card shows. You can also right-click the card.",
+  "thread details": "thread details",
+  "API keys, base URLs, and other per-instance CLI settings.":
+    "API keys, base URLs, and other per-instance CLI settings.",
+  "Adjust the contrast of colors and borders across the interface.":
+    "Adjust the contrast of colors and borders across the interface.",
+  "Also include skills in the / command menu. Skills always appear when you type $.":
+    "Also include skills in the / command menu. Skills always appear when you type $.",
+  "Any new activity un-settles a thread automatically.":
+    "Any new activity un-settles a thread automatically.",
+  App: "App",
+  "Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added.":
+    "Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added.",
+  "Appended to the prompt for new and regenerated thread titles.":
+    "Appended to the prompt for new and regenerated thread titles.",
+  "Archived threads": "Archived threads",
+  Arguments: "Arguments",
+  "Ask before deleting a thread and its chat history.":
+    "Ask before deleting a thread and its chat history.",
+  "Ask before unpinning a thread from the pinned section.":
+    "Ask before unpinning a thread from the pinned section.",
+  "Auto-settle": "Auto-settle",
+  "Auto-show floating preview": "Auto-show floating preview",
+  "Automatically resume interrupted threads after an update, crash, or machine restart on the selected environments.":
+    "Automatically resume interrupted threads after an update, crash, or machine restart on the selected environments.",
+  Beta: "Beta",
+  "Binary path": "Binary path",
+  Branches: "Branches",
+  "Brand & content": "Brand & content",
+  "Browser profiles": "Browser profiles",
+  "Browser recording frame rate": "Browser recording frame rate",
+  "CODEX_HOME path": "CODEX_HOME path",
+  "ChatGPT account": "ChatGPT account",
+  Checkouts: "Checkouts",
+  "Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today.":
+    "Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today.",
+  "Choose colors for additions and deletions, including change counts.":
+    "Choose colors for additions and deletions, including change counts.",
+  "Choose how new worktree branches are named from your first message.":
+    "Choose how new worktree branches are named from your first message.",
+  "Choose one environment to edit its list. Adding an action here adds it on every selected environment.":
+    "Choose one environment to edit its list. Adding an action here adds it on every selected environment.",
+  "Choose when Enter sends a prompt or inserts a new line":
+    "Choose when Enter sends a prompt or inserts a new line",
+  "Clicking a pull request link opens it in Cox. Turn off to open pull request links like any other link, on your git host.":
+    "Clicking a pull request link opens it in Cox. Turn off to open pull request links like any other link, on your git host.",
+  "Code blocks, diffs, file previews, and the terminal.":
+    "Code blocks, diffs, file previews, and the terminal.",
+  "Colors & themes": "Colors & themes",
+  "Combine matching repositories across environments.":
+    "Combine matching repositories across environments.",
+  "Commands that run in this project's checkout or its worktree, with optional shortcuts.":
+    "Commands that run in this project's checkout or its worktree, with optional shortcuts.",
+  Composer: "Composer",
+  Confirmations: "Confirmations",
+  Context: "Context",
+  "Context window indicator (legacy)": "Context window indicator (legacy)",
+  "Cox keeps your coding workspace on the local server. Provider requests follow the provider account settings.":
+    "Cox keeps your coding workspace on the local server. Provider requests follow the provider account settings.",
+  Creation: "Creation",
+  "Current version of Cox.": "Current version of Cox.",
+  "Cursor account": "Cursor account",
+  "Cursor account usage": "Cursor account usage",
+  Danger: "Danger",
+  Database: "Database",
+  "Default browser appearance": "Default browser appearance",
+  "Default browser profile": "Default browser profile",
+  "Default browser viewport": "Default browser viewport",
+  "Default browser zoom": "Default browser zoom",
+  "Delete confirmation": "Delete confirmation",
+  "Delete inactive rotated log files after this many days. Current logs are kept.":
+    "Delete inactive rotated log files after this many days. Current logs are kept.",
+  "Delete saved browser captures after this many days. Older capture links will no longer open.":
+    "Delete saved browser captures after this many days. Older capture links will no longer open.",
+  "Device that runs this provider.": "Device that runs this provider.",
+  "Device unavailable": "Device unavailable",
+  "Different actions across environments": "Different actions across environments",
+  Diffs: "Diffs",
+  Display: "Display",
+  Driver: "Driver",
+  "Each account has its own Codex instance and sign-in. Choose the other account on the sign-in page.":
+    "Each account has its own Codex instance and sign-in. Choose the other account on the sign-in page.",
+  "Enter an HTTP or HTTPS endpoint, or leave empty to disable export.":
+    "Enter an HTTP or HTTPS endpoint, or leave empty to disable export.",
+  "Environment identification": "Environment identification",
+  "Everything outside code blocks and the terminal.":
+    "Everything outside code blocks and the terminal.",
+  "Fallback model": "Fallback model",
+  "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.":
+    "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.",
+  "Follow-ups": "Follow-ups",
+  "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.":
+    "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.",
+  Foundation: "Foundation",
+  "Git fetch interval": "Git fetch interval",
+  "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.":
+    "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.",
+  Headers: "Headers",
+  "Health check interval": "Health check interval",
+  "Higher values make menus, dialogs, and the composer more solid.":
+    "Higher values make menus, dialogs, and the composer more solid.",
+  "Host & collection": "Host & collection",
+  "In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent.":
+    "In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent.",
+  "Inactivity does not settle threads with a pull request. Merge and close still do.":
+    "Inactivity does not settle threads with a pull request. Merge and close still do.",
+  Interface: "Interface",
+  "Keep branch and worktree controls below the composer after a thread starts.":
+    "Keep branch and worktree controls below the composer after a thread starts.",
+  "Last run": "Last run",
+  Legal: "Legal",
+  "Limited permissions": "Limited permissions",
+  "Live Processes": "Live Processes",
+  "Live process tree": "Live process tree",
+  "Loading scheduled tasks…": "Loading scheduled tasks…",
+  Models: "Models",
+  "Monospace font": "Monospace font",
+  "Native sessions": "Native sessions",
+  Navigation: "Navigation",
+  "New keybinding": "New keybinding",
+  "No hubs configured.": "No hubs configured.",
+  "No secret providers configured.": "No secret providers configured.",
+  "No tasks match this environment and project selection.":
+    "No tasks match this environment and project selection.",
+  "Notices for dependencies, assets, and optional tools used by Cox.":
+    "Notices for dependencies, assets, and optional tools used by Cox.",
+  "Old history is cleaned up automatically, but these databases still hold the freed space. Run the command locally to return it to disk; it pauses and restarts the background service.":
+    "Old history is cleaned up automatically, but these databases still hold the freed space. Run the command locally to return it to disk; it pauses and restarts the background service.",
+  "One literal argument per row, in launch order.":
+    "One literal argument per row, in launch order.",
+  "Only the box you write prompts in. Mono works well here.":
+    "Only the box you write prompts in. Mono works well here.",
+  "Open linked pull requests first. Otherwise, open Changes for edits to at least 3 files or 50 lines.":
+    "Open linked pull requests first. Otherwise, open Changes for edits to at least 3 files or 50 lines.",
+  "Open links in": "Open links in",
+  "Open pull requests in Cox": "Open pull requests in Cox",
+  "Open source licenses": "Open source licenses",
+  "Optional marker shown in the picker.": "Optional marker shown in the picker.",
+  Other: "Other",
+  "Preview & diff": "Preview & diff",
+  "Privacy policy": "Privacy policy",
+  "Project icon": "Project icon",
+  "Project scripts": "Project scripts",
+  "Project source": "Project source",
+  "Provider setup is read-only.": "Provider setup is read-only.",
+  Query: "Query",
+  "Read your existing Cursor CLI login from macOS Keychain to show account history and monthly limits. macOS may ask you to allow access.":
+    "Read your existing Cursor CLI login from macOS Keychain to show account history and monthly limits. macOS may ask you to allow access.",
+  "Reclaim freed database space": "Reclaim freed database space",
+  "Reconnect this device to set up its provider, or select another device.":
+    "Reconnect this device to set up its provider, or select another device.",
+  "Refresh provider status, versions, and models in the background. Set to 0 to disable.":
+    "Refresh provider status, versions, and models in the background. Set to 0 to disable.",
+  "Remove unused worktrees when active or archived threads are deleted. Worktrees with local changes are kept.":
+    "Remove unused worktrees when active or archived threads are deleted. Worktrees with local changes are kept.",
+  "Remove worktrees after their threads have been inactive for this many days. Branches and thread history are kept.":
+    "Remove worktrees after their threads have been inactive for this many days. Branches and thread history are kept.",
+  "Remove worktrees this many days after their thread settles. Set 0 days to remove them at the next cleanup. Branches and thread history are kept.":
+    "Remove worktrees this many days after their thread settles. Set 0 days to remove them at the next cleanup. Branches and thread history are kept.",
+  "Remove worktrees whose pull request is merged and whose commits are included in the default branch.":
+    "Remove worktrees whose pull request is merged and whose commits are included in the default branch.",
+  "Remove worktrees with no commits beyond the default branch.":
+    "Remove worktrees with no commits beyond the default branch.",
+  "Require a second click on the inline archive action before a thread is archived.":
+    "Require a second click on the inline archive action before a thread is archived.",
+  "Resource History": "Resource History",
+  "Resource monitor": "Resource monitor",
+  "Resource timeline": "Resource timeline",
+  "Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.":
+    "Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.",
+  "Search engine": "Search engine",
+  "Secret providers": "Secret providers",
+  "Selected by Cox.": "Selected by Cox.",
+  "Server environment": "Server environment",
+  "Set how fast panels open and close.": "Set how fast panels open and close.",
+  "Set how wide messages and the composer can grow on large screens.":
+    "Set how wide messages and the composer can grow on large screens.",
+  "Set the prompt, code, and terminal fonts separately instead of one monospace font.":
+    "Set the prompt, code, and terminal fonts separately instead of one monospace font.",
+  "Set whether the diff panel ignores whitespace-only edits by default.":
+    "Set whether the diff panel ignores whitespace-only edits by default.",
+  "Settle a thread when its pull request merges. Closed pull requests still settle automatically.":
+    "Settle a thread when its pull request merges. Closed pull requests still settle automatically.",
+  "Shadow home path": "Shadow home path",
+  "Shared Codex config, sessions, and state.": "Shared Codex config, sessions, and state.",
+  "Show diffs stacked or side by side. The toggle in the diff toolbar changes this too.":
+    "Show diffs stacked or side by side. The toggle in the diff toolbar changes this too.",
+  "Show formatted Markdown as you type.": "Show formatted Markdown as you type.",
+  "Show key presses in recordings": "Show key presses in recordings",
+  "Show mouse presses in recordings": "Show mouse presses in recordings",
+  "Show reasoning effort in the composer as its name, such as High, or as bars.":
+    "Show reasoning effort in the composer as its name, such as High, or as bars.",
+  "Show the floating preview when an agent opens a browser unless the agent says otherwise.":
+    "Show the floating preview when an agent opens a browser unless the agent says otherwise.",
+  "Shown in the provider list and model picker.": "Shown in the provider list and model picker.",
+  "Shows context window usage as a circular indicator in the composer.":
+    "Shows context window usage as a circular indicator in the composer.",
+  "Sidebar threads with no activity for this long settle automatically.":
+    "Sidebar threads with no activity for this long settle automatically.",
+  "Snooze usage-limit stops until reset. Pair with resume to continue on wake.":
+    "Snooze usage-limit stops until reset. Pair with resume to continue on wake.",
+  "Start with files expanded or collapsed when opening diffs or a pull request's Code tab.":
+    "Start with files expanded or collapsed when opening diffs or a pull request's Code tab.",
+  "System default follows your browser or OS clock preference.":
+    "System default follows your browser or OS clock preference.",
+  "Terminal output, independent from code blocks and diffs.":
+    "Terminal output, independent from code blocks and diffs.",
+  "Text generation": "Text generation",
+  "The shared name for this project group in the sidebar and thread lists.":
+    "The shared name for this project group in the sidebar and thread lists.",
+  "Third-party notices": "Third-party notices",
+  "This machine": "This machine",
+  "This task no longer exists or is outside the selected project scope.":
+    "This task no longer exists or is outside the selected project scope.",
+  "Typeset LaTeX math, such as $x^2$ or \\[x^2\\], in messages and Markdown previews. The composer keeps TeX source editable.":
+    "Typeset LaTeX math, such as $x^2$ or \\[x^2\\], in messages and Markdown previews. The composer keeps TeX source editable.",
+  Typography: "Typography",
+  "Usage providers": "Usage providers",
+  "Use %s where the search terms go.": "Use %s where the search terms go.",
+  "Use thinner grayscale text smoothing instead of the macOS default.":
+    "Use thinner grayscale text smoothing instead of the macOS default.",
+  "Used for new threads when the default model's provider is out of usage.":
+    "Used for new threads when the default model's provider is out of usage.",
+  "Used for thread titles and other generated text on connected devices with this provider. Source control can override it.":
+    "Used for thread titles and other generated text on connected devices with this provider. Source control can override it.",
+  "Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing.":
+    "Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing.",
+  "Using CURSOR_API_KEY. Remove it from this provider's environment to use browser sign-in.":
+    "Using CURSOR_API_KEY. Remove it from this provider's environment to use browser sign-in.",
+  Variables: "Variables",
+  Version: "Version",
+  "What the address bar searches when you type something that isn't a URL.":
+    "What the address bar searches when you type something that isn't a URL.",
+  "When to compact an idle Claude thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Each Claude provider can override this.":
+    "When to compact an idle Claude thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Each Claude provider can override this.",
+  "Worktree branch naming": "Worktree branch naming",
+  "Wrap long lines in code blocks, diffs, and file previews by default.":
+    "Wrap long lines in code blocks, diffs, and file previews by default.",
+  "Writing & review": "Writing & review",
+  "Active subagents": "Active subagents",
+  "{count} active subagents": "{count} active subagents",
+  "Untitled subagent": "Untitled subagent",
+  "Model not reported": "Model not reported",
+  "Open subagent {title}": "Open subagent {title}",
+  "Elapsed: {duration}": "Elapsed: {duration}",
+  "{count}s": "{count}s",
+  "yesterday at {time}": "yesterday at {time}",
+  "Choose what to show": "Choose what to show",
+  Queued: "Queued",
+  Running: "Running",
+  Waiting: "Waiting",
+  "Custom source control instructions for all selected environments":
+    "Custom source control instructions for all selected environments",
+  "Write the instructions each selected environment should use.":
+    "Write the instructions each selected environment should use.",
+  "Apply instructions to all": "Apply instructions to all",
+  "Write custom instructions for all": "Write custom instructions for all",
+  "Keep titles concise. Use short bullet points in descriptions.":
+    "Keep titles concise. Use short bullet points in descriptions.",
+  "Custom source control writing instructions": "Custom source control writing instructions",
+  "Connect an environment to choose its review guide model.":
+    "Connect an environment to choose its review guide model.",
+  "Review guide model not saved": "Review guide model not saved",
+  "Use a separate review guide model": "Use a separate review guide model",
+  "Mixed. Enter instructions to apply to all selected targets.":
+    "Mixed. Enter instructions to apply to all selected targets.",
+  "Show service interfaces before implementations. Skip test files unless they change behavior. Keep summaries to two sentences.":
+    "Show service interfaces before implementations. Skip test files unless they change behavior. Keep summaries to two sentences.",
+  "Connect an environment to choose its source control writer model.":
+    "Connect an environment to choose its source control writer model.",
+  "Source control writer model not saved": "Source control writer model not saved",
+  "Use a separate source control writer model": "Use a separate source control writer model",
+  "Or use your own credentials": "Or use your own credentials",
+  "change request templates": "change request templates",
+  "review guide instructions": "review guide instructions",
+  "source control writing style": "source control writing style",
 } as const;

@@ -554,6 +554,7 @@ type MessagesTimelineRowContent =
     }
   | {
       kind: "turn-fold";
+      labelTemplate?: TimelineFoldLabel;
       deferredWorkItemIds?: ReadonlyArray<string>;
       id: string;
       createdAt: string;
@@ -707,6 +708,11 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
   return new Set(lastAssistantMessageIdByResponseKey.values());
 }
 
+interface TimelineFoldLabel {
+  readonly key: string;
+  readonly values: Readonly<Record<string, string>>;
+}
+
 interface TurnFold {
   runId: RunId;
   anchorEntryId: string;
@@ -715,6 +721,7 @@ interface TurnFold {
   /** Every entry in the segment, including the cards a fold never hides. */
   entryIds: ReadonlySet<string>;
   label: string;
+  labelTemplate?: TimelineFoldLabel;
 }
 
 interface SupersededAttemptFold {
@@ -1194,6 +1201,16 @@ function deriveTurnFolds(input: {
       hiddenEntryIds: segmentHiddenIds(firstSegment),
       entryIds: new Set(firstSegment.map((entry) => entry.id)),
       label,
+      labelTemplate: {
+        key: isLatestInterruptedTurn
+          ? duration
+            ? "You stopped after {duration}"
+            : "You stopped this response"
+          : duration
+            ? "Worked for {duration}"
+            : "Worked",
+        values: { duration: duration ?? "" },
+      },
     });
     for (const [index, { startIndex, steer }] of group.steerSegments.entries()) {
       const entries = group.entries.slice(startIndex, group.steerSegments[index + 1]?.startIndex);
@@ -1211,6 +1228,10 @@ function deriveTurnFolds(input: {
         hiddenEntryIds: segmentHiddenIds(entries),
         entryIds: new Set(entries.map((entry) => entry.id)),
         label: segmentMs !== null ? `Continued for ${formatDuration(segmentMs)}` : "Continued",
+        labelTemplate: {
+          key: segmentMs !== null ? "Continued for {duration}" : "Continued",
+          values: { duration: segmentMs !== null ? formatDuration(segmentMs) : "" },
+        },
       });
     }
   }
@@ -1723,6 +1744,7 @@ export function deriveMessagesTimelineRows(input: {
         createdAt: turnFold.createdAt,
         runId: turnFold.runId,
         label: turnFold.label,
+        ...(turnFold.labelTemplate ? { labelTemplate: turnFold.labelTemplate } : {}),
         expanded: input.expandedRunIds?.has(turnFold.runId) ?? false,
       });
     }

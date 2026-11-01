@@ -63,7 +63,9 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-foreground">
           <span>
-            {totals.count.toLocaleString()} changed file{totals.count === 1 ? "" : "s"}
+            {t(totals.count === 1 ? "{count} changed file" : "{count} changed files", {
+              count: totals.count.toLocaleString(),
+            })}
           </span>
           {hasNonZeroStat(totals) && (
             <DiffStatLabel

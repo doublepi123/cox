@@ -977,6 +977,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(foldRow?.runId).toBe("turn-1");
     expect(foldRow?.expanded).toBe(false);
     expect(foldRow?.label).toBe("Worked for 22s");
+    expect(foldRow?.labelTemplate).toEqual({
+      key: "Worked for {duration}",
+      values: { duration: "22s" },
+    });
     expect(collapsedRows.map((row) => row.id)).toEqual([
       "user-entry",
       "turn-fold:turn-1",

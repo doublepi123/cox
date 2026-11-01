@@ -411,7 +411,7 @@ function UserMessageProjectedStatus({ row }: { row: Extract<TimelineRow, { kind:
 }
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const ctx = use(TimelineRowCtx);
   const { onImageExpand, onFileOpen } = ctx;
   const coarsePointer = useMediaQuery({ pointer: "coarse" });
@@ -779,10 +779,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ) : null}
       <Tooltip>
         <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-          {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
+          {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat, undefined, language)}
         </TooltipTrigger>
         <TooltipPopup>
-          {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
+          {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat, language)}
         </TooltipPopup>
       </Tooltip>
       <div className={cn("flex items-center gap-0.5", floatActions && "flex-wrap justify-end")}>

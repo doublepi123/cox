@@ -10,6 +10,14 @@ const usage = THREAD_DETAILS_ITEMS.find((item) => item.id === "usage")!;
 const servers = THREAD_DETAILS_ITEMS.find((item) => item.id === "servers")!;
 
 describe("thread details items", () => {
+  it("shows active subagents by default and respects explicit hiding", () => {
+    const settings = { threadDetailsItems: {}, threadDetailsUsageEnabled: false };
+    expect(resolveThreadDetailsVisibility(settings).subagents).toBe(true);
+    expect(
+      resolveThreadDetailsVisibility({ ...settings, threadDetailsItems: { subagents: false } })
+        .subagents,
+    ).toBe(false);
+  });
   it.each([
     { legacy: false, items: {}, usage: false, context: false },
     { legacy: true, items: {}, usage: true, context: true },

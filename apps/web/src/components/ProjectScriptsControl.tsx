@@ -158,7 +158,7 @@ export default function ProjectScriptsControl({
     <>
       {scripts.length > 0 && <MenuSeparator />}
       <MenuGroup>
-        <MenuGroupLabel>From t3.json</MenuGroupLabel>
+        <MenuGroupLabel>{t("From t3.json")}</MenuGroupLabel>
         {importableScripts.map((fileScript) => (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
@@ -210,7 +210,7 @@ export default function ProjectScriptsControl({
                   variant="ghost"
                   size="icon-xs"
                   className="size-6"
-                  aria-label={`Edit ${script.name}`}
+                  aria-label={t("Edit {name}", { name: script.name })}
                   onPointerDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -231,7 +231,7 @@ export default function ProjectScriptsControl({
       {importMenuItems}
       <MenuItem density={presentation === "menu" ? "touch" : "default"} onClick={openAddDialog}>
         <PlusIcon className="size-4" />
-        <MenuItemLabel>{isPanel ? "Add project script" : "Add action"}</MenuItemLabel>
+        <MenuItemLabel>{t(isPanel ? "Add project script" : "Add action")}</MenuItemLabel>
       </MenuItem>
     </>
   );
@@ -247,10 +247,7 @@ export default function ProjectScriptsControl({
               onClick={() => onRunScript?.(primaryScript)}
             >
               <ScriptIcon icon={primaryScript.icon} className="size-4" />
-              <MenuItemLabel>
-                {t("Run")}
-                {primaryScript.name}
-              </MenuItemLabel>
+              <MenuItemLabel>{t("Run {name}", { name: primaryScript.name })}</MenuItemLabel>
               <MenuShortcut>
                 {shortcutLabelForCommand(keybindings, commandForProjectScript(primaryScript.id))}
               </MenuShortcut>
@@ -282,7 +279,7 @@ export default function ProjectScriptsControl({
       ) : primaryScript ? (
         <ActionGroup
           role="group"
-          aria-label="Project scripts"
+          aria-label={t("Project scripts")}
           {...(isPanel
             ? { className: THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS, ref: panelAnchorRef }
             : {})}
@@ -296,7 +293,7 @@ export default function ProjectScriptsControl({
                   part="primary"
                   panel={isPanel}
                   className={isPanel ? undefined : "w-7 sm:w-6 @3xl/header-actions:w-auto!"}
-                  aria-label={`Run ${primaryScript.name}`}
+                  aria-label={t("Run {name}", { name: primaryScript.name })}
                   // Tooltip replaces the button data-slot, so toolbar theming needs a separate hook.
                   data-toolbar-control=""
                   aria-disabled={!onRunScript || undefined}
@@ -319,8 +316,8 @@ export default function ProjectScriptsControl({
             </TooltipTrigger>
             <TooltipPopup side="top">
               {onRunScript
-                ? `Run ${primaryScript.name}`
-                : "Pair this client again with permission to run terminal commands."}
+                ? t("Run {name}", { name: primaryScript.name })
+                : t("Pair this client again with permission to run terminal commands.")}
             </TooltipPopup>
           </Tooltip>
           {isPanel ? (
@@ -341,7 +338,7 @@ export default function ProjectScriptsControl({
                   variant={isPanel ? "ghost" : "outline"}
                   part="secondary"
                   panel={isPanel}
-                  aria-label="Script actions"
+                  aria-label={t("Script actions")}
                 />
               }
             >
@@ -433,7 +430,7 @@ export default function ProjectScriptsControl({
                 part="row"
                 panel={isPanel}
                 className={isPanel ? undefined : "w-7 sm:w-6 @3xl/header-actions:w-auto!"}
-                aria-label={isPanel ? "Add project script" : "Add action"}
+                aria-label={t(isPanel ? "Add project script" : "Add action")}
                 data-toolbar-control=""
                 onClick={openAddDialog}
               />
@@ -446,10 +443,10 @@ export default function ProjectScriptsControl({
                 isPanel && cn("not-sr-only ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS),
               )}
             >
-              {isPanel ? "Add project script" : "Add action"}
+              {t(isPanel ? "Add project script" : "Add action")}
             </span>
           </TooltipTrigger>
-          <TooltipPopup side="top">{isPanel ? "Add project script" : "Add action"}</TooltipPopup>
+          <TooltipPopup side="top">{t(isPanel ? "Add project script" : "Add action")}</TooltipPopup>
         </Tooltip>
       )}
 

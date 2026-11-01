@@ -210,7 +210,7 @@ export default function DiffPanel({
   workspaceMutationId,
   visible,
 }: DiffPanelProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const resolvedTheme = useRenderedAppearance();
   const settings = useClientSettings((settings) => ({
     diffFilesCollapsed: settings.diffFilesCollapsed,
@@ -899,7 +899,7 @@ export default function DiffPanel({
                             <span className="flex items-center gap-3">
                               <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
                               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                                {formatRelativeTimeLabel(commit.committedAt)}
+                                {formatRelativeTimeLabel(commit.committedAt, Date.now(), language)}
                               </span>
                             </span>
                           </TooltipTrigger>

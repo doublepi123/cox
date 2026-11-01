@@ -1,4 +1,5 @@
 import { useLocation } from "@tanstack/react-router";
+import { useTranslation } from "../../i18n";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
@@ -52,6 +53,7 @@ interface SettingsScopeMenuProps {
 }
 
 export function SettingsScopeSentence() {
+  const { t } = useTranslation();
   const scope = useOptionalSettingsScope();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { environments } = useEnvironments();
@@ -65,7 +67,7 @@ export function SettingsScopeSentence() {
   return (
     <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-3 text-sm text-muted-foreground sm:px-4">
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="shrink-0">Applying settings for</span>
+        <span className="shrink-0">{t("Applying settings for")}</span>
         <ProjectScopeMenu {...props} />
       </span>
     </p>
@@ -81,6 +83,7 @@ interface ScopeOption {
 }
 
 function ScopeOptionLabel({ option }: { option: ScopeOption }) {
+  const { t } = useTranslation();
   return (
     <>
       {option.icon}
@@ -91,7 +94,7 @@ function ScopeOptionLabel({ option }: { option: ScopeOption }) {
         ) : null}
       </span>
       {option.offline ? (
-        <span className="shrink-0 text-xs text-muted-foreground">Offline</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{t("Offline")}</span>
       ) : null}
     </>
   );
@@ -116,6 +119,7 @@ function ScopeMenu({
   searchLabel: string;
   onChange: (next: string) => void;
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const Trigger = options.length > 6 ? ComboboxTrigger : MenuTrigger;
   const trigger = (
@@ -163,7 +167,7 @@ function ScopeMenu({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <ComboboxEmpty>No matches found.</ComboboxEmpty>
+          <ComboboxEmpty>{t("No matches found.")}</ComboboxEmpty>
           <ComboboxList>
             {(option: ScopeOption) => (
               <ComboboxItem key={option.value} value={option}>
@@ -208,6 +212,7 @@ function ScopeMenu({
 }
 
 function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsScopeMenuProps) {
+  const { t } = useTranslation();
   const selected = groups.find((group) => group.projectKey === value.project);
   const projects = projectScopeMenuGroups(groups, value).map((group) => ({
     group,
@@ -215,13 +220,13 @@ function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsSco
   }));
   return (
     <ScopeMenu
-      ariaLabel="Project scope"
+      ariaLabel={t("Project scope")}
       icon={selected ? <ProjectFavicon project={selected} className="size-3.5 shrink-0" /> : null}
-      label={selected?.displayName ?? (value.project ? "Unavailable project" : "All projects")}
+      label={selected?.displayName ?? t(value.project ? "Unavailable project" : "All projects")}
       value={projectAxisValue(value)}
       onChange={(next) => onChange(selectProjectAxis(value, next))}
-      searchLabel="Search projects"
-      allOption={{ value: ALL_PROJECTS_VALUE, label: "All projects" }}
+      searchLabel={t("Search projects")}
+      allOption={{ value: ALL_PROJECTS_VALUE, label: t("All projects") }}
       options={projects.map(({ group, machines }) => {
         const sameName = projects.filter(
           (other) =>
@@ -239,7 +244,9 @@ function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsSco
         return {
           value: group.projectKey,
           label: group.displayName,
-          secondary: group.archived ? ["Archived", location].filter(Boolean).join(" · ") : location,
+          secondary: group.archived
+            ? [t("Archived"), location].filter(Boolean).join(" · ")
+            : location,
           icon: <ProjectFavicon project={group} className="size-3.5 shrink-0" />,
         };
       })}

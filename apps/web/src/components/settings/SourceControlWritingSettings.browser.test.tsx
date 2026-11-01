@@ -1,4 +1,6 @@
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
+import { setLanguagePreference } from "../../i18n";
+import { LANGUAGE_STORAGE_KEY, parseLanguagePreference } from "../../i18n/language";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { StrictMode, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -92,6 +94,34 @@ async function setup() {
 }
 
 describe("mixed source control instructions", () => {
+  it("switches settings controls live without translating custom instructions", async () => {
+    const preference = parseLanguagePreference(localStorage.getItem(LANGUAGE_STORAGE_KEY));
+    using _language = { [Symbol.dispose]: () => setLanguagePreference(preference) };
+    setLanguagePreference("en");
+    await using screen = await setup();
+    await expect
+      .element(screen.getByRole("combobox", { name: "Source control writing style" }))
+      .toBeVisible();
+    await act(() => setLanguagePreference("zh"));
+    await expect.element(screen.getByRole("combobox", { name: "源码管理文案风格" })).toBeVisible();
+    await screen.getByRole("button", { name: "为全部环境编写自定义指令" }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "所有选定环境的自定义源码管理指令" }))
+      .toBeVisible();
+    expect(state.styles.map((style) => style.customInstructions)).toEqual([
+      "First environment instructions",
+      "Second environment instructions",
+    ]);
+    await act(() => setLanguagePreference("en"));
+    await expect
+      .element(
+        screen.getByRole("textbox", {
+          name: "Custom source control instructions for all selected environments",
+        }),
+      )
+      .toBeVisible();
+  });
+
   it("resets mixed template preferences without replacing each environment's instructions", async () => {
     await using _screen = await setup();
     const initialInstructions = state.styles.map(({ mode, customInstructions }) => ({

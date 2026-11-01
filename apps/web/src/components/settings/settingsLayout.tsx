@@ -527,6 +527,7 @@ export function SettingResetButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -534,7 +535,7 @@ export function SettingResetButton({
           <Button
             size="icon-micro"
             variant="ghost-muted"
-            aria-label={`Reset ${label} to default`}
+            aria-label={t("Reset {setting} to default", { setting: t(label) })}
             disabled={disabled}
             onClick={(event) => {
               event.stopPropagation();
@@ -545,7 +546,7 @@ export function SettingResetButton({
           </Button>
         }
       />
-      <TooltipPopup side="top">{tooltip}</TooltipPopup>
+      <TooltipPopup side="top">{t(tooltip)}</TooltipPopup>
     </Tooltip>
   );
 }

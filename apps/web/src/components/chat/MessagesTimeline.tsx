@@ -9,6 +9,7 @@ import { WorkLogBlock } from "./WorkLog";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
+import { useTranslation } from "../../i18n";
 import {
   type AssistantCitation,
   type EnvironmentId,
@@ -1648,6 +1649,7 @@ function WorkHistorySkeleton() {
 }
 
 function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-fold" }> }) {
+  const { t } = useTranslation();
   const ctx = use(TimelineRowCtx);
   const { loading, error, toggle } = useDeferredWorkLoading(row, () =>
     ctx.onToggleTurnFold(row.runId),
@@ -1665,7 +1667,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
           className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
         >
           <span>
-            {row.label}
+            {t(row.labelTemplate?.key ?? row.label, row.labelTemplate?.values)}
             {error ? ` · ${error}` : ""}
           </span>
           <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
@@ -1682,6 +1684,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 }
 
 function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "attempt-fold" }> }) {
+  const { t } = useTranslation();
   const ctx = use(TimelineRowCtx);
   const { loading, error, toggle } = useDeferredWorkLoading(row, () =>
     ctx.onToggleAttemptFold(row.attemptId),
@@ -1703,7 +1706,7 @@ function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "at
           icon={row.expanded ? ChevronDown : ChevronRight}
         />
         <span className="text-xs font-medium text-foreground/80">
-          {row.label}
+          {t(row.label)}
           {error ? ` · ${error}` : ""}
         </span>
         <span className="text-2xs text-muted-foreground">Cut off by a steer</span>

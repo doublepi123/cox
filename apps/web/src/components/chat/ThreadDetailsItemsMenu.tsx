@@ -20,7 +20,7 @@ export function ThreadDetailsItemsMenuItems() {
   return (
     <>
       <MenuGroup>
-        <MenuGroupLabel>Show in thread details</MenuGroupLabel>
+        <MenuGroupLabel>{t("Show in thread details")}</MenuGroupLabel>
         {THREAD_DETAILS_ITEMS.map((item) => (
           <MenuCheckboxItem
             key={item.id}
@@ -31,7 +31,7 @@ export function ThreadDetailsItemsMenuItems() {
               })
             }
           >
-            {item.label}
+            {t(item.label)}
           </MenuCheckboxItem>
         ))}
       </MenuGroup>

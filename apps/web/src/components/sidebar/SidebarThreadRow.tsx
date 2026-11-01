@@ -129,20 +129,14 @@ export type SidebarProviderEntry = Pick<
   | "acpRegistryIconUrl"
   | "models"
 >;
-function compactSidebarTimeLabel(label: string): string {
-  if (label === "just now") return "now";
-  return label.endsWith(" ago") ? label.slice(0, -4) : label;
-}
-
 // Subscribes to the minute tick itself, so only the label re-renders each
 // minute. The minute is passed as the clock so it is the formatter's input.
 function RelativeTimeLabel(props: { timestamp: string | null }) {
+  const { language } = useTranslation();
   const nowMinute = useNowMinute();
   return props.timestamp === null
     ? null
-    : compactSidebarTimeLabel(
-        formatRelativeTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`)),
-      );
+    : formatRelativeTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`), language, true);
 }
 
 function threadTimeTimestamp(thread: SidebarThreadSummary): string {
@@ -1478,7 +1472,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 )}
                               >
                                 <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{topStatus.label}</span>
+                                <span role="status">{t(topStatus.label)}</span>
                               </button>
                             }
                           />
@@ -1495,7 +1489,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
                             timeline speak status changes instead. */}
-                          {topStatus.label}
+                          {t(topStatus.label)}
                           {status === "working" ? (
                             <span aria-hidden>
                               <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />

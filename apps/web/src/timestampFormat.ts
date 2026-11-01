@@ -1,4 +1,5 @@
 import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { translate, type Language } from "./i18n/language";
 function getTimestampFormatOptions(
   timestampFormat: TimestampFormat,
   includeSeconds: boolean,
@@ -105,9 +106,18 @@ function ordinalSuffix(day: number): string {
 export function formatChatTimestampTooltip(
   isoDate: string,
   timestampFormat: TimestampFormat,
+  language: Language = "en",
 ): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
+  if (language === "zh") {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      ...getTimestampFormatOptions(timestampFormat, false),
+    }).format(date);
+  }
   const time = formatShortTimestamp(isoDate, timestampFormat);
   const day = date.getDate();
   const month = monthNameFormatter.format(date);
@@ -132,6 +142,7 @@ export function formatDayAwareTimestamp(
   isoDate: string,
   timestampFormat: TimestampFormat,
   nowMs: number = Date.now(),
+  language: Language = "en",
 ): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
@@ -142,7 +153,7 @@ export function formatDayAwareTimestamp(
   // Round so DST-shifted 23/25 hour days still count as whole days.
   const dayDiff = Math.round((startOfToday - startOfMessageDay) / 86400000);
   if (dayDiff <= 0) return time;
-  if (dayDiff === 1) return `yesterday at ${time}`;
+  if (dayDiff === 1) return translate(language, "yesterday at {time}", { time });
   const dateFormatter =
     date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
   return `${dateFormatter.format(date)} ${time}`;
@@ -227,10 +238,23 @@ export function formatRelativeTime(
   const elapsedMs = relativeTimeElapsedMs(isoDate, nowMs);
   return elapsedMs === null ? null : formatRelativeElapsed(elapsedMs);
 }
-export function formatRelativeTimeLabel(isoDate: string, nowMs: number = Date.now()) {
-  const relative = formatRelativeTime(isoDate, nowMs);
-  if (!relative) return "";
-  return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
+export function formatRelativeTimeLabel(
+  isoDate: string,
+  nowMs: number = Date.now(),
+  language: Language = "en",
+  compact = false,
+) {
+  const elapsedMs = relativeTimeElapsedMs(isoDate, nowMs);
+  if (elapsedMs === null) return "";
+  if (elapsedMs < 60_000) return translate(language, compact ? "now" : "just now");
+  const [unitMs, key] =
+    elapsedMs >= DAY_MS
+      ? ([DAY_MS, "{count}d"] as const)
+      : elapsedMs >= 3_600_000
+        ? ([3_600_000, "{count}h"] as const)
+        : ([60_000, "{count}m"] as const);
+  const time = translate(language, key, { count: Math.floor(elapsedMs / unitMs) });
+  return compact ? time : translate(language, "{time} ago", { time });
 }
 export function formatElapsedDurationLabel(isoDate: string, nowMs: number = Date.now()): string {
   const date = parseTimestampDate(isoDate);
