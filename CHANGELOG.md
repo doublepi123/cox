@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 — 2026-11-01
+
+- Publish Android-ready musl server bundles (`cox-<version>-android-linux-{arm64,x64}-musl.tar.gz`)
+  with each tagged release, listed in `SHA256SUMS`. They contain the built server, Web UI and
+  runtime dependencies (node-pty rebuilt for musl), run with Alpine's `nodejs` package and are
+  smoke-tested for password login, the environment endpoint and the startup readiness line.
+- Stabilize the real PDF worker transport test and parallelize the full CI suite.
+- Retain worktrees whose Git directory pointers are invalid instead of failing cleanup.
+
 ## 0.1.0 — 2026-10-31
 
 Initial Cox release, derived from T3 Code fork commit `0102f07afb`.
