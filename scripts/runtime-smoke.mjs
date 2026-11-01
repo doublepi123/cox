@@ -48,7 +48,7 @@ const websocketStatus = (browserOrigin, cookie = "") =>
 const child = spawn(
   process.execPath,
   [
-    join(root, "apps/server/dist/bin.mjs"),
+    process.argv[2] ?? join(root, "apps/server/dist/bin.mjs"),
     "--home-dir",
     home,
     "--host",

@@ -30,6 +30,41 @@ the release for the pushed `v*` tag, creating the release when it is missing, an
 checksums into the release's `SHA256SUMS`. Run it with `workflow_dispatch` and a tag to rebuild
 the bundles of an existing release.
 
+## npm automatic publishing
+
+The public package is `@doublepi123/cox`; its executable remains `cox`. The server workspace
+keeps its internal `cox` name so existing pnpm filters do not change. `pnpm release:npm` builds
+the Web UI and server and creates `release/npm/doublepi123-cox-<VERSION>.tgz`. The generated
+package contains only production assets, the README, MIT license, third-party notices and
+the runtime dependency patches. External dependencies are pinned to their installed versions;
+workspace and catalog references are never published. Install scripts apply the repository's
+runtime patches after npm installs dependencies, including on subsequent rebuilds.
+
+`.github/workflows/npm-publish.yml` publishes when a `v*` tag is pushed. The tag must match
+both root and server package versions. Stable releases use `latest`; prereleases use `next`.
+The workflow typechecks, runs root tests, builds the package and smoke-tests a fresh npm
+installation with isolated state before publishing with provenance. It also saves the tarball
+as a workflow artifact. Use **Run workflow** with an existing version tag to retry a failed
+run. The tagged commit must include the npm packaging scripts and workflow; older tags cannot
+use packaging code added afterward. Published npm versions cannot be overwritten.
+
+### Authentication setup
+
+1. Revoke any npm token shared in chat or committed to source. Never put a token in this
+   repository, a workflow file or a checked-in `.npmrc`.
+2. For the first publish, create a granular npm token for the `doublepi123` scope with package
+   write access and permission to bypass 2FA for automated publishing. Store it as the GitHub
+   Actions repository secret `NPM_TOKEN` in `doublepi123/cox`. Limit its permissions and expiry.
+3. After the package exists, configure a GitHub Actions trusted publisher in the npm package's
+   settings: owner `doublepi123`, repository `cox`, workflow filename `npm-publish.yml`, no
+   environment name. Allow direct `npm publish`. The workflow already grants `id-token: write`.
+4. Verify an OIDC release, then delete `NPM_TOKEN`, revoke the bootstrap token and restrict
+   token-based publishing in npm. The same workflow can publish using OIDC without a secret.
+
+Creating a local workflow does not configure npm account permissions, push a tag or publish a
+version. Commit and push the reviewed workflow before triggering a release. npm ownership and
+trusted-publisher configuration remain explicit maintainer actions.
+
 ## Maintainer checklist
 
 1. Keep the root and `apps/server` package versions aligned.
@@ -46,5 +81,6 @@ the bundles of an existing release.
    also triggers the Android bundle workflow, which attaches the two musl bundles and their
    checksums to that release.
 
-The source workflow validates and packages source, but does not publish automatically.
-Releases and repository visibility remain explicit maintainer actions.
+The source workflow validates and packages source without publishing it. Version tags also
+trigger npm publishing as described above. GitHub source releases and repository visibility
+remain explicit maintainer actions.

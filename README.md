@@ -45,6 +45,17 @@ Development state is isolated in this checkout's `.cox/`. It does not read or se
 
 ## Production
 
+For npm releases, install the public scoped package and run its `cox` command:
+
+```sh
+npm install --global @doublepi123/cox
+cox
+```
+
+The npm package includes the built Web UI and server. npm installs the runtime dependencies;
+pnpm and a source checkout are not required. Allow install scripts so Cox can preserve its
+runtime dependency patches. Native dependencies may need a local C/C++ build toolchain.
+
 For a GitHub Release, download `cox-v<VERSION>.tar.gz` and `SHA256SUMS`, verify the checksum,
 extract the archive, and run `pnpm install --frozen-lockfile` followed by `pnpm start`.
 The release asset includes prebuilt Web/server code but not Node or dependencies. Linux x64
