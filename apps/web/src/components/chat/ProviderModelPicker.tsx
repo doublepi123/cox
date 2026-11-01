@@ -165,6 +165,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     const row =
       first("[data-effort-level]") ?? (rows === "any" ? first("[data-effort-row]") : null);
     row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: "nearest" });
     return row != null;
   };
   const openTarget = (target: "effort" | "permissions") => {
@@ -401,12 +402,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       >
         {props.effortColumn ? (
           <DockedPickerContext value={{ modelLabel: triggerTitle }}>
-            <div className="flex flex-col">
-              <div className="flex max-h-86.5 max-sm:max-h-none max-sm:flex-col">
+            <div className="flex max-h-[calc(var(--available-height)-2px)] flex-col">
+              {/* Phones stack the list over the levels. A short popup keeps every level and
+                  shrinks the list down to its search row; while searching the results win. */}
+              <div className="group/docked flex max-h-86.5 max-sm:max-h-none max-sm:min-h-0 max-sm:flex-col">
                 {picker}
                 <div
                   data-model-picker-effort
-                  className="flex min-h-0 w-48 shrink-0 flex-col border-l border-border/70 bg-muted/40 max-sm:max-h-64 max-sm:w-full max-sm:border-t max-sm:border-l-0"
+                  className="flex min-h-0 w-48 shrink-0 flex-col border-l border-border/70 bg-muted/40 max-sm:max-h-64 max-sm:min-h-24 max-sm:w-full max-sm:shrink max-sm:border-t max-sm:group-has-[[data-model-picker-searching]]/docked:shrink-[1000] max-sm:border-l-0"
                   onKeyDown={(event) => {
                     if (event.key !== "ArrowLeft" || event.altKey || event.ctrlKey || event.metaKey)
                       return;
@@ -419,12 +422,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 </div>
               </div>
               {props.footer}
+              {props.selectedModels === undefined ? (
+                <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
+              ) : null}
             </div>
           </DockedPickerContext>
         ) : (
           picker
         )}
-        {props.selectedModels === undefined ? (
+        {props.selectedModels === undefined && !docked ? (
           <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
         ) : null}
       </PopoverPopup>

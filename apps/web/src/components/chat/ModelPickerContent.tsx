@@ -842,7 +842,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         className={cn(
           "relative flex w-screen max-w-90 flex-row overflow-hidden",
           props.docked
-            ? "max-sm:h-56 max-sm:min-h-0! max-sm:w-full max-sm:max-w-none"
+            ? [
+                "max-sm:h-56! max-sm:min-h-11! max-sm:w-full max-sm:max-w-none",
+                isSearching ? "max-sm:shrink" : "max-sm:shrink-[10000]",
+              ]
             : "max-h-86.5",
         )}
         style={
@@ -853,6 +856,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               }
         }
         data-model-picker-content="true"
+        data-model-picker-searching={isSearching || undefined}
       >
         {showSidebar && (
           <ModelPickerSidebar

@@ -143,7 +143,7 @@ export function describeComposerEffort(
 }
 
 const COLUMN_ROW =
-  "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-sm text-foreground outline-none hover:bg-foreground/[0.09] focus-visible:bg-foreground/[0.09] disabled:cursor-not-allowed disabled:opacity-64";
+  "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 max-sm:h-9 text-left text-sm text-foreground outline-none hover:bg-foreground/[0.09] focus-visible:bg-foreground/[0.09] disabled:cursor-not-allowed disabled:opacity-64";
 const COLUMN_LABEL = "px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs";
 
 function ColumnRow(props: {
@@ -238,7 +238,7 @@ function EffortLevels(props: { traits: TraitsSelectionInput }) {
           key={descriptor.id}
           role="radiogroup"
           aria-label={descriptor.label}
-          className="flex flex-col gap-0.5"
+          className="flex flex-col gap-0.5 max-sm:gap-0"
         >
           {isEffort ? null : <div className={COLUMN_LABEL}>{descriptor.label}</div>}
           {([true, false] as const).map((value) => (
@@ -261,7 +261,7 @@ function EffortLevels(props: { traits: TraitsSelectionInput }) {
         key={descriptor.id}
         role="radiogroup"
         aria-label={descriptor.label}
-        className="flex flex-col gap-0.5"
+        className="flex flex-col gap-0.5 max-sm:gap-0"
       >
         {isEffort ? null : <div className={COLUMN_LABEL}>{descriptor.label}</div>}
         {locked ? (
@@ -313,8 +313,8 @@ export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | nul
   return (
     <>
       {/* Matches the search row's box, so one rule runs across the top of the popup. */}
-      <div className="shrink-0 px-3 pt-2.5">
-        <div className="flex h-8.25 -translate-y-px items-center gap-2 border-b border-border/70 pb-1.5 text-sm">
+      <div className="shrink-0 px-3 pt-2.5 max-sm:pt-1.5">
+        <div className="flex h-8.25 -translate-y-px items-center gap-2 border-b border-border/70 pb-1.5 text-sm max-sm:h-7 max-sm:pb-1">
           <span className="text-muted-foreground">{effort?.descriptor.label ?? "Effort"}</span>
           <span className="ms-auto min-w-0 truncate text-muted-foreground text-xs">
             {picker.modelLabel}
@@ -323,7 +323,7 @@ export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | nul
       </div>
       {/* pt-2.5 puts the first level on the same line as the first model. */}
       <div
-        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pt-2.5 pb-1.5"
+        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pt-2.5 pb-1.5 max-sm:gap-0 max-sm:pt-1 max-sm:pb-1"
         onKeyDown={moveBetweenRows}
       >
         {props.traits ? <EffortLevels traits={props.traits} /> : <NoEffortRow />}
@@ -455,7 +455,7 @@ export function ComposerPickerFooter(props: {
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2 max-sm:py-1">
       {props.traits ? <SpeedControl traits={props.traits} /> : null}
       <PermissionsMenu
         runtimeMode={props.runtimeMode}
