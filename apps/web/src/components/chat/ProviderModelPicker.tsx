@@ -19,6 +19,7 @@ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../provi
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -120,6 +121,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const popupRef = useRef<HTMLDivElement | null>(null);
   const size = props.size ?? "sm";
   const docked = props.effortColumn !== undefined;
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
 
   const activeEntry =
     props.instanceEntries.find((entry) => entry.instanceId === props.activeInstanceId) ?? null;
@@ -394,7 +396,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             unlock?.();
           };
         }}
-        initialFocus={searchInputRef}
+        // Touch keeps the soft keyboard closed until the search is tapped; the popup holds focus.
+        initialFocus={(openType) =>
+          coarsePointer || openType === "touch" ? popupRef.current : searchInputRef.current
+        }
         align="start"
         className="before:hidden"
         padding="none"

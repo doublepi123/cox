@@ -7,8 +7,8 @@ import {
   type ServerProviderModel,
 } from "@t3tools/contracts";
 import { useState } from "react";
-import { expect, it } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { expect, it, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 
@@ -99,14 +99,33 @@ async function phoneViewport(width: number, height: number) {
   return { [Symbol.asyncDispose]: () => page.viewport(414, 896) };
 }
 
+/** Reports a touch screen to `(pointer: coarse)` queries, as a phone's WebView does. */
+function coarsePointer() {
+  const matchMedia = window.matchMedia;
+  const spy = vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    if (!query.includes("pointer")) return matchMedia.call(window, query);
+    return {
+      matches: query.includes("coarse"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    };
+  });
+  return { [Symbol.dispose]: () => spy.mockRestore() };
+}
+
 async function openPicker(height: number, triggerTop: number) {
   const stack = new AsyncDisposableStack();
+  stack.use(coarsePointer());
   stack.use(await phoneViewport(400, height));
   const container = document.createElement("div");
   container.style.cssText = `position:fixed;left:8px;top:${triggerTop}px`;
   stack.use(await render(<Picker />, { container }));
   await page.getByRole("button", { name: "Choose model" }).click();
-  await expect.element(page.getByPlaceholder("Search models...")).toHaveFocus();
   await expect.element(page.getByRole("radio", { name: "Max" })).toBeInTheDocument();
   const popup = document.querySelector<HTMLElement>("[data-slot=popover-popup]")!;
   await expect.poll(() => popup.getAnimations({ subtree: true }).length).toBe(0);
@@ -179,4 +198,42 @@ it("leaves a usable model list when the phone has room", async () => {
   expect(picker.list.getBoundingClientRect().height).toBeGreaterThanOrEqual(120);
   await expect.element(page.getByRole("option", { name: /Model 1/ })).toBeVisible();
   expect(scroller.getBoundingClientRect().height).toBeGreaterThan(0);
+});
+
+it("keeps the soft keyboard closed when a touch screen opens the picker", async () => {
+  await using picker = await openPicker(869, 420);
+  const search = page.getByPlaceholder("Search models...");
+  await expect.element(search).not.toHaveFocus();
+  await expect.poll(() => picker.popup.contains(document.activeElement)).toBe(true);
+
+  // A hardware keyboard still reaches the levels and the search, and Escape still closes.
+  await userEvent.keyboard("{Tab}");
+  await expect.poll(() => picker.popup.contains(document.activeElement)).toBe(true);
+  await search.click();
+  await expect.element(search).toHaveFocus();
+  await userEvent.keyboard("{ArrowRight}");
+  await expect.element(page.getByRole("radio", { name: /^Medium/ })).toHaveFocus();
+  await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+  await expect.element(page.getByRole("radio", { name: "Max" })).toHaveFocus();
+  await userEvent.keyboard("{ArrowLeft}");
+  await expect.element(search).toHaveFocus();
+
+  await page.getByRole("button", { name: "Codex" }).click();
+  await expect.element(search).not.toHaveFocus();
+
+  await userEvent.keyboard("{Escape}");
+  await expect.element(search).not.toBeInTheDocument();
+});
+
+it("still puts a fine pointer straight into the search", async () => {
+  await using _viewport = await phoneViewport(1280, 900);
+  await using _screen = await render(<Picker />);
+  await page.getByRole("button", { name: "Choose model" }).click();
+  const search = page.getByPlaceholder("Search models...");
+  await expect.element(search).toHaveFocus();
+  await userEvent.keyboard("Model 8");
+  await expect.element(page.getByRole("option", { name: /Model 8/ })).toBeVisible();
+  await expect.element(page.getByRole("option", { name: /Model 1 / })).not.toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(search).not.toBeInTheDocument();
 });

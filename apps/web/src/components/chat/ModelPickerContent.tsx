@@ -53,6 +53,7 @@ import {
   useEnvironmentModelPreferences,
   useToggleEnvironmentModelFavorite,
 } from "~/hooks/useSettings";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { announce } from "~/lib/announce";
 import { cn } from "~/lib/utils";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
@@ -362,7 +363,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
-  /** The owning popup moves focus here when it opens (its `initialFocus`). */
+  /** The owning popup moves focus here when it opens with a fine pointer (its `initialFocus`). */
   searchInputRef: RefObject<HTMLInputElement | null>;
   /** Sits beside an effort column: fills the shared row, and stacks above it on narrow screens. */
   docked?: boolean;
@@ -458,12 +459,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const [searchHeight, setSearchHeight] = useState(0);
   const toggleFavorite = useToggleEnvironmentModelFavorite(props.environmentId);
 
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
   const focusSearchInput = () => {
     searchInputRef.current?.focus({ preventScroll: true });
   };
 
   const handleSelectInstance = (instanceId: ProviderInstanceId | "favorites") => {
     setSelectedInstanceId(instanceId);
+    // A tapped provider tab should not raise the soft keyboard.
+    if (coarsePointer) return;
     window.requestAnimationFrame(() => {
       focusSearchInput();
     });
