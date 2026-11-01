@@ -1033,4 +1033,10 @@ export const zh = {
   "change request templates": "变更请求模板",
   "review guide instructions": "审查指南指令",
   "source control writing style": "源码管理写作风格",
+  "Enter the pairing token from the server terminal, or open its pairing URL.":
+    "请输入服务端终端显示的配对令牌，或打开其配对链接。",
+  "Password or pairing token": "密码或配对令牌",
+  "Pairing token": "配对令牌",
+  "Authentication failed.": "认证失败。",
+  "Signing in…": "正在登录…",
 } as const;

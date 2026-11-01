@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 — 2026-11-01
+
+- Show the local authentication form before the chat or welcome screen when the browser is not
+  signed in, instead of leaving an empty page while WebSocket authentication fails.
+- Support password or pairing-token entry, rejected-credential feedback, and retry without
+  losing the current route. Pairing failures from a URL are visible on the sign-in page.
+
 ## 0.1.4 — 2026-11-01
 
 - Phones: opening the model picker no longer raises the soft keyboard (which shrank the popup and

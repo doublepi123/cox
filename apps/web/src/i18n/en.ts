@@ -1055,4 +1055,10 @@ export const en = {
   "change request templates": "change request templates",
   "review guide instructions": "review guide instructions",
   "source control writing style": "source control writing style",
+  "Enter the pairing token from the server terminal, or open its pairing URL.":
+    "Enter the pairing token from the server terminal, or open its pairing URL.",
+  "Password or pairing token": "Password or pairing token",
+  "Pairing token": "Pairing token",
+  "Authentication failed.": "Authentication failed.",
+  "Signing in…": "Signing in…",
 } as const;

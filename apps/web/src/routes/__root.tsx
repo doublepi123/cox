@@ -42,6 +42,7 @@ import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerConfigAtom, primaryServerWelcomeAtom } from "../state/server";
 import { readProject } from "../state/entities";
+import { ServerAuthGate } from "../components/ServerAuthGate";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -91,12 +92,22 @@ function RootRouteView() {
 }
 
 function RootRouteBranch() {
+  const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
   // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
   const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
   if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
+  if (authGateState.status !== "authenticated") {
+    return (
+      <ServerAuthGate
+        auth={authGateState.auth}
+        {...(authGateState.errorMessage ? { errorMessage: authGateState.errorMessage } : {})}
+        onAuthenticated={() => router.invalidate()}
+      />
+    );
+  }
   if (pathname === "/welcome") {
     return (
       <>
@@ -109,10 +120,6 @@ function RootRouteBranch() {
         </CommandPalette>
       </>
     );
-  }
-
-  if (authGateState.status !== "authenticated") {
-    return <Outlet />;
   }
 
   const appShell = (
