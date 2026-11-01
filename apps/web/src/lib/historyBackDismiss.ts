@@ -98,13 +98,18 @@ function close(id: string) {
   window.history.back();
 }
 
+function newId(): string {
+  nextId += 1;
+  return `${Date.now().toString(36)}-${nextId}`;
+}
+
 /** While `open`, the system Back gesture calls `onBack` instead of leaving the page. */
 export function useHistoryBackDismiss(open_: boolean, onBack: () => void) {
   const handleBack = useEffectEvent(onBack);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors the overlay's open state into a browser history entry and removes it on close or unmount
   useEffect(() => {
     if (!open_) return;
-    const id = `${Date.now().toString(36)}-${nextId++}`;
+    const id = newId();
     open({ id, onBack: () => handleBack() });
     return () => close(id);
   }, [open_]);
