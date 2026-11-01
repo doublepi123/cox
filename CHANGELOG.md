@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.3 — 2026-11-01
+
+- Phones: the model picker no longer clips content it cannot scroll to. The model list and the
+  effort levels share the available height; the list shrinks first (down to its search row) so
+  every effort level stays visible, and search results take priority while searching.
+- Effort rows are taller on phones for touch, and the selected level scrolls into view.
+
+## 0.1.2 — 2026-11-01
+
+- Show active subagent instances in the thread details card, with provider instance, model,
+  status, elapsed time and child-thread navigation; completed instances are removed.
+- Expand Chinese/English translations for editor and script actions, Git controls, changed-file
+  counts, relative timestamps and source-control settings.
+- Publish the public npm package `@doublepi123/cox` automatically from version tags.
+
 ## 0.1.1 — 2026-11-01
 
 - Publish Android-ready musl server bundles (`cox-<version>-android-linux-{arm64,x64}-musl.tar.gz`)
