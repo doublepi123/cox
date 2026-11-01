@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 — 2026-11-01
+
+- Phones: opening the model picker no longer raises the soft keyboard (which shrank the popup and
+  hid effort levels again). The search field focuses only when tapped; desktop is unchanged.
+
 ## 0.1.3 — 2026-11-01
 
 - Phones: the model picker no longer clips content it cannot scroll to. The model list and the
