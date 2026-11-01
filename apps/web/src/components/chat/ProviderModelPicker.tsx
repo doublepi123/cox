@@ -20,6 +20,7 @@ import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
+import { useHistoryBackDismiss } from "~/lib/historyBackDismiss";
 import {
   ModelPickerSheetPopup,
   ModelPickerSheetRoot,
@@ -168,6 +169,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       setUncontrolledIsMenuOpen(open);
     }
   };
+  // Android's Back gesture closes the sheet instead of leaving the app with it still open.
+  useHistoryBackDismiss(sheet && isMenuOpen, () => setIsMenuOpen(false));
 
   /**
    * Focuses the selected reasoning level, else the first level. With `rows: "any"` it falls back

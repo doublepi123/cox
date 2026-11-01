@@ -6,6 +6,12 @@ import {
   type RuntimeMode,
   type ServerProviderModel,
 } from "@t3tools/contracts";
+import {
+  createBrowserHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -291,4 +297,117 @@ it("still puts a fine pointer straight into the search of a popover", async () =
   await expect.element(page.getByRole("option", { name: /Model 1 / })).not.toBeInTheDocument();
   await userEvent.keyboard("{Escape}");
   await expect.element(search).not.toBeInTheDocument();
+});
+
+/** The picker on the app's own kind of router: browser history and a root loader to count. */
+async function openOnBrowserRouter() {
+  const stack = new AsyncDisposableStack();
+  stack.use(coarsePointer());
+  stack.use(await phoneViewport(400, 869));
+  const startUrl = window.location.href;
+  // Drops forward entries an earlier test left, so history.length counts what is behind us.
+  window.history.pushState(null, "", startUrl);
+  const history = createBrowserHistory();
+  stack.defer(() => history.destroy());
+  let loads = 0;
+  const router = createRouter({
+    routeTree: createRootRoute({
+      loader: () => {
+        loads += 1;
+      },
+      component: Picker,
+    }),
+    history,
+  });
+  await router.load();
+  const container = document.createElement("div");
+  container.style.cssText = "position:fixed;left:8px;top:420px";
+  stack.use(await render(<RouterProvider router={router} />, { container, router: false }));
+  await expect.element(page.getByRole("button", { name: "Choose model" })).toBeInTheDocument();
+  const settled = {
+    length: window.history.length,
+    loads,
+    routerKey: window.history.state?.__TSR_key as string,
+  };
+  const open = async () => {
+    await page.getByRole("button", { name: "Choose model" }).click();
+    await expect.element(page.getByRole("dialog")).toBeInTheDocument();
+    await expect.poll(() => window.history.length).toBe(settled.length + 1);
+  };
+  const closed = async () => {
+    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+    await expect.poll(() => window.history.state?.coxBackDismiss).toBeUndefined();
+    expect(window.location.href).toBe(startUrl);
+    expect(window.history.state?.__TSR_key).toBe(settled.routerKey);
+    expect(router.state.location.href).toBe(router.latestLocation.href);
+    expect(loads).toBe(settled.loads);
+  };
+  return { open, closed, settled, router, [Symbol.asyncDispose]: () => stack.disposeAsync() };
+}
+
+it("closes the sheet on Back without leaving the route", async () => {
+  await using app = await openOnBrowserRouter();
+  const route = app.router.state.location.href;
+  await app.open();
+  expect(window.history.state?.coxBackDismiss).toBeTruthy();
+  window.history.back();
+  await app.closed();
+  expect(app.router.state.location.href).toBe(route);
+  // The entry is gone, so the next Back would leave the page as before.
+  await app.open();
+  await page.getByRole("button", { name: "Done" }).click();
+  await app.closed();
+});
+
+it("pops its history entry once however the sheet closes", async () => {
+  await using app = await openOnBrowserRouter();
+  const closers = [
+    () => page.getByRole("button", { name: "Done" }).click(),
+    () => userEvent.keyboard("{Escape}"),
+    () => userEvent.click(document.body, { position: { x: 200, y: 40 } }),
+    () => window.history.back(),
+  ];
+  for (let cycle = 0; cycle < 3; cycle++) {
+    for (const close of closers) {
+      await app.open();
+      await close();
+      await app.closed();
+    }
+  }
+  // Each open replaced the one forward entry the previous close left, so nothing piled up.
+  expect(window.history.length).toBe(app.settled.length + 1);
+});
+
+it("keeps history straight through a rapid close and reopen", async () => {
+  await using app = await openOnBrowserRouter();
+  await app.open();
+  await page.getByRole("button", { name: "Done" }).click();
+  // Reopen before our own Back has landed.
+  await page.getByRole("button", { name: "Choose model" }).click();
+  await expect.element(page.getByRole("dialog")).toBeInTheDocument();
+  await expect.poll(() => typeof window.history.state?.coxBackDismiss).toBe("string");
+  window.history.back();
+  await app.closed();
+});
+
+it("removes its history entry when the sheet unmounts while open", async () => {
+  await using app = await openOnBrowserRouter();
+  await app.open();
+  await app[Symbol.asyncDispose]();
+  await expect.poll(() => window.history.state?.coxBackDismiss).toBeUndefined();
+  expect(window.history.state?.__TSR_key).toBe(app.settled.routerKey);
+  expect(window.history.length).toBe(app.settled.length + 1);
+});
+
+it("leaves history alone for the desktop popover", async () => {
+  await using _viewport = await phoneViewport(1280, 900);
+  await using _screen = await render(<Picker />);
+  const length = window.history.length;
+  await page.getByRole("button", { name: "Choose model" }).click();
+  await expect.element(page.getByPlaceholder("Search models...")).toHaveFocus();
+  expect(window.history.length).toBe(length);
+  expect(window.history.state?.coxBackDismiss).toBeUndefined();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(page.getByPlaceholder("Search models...")).not.toBeInTheDocument();
+  expect(window.history.length).toBe(length);
 });
