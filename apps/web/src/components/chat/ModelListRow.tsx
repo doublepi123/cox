@@ -34,6 +34,8 @@ export const ModelListRow = memo(function ModelListRow(props: {
   jumpLabel?: string | null;
   disabledReason?: string | null;
   onToggleFavorite: (instanceId: ProviderInstanceId, slug: string) => void;
+  /** Phone sheet rows: 48px tall, larger text, logo and star. */
+  comfortable?: boolean;
 }) {
   const { t } = useTranslation();
   const model = {
@@ -46,6 +48,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
     <ComboboxItem
       hideIndicator
       selectedFill={false}
+      density={props.comfortable ? "comfortable" : "default"}
       index={props.index}
       value={modelPickerModelKey(props.instanceId, props.slug)}
       disabled={Boolean(props.disabledReason)}
@@ -63,13 +66,19 @@ export const ModelListRow = memo(function ModelListRow(props: {
         acpRegistryAgentId={props.acpRegistryAgentId}
         acpRegistryIconUrl={props.acpRegistryIconUrl}
         showBadge={props.showInstanceBadge}
-        className="size-4"
-        iconClassName="size-4"
+        className={props.comfortable ? "size-5" : "size-4"}
+        iconClassName={props.comfortable ? "size-5" : "size-4"}
         indicatorBackground="var(--popover)"
         badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs"
       />
       <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
-        <div className="min-w-0 truncate text-sm font-normal leading-snug">
+        <div
+          className={cn(
+            "min-w-0 truncate font-normal leading-snug",
+            props.comfortable ? "text-[0.9375rem]" : "text-sm",
+            props.comfortable && props.isSelected && "font-medium",
+          )}
+        >
           {getDisplayModelName(model)}
           {/* The logo is decorative, so name the provider for screen readers. */}
           <span className="sr-only">, {props.providerDisplayName}</span>
@@ -100,7 +109,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
           <TooltipTrigger
             render={
               <Button
-                size="icon-xs"
+                size={props.comfortable ? "icon-sm" : "icon-xs"}
                 variant="ghost-muted"
                 className="-mr-1 shrink-0"
                 onClick={(event) => {
@@ -115,7 +124,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
               >
                 <StarIcon
                   className={cn(
-                    "size-3.5 sm:size-3",
+                    props.comfortable ? "size-4" : "size-3.5 sm:size-3",
                     props.isFavorite && "fill-current text-warning",
                     (!props.isFavorite || props.favoriteStarOnHover) &&
                       "opacity-0 group-hover:opacity-100 group-data-highlighted:opacity-100 in-focus-visible:opacity-100 pointer-coarse:opacity-100",
@@ -130,7 +139,10 @@ export const ModelListRow = memo(function ModelListRow(props: {
         </Tooltip>
         {/* Last, and always reserved, so stars and the check keep fixed columns. */}
         <CheckIcon
-          className={cn("size-3.5", !props.isSelected && "invisible")}
+          className={cn(
+            props.comfortable ? "size-4 text-primary" : "size-3.5",
+            !props.isSelected && "invisible",
+          )}
           aria-hidden="true"
         />
       </div>

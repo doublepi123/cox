@@ -104,7 +104,23 @@ function ComboboxInput({
   );
 }
 
-function ComboboxSearchInput(props: React.ComponentProps<typeof ComboboxInput>) {
+function ComboboxSearchInput({
+  variant = "line",
+  ...props
+}: React.ComponentProps<typeof ComboboxInput> & { variant?: "line" | "filled" }) {
+  if (variant === "filled") {
+    return (
+      <div className="min-w-0 shrink-0 px-3 pb-2">
+        <div className="relative rounded-xl bg-input/48 transition-shadow focus-within:ring-2 focus-within:ring-ring/48 dark:bg-input/40 [&_input]:h-10 [&_input]:ps-9 [&_input]:pe-3 [&_input]:font-sans [&_input]:text-base [&_input]:leading-10">
+          <SearchIcon
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-4 shrink-0 -translate-y-1/2 text-muted-foreground/70"
+          />
+          <ComboboxInput {...props} showTrigger={false} unstyled />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-w-0 shrink-0 px-3 pt-2.5">
       <div className="relative -translate-y-px border-b border-border/70 pb-1.5 transition-colors focus-within:border-ring">
@@ -186,17 +202,22 @@ function ComboboxItem({
   children,
   hideIndicator: _hideIndicator = false,
   selectedFill = true,
+  density = "default",
   ...props
 }: ComboboxPrimitive.Item.Props & {
   hideIndicator?: boolean;
   /** Off for rows that mark selection themselves, so a fill only means hover or highlight. */
   selectedFill?: boolean;
+  /** `comfortable` is a 48px touch row with a tinted selection, for phone sheets. */
+  density?: "default" | "comfortable";
 }) {
   return (
     <ComboboxPrimitive.Item
       className={cn(
         "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-sm px-2 py-1 text-base outline-none not-data-disabled:hover:bg-foreground/[0.09] data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:text-foreground data-highlighted:bg-foreground/[0.09] data-highlighted:text-accent-foreground [&[data-highlighted][data-selected]]:bg-foreground/[0.09] [&[data-highlighted][data-selected]]:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         selectedFill && "data-selected:bg-foreground/[0.06]",
+        density === "comfortable" &&
+          "min-h-12 gap-3 rounded-lg px-3 sm:min-h-12 data-selected:bg-primary/10 [&[data-highlighted][data-selected]]:bg-primary/14",
         className,
       )}
       data-slot="combobox-item"

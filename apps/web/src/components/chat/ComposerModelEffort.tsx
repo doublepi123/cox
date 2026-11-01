@@ -146,6 +146,46 @@ const COLUMN_ROW =
   "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 max-sm:h-9 text-left text-sm text-foreground outline-none hover:bg-foreground/[0.09] focus-visible:bg-foreground/[0.09] disabled:cursor-not-allowed disabled:opacity-64";
 const COLUMN_LABEL = "px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs";
 
+const SHEET_SEGMENT =
+  "relative flex h-10 min-w-fit flex-auto basis-0 cursor-pointer items-center justify-center gap-1 rounded-[0.625rem] px-2.5 text-[0.8125rem] whitespace-nowrap text-muted-foreground outline-none transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-50 aria-checked:bg-popover aria-checked:font-medium aria-checked:text-foreground aria-checked:shadow-[0_1px_2px_rgb(0_0_0/0.18),0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent)] not-aria-checked:not-disabled:active:bg-foreground/[0.06] dark:aria-checked:bg-foreground/[0.13]";
+const SHEET_TRACK =
+  "flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl bg-input/48 p-1 [scrollbar-width:none] dark:bg-input/40 [&::-webkit-scrollbar]:hidden";
+
+/** One choice of a sheet's segmented control. It keeps the column row's radio contract. */
+function SegmentRow(props: {
+  label: string;
+  selected: boolean;
+  isDefault?: boolean | undefined;
+  disabled?: boolean;
+  level: boolean;
+  onPick: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={props.selected}
+      aria-description={props.isDefault ? t("Default") : undefined}
+      disabled={props.disabled}
+      data-effort-row
+      data-effort-level={props.level || undefined}
+      data-effort-default={props.isDefault || undefined}
+      tabIndex={props.selected ? 0 : -1}
+      className={SHEET_SEGMENT}
+      onClick={props.onPick}
+    >
+      {props.label}
+      {props.isDefault ? (
+        <span
+          aria-hidden="true"
+          className="absolute top-1.5 right-1.5 size-1 rounded-full bg-muted-foreground/60"
+        />
+      ) : null}
+    </button>
+  );
+}
+
 function ColumnRow(props: {
   label: string;
   /** Shown on hover; the column is too narrow to print it under the label. */
@@ -205,9 +245,10 @@ function moveBetweenRows(event: KeyboardEvent<HTMLElement>) {
   next.scrollIntoView({ block: "nearest" });
 }
 
-function EffortLevels(props: { traits: TraitsSelectionInput }) {
+function EffortLevels(props: { traits: TraitsSelectionInput; layout: "popover" | "sheet" }) {
   const { t } = useTranslation();
   const traits = useTraitsSelection(props.traits);
+  const sheet = props.layout === "sheet";
   const { effort, others } = columnControls(
     props.traits.provider,
     traits.selectDescriptors,
@@ -229,6 +270,65 @@ function EffortLevels(props: { traits: TraitsSelectionInput }) {
     );
   }
   if (!effort && others.length === 0) return <NoEffortRow />;
+  const renderSegments = (control: ColumnControl) => {
+    const isEffort = control === effort;
+    const { descriptor } = control;
+    const locked =
+      control.kind === "select" &&
+      descriptor.id === traits.primarySelectDescriptor?.id &&
+      traits.ultrathinkInBodyText;
+    const choices =
+      control.kind === "boolean"
+        ? ([true, false] as const).map((value) => ({
+            key: String(value),
+            label: value ? "On" : t("Off"),
+            selected: (control.descriptor.currentValue === true) === value,
+            isDefault: false,
+            onPick: () => traits.changeBoolean(descriptor.id, value),
+          }))
+        : selectableProviderOptionChoices(control.descriptor).map((option) => ({
+            key: option.id,
+            label: option.label,
+            selected: option.id === traits.selectValue(control.descriptor),
+            isDefault: option.isDefault,
+            onPick: () => traits.changeSelect(control.descriptor, option.id),
+          }));
+    const selected = choices.find((choice) => choice.selected);
+    return (
+      <div key={descriptor.id} className="flex flex-col gap-1.5">
+        <div className="flex items-baseline gap-2 px-0.5 text-xs">
+          <span className="font-medium text-muted-foreground">{descriptor.label}</span>
+          {selected?.isDefault ? (
+            <span className="ms-auto text-muted-foreground/70">{t("Default")}</span>
+          ) : null}
+        </div>
+        {locked ? (
+          <div className="px-0.5 text-muted-foreground/80 text-xs">{ULTRATHINK_IN_BODY_NOTE}</div>
+        ) : null}
+        <div role="radiogroup" aria-label={descriptor.label} className={SHEET_TRACK}>
+          {choices.map((choice) => (
+            <SegmentRow
+              key={choice.key}
+              label={choice.label}
+              selected={choice.selected}
+              isDefault={choice.isDefault}
+              disabled={Boolean(locked)}
+              level={isEffort}
+              onPick={choice.onPick}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+  if (sheet) {
+    return (
+      <>
+        {effort ? renderSegments(effort) : null}
+        {others.map(renderSegments)}
+      </>
+    );
+  }
   const renderControl = (control: ColumnControl) => {
     const isEffort = control === effort;
     const { descriptor } = control;
@@ -301,6 +401,13 @@ function NoEffortRow() {
 /** The model picker's effort column: the selected model's levels and its other options. */
 export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | null }) {
   const picker = use(DockedPickerContext);
+  if (picker.layout === "sheet") {
+    return (
+      <div className="flex flex-col gap-3 px-4 pt-3 pb-1">
+        {props.traits ? <EffortLevels traits={props.traits} layout="sheet" /> : <NoEffortRow />}
+      </div>
+    );
+  }
   const visibility = props.traits ? getTraitsSectionVisibility(props.traits) : null;
   const effort =
     props.traits && visibility
@@ -326,7 +433,7 @@ export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | nul
         className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pt-2.5 pb-1.5 max-sm:gap-0 max-sm:pt-1 max-sm:pb-1"
         onKeyDown={moveBetweenRows}
       >
-        {props.traits ? <EffortLevels traits={props.traits} /> : <NoEffortRow />}
+        {props.traits ? <EffortLevels traits={props.traits} layout="popover" /> : <NoEffortRow />}
       </div>
     </>
   );
@@ -341,12 +448,13 @@ function SpeedSegment(props: {
   description?: string | undefined;
   onPick: () => void;
 }) {
+  const sheet = use(DockedPickerContext).layout === "sheet";
   const buttonProps = {
     type: "button",
     role: "radio",
     "aria-checked": props.checked,
     "data-checked": props.checked || undefined,
-    className: FOOTER_SEGMENT,
+    className: sheet ? cn(SHEET_SEGMENT, "h-9 flex-none basis-auto px-3.5") : FOOTER_SEGMENT,
     onClick: props.onPick,
   } as const;
   const content = (
@@ -357,7 +465,7 @@ function SpeedSegment(props: {
       {props.label}
     </>
   );
-  if (!props.description) return <button {...buttonProps}>{content}</button>;
+  if (!props.description || sheet) return <button {...buttonProps}>{content}</button>;
   return (
     <Tooltip>
       <TooltipTrigger render={<button {...buttonProps} />}>{content}</TooltipTrigger>
@@ -368,6 +476,7 @@ function SpeedSegment(props: {
 
 function SpeedControl(props: { traits: TraitsSelectionInput }) {
   const { t } = useTranslation();
+  const sheet = use(DockedPickerContext).layout === "sheet";
   const traits = useTraitsSelection(props.traits);
   const { speedSelect, fastToggle } = splitSpeed(
     props.traits.provider,
@@ -379,7 +488,7 @@ function SpeedControl(props: { traits: TraitsSelectionInput }) {
     <div
       role="radiogroup"
       aria-label={speedSelect?.label ?? fastToggle?.label}
-      className="flex rounded-lg bg-input/40 p-0.5"
+      className={sheet ? cn(SHEET_TRACK, "p-0.5") : "flex rounded-lg bg-input/40 p-0.5"}
     >
       {speedSelect
         ? selectableProviderOptionChoices(speedSelect).map((option) => (
@@ -412,6 +521,7 @@ function PermissionsMenu(props: {
   onChange: (mode: RuntimeMode) => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const sheet = use(DockedPickerContext).layout === "sheet";
   const current = props.options.find((option) => option.mode === props.runtimeMode);
   if (!current) return null;
   const CurrentIcon = current.icon;
@@ -428,7 +538,10 @@ function PermissionsMenu(props: {
             type="button"
             data-composer-permissions-trigger
             aria-label={`Permissions: ${current.label}`}
-            className="ms-auto flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-muted-foreground text-xs outline-none hover:bg-foreground/[0.09] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-popup-open:bg-foreground/[0.09] data-popup-open:text-foreground"
+            className={cn(
+              "ms-auto flex cursor-pointer items-center gap-1.5 text-muted-foreground outline-none hover:bg-foreground/[0.09] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-popup-open:bg-foreground/[0.09] data-popup-open:text-foreground",
+              sheet ? "h-10 rounded-xl px-3 text-[0.8125rem]" : "h-7 rounded-md px-2 text-xs",
+            )}
           />
         }
       >
@@ -454,8 +567,15 @@ export function ComposerPickerFooter(props: {
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const sheet = use(DockedPickerContext).layout === "sheet";
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2 max-sm:py-1">
+    <div
+      className={
+        sheet
+          ? "flex flex-wrap items-center gap-2 px-4 pt-2 pb-3"
+          : "flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2 max-sm:py-1"
+      }
+    >
       {props.traits ? <SpeedControl traits={props.traits} /> : null}
       <PermissionsMenu
         runtimeMode={props.runtimeMode}

@@ -20,6 +20,11 @@ import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
+import {
+  ModelPickerSheetPopup,
+  ModelPickerSheetRoot,
+  ModelPickerSheetTrigger,
+} from "./ModelPickerSheet";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -70,8 +75,14 @@ function lockBackgroundScroll(popup: HTMLElement | null) {
   };
 }
 
-/** What a docked effort column needs from its picker: the model it serves. */
-export const DockedPickerContext = createContext<{ modelLabel: string }>({ modelLabel: "" });
+/**
+ * What a docked effort column needs from its picker: the model it serves, and whether it sits
+ * in the desktop popover or the phone bottom sheet.
+ */
+export const DockedPickerContext = createContext<{
+  modelLabel: string;
+  layout: "popover" | "sheet";
+}>({ modelLabel: "", layout: "popover" });
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   environmentId: EnvironmentId | null;
@@ -122,6 +133,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const size = props.size ?? "sm";
   const docked = props.effortColumn !== undefined;
   const coarsePointer = useMediaQuery({ pointer: "coarse" });
+  // Touch screens narrower than a laptop get the bottom sheet; mouse and trackpad keep the popover.
+  const touchBelowLaptop = useMediaQuery({ max: "lg", pointer: "coarse" });
+  const sheet = docked && touchBelowLaptop;
 
   const activeEntry =
     props.instanceEntries.find((entry) => entry.instanceId === props.activeInstanceId) ?? null;
@@ -186,6 +200,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     if (!docked) {
       setIsMenuOpen(false);
       return;
+    }
+    // A pick from search results drops the soft keyboard, so the levels come back into view.
+    if (sheet && document.activeElement === searchInputRef.current) {
+      searchInputRef.current?.blur();
     }
     // The column renders the new model's levels on commit.
     window.requestAnimationFrame(() => focusEffort("levels"));
@@ -267,125 +285,200 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       }
       onInstanceModelChange={handleInstanceModelChange}
       {...(docked ? { docked, onFocusEffort: () => void focusEffort("any") } : {})}
+      {...(sheet ? { layout: "sheet" as const } : {})}
     />
   );
+
+  const onOpenChange = (open: boolean) => {
+    if (props.disabled) {
+      setIsMenuOpen(false);
+      return;
+    }
+    setIsMenuOpen(open);
+  };
+  const onOpenChangeComplete = (open: boolean) => {
+    const target = takeOpenTarget(triggerRef.current);
+    if (open && docked && target) openTarget(target);
+  };
+  const triggerControl = (
+    <ComposerControl
+      ref={triggerRef}
+      aria-label={[
+        props.triggerAriaLabel ?? props.triggerLabel ?? allModelNames ?? triggerLabel,
+        props.triggerDetail,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      size={size}
+      data-chat-provider-model-picker="true"
+      data-composer-shortcut={props.triggerShortcuts}
+      onClick={(event) => {
+        if (!isMenuOpen || !docked) return;
+        const target = takeOpenTarget(triggerRef.current);
+        if (!target) return;
+        // A shortcut aimed at the open picker moves within it instead of closing it.
+        (event as typeof event & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
+        openTarget(target);
+      }}
+      className={cn(
+        "min-w-0 shrink justify-between whitespace-nowrap",
+        props.compact ? "max-w-42 shrink-0" : !props.isComposerOwned && "max-w-48 sm:max-w-56",
+        props.triggerClassName,
+      )}
+      disabled={props.disabled}
+    />
+  );
+  const triggerContent = (
+    <span className={cn("flex min-w-0 flex-1 items-center", size === "xs" ? "gap-1" : "gap-1.5")}>
+      {selectedEntries && props.triggerLabel === undefined ? (
+        <span
+          data-chat-provider-model-picker-icon
+          className="flex shrink-0 items-center -space-x-1"
+          aria-hidden="true"
+        >
+          {selectedEntries
+            .slice(0, 3)
+            .map((selection) =>
+              selection.entry ? (
+                <ProviderInstanceIcon
+                  key={`${selection.instanceId}:${selection.model}`}
+                  driverKind={selection.entry.driverKind}
+                  displayName={selection.entry.displayName}
+                  accentColor={selection.entry.accentColor}
+                  acpRegistryAgentId={selection.entry.acpRegistryAgentId}
+                  acpRegistryIconUrl={selection.entry.acpRegistryIconUrl}
+                  className="size-4 rounded-full bg-(--chat-composer-glass-surface,var(--background)) ring-2 ring-(--chat-composer-glass-surface,var(--background))"
+                  iconClassName="size-4"
+                />
+              ) : null,
+            )}
+          {selectedEntries.length > 3 ? (
+            <span className="relative z-30 flex size-4 items-center justify-center rounded-full bg-(--chat-composer-glass-surface,var(--background)) text-3xs ring-2 ring-(--chat-composer-glass-surface,var(--background))">
+              +{selectedEntries.length - 3}
+            </span>
+          ) : null}
+        </span>
+      ) : activeEntry && props.triggerLabel === undefined ? (
+        // Narrow compacted composers hide the provider icon before truncating the name.
+        <span data-chat-provider-model-picker-icon className="contents">
+          <ProviderInstanceIcon
+            driverKind={activeEntry.driverKind}
+            displayName={activeEntry.displayName}
+            accentColor={activeEntry.accentColor}
+            acpRegistryAgentId={activeEntry.acpRegistryAgentId}
+            acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
+            showBadge={showInstanceBadge}
+            className="size-4"
+            iconClassName={cn("size-4", props.activeProviderIconClassName)}
+            indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
+            badgeClassName={cn(
+              "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
+              size === "xs" && "shadow-none",
+            )}
+          />
+        </span>
+      ) : null}
+      {props.isComposerOwned ? (
+        <span {...triggerTextProps}>{triggerText}</span>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={<span {...triggerTextProps} />}>{triggerText}</TooltipTrigger>
+          <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
+        </Tooltip>
+      )}
+      {props.triggerSuffix}
+      {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
+        <Badge variant="outline" size="sm">
+          {t("Unavailable")}
+        </Badge>
+      ) : null}
+    </span>
+  );
+
+  if (sheet) {
+    return (
+      <ModelPickerSheetRoot
+        open={isMenuOpen}
+        onOpenChange={onOpenChange}
+        onOpenChangeComplete={onOpenChangeComplete}
+      >
+        <ModelPickerSheetTrigger render={triggerControl}>{triggerContent}</ModelPickerSheetTrigger>
+        <ModelPickerSheetPopup
+          onPopup={(popup) => {
+            popupRef.current = popup;
+          }}
+          {...(props.isComposerOwned
+            ? { floatingLayerProps: { "data-chat-composer-floating-layer": "true" } }
+            : {})}
+          {...(props.isComposerOwned && composerFloatingLayerProps.finalFocus
+            ? { onKeyboardClose: composerFloatingLayerProps.finalFocus }
+            : {})}
+          summary={
+            <>
+              {activeEntry ? (
+                <ProviderInstanceIcon
+                  driverKind={activeEntry.driverKind}
+                  displayName={activeEntry.displayName}
+                  accentColor={activeEntry.accentColor}
+                  acpRegistryAgentId={activeEntry.acpRegistryAgentId}
+                  acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
+                  className="size-3.5"
+                  iconClassName="size-3.5"
+                  indicatorBackground="var(--popover)"
+                />
+              ) : null}
+              <span className="min-w-0 truncate">
+                {[allModelNames ?? triggerLabel, props.triggerDetail].filter(Boolean).join(" · ")}
+              </span>
+            </>
+          }
+        >
+          <DockedPickerContext value={{ modelLabel: triggerTitle, layout: "sheet" }}>
+            <div className="flex min-h-0 shrink flex-col">{picker}</div>
+            <div
+              data-model-picker-effort
+              className="shrink-0 border-t border-border/60 group-has-[[data-model-picker-content]_input:focus]/sheet:[@media(max-height:620px)]:hidden"
+              onKeyDown={(event) => {
+                const step =
+                  event.key === "ArrowRight" || event.key === "ArrowDown"
+                    ? 1
+                    : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                      ? -1
+                      : 0;
+                if (step === 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+                const group = (event.target as HTMLElement).closest("[role=radiogroup]");
+                const rows = Array.from(
+                  group?.querySelectorAll<HTMLElement>("[data-effort-row]:not(:disabled)") ?? [],
+                );
+                const index = rows.indexOf(event.target as HTMLElement);
+                const next = rows[index + step];
+                if (index < 0 || !next) return;
+                event.preventDefault();
+                event.stopPropagation();
+                next.focus();
+              }}
+            >
+              {props.effortColumn}
+            </div>
+            <div className="shrink-0 group-has-[[data-model-picker-content]_input:focus]/sheet:[@media(max-height:620px)]:hidden">
+              {props.footer}
+              {props.selectedModels === undefined ? (
+                <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
+              ) : null}
+            </div>
+          </DockedPickerContext>
+        </ModelPickerSheetPopup>
+      </ModelPickerSheetRoot>
+    );
+  }
 
   return (
     <Popover
       open={isMenuOpen}
-      onOpenChange={(open) => {
-        if (props.disabled) {
-          setIsMenuOpen(false);
-          return;
-        }
-        setIsMenuOpen(open);
-      }}
-      onOpenChangeComplete={(open) => {
-        const target = takeOpenTarget(triggerRef.current);
-        if (open && docked && target) openTarget(target);
-      }}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
     >
-      <PopoverTrigger
-        render={
-          <ComposerControl
-            ref={triggerRef}
-            aria-label={[
-              props.triggerAriaLabel ?? props.triggerLabel ?? allModelNames ?? triggerLabel,
-              props.triggerDetail,
-            ]
-              .filter(Boolean)
-              .join(", ")}
-            size={size}
-            data-chat-provider-model-picker="true"
-            data-composer-shortcut={props.triggerShortcuts}
-            onClick={(event) => {
-              if (!isMenuOpen || !docked) return;
-              const target = takeOpenTarget(triggerRef.current);
-              if (!target) return;
-              // A shortcut aimed at the open picker moves within it instead of closing it.
-              (
-                event as typeof event & { preventBaseUIHandler?: () => void }
-              ).preventBaseUIHandler?.();
-              openTarget(target);
-            }}
-            className={cn(
-              "min-w-0 shrink justify-between whitespace-nowrap",
-              props.compact
-                ? "max-w-42 shrink-0"
-                : !props.isComposerOwned && "max-w-48 sm:max-w-56",
-              props.triggerClassName,
-            )}
-            disabled={props.disabled}
-          />
-        }
-      >
-        <span
-          className={cn("flex min-w-0 flex-1 items-center", size === "xs" ? "gap-1" : "gap-1.5")}
-        >
-          {selectedEntries && props.triggerLabel === undefined ? (
-            <span
-              data-chat-provider-model-picker-icon
-              className="flex shrink-0 items-center -space-x-1"
-              aria-hidden="true"
-            >
-              {selectedEntries
-                .slice(0, 3)
-                .map((selection) =>
-                  selection.entry ? (
-                    <ProviderInstanceIcon
-                      key={`${selection.instanceId}:${selection.model}`}
-                      driverKind={selection.entry.driverKind}
-                      displayName={selection.entry.displayName}
-                      accentColor={selection.entry.accentColor}
-                      acpRegistryAgentId={selection.entry.acpRegistryAgentId}
-                      acpRegistryIconUrl={selection.entry.acpRegistryIconUrl}
-                      className="size-4 rounded-full bg-(--chat-composer-glass-surface,var(--background)) ring-2 ring-(--chat-composer-glass-surface,var(--background))"
-                      iconClassName="size-4"
-                    />
-                  ) : null,
-                )}
-              {selectedEntries.length > 3 ? (
-                <span className="relative z-30 flex size-4 items-center justify-center rounded-full bg-(--chat-composer-glass-surface,var(--background)) text-3xs ring-2 ring-(--chat-composer-glass-surface,var(--background))">
-                  +{selectedEntries.length - 3}
-                </span>
-              ) : null}
-            </span>
-          ) : activeEntry && props.triggerLabel === undefined ? (
-            // Narrow compacted composers hide the provider icon before truncating the name.
-            <span data-chat-provider-model-picker-icon className="contents">
-              <ProviderInstanceIcon
-                driverKind={activeEntry.driverKind}
-                displayName={activeEntry.displayName}
-                accentColor={activeEntry.accentColor}
-                acpRegistryAgentId={activeEntry.acpRegistryAgentId}
-                acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
-                showBadge={showInstanceBadge}
-                className="size-4"
-                iconClassName={cn("size-4", props.activeProviderIconClassName)}
-                indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
-                badgeClassName={cn(
-                  "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
-                  size === "xs" && "shadow-none",
-                )}
-              />
-            </span>
-          ) : null}
-          {props.isComposerOwned ? (
-            <span {...triggerTextProps}>{triggerText}</span>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger render={<span {...triggerTextProps} />}>{triggerText}</TooltipTrigger>
-              <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
-            </Tooltip>
-          )}
-          {props.triggerSuffix}
-          {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
-            <Badge variant="outline" size="sm">
-              {t("Unavailable")}
-            </Badge>
-          ) : null}
-        </span>
-      </PopoverTrigger>
+      <PopoverTrigger render={triggerControl}>{triggerContent}</PopoverTrigger>
       <PopoverPopup
         {...(props.isComposerOwned ? composerFloatingLayerProps : {})}
         ref={(popup) => {
@@ -406,7 +499,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         touchBackdrop
       >
         {props.effortColumn ? (
-          <DockedPickerContext value={{ modelLabel: triggerTitle }}>
+          <DockedPickerContext value={{ modelLabel: triggerTitle, layout: "popover" }}>
             <div className="flex max-h-[calc(var(--available-height)-2px)] flex-col">
               {/* Phones stack the list over the levels. A short popup keeps every level and
                   shrinks the list down to its search row; while searching the results win. */}

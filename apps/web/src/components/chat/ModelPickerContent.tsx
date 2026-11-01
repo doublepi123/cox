@@ -23,7 +23,7 @@ import {
   type RefObject,
 } from "react";
 import { ModelListRow } from "./ModelListRow";
-import { ModelPickerSidebar } from "./ModelPickerSidebar";
+import { ModelPickerProviderChips, ModelPickerSidebar } from "./ModelPickerSidebar";
 import { getProviderStatusMessage, hasProviderSetup } from "./ProviderStatusBanner";
 import {
   modelPickerLegacySectionKey,
@@ -165,10 +165,14 @@ function adjacentModelPickerProvider(input: {
 
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 const MODEL_LIST_ESTIMATED_ITEM_SIZE = 32;
+const SHEET_MODEL_LIST_ESTIMATED_ITEM_SIZE = 48;
 // Rendered heights in `--spacing` units. Chrome is the search box and list padding, plus a 1px border.
 const ROW_UNITS = 8;
 const ROW_SEPARATOR_UNITS = 0.5;
 const LIST_CHROME_UNITS = 15.5;
+// The phone sheet's rows are 48px tall; its list adds 12px of padding.
+const SHEET_ROW_PX = 48;
+const SHEET_LIST_PADDING_PX = 12;
 
 function ModelListSeparator() {
   return <div className="h-0.5" />;
@@ -258,11 +262,14 @@ function ModelPickerList({
   itemKeys,
   extraData,
   renderItem,
+  sheetHeight,
 }: {
   listRef: RefObject<LegendListRef | null>;
   itemKeys: ReadonlyArray<string>;
   extraData: unknown;
   renderItem: (props: { item: string; index: number }) => ReactNode;
+  /** In the phone sheet the list asks for its tallest tab and shrinks when the sheet is short. */
+  sheetHeight?: number;
 }) {
   const [showTopScrollFade, setShowTopScrollFade] = useState(false);
   const [showBottomScrollFade, setShowBottomScrollFade] = useState(false);
@@ -303,8 +310,15 @@ function ModelPickerList({
     <div
       className={cn(
         "relative min-h-0 overflow-hidden pr-px",
-        itemKeys.length > 0 ? "flex-1" : "h-0",
+        sheetHeight !== undefined
+          ? itemKeys.length > 0
+            ? "shrink"
+            : "h-0"
+          : itemKeys.length > 0
+            ? "flex-1"
+            : "h-0",
       )}
+      style={sheetHeight !== undefined && itemKeys.length > 0 ? { height: sheetHeight } : undefined}
     >
       <ComboboxListVirtualized>
         <LegendList<string>
@@ -313,10 +327,14 @@ function ModelPickerList({
           extraData={extraData}
           keyExtractor={(modelKey) => modelKey}
           renderItem={renderItem}
-          estimatedItemSize={MODEL_LIST_ESTIMATED_ITEM_SIZE}
+          estimatedItemSize={
+            sheetHeight !== undefined
+              ? SHEET_MODEL_LIST_ESTIMATED_ITEM_SIZE
+              : MODEL_LIST_ESTIMATED_ITEM_SIZE
+          }
           drawDistance={480}
           recycleItems
-          contentContainerClassName="pl-2 pr-px"
+          contentContainerClassName={sheetHeight !== undefined ? "px-2" : "pl-2 pr-px"}
           ItemSeparatorComponent={ModelListSeparator}
           onLayout={updateScrollFades}
           onScroll={updateScrollFades}
@@ -369,6 +387,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   docked?: boolean;
   /** Right at the end of the search text moves into the popup's effort column. */
   onFocusEffort?: () => void;
+  /**
+   * `sheet` is the phone bottom sheet: provider chips over a filled search field and taller
+   * rows, the list sized to its tallest tab and shrinking with the sheet.
+   */
+  layout?: "popover" | "sheet";
 }) {
   const { t } = useTranslation();
   const {
@@ -460,6 +483,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const toggleFavorite = useToggleEnvironmentModelFavorite(props.environmentId);
 
   const coarsePointer = useMediaQuery({ pointer: "coarse" });
+  const sheet = props.layout === "sheet";
   const focusSearchInput = () => {
     searchInputRef.current?.focus({ preventScroll: true });
   };
@@ -591,14 +615,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const isLocked = lockedProvider !== null;
   const isSearching = searchQuery.trim().length > 0;
   // Fit the tallest tab so switching tabs never resizes the popup and moves the rail under the cursor.
-  const tallestTabUnits = (() => {
-    const unitsByTab = new Map<ProviderInstanceId | "favorites", number>();
+  const tallestTabRows = (() => {
+    const rowsByTab = new Map<ProviderInstanceId | "favorites", number>();
     const addRow = (tab: ProviderInstanceId | "favorites") => {
-      const previous = unitsByTab.get(tab);
-      unitsByTab.set(
-        tab,
-        previous === undefined ? ROW_UNITS : previous + ROW_SEPARATOR_UNITS + ROW_UNITS,
-      );
+      rowsByTab.set(tab, (rowsByTab.get(tab) ?? 0) + 1);
     };
     const tabsWithLegacyRow = new Set<ProviderInstanceId>();
     for (const model of flatModels) {
@@ -612,8 +632,16 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }
     }
     for (const instanceId of tabsWithLegacyRow) addRow(instanceId);
-    return Math.max(0, ...unitsByTab.values());
+    return Math.max(0, ...rowsByTab.values());
   })();
+  const tallestTabUnits =
+    tallestTabRows === 0
+      ? 0
+      : tallestTabRows * ROW_UNITS + (tallestTabRows - 1) * ROW_SEPARATOR_UNITS;
+  const sheetListHeight =
+    Math.max(1, tallestTabRows) * SHEET_ROW_PX +
+    Math.max(0, tallestTabRows - 1) * ROW_SEPARATOR_UNITS * 4 +
+    SHEET_LIST_PADDING_PX;
   const lockedDisabledInstanceIds = (() => {
     if (!isLocked) {
       return undefined;
@@ -643,6 +671,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     return [...available, ...disabled];
   })();
   const showSidebar = !isSearching && sidebarInstanceEntries.length > 0;
+  // The sheet keeps its chips while searching, so the field never jumps under the thumb.
+  const showProviderChips = sheet && sidebarInstanceEntries.length > 0;
   const instanceOrder = instanceEntries.map((entry) => entry.instanceId);
 
   const filteredModels = (() => {
@@ -844,25 +874,51 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       <div
         ref={pickerContentRef}
         className={cn(
-          "relative flex w-screen max-w-90 flex-row overflow-hidden",
-          props.docked
-            ? [
-                "max-sm:h-56! max-sm:min-h-11! max-sm:w-full max-sm:max-w-none",
-                isSearching ? "max-sm:shrink" : "max-sm:shrink-[10000]",
-              ]
-            : "max-h-86.5",
+          "relative flex overflow-hidden",
+          sheet
+            ? "min-h-0 w-full shrink flex-col"
+            : [
+                "w-screen max-w-90 flex-row",
+                props.docked
+                  ? [
+                      "max-sm:h-56! max-sm:min-h-11! max-sm:w-full max-sm:max-w-none",
+                      isSearching ? "max-sm:shrink" : "max-sm:shrink-[10000]",
+                    ]
+                  : "max-h-86.5",
+              ],
         )}
         style={
-          isSearching
-            ? { height: searchHeight }
-            : {
-                minHeight: `min(calc(var(--spacing) * ${tallestTabUnits + LIST_CHROME_UNITS} + 1px), calc(var(--spacing) * 86.5))`,
-              }
+          sheet
+            ? undefined
+            : isSearching
+              ? { height: searchHeight }
+              : {
+                  minHeight: `min(calc(var(--spacing) * ${tallestTabUnits + LIST_CHROME_UNITS} + 1px), calc(var(--spacing) * 86.5))`,
+                }
         }
         data-model-picker-content="true"
         data-model-picker-searching={isSearching || undefined}
       >
-        {showSidebar && (
+        {showProviderChips ? (
+          <ModelPickerProviderChips
+            selectedInstanceId={selectedInstanceId}
+            dimmed={isSearching}
+            onSelectInstance={(instanceId) => {
+              setSearchQuery("");
+              handleSelectInstance(instanceId);
+            }}
+            instanceEntries={sidebarInstanceEntries}
+            {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
+            {...(lockedDisabledInstanceIds
+              ? {
+                  disabledInstanceIds: lockedDisabledInstanceIds,
+                  getDisabledInstanceTooltip: (entry: ProviderInstanceEntry) =>
+                    `${entry.displayName} is unavailable in this thread. Start a new thread to switch providers.`,
+                }
+              : {})}
+          />
+        ) : null}
+        {showSidebar && !sheet && (
           <ModelPickerSidebar
             selectedInstanceId={selectedInstanceId}
             onSelectInstance={handleSelectInstance}
@@ -924,16 +980,20 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         >
           <div
             className={cn(
-              "flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/40",
-              showSidebar && "border-l border-border/70",
+              "flex min-h-0 flex-col overflow-hidden",
+              sheet ? "shrink" : "flex-1 bg-muted/40",
+              showSidebar && !sheet && "border-l border-border/70",
             )}
           >
             <ComboboxSearchInput
               ref={searchInputRef}
+              variant={sheet ? "filled" : "line"}
+              enterKeyHint="search"
               placeholder={t("Search models...")}
               value={searchQuery}
               onChange={(e) => {
-                if (!isSearching) setSearchHeight(pickerContentRef.current?.offsetHeight ?? 0);
+                if (!isSearching && !sheet)
+                  setSearchHeight(pickerContentRef.current?.offsetHeight ?? 0);
                 setSearchQuery(e.target.value);
               }}
               onKeyDown={(e) => {
@@ -1020,6 +1080,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               listRef={modelListRef}
               itemKeys={filteredItemKeys}
               extraData={modelListExtraData}
+              {...(sheet ? { sheetHeight: sheetListHeight } : {})}
               renderItem={({ item: modelKey, index }) => {
                 if (legacySection?.key === modelKey) {
                   return (
@@ -1028,6 +1089,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       index={index}
                       value={modelKey}
                       aria-expanded={legacySection.isExpanded}
+                      density={sheet ? "comfortable" : "default"}
                       className="group w-full cursor-pointer"
                     >
                       <span className="text-sm leading-snug text-muted-foreground group-hover:text-foreground group-data-highlighted:text-foreground">
@@ -1068,6 +1130,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
                     disabledReason={disabledReason}
                     onToggleFavorite={toggleFavorite}
+                    comfortable={sheet}
                   />
                 );
               }}

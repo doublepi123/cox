@@ -31,11 +31,17 @@ const levels: Extract<ProviderOptionDescriptor, { type: "select" }> = {
   })),
   currentValue: "medium",
 };
+const fastMode: Extract<ProviderOptionDescriptor, { type: "boolean" }> = {
+  id: "fastMode",
+  label: "Fast mode",
+  type: "boolean",
+  currentValue: false,
+};
 const models: ReadonlyArray<ServerProviderModel> = Array.from({ length: 8 }, (_, index) => ({
   slug: `model-${index + 1}`,
   name: `Model ${index + 1}`,
   isCustom: false,
-  capabilities: { optionDescriptors: [levels] },
+  capabilities: { optionDescriptors: [levels, fastMode] },
 }));
 const runtimeModes = (["approval-required", "full-access"] as const).map((mode) => ({
   mode,
@@ -102,23 +108,20 @@ async function phoneViewport(width: number, height: number) {
 /** Reports a touch screen to `(pointer: coarse)` queries, as a phone's WebView does. */
 function coarsePointer() {
   const matchMedia = window.matchMedia;
-  const spy = vi.spyOn(window, "matchMedia").mockImplementation((query) => {
-    if (!query.includes("pointer")) return matchMedia.call(window, query);
-    return {
-      matches: query.includes("coarse"),
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    };
-  });
+  const spy = vi
+    .spyOn(window, "matchMedia")
+    .mockImplementation((query) =>
+      matchMedia.call(
+        window,
+        query
+          .replaceAll("(pointer: coarse)", "(min-width: 0px)")
+          .replaceAll("(pointer: fine)", "(max-width: 0px)"),
+      ),
+    );
   return { [Symbol.dispose]: () => spy.mockRestore() };
 }
 
-async function openPicker(height: number, triggerTop: number) {
+async function openSheet(height: number, triggerTop: number) {
   const stack = new AsyncDisposableStack();
   stack.use(coarsePointer());
   stack.use(await phoneViewport(400, height));
@@ -127,13 +130,12 @@ async function openPicker(height: number, triggerTop: number) {
   stack.use(await render(<Picker />, { container }));
   await page.getByRole("button", { name: "Choose model" }).click();
   await expect.element(page.getByRole("radio", { name: "Max" })).toBeInTheDocument();
-  const popup = document.querySelector<HTMLElement>("[data-slot=popover-popup]")!;
-  await expect.poll(() => popup.getAnimations({ subtree: true }).length).toBe(0);
+  const sheet = document.querySelector<HTMLElement>("[data-model-picker-sheet]")!;
+  await expect.poll(() => sheet.getAnimations({ subtree: true }).length).toBe(0);
   return {
-    popup,
-    viewport: popup.querySelector<HTMLElement>("[data-slot=popover-viewport]")!,
-    column: popup.querySelector<HTMLElement>("[data-model-picker-effort]")!,
-    list: popup.querySelector<HTMLElement>("[data-model-picker-content]")!,
+    sheet,
+    effort: sheet.querySelector<HTMLElement>("[data-model-picker-effort]")!,
+    list: sheet.querySelector<HTMLElement>("[role=listbox]")!,
     [Symbol.asyncDispose]: () => stack.disposeAsync(),
   };
 }
@@ -141,96 +143,149 @@ async function openPicker(height: number, triggerTop: number) {
 function isInside(inner: Element, outer: Element) {
   const a = inner.getBoundingClientRect();
   const b = outer.getBoundingClientRect();
-  return a.top >= b.top - 0.5 && a.bottom <= b.bottom + 0.5;
+  return (
+    a.top >= b.top - 0.5 &&
+    a.bottom <= b.bottom + 0.5 &&
+    a.left >= b.left - 0.5 &&
+    a.right <= b.right + 0.5
+  );
 }
 
-// A centered composer on a 400x869 phone, the same at 400x700, and the reported screen where
-// the composer leaves about 316px above it and less below, so the popup opens upward.
+function visibleRows(list: HTMLElement) {
+  return Array.from(list.querySelectorAll<HTMLElement>("[role=option]")).filter((row) =>
+    isInside(row, list),
+  );
+}
+
+// A composer in the middle of a 400x869 phone, the same composer at the bottom of a thread,
+// and a short 400x650 screen. The sheet ignores where the trigger is.
 for (const [height, triggerTop] of [
   [869, 420],
-  [700, 330],
+  [869, 800],
   [650, 325],
 ] as const) {
-  it(`shows every effort level without scrolling at 400x${height}`, async () => {
-    await using picker = await openPicker(height, triggerTop);
-    const { popup, viewport, column, list } = picker;
-    const levelList = column.querySelector<HTMLElement>("[role=radiogroup]")!.parentElement!;
+  it(`docks the picker to the bottom edge at 400x${height} (trigger at ${triggerTop})`, async () => {
+    await using picker = await openSheet(height, triggerTop);
+    const { sheet, effort, list } = picker;
 
-    await expect
-      .poll(() => {
-        const rect = popup.getBoundingClientRect();
-        return rect.top >= 0 && rect.bottom <= window.innerHeight;
-      })
-      .toBe(true);
-    await expect.poll(() => viewport.scrollHeight - viewport.clientHeight).toBeLessThanOrEqual(1);
-    await expect.poll(() => levelList.scrollHeight - levelList.clientHeight).toBeLessThanOrEqual(1);
-    const rows = Array.from(column.querySelectorAll<HTMLElement>("[data-effort-level]"));
-    expect(rows.map((row) => row.textContent)).toEqual(
-      expect.arrayContaining(["Low", "MediumDefault", "High", "Xhigh", "Max"]),
-    );
-    for (const row of rows) {
-      expect(isInside(row, levelList) && isInside(row, popup)).toBe(true);
-      expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(36);
+    const rect = sheet.getBoundingClientRect();
+    expect(rect.left).toBe(0);
+    expect(rect.width).toBe(400);
+    expect(Math.abs(rect.bottom - window.innerHeight)).toBeLessThanOrEqual(1);
+    expect(rect.top).toBeGreaterThanOrEqual(height * 0.15 - 1);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(400);
+    expect(sheet.scrollHeight - sheet.clientHeight).toBeLessThanOrEqual(1);
+
+    // Every level and the speed and access controls show without scrolling.
+    const levels = Array.from(effort.querySelectorAll<HTMLElement>("[data-effort-level]"));
+    expect(levels.map((level) => level.textContent)).toEqual([
+      "Low",
+      "Medium",
+      "High",
+      "Xhigh",
+      "Max",
+    ]);
+    for (const level of levels) {
+      expect(isInside(level, sheet)).toBe(true);
+      expect(level.getBoundingClientRect().height).toBeGreaterThanOrEqual(40);
     }
+    const track = levels[0]!.parentElement!;
+    expect(track.scrollWidth - track.clientWidth).toBeLessThanOrEqual(1);
+    expect(isInside(page.getByRole("radio", { name: "Fast" }).element(), sheet)).toBe(true);
+    expect(isInside(page.getByRole("button", { name: /^Permissions/ }).element(), sheet)).toBe(
+      true,
+    );
+    expect(
+      levels.find((level) => level.dataset.effortDefault)?.getAttribute("aria-description"),
+    ).toBe("Default");
 
-    const search = list.querySelector("input")!;
-    expect(isInside(search, popup)).toBe(true);
-    // The list keeps its search row and still scrolls to every model.
+    // Rows are thumb-sized, and the list scrolls to every model.
+    const rows = visibleRows(list);
+    expect(rows.length).toBeGreaterThanOrEqual(height >= 869 ? 4 : 2);
+    for (const row of rows) expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
     await page.getByPlaceholder("Search models...").fill("Model 8");
     const last = page.getByRole("option", { name: /Model 8/ });
-    await expect.element(last).toBeVisible();
-    await expect
-      .poll(() => isInside(last.element(), list) && isInside(last.element(), popup))
-      .toBe(true);
+    await expect.poll(() => isInside(last.element(), list)).toBe(true);
     await last.click();
-    await expect.element(page.getByRole("radio", { name: "Max" })).toBeInTheDocument();
+    await expect.element(page.getByPlaceholder("Search models...")).not.toHaveFocus();
+    await expect
+      .element(page.getByRole("dialog").getByText("Model 8", { exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("option", { name: /Model 8/ }))
+      .toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("radio", { name: "Max" }).click();
     await expect
       .element(page.getByRole("radio", { name: "Max" }))
       .toHaveAttribute("aria-checked", "true");
+    await expect.element(page.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
-it("leaves a usable model list when the phone has room", async () => {
-  await using picker = await openPicker(869, 420);
-  const scroller = picker.list.querySelector<HTMLElement>("[role=listbox]")!;
-  expect(picker.list.getBoundingClientRect().height).toBeGreaterThanOrEqual(120);
-  await expect.element(page.getByRole("option", { name: /Model 1/ })).toBeVisible();
-  expect(scroller.getBoundingClientRect().height).toBeGreaterThan(0);
+it("shows at least four models on a 400x869 phone", async () => {
+  await using picker = await openSheet(869, 420);
+  expect(visibleRows(picker.list).length).toBeGreaterThanOrEqual(4);
 });
 
 it("keeps the soft keyboard closed when a touch screen opens the picker", async () => {
-  await using picker = await openPicker(869, 420);
+  await using picker = await openSheet(869, 420);
   const search = page.getByPlaceholder("Search models...");
   await expect.element(search).not.toHaveFocus();
-  await expect.poll(() => picker.popup.contains(document.activeElement)).toBe(true);
+  await expect.poll(() => picker.sheet.contains(document.activeElement)).toBe(true);
 
-  // A hardware keyboard still reaches the levels and the search, and Escape still closes.
-  await userEvent.keyboard("{Tab}");
-  await expect.poll(() => picker.popup.contains(document.activeElement)).toBe(true);
-  await search.click();
-  await expect.element(search).toHaveFocus();
-  await userEvent.keyboard("{ArrowRight}");
-  await expect.element(page.getByRole("radio", { name: /^Medium/ })).toHaveFocus();
-  await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
-  await expect.element(page.getByRole("radio", { name: "Max" })).toHaveFocus();
-  await userEvent.keyboard("{ArrowLeft}");
-  await expect.element(search).toHaveFocus();
-
+  // Provider chips switch tabs without raising the keyboard.
+  await page.getByRole("button", { name: "Favorites" }).click();
+  await expect.element(page.getByText("No favorites yet")).toBeInTheDocument();
   await page.getByRole("button", { name: "Codex" }).click();
   await expect.element(search).not.toHaveFocus();
+  await expect.element(page.getByRole("option", { name: /Model 1/ })).toBeVisible();
+
+  // A hardware keyboard still moves through the levels.
+  await page.getByRole("radio", { name: /^Medium/ }).click();
+  await userEvent.keyboard("{ArrowRight}{ArrowRight}");
+  await expect.element(page.getByRole("radio", { name: "Xhigh" })).toHaveFocus();
 
   await userEvent.keyboard("{Escape}");
   await expect.element(search).not.toBeInTheDocument();
 });
 
-it("still puts a fine pointer straight into the search", async () => {
+it("keeps the list above the keyboard while searching on a short screen", async () => {
+  await using picker = await openSheet(650, 325);
+  await page.getByPlaceholder("Search models...").click();
+  // A soft keyboard leaves about 350px of a 650px screen.
+  await page.viewport(400, 350);
+  await expect.element(page.getByPlaceholder("Search models...")).toHaveFocus();
+  await expect
+    .poll(() => Math.abs(picker.sheet.getBoundingClientRect().bottom - window.innerHeight))
+    .toBeLessThanOrEqual(1);
+  await expect.poll(() => visibleRows(picker.list).length).toBeGreaterThanOrEqual(2);
+  expect(isInside(picker.list, picker.sheet)).toBe(true);
+});
+
+for (const close of ["scrim", "Done", "Escape"] as const) {
+  it(`closes on ${close}`, async () => {
+    await using _picker = await openSheet(869, 420);
+    if (close === "scrim") {
+      await userEvent.click(document.body, { position: { x: 200, y: 40 } });
+    } else if (close === "Done") {
+      await page.getByRole("button", { name: "Done" }).click();
+    } else {
+      await userEvent.keyboard("{Escape}");
+    }
+    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Choose model" })).toBeInTheDocument();
+  });
+}
+
+it("still puts a fine pointer straight into the search of a popover", async () => {
   await using _viewport = await phoneViewport(1280, 900);
   await using _screen = await render(<Picker />);
   await page.getByRole("button", { name: "Choose model" }).click();
   const search = page.getByPlaceholder("Search models...");
   await expect.element(search).toHaveFocus();
+  expect(document.querySelector("[data-model-picker-sheet]")).toBeNull();
+  expect(document.querySelector("[data-slot=popover-popup]")).not.toBeNull();
   await userEvent.keyboard("Model 8");
   await expect.element(page.getByRole("option", { name: /Model 8/ })).toBeVisible();
   await expect.element(page.getByRole("option", { name: /Model 1 / })).not.toBeInTheDocument();

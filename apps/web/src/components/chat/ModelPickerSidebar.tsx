@@ -26,6 +26,98 @@ function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
   return msg ? `${label}: ${kind}. ${msg}` : `${label}: ${kind}.`;
 }
 
+const CHIP =
+  "relative flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-sm whitespace-nowrap outline-none transition-[background-color,border-color,color] pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-pressed:border-primary/45 aria-pressed:bg-primary/12 aria-pressed:text-foreground border-border/70 text-muted-foreground not-aria-pressed:not-disabled:active:bg-foreground/[0.06]";
+
+/** The phone sheet's provider tabs: one scrolling row of labelled chips, Favorites first. */
+export function ModelPickerProviderChips(props: {
+  selectedInstanceId: ProviderInstanceId | "favorites";
+  onSelectInstance: (instanceId: ProviderInstanceId | "favorites") => void;
+  instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
+  disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
+  selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
+  getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
+  /** Searching spans every provider, so the tabs step back until one is tapped. */
+  dimmed?: boolean;
+}) {
+  const { t } = useTranslation();
+  const rowRef = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the selected chip into the row's view when the selection or the provider list changes
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const chip = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!row || !chip) return;
+    const start = chip.offsetLeft - 12;
+    const end = chip.offsetLeft + chip.offsetWidth + 12 - row.clientWidth;
+    if (row.scrollLeft > start) row.scrollLeft = start;
+    else if (row.scrollLeft < end) row.scrollLeft = end;
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A new selection or provider list moves the pressed chip, so the row re-scrolls to it.
+  }, [props.selectedInstanceId, props.instanceEntries]);
+
+  return (
+    <Toolbar.Root
+      ref={rowRef}
+      data-model-picker-sidebar="true"
+      aria-label={t("Providers")}
+      orientation="horizontal"
+      className={cn(
+        "flex shrink-0 gap-2 overflow-x-auto overscroll-x-contain px-4 pt-1 pb-3 transition-opacity [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        props.dimmed && "opacity-55",
+      )}
+    >
+      <Toolbar.Button
+        type="button"
+        data-model-picker-provider="favorites"
+        aria-pressed={!props.dimmed && props.selectedInstanceId === "favorites"}
+        onClick={() => props.onSelectInstance("favorites")}
+        className={CHIP}
+      >
+        <StarIcon aria-hidden className="size-4 fill-current text-warning" />
+        {t("Favorites")}
+      </Toolbar.Button>
+      {props.instanceEntries.map((entry) => {
+        const isUnavailable = !isProviderInstancePickerReady(entry);
+        const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
+        const reachable = props.selectableUnavailableInstanceIds?.has(entry.instanceId) ?? false;
+        const isDisabled = (isUnavailable && !reachable) || isContextDisabled;
+        const reason = isUnavailable
+          ? describeUnavailableInstance(entry)
+          : isContextDisabled
+            ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
+            : null;
+        return (
+          <Toolbar.Button
+            key={entry.instanceId}
+            type="button"
+            data-model-picker-provider={entry.instanceId}
+            aria-pressed={!props.dimmed && props.selectedInstanceId === entry.instanceId}
+            aria-label={reason ?? entry.displayName}
+            title={reason ?? undefined}
+            disabled={isDisabled}
+            focusableWhenDisabled
+            onClick={() => !isDisabled && props.onSelectInstance(entry.instanceId)}
+            className={CHIP}
+          >
+            <ProviderInstanceIcon
+              driverKind={entry.driverKind}
+              displayName={entry.displayName}
+              accentColor={entry.accentColor}
+              acpRegistryAgentId={entry.acpRegistryAgentId}
+              acpRegistryIconUrl={entry.acpRegistryIconUrl}
+              showBadge={shouldShowInstanceBadge(entry, props.instanceEntries)}
+              className="size-4"
+              iconClassName="size-4"
+              indicatorBackground="var(--popover)"
+              badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs"
+            />
+            {entry.displayName}
+          </Toolbar.Button>
+        );
+      })}
+    </Toolbar.Root>
+  );
+}
+
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
 
