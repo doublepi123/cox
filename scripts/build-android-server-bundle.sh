@@ -5,7 +5,8 @@
 # The bundle runs on musl, so every native module has to be compiled or fetched
 # for musl on the target CPU: node-pty has no musl prebuild (its glibc prebuild
 # segfaults), and npm only resolves the fff/keyring musl binaries when it runs on
-# musl itself. All work therefore happens inside alpine:3.24 on the runner's
+# musl itself. Cursor's glibc-only tree-sitter bindings additionally require
+# gcompat in the Android host rootfs. All work happens inside alpine:3.24 on the runner's
 # native architecture; cross-architecture builds would need qemu.
 #
 # Runtime externals come from apps/server/package.json (resolved through the root
@@ -305,7 +306,7 @@ log() { printf '[android-bundle] %s\n' "$*"; }
 
 # node-pty and the other native externals compile from source; node-gyp needs a
 # toolchain and headers, the rest is the smallest set npm install needs.
-apk add --no-cache nodejs npm python3 make g++ linux-headers patch tar
+apk add --no-cache nodejs npm python3 make g++ linux-headers patch tar gcompat
 log "Alpine $(cat /etc/alpine-release) on $(apk --print-arch), node $(node --version)"
 
 node /work/plan.mjs /repo "$BUNDLE_VERSION" "$BUNDLE_ARCH" /work/plan.json
@@ -398,6 +399,10 @@ grep -q "pty-ok" "$pty_log" || {
 }
 log "node-pty spawned /bin/sh over a pty"
 
+log "Cursor SDK offline smoke test"
+cp /repo/scripts/cursor-sdk-smoke.cjs "$build/cursor-sdk-smoke.cjs"
+timeout 90 node "$build/cursor-sdk-smoke.cjs"
+
 log "Server smoke test"
 export T3CODE_HOST=127.0.0.1
 export T3CODE_PORT="${SMOKE_PORT:-4773}"
@@ -453,6 +458,7 @@ const manifest = {
   nodeEngine: plan.nodeEngine,
   builtWith: `node ${process.version} on alpine:${fs.readFileSync("/etc/alpine-release", "utf8").trim()}`,
   server: "cox",
+  alpinePackages: ["gcompat"],
 };
 fs.writeFileSync("/work/build/ANDROID-BUNDLE.json", JSON.stringify(manifest, null, 2) + "\n");
 '

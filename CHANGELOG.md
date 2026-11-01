@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.9 — 2026-11-01
+
+- Declare the Android Cursor SDK's Alpine `gcompat` runtime requirement. Its vendored
+  tree-sitter bindings target glibc; loading them without the compatibility loader fails and
+  poisons SDK initialization, causing subsequent `Cannot access 'uR' before initialization` errors.
+- Ship and run an offline Cursor SDK smoke test before publishing Android bundles. It exercises
+  sandbox and Full Access prewarming with disposable settings, without sending model requests.
+- Android hosts must install `gcompat`, including in existing environments. Update CoCode to a
+  build with the corresponding installer repair; updating the Cox archive alone does not install
+  Alpine packages. Server startup and authentication checks remain enabled separately.
+
 ## 0.1.8 — 2026-11-01
 
 - Phones: the composer's model picker is now a bottom sheet with provider chips, an unfocused

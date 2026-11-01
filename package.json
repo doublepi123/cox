@@ -1,6 +1,6 @@
 {
   "name": "cox-workspace",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -15,7 +15,7 @@
     "test:smoke": "node scripts/runtime-smoke.mjs",
     "test:dev-smoke": "node scripts/dev-smoke.mjs",
     "typecheck": "pnpm -r --if-present typecheck && pnpm --filter @t3tools/web exec tsc --noEmit",
-    "test": "vp test run --project root scripts/dev-runner.test.ts scripts/local-only.test.ts scripts/package-release.test.ts scripts/package-npm.test.ts scripts/lib/third-party-licenses.test.ts packages/provider-core/src/server/orchestrationInstructions.test.ts",
+    "test": "vp test run --project root scripts/dev-runner.test.ts scripts/local-only.test.ts scripts/package-release.test.ts scripts/package-npm.test.ts scripts/cursor-sdk-smoke.test.ts scripts/lib/third-party-licenses.test.ts packages/provider-core/src/server/orchestrationInstructions.test.ts",
     "lint": "vp lint",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
