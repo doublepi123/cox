@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 — 2026-11-01
+
+- Phones: the composer's model picker is now a bottom sheet with provider chips, an unfocused
+  search field, a full-height model list and a pinned footer with the effort segmented control,
+  speed and access. It stays usable with the soft keyboard open. Desktop is unchanged.
+
 ## 0.1.7 — 2026-11-01
 
 - Log Cursor SDK sandbox-prewarm failures with their original cause instead of silently
