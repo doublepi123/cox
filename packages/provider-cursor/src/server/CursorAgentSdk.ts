@@ -350,19 +350,27 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
       if (yield* Ref.getAndSet(sandboxSupportPrimeStarted, true)) {
         return yield* Deferred.await(sandboxSupportPrimed);
       }
-      yield* Effect.tryPromise(async () => {
-        const cwd = typeof options.local?.cwd === "string" ? options.local.cwd : undefined;
-        const platform = await createAgentPlatform(cwd === undefined ? {} : { workspaceRef: cwd });
-        const release = await platform.prewarmLocalWorkspace({
-          ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
-          local: {
-            ...(cwd === undefined ? {} : { cwd }),
-            settingSources: [],
-            sandboxOptions: { enabled: true },
-          },
-        });
-        await release();
-      }).pipe(Effect.ignore, Effect.ensuring(Deferred.succeed(sandboxSupportPrimed, undefined)));
+      yield* Effect.tryPromise({
+        try: async () => {
+          const cwd = typeof options.local?.cwd === "string" ? options.local.cwd : undefined;
+          const platform = await createAgentPlatform(
+            cwd === undefined ? {} : { workspaceRef: cwd },
+          );
+          const release = await platform.prewarmLocalWorkspace({
+            ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+            local: {
+              ...(cwd === undefined ? {} : { cwd }),
+              settingSources: [],
+              sandboxOptions: { enabled: true },
+            },
+          });
+          await release();
+        },
+        catch: (cause) => runnerError(cause, "sandbox.prewarm"),
+      }).pipe(
+        Effect.catch((error) => Effect.logWarning(cursorSdkFailureMessage(error), error)),
+        Effect.ensuring(Deferred.succeed(sandboxSupportPrimed, undefined)),
+      );
     },
   );
 

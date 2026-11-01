@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 — 2026-11-01
+
+- Log Cursor SDK sandbox-prewarm failures with their original cause instead of silently
+  discarding them before a Full Access run. This preserves evidence of an initial module-load
+  failure when a later SDK call reports a secondary initialization error.
+- Keep sandbox prewarming nonfatal and shared across concurrent Full Access sessions. This
+  diagnostic improvement does not claim to fix the underlying SDK initialization failure.
+
 ## 0.1.6 — 2026-11-01
 
 - Keep the restored sign-in form compatible with React Compiler by using its supported
