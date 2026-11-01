@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.10 — 2026-11-01
+
+- Phones: the system Back gesture closes the model picker sheet instead of leaving the page.
+  The route and URL stay the same, and closing the sheet any other way leaves no extra history.
+
 ## 0.1.9 — 2026-11-01
 
 - Declare the Android Cursor SDK's Alpine `gcompat` runtime requirement. Its vendored
