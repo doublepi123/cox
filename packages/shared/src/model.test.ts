@@ -9,6 +9,7 @@ import {
   createModelSelection,
   getProviderOptionCurrentLabel,
   getProviderOptionDescriptors,
+  mergeModelCapabilities,
   readCustomModelEntries,
   toCustomModelSetting,
   modelSelectionsEqual,
@@ -145,6 +146,36 @@ describe("readCustomModelEntries", () => {
       readCustomModelEntries([{ slug: "x", capabilities: { optionDescriptors: "nope" } }]),
     ).toEqual([{ slug: "x", name: "x", capabilities: null }]);
     expect(readCustomModelEntries("not a list")).toEqual([]);
+  });
+
+  it("treats a saved empty option list as unset and drops it on the next save", () => {
+    const [legacy, contextOnly] = readCustomModelEntries([
+      { slug: "legacy", capabilities: { optionDescriptors: [] } },
+      { slug: "context", capabilities: { contextWindow: 64000, optionDescriptors: [] } },
+    ]);
+    expect(legacy).toEqual({ slug: "legacy", name: "legacy", capabilities: null });
+    expect(contextOnly).toEqual({
+      slug: "context",
+      name: "context",
+      capabilities: { contextWindow: 64000 },
+    });
+    expect(toCustomModelSetting(legacy!)).toBe("legacy");
+  });
+});
+
+describe("mergeModelCapabilities", () => {
+  it("replaces only the fields saved capabilities set", () => {
+    expect(mergeModelCapabilities(codexCaps, null)).toBe(codexCaps);
+    expect(mergeModelCapabilities(codexCaps, { optionDescriptors: [] })).toBe(codexCaps);
+    expect(mergeModelCapabilities(codexCaps, { contextWindow: 400000 })).toEqual({
+      ...codexCaps,
+      contextWindow: 400000,
+    });
+    const fastMode = { id: "fastMode", label: "Fast Mode", type: "boolean" as const };
+    expect(mergeModelCapabilities(codexCaps, { optionDescriptors: [fastMode] })).toEqual({
+      optionDescriptors: [fastMode],
+    });
+    expect(mergeModelCapabilities(null, { optionDescriptors: [] })).toBeNull();
   });
 });
 

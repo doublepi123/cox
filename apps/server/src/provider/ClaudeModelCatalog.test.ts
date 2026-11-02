@@ -188,6 +188,58 @@ describe("Claude model catalog", () => {
     );
   });
 
+  it("keeps catalog options that saved capabilities leave unset for dash slugs and dot aliases", () => {
+    const base = manifest();
+    const catalog = scopeClaudeModelCatalog(
+      catalogFromManifest({
+        ...base,
+        providers: {
+          ...base.providers,
+          claudeAgent: {
+            ...base.providers!.claudeAgent!,
+            models: [
+              ...base.providers!.claudeAgent!.models,
+              {
+                slug: "claude-synthetic-5-5",
+                name: "Claude Synthetic 5.5",
+                aliases: ["claude-synthetic-5.5"],
+                status: "current",
+                profile: "synthetic",
+              },
+            ],
+          },
+        },
+      }),
+      [
+        { slug: "claude-synthetic-5-5", capabilities: { optionDescriptors: [] } },
+        { slug: "claude-synthetic-5.5", capabilities: { optionDescriptors: [] } },
+        { slug: "claude-synthetic-next", capabilities: { contextWindow: 256000 } },
+      ],
+    );
+    const selection = (model: string) => ({
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model,
+    });
+
+    assert.strictEqual(
+      resolveClaudeCatalogEffort(catalog, "claude-synthetic-5-5", "extreme"),
+      "extreme",
+    );
+    assert.strictEqual(
+      resolveClaudeCatalogApiModelId(catalog, selection("claude-synthetic-5-5")),
+      "claude-synthetic-5-5[large]",
+    );
+    assert.strictEqual(resolveClaudeCatalogEffort(catalog, "claude-synthetic-5.5", "max"), "max");
+    assert.strictEqual(
+      resolveClaudeCatalogEffort(catalog, "claude-synthetic-next", "extreme"),
+      "extreme",
+    );
+    assert.strictEqual(
+      resolveClaudeCatalogContextWindowTokens(catalog, selection("claude-synthetic-next")),
+      256000,
+    );
+  });
+
   it("appends custom models with their own descriptors and keeps bare slugs opaque", () => {
     const catalog = scopeClaudeModelCatalog(catalogFromManifest(manifest()), [
       "synthetic",

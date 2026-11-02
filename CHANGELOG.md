@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.14 — 2026-11-02
+
+- Restore reasoning and other discovered options for models whose saved settings contain an
+  empty `optionDescriptors` list. Older settings used it as a placeholder, but 0.1.12 treated it
+  as a complete override: the picker hid the options and Claude turns dropped the selected effort.
+- Saved model capabilities now replace only the values they set. Editing a context window or
+  image-input support keeps discovered or fallback reasoning choices; a non-empty reasoning list
+  still replaces the discovered one. Empty placeholders are removed the next time models are saved.
+
 ## 0.1.13 — 2026-11-02
 
 - Move queued follow-up messages up or down within a thread; they are sent in the order shown.

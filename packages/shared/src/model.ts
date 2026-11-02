@@ -381,6 +381,31 @@ export interface CustomModelDefinition {
 
 const decodeCustomModelCapabilities = Schema.decodeUnknownOption(ModelCapabilities);
 
+/** Older settings stored `optionDescriptors: []` as a placeholder, so an empty list sets nothing. */
+function savedModelCapabilities(capabilities: ModelCapabilities): ModelCapabilities | null {
+  const saved: ModelCapabilities = {
+    ...(capabilities.contextWindow === undefined
+      ? {}
+      : { contextWindow: capabilities.contextWindow }),
+    ...(capabilities.supportsImages === undefined
+      ? {}
+      : { supportsImages: capabilities.supportsImages }),
+    ...(capabilities.optionDescriptors?.length
+      ? { optionDescriptors: capabilities.optionDescriptors }
+      : {}),
+  };
+  return Object.keys(saved).length > 0 ? createModelCapabilities(saved) : null;
+}
+
+export function mergeModelCapabilities(
+  base: ModelCapabilities | null,
+  saved: ModelCapabilities | null,
+): ModelCapabilities | null {
+  const overrides = saved ? savedModelCapabilities(saved) : null;
+  if (!overrides) return base;
+  return base ? createModelCapabilities({ ...base, ...overrides }) : overrides;
+}
+
 export function readCustomModelEntries(value: unknown): CustomModelDefinition[] {
   if (!Array.isArray(value)) return [];
   const entries: CustomModelDefinition[] = [];
@@ -405,7 +430,7 @@ export function readCustomModelEntries(value: unknown): CustomModelDefinition[] 
     entries.push({
       slug,
       name,
-      capabilities: capabilities ? createModelCapabilities(capabilities) : null,
+      capabilities: capabilities ? savedModelCapabilities(capabilities) : null,
     });
   }
   return entries;

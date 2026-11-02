@@ -18,7 +18,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { readCustomModelEntries } from "@t3tools/shared/model";
+import { mergeModelCapabilities, readCustomModelEntries } from "@t3tools/shared/model";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { createProviderVersionAdvisory } from "./maintenanceResolver.ts";
 import { collectUint8StreamText } from "./collectStreamText.ts";
@@ -148,12 +148,10 @@ export function providerModelsFromSettings(
   const resolvedBuiltInModels = builtInModels.map((model) => {
     const entry = overrides.get(model.slug);
     if (!entry) return model;
+    const capabilities = mergeModelCapabilities(model.capabilities, entry.capabilities);
+    if (entry.name === entry.slug) return { ...model, capabilities };
     const { shortName: _shortName, ...rest } = model;
-    return {
-      ...rest,
-      name: entry.name === entry.slug ? model.name : entry.name,
-      capabilities: entry.capabilities ?? model.capabilities,
-    };
+    return { ...rest, name: entry.name, capabilities };
   });
   const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
   const customEntries: ServerProviderModel[] = [];
@@ -167,7 +165,7 @@ export function providerModelsFromSettings(
       slug: entry.slug,
       name: entry.name,
       isCustom: true,
-      capabilities: entry.capabilities ?? customModelCapabilities,
+      capabilities: mergeModelCapabilities(customModelCapabilities, entry.capabilities),
     });
   }
 

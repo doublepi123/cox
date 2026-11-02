@@ -11,6 +11,7 @@ import {
   getModelSelectionStringOptionValue,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
+  mergeModelCapabilities,
   readCustomModelEntries,
 } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
@@ -88,7 +89,10 @@ export function scopeClaudeModelCatalog(
     const resolved = override?.capabilities
       ? {
           ...entry,
-          model: { ...entry.model, capabilities: override.capabilities },
+          model: {
+            ...entry.model,
+            capabilities: mergeModelCapabilities(entry.model.capabilities, override.capabilities),
+          },
           runtime: {
             ...entry.runtime,
             ...(override.capabilities.contextWindow

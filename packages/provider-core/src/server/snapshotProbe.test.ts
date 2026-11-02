@@ -54,6 +54,60 @@ describe("providerModelsFromSettings", () => {
       capabilities: { contextWindow: 2000, supportsImages: false },
     });
   });
+  it("keeps discovered options that a saved entry leaves unset", () => {
+    const reasoning = createModelCapabilities({
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          options: [{ id: "high", label: "High", isDefault: true }],
+        },
+      ],
+    });
+    const models = providerModelsFromSettings(
+      [
+        {
+          slug: "gpt-5.5",
+          name: "GPT-5.5",
+          shortName: "5.5",
+          isCustom: false,
+          capabilities: reasoning,
+        },
+        { slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: reasoning },
+      ],
+      [
+        { slug: "gpt-5.5", capabilities: { optionDescriptors: [] } },
+        { slug: "gpt-5.4", capabilities: { contextWindow: 400000 } },
+        { slug: "gateway-legacy", capabilities: { optionDescriptors: [] } },
+        { slug: "gateway-long", capabilities: { contextWindow: 256000 } },
+      ],
+      reasoning,
+    );
+
+    expect(models).toEqual([
+      {
+        slug: "gpt-5.5",
+        name: "GPT-5.5",
+        shortName: "5.5",
+        isCustom: false,
+        capabilities: reasoning,
+      },
+      {
+        slug: "gpt-5.4",
+        name: "GPT-5.4",
+        isCustom: false,
+        capabilities: { ...reasoning, contextWindow: 400000 },
+      },
+      { slug: "gateway-legacy", name: "gateway-legacy", isCustom: true, capabilities: reasoning },
+      {
+        slug: "gateway-long",
+        name: "gateway-long",
+        isCustom: true,
+        capabilities: { ...reasoning, contextWindow: 256000 },
+      },
+    ]);
+  });
   it("keeps an entry's own name and capabilities over the driver default", () => {
     const capabilities = createModelCapabilities({
       optionDescriptors: [{ id: "fastMode", label: "Fast Mode", type: "boolean" }],
