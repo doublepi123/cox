@@ -175,6 +175,18 @@ describe("thread relationships", () => {
             relationshipToParent: "subagent",
           },
         },
+        {
+          id: transferTarget,
+          title: "Transfer target",
+          status: "completed",
+          archivedAt: "2026-06-24T00:00:00.000Z",
+          forkedFrom: null,
+          lineage: {
+            rootThreadId: transferTarget,
+            parentThreadId: null,
+            relationshipToParent: null,
+          },
+        },
       ] as never,
       projection: {
         thread: { id: parent },
@@ -190,7 +202,7 @@ describe("thread relationships", () => {
     });
 
     expect(graph.nodes.get(child)?.thread?.archivedAt).not.toBeNull();
-    expect(graph.nodes.get(transferTarget)?.missing).toBe(true);
+    expect(graph.nodes.get(transferTarget)?.missing).toBe(false);
     expect(graph.edges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -417,7 +429,7 @@ describe("web thread lineage ordering", () => {
   });
 
   it("sinks missing nodes and shells without a decoded createdAt", () => {
-    const missingTransfer = ThreadId.make("thread-missing-transfer");
+    const missingSubagent = ThreadId.make("thread-missing-subagent");
     const undated = ThreadId.make("thread-undated-fork");
     const dated = ThreadId.make("thread-dated-fork");
 
@@ -430,12 +442,37 @@ describe("web thread lineage ordering", () => {
         ],
         projection: {
           thread: { id: current },
-          subagents: [],
-          contextTransfers: [
-            { sourceThreadId: current, targetThreadId: missingTransfer, status: "completed" },
-          ],
+          subagents: [{ childThreadId: missingSubagent, status: "completed" }],
+          contextTransfers: [],
         },
       }),
-    ).toEqual([dated, missingTransfer, undated]);
+    ).toEqual([dated, missingSubagent, undated]);
+  });
+
+  it("omits context transfers to threads that no longer exist, such as an abandoned fork", () => {
+    const deletedFork = ThreadId.make("thread-deleted-fork");
+    const deletedAfterUse = ThreadId.make("thread-deleted-after-use");
+    const liveFork = ThreadId.make("thread-live-fork");
+    const projection = {
+      thread: { id: current },
+      subagents: [],
+      contextTransfers: [
+        { sourceThreadId: current, targetThreadId: deletedFork, status: "pending" },
+        { sourceThreadId: current, targetThreadId: deletedAfterUse, status: "consumed" },
+        { sourceThreadId: current, targetThreadId: liveFork, status: "consumed" },
+      ],
+    };
+    const threads = [
+      forkShell({ id: current, parentThreadId: null }),
+      forkShell({ id: liveFork, parentThreadId: current }),
+    ];
+    const graph = deriveThreadRelationshipGraph({
+      threads: threads as never,
+      projection: projection as never,
+    });
+
+    expect(graph.nodes.has(deletedFork)).toBe(false);
+    expect(graph.nodes.has(deletedAfterUse)).toBe(false);
+    expect(orderedLineageIds({ threads, projection })).toEqual([liveFork]);
   });
 });

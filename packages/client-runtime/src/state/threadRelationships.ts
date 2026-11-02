@@ -101,6 +101,8 @@ export function deriveThreadRelationshipGraph(input: {
 
   if (input.projection !== null) {
     const ownerThreadId = input.projection.thread.id;
+    const isKnownThread = (threadId: ThreadId) =>
+      threadId === ownerThreadId || threadsById.has(threadId);
     for (const subagent of input.projection.subagents) {
       if (subagent.childThreadId === null) continue;
       const child = threadsById.get(subagent.childThreadId);
@@ -117,6 +119,9 @@ export function deriveThreadRelationshipGraph(input: {
     }
     for (const transfer of input.projection.contextTransfers) {
       if (transfer.sourceThreadId === transfer.targetThreadId) continue;
+      if (!isKnownThread(transfer.sourceThreadId) || !isKnownThread(transfer.targetThreadId)) {
+        continue;
+      }
       addEdge({
         sourceThreadId: transfer.sourceThreadId,
         targetThreadId: transfer.targetThreadId,

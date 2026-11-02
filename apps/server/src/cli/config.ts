@@ -148,7 +148,8 @@ const DevAuthTokenConfig = Config.Redacted("T3CODE_DEV_AUTH_TOKEN").pipe(
   Config.map(Option.getOrUndefined),
 );
 
-const AuthPasswordConfig = Config.Redacted("T3CODE_AUTH_PASSWORD").pipe(
+const AuthPasswordConfig = Config.Redacted("COX_AUTH_PASSWORD").pipe(
+  Config.orElse(() => Config.Redacted("T3CODE_AUTH_PASSWORD")),
   Config.map((password) => Redacted.make(Redacted.value(password).trim())),
   Config.mapEffect((password) => {
     const value = Redacted.value(password);
@@ -158,7 +159,7 @@ const AuthPasswordConfig = Config.Redacted("T3CODE_AUTH_PASSWORD").pipe(
           new Config.ConfigError(
             new Schema.SchemaError(
               new SchemaIssue.InvalidValue({
-                message: "T3CODE_AUTH_PASSWORD must contain at least 8 characters.",
+                message: "COX_AUTH_PASSWORD must contain at least 8 characters.",
               }),
             ),
           ),

@@ -183,7 +183,21 @@ function ThreadLineageGroup(props: {
   );
 }
 
-function relationshipLabel(edge: ThreadRelationshipEdge, currentThreadId: ThreadId) {
+const RELATIONSHIP_HINTS = {
+  "Context transfer": "Open context transfer in this chat",
+  Subagent: "Open subagent in this chat",
+  "Parent agent": "Open parent agent in this chat",
+  Fork: "Open fork in this chat",
+  "Parent thread": "Open parent thread in this chat",
+  "Side chat": "Open side chat in this chat",
+} as const;
+
+type RelationshipLabel = keyof typeof RELATIONSHIP_HINTS;
+
+function relationshipLabel(
+  edge: ThreadRelationshipEdge,
+  currentThreadId: ThreadId,
+): RelationshipLabel {
   if (edge.kind === "transfer") return "Context transfer";
   if (edge.kind === "subagent") {
     return edge.sourceThreadId === currentThreadId ? "Subagent" : "Parent agent";
@@ -613,7 +627,7 @@ export function ThreadRelationshipsPanel(props: {
         : node?.thread?.lineage.sideChat === true
           ? MessagesSquareIcon
           : GitForkIcon;
-    const relationship =
+    const relationship: RelationshipLabel =
       node?.thread?.lineage.sideChat === true && !isParent
         ? "Side chat"
         : relationshipLabel(edge, props.threadId);
@@ -652,7 +666,7 @@ export function ThreadRelationshipsPanel(props: {
       ? "group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0 [@media(hover:none)]:opacity-0"
       : "";
     const project = projects.find((project) => project.id === node?.thread?.projectId);
-    const relationshipHint = `Open ${relationship.toLowerCase()} in this chat`;
+    const relationshipHint = translateUi(RELATIONSHIP_HINTS[relationship]);
     const RelationshipPopup = agent ? ThreadHoverCardPopup : TooltipPopup;
     const relationshipTooltip = agent ? (
       <SubagentTooltipContent

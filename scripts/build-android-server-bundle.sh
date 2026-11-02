@@ -408,7 +408,7 @@ export T3CODE_HOST=127.0.0.1
 export T3CODE_PORT="${SMOKE_PORT:-4773}"
 export T3CODE_NO_BROWSER=1
 export COX_HOME=/tmp/cox-smoke
-export T3CODE_AUTH_PASSWORD="${SMOKE_PASSWORD}"
+export COX_AUTH_PASSWORD="${SMOKE_PASSWORD}"
 rm -rf "$COX_HOME"
 node bin.mjs >/tmp/cox-server.log 2>&1 &
 server_pid=$!

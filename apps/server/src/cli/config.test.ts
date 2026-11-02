@@ -6,6 +6,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveBaseDir } from "../os-jank.ts";
@@ -22,6 +23,17 @@ const flags = (baseDir: string): CliServerFlags => ({
   autoBootstrapProjectFromCwd: Option.some(false),
   logWebSocketEvents: Option.none(),
 });
+
+const resolveWithEnv = (env: Record<string, string>) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-config-" });
+    return yield* resolveServerConfig(flags(baseDir), Option.none()).pipe(
+      Effect.provide(
+        Layer.merge(ConfigProvider.layer(ConfigProvider.fromEnv({ env })), NetService.layer),
+      ),
+    );
+  });
 
 it.layer(NodeServices.layer)("local CLI configuration", (it) => {
   it.effect("uses the Cox port without sharing the upstream default", () =>
@@ -98,5 +110,33 @@ it.layer(NodeServices.layer)("local CLI configuration", (it) => {
         );
         expect(error.message).toContain("loopback");
       }),
+  );
+  it.effect.each([
+    { source: "COX_AUTH_PASSWORD", env: { COX_AUTH_PASSWORD: " cox-password " } },
+    { source: "the legacy name", env: { T3CODE_AUTH_PASSWORD: "cox-password" } },
+    {
+      source: "COX_AUTH_PASSWORD before the legacy name",
+      env: { COX_AUTH_PASSWORD: "cox-password", T3CODE_AUTH_PASSWORD: "legacy-password" },
+    },
+  ])("reads the sign-in password from $source", ({ env }) =>
+    resolveWithEnv(env).pipe(
+      Effect.map((config) => {
+        expect(config.authPassword && Redacted.value(config.authPassword)).toBe("cox-password");
+      }),
+    ),
+  );
+  it.effect("leaves password sign-in off without a password", () =>
+    resolveWithEnv({}).pipe(
+      Effect.map((config) => {
+        expect(config.authPassword).toBeUndefined();
+      }),
+    ),
+  );
+  it.effect("rejects a sign-in password shorter than 8 characters", () =>
+    Effect.flip(resolveWithEnv({ COX_AUTH_PASSWORD: "short" })).pipe(
+      Effect.map((error) => {
+        expect(String(error)).toContain("COX_AUTH_PASSWORD must contain at least 8 characters");
+      }),
+    ),
   );
 });

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.15 — 2026-11-02
+
+- Show the thread's current task list in the details panel, with each step's status and the
+  number of completed steps. A finished list is hidden once the next run starts, and the section
+  can be turned off in the panel's display options.
+- Leave context transfers out of the lineage panel when their source or target thread no longer
+  exists, such as a fork discarded before it was used. They appeared as an unnamed queued row
+  whose link led to a missing thread. The rows' open hints are now localized.
+- Rename the password sign-in variable to `COX_AUTH_PASSWORD`. `T3CODE_AUTH_PASSWORD` still
+  works, and the new name takes precedence when both are set. The README now documents password
+  sign-in for personal use on a trusted internal network, with an authenticating proxy such as
+  Cloudflare Access in front of Cox for internet access.
+- Add a Simplified Chinese README and the bilingual project website at doublepi123.github.io.
+
 ## 0.1.14 — 2026-11-02
 
 - Restore reasoning and other discovered options for models whose saved settings contain an

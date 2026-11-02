@@ -25,6 +25,7 @@ import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
 import { ThreadSubagentsPanel } from "./ThreadSubagentsPanel";
+import { ThreadTasksPanel } from "./ThreadTasksPanel";
 import {
   ThreadDetailsContext,
   ThreadDetailsUsage,
@@ -231,6 +232,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     ) : null}
                   </div>
                 </ThreadDetailsSection>
+              ) : null}
+
+              {!props.draftId && visible.tasks ? (
+                <ThreadTasksPanel environmentId={props.environmentId} threadId={props.threadId} />
               ) : null}
 
               {!props.draftId && visible.subagents ? (

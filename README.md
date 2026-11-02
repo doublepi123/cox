@@ -174,7 +174,19 @@ pnpm start
 
 The local server serves the built Web app and its API from one origin. Use the local browser URL printed on startup. Production data defaults to `~/.cox`; `--home-dir` selects a different Cox data directory. Run `pnpm --filter cox start --help` for CLI options.
 
-Cox is intended for loopback access only. Do not expose it to an untrusted network. Local authentication and origin checks remain necessary because agent access includes filesystem and terminal operations.
+Cox listens on loopback only and must not be exposed directly to an untrusted network. To reach it from another device, see [Password sign-in and remote access](#password-sign-in-and-remote-access). Local authentication and origin checks remain necessary because agent access includes filesystem and terminal operations.
+
+## Password sign-in and remote access
+
+Cox always listens on loopback (`127.0.0.1`, `::1` or `localhost`). By default, a browser signs in with the one-time link printed in the terminal. To use Cox from another device, run a reverse proxy on the same computer that forwards to the loopback port, and set a sign-in password of at least 8 characters before starting Cox:
+
+```sh
+COX_AUTH_PASSWORD='use-a-long-random-password' cox --no-browser
+```
+
+The sign-in page then accepts this password as well as pairing tokens. A browser stays signed in for up to 30 days. After 10 failed attempts within 5 minutes, password sign-in pauses until that window passes. When a service manager runs Cox, keep the variable in an environment file that only you can read rather than on the command line. The previous name, `T3CODE_AUTH_PASSWORD`, is still accepted.
+
+Password sign-in is meant for personal use on a trusted internal network. Do not rely on it alone on the public internet: the password would be the only barrier in front of agents that run commands and edit files. For internet access, put an authenticating proxy in front of Cox, such as Cloudflare Access with Cloudflare Tunnel, or a similar identity-aware proxy or VPN, and keep the password as a second layer. The proxy must use HTTPS, support WebSockets, and forward the public host in `Host` or `X-Forwarded-Host`.
 
 ## Checks
 
