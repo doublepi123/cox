@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.11 — 2026-11-02
+
+- Expand Chinese/English coverage across chat, provider settings, notifications, usage,
+  thread actions and confirmation dialogs. Preserve account details and user-authored content.
+- Place working threads first and expand their section initially. Queue follow-up messages by
+  default, with an explicit option to steer the running agent immediately when supported.
+- Preserve Codex catalog speed tiers, including Fast, through managed-provider execution.
+  Availability still depends on the connected account and upstream service; no tier is invented.
+- Skip subscription-limit requests for custom Codex API connections. Explain unavailable
+  ChatGPT/Cursor quota data and link to their official dashboards instead of fabricating usage.
+- Distinguish connecting, automatic reconnection, offline and failed states. Check connections
+  when the browser window regains focus or a page is restored, and show connection diagnostics.
+- Separate explicit npm token publishing from OIDC, add early authentication checks, and
+  document npm installation, first use, upgrades and release authentication.
+
 ## 0.1.10 — 2026-11-01
 
 - Phones: the system Back gesture closes the model picker sheet instead of leaving the page.
