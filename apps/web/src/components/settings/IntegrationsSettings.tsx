@@ -44,7 +44,7 @@ function BrowserSearchEngineSetting() {
     <>
       <SettingsRow
         {...searchableSetting("browser-search-engine")}
-        description="What the address bar searches when you type something that isn't a URL."
+        description={t("What the address bar searches when you type something that isn't a URL.")}
         resetAction={
           engine !== DEFAULT_BROWSER_SEARCH_ENGINE || customUrl !== "" ? (
             <SettingResetButton
@@ -68,7 +68,7 @@ function BrowserSearchEngineSetting() {
               }
             }}
           >
-            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Search engine">
+            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label={t("Search engine")}>
               <SelectValue>{SEARCH_ENGINE_LABELS[engine]}</SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -84,7 +84,7 @@ function BrowserSearchEngineSetting() {
       {engine === "custom" ? (
         <SettingsRow
           title={t("Custom search URL")}
-          description="Use %s where the search terms go."
+          description={t("Use %s where the search terms go.")}
           status={
             isValidSearchUrlTemplate(customUrl)
               ? undefined
@@ -111,13 +111,16 @@ function BrowserSearchEngineSetting() {
 }
 
 export function PullRequestLinksOpenInAppSetting() {
+  const { t: translateUi } = useTranslation();
   const openInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
   const updateSettings = useUpdatePrimarySettings();
 
   return (
     <SettingsRow
       {...searchableSetting("pull-request-links-open-in-app")}
-      description="Clicking a pull request link opens it in Cox. Turn off to open pull request links like any other link, on your git host."
+      description={translateUi(
+        "Clicking a pull request link opens it in Cox. Turn off to open pull request links like any other link, on your git host.",
+      )}
       resetAction={
         openInApp ? null : (
           <SettingResetButton
@@ -132,7 +135,7 @@ export function PullRequestLinksOpenInAppSetting() {
           onCheckedChange={(checked) =>
             updateSettings({ pullRequestLinksOpenInApp: Boolean(checked) })
           }
-          aria-label="Open pull requests in Cox"
+          aria-label={translateUi("Open pull requests in Cox")}
         />
       }
     />
@@ -180,13 +183,16 @@ function AgentBrowserAccessSetting() {
 }
 
 function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled: boolean }) {
+  const { t: translateUi } = useTranslation();
   const autoShow = useClientSettings((settings) => settings.browserAutoShowFloatingPreview);
   const updateSettings = useUpdatePrimarySettings();
 
   return (
     <SettingsRow
       {...searchableSetting("browser-auto-show-floating-preview")}
-      description="Show the floating preview when an agent opens a browser unless the agent says otherwise."
+      description={translateUi(
+        "Show the floating preview when an agent opens a browser unless the agent says otherwise.",
+      )}
       resetAction={
         !disabled && autoShow !== DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW ? (
           <SettingResetButton
@@ -206,7 +212,7 @@ function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled
           onCheckedChange={(checked) =>
             updateSettings({ browserAutoShowFloatingPreview: Boolean(checked) })
           }
-          aria-label="Auto-show floating preview"
+          aria-label={translateUi("Auto-show floating preview")}
         />
       }
     />

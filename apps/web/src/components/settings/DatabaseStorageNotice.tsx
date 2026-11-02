@@ -34,10 +34,12 @@ export function DatabaseStorageNotice({
   );
   if (visible.length === 0) return null;
   return (
-    <SettingsSection id="storage-database" title="Database">
+    <SettingsSection id="storage-database" title={t("Database")}>
       <SettingsRow
-        title="Reclaim freed database space"
-        description="Old history is cleaned up automatically, but these databases still hold the freed space. Run the command locally to return it to disk; it pauses and restarts the background service."
+        title={t("Reclaim freed database space")}
+        description={t(
+          "Old history is cleaned up automatically, but these databases still hold the freed space. Run the command locally to return it to disk; it pauses and restarts the background service.",
+        )}
       />
       {visible.map(({ environmentId, status }) => (
         <SettingsRow

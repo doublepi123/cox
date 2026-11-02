@@ -6,9 +6,10 @@ import { LegacyFeaturesSection } from "./SettingsPanels";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
 export function LabsSettingsPanel() {
+  const { t: translateUi } = useTranslation();
   return (
     <SettingsPageContainer>
-      <SettingsSection id="beta" title="Beta">
+      <SettingsSection id="beta" title={translateUi("Beta")}>
         <BoringSidebarRow />
         <BoringSidebarMultilineRow />
       </SettingsSection>
@@ -24,7 +25,9 @@ function BoringSidebarRow() {
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar")}
-      description="Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders."
+      description={t(
+        "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.",
+      )}
       control={
         <Switch
           checked={settings.boringSidebarEnabled || settings.legacySidebarEnabled}
@@ -46,7 +49,9 @@ function BoringSidebarMultilineRow() {
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar-multiline")}
-      description="In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent."
+      description={t(
+        "In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent.",
+      )}
       control={
         <Switch
           checked={settings.boringSidebarMultilineRows}

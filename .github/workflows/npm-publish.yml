@@ -8,6 +8,11 @@ on:
       tag:
         description: Existing version tag to publish, for example v0.1.1
         required: true
+      authentication:
+        description: Use token only for the first publish before configuring a trusted publisher
+        type: choice
+        options: [oidc, token]
+        default: oidc
 
 permissions:
   contents: read
@@ -39,6 +44,45 @@ jobs:
           ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Check npm publishing authentication
+        shell: bash
+        env:
+          NPM_PUBLISH_AUTH: ${{ inputs.authentication || 'oidc' }}
+          NODE_AUTH_TOKEN: ${{ inputs.authentication == 'token' && secrets.NPM_TOKEN || '' }}
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/cox-publish.npmrc"
+          printf 'registry=https://registry.npmjs.org/\n' > "$config"
+          chmod 600 "$config"
+          export NPM_CONFIG_USERCONFIG="$config"
+          echo "NPM_CONFIG_USERCONFIG=$config" >> "$GITHUB_ENV"
+          case "$NPM_PUBLISH_AUTH" in
+            token)
+              if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+                echo "::error::Token publishing requires the NPM_TOKEN repository secret: use a granular token with package write access and Bypass 2FA enabled."
+                exit 1
+              fi
+              printf '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\n' >> "$config"
+              if ! npm whoami > /dev/null; then
+                echo "::error::NPM_TOKEN is invalid or expired. Replace it with a granular write token with Bypass 2FA enabled."
+                exit 1
+              fi
+              ;;
+            oidc)
+              if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+                echo "::error::OIDC publishing requires a GitHub-hosted runner and id-token: write."
+                exit 1
+              fi
+              if ! npm view @doublepi123/cox version > /dev/null; then
+                echo "::error::Cannot read @doublepi123/cox from npm. If it has never been published, run this workflow with authentication=token first, then configure its trusted publisher. Otherwise check registry availability."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Unknown npm publishing authentication mode."
+              exit 1
+              ;;
+          esac
       - name: Verify package versions
         run: |
           node --input-type=module <<'NODE'
@@ -68,19 +112,18 @@ jobs:
           name: cox-npm-${{ inputs.tag || github.ref_name }}
           path: release/npm/*.tgz
           if-no-files-found: error
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26.12.1
-          registry-url: https://registry.npmjs.org
       - name: Publish to npm
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ inputs.authentication == 'token' && secrets.NPM_TOKEN || '' }}
         run: |
           set -euo pipefail
           dist_tag=latest
           if [[ "${RELEASE_TAG#v}" == *-* ]]; then
             dist_tag=next
           fi
-          npm publish "release/npm/doublepi123-cox-${RELEASE_TAG#v}.tgz" \
-            --access public --provenance --tag "$dist_tag"
+          if ! npm publish "release/npm/doublepi123-cox-${RELEASE_TAG#v}.tgz" \
+            --access public --provenance --tag "$dist_tag"; then
+            echo "::error::If npm reports E403/2FA, token mode requires package write access and Bypass 2FA; OIDC mode requires a trusted publisher for doublepi123/cox, workflow npm-publish.yml, with direct publish allowed."
+            exit 1
+          fi

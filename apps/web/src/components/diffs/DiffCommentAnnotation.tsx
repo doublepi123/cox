@@ -73,7 +73,7 @@ export function DiffCommentAnnotation({
             <Button
               variant="ghost-muted"
               size="icon-xs"
-              aria-label="Delete comment"
+              aria-label={t("Delete comment")}
               onClick={onDelete}
             >
               <Trash2 className="size-3" />

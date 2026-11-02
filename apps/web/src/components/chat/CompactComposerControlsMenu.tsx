@@ -45,7 +45,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             ref={triggerRef}
             size={size}
             className="shrink-0"
-            aria-label="More composer controls"
+            aria-label={t("More composer controls")}
             data-composer-shortcut={props.showPermissions !== false ? "composer.mode" : undefined}
           />
         }
@@ -55,7 +55,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
       <MenuPopup align="start" {...composerFloatingLayerProps}>
         {props.showInteractionModeToggle ? (
           <>
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">{t("Mode")}</div>
             <MenuRadioGroup
               value={props.interactionMode}
               onValueChange={(value) => {

@@ -142,7 +142,7 @@ export function UsageModelDialog({
             <span className="text-xs text-muted-foreground">
               {formatTokens(model.unpricedTokens)} tokens have no known price
             </span>
-            <Button onClick={onSetPrice}>Set price</Button>
+            <Button onClick={onSetPrice}>{t("Set price")}</Button>
           </DialogFooter>
         ) : null}
       </DialogPopup>
@@ -151,9 +151,11 @@ export function UsageModelDialog({
 }
 
 export function SpeedPremium({ premiumUsd }: { readonly premiumUsd: number }) {
+  const { t: translateUi } = useTranslation();
   return (
     <span className="text-xs text-muted-foreground">
-      Premium <span className="text-foreground tabular-nums">{formatUsd(premiumUsd)}</span>
+      {translateUi("Premium")}{" "}
+      <span className="text-foreground tabular-nums">{formatUsd(premiumUsd)}</span>
     </span>
   );
 }

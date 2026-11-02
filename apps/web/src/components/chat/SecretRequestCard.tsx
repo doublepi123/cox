@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import { pipe } from "effect/Function";
 import {
   SECRET_REQUEST_DEFAULT_PLACEHOLDER,
@@ -54,6 +55,7 @@ function PendingSecretRequestForm(props: {
   readonly environmentId: EnvironmentId;
   readonly item: SecretRequestItem;
 }) {
+  const { t: translateUi } = useTranslation();
   const { item } = props;
   const inputId = useId();
   const errorId = useId();
@@ -166,7 +168,7 @@ function PendingSecretRequestForm(props: {
           disabled={submitting}
           onClick={() => void send({ type: "decline" })}
         >
-          Decline
+          {translateUi("Decline")}
         </Button>
       </div>
     </form>

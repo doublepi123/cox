@@ -1,4 +1,4 @@
-import { useTranslation } from "../i18n";
+import { translate, useTranslation, type Language } from "../i18n";
 import { useSyncExternalStore } from "react";
 
 import {
@@ -23,10 +23,10 @@ type ConfirmationCopy = {
   readonly description: string | null;
 };
 
-function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
+function resolveConfirmDialogCopy(message: string, language: Language): ConfirmationCopy {
   const normalizedMessage = message.trim();
   const lines = normalizedMessage.split("\n");
-  const questionLineIndex = lines.findIndex((line) => line.trim().endsWith("?"));
+  const questionLineIndex = lines.findIndex((line) => /[?？]$/.test(line.trim()));
 
   if (questionLineIndex >= 0) {
     const title = lines[questionLineIndex]!.trim();
@@ -37,7 +37,7 @@ function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
     return { title, description: description || null };
   }
 
-  const questionMarkIndex = normalizedMessage.indexOf("?");
+  const questionMarkIndex = normalizedMessage.search(/[?？]/);
   if (questionMarkIndex >= 0) {
     return {
       title: normalizedMessage.slice(0, questionMarkIndex + 1).trim(),
@@ -46,20 +46,21 @@ function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
   }
 
   return {
-    title: "Confirm action",
-    description: normalizedMessage || "This action requires your confirmation.",
+    title: translate(language, "Confirm action"),
+    description:
+      normalizedMessage || translate(language, "This action requires your confirmation."),
   };
 }
 
 export function ConfirmDialogHost() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const state = useSyncExternalStore(
     subscribeConfirmDialogHost,
     readConfirmDialogState,
     readConfirmDialogState,
   );
 
-  const copy = resolveConfirmDialogCopy(state.status === "idle" ? "" : state.message);
+  const copy = resolveConfirmDialogCopy(state.status === "idle" ? "" : state.message, language);
   const confirmVariant = state.status === "idle" ? "default" : state.variant;
   const onCancel = () => respondToConfirmDialog(false);
   const onConfirm = () => respondToConfirmDialog(true);
@@ -86,7 +87,7 @@ export function ConfirmDialogHost() {
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>{t("Cancel")}</AlertDialogClose>
           <Button variant={confirmVariant} onClick={onConfirm}>
-            Confirm
+            {t("Confirm")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

@@ -125,6 +125,7 @@ function withWhen(
  * leaves the list, so a row never moves under the pointer mid-edit.
  */
 export function SnoozePresetsRow() {
+  const { t: translateUi } = useTranslation();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const saved = settings.snoozePresets;
@@ -187,7 +188,9 @@ export function SnoozePresetsRow() {
       serverScoped
       settingKeys={["snoozePresets"]}
       {...searchableSetting("snooze-options")}
-      description="Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today."
+      description={translateUi(
+        "Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today.",
+      )}
       resetAction={
         !mixed && sameSnoozePresets(presets, DEFAULT_SNOOZE_PRESETS) ? null : (
           <SettingResetButton

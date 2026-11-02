@@ -115,8 +115,9 @@ export function BranchRestoreConfirmHost(props: {
             Switch to <code className="font-medium">{props.threadBranch}</code>?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            You have uncommitted changes. They'll carry over to the other branch, or block the
-            switch if they conflict.
+            {t(
+              "You have uncommitted changes. They'll carry over to the other branch, or block the switch if they conflict.",
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -168,18 +169,19 @@ export function RevertConfirmHost(props: {
     >
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>Edit from here?</AlertDialogTitle>
+          <AlertDialogTitle>{t("Edit from here?")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Rewind chat to before this message. Your prompt and attachments return to the composer.
-            “Revert files too” also undoes your own edits.
+            {t(
+              "Rewind chat to before this message. Your prompt and attachments return to the composer. “Revert files too” also undoes your own edits.",
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>{t("Cancel")}</AlertDialogClose>
           <Button variant="destructive-outline" onClick={() => confirm(true)}>
-            Revert files too
+            {t("Revert files too")}
           </Button>
-          <Button onClick={() => confirm(false)}>Revert and keep changes</Button>
+          <Button onClick={() => confirm(false)}>{t("Revert and keep changes")}</Button>
         </AlertDialogFooter>
       </AlertDialogPopup>
     </AlertDialog>

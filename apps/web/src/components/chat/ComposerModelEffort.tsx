@@ -393,8 +393,11 @@ function EffortLevels(props: { traits: TraitsSelectionInput; layout: "popover" |
 }
 
 function NoEffortRow() {
+  const { t: translateUi } = useTranslation();
   return (
-    <div className="flex h-8 items-center px-2 text-muted-foreground text-sm">No effort levels</div>
+    <div className="flex h-8 items-center px-2 text-muted-foreground text-sm">
+      {translateUi("No effort levels")}
+    </div>
   );
 }
 

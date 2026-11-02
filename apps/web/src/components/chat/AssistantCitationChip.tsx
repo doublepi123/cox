@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import type { AssistantCitation } from "@t3tools/contracts";
 import {
   assistantCitationLabel,
@@ -50,6 +51,7 @@ export function AssistantCitationChip({
     onRestoreFocus?: () => void;
   };
 }) {
+  const { t: translateUi } = useTranslation();
   const navigate = useNavigate();
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
@@ -148,7 +150,7 @@ export function AssistantCitationChip({
             render={<Button variant="outline" size="sm" render={<Link {...sourceLinkProps} />} />}
           >
             <ArrowUpRightIcon aria-hidden="true" />
-            Go to source
+            {translateUi("Go to source")}
           </PopoverClose>
         </div>
       </ContextChipPopover>
@@ -205,7 +207,7 @@ export function AssistantCitationChip({
                   : undefined
               }
               ref={commentPopupRef}
-              aria-label="Edit citation comment"
+              aria-label={translateUi("Edit citation comment")}
               width="md"
               padding="compact"
               onPointerDown={(event) => event.stopPropagation()}

@@ -171,7 +171,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         <Menu>
           <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+            render={<Button aria-label={t("Plan actions")} size="icon-xs" variant="outline" />}
           >
             <EllipsisIcon aria-hidden="true" className="size-4" />
           </MenuTrigger>
@@ -179,12 +179,12 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             <MenuItem onClick={handleCopyPlan}>
               {isCopied ? "Copied!" : "Copy to clipboard"}
             </MenuItem>
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+            <MenuItem onClick={handleDownload}>{t("Download as markdown")}</MenuItem>
             <MenuItem
               onClick={openSaveDialog}
               disabled={!canWriteFiles || !workspaceRoot || isSavingToWorkspace}
             >
-              Save to workspace
+              {t("Save to workspace")}
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -280,14 +280,14 @@ function SavePlanToWorkspaceForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Save plan to workspace</DialogTitle>
+        <DialogTitle>{t("Save plan to workspace")}</DialogTitle>
         <DialogDescription>
           Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <label htmlFor={savePathInputId} className="grid gap-1.5">
-          <span className="text-xs font-medium text-foreground">Workspace path</span>
+          <span className="text-xs font-medium text-foreground">{t("Workspace path")}</span>
           <Input
             id={savePathInputId}
             value={savePath}

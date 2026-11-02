@@ -26,6 +26,14 @@ import {
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
 const encodeClientSettings = Schema.encodeSync(ClientSettingsSchema);
+
+describe("follow-up defaults", () => {
+  it("queues follow-ups by default without changing explicit preferences", () => {
+    expect(decodeClientSettings({}).followUpBehavior).toBe("queue");
+    expect(decodeClientSettings({ followUpBehavior: "steer" }).followUpBehavior).toBe("steer");
+    expect(decodeClientSettings({ followUpBehavior: "queue" }).followUpBehavior).toBe("queue");
+  });
+});
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const encodeProviderInstanceEnvironment = Schema.encodeSync(ProviderInstanceEnvironment);
 const decodeProviderInstanceEnvironment = Schema.decodeSync(ProviderInstanceEnvironment);

@@ -2052,6 +2052,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
   const handleSubmitMessageStable = useStableCallback(handleSubmitMessage);
+  const handleDispatchMessageStable = useStableCallback((mode: "queue" | "steer") => {
+    submitComposer(
+      undefined,
+      resolveComposerDispatchMode({
+        running: phase === "running",
+        alternateModifier: false,
+        activeTurnDefault: mode,
+        canSteer: !isCompacting,
+      }),
+    );
+  });
   const submitCitationAndSend = () => {
     submitComposer(
       undefined,
@@ -3117,7 +3128,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={expandMobileComposerStable}
-                  aria-label="Expand composer"
+                  aria-label={t("Expand composer")}
                 >
                   {prompt.trim() ||
                     (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
@@ -3405,6 +3416,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     preserveComposerFocusOnPointerDown={isMobileViewport}
                     isEditingQueuedMessage={isEditingQueuedMessage}
                     onSubmitMessage={handleSubmitMessageStable}
+                    onDispatchMessage={handleDispatchMessageStable}
                     onResume={onResume}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryActionStable}

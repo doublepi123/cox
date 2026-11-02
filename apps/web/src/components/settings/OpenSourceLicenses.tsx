@@ -72,6 +72,7 @@ function LicenseNoticeRow({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const { t: translateUi } = useTranslation();
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <article>
@@ -97,7 +98,7 @@ function LicenseNoticeRow({
               className="me-3 shrink-0 sm:me-4"
               render={<a href={entry.sourceUrl} rel="noreferrer noopener" target="_blank" />}
               size="icon-micro"
-              title="Project source"
+              title={translateUi("Project source")}
               variant="ghost-muted"
             >
               <ExternalLinkIcon aria-hidden className="size-3" />
@@ -224,6 +225,7 @@ function LicenseManifestError({ message, onRetry }: { message: string; onRetry: 
 }
 
 export function OpenSourceLicensesPanel() {
+  const { t: translateUi } = useTranslation();
   const result = useAtomValue(licenseManifestAtom);
   const retry = useAtomRefresh(licenseManifestAtom);
   const [query, setQuery] = useState("");
@@ -243,7 +245,7 @@ export function OpenSourceLicensesPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection
-        title="Third-party notices"
+        title={translateUi("Third-party notices")}
         headerAction={
           manifest ? (
             <LicenseHeaderAction

@@ -101,6 +101,7 @@ export function resolveNewThreadModelSelection(input: {
 }
 
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/#settings/Usage";
+export const CURSOR_USAGE_URL = "https://cursor.com/dashboard?tab=usage";
 export const CHATGPT_USAGE_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded";
 /** A ChatGPT Business admin caps plan use in other apps; only the admin can raise it. */
 export const CHATGPT_WORKSPACE_USAGE_LIMIT_CODE =

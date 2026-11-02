@@ -473,6 +473,27 @@ it.layer(
 
         assert.strictEqual(status.status, "ready");
         assert.strictEqual(status.auth.status, "unknown");
+        assert.deepStrictEqual(status.usageLimits?.unavailable, {
+          reason: "unsupported",
+          message:
+            "Subscription limits are unavailable for API connections. Check usage with your API provider.",
+        });
+      }),
+    );
+
+    it.effect("does not surface subscription RPC failures for API key connections", () =>
+      Effect.gen(function* () {
+        const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+          Effect.succeed(
+            makeCodexProbeSnapshot({
+              account: { account: { type: "apiKey" }, requiresOpenaiAuth: false },
+              rateLimits: { failure: "Codex could not read usage (JSON-RPC -32600)." },
+            }),
+          ),
+        );
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.usageLimits?.unavailable?.reason, "unsupported");
+        assert.isFalse(status.usageLimits?.unavailable?.message?.includes("JSON-RPC") ?? true);
       }),
     );
 

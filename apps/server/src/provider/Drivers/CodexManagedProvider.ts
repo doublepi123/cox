@@ -112,7 +112,7 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
       unavailable: {
         reason: "unsupported" as const,
         message:
-          "ChatGPT tracks subscription usage across connected apps. Open Usage settings with the account you connected to Codex.",
+          "This ChatGPT connection does not expose remaining subscription limits to Cox. Open ChatGPT usage with the account connected to this instance.",
       },
       externalUsage: { label: "ChatGPT usage", url: "https://chatgpt.com/#settings/Usage" },
     };
@@ -157,19 +157,6 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
           auth: managedAuth,
           version: draft.version ?? executable.value.version,
           usageLimits,
-          models: draft.models.map((model) => ({
-            ...model,
-            ...(model.capabilities
-              ? {
-                  capabilities: {
-                    ...model.capabilities,
-                    optionDescriptors: (model.capabilities.optionDescriptors ?? []).filter(
-                      (option) => option.id !== "serviceTier",
-                    ),
-                  },
-                }
-              : {}),
-          })),
           setup,
           runtimePaths,
           ...(draft.slashCommands

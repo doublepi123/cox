@@ -232,13 +232,15 @@ export function QueuedRunsControl({
 
   return (
     <section
-      aria-label={`${items.length} queued message${items.length === 1 ? "" : "s"}`}
+      aria-label={t(items.length === 1 ? "{count} queued message" : "{count} queued messages", {
+        count: items.length,
+      })}
       data-thread-queue="true"
       // Anchors the sr-only live region; unanchored, it escapes the timeline scroller and makes the chat column scroll.
       className="relative mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2 pb-4"
     >
       <span className="sr-only" aria-live="polite">
-        {items.length} queued
+        {t("{count} queued", { count: items.length })}
       </span>
       <ol className="flex flex-col items-end gap-3" id={queueListId}>
         {visibleItems.map((item, position) => {
@@ -283,7 +285,7 @@ export function QueuedRunsControl({
                           }}
                         >
                           <ArrowUpIcon />
-                          Send now
+                          {t("Send now")}
                         </Button>
                       </TooltipTrigger>
                       <TooltipPopup>
@@ -295,16 +297,16 @@ export function QueuedRunsControl({
                 {item.pending ? (
                   <span className="flex items-center gap-1 px-1">
                     <Clock3Icon aria-hidden className="size-3" />
-                    Saving
+                    {t("Saving")}
                   </span>
                 ) : null}
                 {isEditing ? (
                   <>
-                    <span className="px-1 text-foreground">Editing in the composer</span>
+                    <span className="px-1 text-foreground">{t("Editing in the composer")}</span>
                     <Button
                       size="xs"
                       variant="ghost"
-                      aria-label="Cancel editing queued message"
+                      aria-label={t("Cancel editing queued message")}
                       onClick={props.onCancelEdit}
                     >
                       {t("Cancel")}
@@ -318,7 +320,7 @@ export function QueuedRunsControl({
                         <Button
                           size="icon-xs"
                           variant="ghost-muted"
-                          aria-label="Edit queued message"
+                          aria-label={t("Edit queued message")}
                           disabled={
                             item.runId === null ||
                             !item.editable ||
@@ -350,7 +352,7 @@ export function QueuedRunsControl({
                           <Button
                             size="icon-xs"
                             variant="ghost-muted"
-                            aria-label="Remove queued message"
+                            aria-label={t("Remove queued message")}
                             disabled={item.runId === null || busyRunId !== null}
                             onClick={() => {
                               if (item.runId !== null) void remove(item.runId);
@@ -360,7 +362,7 @@ export function QueuedRunsControl({
                       >
                         <XIcon />
                       </TooltipTrigger>
-                      <TooltipPopup>Remove from queue</TooltipPopup>
+                      <TooltipPopup>{t("Remove from queue")}</TooltipPopup>
                     </Tooltip>
                   </>
                 )}

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import { useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -207,6 +208,7 @@ function ProviderCommandArguments({
   value,
   onChange,
 }: Pick<ProviderSettingsFormProps, "value" | "onChange">) {
+  const { t: translateUi } = useTranslation();
   const args = configuredCommandArgs(value);
   const [storedDraft, setDraft] = useState(() => seedRowsDraft(args, toCommandArgumentRows));
   const draft = reconcileRowsDraft(storedDraft, args, commandArgumentsEqual, toCommandArgumentRows);
@@ -223,8 +225,8 @@ function ProviderCommandArguments({
 
   return (
     <SettingsRow
-      title="Arguments"
-      description="One literal argument per row, in launch order."
+      title={translateUi("Arguments")}
+      description={translateUi("One literal argument per row, in launch order.")}
       control={
         <Button
           type="button"

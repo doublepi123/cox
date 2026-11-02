@@ -186,16 +186,16 @@ function SegmentPopover({
         ) : null}
       </div>
       <div className="flex flex-col gap-1 border-t border-border/60 pt-2.5">
-        <Row label="Left">{remaining}%</Row>
+        <Row label={t("Left")}>{remaining}%</Row>
         {window.resetsAt ? (
           <Row label={t("Resets")}>
             {formatUpcomingTimestamp(window.resetsAt, timestampFormat, now)}
             {resetsIn ? ` · ${resetsIn.replace("resets in ", "in ")}` : ""}
           </Row>
         ) : null}
-        {timeLeft !== null ? <Row label="Even pace">{timeLeft}% left by now</Row> : null}
+        {timeLeft !== null ? <Row label={t("Even pace")}>{timeLeft}% left by now</Row> : null}
         {reset && reset.restoresPercent > 0 ? (
-          <Row label="Restores">+{reset.restoresPercent}% of pool</Row>
+          <Row label={t("Restores")}>+{reset.restoresPercent}% of pool</Row>
         ) : null}
       </div>
       {credits && redeem ? (
@@ -448,6 +448,7 @@ function LegendRow({
   readonly now: number;
   readonly index: number;
 }) {
+  const { t: translateUi } = useTranslation();
   const popover = use(SegmentPopoverContext) ?? undefined;
   const { account, window } = payload;
   const remaining = remainingPercent(window);
@@ -467,7 +468,7 @@ function LegendRow({
           className="absolute inset-0 rounded-sm opacity-35"
           style={{ backgroundColor: color }}
         />
-        <span className="sr-only">Segment </span>
+        <span className="sr-only">{translateUi("Segment")} </span>
         <span className="relative">{index}</span>
       </span>
       <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
@@ -628,7 +629,7 @@ export function UsageLimitsPooled({
     <div className="flex flex-col gap-8">
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No provider on the selected environments reports subscription limits.
+          {t("No provider on the selected environments reports subscription limits.")}
         </p>
       ) : null}
       <SegmentPopoverContext value={segmentPopover}>
@@ -663,16 +664,20 @@ export function UsageLimitsPooled({
               <OpenAI className="size-5 shrink-0" aria-hidden="true" />
             ) : null}
             <div className="min-w-0 space-y-1">
-              <h2 className="text-sm font-medium">{link.label}</h2>
+              <h2 className="text-sm font-medium">{t(link.label)}</h2>
               <p className="text-xs break-words text-muted-foreground">
                 {link.accounts.join(", ")}
               </p>
+              <p className="text-xs font-medium text-muted-foreground">
+                {t("Remaining allowance unavailable")}
+              </p>
+              {link.message ? (
+                <p className="max-w-xl text-xs text-muted-foreground">{t(link.message)}</p>
+              ) : null}
               {link.url === CHATGPT_USAGE_URL ? (
                 <p className="text-xs text-muted-foreground">
-                  View usage in ChatGPT with your connected account.
+                  {t("View usage in ChatGPT with your connected account.")}
                 </p>
-              ) : link.message ? (
-                <p className="max-w-xl text-xs text-muted-foreground">{link.message}</p>
               ) : null}
             </div>
           </div>

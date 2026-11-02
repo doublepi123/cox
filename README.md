@@ -4,6 +4,71 @@ Cox is a local Web interface for coding agents, derived from [T3 Code](https://g
 
 Run the server on your computer and control your locally installed coding agents from a browser. Your projects, conversation history, credentials and checkpoints stay in your local Cox data directory.
 
+## Quick start (npm)
+
+The public npm package is [`@doublepi123/cox`](https://www.npmjs.com/package/@doublepi123/cox).
+Use Node.js `26.12.1` (the version tested in CI) and npm. A source checkout and pnpm are
+not required: the package includes the built browser UI and local server.
+
+```sh
+npm install --global @doublepi123/cox@latest
+cox
+```
+
+Alternatively, run the latest package without a global installation:
+
+```sh
+npx @doublepi123/cox@latest
+```
+
+### First run
+
+1. Keep the terminal running. Cox starts a loopback-only server and opens your browser.
+   If it does not open, follow the local URL and authentication instructions printed in
+   the terminal; do not share authentication links or tokens.
+2. Configure a supported provider in **Settings**. CLI-backed providers need their agent
+   CLI installed and authenticated locally; installing Cox does not install every agent
+   or include a model subscription or API credits.
+3. Add a local project directory, create a thread, select a provider/model and send a message.
+
+Production data defaults to `~/.cox`. Keep that directory private: it holds local state,
+including conversation history and credentials. Cox does not migrate data from `~/.t3`.
+
+### Common commands
+
+```sh
+cox --help
+cox --version
+cox --no-browser
+cox --host 127.0.0.1 --port 3773
+cox --home-dir "$HOME/.cox-test" --port 3774
+```
+
+Use the URL printed by the server rather than assuming a fixed port. `--no-browser` only
+disables automatic browser opening; local authentication still applies. `--home-dir`
+selects a separate data directory, useful for an isolated test installation.
+
+### Upgrade
+
+Wait for active agent turns to finish, then stop Cox (`Ctrl+C` when running in a terminal).
+Update the package and start it again:
+
+```sh
+npm install --global @doublepi123/cox@latest
+cox --version
+cox
+```
+
+Use the same data directory and startup flags to retain your existing workspace. Back up
+your Cox data directory while the server is stopped before upgrading. If you manage Cox
+with a service manager, update that service's actual installation and restart it through
+the service manager instead of starting a second server.
+
+Allow npm install scripts so Cox can apply its runtime dependency patches. Native
+dependencies may need a local C/C++ build toolchain when prebuilt binaries are unavailable.
+If `cox` is not found after a global install, check that npm's global executable directory
+is on your `PATH`, or use the `npx` command above.
+
 ## Scope
 
 - Web UI and a local Node HTTP/WebSocket server.
@@ -26,11 +91,36 @@ The selection is saved in the browser and updates the interface without discardi
 Technical diagnostics, external provider messages and some advanced settings retain English;
 see the [localization notes](apps/web/src/i18n/README.md) for coverage and contribution guidance.
 
+## Thread interactions
+
+Working threads appear above pinned and active threads. The Working section starts expanded;
+an explicit expand/collapse choice is remembered in the browser.
+Messages sent during an active turn queue by default. Use the menu beside Send to choose
+**Steer now** when immediate guidance is needed. An existing explicit follow-up preference
+is preserved; steering is unavailable while the agent cannot accept it.
+
 ## Requirements
 
-- Node.js `26.12.1` and pnpm `12.14.0`.
-- Git and at least one supported agent CLI installed and authenticated locally (for example Codex or Claude Code).
+- Node.js `26.12.1` (tested); npm for the published package, or pnpm `12.14.0` for source development and GitHub Release archives.
+- Git and a supported agent provider configured locally. CLI-backed providers need their agent CLI installed and authenticated (for example Codex or Claude Code).
 - A C/C++ build toolchain may be needed if a native dependency has no prebuilt binary for your platform.
+
+## Subscription limits and Codex speed
+
+In **Usage → Limits**, Cox shows remaining percentages and reset times when the connected
+provider reports them. Missing quota data is not treated as an unused allowance.
+ChatGPT plan sharing currently has no remaining-quota reader in Cox. Cursor SDK/API
+credentials alone also do not provide the dashboard token used by Cox's quota reader;
+Cox will not substitute another account's local login. These connections show the reason
+and a link to the provider's usage dashboard instead. Use the connected account there.
+API-key and custom API connections do not run ChatGPT subscription-limit queries.
+
+Managed Codex preserves the speed tiers reported by its model catalog and forwards the
+selected tier, including Fast, to app-server. Catalog entries are not proof of entitlement;
+the upstream service can reject a tier for a particular account or connection. Cox does not
+silently retry with a different tier.
+Account-catalog speed options fill gaps in native model discovery without discarding
+native model settings. Cox does not advertise Fast when neither catalog reports it.
 
 ## Development
 
@@ -45,16 +135,7 @@ Development state is isolated in this checkout's `.cox/`. It does not read or se
 
 ## Production
 
-For npm releases, install the public scoped package and run its `cox` command:
-
-```sh
-npm install --global @doublepi123/cox
-cox
-```
-
-The npm package includes the built Web UI and server. npm installs the runtime dependencies;
-pnpm and a source checkout are not required. Allow install scripts so Cox can preserve its
-runtime dependency patches. Native dependencies may need a local C/C++ build toolchain.
+For the npm installation and upgrade commands, see [Quick start (npm)](#quick-start-npm).
 
 For a GitHub Release, download `cox-v<VERSION>.tar.gz` and `SHA256SUMS`, verify the checksum,
 extract the archive, and run `pnpm install --frozen-lockfile` followed by `pnpm start`.

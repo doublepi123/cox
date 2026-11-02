@@ -475,14 +475,14 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           ) : null}
           {notifiedSubagentThreadId ? (
             <InlineButton
-              aria-label="Open subagent thread"
+              aria-label={t("Open subagent thread")}
               onClick={(event) => {
                 event.stopPropagation();
                 ctx.onOpenThread(notifiedSubagentThreadId);
               }}
               onKeyDown={stopRowToggle}
             >
-              Open subagent
+              {t("Open subagent")}
             </InlineButton>
           ) : null}
           {showFailedIndicator &&

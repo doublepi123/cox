@@ -402,7 +402,7 @@ function CleanupSection() {
       {summaries.some(({ report }) => report !== null) && (
         <FoldedSettingsSection
           id="storage-cleanup-last-run"
-          title="Last run"
+          title={t("Last run")}
           headerPlacement="inside"
           summary={lastRunSummary(
             summaries.filter(({ report }) => report !== null),
@@ -563,7 +563,9 @@ export function WorktreeCleanupSection() {
             <SettingsRow
               title={t("Delete worktrees with deleted threads")}
               status={ruleStatus("worktreeOnDelete")}
-              description="Remove unused worktrees when active or archived threads are deleted. Worktrees with local changes are kept."
+              description={t(
+                "Remove unused worktrees when active or archived threads are deleted. Worktrees with local changes are kept.",
+              )}
               serverScoped={!isProjectScope}
               control={
                 <Switch
@@ -576,7 +578,9 @@ export function WorktreeCleanupSection() {
             <SettingsRow
               title={t("Delete merged worktrees")}
               status={ruleStatus("worktreeOnMerge")}
-              description="Remove worktrees whose pull request is merged and whose commits are included in the default branch."
+              description={t(
+                "Remove worktrees whose pull request is merged and whose commits are included in the default branch.",
+              )}
               serverScoped={!isProjectScope}
               control={
                 <Switch
@@ -589,7 +593,9 @@ export function WorktreeCleanupSection() {
             <SettingsRow
               title={t("Delete inactive worktrees")}
               status={ruleStatus("worktreeAfterDays")}
-              description="Remove worktrees after their threads have been inactive for this many days. Branches and thread history are kept."
+              description={t(
+                "Remove worktrees after their threads have been inactive for this many days. Branches and thread history are kept.",
+              )}
               serverScoped={!isProjectScope}
               control={
                 <RetentionControl
@@ -619,7 +625,9 @@ export function WorktreeCleanupSection() {
                     ]
                       .filter(Boolean)
                       .join(". ")}
-                    description="Remove worktrees this many days after their thread settles. Set 0 days to remove them at the next cleanup. Branches and thread history are kept."
+                    description={t(
+                      "Remove worktrees this many days after their thread settles. Set 0 days to remove them at the next cleanup. Branches and thread history are kept.",
+                    )}
                     serverScoped={!isProjectScope}
                     control={
                       <RetentionControl
@@ -636,7 +644,7 @@ export function WorktreeCleanupSection() {
               <SettingsRow
                 title={t("Delete unchanged worktrees")}
                 status={ruleStatus("worktreeUnchanged")}
-                description="Remove worktrees with no commits beyond the default branch."
+                description={t("Remove worktrees with no commits beyond the default branch.")}
                 serverScoped={!isProjectScope}
                 control={
                   <Switch
@@ -757,7 +765,9 @@ export function StorageCleanupSections() {
           <SettingsRow
             title={t("Delete old browser artifacts")}
             status={artifactsStatus}
-            description="Delete saved browser captures after this many days. Older capture links will no longer open."
+            description={t(
+              "Delete saved browser captures after this many days. Older capture links will no longer open.",
+            )}
             serverScoped
             control={
               <RetentionControl
@@ -772,7 +782,9 @@ export function StorageCleanupSections() {
           <SettingsRow
             title={t("Delete old rotated logs")}
             status={logsStatus}
-            description="Delete inactive rotated log files after this many days. Current logs are kept."
+            description={t(
+              "Delete inactive rotated log files after this many days. Current logs are kept.",
+            )}
             serverScoped
             control={
               <RetentionControl

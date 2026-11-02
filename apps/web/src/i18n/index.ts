@@ -33,6 +33,13 @@ export function getLanguage(): Language {
   return resolveLanguage(preference, deviceLanguages());
 }
 
+export function translateCurrent(
+  key: string,
+  values?: Readonly<Record<string, string | number>>,
+): string {
+  return translate(getLanguage(), key, values);
+}
+
 function publishLanguage() {
   if (typeof document !== "undefined") document.documentElement.lang = getLanguage();
   for (const listener of listeners) listener();

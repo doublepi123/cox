@@ -273,6 +273,7 @@ function ConnectedAgentsStep({
   readonly environmentId: EnvironmentId;
   readonly machineLabel: string;
 }) {
+  const { t: translateUi } = useTranslation();
   const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
@@ -319,7 +320,7 @@ function ConnectedAgentsStep({
       <h2 className="mb-2 text-sm font-medium">{machineLabel}</h2>
       {!canOperateTerminal ? (
         <p className="mb-2 text-sm text-muted-foreground">
-          This connection cannot control terminals.
+          {translateUi("This connection cannot control terminals.")}
         </p>
       ) : null}
       <div className="space-y-1.5">
@@ -402,7 +403,7 @@ function ConnectedAgentsStep({
       ) ? (
         <div className="mt-3">
           <Button size="xs" variant="ghost-muted" onClick={() => setAddingAccount(true)}>
-            Connect another ChatGPT account
+            {translateUi("Connect another ChatGPT account")}
           </Button>
         </div>
       ) : null}
@@ -1005,7 +1006,7 @@ function ImportStep({
               disabled={isImporting || selected.length === candidates.length}
               onClick={() => setSelectedPaths(new Set(candidates.map((item) => item.key)))}
             >
-              Select all
+              {t("Select all")}
             </Button>
             <Button
               variant="ghost"
@@ -1013,7 +1014,7 @@ function ImportStep({
               disabled={isImporting || selected.length === 0}
               onClick={() => setSelectedPaths(new Set())}
             >
-              Select none
+              {t("Select none")}
             </Button>
           </div>
         </div>
@@ -1109,6 +1110,7 @@ function ImportCandidateList({
   readonly selectedKeys: ReadonlySet<string>;
   readonly onSelectionChange: (next: ReadonlySet<string>) => void;
 }) {
+  const { t: translateUi } = useTranslation();
   const { repositories, other } = groupOnboardingProjects(candidates);
   const setKeys = (keys: ReadonlyArray<string>, checked: boolean) => {
     const next = new Set(selectedKeys);
@@ -1145,7 +1147,9 @@ function ImportCandidateList({
             />
             <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-1.5 text-left">
               <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-90" />
-              <span className="truncate text-sm text-muted-foreground">Other folders</span>
+              <span className="truncate text-sm text-muted-foreground">
+                {translateUi("Other folders")}
+              </span>
               <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
                 {other.length} {other.length === 1 ? "folder" : "folders"}
               </span>

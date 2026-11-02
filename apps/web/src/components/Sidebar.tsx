@@ -1,4 +1,4 @@
-import { useTranslation } from "../i18n";
+import { getLanguage, useTranslation } from "../i18n";
 import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
@@ -169,6 +169,7 @@ import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  formatSnoozePresetMenuLabel,
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
 import {
@@ -439,7 +440,7 @@ function useSidebarThreads(input: {
   );
   const [workingShelfExpanded, setWorkingShelfExpanded] = useLocalStorage(
     WORKING_SHELF_EXPANDED_KEY,
-    false,
+    true,
     Schema.Boolean,
   );
   // Shared with the old per-project sidebar, so folders keep their open state.
@@ -520,11 +521,11 @@ function useSidebarThreads(input: {
           };
         });
   const orderedThreads = [
+    ...visibleWorkingThreads,
     ...pinnedThreads,
     ...(projectFolders === null
       ? activeThreads
       : projectFolders.flatMap((folder) => folder.threads)),
-    ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
     ...renderedSettledThreads,
   ];
@@ -543,9 +544,9 @@ function useSidebarThreads(input: {
     threads,
     workingShelfEnabled,
     searchableThreads: [
+      ...workingThreads,
       ...pinnedThreads,
       ...activeThreads,
-      ...workingThreads,
       ...snoozedThreads,
       ...settledThreads,
     ],
@@ -1881,17 +1882,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ) {
       return [];
     }
-    const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
+    const items: SidebarListItem[] = [];
+    if (workingThreads.length > 0) {
+      items.push({ kind: "marker", marker: "working-header" });
+      items.push(...rowsOf(visibleWorkingThreads, "working"));
+    }
+    items.push({ kind: "marker", marker: "pinned-header" });
     const pinnedRows = rowsOf(pinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
     items.push(...activeRows);
-    if (workingThreads.length > 0) {
-      items.push({ kind: "marker", marker: "working-header" });
-      items.push(...rowsOf(visibleWorkingThreads, "working"));
-    }
     if (snoozedThreads.length > 0) {
       items.push({ kind: "marker", marker: "snoozed-header" });
       items.push(...rowsOf(visibleSnoozedThreads, "snoozed"));
@@ -2258,28 +2260,34 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         api.contextMenu.show(
           [
             ...(unpinMenuItem
-              ? [{ ...unpinMenuItem, disabled: !canOperateThreads(pinnedSelectedThreads) }]
+              ? [
+                  {
+                    ...unpinMenuItem,
+                    label: t("Unpin ({count})", { count: pinnedSelectedThreads.length }),
+                    disabled: !canOperateThreads(pinnedSelectedThreads),
+                  },
+                ]
               : []),
             {
               id: "settle",
-              label: `Settle (${count})`,
+              label: t("Settle ({count})", { count }),
               disabled: settlingThreads.length === 0 || !canOperateThreads(settlingThreads),
             },
             ...(canSnoozeSelection
               ? [
                   {
                     id: "snooze",
-                    label: `Snooze (${count})`,
+                    label: t("Snooze ({count})", { count }),
                     disabled: !canOperateThreads(selectedThreads),
                     children: [
                       ...snoozePresets.map((preset) => ({
                         id: `snooze:${preset.id}`,
-                        label: `${preset.label} (${preset.whenLabel})`,
+                        label: formatSnoozePresetMenuLabel(preset, getLanguage()),
                         disabled: !canOperateThreads(selectedThreads),
                       })),
                       {
                         id: "snooze:custom",
-                        label: "Custom…",
+                        label: t("Custom…"),
                         separatorBefore: snoozePresets.length > 0,
                         disabled: !canOperateThreads(selectedThreads),
                       },
@@ -2291,16 +2299,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ? [
                   {
                     ...titleRegenerationMenuItem,
+                    label: t(
+                      regeneratableTitleThreads.length === 0
+                        ? "Regenerating… ({count})"
+                        : "Regenerate titles ({count})",
+                      {
+                        count: regeneratableTitleThreads.length || titleRegenerationThreads.length,
+                      },
+                    ),
                     disabled:
                       titleRegenerationMenuItem.disabled ||
                       !canOperateThreads(regeneratableTitleThreads),
                   },
                 ]
               : []),
-            { id: "mark-unread", label: `Mark unread (${count})` },
+            { id: "mark-unread", label: t("Mark unread ({count})", { count }) },
             {
               id: "delete",
-              label: `Delete (${count})`,
+              label: t("Delete ({count})", { count }),
               destructive: true,
               disabled: !canOperateThreads(selectedThreads),
             },
@@ -2418,8 +2434,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const confirmed = await settlePromise(() =>
           api.dialogs.confirm(
             [
-              `Delete ${count} thread${count === 1 ? "" : "s"}?`,
-              "This permanently clears conversation history for these threads.",
+              t(count === 1 ? "Delete {count} thread?" : "Delete {count} threads?", { count }),
+              t("This permanently clears conversation history for these threads."),
             ].join("\n"),
             { variant: "destructive" },
           ),
@@ -2486,11 +2502,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           projectByKey.get(`${session.environmentId}:${session.projectId}`)?.workspaceRoot;
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
-            buildDraftActionMenuItems({
-              hasPath: Boolean(workspacePath),
-              hasBranch: Boolean(session.branch),
-              hasProject: projectGroup != null,
-            }),
+            buildDraftActionMenuItems(
+              {
+                hasPath: Boolean(workspacePath),
+                hasBranch: Boolean(session.branch),
+                hasProject: projectGroup != null,
+              },
+              getLanguage(),
+            ),
             position,
           ),
         );
@@ -2565,37 +2584,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ) ?? null;
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
-            buildThreadActionMenuItems({
-              canOperate: readEnvironmentScope(
-                threadRef.environmentId,
-                AuthOrchestrationOperateScope,
-              ),
-              branch: thread.branch ?? null,
-              // An archived project is not a filter choice.
-              projectFilter:
-                threadProjectGroup && !threadProjectGroup.archived
-                  ? {
-                      label: threadProjectGroup.displayName,
-                      isActive: projectScopeKeys.includes(threadProjectGroup.projectKey),
-                    }
-                  : null,
-              isPinned,
-              isSettled,
-              autoSettleEnabled: thread.autoSettleDisabledAt == null,
-              isSnoozed,
-              canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-              isRegeneratingTitle,
-              isRunning: !threadRuntimeCanArchive(thread.runtime),
-              canTurnIntoProject: canTurnThreadIntoProject(threadRef),
-              supports: {
-                settlement: configLoaded,
-                autoSettleOptOut: supportsAutoSettleOptOut,
-                snooze: configLoaded,
-                pinning: configLoaded,
-                titleRegeneration: configLoaded,
+            buildThreadActionMenuItems(
+              {
+                canOperate: readEnvironmentScope(
+                  threadRef.environmentId,
+                  AuthOrchestrationOperateScope,
+                ),
+                branch: thread.branch ?? null,
+                // An archived project is not a filter choice.
+                projectFilter:
+                  threadProjectGroup && !threadProjectGroup.archived
+                    ? {
+                        label: threadProjectGroup.displayName,
+                        isActive: projectScopeKeys.includes(threadProjectGroup.projectKey),
+                      }
+                    : null,
+                isPinned,
+                isSettled,
+                autoSettleEnabled: thread.autoSettleDisabledAt == null,
+                isSnoozed,
+                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+                isRegeneratingTitle,
+                isRunning: !threadRuntimeCanArchive(thread.runtime),
+                canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+                supports: {
+                  settlement: configLoaded,
+                  autoSettleOptOut: supportsAutoSettleOptOut,
+                  snooze: configLoaded,
+                  pinning: configLoaded,
+                  titleRegeneration: configLoaded,
+                },
+                snoozePresets,
               },
-              snoozePresets,
-            }),
+              getLanguage(),
+            ),
             position,
           ),
         );
@@ -2756,7 +2778,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           case "archive": {
             if (confirmThreadArchive) {
               const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+                api.dialogs.confirm(t('Archive thread "{title}"?', { title: thread.title })),
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
             }
@@ -2786,8 +2808,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               const confirmed = await settlePromise(() =>
                 api.dialogs.confirm(
                   [
-                    `Delete thread "${thread.title}"?`,
-                    "This permanently clears conversation history for this thread.",
+                    t('Delete thread "{title}"?', { title: thread.title }),
+                    t("This permanently clears conversation history for this thread."),
                   ].join("\n"),
                   { variant: "destructive" },
                 ),
@@ -3354,7 +3376,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         );
                       };
                       const from = isContextDrag ? null : (dragState?.activeSection ?? null);
-                      const items: ReactNode[] = [
+                      const draftBlock = (
                         <SidebarDraftBlock
                           key="draft-sessions"
                           projectByKey={projectByKey}
@@ -3363,8 +3385,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           routeDraftId={routeDraftIdForRows}
                           onNavigateToDraft={navigateToDraft}
                           onDraftContextMenu={handleDraftContextMenu}
-                        />,
-                      ];
+                        />
+                      );
+                      const items: ReactNode[] = sidebarListItems.length === 0 ? [draftBlock] : [];
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
                           // Folders draw active rows in their own place below.
@@ -3399,6 +3422,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         }
                         switch (item.marker) {
                           case "pinned-header":
+                            items.push(draftBlock);
                             items.push(
                               <SidebarDragBoundary
                                 key="pinned-header"
@@ -3443,7 +3467,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <SidebarSectionHeader
                                 key="working-shelf-header"
                                 marker="working-header"
-                                className="mt-auto"
                                 label={t("Working")}
                                 count={workingThreads.length}
                                 toggle={{
@@ -3458,8 +3481,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <SidebarSectionHeader
                                 key="snoozed-shelf-header"
                                 marker="snoozed-header"
-                                className={cn(workingThreads.length === 0 && "mt-auto")}
-                                label="Snoozed"
+                                className="mt-auto"
+                                label={t("Snoozed")}
                                 count={snoozedThreads.length}
                                 toggle={{
                                   expanded: snoozedShelfExpanded,
@@ -3473,9 +3496,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <SidebarSectionHeader
                                 key="settled-shelf-header"
                                 marker="settled-header"
-                                className={cn(
-                                  workingThreads.length + snoozedThreads.length === 0 && "mt-auto",
-                                )}
+                                className={cn(snoozedThreads.length === 0 && "mt-auto")}
                                 label={t("Settled")}
                                 count={settledCount}
                                 dragging={from !== null}

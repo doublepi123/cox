@@ -77,7 +77,7 @@ it.effect(
           ["first", "First from OpenAI"],
         ],
       );
-      assert.deepEqual(a[1]!.capabilities, native[0]!.capabilities);
+      assert.strictEqual(a[1]!.capabilities?.optionDescriptors?.[0]?.id, "reasoningEffort");
       assert.deepEqual(a[0]!.capabilities?.optionDescriptors, [
         {
           id: "reasoningEffort",
@@ -111,5 +111,121 @@ it.effect("does not present a cached catalog as account entitlements when discov
       chatGptModels("account-a", []).pipe(Effect.provideService(HttpClient.HttpClient, http)),
     );
     assert.strictEqual(error._tag, "ChatGptCatalogError");
+  }),
+);
+
+it.effect("merges account speed tiers into native models that only report reasoning", () =>
+  Effect.gen(function* () {
+    const http = HttpClient.make((request) =>
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            JSON.stringify({
+              models: [
+                {
+                  slug: "with-priority",
+                  display_name: "Priority model",
+                  visibility: "list",
+                  service_tiers: [{ id: "priority", name: "Fast", description: "Lower latency" }],
+                  default_service_tier: "priority",
+                },
+                {
+                  slug: "with-fast",
+                  display_name: "Fast model",
+                  visibility: "list",
+                  additional_speed_tiers: ["fast"],
+                },
+                { slug: "standard-only", display_name: "Standard model", visibility: "list" },
+              ],
+            }),
+          ),
+        ),
+      ),
+    );
+    const reasoning = {
+      id: "reasoningEffort",
+      label: "Reasoning",
+      type: "select" as const,
+      options: [{ id: "high", label: "High" }],
+      currentValue: "high",
+    };
+    const models = yield* chatGptModels("account-a", [
+      {
+        slug: "with-priority",
+        name: "Native model",
+        isCustom: false,
+        capabilities: { optionDescriptors: [reasoning] },
+      },
+    ]).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    assert.deepEqual(models[0]!.capabilities?.optionDescriptors?.[0], reasoning);
+    const priority = models[0]!.capabilities?.optionDescriptors?.find(
+      (option) => option.id === "serviceTier",
+    );
+    assert.strictEqual(priority?.type, "select");
+    if (priority?.type === "select") {
+      assert.strictEqual(priority.currentValue, "priority");
+      assert.deepEqual(
+        priority.options.map((option) => option.id),
+        ["default", "priority"],
+      );
+    }
+    const fast = models[1]!.capabilities?.optionDescriptors?.find(
+      (option) => option.id === "serviceTier",
+    );
+    assert.strictEqual(fast?.type, "select");
+    if (fast?.type === "select")
+      assert.include(
+        fast.options.map((option) => option.id),
+        "fast",
+      );
+    assert.isNull(models[2]!.capabilities);
+  }),
+);
+
+it.effect("preserves native speed settings instead of replacing them with catalog defaults", () =>
+  Effect.gen(function* () {
+    const native = {
+      slug: "model",
+      name: "Native",
+      isCustom: false,
+      capabilities: {
+        optionDescriptors: [
+          {
+            id: "serviceTier",
+            label: "Service Tier",
+            type: "select" as const,
+            options: [
+              { id: "default", label: "Standard" },
+              { id: "priority", label: "Fast" },
+            ],
+            currentValue: "priority",
+          },
+        ],
+      },
+    };
+    const http = HttpClient.make((request) =>
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            JSON.stringify({
+              models: [
+                {
+                  slug: "model",
+                  display_name: "Account model",
+                  visibility: "list",
+                  additional_speed_tiers: ["fast"],
+                },
+              ],
+            }),
+          ),
+        ),
+      ),
+    );
+    const models = yield* chatGptModels("account-a", [native]).pipe(
+      Effect.provideService(HttpClient.HttpClient, http),
+    );
+    assert.deepEqual(models[0]!.capabilities, native.capabilities);
   }),
 );

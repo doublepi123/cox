@@ -221,15 +221,20 @@ export function msUntilRelativeTimeChange(
   // Delays above 2^31-1 fire immediately; cap safely and let callers reschedule.
   return Math.min(nextChangeMs - nowMs, DAY_MS);
 }
-export function formatRelativeElapsed(elapsedMs: number): RelativeTimeParts {
+export function formatRelativeElapsed(
+  elapsedMs: number,
+  language: Language = "en",
+): RelativeTimeParts {
   const seconds = Math.floor(elapsedMs / 1000);
-  if (seconds < 60) return { value: "just now", suffix: null };
+  if (seconds < 60) return { value: translate(language, "just now"), suffix: null };
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return { value: `${minutes}m`, suffix: "ago" };
+  if (minutes < 60)
+    return { value: translate(language, "{count}m", { count: minutes }), suffix: "ago" };
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return { value: `${hours}h`, suffix: "ago" };
+  if (hours < 24)
+    return { value: translate(language, "{count}h", { count: hours }), suffix: "ago" };
   const days = Math.floor(hours / 24);
-  return { value: `${days}d`, suffix: "ago" };
+  return { value: translate(language, "{count}d", { count: days }), suffix: "ago" };
 }
 export function formatRelativeTime(
   isoDate: string,

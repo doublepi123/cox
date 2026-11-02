@@ -15,6 +15,21 @@ const Catalog = Schema.Struct({
       slug: Schema.NonEmptyString,
       display_name: Schema.NonEmptyString,
       visibility: Schema.String,
+      additional_speed_tiers: Schema.optionalKey(
+        Schema.NullOr(Schema.Array(Schema.NonEmptyString)),
+      ),
+      default_service_tier: Schema.optionalKey(Schema.NullOr(Schema.NonEmptyString)),
+      service_tiers: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Array(
+            Schema.Struct({
+              id: Schema.NonEmptyString,
+              name: Schema.NonEmptyString,
+              description: Schema.optionalKey(Schema.NullOr(Schema.String)),
+            }),
+          ),
+        ),
+      ),
       default_reasoning_level: Schema.optionalKey(Schema.NullOr(Schema.NonEmptyString)),
       supported_reasoning_levels: Schema.optionalKey(
         Schema.NullOr(
@@ -48,7 +63,9 @@ export const chatGptModels = Effect.fn("chatGptModels")(function* (
       const native = nativeModels.find((candidate) => candidate.slug === model.slug);
       // A pinned Codex CLI can predate a model the account already has; the catalog still lists its efforts.
       const catalogCapabilities =
-        model.default_reasoning_level && model.supported_reasoning_levels
+        model.supported_reasoning_levels?.length ||
+        model.additional_speed_tiers?.length ||
+        model.service_tiers?.length
           ? mapCodexModelCapabilities({
               id: model.slug,
               model: model.slug,
@@ -56,16 +73,39 @@ export const chatGptModels = Effect.fn("chatGptModels")(function* (
               description: "",
               hidden: false,
               isDefault: false,
-              defaultReasoningEffort: model.default_reasoning_level,
-              supportedReasoningEfforts: model.supported_reasoning_levels.map((level) => ({
+              defaultReasoningEffort: model.default_reasoning_level ?? "medium",
+              supportedReasoningEfforts: (model.supported_reasoning_levels ?? []).map((level) => ({
                 reasoningEffort: level.effort,
                 description: level.description ?? "",
               })),
+              additionalSpeedTiers: model.additional_speed_tiers ?? [],
+              defaultServiceTier: model.default_service_tier ?? null,
+              serviceTiers:
+                model.service_tiers?.map((tier) => ({
+                  id: tier.id,
+                  name: tier.name,
+                  description: tier.description ?? "",
+                })) ?? [],
             })
           : null;
+      const nativeCapabilities = native?.capabilities;
+      const capabilities = nativeCapabilities
+        ? {
+            ...nativeCapabilities,
+            optionDescriptors: [
+              ...(nativeCapabilities.optionDescriptors ?? []),
+              ...(catalogCapabilities?.optionDescriptors?.filter(
+                (descriptor) =>
+                  !nativeCapabilities.optionDescriptors?.some(
+                    (existing) => existing.id === descriptor.id,
+                  ),
+              ) ?? []),
+            ],
+          }
+        : catalogCapabilities;
       return {
         ...native,
-        capabilities: native?.capabilities ?? catalogCapabilities,
+        capabilities,
         slug: model.slug,
         name: model.display_name,
         isCustom: false,

@@ -22,6 +22,36 @@ const provider: ServerProvider = {
 };
 
 describe("getProviderSummary", () => {
+  it("localizes status and known auth labels while preserving provider names and diagnostics", () => {
+    expect(getProviderSummary(provider, "zh").headline).toBe("已认证 · ChatGPT");
+    expect(getProviderSummary({ ...provider, enabled: false }, "zh").headline).toBe("已禁用");
+    expect(getProviderSummary({ ...provider, auth: { status: "unknown" } }, "zh").headline).toBe(
+      "可用",
+    );
+    expect(
+      getProviderSummary(
+        {
+          ...provider,
+          auth: { status: "authenticated", label: "Custom API endpoint" },
+        },
+        "zh",
+      ).headline,
+    ).toBe("已认证 · 自定义 API 端点");
+    expect(
+      getProviderSummary(
+        {
+          ...provider,
+          auth: { status: "authenticated", label: "My Custom Account" },
+          message: "Provider diagnostic: custom_value",
+        },
+        "zh",
+      ),
+    ).toEqual({
+      headline: "已认证 · My Custom Account",
+      detail: "Provider diagnostic: custom_value",
+    });
+  });
+
   it("does not hide a provider error behind a previous authenticated state", () => {
     expect(
       getProviderSummary({

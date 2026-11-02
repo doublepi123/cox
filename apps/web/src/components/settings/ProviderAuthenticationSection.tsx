@@ -161,8 +161,8 @@ export function ProviderAuthenticationSection({
               key={provider.auth.email}
               value={provider.auth.email}
               ariaLabel={t("Toggle account email visibility")}
-              revealTooltip="Click to reveal email"
-              hideTooltip="Click to hide email"
+              revealTooltip={t("Click to reveal email")}
+              hideTooltip={t("Click to hide email")}
               className="max-w-full truncate"
             />
           </span>
@@ -185,17 +185,19 @@ export function ProviderAuthenticationSection({
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
-              <SelectTrigger size="sm" aria-label="Sign-in method" className="w-44">
+              <SelectTrigger size="sm" aria-label={t("Sign-in method")} className="w-44">
                 <SelectValue>
-                  {auth?.methods?.find((method) => method.id === methodId)?.name ??
-                    "Provider default"}
+                  {t(
+                    auth?.methods?.find((method) => method.id === methodId)?.name ??
+                      "Provider default",
+                  )}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value="">Provider default</SelectItem>
+                <SelectItem value="">{t("Provider default")}</SelectItem>
                 {auth?.methods?.map((method) => (
                   <SelectItem key={method.id} value={method.id}>
-                    {method.name}
+                    {t(method.name)}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -209,7 +211,7 @@ export function ProviderAuthenticationSection({
                 disabled={disabled}
                 onClick={() => void openBrowser()}
               >
-                Open browser
+                {t("Open browser")}
               </Button>
               <Tooltip>
                 <TooltipTrigger
@@ -253,7 +255,7 @@ export function ProviderAuthenticationSection({
               <Button
                 size="sm"
                 variant="ghost-muted"
-                aria-label="Cancel sign-in"
+                aria-label={t("Cancel sign-in")}
                 disabled={disabled}
                 onClick={() =>
                   void run(() =>
@@ -282,11 +284,13 @@ export function ProviderAuthenticationSection({
                   )
                 }
               >
-                {signedIn
-                  ? "Change account"
-                  : auth?.phase === "failed" || auth?.phase === "cancelled"
-                    ? "Retry sign-in"
-                    : t("Sign in")}
+                {t(
+                  signedIn
+                    ? "Change account"
+                    : auth?.phase === "failed" || auth?.phase === "cancelled"
+                      ? "Retry sign-in"
+                      : "Sign in",
+                )}
               </Button>
             ) : null}
             {!active && signedIn && (provider.auth.canLogout ?? provider.setup?.canAuthenticate) ? (
@@ -320,7 +324,7 @@ export function ProviderAuthenticationSection({
         <>
           {interaction?.type === "deviceCode" ? (
             <p className="py-2 text-sm text-muted-foreground">
-              Enter code{" "}
+              {t("Enter code")}{" "}
               <code className="select-all font-mono text-foreground">{interaction.userCode}</code>{" "}
               in your browser.
             </p>

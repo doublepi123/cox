@@ -44,9 +44,12 @@ runtime patches after npm installs dependencies, including on subsequent rebuild
 both root and server package versions. Stable releases use `latest`; prereleases use `next`.
 The workflow typechecks, runs root tests, builds the package and smoke-tests a fresh npm
 installation with isolated state before publishing with provenance. It also saves the tarball
-as a workflow artifact. Use **Run workflow** with an existing version tag to retry a failed
-run. The tagged commit must include the npm packaging scripts and workflow; older tags cannot
-use packaging code added afterward. Published npm versions cannot be overwritten.
+as a workflow artifact. Authentication is checked before building. Tag pushes use OIDC and
+never silently fall back to a stored token. Use **Run workflow** with an existing version tag
+and choose `oidc` (normal releases) or `token` (first publish). Re-running an old failed run
+uses its old workflow, not these fixes: start a new manual run from the branch containing the
+fix instead. The tagged commit must include the npm packaging scripts and workflow; older
+tags cannot use packaging code added afterward. Published npm versions cannot be overwritten.
 
 ### Authentication setup
 
@@ -55,11 +58,17 @@ use packaging code added afterward. Published npm versions cannot be overwritten
 2. For the first publish, create a granular npm token for the `doublepi123` scope with package
    write access and permission to bypass 2FA for automated publishing. Store it as the GitHub
    Actions repository secret `NPM_TOKEN` in `doublepi123/cox`. Limit its permissions and expiry.
+   Start **Run workflow**, enter the version tag and select `authentication=token`. A token
+   that passes `npm whoami` can still lack publish access or Bypass 2FA; E403 at publish time
+   requires correcting the token/account policy, not rebuilding the tarball. A missing,
+   expired or read-only token cannot be repaired by changing this repository.
 3. After the package exists, configure a GitHub Actions trusted publisher in the npm package's
    settings: owner `doublepi123`, repository `cox`, workflow filename `npm-publish.yml`, no
    environment name. Allow direct `npm publish`. The workflow already grants `id-token: write`.
-4. Verify an OIDC release, then delete `NPM_TOKEN`, revoke the bootstrap token and restrict
-   token-based publishing in npm. The same workflow can publish using OIDC without a secret.
+4. Verify a release with `authentication=oidc` (also the default for tag pushes), then delete
+   `NPM_TOKEN`, revoke the bootstrap token and restrict token-based publishing in npm.
+   OIDC mode does not pass the bootstrap token to npm. The npm user configuration is isolated
+   in the runner's temporary directory, so token configuration does not leak into OIDC runs.
 
 Creating a local workflow does not configure npm account permissions, push a tag or publish a
 version. Commit and push the reviewed workflow before triggering a release. npm ownership and

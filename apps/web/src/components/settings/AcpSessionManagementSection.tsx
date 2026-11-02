@@ -325,7 +325,7 @@ export function AcpSessionManagementSection(props: {
   return (
     <div className="grid gap-3">
       <SettingsRow
-        title="Native sessions"
+        title={t("Native sessions")}
         description="Resume agent-owned conversations as T3 threads."
         status={
           canList && props.projects.length === 0

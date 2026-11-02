@@ -854,7 +854,7 @@ export function ThemeEditorPanel({
 
   const renderNameField = () => (
     <label className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-3">
-      <span className="text-sm font-medium">Theme name</span>
+      <span className="text-sm font-medium">{t("Theme name")}</span>
       <Input
         autoFocus
         size="sm"
@@ -889,7 +889,7 @@ export function ThemeEditorPanel({
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-3">
       <span className="text-sm font-medium">{t("Appearance")}</span>
       <ToggleGroup
-        aria-label="Theme appearance"
+        aria-label={t("Theme appearance")}
         variant="segmented"
         value={[activeAppearance]}
         onValueChange={(next) => {
@@ -911,9 +911,9 @@ export function ThemeEditorPanel({
   const renderColorsHeader = () => (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start gap-3">
       <div>
-        <h3 className="text-sm font-medium">Colors</h3>
+        <h3 className="text-sm font-medium">{t("Colors")}</h3>
         {isAdvanced ? null : (
-          <p className="text-xs text-muted-foreground">Two colors, rest derived</p>
+          <p className="text-xs text-muted-foreground">{t("Two colors, rest derived")}</p>
         )}
       </div>
       <div className="flex min-w-0 items-start gap-3">
@@ -930,7 +930,7 @@ export function ThemeEditorPanel({
         <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-2 pt-0.5 text-sm font-medium">
           <span>{t("Advanced")}</span>
           <Switch
-            aria-label="Use advanced theme colors"
+            aria-label={t("Use advanced theme colors")}
             checked={isAdvanced}
             onCheckedChange={(checked) => handleAdvancedChange(Boolean(checked))}
           />
@@ -980,7 +980,9 @@ export function ThemeEditorPanel({
             {renderRoleFields(group.families, "grid gap-1")}
           </section>
         ))}
-        {groups.length === 0 ? <p className="text-xs text-muted-foreground">No matches.</p> : null}
+        {groups.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("No matches.")}</p>
+        ) : null}
       </div>
     ) : (
       <div className="grid gap-1">
@@ -1153,7 +1155,7 @@ export function ThemeEditorPanel({
           <MorphIcon icon={isMinimized ? ChevronUp : ChevronDown} />
         </Button>
         <Button
-          aria-label="Close the theme editor"
+          aria-label={t("Close the theme editor")}
           size="icon-xs"
           variant="ghost"
           onClick={() => onOpenChange(false)}

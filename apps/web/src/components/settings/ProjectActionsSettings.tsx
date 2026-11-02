@@ -115,7 +115,9 @@ export function ProjectActionsSettings() {
         settingKeys={["defaultProjectScripts"]}
         mixed={mixed}
         title={t("Actions")}
-        description="Commands that run in this project's checkout or its worktree, with optional shortcuts."
+        description={t(
+          "Commands that run in this project's checkout or its worktree, with optional shortcuts.",
+        )}
         onResetOverride={() => void persist(() => null)}
         control={
           <div className="flex flex-wrap items-center gap-1.5">
@@ -167,15 +169,17 @@ export function ProjectActionsSettings() {
               onClick={() => setRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT })}
             >
               <PlusIcon className="size-3.5" />
-              Add action
+              {t("Add action")}
             </Button>
           </div>
         }
       />
       {mixed ? (
         <SettingsRow
-          title="Different actions across environments"
-          description="Choose one environment to edit its list. Adding an action here adds it on every selected environment."
+          title={t("Different actions across environments")}
+          description={t(
+            "Choose one environment to edit its list. Adding an action here adds it on every selected environment.",
+          )}
         />
       ) : (
         <ProjectActionsList

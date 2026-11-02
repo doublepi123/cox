@@ -665,6 +665,7 @@ function ProcessResourceHistoryTable({
 }
 
 function DiagnosticsLastChecked({ checkedAt }: { checkedAt: DateTime.Utc | null }) {
+  const { t: translateUi } = useTranslation();
   const relative = useRelativeTimeState(checkedAt ? DateTime.formatIso(checkedAt) : null);
 
   if (relative.status === "missing") {
@@ -672,7 +673,11 @@ function DiagnosticsLastChecked({ checkedAt }: { checkedAt: DateTime.Utc | null 
   }
 
   if (relative.status === "invalid") {
-    return <span className="text-2xs text-muted-foreground/50">Checked unavailable</span>;
+    return (
+      <span className="text-2xs text-muted-foreground/50">
+        {translateUi("Checked unavailable")}
+      </span>
+    );
   }
 
   return (
@@ -932,7 +937,7 @@ function DiagnosticsSettingsBody() {
       <ResourceTelemetryDiagnostics environmentId={environmentId} />
 
       <SettingsSection
-        title="Live Processes"
+        title={t("Live Processes")}
         headerAction={
           <div className="flex items-center gap-1.5">
             <DiagnosticsLastChecked checkedAt={processData?.readAt ?? null} />
@@ -994,7 +999,7 @@ function DiagnosticsSettingsBody() {
       </SettingsSection>
 
       <SettingsSection
-        title="Resource History"
+        title={t("Resource History")}
         headerAction={
           <div className="flex items-center gap-1.5">
             <ResourceHistoryWindowSelector

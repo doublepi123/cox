@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import type { ProviderAuthResponse } from "@t3tools/contracts";
 import { useEffect, useRef, useState } from "react";
 import { GhosttyTerminalSurface } from "../../terminal/ghostty/surface";
@@ -14,6 +15,7 @@ export default function ProviderAuthTerminal({
   readonly outputOffset?: number | undefined;
   readonly onResponse: (response: Extract<ProviderAuthResponse, { type: "terminal" }>) => void;
 }) {
+  const { t: translateUi } = useTranslation();
   const [surface, setSurface] = useState<GhosttyTerminalSurface | null>(null);
   const written = useRef(0);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export default function ProviderAuthTerminal({
     <>
       <div
         ref={mountSurface}
-        aria-label="Provider sign-in terminal"
+        aria-label={translateUi("Provider sign-in terminal")}
         className="relative h-64 overflow-hidden rounded-md border border-border"
       />
       {error ? (

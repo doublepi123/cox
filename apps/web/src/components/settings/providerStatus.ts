@@ -72,7 +72,7 @@ export function getProviderSummary(
   if (provider.auth.status === "unauthenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `${t("Not authenticated")} · ${authLabel}` : t("Not authenticated"),
+      headline: authLabel ? `${t("Not authenticated")} · ${t(authLabel)}` : t("Not authenticated"),
       detail: provider.message ?? null,
     };
   }
@@ -99,7 +99,7 @@ export function getProviderSummary(
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `${t("Authenticated")} · ${authLabel}` : t("Authenticated"),
+      headline: authLabel ? `${t("Authenticated")} · ${t(authLabel)}` : t("Authenticated"),
       detail: provider.message ?? null,
     };
   }

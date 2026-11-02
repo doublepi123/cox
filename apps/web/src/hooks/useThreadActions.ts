@@ -24,6 +24,7 @@ import { useRouter } from "@tanstack/react-router";
 
 import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { translateCurrent as t } from "../i18n";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentServerConfigsAtom } from "../state/server";
@@ -175,8 +176,8 @@ async function requestThreadUnpinConfirmation(input: {
   return settlePromise(() =>
     confirm(
       [
-        `Unpin thread "${input.title}"?`,
-        "This will move the thread out of your pinned section.",
+        t('Unpin thread "{title}"?', { title: input.title }),
+        t("This will move the thread out of your pinned section."),
       ].join("\n"),
     ),
   );
@@ -189,7 +190,7 @@ export async function navigateAfterThreadDeletion(navigate: () => Promise<void>)
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: "Thread deleted, but navigation failed",
+        title: t("Thread deleted, but navigation failed"),
         description: error instanceof Error ? error.message : "An error occurred.",
       }),
     );
@@ -917,12 +918,12 @@ export function useThreadActions() {
     const resolved = resolveThreadTarget(target);
 
     if (confirmThreadDelete && localApi) {
-      const title = resolved?.thread.title ?? "this thread";
+      const title = resolved?.thread.title ?? t("this thread");
       const confirmationResult = await settlePromise(() =>
         localApi.dialogs.confirm(
           [
-            `Delete thread "${title}"?`,
-            "This permanently clears conversation history for this thread.",
+            t('Delete thread "{title}"?', { title }),
+            t("This permanently clears conversation history for this thread."),
           ].join("\n"),
           { variant: "destructive" },
         ),

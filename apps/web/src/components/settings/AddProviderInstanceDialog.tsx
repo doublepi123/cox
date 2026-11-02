@@ -497,11 +497,11 @@ export function AddProviderInstanceDialog({
                         value={driver}
                         disabled={isPreparingRegistryAgent}
                         onValueChange={selectDriver}
-                        aria-label="More providers"
+                        aria-label={t("More providers")}
                       />
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <div aria-hidden className="flex-1 border-t border-border/70" />
-                        <span>Or choose from ACP Registry</span>
+                        <span>{t("Or choose from ACP Registry")}</span>
                         <div aria-hidden className="flex-1 border-t border-border/70" />
                       </div>
                       {isAcpRegistry && isManualAcpConfiguration ? (
@@ -525,7 +525,7 @@ export function AddProviderInstanceDialog({
                               size="xs"
                               variant="ghost"
                             >
-                              Search registry
+                              {t("Search registry")}
                             </Button>
                           </div>
                           <SettingsGroup variant="plain">
@@ -588,7 +588,7 @@ export function AddProviderInstanceDialog({
                         rel="noreferrer"
                         target="_blank"
                       >
-                        Docs
+                        {t("Docs")}
                       </a>
                     ) : null}
                     {selectedAcp.repository ? (
@@ -599,7 +599,7 @@ export function AddProviderInstanceDialog({
                         rel="noreferrer"
                         target="_blank"
                       >
-                        Source
+                        {t("Source")}
                       </a>
                     ) : null}
                   </div>
@@ -613,7 +613,9 @@ export function AddProviderInstanceDialog({
                 <SettingsRow
                   title={<label htmlFor="add-provider-label">{t("Label")}</label>}
                   description={
-                    <span id="add-provider-label-description">Shown in the provider list.</span>
+                    <span id="add-provider-label-description">
+                      {t("Shown in the provider list.")}
+                    </span>
                   }
                   control={
                     <Input
@@ -621,17 +623,17 @@ export function AddProviderInstanceDialog({
                       aria-describedby="add-provider-label-description"
                       size="sm"
                       className="w-full @min-[32rem]/settings-row:w-56"
-                      placeholder="e.g. Work"
+                      placeholder={t("e.g. Work")}
                       value={label}
                       onChange={(event) => setIdentityDraft({ label: event.target.value })}
                     />
                   }
                 />
                 <SettingsRow
-                  title={<label htmlFor="add-provider-instance-id">Instance ID</label>}
+                  title={<label htmlFor="add-provider-instance-id">{t("Instance ID")}</label>}
                   description={
                     <span id="add-provider-instance-id-description">
-                      Letters, digits, '-', or '_'.
+                      {t("Letters, digits, '-', or '_'.")}
                     </span>
                   }
                   status={
@@ -666,7 +668,7 @@ export function AddProviderInstanceDialog({
                 />
                 <SettingsRow
                   title={t("Accent color")}
-                  description="Optional marker shown in the picker."
+                  description={t("Optional marker shown in the picker.")}
                   control={
                     <ProviderAccentColorPicker
                       displayName={label || driverOption.label}
@@ -692,7 +694,7 @@ export function AddProviderInstanceDialog({
               ) : !isAcpRegistry && wizardStep === 2 ? (
                 <div className="grid gap-2">
                   <p className="text-sm text-muted-foreground">
-                    This driver has no required configuration. You can add the instance now.
+                    {t("This driver has no required configuration. You can add the instance now.")}
                   </p>
                 </div>
               ) : null}
@@ -716,7 +718,7 @@ export function AddProviderInstanceDialog({
               {wizardStep === 0 && driver === "codex" ? (
                 <>
                   <Button variant="outline" size="sm" onClick={() => navigateToStep(1)}>
-                    Configure manually
+                    {t("Configure manually")}
                   </Button>
                   <ChatGptConnectionButton
                     size="sm"

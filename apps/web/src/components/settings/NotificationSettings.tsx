@@ -23,10 +23,10 @@ export function NotificationSettings() {
   return (
     <SettingsRow
       {...searchableSetting("thread-notifications")}
-      description={
+      description={t(
         permissionMessage ??
-        "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while Cox is open."
-      }
+          "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while Cox is open.",
+      )}
       control={
         <Select
           value={mode}
@@ -72,12 +72,12 @@ export function NotificationSettings() {
             className="w-full sm:w-56"
             aria-label={t("Thread notifications")}
           >
-            <SelectValue>{NOTIFICATION_MODE_LABELS[mode]}</SelectValue>
+            <SelectValue>{t(NOTIFICATION_MODE_LABELS[mode])}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {Object.entries(NOTIFICATION_MODE_LABELS).map(([value, label]) => (
               <SelectItem key={value} hideIndicator value={value}>
-                {label}
+                {t(label)}
               </SelectItem>
             ))}
           </SelectPopup>

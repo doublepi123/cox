@@ -12,6 +12,12 @@ messages, agent responses, prompts, source code, file paths, project names or pr
 Use explicit interpolation values for dynamic interface text; never replace text in the DOM.
 
 Core navigation, local agent onboarding, projects, chat actions and settings are translated.
+Confirmation dialogs, bulk thread actions, queued-message controls, custom snooze, usage
+filters and common provider/model/theme settings use the same resources. Confirmation
+titles use explicit placeholders so thread titles are preserved, including punctuation.
+The shared confirmation host recognizes both English and Chinese question marks.
+Imperative actions use `translateCurrent()` at dispatch time; rendered labels use
+`useTranslation()` so language changes update them without losing local state.
 Thread details include localized editor, script and Git actions, changed-file counts, and active
 subagent statuses. Source-control settings and scope selectors also update with the language.
 Subagent titles, progress, provider instance names and model names remain unchanged.

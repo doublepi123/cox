@@ -74,7 +74,11 @@ export function V2LifecycleRow(props: {
   const { item } = props;
   if (item.type === "run_interrupt_result") {
     return (
-      <TimelineSystemDivider label="Run interrupted" detail={item.message} icon={CircleStopIcon} />
+      <TimelineSystemDivider
+        label={t("Run interrupted")}
+        detail={item.message}
+        icon={CircleStopIcon}
+      />
     );
   }
   if (item.type === "handoff") {
@@ -125,7 +129,12 @@ export function V2LifecycleRow(props: {
       <WorkLogRow
         data-v2-item-type={item.type}
         icon={<T3Wordmark className="size-4 text-icon-muted" aria-hidden />}
-        label={<>Created thread{item.title ? ` · ${item.title}` : ""}</>}
+        label={
+          <>
+            {t("Created thread")}
+            {item.title ? ` · ${item.title}` : ""}
+          </>
+        }
         trailing={
           <InlineButton
             aria-label={`Open ${item.title ?? "created thread"}`}

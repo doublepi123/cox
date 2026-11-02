@@ -573,7 +573,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       ),
       // Usage is an enrichment: a failure or a slow answer degrades to "no
       // usage this probe" rather than costing the account and models.
-      input.skipNativeUsage
+      input.skipNativeUsage || isCodexApiConnection(accountResponse)
         ? // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
           Effect.succeed(undefined)
         : withCodexDiscoveryDeadline(
@@ -697,6 +697,12 @@ const makePendingCodexProvider = Effect.fn("CodexProvider.makePendingCodexProvid
     },
   });
 });
+
+function isCodexApiConnection(account: CodexAppServerProviderSnapshot["account"]): boolean {
+  return (
+    account.account?.type === "apiKey" || (account.account === null && !account.requiresOpenaiAuth)
+  );
+}
 
 function accountProbeStatus({ account, rateLimits }: CodexAppServerProviderSnapshot): {
   readonly status: Exclude<ServerProviderState, "disabled">;
@@ -842,22 +848,26 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   const accountStatus = managedAuth
     ? { status: "ready" as const, auth: managedAuth, message: undefined }
     : accountProbeStatus(snapshot);
-  const usageLimits =
-    snapshot.account.account?.type === "apiKey"
-      ? makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" })
-      : snapshot.rateLimits === undefined || "failure" in snapshot.rateLimits
-        ? makeUnavailableUsageLimits({
-            checkedAt,
-            reason: "probeFailed",
-            ...(accountStatus.message ? { message: accountStatus.message } : {}),
-            ...(snapshot.rateLimits ? { message: snapshot.rateLimits.failure } : {}),
-          })
-        : codexRateLimitsToLimits({
-            snapshot: snapshot.rateLimits.snapshot,
-            rateLimitsByLimitId: snapshot.rateLimits.rateLimitsByLimitId,
-            resetCredits: snapshot.rateLimits.resetCredits,
-            checkedAt,
-          });
+  const usageLimits = isCodexApiConnection(snapshot.account)
+    ? makeUnavailableUsageLimits({
+        checkedAt,
+        reason: "unsupported",
+        message:
+          "Subscription limits are unavailable for API connections. Check usage with your API provider.",
+      })
+    : snapshot.rateLimits === undefined || "failure" in snapshot.rateLimits
+      ? makeUnavailableUsageLimits({
+          checkedAt,
+          reason: "probeFailed",
+          ...(accountStatus.message ? { message: accountStatus.message } : {}),
+          ...(snapshot.rateLimits ? { message: snapshot.rateLimits.failure } : {}),
+        })
+      : codexRateLimitsToLimits({
+          snapshot: snapshot.rateLimits.snapshot,
+          rateLimitsByLimitId: snapshot.rateLimits.rateLimitsByLimitId,
+          resetCredits: snapshot.rateLimits.resetCredits,
+          checkedAt,
+        });
 
   return buildServerProvider({
     presentation: CODEX_PRESENTATION,

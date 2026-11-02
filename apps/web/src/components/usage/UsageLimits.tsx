@@ -170,10 +170,13 @@ function WindowBar({
       <TooltipPopup side="top">
         <div className="flex flex-col gap-0.5">
           <span className="text-foreground">
-            {remaining}% left{timeLeft !== null ? ` · ${timeLeft}% of the window left` : ""}
+            {t("{count}% left", { count: remaining })}
+            {timeLeft !== null ? ` · ${t("{count}% of the window left", { count: timeLeft })}` : ""}
           </span>
           {timeLeft !== null ? (
-            <span className="text-muted-foreground">The line is where even spending would be.</span>
+            <span className="text-muted-foreground">
+              {t("The line is where even spending would be.")}
+            </span>
           ) : null}
           {resetsAt ? (
             <span className="text-muted-foreground">
@@ -201,6 +204,7 @@ export function LimitWindows({
   readonly now: number;
   readonly compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const color = normalizeProviderAccentColor(accentColor) ?? barColor(driver);
   return (
     <div
@@ -218,7 +222,7 @@ export function LimitWindows({
             <span className="flex min-w-0 items-center gap-2 text-xs">
               <span className="truncate text-muted-foreground">{window.label}</span>
               <span className="ms-auto shrink-0 font-medium text-foreground tabular-nums">
-                {remainingPercent(window)}% left
+                {t("{count}% left", { count: remainingPercent(window) })}
               </span>
             </span>
             <WindowBar color={color} window={window} now={now} />
@@ -289,16 +293,17 @@ export function ResetCreditDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>Use a reset credit?</AlertDialogTitle>
+          <AlertDialogTitle>{t("Use a reset credit?")}</AlertDialogTitle>
           <AlertDialogDescription>
-            This redeems one credit on your account and clears the current rate-limit windows. It
-            cannot be undone.
+            {t(
+              "This redeems one credit on your account and clears the current rate-limit windows. It cannot be undone.",
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>{t("Cancel")}</AlertDialogClose>
           <Button disabled={disabled} onClick={onConfirm}>
-            Use credit
+            {t("Use credit")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

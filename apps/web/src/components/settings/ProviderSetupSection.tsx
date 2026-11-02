@@ -56,7 +56,7 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
       <SettingsRow
         className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
         title={t("Environment")}
-        description="Device that runs this provider."
+        description={t("Device that runs this provider.")}
         control={
           <div className="flex min-w-0 flex-col gap-2 sm:items-end">
             <span className="text-muted-foreground [overflow-wrap:anywhere]">
@@ -71,10 +71,13 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
         }
       />
       {props.readOnly ? (
-        <SettingsRow title="Setup unavailable" description="Provider setup is read-only." />
+        <SettingsRow
+          title={t("Setup unavailable")}
+          description={t("Provider setup is read-only.")}
+        />
       ) : props.provider?.setup === undefined ? (
         <SettingsRow
-          title="Update required"
+          title={t("Update required")}
           description="Update this environment to manage Antigravity."
         />
       ) : (
@@ -256,7 +259,7 @@ function ProviderSetupActions({
                       );
                     }}
                   >
-                    Cancel installation
+                    {t("Cancel installation")}
                   </Button>
                 ) : !installActive && provider.setup?.canInstall ? (
                   <Button
@@ -327,7 +330,7 @@ function ProviderSetupActions({
                 installQuery.refresh();
               }}
             >
-              Retry setup status
+              {t("Retry setup status")}
             </Button>
           ) : null}
         </div>

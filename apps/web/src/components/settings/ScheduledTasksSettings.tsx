@@ -571,14 +571,14 @@ function ScheduledTaskEnvironmentList({
       {taskId && linkedState?.tasks && linkedState.error === null && !linkedTask ? (
         <SettingsRow
           title={t("Task unavailable")}
-          description="This task no longer exists or is outside the selected project scope."
+          description={t("This task no longer exists or is outside the selected project scope.")}
           role="status"
         />
       ) : null}
       {populated.length === 0 && loaded.length > 0 ? (
         <SettingsRow
           title={t("No scheduled tasks")}
-          description="No tasks match this environment and project selection."
+          description={t("No tasks match this environment and project selection.")}
         />
       ) : null}
       {Object.entries(summaries).map(([label, entries]) => {
@@ -666,20 +666,22 @@ function ScheduledTaskEnvironmentSection({
       ) : tasksQuery.error ? (
         <SettingsRow title="Could not load scheduled tasks" description={tasksQuery.error} />
       ) : !tasks ? (
-        <SettingsRow title="Loading scheduled tasks…" role="status" />
+        <SettingsRow title={t("Loading scheduled tasks…")} role="status" />
       ) : (
         <>
           {taskId && !linkedTask ? (
             <SettingsRow
               title={t("Task unavailable")}
-              description="This task no longer exists or is outside the selected project scope."
+              description={t(
+                "This task no longer exists or is outside the selected project scope.",
+              )}
               role="status"
             />
           ) : null}
           {tasks.length === 0 ? (
             <SettingsRow
               title={t("No scheduled tasks")}
-              description="No tasks match this environment and project selection."
+              description={t("No tasks match this environment and project selection.")}
             />
           ) : (
             tasks.map((task) => (
@@ -915,13 +917,13 @@ function WebhookDeliveriesDialog({
                   Empty placeholders: {selected.missingFields.join(", ")}
                 </p>
               ) : null}
-              <DeliveryBlock title="Headers">
+              <DeliveryBlock title={t("Headers")}>
                 {Object.entries(selected.headers)
                   .map(([name, value]) => `${name}: ${value}`)
                   .join("\n")}
               </DeliveryBlock>
               {selected.query ? (
-                <DeliveryBlock title="Query">{selected.query}</DeliveryBlock>
+                <DeliveryBlock title={t("Query")}>{selected.query}</DeliveryBlock>
               ) : null}
               <DeliveryBlock title={selected.bodyTruncated ? "Body (truncated)" : "Body"}>
                 {selected.body || "(empty)"}

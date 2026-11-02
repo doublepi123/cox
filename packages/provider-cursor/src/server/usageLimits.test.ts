@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { NodeServices } from "@effect/platform-node";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { CURSOR_USAGE_URL } from "@t3tools/shared/usageLimits";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -109,6 +110,8 @@ describe("Cursor usage limits", () => {
             Effect.provideService(HttpClient.HttpClient, client),
           );
           expect(limits.windows[0]?.usedPercent).toBe(42);
+          expect(limits.unavailable).toBeUndefined();
+          expect(limits.externalUsage).toBeUndefined();
         }
       }).pipe(Effect.scoped),
     ),
@@ -179,6 +182,7 @@ describe("Cursor usage limits", () => {
         reason: "probeFailed",
         message: "Cursor could not read usage limits.",
       });
+      expect(limits.externalUsage).toEqual({ label: "Cursor usage", url: CURSOR_USAGE_URL });
     }),
   );
 
@@ -193,6 +197,9 @@ describe("Cursor usage limits", () => {
         ),
       );
       expect(limits.unavailable?.reason).toBe("unsupported");
+      expect(limits.unavailable?.message).toContain("does not provide a dashboard token");
+      expect(limits.externalUsage).toEqual({ label: "Cursor usage", url: CURSOR_USAGE_URL });
+      expect(limits.windows).toEqual([]);
     }),
   );
 

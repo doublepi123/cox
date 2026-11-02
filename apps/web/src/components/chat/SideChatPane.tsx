@@ -15,6 +15,7 @@ import { Trash2Icon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ComposerHandleContext } from "../../composerHandleContext";
+import { useTranslation } from "../../i18n";
 import { useClientSettings } from "../../hooks/useSettings";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
 import { readLocalApi } from "../../localApi";
@@ -38,6 +39,7 @@ export default function SideChatPane(props: {
   readonly onClose: () => void;
 }) {
   const { parentRef, threadId } = props;
+  const { t } = useTranslation();
   const threadRef = scopeThreadRef(parentRef.environmentId, threadId);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the parent panel as host in the panel store
   useEffect(
@@ -96,8 +98,8 @@ export default function SideChatPane(props: {
       const confirmed = await settlePromise(() =>
         api.dialogs.confirm(
           [
-            `Delete side chat "${shell.title}"?`,
-            "This permanently clears its conversation history.",
+            t('Delete side chat "{title}"?', { title: shell.title }),
+            t("This permanently clears its conversation history."),
           ].join("\n"),
           { variant: "destructive" },
         ),
@@ -137,7 +139,7 @@ export default function SideChatPane(props: {
                 aria-disabled={bringBackBlockedReason !== null || bringingBack || undefined}
                 onClick={() => void bringBack()}
               >
-                Bring back
+                {t("Bring back")}
               </Button>
             }
           />
@@ -148,19 +150,24 @@ export default function SideChatPane(props: {
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label="Delete side chat"
+          aria-label={t("Delete side chat")}
           disabled={!canOperate || shell === null || deleting}
           onClick={() => void deleteSideChat()}
         >
           <Trash2Icon />
         </Button>
-        <Button variant="ghost" size="icon-xs" aria-label="Close side chat" onClick={props.onClose}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t("Close side chat")}
+          onClick={props.onClose}
+        >
           <XIcon />
         </Button>
       </div>
       {shell === null ? (
         snapshotLoaded ? (
-          <p className="p-3 text-xs text-muted-foreground">This side chat was deleted.</p>
+          <p className="p-3 text-xs text-muted-foreground">{t("This side chat was deleted.")}</p>
         ) : null
       ) : (
         <BackgroundThreadContext value>

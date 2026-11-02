@@ -210,7 +210,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               {props.gitCwd && (show.branch || show.git) ? (
                 <ThreadDetailsSection
                   headingId="thread-details-version-control-heading"
-                  title="Version Control"
+                  title={t("Version Control")}
                   showHeading={false}
                   separated={density === "full"}
                 >

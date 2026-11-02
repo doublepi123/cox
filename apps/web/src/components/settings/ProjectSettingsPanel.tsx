@@ -87,6 +87,7 @@ export function ProjectSettingsPanel({
   checkoutKey?: string | null;
   unavailable?: ReactNode;
 }) {
+  const { t: translateUi } = useTranslation();
   const groups = useSettingsProjectGroups();
   const pathname = useLocation({ select: (location) => location.pathname });
   const selected = groups.find((group) => group.projectKey === projectKey) ?? null;
@@ -145,7 +146,9 @@ export function ProjectSettingsPanel({
   if (members.length === 0)
     return (
       <p className="p-8 text-sm text-muted-foreground">
-        This checkout is no longer available in the selected project and environment.
+        {translateUi(
+          "This checkout is no longer available in the selected project and environment.",
+        )}
       </p>
     );
   const scopedGroup = {
@@ -326,7 +329,7 @@ function ProjectDetail({
     </Button>
   );
   const checkoutChoices = (
-    <SettingsSection title="Checkouts">
+    <SettingsSection title={t("Checkouts")}>
       {Array.from(checkoutsByEnvironment, ([environmentId, members]) => {
         if (checkoutsByEnvironment.size === 1) {
           return members.map((member) => (
@@ -398,7 +401,9 @@ function ProjectDetail({
         <Alert variant="info">
           <InfoIcon aria-hidden />
           <AlertDescription>
-            Can't find a setting? Keep this project picked above and hop to any other settings page.
+            {t(
+              "Can't find a setting? Keep this project picked above and hop to any other settings page.",
+            )}
           </AlertDescription>
         </Alert>
         <SettingsSection id="project-overview" title={t("Project")} hideTitle>
@@ -411,7 +416,9 @@ function ProjectDetail({
           ) : null}
           <SettingsRow
             title={t("Name")}
-            description="The shared name for this project group in the sidebar and thread lists."
+            description={t(
+              "The shared name for this project group in the sidebar and thread lists.",
+            )}
             resetAction={
               canResetScratchTitle ? (
                 <SettingResetButton
@@ -449,7 +456,7 @@ function ProjectDetail({
             }
           />
           <SettingsRow
-            title="Project icon"
+            title={t("Project icon")}
             description={
               projectIcon?.kind === "lucide"
                 ? `${projectIcon.name} · ${projectIcon.color}`
@@ -489,7 +496,7 @@ function ProjectDetail({
                   disabled={isSavingFavicon || !canEditGroup}
                   onClick={() => setFaviconPickerOpen(true)}
                 >
-                  Choose file
+                  {t("Choose file")}
                 </Button>
               </div>
             }
@@ -544,7 +551,7 @@ function ProjectDetail({
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
         {hasMultipleCheckouts ? checkoutChoices : null}
-        <SettingsSection title="Danger">
+        <SettingsSection title={t("Danger")}>
           <SettingsRow
             title={
               hasOtherMembers

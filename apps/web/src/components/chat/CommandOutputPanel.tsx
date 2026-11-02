@@ -61,7 +61,7 @@ export function CommandOutputPanel(props: {
   return (
     <div>
       {data?.output.truncated ? (
-        <div className="text-muted-foreground italic">Earlier output not shown</div>
+        <div className="text-muted-foreground italic">{t("Earlier output not shown")}</div>
       ) : null}
       <div
         ref={scrollRef}

@@ -107,6 +107,7 @@ function OpenContentSearchDialog(props: {
   readonly onOpenChange: (open: boolean) => void;
   readonly target: ActiveProjectTarget;
 }) {
+  const { t: translateUi } = useTranslation();
   const { target } = props;
   const { resolvedTheme } = useTheme();
   const renderedAppearance = useRenderedAppearance();
@@ -173,7 +174,7 @@ function OpenContentSearchDialog(props: {
           <SearchOptionButton
             active={caseSensitive}
             disabled={!search.canReadFiles}
-            label="Match case"
+            label={translateUi("Match case")}
             onClick={() => setCaseSensitive((current) => !current)}
           >
             Aa
@@ -181,7 +182,7 @@ function OpenContentSearchDialog(props: {
           <SearchOptionButton
             active={wholeWord}
             disabled={!search.canReadFiles}
-            label="Match whole word"
+            label={translateUi("Match whole word")}
             onClick={() => setWholeWord((current) => !current)}
           >
             <span className="underline decoration-2 underline-offset-2">ab</span>
@@ -189,7 +190,7 @@ function OpenContentSearchDialog(props: {
           <SearchOptionButton
             active={useRegex}
             disabled={!search.canReadFiles}
-            label="Use regular expression"
+            label={translateUi("Use regular expression")}
             onClick={() => setUseRegex((current) => !current)}
           >
             .*
@@ -230,12 +231,12 @@ function OpenContentSearchDialog(props: {
         <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
           {search.isPending ? (
             <span className="flex items-center gap-2">
-              <Spinner size="sm" /> Searching…
+              <Spinner size="sm" /> {translateUi("Searching…")}
             </span>
           ) : search.error ? (
             <span className="text-destructive">{search.error}</span>
           ) : search.invalidRegex ? (
-            <span className="text-destructive">Invalid regular expression</span>
+            <span className="text-destructive">{translateUi("Invalid regular expression")}</span>
           ) : (
             `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
           )}

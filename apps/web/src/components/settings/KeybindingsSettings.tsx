@@ -271,13 +271,14 @@ function WhenVariableSelect({
   unknownIdentifiers?: ReadonlyArray<string>;
   onChange: (value: string) => void;
 }) {
+  const { t: translateUi } = useTranslation();
   const selected = variables.find((option) => option === value);
   const options =
     selected || variables.some((option) => option === value) ? variables : [value, ...variables];
   return (
     <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
       <SelectTrigger size="compact" className="min-w-0 flex-1">
-        <SelectValue placeholder="Condition" />
+        <SelectValue placeholder={translateUi("Condition")} />
         {unknownIdentifiers && unknownIdentifiers.length > 0 ? (
           <UnknownWhenVariableWarning identifiers={unknownIdentifiers} focusable={false} />
         ) : null}
@@ -380,7 +381,7 @@ function WhenExpressionNodeEditor({
           <Toggle
             pressed
             onPressedChange={(pressed) => onChange(pressed ? node : node.node)}
-            aria-label="Negate group"
+            aria-label={t("Negate group")}
             variant="outline"
             size="compact"
             className="min-w-10"
@@ -483,7 +484,7 @@ function WhenExpressionNodeEditor({
         </Select>
         <Button type="button" variant="outline" size="compact" onClick={addCondition}>
           <PlusIcon className="size-3.5" />
-          Condition
+          {t("Condition")}
         </Button>
         <Button type="button" variant="outline" size="compact" onClick={addGroup}>
           <PlusIcon className="size-3.5" />
@@ -581,7 +582,7 @@ function WhenExpressionBuilder({
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="outline" size="compact" onClick={addRootCondition}>
             <PlusIcon className="size-3.5" />
-            Condition
+            {t("Condition")}
           </Button>
           <Button type="button" variant="outline" size="compact" onClick={addRootGroup}>
             <PlusIcon className="size-3.5" />
@@ -597,7 +598,7 @@ function WhenExpressionBuilder({
             onChange={(event) => updateExpressionDraft(event.currentTarget.value)}
             placeholder="Always"
             aria-invalid={Boolean(parseError)}
-            aria-label="When expression"
+            aria-label={t("When expression")}
             size="compact"
             font="mono"
           />
@@ -628,7 +629,7 @@ function WhenExpressionBuilder({
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="compact" onClick={addRootCondition}>
                 <PlusIcon className="size-3.5" />
-                Condition
+                {t("Condition")}
               </Button>
               <Button type="button" variant="outline" size="compact" onClick={addRootGroup}>
                 <PlusIcon className="size-3.5" />
@@ -639,7 +640,7 @@ function WhenExpressionBuilder({
         )}
         {parseError ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border border-destructive/30 bg-background/75 p-4 text-center text-xs text-destructive backdrop-blur-xs">
-            Fix the expression above to continue editing visually.
+            {t("Fix the expression above to continue editing visually.")}
           </div>
         ) : null}
       </div>
@@ -1125,7 +1126,7 @@ function NewKeybindingCancelIcon({
             variant="ghost-muted"
             size="icon-sm"
             disabled={isSaving}
-            aria-label="Cancel new keybinding"
+            aria-label={t("Cancel new keybinding")}
             onClick={onCancel}
           />
         }
@@ -1143,7 +1144,7 @@ function NewKeybindingSettingsRow(props: NewKeybindingProps) {
   return (
     <SettingsRow
       className="bg-muted/15"
-      title="New keybinding"
+      title={t("New keybinding")}
       description={
         <span className="flex h-6 items-center gap-1.5">
           <span className="text-xs leading-none text-muted-foreground/70">When</span>
@@ -1388,7 +1389,7 @@ export function KeybindingsSettingsPanel() {
             onClick={() => setIsAddingBinding(true)}
           >
             <PlusIcon aria-hidden className="size-4" />
-            Add keybinding
+            {t("Add keybinding")}
           </Button>
           <Tooltip>
             <TooltipTrigger
@@ -1441,7 +1442,7 @@ export function KeybindingsSettingsPanel() {
         ) : (
           <SettingsGroup>
             <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-              No keybindings match your search.
+              {t("No keybindings match your search.")}
             </div>
           </SettingsGroup>
         )}

@@ -334,10 +334,10 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
   }, [launch]);
   switch (state.status) {
     case "opening":
-      return <LinkPage title="Opening the link..." />;
+      return <LinkPage title={t("Opening the link...")} />;
     case "opened":
       return (
-        <LinkPage title="This link is open">
+        <LinkPage title={t("This link is open")}>
           <Button
             size="sm"
             variant="outline"
@@ -347,7 +347,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
               setState({ status: "opening" });
             }}
           >
-            Open it again
+            {t("Open it again")}
           </Button>
         </LinkPage>
       );
@@ -360,7 +360,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
       return (
         <LinkPage
           title={`You don't have ${name}`}
-          description="Clone it to work on it here, or start without a project."
+          description={t("Clone it to work on it here, or start without a project.")}
         >
           <Button size="sm" onClick={() => void cloneRepository(state.repository)}>
             Clone {name}
@@ -390,6 +390,7 @@ function PullRequestLinkCheckout({
   >;
   readonly project: EnvironmentProject;
 }) {
+  const { t: translateUi } = useTranslation();
   const { handoff, startHandoff } = usePullRequestHandoffs({
     environmentId: project.environmentId,
     detail: {
@@ -409,7 +410,9 @@ function PullRequestLinkCheckout({
   return (
     <LinkPage
       title={`Check out ${owner}/${name}#${number}?`}
-      description="This puts the pull request's code in a new worktree and runs your project's setup script on it."
+      description={translateUi(
+        "This puts the pull request's code in a new worktree and runs your project's setup script on it.",
+      )}
     >
       <Button
         size="sm"

@@ -6,6 +6,7 @@ import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodePath from "node:path";
 import { expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import { EnvironmentId, ProviderInstanceId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
@@ -41,6 +42,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderCredentialStore from "../ProviderCredentialStore.ts";
 import * as ProviderHostLive from "../ProviderHostLive.ts";
+import * as CodexProvider from "../CodexProvider.ts";
 
 const layerDeps = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-codex-driver-maintenance-",
@@ -103,8 +105,50 @@ const noSpawn = ChildProcessSpawner.make(() =>
 const encodeCredentials = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 it.layer(layerTest)("CodexDriver", (it) => {
-  const checkManagedAccount = (replacementTiming: "unchanged" | "during-probe") =>
+  const checkManagedAccount = (
+    replacementTiming: "unchanged" | "during-probe" | "with-speed-tiers",
+  ) =>
     Effect.gen(function* () {
+      if (replacementTiming === "with-speed-tiers") {
+        const check = CodexProvider.checkCodexProviderStatus;
+        const probe = vi
+          .spyOn(CodexProvider, "checkCodexProviderStatus")
+          .mockImplementation((settings, _probe, environment, auth) =>
+            check(
+              settings,
+              () =>
+                Effect.succeed({
+                  account: { account: null, requiresOpenaiAuth: false },
+                  version: "0.162.1",
+                  models: [
+                    {
+                      slug: "gpt-5.4",
+                      name: "GPT-5.4",
+                      isCustom: false,
+                      capabilities: {
+                        optionDescriptors: [
+                          {
+                            id: "serviceTier",
+                            label: "Service Tier",
+                            type: "select",
+                            options: [
+                              { id: "default", label: "Standard", isDefault: true },
+                              { id: "priority", label: "Fast" },
+                            ],
+                            currentValue: "default",
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                  skills: [],
+                }),
+              environment,
+              auth,
+            ),
+          );
+        yield* Effect.addFinalizer(() => Effect.sync(() => probe.mockRestore()));
+      }
       const instanceId = ProviderInstanceId.make("restored-managed-account");
       const credentials = new Map<string, Uint8Array>();
       const catalogTokens: Array<string | undefined> = [];
@@ -250,6 +294,18 @@ it.layer(layerTest)("CodexDriver", (it) => {
         }
         expect(catalogTokens).toEqual(["Bearer dummy-owned-access"]);
         expect(restored.auth.email).toBe("account@example.test");
+        if (replacementTiming === "with-speed-tiers") {
+          expect(restored.models[0]?.capabilities?.optionDescriptors).toContainEqual({
+            id: "serviceTier",
+            label: "Service Tier",
+            type: "select",
+            options: [
+              { id: "default", label: "Standard", isDefault: true },
+              { id: "priority", label: "Fast" },
+            ],
+            currentValue: "default",
+          });
+        }
         expect(restored.runtimePaths?.homePath).toBe(sharedHome);
         expect(restored.runtimePaths?.shadowHomePath).toContain(
           `providers/codex/${instanceId}/shadow`,
@@ -310,7 +366,15 @@ it.layer(layerTest)("CodexDriver", (it) => {
               ]).toContain(request.url);
               if (request.url.endsWith("/models")) {
                 catalogTokens.push(request.headers.authorization);
-                return HttpClientResponse.fromWeb(request, Response.json({ models: [] }));
+                return HttpClientResponse.fromWeb(
+                  request,
+                  Response.json({
+                    models:
+                      replacementTiming === "with-speed-tiers"
+                        ? [{ slug: "gpt-5.4", display_name: "GPT-5.4", visibility: "list" }]
+                        : [],
+                  }),
+                );
               }
               return HttpClientResponse.fromWeb(
                 request,
@@ -331,7 +395,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
     }).pipe(Effect.scoped);
   // regression: a sign-in that replaces the account mid-probe must not label the old
   // account's catalog with the new identity.
-  it.effect.each(["unchanged", "during-probe"] as const)(
+  it.effect.each(["unchanged", "during-probe", "with-speed-tiers"] as const)(
     "managed catalog keeps its account label and token together: %s",
     checkManagedAccount,
   );

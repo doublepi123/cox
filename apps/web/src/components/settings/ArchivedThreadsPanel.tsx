@@ -241,7 +241,8 @@ export function ArchivedThreadsPanel() {
                 description={
                   <span className={hasMultipleEnvironments ? "block truncate" : undefined}>
                     {hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null}
-                    Archived <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
+                    {t("Archived")}{" "}
+                    <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
                     {" \u00b7 Created "}
                     <RelativeTime timestamp={thread.createdAt} />
                   </span>
@@ -276,7 +277,7 @@ export function ArchivedThreadsPanel() {
                     }}
                   >
                     <ArchiveX className="size-3.5" />
-                    <span>Unarchive</span>
+                    <span>{t("Unarchive")}</span>
                   </Button>
                 }
               />

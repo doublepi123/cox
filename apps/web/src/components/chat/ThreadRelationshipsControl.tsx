@@ -110,7 +110,7 @@ function ThreadLineageRowList(props: {
     <>
       {/* ScrollArea's max-height viewport measures badly inside this scrolling panel. */}
       <ul
-        aria-label="Related threads"
+        aria-label={t("Related threads")}
         className="m-0 max-h-[13.5rem] list-none overflow-y-auto overscroll-contain p-0 has-data-workflow-expanded:max-h-[min(28rem,55dvh)]"
       >
         {props.children}
@@ -357,6 +357,7 @@ export function ThreadRelationshipsPanel(props: {
   readonly showLineage: boolean;
   readonly showSideChats: boolean;
 }) {
+  const { t: translateUi } = useTranslation();
   const ref = scopeThreadRef(props.environmentId, props.threadId);
   const projection = useThreadProjection(ref)?.projection ?? null;
   const providersByEnvironment = useEnvironmentProviders();
@@ -823,7 +824,7 @@ export function ThreadRelationshipsPanel(props: {
                   <SquareIcon aria-hidden className="size-3 fill-current" />
                 )}
               </TooltipTrigger>
-              <TooltipPopup side="left">Stop subagent</TooltipPopup>
+              <TooltipPopup side="left">{translateUi("Stop subagent")}</TooltipPopup>
             </Tooltip>
           </div>
         ) : null}
@@ -855,7 +856,7 @@ export function ThreadRelationshipsPanel(props: {
                       size="icon-xs"
                       variant="ghost"
                       part="icon"
-                      aria-label="More thread actions"
+                      aria-label={translateUi("More thread actions")}
                       disabled={busyAction !== null}
                     />
                   }
@@ -865,7 +866,7 @@ export function ThreadRelationshipsPanel(props: {
                 <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
                   <MenuItem onClick={() => void detach()}>
                     <UnplugIcon className="size-3.5" />
-                    Disconnect agent session
+                    {translateUi("Disconnect agent session")}
                   </MenuItem>
                 </MenuPopup>
               </Menu>

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import { type ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import { memo } from "react";
 import { InfoIcon, XIcon } from "lucide-react";
@@ -94,6 +95,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   status: ServerProvider | null;
 }) {
+  const { t: translateUi } = useTranslation();
   if (!status || getProviderStatusBannerKey(status) === null) {
     return null;
   }
@@ -129,7 +131,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           </Tooltip>
           {onOpenProviderSetup && hasProviderSetup(status) ? (
             <InlineButton onClick={() => onOpenProviderSetup(status.instanceId)}>
-              Open provider setup
+              {translateUi("Open provider setup")}
             </InlineButton>
           ) : null}
         </AlertDescription>

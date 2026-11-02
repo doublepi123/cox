@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import { InfoIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
@@ -70,6 +71,7 @@ export function NoticeText({
   readonly className: string;
   readonly detailsLabel: string;
 }) {
+  const { t: translateUi } = useTranslation();
   const textRef = useRef<HTMLSpanElement>(null);
   const detailsRef = useRef<HTMLButtonElement>(null);
   const [detailsAtWidth, setDetailsAtWidth] = useState<number | null>(null);
@@ -150,7 +152,7 @@ export function NoticeText({
             <InfoIcon />
           </PopoverTrigger>
           <PopoverPopup
-            aria-label="Notice details"
+            aria-label={translateUi("Notice details")}
             tooltipStyle
             side="top"
             className="max-w-[min(30rem,calc(100vw-2rem))] whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full"

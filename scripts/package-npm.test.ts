@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { parse } from "yaml";
 
 const source = dirname(import.meta.dirname);
 const require = createRequire(new URL("../apps/server/package.json", import.meta.url));
@@ -188,5 +189,117 @@ describe("npm runtime patches", () => {
     await symlink(outside, join(dependency, "index.js"));
     expect(install).toThrow(/must stay inside the dependency/);
     expect(await readFile(outside, "utf8")).toBe("original\n");
+  });
+});
+
+interface PublishWorkflow {
+  on: {
+    workflow_dispatch: {
+      inputs: { authentication: { default: string; options: string[] } };
+    };
+  };
+  jobs: {
+    publish: {
+      permissions: { "id-token": string };
+      steps: Array<{ name?: string; run?: string; env?: Record<string, string> }>;
+    };
+  };
+}
+
+async function authenticationFixture() {
+  const workflow = parse(
+    await readFile(join(source, ".github/workflows/npm-publish.yml"), "utf8"),
+  ) as PublishWorkflow;
+  const step = workflow.jobs.publish.steps.find(
+    (entry) => entry.name === "Check npm publishing authentication",
+  );
+  if (!step?.run) throw new Error("Missing npm authentication check");
+  const script = step.run;
+  const root = await mkdtemp(join(tmpdir(), "cox-npm-auth-test-"));
+  temporaryDirectories.push(root);
+  const npm = join(root, "npm");
+  await writeFile(
+    npm,
+    '#!/bin/bash\nprintf "%s\\n" "$*" >> "$RUNNER_TEMP/npm-calls"\nexit "${NPM_TEST_STATUS:-0}"\n',
+  );
+  await chmod(npm, 0o755);
+  const check = (env: Record<string, string> = {}) =>
+    execFileSync("bash", ["-c", script], {
+      env: {
+        ...process.env,
+        PATH: `${root}:${process.env.PATH}`,
+        RUNNER_TEMP: root,
+        GITHUB_ENV: join(root, "github-env"),
+        NPM_PUBLISH_AUTH: "oidc",
+        NODE_AUTH_TOKEN: "",
+        ACTIONS_ID_TOKEN_REQUEST_URL: "https://example.invalid/oidc",
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture-oidc-request",
+        ...env,
+      },
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  return { root, workflow, step, check };
+}
+
+describe("npm publishing authentication", () => {
+  it("defaults to OIDC and only exposes the bootstrap secret in explicit token mode", async () => {
+    const { workflow, step } = await authenticationFixture();
+    expect(workflow.on.workflow_dispatch.inputs.authentication).toMatchObject({
+      default: "oidc",
+      options: ["oidc", "token"],
+    });
+    expect(workflow.jobs.publish.permissions["id-token"]).toBe("write");
+    const publish = workflow.jobs.publish.steps.find((entry) => entry.name === "Publish to npm");
+    const token = "${{ inputs.authentication == 'token' && secrets.NPM_TOKEN || '' }}";
+    expect(step.env?.NODE_AUTH_TOKEN).toBe(token);
+    expect(publish?.env?.NODE_AUTH_TOKEN).toBe(token);
+    expect(workflow.jobs.publish.steps.indexOf(step)).toBeLessThan(
+      workflow.jobs.publish.steps.findIndex((entry) => entry.run === "pnpm release:npm"),
+    );
+  });
+
+  it("keeps OIDC registry configuration token-free even with an inherited token", async () => {
+    const { root, check } = await authenticationFixture();
+    check({ NODE_AUTH_TOKEN: "fixture-unused-token" });
+    expect(await readFile(join(root, "cox-publish.npmrc"), "utf8")).toBe(
+      "registry=https://registry.npmjs.org/\n",
+    );
+    expect(await readFile(join(root, "npm-calls"), "utf8")).toBe("view @doublepi123/cox version\n");
+    expect(await readFile(join(root, "github-env"), "utf8")).toContain(
+      `NPM_CONFIG_USERCONFIG=${root}/cox-publish.npmrc`,
+    );
+  });
+
+  it("explains the bootstrap path when the package cannot be read", async () => {
+    const { check } = await authenticationFixture();
+    expect(() => check({ NPM_TEST_STATUS: "1" })).toThrow(/authentication=token first/);
+  });
+
+  it("rejects OIDC without GitHub's token request permissions", async () => {
+    const { check } = await authenticationFixture();
+    expect(() => check({ ACTIONS_ID_TOKEN_REQUEST_TOKEN: "" })).toThrow(/id-token: write/);
+  });
+
+  it("rejects missing or expired bootstrap tokens", async () => {
+    const { check } = await authenticationFixture();
+    expect(() => check({ NPM_PUBLISH_AUTH: "token" })).toThrow(/NPM_TOKEN repository secret/);
+    expect(() =>
+      check({ NPM_PUBLISH_AUTH: "token", NODE_AUTH_TOKEN: "fixture-token", NPM_TEST_STATUS: "1" }),
+    ).toThrow(/invalid or expired/);
+  });
+
+  it("checks explicit token authentication without writing the secret into the config", async () => {
+    const { root, check } = await authenticationFixture();
+    check({ NPM_PUBLISH_AUTH: "token", NODE_AUTH_TOKEN: "fixture-token" });
+    expect(await readFile(join(root, "npm-calls"), "utf8")).toBe("whoami\n");
+    expect(await readFile(join(root, "cox-publish.npmrc"), "utf8")).toBe(
+      "registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\n",
+    );
+  });
+
+  it("rejects unknown authentication modes", async () => {
+    const { check } = await authenticationFixture();
+    expect(() => check({ NPM_PUBLISH_AUTH: "unexpected" })).toThrow(/Unknown npm publishing/);
   });
 });

@@ -1,5 +1,25 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+import { translate, type Language } from "../i18n/language";
+
+function localizeActionMenuItems<Action extends string>(
+  items: ReadonlyArray<ContextMenuItem<Action>>,
+  language: Language,
+): ReadonlyArray<ContextMenuItem<Action>> {
+  return items.map((item) => ({
+    ...item,
+    label: translate(language, item.label),
+    ...(item.children ? { children: localizeActionMenuItems(item.children, language) } : {}),
+  }));
+}
+
+export function formatSnoozePresetMenuLabel(preset: SnoozePreset, language: Language): string {
+  const duration = preset.label.match(/^In (\d+) (minutes?|hours?|days?)$/);
+  const label = duration
+    ? translate(language, `In {count} ${duration[2]}`, { count: duration[1]! })
+    : translate(language, preset.label);
+  return `${label} (${preset.whenLabel})`;
+}
 
 export type ThreadActionMenuId =
   | "find"
@@ -36,35 +56,41 @@ export type DraftActionMenuId =
   | "project-settings"
   | "discard";
 
-export function buildDraftActionMenuItems(options: {
-  readonly hasPath: boolean;
-  readonly hasBranch: boolean;
-  readonly hasProject: boolean;
-}): ReadonlyArray<ContextMenuItem<DraftActionMenuId>> {
-  return [
-    {
-      id: "copy",
-      label: "Copy",
-      icon: "copy",
-      disabled: !options.hasPath && !options.hasBranch,
-      children: [
-        ...(options.hasPath ? [{ id: "copy-path" as const, label: "Path", icon: "folder" }] : []),
-        ...(options.hasBranch
-          ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
-          : []),
-      ],
-    },
-    ...(options.hasProject
-      ? [{ id: "project-settings" as const, label: "Project settings", icon: "settings" }]
-      : []),
-    {
-      id: "discard",
-      label: "Discard draft",
-      icon: "trash",
-      destructive: true,
-      separatorBefore: true,
-    },
-  ];
+export function buildDraftActionMenuItems(
+  options: {
+    readonly hasPath: boolean;
+    readonly hasBranch: boolean;
+    readonly hasProject: boolean;
+  },
+  language: Language = "en",
+): ReadonlyArray<ContextMenuItem<DraftActionMenuId>> {
+  return localizeActionMenuItems<DraftActionMenuId>(
+    [
+      {
+        id: "copy",
+        label: "Copy",
+        icon: "copy",
+        disabled: !options.hasPath && !options.hasBranch,
+        children: [
+          ...(options.hasPath ? [{ id: "copy-path" as const, label: "Path", icon: "folder" }] : []),
+          ...(options.hasBranch
+            ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
+            : []),
+        ],
+      },
+      ...(options.hasProject
+        ? [{ id: "project-settings" as const, label: "Project settings", icon: "settings" }]
+        : []),
+      {
+        id: "discard",
+        label: "Discard draft",
+        icon: "trash",
+        destructive: true,
+        separatorBefore: true,
+      },
+    ],
+    language,
+  );
 }
 
 export interface ThreadActionMenuState {
@@ -114,6 +140,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
 
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
+  language: Language = "en",
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
     ...(state.canFind
@@ -123,7 +150,7 @@ export function buildThreadActionMenuItems(
       ? [
           {
             id: "new-thread-on-branch" as const,
-            label: `New thread on ${state.branch}`,
+            label: translate(language, "New thread on {branch}", { branch: state.branch }),
             icon: "message-square-plus",
           },
         ]
@@ -154,7 +181,7 @@ export function buildThreadActionMenuItems(
                 children: [
                   ...state.snoozePresets.map((preset) => ({
                     id: `snooze:${preset.id}` as const,
-                    label: `${preset.label} (${preset.whenLabel})`,
+                    label: formatSnoozePresetMenuLabel(preset, language),
                   })),
                   {
                     id: "snooze:custom" as const,
@@ -183,7 +210,7 @@ export function buildThreadActionMenuItems(
             id: "filter-by-project" as const,
             label: state.projectFilter.isActive
               ? "Show all projects"
-              : `Filter by ${state.projectFilter.label}`,
+              : translate(language, "Filter by {project}", { project: state.projectFilter.label }),
             icon: "folder-tree",
           },
         ]
@@ -248,17 +275,20 @@ export function buildThreadActionMenuItems(
       icon: "trash",
     },
   ];
-  return state.canOperate
-    ? items
-    : items.map((item) =>
-        threadActionRequiresOperate(item.id)
-          ? {
-              ...item,
-              disabled: true,
-              ...(item.children
-                ? { children: item.children.map((child) => ({ ...child, disabled: true })) }
-                : {}),
-            }
-          : item,
-      );
+  return localizeActionMenuItems(
+    state.canOperate
+      ? items
+      : items.map((item) =>
+          threadActionRequiresOperate(item.id)
+            ? {
+                ...item,
+                disabled: true,
+                ...(item.children
+                  ? { children: item.children.map((child) => ({ ...child, disabled: true })) }
+                  : {}),
+              }
+            : item,
+        ),
+    language,
+  );
 }

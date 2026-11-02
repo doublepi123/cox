@@ -18,7 +18,7 @@ export function TriageDraftHero(props: {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col items-center">
       <h1 className="w-full text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
-        What went wrong?
+        {t("What went wrong?")}
       </h1>
       <p className="mt-2 flex h-6 w-full items-center justify-center gap-1.5 text-sm">
         <Tooltip>
@@ -33,8 +33,9 @@ export function TriageDraftHero(props: {
             )}
           </TooltipTrigger>
           <TooltipPopup side="bottom">
-            The agent reads Cox's logs and source here, and asks before it applies a fix or posts
-            anything.
+            {t(
+              "The agent reads Cox's logs and source here, and asks before it applies a fix or posts anything.",
+            )}
           </TooltipPopup>
         </Tooltip>
         <span aria-hidden className="text-muted-foreground">
@@ -53,7 +54,7 @@ export function TriageDraftHero(props: {
             {isCopied ? t("Copied") : "or run"}
             {isCopied ? null : <code className="ml-1 font-mono text-xs">{TRIAGE_CLI_COMMAND}</code>}
           </TooltipTrigger>
-          <TooltipPopup side="bottom">Copy command, for a terminal</TooltipPopup>
+          <TooltipPopup side="bottom">{t("Copy command, for a terminal")}</TooltipPopup>
         </Tooltip>
       </p>
     </div>

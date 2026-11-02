@@ -113,7 +113,7 @@ export function CodexSetupSection(props: CodexSetupSectionProps) {
           description={<CodexSignInDescription />}
           control={
             <Button size="sm" variant="outline" className="min-w-44" disabled>
-              Open sign-in page
+              {t("Open sign-in page")}
             </Button>
           }
           secondaryControl={
@@ -123,7 +123,7 @@ export function CodexSetupSection(props: CodexSetupSectionProps) {
           }
         />
       ) : (
-        <SettingsRow title="ChatGPT account" description="Preparing sign-in." />
+        <SettingsRow title={t("ChatGPT account")} description={t("Preparing sign-in.")} />
       )
     ) : (
       <ManagedCodexSetup
@@ -210,12 +210,12 @@ function ManagedCodexSetup({
     <section className="space-y-2">
       <SettingsRow
         title={t("Codex runtime")}
-        description={
+        description={t(
           state?.message ??
-          (installed
-            ? "Codex is installed on this computer."
-            : "Cox downloads and manages the local Codex CLI.")
-        }
+            (installed
+              ? "Codex is installed on this computer."
+              : "Cox downloads and manages the local Codex CLI."),
+        )}
         control={
           <div className="flex flex-wrap gap-2">
             {!installed && (
@@ -224,7 +224,7 @@ function ManagedCodexSetup({
                 disabled={readOnly || pending || installing || !provider?.setup?.canInstall}
                 onClick={() => void install()}
               >
-                {installing || pending ? "Installing…" : "Install Codex"}
+                {t(installing || pending ? "Installing…" : "Install Codex")}
               </Button>
             )}
             {installing && state?.operationId && (
@@ -266,7 +266,7 @@ function ManagedCodexSetup({
       )}
       {installation.error && (
         <p role="alert" className="px-3 text-sm text-destructive">
-          Could not read local Codex installation status.
+          {t("Could not read local Codex installation status.")}
         </p>
       )}
     </section>
@@ -292,12 +292,12 @@ export function CodexManagedRuntimeFields({
   return (
     <>
       <SettingsRow
-        title="Binary path"
-        description="Selected by Cox."
+        title={t("Binary path")}
+        description={t("Selected by Cox.")}
         control={
           <div className="w-full sm:w-80">
             <Input
-              aria-label="Codex binary path"
+              aria-label={t("Codex binary path")}
               value={executablePath}
               title={executablePath}
               placeholder={installation.error ? "Could not read runtime path" : t("Not installed")}
@@ -307,12 +307,12 @@ export function CodexManagedRuntimeFields({
         }
       />
       <SettingsRow
-        title="CODEX_HOME path"
-        description="Shared Codex config, sessions, and state."
+        title={t("CODEX_HOME path")}
+        description={t("Shared Codex config, sessions, and state.")}
         control={
           <div className="w-full sm:w-80">
             <Input
-              aria-label="Codex home path"
+              aria-label={t("Codex home path")}
               value={provider?.runtimePaths?.homePath ?? ""}
               title={provider?.runtimePaths?.homePath}
               placeholder={t("Unavailable")}
@@ -322,7 +322,7 @@ export function CodexManagedRuntimeFields({
         }
       />
       <SettingsRow
-        title="Shadow home path"
+        title={t("Shadow home path")}
         description={
           provider?.runtimePaths?.shadowHomePath
             ? "Account-specific home sharing the Codex state above."
@@ -331,7 +331,7 @@ export function CodexManagedRuntimeFields({
         control={
           <div className="w-full sm:w-80">
             <Input
-              aria-label="Codex shadow home path"
+              aria-label={t("Codex shadow home path")}
               value={provider?.runtimePaths?.shadowHomePath ?? ""}
               title={provider?.runtimePaths?.shadowHomePath ?? undefined}
               placeholder={provider?.runtimePaths ? "Not used" : t("Unavailable")}
@@ -354,12 +354,13 @@ function CodexSignInDescription({
   readonly controls?: string;
   readonly onToggle?: () => void;
 }) {
+  const { t: translateUi } = useTranslation();
   if (!onToggle) return <div className="leading-relaxed">{label}</div>;
   return (
     <button
       type="button"
       className="inline-flex items-center gap-1.5 rounded-sm text-left leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      aria-label="Having trouble signing in?"
+      aria-label={translateUi("Having trouble signing in?")}
       aria-expanded={expanded}
       aria-controls={controls}
       onClick={onToggle}

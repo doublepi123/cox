@@ -1,7 +1,7 @@
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
 import type { CursorSettings } from "../settings.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { CURSOR_USAGE_WINDOWS } from "@t3tools/shared/usageLimits";
+import { CURSOR_USAGE_URL, CURSOR_USAGE_WINDOWS } from "@t3tools/shared/usageLimits";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -79,7 +79,12 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
     let token = environment.CURSOR_AUTH_TOKEN?.trim();
     // An explicit API key can name a different account from the stored login.
     if (!token && environment.CURSOR_API_KEY?.trim()) {
-      return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
+      return makeUnavailableUsageLimits({
+        checkedAt,
+        reason: "unsupported",
+        message:
+          "This Cursor connection does not provide a dashboard token. Open Cursor usage with the account connected to this instance.",
+      });
     }
     const credentialStore = environment.AGENT_CLI_CREDENTIAL_STORE;
     if (!token && credentialStore === "memory") {
@@ -149,6 +154,20 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
         reason: "probeFailed",
         message: "Cursor could not read usage limits.",
       }),
+    ),
+    Effect.map((limits) =>
+      limits.unavailable
+        ? {
+            ...limits,
+            unavailable: {
+              ...limits.unavailable,
+              message:
+                limits.unavailable.message ??
+                "Cursor did not return subscription limits for this connection.",
+            },
+            externalUsage: { label: "Cursor usage", url: CURSOR_USAGE_URL },
+          }
+        : limits,
     ),
   );
 });

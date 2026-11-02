@@ -206,7 +206,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
               updateSettings({ defaultThreadEnvMode: value });
           }}
         >
-          <SelectTrigger size="sm" aria-label="Default workspace">
+          <SelectTrigger size="sm" aria-label={t("Default workspace")}>
             <SelectValue>
               {(value: string | null) =>
                 value === "local" || value === "worktree"
@@ -232,8 +232,8 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
       settingKeys={["fallbackModelSelection"]}
       mixed={mixedFallback}
       id="fallback-model"
-      title="Fallback model"
-      description="Used for new threads when the default model's provider is out of usage."
+      title={t("Fallback model")}
+      description={t("Used for new threads when the default model's provider is out of usage.")}
       resetAction={
         mixedFallback || settings.fallbackModelSelection !== null ? (
           <SettingResetButton
@@ -323,7 +323,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
                   if (value) updateSettings({ defaultRuntimeMode: value });
                 }}
               >
-                <SelectTrigger size="sm" aria-label="Default permissions">
+                <SelectTrigger size="sm" aria-label={t("Default permissions")}>
                   {!mixedPermissions && (
                     <PermissionIcon className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
@@ -364,7 +364,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             settingKeys={["defaultAutoPull"]}
             mixed={mixedAutoPull}
             id="automatic-pull"
-            title="Automatically pull"
+            title={t("Automatically pull")}
             description={
               isProjectScope
                 ? "Keeps this project's default branch current when the checkout has no local changes or commits."
@@ -373,7 +373,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             resetAction={
               settings.defaultAutoPull ? (
                 <SettingResetButton
-                  label="default automatic pull"
+                  label={t("default automatic pull")}
                   tooltip="Reset automatic pull to off"
                   onClick={() => updateSettings({ defaultAutoPull: false })}
                 />
@@ -393,11 +393,13 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             settingKeys={["removeAgentCreditsOnMerge"]}
             mixed={mixedAgentCredits}
             {...searchableSetting("remove-agent-credits-on-merge")}
-            description="Remove recognized agent credit lines from merge and squash messages on hosts that support it, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits."
+            description={t(
+              "Remove recognized agent credit lines from merge and squash messages on hosts that support it, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits.",
+            )}
             resetAction={
               settings.removeAgentCreditsOnMerge ? (
                 <SettingResetButton
-                  label="agent credit removal"
+                  label={t("agent credit removal")}
                   tooltip="Keep agent credits"
                   onClick={() => updateSettings({ removeAgentCreditsOnMerge: false })}
                 />
@@ -427,7 +429,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             resetAction={
               settings.pullRequestMergeMethod !== null ? (
                 <SettingResetButton
-                  label="default merge method"
+                  label={t("default merge method")}
                   tooltip="Reset to last selected"
                   onClick={() => updateSettings({ pullRequestMergeMethod: null })}
                 />
@@ -510,7 +512,7 @@ export function WorktreeSubmodulesRow() {
             if (isWorktreeSubmodules(value)) updateSettings({ worktreeSubmodules: value });
           }}
         >
-          <SelectTrigger size="sm" aria-label="Worktree submodules">
+          <SelectTrigger size="sm" aria-label={t("Worktree submodules")}>
             <SelectValue>
               {(value: string | null) =>
                 isWorktreeSubmodules(value)

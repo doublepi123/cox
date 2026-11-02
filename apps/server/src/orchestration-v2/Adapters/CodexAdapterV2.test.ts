@@ -149,6 +149,27 @@ describe("CodexAdapterV2 assistant message streaming", () => {
 });
 
 describe("CodexAdapterV2 runtime policy", () => {
+  it.effect.each([undefined, "default", "fast", "priority", "ultrafast"])(
+    "forwards the selected service tier without silently downgrading: %s",
+    (serviceTier) =>
+      Effect.gen(function* () {
+        const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+          nativeThreadId: "native-service-tier",
+          codexInput: [{ type: "text", text: "test" }],
+          runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("managed-codex"),
+            model: "gpt-5.4",
+            ...(serviceTier === undefined
+              ? {}
+              : { options: [{ id: "serviceTier", value: serviceTier }] }),
+          },
+        });
+        assert.equal(params.serviceTier, serviceTier);
+        assert.equal(Object.hasOwn(params, "serviceTier"), serviceTier !== undefined);
+      }),
+  );
+
   it.effect.each([undefined, false, true])(
     "selects native collaboration modes without prompt overrides with hasT3Mcp=%s",
     (hasT3Mcp) =>

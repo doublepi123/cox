@@ -581,8 +581,8 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
     <Dialog open={props.open} onOpenChange={handleOpenChange}>
       <WizardPopup>
         <WizardHeader
-          title="Publish repository"
-          description="Pick where to host it, then point us at a repo to push to."
+          title={t("Publish repository")}
+          description={t("Pick where to host it, then point us at a repo to push to.")}
         >
           <WizardSteps
             steps={publishWizardSteps}
@@ -710,7 +710,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                 id="publish-visibility-cards-label"
                 className="text-xs font-medium text-foreground"
               >
-                Visibility
+                {t("Visibility")}
               </span>
               <RadioGroup
                 value={publishVisibility}
@@ -781,7 +781,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
               {publishAdvancedOpen ? (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5" htmlFor="publish-remote-name">
-                    <span className="text-xs font-medium text-foreground">Remote</span>
+                    <span className="text-xs font-medium text-foreground">{t("Remote")}</span>
                     <Input
                       id="publish-remote-name"
                       value={publishRemoteName}
@@ -795,7 +795,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                       id="publish-protocol-label"
                       className="text-xs font-medium text-foreground"
                     >
-                      Protocol
+                      {t("Protocol")}
                     </span>
                     <ToggleGroup
                       value={[publishProtocol]}
@@ -831,7 +831,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                 role="alert"
                 className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
               >
-                <p className="font-medium">Publish failed</p>
+                <p className="font-medium">{t("Publish failed")}</p>
                 <p className="mt-0.5 text-destructive/90">{publishError}</p>
               </div>
             ) : null}
@@ -874,7 +874,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
               </>
             ) : (
               <div className="rounded-md border border-input bg-background px-3 py-2 text-xs text-muted-foreground dark:border-transparent dark:bg-white/[0.035]">
-                Publish result unavailable.
+                {t("Publish result unavailable.")}
               </div>
             )}
           </div>
@@ -910,7 +910,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                   {publishRepositoryAction.isPending ? (
                     <>
                       <Spinner size="sm" aria-hidden />
-                      Publishing...
+                      {t("Publishing...")}
                     </>
                   ) : (
                     "Publish"
@@ -1822,7 +1822,7 @@ export default function GitActionsControl({
               disabled={!canChangeThreadBranch || noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
-              Commit on new branch
+              {t("Commit on new branch")}
             </Button>
             <Button
               size="sm"
@@ -1869,7 +1869,7 @@ export default function GitActionsControl({
               size="sm"
               onClick={() => setPendingDefaultBranchAction(null)}
             >
-              Abort
+              {t("Abort")}
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
@@ -1886,7 +1886,7 @@ export default function GitActionsControl({
               onClick={() => continuePendingDefaultBranchAction(true)}
               disabled={!canChangeThreadBranch || featureBranchUnavailableReason !== null}
             >
-              Check out feature branch & continue
+              {t("Check out feature branch & continue")}
             </Button>
           </DialogFooter>
         </DialogPopup>

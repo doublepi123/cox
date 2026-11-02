@@ -57,18 +57,27 @@ const layerConnectivity = Connectivity.layer({
   ),
 });
 
+export function subscribeToApplicationWakeups(onWakeup: () => void): () => void {
+  const listener = () => {
+    if (document.visibilityState === "visible") onWakeup();
+  };
+  document.addEventListener("visibilitychange", listener);
+  window.addEventListener("focus", listener);
+  window.addEventListener("pageshow", listener);
+  return () => {
+    document.removeEventListener("visibilitychange", listener);
+    window.removeEventListener("focus", listener);
+    window.removeEventListener("pageshow", listener);
+  };
+}
+
 const layerWakeups = Wakeups.layer({
   changes: Stream.callback<"application-active">((queue) =>
     Effect.acquireRelease(
-      Effect.sync(() => {
-        const listener = () => {
-          if (document.visibilityState === "visible")
-            Queue.offerUnsafe(queue, "application-active");
-        };
-        document.addEventListener("visibilitychange", listener);
-        return listener;
-      }),
-      (listener) => Effect.sync(() => document.removeEventListener("visibilitychange", listener)),
+      Effect.sync(() =>
+        subscribeToApplicationWakeups(() => Queue.offerUnsafe(queue, "application-active")),
+      ),
+      (unsubscribe) => Effect.sync(unsubscribe),
     ).pipe(Effect.asVoid),
   ),
 });
