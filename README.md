@@ -1,8 +1,19 @@
 # Cox
 
+English | [简体中文](README.zh-CN.md)
+
 Cox is a local Web interface for coding agents, derived from [T3 Code](https://github.com/pingdotgg/t3code), starting at `0102f07afb` in the `doublepi123/t3code` fork.
 
 Run the server on your computer and control your locally installed coding agents from a browser. Your projects, conversation history, credentials and checkpoints stay in your local Cox data directory.
+
+## Project website
+
+The product homepage is [doublepi123.github.io](https://doublepi123.github.io/).
+The bilingual website source lives in [`site/`](site/README.md), with a responsive
+feature showcase, an illustrative workspace, and copyable installation commands.
+It is separate from the local Cox application and does not host agents or user data.
+Run `pnpm pages:test` and `pnpm pages:build` to validate and build it. See the
+[website deployment guide](site/README.md#account-homepage) for account-homepage and optional project Pages deployment.
 
 ## Quick start (npm)
 
