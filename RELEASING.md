@@ -16,19 +16,15 @@ On Ubuntu hosts restricting user namespaces, `cox browser setup` can install a C
 AppArmor profile for Cox's separately named browser directory. This is an explicit host
 administration step, never an automatic release-install action; it does not replace T3's profile.
 
-## Android server bundle
+## Android consumers
 
-`cox-<version>-android-linux-<arch>-musl.tar.gz` is a self-contained server tree for the Android
-app, which extracts it into Alpine (musl) inside PRoot and starts it with `node bin.mjs`. It
-contains `bin.mjs`, `client/`, `node_modules/`, `package.json` and `ANDROID-BUNDLE.json`
-(`version`, `arch`, `libc`, `nodeEngine`, `builtWith`, `server`); only `apk add nodejs` is needed
-on the device. Native modules are built against musl on the runner's own architecture, so x64 and
-arm64 are produced separately and cannot be cross-built without emulation.
+CoCode installs the standard `@doublepi123/cox` npm package inside its Alpine/PRoot runtime.
+Cox no longer builds or publishes separate Android server bundles. The app installs the required
+system packages and rebuilds node-pty for the device's musl environment; the npm package is not
+a self-contained native binary.
 
-`.github/workflows/android-bundle.yml` builds and smoke-tests both bundles, then attaches them to
-the release for the pushed `v*` tag, creating the release when it is missing, and merges their
-checksums into the release's `SHA256SUMS`. Run it with `workflow_dispatch` and a tag to rebuild
-the bundles of an existing release.
+Older CoCode versions that only download Android bundles must upgrade to the npm-capable app to
+receive future Cox versions. Previously published release assets are not removed.
 
 ## npm automatic publishing
 
@@ -43,7 +39,8 @@ runtime patches after npm installs dependencies, including on subsequent rebuild
 `.github/workflows/npm-publish.yml` publishes when a `v*` tag is pushed. The tag must match
 both root and server package versions. Stable releases use `latest`; prereleases use `next`.
 The workflow typechecks, runs root tests, builds the package and smoke-tests a fresh npm
-installation with isolated state before publishing with provenance. It also saves the tarball
+installation with isolated state before publishing with provenance. The smoke checks include
+offline Cursor SDK workspace prewarm and server startup/authentication. It also saves the tarball
 as a workflow artifact. Authentication is checked before building. Tag pushes use OIDC and
 never silently fall back to a stored token. Use **Run workflow** with an existing version tag
 and choose `oidc` (normal releases) or `token` (first publish). Re-running an old failed run
@@ -86,9 +83,8 @@ trusted-publisher configuration remain explicit maintainer actions.
 7. Extract the archive in a fresh directory, verify `sha256sum -c SHA256SUMS`, install frozen
    dependencies and smoke-test startup with a temporary home/data directory and free port.
 8. Push the commit and version tag, then create a GitHub Release with the archive and
-   `SHA256SUMS`. Verify the uploaded checksums and release commit before announcing it. The tag
-   also triggers the Android bundle workflow, which attaches the two musl bundles and their
-   checksums to that release.
+   `SHA256SUMS`. Verify the uploaded checksums and release commit before announcing it. No
+   Android-specific server archives are produced.
 
 The source workflow validates and packages source without publishing it. Version tags also
 trigger npm publishing as described above. GitHub source releases and repository visibility

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Stop publishing Android-specific server bundles. CoCode now installs the standard npm package
+  and prepares native dependencies in its own runtime. Keep previously published assets for older
+  clients, and run the offline Cursor SDK smoke check against the fresh npm installation instead.
+
 ## 0.1.15 — 2026-11-02
 
 - Show the thread's current task list in the details panel, with each step's status and the

@@ -27,7 +27,7 @@ afterEach(async () => {
   );
 });
 
-describe("Android Cursor SDK smoke", () => {
+describe("Cursor SDK smoke", () => {
   it("prewarms sandbox and full access, releases resources, and isolates settings", async () => {
     const result = await probe(`
       const assert = require('node:assert/strict');
@@ -74,16 +74,20 @@ describe("Android Cursor SDK smoke", () => {
     },
   );
 
-  it("runs the shipped smoke before server startup and declares the runtime dependency", async () => {
+  it("runs the SDK smoke against the npm installation before server startup", async () => {
     const script = await readFile(
-      join(import.meta.dirname, "build-android-server-bundle.sh"),
+      join(import.meta.dirname, "../.github/workflows/npm-publish.yml"),
       "utf8",
     );
-    expect(script).toMatch(/apk add --no-cache .* gcompat/);
-    expect(script).toContain('cp /repo/scripts/cursor-sdk-smoke.cjs "$build/cursor-sdk-smoke.cjs"');
-    expect(script.indexOf('timeout 90 node "$build/cursor-sdk-smoke.cjs"')).toBeLessThan(
-      script.indexOf('log "Server smoke test"'),
-    );
-    expect(script).toContain('alpinePackages: ["gcompat"]');
+    const install = 'npm install --prefix "$prefix" --no-audit --no-fund "$package"';
+    const copy =
+      'cp scripts/cursor-sdk-smoke.cjs "$prefix/node_modules/@doublepi123/cox/cursor-sdk-smoke.cjs"';
+    const smoke = 'timeout 90 node "$prefix/node_modules/@doublepi123/cox/cursor-sdk-smoke.cjs"';
+    const server =
+      'node scripts/runtime-smoke.mjs "$prefix/node_modules/@doublepi123/cox/dist/bin.mjs"';
+    for (const command of [install, copy, smoke, server]) expect(script).toContain(command);
+    expect(script.indexOf(install)).toBeLessThan(script.indexOf(copy));
+    expect(script.indexOf(copy)).toBeLessThan(script.indexOf(smoke));
+    expect(script.indexOf(smoke)).toBeLessThan(script.indexOf(server));
   });
 });

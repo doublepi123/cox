@@ -106,6 +106,8 @@ jobs:
           trap 'rm -rf "$prefix"' EXIT
           npm install --prefix "$prefix" --no-audit --no-fund "$package"
           COX_HOME="$prefix/home" "$prefix/node_modules/.bin/cox" --help
+          cp scripts/cursor-sdk-smoke.cjs "$prefix/node_modules/@doublepi123/cox/cursor-sdk-smoke.cjs"
+          timeout 90 node "$prefix/node_modules/@doublepi123/cox/cursor-sdk-smoke.cjs"
           node scripts/runtime-smoke.mjs "$prefix/node_modules/@doublepi123/cox/dist/bin.mjs"
       - uses: actions/upload-artifact@v4
         with:
