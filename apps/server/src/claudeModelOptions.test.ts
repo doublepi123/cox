@@ -3,6 +3,10 @@ import { describe, expect, it } from "@effect/vitest";
 import { ProviderInstanceId, type ModelSelection } from "@t3tools/contracts";
 
 import { compileClaudeModelSelection } from "./claudeModelOptions.ts";
+import {
+  BUNDLED_CLAUDE_MODEL_CATALOG,
+  scopeClaudeModelCatalog,
+} from "./provider/ClaudeModelCatalog.ts";
 
 const selection = (
   model: string,
@@ -14,6 +18,19 @@ const selection = (
 });
 
 describe("compileClaudeModelSelection", () => {
+  it("includes custom context limits in query identity", () => {
+    const customSelection = selection("custom-context", []);
+    const compile = (contextWindow: number) =>
+      compileClaudeModelSelection(
+        customSelection,
+        scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, [
+          { slug: "custom-context", capabilities: { contextWindow } },
+        ]),
+      );
+    expect(compile(262144).contextWindowTokens).toBe(262144);
+    expect(compile(262144).queryIdentity).not.toBe(compile(1048576).queryIdentity);
+    expect(compileClaudeModelSelection(customSelection).contextWindowTokens).toBeUndefined();
+  });
   it("compiles context, effort, and settings together", () => {
     expect(
       compileClaudeModelSelection(

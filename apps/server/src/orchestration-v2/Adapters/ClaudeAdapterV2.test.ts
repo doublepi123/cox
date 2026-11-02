@@ -94,6 +94,10 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ClaudeAdapterV2 from "./ClaudeAdapterV2.ts";
+import {
+  BUNDLED_CLAUDE_MODEL_CATALOG,
+  scopeClaudeModelCatalog,
+} from "../../provider/ClaudeModelCatalog.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { ClaudeOrchestratorReplayHarness } from "./ClaudeAdapterV2.testkit.ts";
 import { provideDeterministicTestRuntime } from "../testkit/DeterministicRuntime.ts";
@@ -662,6 +666,64 @@ describe("ClaudeAdapterV2 native protocol logging", () => {
 });
 
 describe("ClaudeAdapterV2 context usage", () => {
+  it.each([204800, 262144, 1048576])(
+    "passes the saved %i token window to Claude",
+    (contextWindow) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "custom-context" },
+        nativeThreadId: "custom-context-thread",
+        resume: false,
+        cwd: "/workspace",
+        settings: {
+          ...DEFAULT_CLAUDE_SETTINGS,
+          customModels: [{ slug: "custom-context", capabilities: { contextWindow } }],
+        },
+        environment: { RETAINED: "process", CLAUDE_CODE_MAX_CONTEXT_TOKENS: "200000" },
+        sdkSettings: { env: { RETAINED: "settings", CLAUDE_CODE_MAX_CONTEXT_TOKENS: "200000" } },
+        toolSearchOverride: "true",
+      });
+      assert.equal(options.model, "custom-context");
+      assert.deepEqual(options.env, {
+        RETAINED: "process",
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(contextWindow),
+      });
+      assert.isObject(options.settings);
+      if (typeof options.settings !== "object") return;
+      assert.deepEqual(options.settings?.env, {
+        RETAINED: "settings",
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(contextWindow),
+        ENABLE_TOOL_SEARCH: "true",
+      });
+    },
+  );
+
+  it("leaves unknown windows to Claude and preserves explicit environment overrides", () => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "unknown-context" },
+      nativeThreadId: "unknown-context-thread",
+      resume: false,
+      cwd: "/workspace",
+      environment: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: "256000" },
+    });
+    assert.equal(options.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS, "256000");
+  });
+
+  it("uses the instance window for usage and auto-compaction thresholds", () => {
+    const catalog = scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, [
+      { slug: "custom-context", capabilities: { contextWindow: 262144 } },
+    ]);
+    const usage = ClaudeAdapterV2.claudeProviderTurnTokenUsage(
+      { input_tokens: 100, output_tokens: 20 },
+      { ...CLAUDE_TEST_MODEL_SELECTION, model: "custom-context" },
+      "2026-11-02T00:00:00.000Z",
+      "150000",
+      undefined,
+      catalog,
+    );
+    assert.equal(usage.maxTokens, 262144);
+    assert.equal(usage.usedTokens, 120);
+    assert.equal(usage.autoCompactThreshold, 117000);
+  });
   it("dates cache expiry from the request start, not the response end", () => {
     const usage = ClaudeAdapterV2.claudeProviderTurnTokenUsage(
       {
@@ -3051,6 +3113,56 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       };
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
+
+  it.effect("reopens queries when switching between saved custom context windows", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({
+        freshQueueOnReopen: true,
+        close: Queue.shutdown,
+        settings: {
+          ...DEFAULT_CLAUDE_SETTINGS,
+          customModels: [
+            { slug: "custom-small", capabilities: { contextWindow: 262144 } },
+            { slug: "custom-large", capabilities: { contextWindow: 1048576 } },
+          ],
+        },
+      });
+      const now = yield* DateTime.now;
+      for (const [index, model, contextWindow] of [
+        [1, "custom-small", 262144],
+        [2, "custom-large", 1048576],
+        [3, "custom-unknown", undefined],
+      ] as const) {
+        const modelSelection = { ...CLAUDE_TEST_MODEL_SELECTION, model };
+        assert.equal(harness.runtime.getModelContextWindow?.(modelSelection), contextWindow);
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make(`attempt-custom-context-${index}`),
+            text: "Check context",
+            attachments: [],
+            providerTurnOrdinal: index,
+            modelSelection,
+          }),
+        );
+        assert.equal(
+          harness.getOpenedOptions()?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS,
+          contextWindow === undefined ? undefined : String(contextWindow),
+        );
+        yield* harness.offerAndWait(turnOneResult);
+        yield* Queue.take(harness.terminalReceipts);
+      }
+      assert.lengthOf(harness.processQueues, 3);
+      assert.deepEqual(harness.liveSelectionChanges, []);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
 
   it.effect.each(["release-after", "cancel-after", "release-before", "resume-pending"] as const)(
     "keeps attachment reservations across compaction: %s boundary",

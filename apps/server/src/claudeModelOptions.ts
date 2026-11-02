@@ -20,6 +20,7 @@ export interface CompiledClaudeModelSelection {
   readonly apiModelId: string;
   readonly effort: string | undefined;
   readonly promptEffort: string | undefined;
+  readonly contextWindowTokens: number | undefined;
   readonly settings: Readonly<Record<string, boolean>>;
   readonly queryIdentity: string;
 }
@@ -47,12 +48,19 @@ export function compileClaudeModelSelection(
     ...(isClaudeCatalogUltracodeEffort(resolvedEffort) ? { ultracode: true } : {}),
   };
   const apiModelId = resolveClaudeCatalogApiModelId(catalog, selection);
+  const contextWindowTokens = capabilities.contextWindow;
   const promptEffort = resolvePromptInjectedEffort(capabilities, rawEffort) ?? undefined;
   return {
     apiModelId,
     effort,
     promptEffort,
+    contextWindowTokens,
     settings,
-    queryIdentity: JSON.stringify({ apiModelId, effort: effort ?? null, settings }),
+    queryIdentity: JSON.stringify({
+      apiModelId,
+      effort: effort ?? null,
+      settings,
+      contextWindowTokens,
+    }),
   };
 }
