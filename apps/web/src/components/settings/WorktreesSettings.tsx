@@ -48,7 +48,7 @@ function StartFromRemoteRow() {
           onCheckedChange={(checked) =>
             updateSettings({ newWorktreesStartFromOrigin: Boolean(checked) })
           }
-          aria-label="Start new worktrees from remote by default"
+          aria-label={translateUi("Start new worktrees from remote by default")}
         />
       }
     />

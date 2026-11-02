@@ -4,6 +4,7 @@ import {
   type ProviderOptionDescriptor,
 } from "@t3tools/contracts";
 import { type CustomModelDefinition, createModelCapabilities } from "@t3tools/shared/model";
+import { translate } from "../../i18n/language";
 
 export interface EditorChoice {
   readonly key: string;
@@ -203,31 +204,38 @@ export function descriptorsFromCapabilities(
     .map(descriptorToEditor);
 }
 
-export function validateDraft(draft: CustomModelDraft): string | null {
+export function validateDraft(
+  draft: CustomModelDraft,
+  t: (key: string, values?: Readonly<Record<string, string | number>>) => string = translate.bind(
+    null,
+    "en",
+  ),
+): string | null {
   if (
     draft.contextWindow?.trim() &&
     (!/^\d+$/.test(draft.contextWindow.trim()) ||
       !Number.isSafeInteger(Number(draft.contextWindow)) ||
       Number(draft.contextWindow) <= 0)
   ) {
-    return "Context window must be a positive integer.";
+    return t("Context window must be a positive integer.");
   }
   const seenIds = new Set<string>();
   for (const [index, descriptor] of draft.descriptors.entries()) {
-    const position = `Option ${index + 1}`;
+    const position = t("Option {index}", { index: index + 1 });
     const id = descriptor.id.trim();
-    if (!id) return `${position} needs an id.`;
-    if (seenIds.has(id)) return `${position}: id "${id}" is used twice.`;
+    if (!id) return t("{option} needs an id.", { option: position });
+    if (seenIds.has(id)) return t('{option}: id "{id}" is used twice.', { option: position, id });
     seenIds.add(id);
-    if (!descriptor.label.trim()) return `${position} needs a label.`;
+    if (!descriptor.label.trim()) return t("{option} needs a label.", { option: position });
     if (descriptor.type !== "select") continue;
-    if (descriptor.choices.length === 0) return `${position} needs at least one choice.`;
+    if (descriptor.choices.length === 0)
+      return t("{option} needs at least one choice.", { option: position });
     const seenChoices = new Set<string>();
     for (const choice of descriptor.choices) {
       const choiceId = choice.id.trim();
-      if (!choiceId) return `${position} has a choice without a value.`;
+      if (!choiceId) return t("{option} has a choice without a value.", { option: position });
       if (seenChoices.has(choiceId)) {
-        return `${position}: choice "${choiceId}" is used twice.`;
+        return t('{option}: choice "{id}" is used twice.', { option: position, id: choiceId });
       }
       seenChoices.add(choiceId);
     }

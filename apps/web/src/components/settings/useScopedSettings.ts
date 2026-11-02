@@ -1,4 +1,5 @@
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
+import { useTranslation } from "../../i18n";
 import { useEnvironmentsWithScope } from "../../state/session";
 import {
   requiredScopesForServerSettingsPatch,
@@ -48,13 +49,14 @@ export function useScopedSettingSource(keys: readonly (keyof ServerSettings)[]) 
 }
 
 function useRunScopedPlan() {
+  const { t } = useTranslation();
   const persistServer = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
   return (plan: ReturnType<typeof planScopedSettingsPatch>, onFailed?: () => void) => {
     if (plan.unavailableReason) {
       toastManager.add({
         type: "warning",
-        title: "Setting not saved",
-        description: plan.unavailableReason,
+        title: t("Setting not saved"),
+        description: t(plan.unavailableReason),
       });
       onFailed?.();
       return;
@@ -70,7 +72,7 @@ function useRunScopedPlan() {
             Cause.fail(
               new EnvironmentAuthorizationError({
                 requiredScope: missing,
-                message: "This connection lacks permission to change these settings.",
+                message: t("This connection lacks permission to change these settings."),
               }),
             ),
           );
@@ -82,14 +84,19 @@ function useRunScopedPlan() {
       onFailed?.();
       toastManager.add({
         type: "error",
-        title:
+        title: t(
           savedEnvironmentCount > 0 ? "Setting saved on some environments" : "Setting not saved",
+        ),
         description: [
-          ...failedEnvironments.map(
-            ({ label, message }) => `Could not save on ${label}: ${message}`,
+          ...failedEnvironments.map(({ label, message }) =>
+            t("Could not save on {name}: {message}", { name: label, message }),
           ),
           ...(savedEnvironmentCount > 0
-            ? [`Saved on ${savedEnvironments.map(({ label }) => label).join(", ")}.`]
+            ? [
+                t("Saved on {names}.", {
+                  names: savedEnvironments.map(({ label }) => label).join(", "),
+                }),
+              ]
             : []),
         ].join("\n"),
       });
@@ -98,11 +105,12 @@ function useRunScopedPlan() {
 }
 
 export function useUpdateScopedSettings() {
+  const { t } = useTranslation();
   const { scope, environments } = useSettingsScope();
   const run = useRunScopedPlan();
   /** `onFailed` runs when any target rejects or drops the patch, so a draft can fall back. */
   return (patch: ScopedSettingsPatch, options?: { readonly onFailed?: () => void }) =>
-    run(planScopedSettingsPatch(scope, environments, patch), options?.onFailed);
+    run(planScopedSettingsPatch(scope, environments, patch, t), options?.onFailed);
 }
 
 export function useClearScopedSettings() {

@@ -40,6 +40,7 @@ import {
   interruptThreadTurn,
   revertThreadCheckpoint,
   resumeThreadQueue,
+  reorderQueuedRun,
   startThreadTurn,
 } from "./commands.ts";
 
@@ -134,6 +135,37 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
 });
 
 describe("V2 environment commands", () => {
+  it.effect("reorders queued messages before a target or at the end without starting a run", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationV2Command[] = [];
+      const supervisor = yield* makeSupervisor({ commands, projects: [] });
+      const threadId = ThreadId.make("thread-queue");
+      for (const beforeRunId of [RunId.make("next-run"), null]) {
+        yield* reorderQueuedRun({
+          commandId: CommandId.make(beforeRunId === null ? "move-last" : "move-before"),
+          threadId,
+          runId: RunId.make("moving-run"),
+          beforeRunId,
+        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+      }
+      expect(commands).toEqual([
+        {
+          type: "queued-run.reorder",
+          commandId: "move-before",
+          threadId,
+          runId: "moving-run",
+          beforeRunId: "next-run",
+        },
+        {
+          type: "queued-run.reorder",
+          commandId: "move-last",
+          threadId,
+          runId: "moving-run",
+          beforeRunId: null,
+        },
+      ]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
   it.effect("distinguishes sending a selected queued message from resuming queue order", () =>
     Effect.gen(function* () {
       const commands: OrchestrationV2Command[] = [];

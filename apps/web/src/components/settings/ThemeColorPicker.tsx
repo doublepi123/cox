@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import { memo, useEffect, useState } from "react";
 import { isThemeColor, themeColorToHex, type ThemeColorRole } from "../../themePalette";
 import { cn } from "../../lib/utils";
@@ -10,23 +10,25 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 export function getThemeRoleLabel(role: ThemeColorRole): string {
   const labels: Partial<Record<ThemeColorRole, string>> = {
     canvas: "Background",
-    toolbar: "Toolbar background",
-    toolbarForeground: "Toolbar text",
-    toolbarBorder: "Toolbar border",
-    toolbarControl: "Toolbar control",
-    toolbarControlForeground: "Toolbar control text",
-    toolbarControlHover: "Toolbar control hover",
+    toolbar: translateCurrent("Toolbar background"),
+    toolbarForeground: translateCurrent("Toolbar text"),
+    toolbarBorder: translateCurrent("Toolbar border"),
+    toolbarControl: translateCurrent("Toolbar control"),
+    toolbarControlForeground: translateCurrent("Toolbar control text"),
+    toolbarControlHover: translateCurrent("Toolbar control hover"),
     accent: "Accent color",
-    errorForeground: "Error text",
-    errorSurface: "Error background",
-    warningForeground: "Warning text",
-    warningSurface: "Warning background",
-    updateForeground: "Update text",
-    updateSurface: "Update background",
+    errorForeground: translateCurrent("Error text"),
+    errorSurface: translateCurrent("Error background"),
+    warningForeground: translateCurrent("Warning text"),
+    warningSurface: translateCurrent("Warning background"),
+    updateForeground: translateCurrent("Update text"),
+    updateSurface: translateCurrent("Update background"),
   };
   const label = labels[role];
-  if (label) return label;
-  return role.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase());
+  if (label) return translateCurrent(label);
+  return translateCurrent(
+    role.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase()),
+  );
 }
 
 function themePickerAlphaSuffix(value: string): string {
@@ -178,7 +180,7 @@ function ThemeColorPickerPanel({
           onInteractionEnd={committer.flush}
         />
         <ColorHueSlider
-          label={`${label} hue`}
+          label={translateUi("{name} hue", { name: label })}
           value={hsv.h}
           onChange={(h) => commitHsv({ ...hsv, h })}
           onInteractionEnd={committer.flush}
@@ -194,7 +196,7 @@ function ThemeColorPickerPanel({
                 style={{ backgroundColor: currentColor }}
               />
               <input
-                aria-label={`${label} picker hex value`}
+                aria-label={translateUi("{name} picker hex value", { name: label })}
                 className="h-8 min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none"
                 onBlur={() => {
                   setIsEditingText(false);
@@ -216,7 +218,7 @@ function ThemeColorPickerPanel({
             </span>
             <span className="flex min-w-0 items-center rounded-lg border border-input bg-background px-2 focus-within:border-ring">
               <input
-                aria-label={`${label} picker RGB value`}
+                aria-label={translateUi("{name} picker RGB value", { name: label })}
                 className="h-8 min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none"
                 onBlur={() => {
                   setIsEditingText(false);
@@ -249,6 +251,7 @@ function ThemeColorPicker({
   onChange: (value: string) => void;
   onInteract?: () => void;
 }) {
+  const { t } = useTranslation();
   const [committer] = useState(createFrameCommitter);
   // Unmounting with the popover open (the editor closes mid-drag) never fires onOpenChange.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- flushes the frame committer on unmount, since an open popover never fires onOpenChange
@@ -265,7 +268,7 @@ function ThemeColorPicker({
             <PopoverTrigger
               render={
                 <button
-                  aria-label={`Choose ${label} color`}
+                  aria-label={t("Choose {name} color", { name: label })}
                   className="relative flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-foreground/30 transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
                   onFocus={onInteract}
                   onPointerDown={onInteract}
@@ -280,7 +283,7 @@ function ThemeColorPicker({
             />
           }
         />
-        <TooltipPopup side="top">{`Choose ${label} color`}</TooltipPopup>
+        <TooltipPopup side="top">{t("Choose {name} color", { name: label })}</TooltipPopup>
       </Tooltip>
       <PopoverPopup
         align="end"
@@ -317,6 +320,7 @@ export const ThemeColorField = memo(function ThemeColorField({
   selected?: boolean;
   label?: string;
 }) {
+  const { t } = useTranslation();
   const label = customLabel ?? getThemeRoleLabel(role);
   const isColorValue = isThemeColor(value);
   const swatchValue = isColorValue ? value : "#000000";
@@ -336,7 +340,10 @@ export const ThemeColorField = memo(function ThemeColorField({
         <TooltipTrigger
           render={
             <button
-              aria-label={`${selected ? "Hide" : "Show"} ${label} usage`}
+              aria-label={t("{action} {name} usage", {
+                action: selected ? t("Hide") : t("Show"),
+                name: label,
+              })}
               aria-pressed={selected}
               className="flex min-w-0 flex-1 cursor-pointer items-center rounded-md text-left text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               onClick={() => onToggleSelected?.(role)}
@@ -346,7 +353,12 @@ export const ThemeColorField = memo(function ThemeColorField({
             </button>
           }
         />
-        <TooltipPopup side="top">{`${selected ? "Hide" : "Show"} where ${label} is used`}</TooltipPopup>
+        <TooltipPopup side="top">
+          {t("{action} where {name} is used", {
+            action: selected ? t("Hide") : t("Show"),
+            name: label,
+          })}
+        </TooltipPopup>
       </Tooltip>
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <ThemeColorPicker
@@ -357,7 +369,7 @@ export const ThemeColorField = memo(function ThemeColorField({
         />
         <Input
           aria-invalid={!isColorValue}
-          aria-label={`${label} hex value`}
+          aria-label={t("{name} hex value", { name: label })}
           className="w-28 shrink-0"
           font="mono"
           id={`${role}-hex`}

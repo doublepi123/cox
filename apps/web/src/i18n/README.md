@@ -21,8 +21,11 @@ Imperative actions use `translateCurrent()` at dispatch time; rendered labels us
 Thread details include localized editor, script and Git actions, changed-file counts, and active
 subagent statuses. Source-control settings and scope selectors also update with the language.
 Subagent titles, progress, provider instance names and model names remain unchanged.
-Technical diagnostics, external provider errors, API model descriptions and some advanced
-settings retain English. New interface strings need entries in both resources.
+Settings descriptions, schema-driven provider fields, advanced controls, diagnostics labels,
+theme tools, placeholders and accessible names use the same resources. Built-in schema metadata
+is localized at the rendering boundary; stored values and option IDs are never translated.
+External provider errors, raw diagnostic output and provider-supplied model descriptions remain
+unchanged. New interface strings need entries in both resources.
 
 Run the unit and real Chromium integration tests with the web package test command. The browser
 coverage exercises actual settings/navigation/project components and the Markdown renderer,

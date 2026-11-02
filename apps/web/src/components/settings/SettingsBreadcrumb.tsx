@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -14,7 +14,8 @@ const SETTINGS_BREADCRUMB_LABELS: Readonly<Record<string, string>> = {
 
 function settingsBreadcrumbLabel(pathname: string): string | null {
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
-  return SETTINGS_BREADCRUMB_LABELS[normalizedPathname] ?? null;
+  const label = SETTINGS_BREADCRUMB_LABELS[normalizedPathname];
+  return label === undefined ? null : translateCurrent(label);
 }
 
 export function SettingsBreadcrumb({ pathname }: { pathname: string }) {

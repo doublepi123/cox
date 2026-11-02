@@ -1,3 +1,4 @@
+import { translateCurrent } from "../../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ChevronDownIcon } from "lucide-react";
 import * as Option from "effect/Option";
@@ -78,21 +79,22 @@ function authPresentation(auth: SourceControlProviderAuth): {
   readonly badge: "secondary" | null;
 } {
   if (auth.status === "authenticated") {
-    return { label: "Authenticated", badge: null };
+    return { label: translateCurrent("Authenticated"), badge: null };
   }
   if (auth.status === "unauthenticated") {
-    return { label: "Not authenticated", badge: "secondary" };
+    return { label: translateCurrent("Not authenticated"), badge: "secondary" };
   }
-  return { label: "Status unknown", badge: null };
+  return { label: translateCurrent("Status unknown"), badge: null };
 }
 
 function RedactedAccount(props: { readonly account: string | null }) {
+  const { t } = useTranslation();
   return (
     <RedactedSensitiveText
       value={props.account}
-      ariaLabel="Toggle source control account visibility"
-      revealTooltip="Click to reveal account"
-      hideTooltip="Click to hide account"
+      ariaLabel={t("Toggle source control account visibility")}
+      revealTooltip={t("Click to reveal account")}
+      hideTooltip={t("Click to hide account")}
     />
   );
 }

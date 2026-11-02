@@ -70,15 +70,24 @@ export function webhookFilterDrafts(
 
 const decodeFilter = Schema.decodeUnknownOption(ScheduledTaskWebhookFilter);
 
+export type WebhookFilterDraftError =
+  | { readonly kind: "too-many"; readonly maximum: number }
+  | { readonly kind: "invalid"; readonly row: number; readonly op: ScheduledTaskWebhookFilterOp };
+
 /**
  * Checks each row with the server's own schema, so a draft that parses here
  * also saves. The error names the first row that would not.
  */
 export function parseWebhookFilterDrafts(
   drafts: ReadonlyArray<WebhookFilterDraft>,
+  formatError?: (error: WebhookFilterDraftError) => string,
 ): { readonly filters: ReadonlyArray<ScheduledTaskWebhookFilter> } | { readonly error: string } {
   if (drafts.length > MAX_WEBHOOK_FILTERS) {
-    return { error: `Use at most ${MAX_WEBHOOK_FILTERS} filters.` };
+    return {
+      error:
+        formatError?.({ kind: "too-many", maximum: MAX_WEBHOOK_FILTERS }) ??
+        `Use at most ${MAX_WEBHOOK_FILTERS} filters.`,
+    };
   }
   const filters: ScheduledTaskWebhookFilter[] = [];
   for (const [index, draft] of drafts.entries()) {
@@ -99,13 +108,15 @@ export function parseWebhookFilterDrafts(
     );
     if (Option.isNone(filter)) {
       return {
-        error: `Filter ${index + 1} needs a path under body, headers or query${
-          draft.op === "exists"
-            ? "."
-            : draft.op === "in"
-              ? ", and at least one value."
-              : ", and a value."
-        }`,
+        error:
+          formatError?.({ kind: "invalid", row: index + 1, op: draft.op }) ??
+          `Filter ${index + 1} needs a path under body, headers or query${
+            draft.op === "exists"
+              ? "."
+              : draft.op === "in"
+                ? ", and at least one value."
+                : ", and a value."
+          }`,
       };
     }
     filters.push(filter.value);

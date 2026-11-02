@@ -66,13 +66,14 @@ export function ChatGptWelcomeCoordinator() {
       <DialogPopup>
         <DialogHeader>
           <OpenAI className="mb-2 size-8" aria-hidden="true" />
-          <DialogTitle>Your ChatGPT plan is connected</DialogTitle>
+          <DialogTitle>{t("Your ChatGPT plan is connected")}</DialogTitle>
           <DialogDescription>
-            Eligible usage in Cox uses your ChatGPT plan. Manage your shared usage and any credit
-            settings in ChatGPT.
+            {t(
+              "Eligible usage in Cox uses your ChatGPT plan. Manage your shared usage and any credit settings in ChatGPT.",
+            )}
           </DialogDescription>
           <p className="text-xs text-muted-foreground">
-            {next?.providerName} on {next?.environmentLabel}
+            {next?.providerName} {t("on")} {next?.environmentLabel}
           </p>
         </DialogHeader>
         <DialogFooter>

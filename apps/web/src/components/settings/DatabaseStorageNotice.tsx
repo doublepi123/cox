@@ -44,10 +44,12 @@ export function DatabaseStorageNotice({
       {visible.map(({ environmentId, status }) => (
         <SettingsRow
           key={environmentId}
-          title={`${(status.reclaimableBytes / 1024 ** 3).toFixed(1)} GiB on ${
-            environments.find((environment) => environment.environmentId === environmentId)
-              ?.label ?? environmentId
-          }`}
+          title={t("{size} GiB on {environment}", {
+            size: (status.reclaimableBytes / 1024 ** 3).toFixed(1),
+            environment:
+              environments.find((environment) => environment.environmentId === environmentId)
+                ?.label ?? environmentId,
+          })}
           description={<code className="select-text break-all">{status.compactCommand}</code>}
           control={
             <div className="flex flex-wrap items-center gap-1.5">

@@ -103,7 +103,7 @@ export function ProjectActionsSettings() {
       setRequest({
         scriptId: null,
         initial: payload,
-        error: error instanceof Error ? error.message : "Failed to import action.",
+        error: error instanceof Error ? error.message : t("Failed to import action."),
       });
     }
   };
@@ -141,7 +141,7 @@ export function ProjectActionsSettings() {
                   <MenuGroup>
                     <MenuGroupLabel>{t("Import from t3.json")}</MenuGroupLabel>
                     <p className="px-2 pb-2 text-pretty text-sm text-muted-foreground">
-                      Add actions declared by this checkout without editing them first.
+                      {t("Add actions declared by this checkout without editing them first.")}
                     </p>
                   </MenuGroup>
                   <MenuSeparator />
@@ -191,8 +191,10 @@ export function ProjectActionsSettings() {
       )}
       {t3File.status === "invalid" ? (
         <SettingsRow
-          title="t3.json is invalid"
-          description="A t3.json exists in this checkout but fails to parse, so every action and icon it declares is ignored. Check the JSON syntax and icon values."
+          title={t("t3.json is invalid")}
+          description={t(
+            "A t3.json exists in this checkout but fails to parse, so every action and icon it declares is ignored. Check the JSON syntax and icon values.",
+          )}
           className="text-warning"
         />
       ) : null}

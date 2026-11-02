@@ -1,4 +1,6 @@
 import {
+  CodexSettings,
+  ClaudeSettings,
   EnvironmentId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -17,11 +19,17 @@ import { ScrollToEndButton, WorkspaceFileDropOverlay } from "../chat/TimelineOve
 import { NotificationSettings } from "./NotificationSettings";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { ProviderEnvironmentSection, ProviderInstanceCard } from "./ProviderInstanceCard";
+import { ProviderSettingsForm } from "./ProviderSettingsForm";
+import { SnoozePresetsRow } from "./SnoozePresetsSettings";
+import { ThemeEditorPanel } from "./ThemeEditorPanel";
 
 vi.mock("./useScopedSettings", async (original) => ({
   ...(await original<typeof import("./useScopedSettings")>()),
-  useScopedSettings: <Result,>(selector: (settings: UnifiedSettings) => Result) =>
-    selector({ ...DEFAULT_UNIFIED_SETTINGS, notificationMode: "off" }),
+  useScopedSettings: <Result,>(selector?: (settings: UnifiedSettings) => Result) => {
+    const settings = { ...DEFAULT_UNIFIED_SETTINGS, notificationMode: "off" as const };
+    return selector ? selector(settings) : settings;
+  },
+  useScopedSettingsMixed: () => false,
   useUpdateScopedSettings: () => vi.fn(),
 }));
 
@@ -94,6 +102,114 @@ function chineseLanguage() {
   setLanguagePreference("zh");
   return { [Symbol.dispose]: () => setLanguagePreference("system") };
 }
+
+it("localizes snooze duration previews and selected units without changing their values", async () => {
+  using _language = chineseLanguage();
+  await using screen = await render(<SnoozePresetsRow />, { router: false });
+  await expect.element(screen.getByText("1 小时后", { exact: true })).toBeVisible();
+  await expect
+    .element(screen.getByRole("combobox", { name: "单位" }).first())
+    .toHaveTextContent("小时");
+  await act(() => setLanguagePreference("en"));
+  await expect.element(screen.getByText("In 1 hour", { exact: true })).toBeVisible();
+  await expect
+    .element(screen.getByRole("combobox", { name: "Unit" }).first())
+    .toHaveTextContent("hour");
+});
+
+it("keeps theme appearance values usable while switching localized labels", async () => {
+  using _language = chineseLanguage();
+  await using screen = await render(
+    <ThemeEditorPanel
+      open
+      onOpenChange={vi.fn()}
+      onSaved={vi.fn()}
+      editingTheme={null}
+      initialAppearance="light"
+      restoreTheme={vi.fn()}
+    />,
+    { router: false },
+  );
+  const dark = screen.getByRole("button", { name: "深色", exact: true });
+  await dark.click();
+  await expect.element(dark).toHaveAttribute("aria-pressed", "true");
+  await act(() => setLanguagePreference("en"));
+  await expect
+    .element(screen.getByRole("button", { name: "Dark", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+});
+
+for (const [driverKind, settingsSchema] of [
+  [ProviderDriverKind.make("codex"), CodexSettings],
+  [ProviderDriverKind.make("claudeAgent"), ClaudeSettings],
+] as const) {
+  for (const variant of ["settings", "card", "dialog"] as const) {
+    it(`localizes ${driverKind} gateway fields in the ${variant} form and switches live`, async () => {
+      using _language = chineseLanguage();
+      const gatewayUrl = "https://gateway.example.test/v1";
+      await using screen = await render(
+        <ProviderSettingsForm
+          definition={{ driverKind, settingsSchema }}
+          fieldKeys={["baseUrl", "apiKey"]}
+          idPrefix="gateway-localization"
+          value={{ baseUrl: gatewayUrl }}
+          variant={variant}
+          onChange={vi.fn()}
+        />,
+        { router: false },
+      );
+      await expect.element(screen.getByText("API 地址", { exact: true })).toBeVisible();
+      await expect.element(screen.getByText("API 密钥", { exact: true })).toBeVisible();
+      await expect
+        .element(
+          screen.getByText("可选的网关 API 基础地址；留空使用提供商默认地址。", { exact: true }),
+        )
+        .toBeVisible();
+      await expect
+        .element(
+          screen.getByText("密钥单独安全保存在本机；API 费用与订阅额度独立计算。", { exact: true }),
+        )
+        .toBeVisible();
+      await expect.element(screen.getByPlaceholder("未设置", { exact: true })).toBeVisible();
+      await expect
+        .element(screen.getByPlaceholder("https://gateway.example.com/v1"))
+        .toHaveValue(gatewayUrl);
+      await act(() => setLanguagePreference("en"));
+      await expect.element(screen.getByText("API URL", { exact: true })).toBeVisible();
+      await expect
+        .element(
+          screen.getByText(
+            "Optional gateway API base URL. Leave empty to use the provider's default.",
+            { exact: true },
+          ),
+        )
+        .toBeVisible();
+      await expect.element(screen.getByPlaceholder("Not set", { exact: true })).toBeVisible();
+      await expect
+        .element(screen.getByPlaceholder("https://gateway.example.com/v1"))
+        .toHaveValue(gatewayUrl);
+    });
+  }
+}
+
+it("localizes the saved gateway secret placeholder and clear action without exposing the secret", async () => {
+  using _language = chineseLanguage();
+  const onChange = vi.fn();
+  await using screen = await render(
+    <ProviderSettingsForm
+      definition={{ driverKind: ProviderDriverKind.make("codex"), settingsSchema: CodexSettings }}
+      fieldKeys={["apiKey"]}
+      idPrefix="saved-gateway-secret"
+      value={{ apiKey: "__stored_secret__" }}
+      variant="settings"
+      onChange={onChange}
+    />,
+    { router: false },
+  );
+  await expect.element(screen.getByPlaceholder("已保存密钥，输入新值以替换")).toHaveValue("");
+  await screen.getByRole("button", { name: "清除API 密钥" }).click();
+  expect(onChange).toHaveBeenCalledWith(undefined);
+});
 
 function ProviderRow({
   liveProvider = provider,

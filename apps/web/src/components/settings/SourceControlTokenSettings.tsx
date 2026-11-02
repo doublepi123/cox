@@ -73,12 +73,12 @@ export function SourceControlTokenSettings({
       {/* Locked while saving: a successful save clears the draft, which would drop edits made mid-request. */}
       <fieldset disabled={saving} className="contents">
         <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-          A token saved here is used before{" "}
+          {t("A token saved here is used before")}{" "}
           <code className="rounded bg-muted px-1 py-px text-2xs">{credentials.tokenEnvVar}</code>{" "}
-          and the{" "}
-          <code className="rounded bg-muted px-1 py-px text-2xs">{credentials.cliName}</code> login,
-          so {definition.label} works without the {credentials.cliLabel}. Give it{" "}
-          {credentials.tokenAccess}.{" "}
+          {t("and the")}{" "}
+          <code className="rounded bg-muted px-1 py-px text-2xs">{credentials.cliName}</code>{" "}
+          {t("login, so")} {definition.label} {t("works without the")} {credentials.cliLabel}
+          {t(". Give it")} {credentials.tokenAccess}.{" "}
           {normalizedHost || defaultHost ? (
             <InlineButton
               render={
@@ -89,7 +89,7 @@ export function SourceControlTokenSettings({
                 />
               }
             >
-              Create a token
+              {t("Create a token")}
               <ExternalLinkIcon aria-hidden className="size-3" />
             </InlineButton>
           ) : null}
@@ -107,7 +107,7 @@ export function SourceControlTokenSettings({
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor={`${definition.kind}-token-${environmentId}`}>Token</Label>
+            <Label htmlFor={`${definition.kind}-token-${environmentId}`}>{t("Token")}</Label>
             <SecretInput
               id={`${definition.kind}-token-${environmentId}`}
               size="sm"
@@ -120,8 +120,11 @@ export function SourceControlTokenSettings({
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             {savedHosts.length === 0
-              ? `No token saved; the server uses ${credentials.tokenEnvVar} or the ${credentials.cliName} login.`
-              : `Saved for ${savedHosts.join(", ")}.`}
+              ? t("No token saved; the server uses {variable} or the {host} login.", {
+                  variable: credentials.tokenEnvVar,
+                  host: credentials.cliName,
+                })
+              : t("Saved for {name}.", { name: savedHosts.join(", ") })}
           </p>
           <div className="flex shrink-0 gap-2">
             {isSaved ? (

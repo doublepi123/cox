@@ -35,6 +35,7 @@ const SECRET_PROVIDER_KINDS: Readonly<
 };
 
 export function SecretsSettingsPanel() {
+  const { t } = useTranslation();
   const { scope, environment } = useSettingsScope();
   const connected = environment?.connection.phase === "connected";
   return (
@@ -44,7 +45,7 @@ export function SecretsSettingsPanel() {
       environment.serverConfig.secretProviderSettings !== true ? (
         <SettingsSection {...searchableSetting("secret-providers")}>
           <p className="px-4 py-3 text-sm text-muted-foreground">
-            Update Cox on {environment.label} to manage its secret providers.
+            {t("Update Cox on")} {environment.label} {t("to manage its secret providers.")}
           </p>
         </SettingsSection>
       ) : connected ? (
@@ -56,7 +57,9 @@ export function SecretsSettingsPanel() {
       ) : (
         <SettingsSection {...searchableSetting("secret-providers")}>
           <p className="px-4 py-3 text-sm text-muted-foreground">
-            Connect an environment to manage the secret providers its provider variables read from.
+            {t(
+              "Connect an environment to manage the secret providers its provider variables read from.",
+            )}
           </p>
         </SettingsSection>
       )}
@@ -111,13 +114,15 @@ function EnvironmentSecretProviders({
       >
         {projectScoped ? (
           <p className="px-4 pt-3 text-xs text-muted-foreground">
-            Environment-wide setting. Select an environment to change it.
+            {t("Environment-wide setting. Select an environment to change it.")}
           </p>
         ) : null}
         {entries.length === 0 ? (
           <SettingsRow
             title={t("No secret providers configured.")}
-            description="Add a 1Password account, then pick it as the source of a provider variable."
+            description={t(
+              "Add a 1Password account, then pick it as the source of a provider variable.",
+            )}
           />
         ) : (
           entries.map(([id, config]) => {
@@ -143,14 +148,14 @@ function EnvironmentSecretProviders({
                       <span className="shrink-0">{kind.name} ·</span>
                       <RedactedSensitiveText
                         value={classified.account}
-                        ariaLabel="Toggle account visibility"
-                        revealTooltip="Click to reveal account"
-                        hideTooltip="Click to hide account"
+                        ariaLabel={t("Toggle account visibility")}
+                        revealTooltip={t("Click to reveal account")}
+                        hideTooltip={t("Click to hide account")}
                         className="max-w-full truncate"
                       />
                     </span>
                   ) : (
-                    `Unsupported provider (${config.kind})`
+                    t("Unsupported provider ({kind})", { kind: config.kind })
                   )
                 }
                 control={
@@ -212,8 +217,10 @@ function RemoveSecretProviderButton({
               {label}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Provider variables that read from {label} stop resolving until a provider with the
-              same name is added again. The secrets themselves are untouched.
+              {t("Provider variables that read from")} {label}{" "}
+              {t(
+                "stop resolving until a provider with the same name is added again. The secrets themselves are untouched.",
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

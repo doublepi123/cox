@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { AuthProvidersManageScope } from "@t3tools/contracts";
 import { useEnvironmentScope } from "../../state/session";
@@ -58,8 +58,8 @@ export function CodexSetupSection(props: CodexSetupSectionProps) {
                 <RedactedSensitiveText
                   value={props.provider.auth.email.trim()}
                   ariaLabel={t("Toggle account email visibility")}
-                  revealTooltip="Click to reveal email"
-                  hideTooltip="Click to hide email"
+                  revealTooltip={t("Click to reveal email")}
+                  hideTooltip={t("Click to hide email")}
                   className="break-all"
                 />
                 .
@@ -192,7 +192,7 @@ function ManagedCodexSetup({
   const startInstall = useAtomCommand(serverEnvironment.startProviderInstall, "install Codex");
   const cancelInstall = useAtomCommand(
     serverEnvironment.cancelProviderInstall,
-    "cancel Codex installation",
+    t("cancel Codex installation"),
   );
   const refresh = useAtomCommand(serverEnvironment.refreshProviders, "refresh Codex");
   const [pending, setPending] = useState(false);
@@ -258,7 +258,7 @@ function ManagedCodexSetup({
       {installed && provider && (
         <ProviderAuthenticationSection
           environmentId={environmentId}
-          environmentLabel="this computer"
+          environmentLabel={t("this computer")}
           instanceId={instanceId}
           provider={provider}
           readOnly={readOnly === true}
@@ -300,7 +300,9 @@ export function CodexManagedRuntimeFields({
               aria-label={t("Codex binary path")}
               value={executablePath}
               title={executablePath}
-              placeholder={installation.error ? "Could not read runtime path" : t("Not installed")}
+              placeholder={
+                installation.error ? t("Could not read runtime path") : t("Not installed")
+              }
               disabled
             />
           </div>
@@ -325,8 +327,8 @@ export function CodexManagedRuntimeFields({
         title={t("Shadow home path")}
         description={
           provider?.runtimePaths?.shadowHomePath
-            ? "Account-specific home sharing the Codex state above."
-            : "This instance uses the shared Codex home directly."
+            ? t("Account-specific home sharing the Codex state above.")
+            : t("This instance uses the shared Codex home directly.")
         }
         control={
           <div className="w-full sm:w-80">
@@ -334,7 +336,7 @@ export function CodexManagedRuntimeFields({
               aria-label={t("Codex shadow home path")}
               value={provider?.runtimePaths?.shadowHomePath ?? ""}
               title={provider?.runtimePaths?.shadowHomePath ?? undefined}
-              placeholder={provider?.runtimePaths ? "Not used" : t("Unavailable")}
+              placeholder={provider?.runtimePaths ? t("Not used") : t("Unavailable")}
               disabled
             />
           </div>
@@ -344,7 +346,7 @@ export function CodexManagedRuntimeFields({
   );
 }
 function CodexSignInDescription({
-  label = "Complete sign-in in your browser.",
+  label = translateCurrent("Complete sign-in in your browser."),
   expanded = false,
   controls,
   onToggle,

@@ -1,3 +1,4 @@
+import { translate } from "../../i18n/language";
 import {
   ClientSettingsSchema,
   type ClientSettingsPatch,
@@ -221,6 +222,7 @@ export function planScopedSettingsPatch(
   scope: ResolvedSettingsScope,
   environments: readonly ScopedSettingsEnvironment[],
   patch: ScopedSettingsPatch,
+  t = translate.bind(null, "en"),
 ) {
   const clientPatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => CLIENT_KEYS.has(key) && !SERVER_KEYS.has(key)),
@@ -330,7 +332,9 @@ export function planScopedSettingsPatch(
           ? "This setting is environment-wide and cannot be overridden by a project."
           : isProjectScope
             ? "Connect the selected checkouts, or update their environments, to save a project override."
-            : `Connect ${scope.kind === "environment" ? scope.label : "an environment"} to save this setting.`;
+            : t("Connect {name} to save this setting.", {
+                name: scope.kind === "environment" ? scope.label : t("an environment"),
+              });
   return { clientPatch, hasClientWrite, serverWrites, unavailableReason };
 }
 

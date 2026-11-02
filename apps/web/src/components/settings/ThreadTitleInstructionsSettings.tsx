@@ -29,7 +29,7 @@ export function ThreadTitleInstructionsSettings() {
       resetAction={
         mixed || settings.threadTitleInstructions !== "" ? (
           <SettingResetButton
-            label="thread title instructions"
+            label={t("thread title instructions")}
             onClick={() => updateSettings({ threadTitleInstructions: "" })}
           />
         ) : null
@@ -46,8 +46,8 @@ export function ThreadTitleInstructionsSettings() {
           defaultValue={mixed ? "" : settings.threadTitleInstructions}
           placeholder={
             mixed
-              ? "Mixed. Enter instructions to apply to all selected targets."
-              : "Keep titles to a few words. Lead with the main subject."
+              ? t("Mixed. Enter instructions to apply to all selected targets.")
+              : t("Keep titles to a few words. Lead with the main subject.")
           }
           onBlur={(event) => {
             const value = event.target.value.trim();

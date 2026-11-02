@@ -41,7 +41,7 @@ export function AddCodexAccountDialog({
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const settings = useEnvironmentSettings(environmentId);
   const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
-  const update = useAtomCommand(serverEnvironment.updateSettings, "Add ChatGPT account");
+  const update = useAtomCommand(serverEnvironment.updateSettings, t("Add ChatGPT account"));
   const [name, setName] = useState("Personal");
   const displayName = `ChatGPT - ${name.trim()}`;
   const [instanceId, setInstanceId] = useState<ProviderInstanceId | null>(null);
@@ -95,7 +95,7 @@ export function AddCodexAccountDialog({
     >
       <WizardPopup size="wide">
         <WizardHeader
-          title={instanceId ? displayName : "Add ChatGPT account"}
+          title={instanceId ? displayName : t("Add ChatGPT account")}
           description={t(
             "Each account has its own Codex instance and sign-in. Choose the other account on the sign-in page.",
           )}
@@ -148,7 +148,7 @@ export function AddCodexAccountDialog({
                 form="add-codex-account"
                 disabled={pending || !name.trim() || !canManageProviders}
               >
-                {pending ? "Adding account…" : t("Continue")}
+                {pending ? t("Adding account…") : t("Continue")}
               </Button>
             </>
           )}

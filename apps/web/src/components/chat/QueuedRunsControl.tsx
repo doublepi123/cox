@@ -16,6 +16,7 @@ import type {
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
 import {
+  ArrowDownIcon,
   ArrowUpIcon,
   CalendarClockIcon,
   ChevronDownIcon,
@@ -101,10 +102,12 @@ export function QueuedRunsControl({
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue);
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
+  const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun);
   const [showAll, setShowAll] = useState(false);
   const queueListId = useId();
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
   const steerInFlightRef = useRef(false);
+  const reorderInFlightRef = useRef(false);
   // Run-only acknowledgements can resurrect pending rows after cancellation or startup.
   const acknowledgedMessageIds = new Set((projection?.messages ?? []).map((message) => message.id));
   const queuedImageAttachmentResources = queuedImageResources(projection);
@@ -166,7 +169,7 @@ export function QueuedRunsControl({
   ];
 
   const sendQueuedMessage = async (queuedRunId: RunId) => {
-    if (!canSend || steerInFlightRef.current) return;
+    if (!canSend || steerInFlightRef.current || reorderInFlightRef.current) return;
     steerInFlightRef.current = true;
     setBusyRunId(queuedRunId);
     if (workflow?.canSendNow) {
@@ -227,6 +230,29 @@ export function QueuedRunsControl({
     setBusyRunId(null);
   };
 
+  const moveQueuedMessage = async (position: number, direction: "up" | "down") => {
+    const moving = queued[position];
+    if (
+      !moving ||
+      busyRunId !== null ||
+      reorderInFlightRef.current ||
+      (direction === "up" ? position === 0 : position >= queued.length - 1)
+    ) {
+      return;
+    }
+    const beforeRunId =
+      direction === "up" ? queued[position - 1]!.run.id : (queued[position + 2]?.run.id ?? null);
+    reorderInFlightRef.current = true;
+    setBusyRunId(moving.run.id);
+    await reorder({
+      environmentId: props.environmentId,
+      input: { threadId: props.threadId, runId: moving.run.id, beforeRunId },
+    }).finally(() => {
+      reorderInFlightRef.current = false;
+      setBusyRunId(null);
+    });
+  };
+
   const collapsible = items.length > QUEUE_VISIBLE_ROWS;
   const visibleItems = collapsible && !showAll ? items.slice(0, QUEUE_VISIBLE_ROWS - 1) : items;
 
@@ -255,7 +281,10 @@ export function QueuedRunsControl({
           return (
             <li
               key={item.key}
-              aria-label={`Queued message ${position + 1} of ${items.length}, not sent`}
+              aria-label={t("Queued message {position} of {count}, not sent", {
+                position: position + 1,
+                count: items.length,
+              })}
               aria-posinset={position + 1}
               aria-setsize={items.length}
               aria-current={isEditing ? "true" : undefined}
@@ -314,6 +343,52 @@ export function QueuedRunsControl({
                   </>
                 ) : (
                   <>
+                    {queued.length > 1 ? (
+                      <>
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="flex shrink-0" />}>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost-muted"
+                              aria-label={t("Move queued message up")}
+                              disabled={
+                                item.serverIndex === null ||
+                                item.serverIndex === 0 ||
+                                busyRunId !== null
+                              }
+                              onClick={() => {
+                                if (item.serverIndex !== null)
+                                  void moveQueuedMessage(item.serverIndex, "up");
+                              }}
+                            >
+                              <ArrowUpIcon />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipPopup>{t("Move queued message up")}</TooltipPopup>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="flex shrink-0" />}>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost-muted"
+                              aria-label={t("Move queued message down")}
+                              disabled={
+                                item.serverIndex === null ||
+                                item.serverIndex >= queued.length - 1 ||
+                                busyRunId !== null
+                              }
+                              onClick={() => {
+                                if (item.serverIndex !== null)
+                                  void moveQueuedMessage(item.serverIndex, "down");
+                              }}
+                            >
+                              <ArrowDownIcon />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipPopup>{t("Move queued message down")}</TooltipPopup>
+                        </Tooltip>
+                      </>
+                    ) : null}
                     <Tooltip>
                       {/* The span keeps the tooltip, and its reason, on a disabled button. */}
                       <TooltipTrigger render={<span className="flex shrink-0" />}>
@@ -343,7 +418,7 @@ export function QueuedRunsControl({
                       </TooltipTrigger>
                       <TooltipPopup>
                         {props.editBlockedReason ??
-                          `Edit in the composer${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
+                          `${t("Edit in the composer")}${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
                       </TooltipPopup>
                     </Tooltip>
                     <Tooltip>
@@ -381,7 +456,7 @@ export function QueuedRunsControl({
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => setShowAll((value) => !value)}
           >
-            {showAll ? "Show fewer" : `Show all ${items.length} queued`}
+            {showAll ? t("Show fewer") : t("Show all {count} queued", { count: items.length })}
             <ChevronDownIcon
               aria-hidden
               className={cn(

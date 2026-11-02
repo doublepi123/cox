@@ -129,7 +129,10 @@ function ProviderCustomColorPicker(props: {
             size="icon-sm"
             variant="ghost-muted"
             style={normalized ? { backgroundColor: normalized } : undefined}
-            aria-label={`${normalized ? "Change" : "Add"} accent color for ${props.displayName}`}
+            aria-label={translateUi("{action} accent color for {name}", {
+              action: normalized ? translateUi("Change") : translateUi("Add"),
+              name: props.displayName,
+            })}
           >
             {normalized ? (
               <span className="sr-only">{translateUi("Change accent color")}</span>

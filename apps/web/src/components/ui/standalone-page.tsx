@@ -1,7 +1,6 @@
-import { useTranslation } from "../../i18n";
 import type { ReactNode } from "react";
 
-import { T3Wordmark } from "../T3Wordmark";
+import { CoxBrand } from "../CoxBrand";
 
 export function StandalonePage({ children }: { readonly children: ReactNode }) {
   return (
@@ -21,13 +20,11 @@ export function StandalonePageHeader({
   readonly title: ReactNode;
   readonly description: ReactNode;
 }) {
-  const { t } = useTranslation();
   return (
     <>
       <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
         <span className="flex items-baseline gap-1.5" role="img" aria-label="Cox">
-          <T3Wordmark className="h-3 w-auto shrink-0 text-foreground" aria-hidden />
-          <span className="text-lg font-medium tracking-tight">{t("Code")}</span>
+          <CoxBrand className="text-lg text-foreground" />
         </span>
         {context ? <span className="text-sm">{context}</span> : null}
       </div>

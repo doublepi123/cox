@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { UnreadCompletionIndicator } from "./UnreadCompletionIndicator";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
@@ -1271,6 +1272,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )}
               {draftIndicator}
               {title}
+              <UnreadCompletionIndicator visible={isUnread && status === "ready"} />
               {multiline ? titleLineIcons : null}
               {pinIndicator}
               {multiline ? null : terminalStatusIcon}

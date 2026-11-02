@@ -19,7 +19,7 @@ export function LanguageSettings() {
             onChange={(event) => setLanguagePreference(parseLanguagePreference(event.target.value))}
           >
             <option value="system">{t("Follow device language")}</option>
-            <option value="en">English</option>
+            <option value="en">{t("English")}</option>
             <option value="zh">简体中文</option>
           </select>
         }

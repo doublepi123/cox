@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import { ChevronRightIcon, ExternalLinkIcon, SearchIcon } from "lucide-react";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
@@ -36,7 +36,9 @@ const licenseManifestAtom = Atom.make(
     );
     if (response.status < 200 || response.status >= 300) {
       return yield* new LicenseManifestLoadError({
-        message: `The license manifest request failed with status ${String(response.status)}.`,
+        message: translateCurrent("The license manifest request failed with status {status}.", {
+          status: String(response.status),
+        }),
       });
     }
     const body = yield* response.json;
@@ -44,7 +46,10 @@ const licenseManifestAtom = Atom.make(
       try: () => decodeThirdPartyLicenseManifest(body),
       catch: (error) =>
         new LicenseManifestLoadError({
-          message: error instanceof Error ? error.message : "The license manifest could not load.",
+          message:
+            error instanceof Error
+              ? error.message
+              : translateCurrent("The license manifest could not load."),
         }),
     });
   }).pipe(
@@ -56,7 +61,9 @@ const licenseManifestAtom = Atom.make(
       duration: "30 seconds",
       orElse: () =>
         Effect.fail(
-          new LicenseManifestLoadError({ message: "The license manifest took too long to load." }),
+          new LicenseManifestLoadError({
+            message: translateCurrent("The license manifest took too long to load."),
+          }),
         ),
     }),
     Effect.provide(FetchHttpClient.layer),
@@ -94,7 +101,7 @@ function LicenseNoticeRow({
           </CollapsibleTrigger>
           {entry.sourceUrl ? (
             <Button
-              aria-label={`View project source for ${entry.name}`}
+              aria-label={translateUi("View project source for {name}", { name: entry.name })}
               className="me-3 shrink-0 sm:me-4"
               render={<a href={entry.sourceUrl} rel="noreferrer noopener" target="_blank" />}
               size="icon-micro"
@@ -126,11 +133,12 @@ function LicenseCount({
   filteredCount: number;
   totalCount: number;
 }) {
+  const { t } = useTranslation();
   return (
     <p className="whitespace-nowrap text-xs font-normal text-muted-foreground tabular-nums">
       {filteredCount === totalCount
-        ? `${String(totalCount)} notices`
-        : `${String(filteredCount)} of ${String(totalCount)}`}
+        ? t("{count} notices", { count: String(totalCount) })
+        : t("{index} of {total}", { index: String(filteredCount), total: String(totalCount) })}
     </p>
   );
 }
@@ -212,7 +220,9 @@ function LicenseManifestError({ message, onRetry }: { message: string; onRetry: 
   return (
     <div className="flex flex-col items-start gap-3 px-3 py-5 sm:px-4">
       <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-medium text-foreground">Open-source notices are unavailable</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          {t("Open-source notices are unavailable")}
+        </h3>
         <p className="max-w-[70ch] text-pretty text-xs leading-normal text-muted-foreground/80">
           {message}
         </p>
@@ -237,7 +247,7 @@ export function OpenSourceLicensesPanel() {
   const errorMessage =
     result._tag === "Failure" && !result.waiting
       ? Option.match(Cause.findErrorOption(result.cause), {
-          onNone: () => "The license manifest could not load.",
+          onNone: () => translateUi("The license manifest could not load."),
           onSome: (error) => error.message,
         })
       : null;
@@ -275,7 +285,7 @@ export function OpenSourceLicensesPanel() {
               })
             ) : (
               <p className="px-3 py-8 text-center text-sm/6 text-muted-foreground sm:px-4">
-                No licenses match that search.
+                {translateUi("No licenses match that search.")}
               </p>
             )}
           </div>
@@ -283,7 +293,7 @@ export function OpenSourceLicensesPanel() {
           <LicenseManifestError message={errorMessage} onRetry={retry} />
         ) : (
           <p className="px-3 py-5 text-sm/6 text-muted-foreground sm:px-4">
-            Loading open-source notices…
+            {translateUi("Loading open-source notices…")}
           </p>
         )}
       </SettingsSection>

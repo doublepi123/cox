@@ -74,21 +74,21 @@ export function ProviderAuthenticationSection({
       (provider.driver === "acpRegistry" && auth?.methods?.length === 0));
   const accountDescription = active
     ? auth?.phase === "starting"
-      ? (auth.message ?? "Starting sign-in…")
+      ? (auth.message ?? t("Starting sign-in…"))
       : auth?.phase === "verifying"
-        ? "Checking your account…"
+        ? t("Checking your account…")
         : interaction?.type === "terminal"
-          ? "Complete sign-in in the terminal below."
+          ? t("Complete sign-in in the terminal below.")
           : interaction?.type === "credentials"
-            ? "Enter your credentials below."
-            : "Finish signing in in your browser."
+            ? t("Enter your credentials below.")
+            : t("Finish signing in in your browser.")
     : signedIn
-      ? "Signed in."
+      ? t("Signed in.")
       : isDiscovering
-        ? "Discovering sign-in methods…"
+        ? t("Discovering sign-in methods…")
         : needsExternalSetup
-          ? "No in-app sign-in advertised. Follow the provider's docs to finish setup."
-          : `Sign in on ${environmentLabel}.`;
+          ? t("No in-app sign-in advertised. Follow the provider's docs to finish setup.")
+          : t("Sign in on {environment}.", { environment: environmentLabel });
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
@@ -109,11 +109,11 @@ export function ProviderAuthenticationSection({
       else if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
         setError(
-          failure instanceof Error ? failure.message : "Provider sign-in failed. Try again.",
+          failure instanceof Error ? failure.message : t("Provider sign-in failed. Try again."),
         );
       }
     } catch {
-      setError("Provider sign-in failed. Try again.");
+      setError(t("Provider sign-in failed. Try again."));
     }
     pendingRef.current = false;
     setPending(false);
@@ -144,7 +144,7 @@ export function ProviderAuthenticationSection({
       setError(null);
     } catch {
       pending?.close();
-      setError("Could not open the sign-in page. Copy the link and open it in your browser.");
+      setError(t("Could not open the sign-in page. Copy the link and open it in your browser."));
     }
   }
   function updateDraft(name: string, value: string) {
@@ -224,12 +224,12 @@ export function ProviderAuthenticationSection({
                       onClick={() => {
                         // Copy during the click to retain clipboard activation; consent must still be
                         // recorded before use.
-                        const copied = writeTextToClipboard(url, "Provider sign-in link");
+                        const copied = writeTextToClipboard(url, t("Provider sign-in link"));
                         void (async () => {
                           await copied;
                           if (interaction?.type === "browser" && interaction.requiresConsent)
                             await send({ type: "browser", action: "accept" });
-                        })().catch(() => setError("Could not copy the sign-in link."));
+                        })().catch(() => setError(t("Could not copy the sign-in link.")));
                       }}
                     >
                       <CopyIcon />
@@ -301,7 +301,13 @@ export function ProviderAuthenticationSection({
                 onClick={() => {
                   void ensureLocalApi()
                     .dialogs.confirm(
-                      `Sign out of ${provider.displayName ?? provider.driver} on ${environmentLabel}? This stops running threads that share this sign-in. Thread history is kept.`,
+                      t(
+                        "Sign out of {provider} on {environment}? This stops running threads that share this sign-in. Thread history is kept.",
+                        {
+                          provider: provider.displayName ?? provider.driver,
+                          environment: environmentLabel,
+                        },
+                      ),
                     )
                     .then((confirmed) => {
                       if (confirmed) void run(() => logout(target));
@@ -326,14 +332,14 @@ export function ProviderAuthenticationSection({
             <p className="py-2 text-sm text-muted-foreground">
               {t("Enter code")}{" "}
               <code className="select-all font-mono text-foreground">{interaction.userCode}</code>{" "}
-              in your browser.
+              {t("in your browser.")}
             </p>
           ) : null}
           {interaction?.type === "terminal" ? (
             <div className="py-2">
               <Suspense
                 fallback={
-                  <p className="text-xs text-muted-foreground">Loading sign-in terminal…</p>
+                  <p className="text-xs text-muted-foreground">{t("Loading sign-in terminal…")}</p>
                 }
               >
                 <ProviderAuthTerminal
@@ -366,14 +372,14 @@ export function ProviderAuthenticationSection({
                         if (result._tag !== "Success") {
                           terminalQueue.current = [];
                           if (!isAtomCommandInterrupted(result))
-                            setError("The provider sign-in terminal is no longer available.");
+                            setError(t("The provider sign-in terminal is no longer available."));
                           break;
                         }
                       }
                     })()
                       .catch(() => {
                         terminalQueue.current = [];
-                        setError("Could not send input to the provider sign-in terminal.");
+                        setError(t("Could not send input to the provider sign-in terminal."));
                       })
                       .finally(() => {
                         terminalSending.current = false;
@@ -435,7 +441,7 @@ export function ProviderAuthenticationSection({
               }}
             >
               <label className="grid gap-1">
-                If the final localhost page does not load, paste its full URL here.
+                {t("If the final localhost page does not load, paste its full URL here.")}
                 <Input
                   size="sm"
                   id={`provider-callback-${instanceId}`}

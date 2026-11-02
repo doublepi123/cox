@@ -88,8 +88,10 @@ agent replies, terminal output or user-authored content.
 
 Use **Settings → General → Language** to choose English, 简体中文 or the device default.
 The selection is saved in the browser and updates the interface without discarding drafts.
-Technical diagnostics, external provider messages and some advanced settings retain English;
-see the [localization notes](apps/web/src/i18n/README.md) for coverage and contribution guidance.
+Settings, including advanced controls and schema-driven provider fields, follow the selection.
+External provider errors, raw diagnostic output and provider-supplied model descriptions keep
+their original text; see the [localization notes](apps/web/src/i18n/README.md) for coverage and
+contribution guidance.
 
 ## Thread interactions
 
@@ -98,6 +100,8 @@ an explicit expand/collapse choice is remembered in the browser.
 Messages sent during an active turn queue by default. Use the menu beside Send to choose
 **Steer now** when immediate guidance is needed. An existing explicit follow-up preference
 is preserved; steering is unavailable while the agent cannot accept it.
+Move queued messages up or down to change the order in which they are sent. A dot beside a
+thread title marks a completed result you have not viewed yet.
 
 ## Requirements
 

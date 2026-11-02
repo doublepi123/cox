@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
@@ -22,8 +22,13 @@ import { ProjectFaviconThumbnail } from "./ProjectFaviconThumbnail";
 
 function emptyMessage(query: string, error: string | null, isPending: boolean): string {
   if (error) return error;
-  if (isPending) return query.trim() ? "Searching project files…" : "Indexing project files…";
-  return query.trim() ? "No matching image files." : "No image files found.";
+  if (isPending)
+    return query.trim()
+      ? translateCurrent("Searching project files…")
+      : translateCurrent("Indexing project files…");
+  return query.trim()
+    ? translateCurrent("No matching image files.")
+    : translateCurrent("No image files found.");
 }
 export function canPickExternalProjectFavicon(cwd: string, platform: string): boolean {
   return !isWindowsPlatform(platform) || isWindowsAbsolutePath(cwd);
@@ -86,8 +91,8 @@ export function ProjectFaviconPickerDialog(props: {
           <CommandPaletteContent
             aria-label={t("Choose project icon")}
             autoHighlight="always"
-            escapeLabel="Close"
-            footerActionLabel="Select icon"
+            escapeLabel={t("Close")}
+            footerActionLabel={t("Select icon")}
             footerTrailing={
               pickExternal ? (
                 <CommandFooterAction
@@ -103,7 +108,7 @@ export function ProjectFaviconPickerDialog(props: {
                       .catch((error: unknown) => {
                         toastManager.add({
                           type: "error",
-                          title: "Could not open image picker",
+                          title: t("Could not open image picker"),
                           description:
                             error instanceof Error ? error.message : "An error occurred.",
                         });
@@ -111,11 +116,11 @@ export function ProjectFaviconPickerDialog(props: {
                       .finally(() => setIsPickingExternal(false));
                   }}
                 >
-                  {`Open in ${fileManagerName}`}
+                  {t("Open in {name}", { name: fileManagerName })}
                 </CommandFooterAction>
               ) : null
             }
-            inputProps={{ placeholder: "Search image files…" }}
+            inputProps={{ placeholder: t("Search image files…") }}
             mode="none"
             onItemHighlighted={(value) => {
               setHighlightedItemValue(typeof value === "string" ? value : null);

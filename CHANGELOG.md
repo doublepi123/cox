@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.13 — 2026-11-02
+
+- Move queued follow-up messages up or down within a thread; they are sent in the order shown.
+  Controls are disabled at either end of the queue and while a move or immediate send is pending.
+- Mark completed threads whose results have not been viewed with a dot beside the title,
+  including completed threads that have never been opened. Viewing the thread clears it.
+- Show the Cox logo and name in the sidebar and standalone pages, without the leftover "Code" suffix.
+- Localize the remaining settings surfaces: descriptions, placeholders, schema-driven provider
+  fields, advanced controls, diagnostics labels, theme tools, webhook filter errors and
+  accessible names. Stored values, option IDs, external provider errors and raw diagnostic
+  output remain unchanged.
+
 ## 0.1.12 — 2026-11-02
 
 - Configure Codex and Claude API gateways directly in provider settings, with securely stored

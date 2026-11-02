@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import type { OtlpEndpointCheckResult, OtlpSignal, ServerObservability } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useState } from "react";
@@ -50,7 +50,11 @@ function runningOverride(
   const url = running?.[key];
   const source = running?.[sourceKey];
   if (url === undefined || (source !== "environment" && source !== "bootstrap")) return undefined;
-  return { url, label: OVERRIDE_LABELS[source], variable: running?.[variableKey] };
+  return {
+    url,
+    label: translateCurrent(OVERRIDE_LABELS[source]),
+    variable: running?.[variableKey],
+  };
 }
 
 type EndpointCheck = { readonly url: string; readonly result: OtlpEndpointCheckResult | null };
@@ -58,17 +62,29 @@ type EndpointCheck = { readonly url: string; readonly result: OtlpEndpointCheckR
 const isHttpUrl = (url: string) => /^https?:\/\/./i.test(url);
 
 function endpointStatus(url: string, check: EndpointCheck | undefined) {
-  if (url === "") return { label: "Off", dot: "bg-muted-foreground/40" };
-  if (check?.url !== url) return { label: "Not checked", dot: "bg-muted-foreground/40" };
+  if (url === "") return { label: translateCurrent("Off"), dot: "bg-muted-foreground/40" };
+  if (check?.url !== url)
+    return { label: translateCurrent("Not checked"), dot: "bg-muted-foreground/40" };
   const { result } = check;
-  if (result === null) return { label: "Checking…", dot: "bg-warning" };
+  if (result === null) return { label: translateCurrent("Checking…"), dot: "bg-warning" };
   switch (result._tag) {
     case "Accepted":
-      return { label: `Connected · ${Math.round(result.latencyMs)} ms`, dot: "bg-success" };
+      return {
+        label: translateCurrent("Connected · {duration} ms", {
+          duration: Math.round(result.latencyMs),
+        }),
+        dot: "bg-success",
+      };
     case "Rejected":
-      return { label: `Rejected · HTTP ${result.status}`, dot: "bg-destructive" };
+      return {
+        label: translateCurrent("Rejected · HTTP {status}", { status: result.status }),
+        dot: "bg-destructive",
+      };
     case "Unreachable":
-      return { label: result.timedOut ? "Timed out" : "Unreachable", dot: "bg-destructive" };
+      return {
+        label: result.timedOut ? translateCurrent("Timed out") : translateCurrent("Unreachable"),
+        dot: "bg-destructive",
+      };
   }
 }
 
@@ -79,7 +95,7 @@ export function TelemetryExportSettings() {
     return (
       <SettingsSection title={t("OpenTelemetry export")} id="telemetry-export">
         <SettingsScopeNotice target="environment">
-          Choose one environment to configure its telemetry exports.
+          {t("Choose one environment to configure its telemetry exports.")}
         </SettingsScopeNotice>
       </SettingsSection>
     );
@@ -167,18 +183,19 @@ function TelemetryExportForm() {
           setSaving(false);
           if (result._tag === "Success") {
             setDraft({});
-            setMessage("Saved. Restart the server to apply.");
+            setMessage(t("Saved. Restart the server to apply."));
           }
         }}
       >
         <p className="text-xs text-muted-foreground">
-          Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply.
-          Environment variables override these settings.
+          {t(
+            "Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply. Environment variables override these settings.",
+          )}
         </p>
         {!canEdit && (
           <p className="text-xs text-muted-foreground">
-            This connection lacks permission to change settings on{" "}
-            {environment?.label ?? "the selected environment"}.
+            {t("This connection lacks permission to change settings on")}{" "}
+            {environment?.label ?? t("the selected environment")}.
           </p>
         )}
         {SIGNALS.map((descriptor) => {
@@ -197,7 +214,9 @@ function TelemetryExportForm() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5">
                   {status && <ConnectionStatusDot dotClassName={status.dot} />}
-                  <Label htmlFor={key}>{label} endpoint</Label>
+                  <Label htmlFor={key}>
+                    {label} {t("endpoint")}
+                  </Label>
                 </div>
                 {status && <span className="text-xs text-muted-foreground">{status.label}</span>}
               </div>
@@ -236,11 +255,11 @@ function TelemetryExportForm() {
               </div>
               {(saved[key] !== (running?.[key] ?? "") || override?.variable) && (
                 <p className="break-all text-xs text-muted-foreground">
-                  Running: {running?.[key] || t("Disabled")}
+                  {t("Running:")} {running?.[key] || t("Disabled")}
                   {override?.variable && (
                     <>
                       {" "}
-                      from <code className="font-mono">{override.variable}</code>
+                      {t("from")} <code className="font-mono">{override.variable}</code>
                     </>
                   )}
                 </p>
@@ -272,7 +291,7 @@ function TelemetryExportForm() {
               {t("Discard")}
             </Button>
             <Button type="submit" size="xs" disabled={!changed || saving || !canEdit}>
-              {saving ? "Saving…" : t("Save")}
+              {saving ? t("Saving…") : t("Save")}
             </Button>
           </div>
         </div>

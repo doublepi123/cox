@@ -11,6 +11,8 @@ import {
 import * as Schema from "effect/Schema";
 
 import { providerClients } from "./providerDriverMeta";
+import { en } from "../../i18n/en";
+import { zh } from "../../i18n/zh";
 import {
   deriveProviderSettingsFields,
   nextProviderConfigWithFieldValue,
@@ -19,6 +21,21 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("has bilingual resources for every built-in provider form label and description", () => {
+    for (const definition of providerClients.definitions) {
+      for (const field of deriveProviderSettingsFields(definition)) {
+        for (const key of [
+          field.label,
+          field.description,
+          ...(field.options?.map((option) => option.label) ?? []),
+        ]) {
+          if (key === undefined) continue;
+          expect(Object.hasOwn(en, key), `${definition.driverKind}: ${key}`).toBe(true);
+          expect(Object.hasOwn(zh, key), `${definition.driverKind}: ${key}`).toBe(true);
+        }
+      }
+    }
+  });
   it("offers API URL and securely stored API keys for Codex and Claude", () => {
     for (const [driverKind, settingsSchema] of [
       [ProviderDriverKind.make("codex"), CodexSettings],

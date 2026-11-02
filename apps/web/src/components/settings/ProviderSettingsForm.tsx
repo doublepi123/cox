@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { translateCurrent, useTranslation } from "../../i18n";
 import { useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -128,12 +128,12 @@ export function deriveProviderSettingsFields(
               ? "Executable"
               : (annotatedTitle ?? titleizeFieldKey(key)),
           ...(isLocalAcp && key === "commandPath"
-            ? { description: "Executable name or path on this environment." }
+            ? { description: translateCurrent("Executable name or path on this environment.") }
             : annotatedDescription !== undefined
               ? { description: annotatedDescription }
               : {}),
           ...(isLocalAcp && key === "commandPath"
-            ? { placeholder: "e.g. dsh" }
+            ? { placeholder: translateCurrent("e.g. dsh") }
             : formAnnotation.placeholder !== undefined
               ? { placeholder: formAnnotation.placeholder }
               : {}),
@@ -235,7 +235,7 @@ function ProviderCommandArguments({
           onClick={() => updateArguments([...rows, makeCommandArgumentDraftRow("")])}
         >
           <PlusIcon />
-          Add argument
+          {translateUi("Add argument")}
         </Button>
       }
     >
@@ -254,7 +254,7 @@ function ProviderCommandArguments({
                     ),
                   )
                 }
-                aria-label={`Argument ${index + 1}`}
+                aria-label={translateUi("Argument {index}", { index: index + 1 })}
                 spellCheck={false}
               />
               <Button
@@ -264,7 +264,7 @@ function ProviderCommandArguments({
                 onClick={() =>
                   updateArguments(rows.filter((current) => current.id !== argument.id))
                 }
-                aria-label={`Remove argument ${index + 1}`}
+                aria-label={translateUi("Remove argument {index}", { index: index + 1 })}
               >
                 <XIcon />
               </Button>
@@ -346,6 +346,7 @@ function SecretSettingsControl({
   readonly environmentId: EnvironmentId;
   readonly onChange: ProviderSettingsFormProps["onChange"];
 }) {
+  const { t } = useTranslation();
   const sources = useSecretSources(environmentId);
   const saved =
     value !== null && typeof value === "object"
@@ -375,7 +376,7 @@ function SecretSettingsControl({
           size="icon-sm"
           variant="ghost-destructive"
           onClick={() => onChange(nextProviderConfigWithFieldValue(value, field, ""))}
-          aria-label={`Clear ${field.label}`}
+          aria-label={t("Clear {name}", { name: field.label })}
         >
           <XIcon className="size-3.5" />
         </Button>
@@ -452,6 +453,7 @@ function ProviderSettingsFieldRow({
   onChange,
   environmentId,
 }: ProviderSettingsFieldRowProps) {
+  const { t } = useTranslation();
   const inputId = `${idPrefix}-${field.key}`;
   const descriptionClassName =
     variant === "dialog"
@@ -523,7 +525,7 @@ function ProviderSettingsFieldRow({
               size="icon-sm"
               variant="ghost-destructive"
               onClick={() => onChange(nextProviderConfigWithFieldValue(value, field, ""))}
-              aria-label={`Clear ${field.label}`}
+              aria-label={t("Clear {name}", { name: field.label })}
             >
               <XIcon className="size-3.5" />
             </Button>
@@ -666,9 +668,16 @@ export function ProviderSettingsForm({
   onChange,
   environmentId,
 }: ProviderSettingsFormProps) {
-  const fields = deriveProviderSettingsFields(definition, value).filter(
-    (field) => fieldKeys === undefined || fieldKeys.includes(field.key),
-  );
+  const { t } = useTranslation();
+  const fields = deriveProviderSettingsFields(definition, value)
+    .filter((field) => fieldKeys === undefined || fieldKeys.includes(field.key))
+    .map((field) => ({
+      ...field,
+      label: t(field.label),
+      description: field.description === undefined ? undefined : t(field.description),
+      placeholder: field.placeholder === undefined ? undefined : t(field.placeholder),
+      options: field.options?.map((option) => ({ ...option, label: t(option.label) })),
+    }));
   const isLocalAcp =
     definition.driverKind === "acpRegistry" &&
     readProviderConfigString(value, "source") === "local";

@@ -128,7 +128,7 @@ export function CustomModelEditor({
   };
 
   const handleSave = () => {
-    const problem = validateDraft(draft);
+    const problem = validateDraft(draft, t);
     if (problem) {
       setError(t(problem));
       return;
@@ -145,7 +145,7 @@ export function CustomModelEditor({
         size="compact"
         value={choice.id}
         onChange={(event) => updateChoice(descriptor.key, choice.key, { id: event.target.value })}
-        placeholder="value"
+        placeholder={t("Value")}
         font="mono"
         className="w-28"
         spellCheck={false}
@@ -203,7 +203,7 @@ export function CustomModelEditor({
           >
             <SelectTrigger size="compact" className="w-40" aria-label={t("Option id")}>
               <SelectValue>
-                {idSelectValue(descriptor) === CUSTOM_ID_VALUE ? "Custom…" : descriptor.id}
+                {idSelectValue(descriptor) === CUSTOM_ID_VALUE ? t("Custom…") : descriptor.id}
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="start" alignItemWithTrigger={false}>
@@ -211,7 +211,7 @@ export function CustomModelEditor({
                 <SelectItem key={preset.id} value={preset.id}>
                   <span className="flex items-baseline gap-2">
                     <code className="font-mono text-xs">{preset.id}</code>
-                    <span className="text-muted-foreground">{preset.label}</span>
+                    <span className="text-muted-foreground">{t(preset.label)}</span>
                   </span>
                 </SelectItem>
               ))}
@@ -256,7 +256,7 @@ export function CustomModelEditor({
         <Button
           size="icon-micro"
           variant="ghost-muted"
-          aria-label={`Remove option ${index + 1}`}
+          aria-label={t("Remove option {index}", { index: index + 1 })}
           onClick={() => removeDescriptor(descriptor.key)}
         >
           <XIcon className="size-3" />

@@ -8,6 +8,7 @@ import { page } from "vite-plus/test/browser";
 const state = vi.hoisted(() => ({
   projection: null as unknown,
   workflow: null as unknown,
+  reorder: vi.fn<(input: unknown) => Promise<unknown>>(),
 }));
 
 vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importOriginal) => ({
@@ -31,7 +32,10 @@ vi.mock(import("../../state/query"), async (importOriginal) => ({
 
 vi.mock(import("../../state/use-atom-command"), async (importOriginal) => ({
   ...(await importOriginal()),
-  useAtomCommand: (() => async () => undefined) as never,
+  useAtomCommand: ((command: unknown) =>
+    command === threadEnvironment.reorderQueuedRun
+      ? state.reorder
+      : async () => undefined) as never,
 }));
 
 vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
@@ -43,11 +47,71 @@ vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
 import "~/index.css";
 import { render as renderUi } from "../../../test/render";
 import { QueuedRunsControl } from "./QueuedRunsControl";
+import { threadEnvironment } from "../../state/threads";
 
 function setup() {
   state.projection = null;
   state.workflow = null;
+  state.reorder.mockReset().mockResolvedValue(undefined);
 }
+
+function setupReorderQueue() {
+  setup();
+  state.projection = { projection: { messages: [] } };
+  state.workflow = {
+    activeRun: { id: "active-run" },
+    canPromoteToSteer: true,
+    queuedRuns: ["first", "second", "third"].map((name) => ({
+      run: { id: `run:${name}`, userMessageId: `message:${name}` },
+      text: name,
+      attachments: [],
+    })),
+  };
+}
+
+it("reorders queued messages using actual delivery targets and disables boundary moves", async () => {
+  setupReorderQueue();
+  await using screen = await renderQueue();
+  const moveUp = screen.getByRole("button", { name: "Move queued message up", exact: true });
+  const moveDown = screen.getByRole("button", { name: "Move queued message down", exact: true });
+  await expect.element(moveUp.nth(0)).toBeDisabled();
+  await expect.element(moveDown.nth(2)).toBeDisabled();
+  await moveUp.nth(1).click();
+  expect(state.reorder).toHaveBeenLastCalledWith({
+    environmentId: baseProps.environmentId,
+    input: { threadId: baseProps.threadId, runId: "run:second", beforeRunId: "run:first" },
+  });
+  await moveDown.nth(0).click();
+  expect(state.reorder).toHaveBeenLastCalledWith({
+    environmentId: baseProps.environmentId,
+    input: { threadId: baseProps.threadId, runId: "run:first", beforeRunId: "run:third" },
+  });
+  await moveDown.nth(1).click();
+  expect(state.reorder).toHaveBeenLastCalledWith({
+    environmentId: baseProps.environmentId,
+    input: { threadId: baseProps.threadId, runId: "run:second", beforeRunId: null },
+  });
+});
+
+it("locks queue actions while a reorder is pending and unlocks after failure", async () => {
+  setupReorderQueue();
+  let resolveReorder: (result: unknown) => void = () => undefined;
+  state.reorder.mockReturnValue(
+    new Promise((resolve) => {
+      resolveReorder = resolve;
+    }),
+  );
+  await using screen = await renderQueue();
+  const moveUp = screen.getByRole("button", { name: "Move queued message up", exact: true });
+  await moveUp.nth(1).click();
+  await expect.element(moveUp.nth(1)).toBeDisabled();
+  await expect
+    .element(screen.getByRole("button", { name: "Remove queued message", exact: true }).nth(0))
+    .toBeDisabled();
+  resolveReorder({ _tag: "Failure" });
+  await expect.element(moveUp.nth(1)).toBeEnabled();
+  expect(state.reorder).toHaveBeenCalledOnce();
+});
 
 const baseProps = {
   environmentId: "environment:test" as never,
