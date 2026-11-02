@@ -35,6 +35,25 @@ const OPENCODE_CUSTOM_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabil
 });
 
 describe("providerModelsFromSettings", () => {
+  it("applies saved capability overrides to rediscovered built-in slugs", () => {
+    const models = providerModelsFromSettings(
+      [
+        {
+          slug: "gateway-model",
+          name: "Gateway Model",
+          isCustom: false,
+          capabilities: { contextWindow: 1000, supportsImages: true },
+        },
+      ],
+      [{ slug: "gateway-model", capabilities: { contextWindow: 2000, supportsImages: false } }],
+      null,
+    );
+    expect(models[0]).toMatchObject({
+      name: "Gateway Model",
+      isCustom: false,
+      capabilities: { contextWindow: 2000, supportsImages: false },
+    });
+  });
   it("keeps an entry's own name and capabilities over the driver default", () => {
     const capabilities = createModelCapabilities({
       optionDescriptors: [{ id: "fastMode", label: "Fast Mode", type: "boolean" }],

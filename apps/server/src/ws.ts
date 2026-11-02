@@ -2288,7 +2288,7 @@ export const layerWsRpc = (
                     (provider) =>
                       provider.instanceId === instance.instanceId &&
                       provider.enabled &&
-                      provider.installed,
+                      (provider.installed || instance.refreshModelsWhenUninstalled === true),
                   )
                 )
                   continue;

@@ -232,7 +232,11 @@ export function ProviderModelsSection({
 
   const handleSaveEdit = (next: CustomModelDefinition) => {
     if (!canManageCustomModels) return;
-    onChange(customModels.map((entry) => (entry.slug === next.slug ? next : entry)));
+    onChange(
+      customModels.some((entry) => entry.slug === next.slug)
+        ? customModels.map((entry) => (entry.slug === next.slug ? next : entry))
+        : [...customModels, next],
+    );
     setEditingSlug(null);
   };
 
@@ -294,7 +298,10 @@ export function ProviderModelsSection({
         isFiltering={isFiltering}
         flagMissingReasoning={flagMissingReasoning}
         canWritePreferences={canWritePreferences}
-        canManageCustomModels={canManageCustomModels}
+        canManageCustomModels={
+          canManageCustomModels &&
+          (model.isCustom || driverKind === "codex" || driverKind === "claudeAgent")
+        }
         {...rowHandlers}
       />
     );
@@ -372,8 +379,12 @@ export function ProviderModelsSection({
           const previous = visibleModels[index - 1];
           const startsGroup = previous === undefined || groupOf(previous) !== group;
           const editingEntry =
-            canManageCustomModels && model.isCustom && editingSlug === model.slug
-              ? customModels.find((entry) => entry.slug === model.slug)
+            canManageCustomModels && editingSlug === model.slug
+              ? (customModels.find((entry) => entry.slug === model.slug) ?? {
+                  slug: model.slug,
+                  name: model.name,
+                  capabilities: model.capabilities,
+                })
               : undefined;
           return (
             <div key={`${instanceId}:${model.slug}:group`}>
@@ -579,7 +590,7 @@ function ProviderModelRow({
             </Tooltip>
           </>
         ) : null}
-        {model.isCustom ? (
+        {canManageCustomModels ? (
           <>
             <Tooltip>
               <TooltipTrigger
@@ -597,22 +608,24 @@ function ProviderModelRow({
               </TooltipTrigger>
               <TooltipPopup side="top">Edit name and options</TooltipPopup>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="icon-micro"
-                    variant="ghost-muted"
-                    disabled={!canManageCustomModels}
-                    aria-label={`Remove ${model.slug}`}
-                    onClick={() => onRemove(model.slug)}
-                  />
-                }
-              >
-                <XIcon className="size-3" />
-              </TooltipTrigger>
-              <TooltipPopup side="top">Remove custom model</TooltipPopup>
-            </Tooltip>
+            {model.isCustom ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      disabled={!canManageCustomModels}
+                      aria-label={`Remove ${model.slug}`}
+                      onClick={() => onRemove(model.slug)}
+                    />
+                  }
+                >
+                  <XIcon className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">Remove custom model</TooltipPopup>
+              </Tooltip>
+            ) : null}
           </>
         ) : null}
       </span>

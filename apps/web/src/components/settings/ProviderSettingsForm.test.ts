@@ -4,6 +4,9 @@ import {
   ProviderDriverKind,
   SettingsSecretValue,
   TrimmedString,
+  secretSettingsFields,
+  CodexSettings,
+  ClaudeSettings,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
@@ -16,6 +19,20 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("offers API URL and securely stored API keys for Codex and Claude", () => {
+    for (const [driverKind, settingsSchema] of [
+      [ProviderDriverKind.make("codex"), CodexSettings],
+      [ProviderDriverKind.make("claudeAgent"), ClaudeSettings],
+    ] as const) {
+      expect(secretSettingsFields(settingsSchema)).toContain("apiKey");
+      const fields = deriveProviderSettingsFields({ driverKind, settingsSchema });
+      expect(fields.find((field) => field.key === "baseUrl")?.label).toBe("API URL");
+      expect(fields.find((field) => field.key === "apiKey")).toMatchObject({
+        secret: true,
+        control: "password",
+      });
+    }
+  });
   it("keeps every masked field as a stored secret and offers a reference only where typed so", () => {
     const settingsSchema = makeProviderSettingsSchema({
       token: TrimmedString.pipe(

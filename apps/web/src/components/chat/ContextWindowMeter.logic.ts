@@ -9,6 +9,7 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { getDisplayModelName, type ModelEsque } from "./providerIconUtils";
+import { translate, type Language } from "../../i18n/language";
 
 // Fallback TTL: Claude's 1h cache plus slack.
 const CLAUDE_RESUME_COMPACTION_FALLBACK_MS = 70 * 60_000;
@@ -102,13 +103,18 @@ export function resolveContextWindowModelDisplayName(
 export function formatContextWindowCompactionMessage(
   modelDisplayName: string | null | undefined,
   autoCompactThreshold?: number | null,
+  language: Language = "en",
 ): string {
   if (typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) {
-    return `Compacts automatically at about ${autoCompactThreshold.toLocaleString("en-US")} tokens.`;
+    return translate(language, "Compacts automatically at about {tokens} tokens.", {
+      tokens: autoCompactThreshold.toLocaleString(language === "zh" ? "zh-CN" : "en-US"),
+    });
   }
   return modelDisplayName
-    ? `Context for ${modelDisplayName} compacts automatically when needed.`
-    : "Context compacts automatically when needed.";
+    ? translate(language, "Context for {model} compacts automatically when needed.", {
+        model: modelDisplayName,
+      })
+    : translate(language, "Context compacts automatically when needed.");
 }
 
 export function shouldReserveContextWindowMeter(input: {

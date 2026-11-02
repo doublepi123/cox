@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.12 — 2026-11-02
+
+- Configure Codex and Claude API gateways directly in provider settings, with securely stored
+  API keys and model-list refreshes. Keep subscription and API connections in separate instances.
+- Edit discovered and custom models' context windows, reasoning choices and image-input support.
+  Prefill explicitly reported gateway capabilities without guessing or paid inference probes.
+- Give explicit Claude gateway credentials priority over local settings and subscription tokens,
+  using private temporary settings files rather than exposing keys in process arguments.
+- Add a delete button beside thread settlement, retaining permission checks and delete confirmation.
+- Fully collapse the Working section, remember its state, and separate it from other conversations.
+- Show task lists once with expandable steps instead of repeating their activity summary.
+- Localize context-window controls, previous-agent groups, task counts and related pagination,
+  while preserving model names and user-authored content.
+
 ## 0.1.11 — 2026-11-02
 
 - Expand Chinese/English coverage across chat, provider settings, notifications, usage,

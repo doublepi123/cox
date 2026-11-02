@@ -58,9 +58,12 @@ import {
 import {
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
+  makeClaudeEnvironment,
   resolveClaudeHomePath,
 } from "./ClaudeHome.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { hasGatewayConfiguration } from "../gatewayConfiguration.ts";
+import { makeGatewayModels } from "../GatewayModels.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
@@ -134,7 +137,19 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const modelCatalog = catalogService
       .current(DRIVER_KIND)
       .pipe(Effect.map(resolveClaudeModelCatalog));
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const processEnv = yield* makeClaudeEnvironment(
+      config,
+      yield* mergeProviderInstanceEnvironment(environment),
+    );
+    const gatewayModels = hasGatewayConfiguration(config)
+      ? yield* makeGatewayModels({
+          instanceId,
+          driver: DRIVER_KIND,
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey || processEnv.ANTHROPIC_API_KEY || processEnv.ANTHROPIC_AUTH_TOKEN,
+          customModels: config.customModels,
+        })
+      : undefined;
     const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -280,6 +295,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
               : Effect.void,
           ),
           Effect.map(stampIdentity),
+          Effect.flatMap(gatewayModels ? gatewayModels.apply : Effect.succeed),
         ),
       ),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -407,6 +423,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ),
       orchestrationAdapter,
       textGeneration,
+      ...(gatewayModels
+        ? { refreshModels: () => gatewayModels.refresh, refreshModelsWhenUninstalled: true }
+        : {}),
       consumeResetCredit,
     } satisfies ProviderInstance;
   }),

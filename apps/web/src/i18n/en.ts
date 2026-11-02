@@ -1,4 +1,46 @@
 export const en = {
+  "This connection cannot change threads.": "This connection cannot change threads.",
+  "API URL must be an HTTP(S) base URL without credentials, query, or fragment.":
+    "API URL must be an HTTP(S) base URL without credentials, query, or fragment.",
+  "Invalid gateway API URL.": "Invalid gateway API URL.",
+  "Could not refresh gateway models. Check the API URL, API key, and gateway model-list support.":
+    "Could not refresh gateway models. Check the API URL, API key, and gateway model-list support.",
+  Supported: "Supported",
+  "Failed to delete thread": "Failed to delete thread",
+  "This model does not support image input. Remove images or choose another model.":
+    "This model does not support image input. Remove images or choose another model.",
+  "API gateway": "API gateway",
+  "API settings override subscription authentication for this instance. Add a separate provider instance to keep both connections.":
+    "API settings override subscription authentication for this instance. Add a separate provider instance to keep both connections.",
+  "Context window {percentage} used": "Context window {percentage} used",
+  "Context window {tokens} tokens used": "Context window {tokens} tokens used",
+  "Context window usage": "Context window usage",
+  "Total processed": "Total processed",
+  "Compact context": "Compact context",
+  "Compacts automatically at about {tokens} tokens.":
+    "Compacts automatically at about {tokens} tokens.",
+  "Context for {model} compacts automatically when needed.":
+    "Context for {model} compacts automatically when needed.",
+  "Context compacts automatically when needed.": "Context compacts automatically when needed.",
+  "Compacting is unavailable right now": "Compacting is unavailable right now",
+  "Choose a project before compacting": "Choose a project before compacting",
+  "Compaction is unavailable for this provider": "Compaction is unavailable for this provider",
+  "API URL": "API URL",
+  "Optional gateway API base URL. Leave empty to use the provider's default.":
+    "Optional gateway API base URL. Leave empty to use the provider's default.",
+  "Stored separately on this computer. API billing is separate from subscriptions.":
+    "Stored separately on this computer. API billing is separate from subscriptions.",
+  "Context window (tokens)": "Context window (tokens)",
+  "Context window must be a positive integer.": "Context window must be a positive integer.",
+  "Unknown / provider default": "Unknown / provider default",
+  "Image input (multimodal)": "Image input (multimodal)",
+  "Not supported": "Not supported",
+  "Reported gateway capabilities are prefilled. Unknown values are not guessed; saved changes override discovery.":
+    "Reported gateway capabilities are prefilled. Unknown values are not guessed; saved changes override discovery.",
+  "Refresh models from gateway": "Refresh models from gateway",
+  "Refreshing gateway models…": "Refreshing gateway models…",
+  "Save the API URL and key first. Uses only the model-list endpoint; no paid inference probes. Codex gateways must support the Responses API; Claude gateways must support the Anthropic Messages API.":
+    "Save the API URL and key first. Uses only the model-list endpoint; no paid inference probes. Codex gateways must support the Responses API; Claude gateways must support the Anthropic Messages API.",
   "Connect an environment to see limits.": "Connect an environment to see limits.",
   "Connect an environment to see usage.": "Connect an environment to see usage.",
   "Select an environment to see limits.": "Select an environment to see limits.",
@@ -860,6 +902,8 @@ export const en = {
   Deny: "Deny",
   Submit: "Submit",
   Working: "Working",
+  "Other threads": "Other threads",
+  "Tasks {completed}/{total}": "Tasks {completed}/{total}",
   Thinking: "Thinking",
   Connected: "Connected",
   Connecting: "Connecting",
@@ -1222,6 +1266,11 @@ export const en = {
   Servers: "Servers",
   Automations: "Automations",
   Lineage: "Lineage",
+  "Previous agents": "Previous agents",
+  "{count} failed": "{count} failed",
+  "Show {count} more": "Show {count} more",
+  "Lineage · {count} running": "Lineage · {count} running",
+  "Side chats · {count} running": "Side chats · {count} running",
   "Side chats": "Side chats",
   "Thread details: {enabled} of {total} on": "Thread details: {enabled} of {total} on",
   "{enabled} of {total} on": "{enabled} of {total} on",

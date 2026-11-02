@@ -98,6 +98,8 @@ function canonicalSelectionsToLegacyObject(
 }
 
 export const ModelCapabilities = Schema.Struct({
+  contextWindow: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  supportsImages: Schema.optional(Schema.Boolean),
   optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;

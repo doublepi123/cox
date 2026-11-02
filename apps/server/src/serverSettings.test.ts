@@ -1276,6 +1276,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         config.settingsPath,
         JSON.stringify({
           providerInstances: {
+            codexGateway: {
+              driver: "codex",
+              config: { baseUrl: "https://codex.test/v1", apiKey: "codex-gateway-secret" },
+            },
+            claudeGateway: {
+              driver: "claudeAgent",
+              config: { baseUrl: "https://claude.test", apiKey: "claude-gateway-secret" },
+            },
             antigravity: { driver: "antigravity", config: { apiKey: "legacy-api-key" } },
             opencode: {
               driver: "opencode",
@@ -1297,7 +1305,22 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         "legacy-password",
       );
       const client = ServerSettingsModule.redactServerSettingsForClient(saved);
-      for (const value of ["legacy-api-key", "legacy-password"]) {
+      assert.propertyVal(
+        saved.providerInstances[ProviderInstanceId.make("codexGateway")]?.config,
+        "apiKey",
+        "codex-gateway-secret",
+      );
+      assert.propertyVal(
+        saved.providerInstances[ProviderInstanceId.make("claudeGateway")]?.config,
+        "apiKey",
+        "claude-gateway-secret",
+      );
+      for (const value of [
+        "legacy-api-key",
+        "legacy-password",
+        "codex-gateway-secret",
+        "claude-gateway-secret",
+      ]) {
         assert.notInclude(yield* fs.readFileString(config.settingsPath), value);
         assert.notInclude(JSON.stringify(client), value);
       }

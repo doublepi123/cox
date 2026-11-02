@@ -69,6 +69,24 @@ const catalogFromManifest = (data: ModelManifestData) =>
   resolveClaudeModelCatalog(resolveProviderCatalog(data, CLAUDE) ?? undefined);
 
 describe("Claude model catalog", () => {
+  it("uses saved context limits for custom and overridden catalog models", () => {
+    const catalog = scopeClaudeModelCatalog(catalogFromManifest(manifest()), [
+      { slug: "custom-context", capabilities: { contextWindow: 123000, supportsImages: false } },
+      { slug: "claude-synthetic-next", capabilities: { contextWindow: 256000 } },
+    ]);
+    for (const [model, expected] of [
+      ["custom-context", 123000],
+      ["claude-synthetic-next", 256000],
+    ] as const) {
+      assert.strictEqual(
+        resolveClaudeCatalogContextWindowTokens(catalog, {
+          instanceId: ProviderInstanceId.make("claude"),
+          model,
+        }),
+        expected,
+      );
+    }
+  });
   it("resolves capacity from selected options and fixed catalog windows without guessing custom models", () => {
     const source = manifest();
     const profile = source.providers!.claudeAgent!.profiles.synthetic!;

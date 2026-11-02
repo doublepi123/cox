@@ -1,4 +1,7 @@
+import { useTranslation } from "../../i18n";
+
 export function ComposerPromptLengthValidation({ message }: { message: string | null }) {
+  const { t } = useTranslation();
   if (!message) return null;
 
   return (
@@ -7,7 +10,7 @@ export function ComposerPromptLengthValidation({ message }: { message: string | 
       className="px-3 pb-2 text-xs text-destructive sm:px-4"
       data-chat-composer-validation="prompt-length"
     >
-      {message}
+      {t(message)}
     </p>
   );
 }

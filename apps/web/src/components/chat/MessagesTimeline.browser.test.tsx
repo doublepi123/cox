@@ -32,6 +32,7 @@ import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import "~/index.css";
 
 import { environmentThreadDetails } from "../../state/threads";
+import { setLanguagePreference } from "../../i18n";
 import { act, fakeTimers, render, stubGlobal } from "../../../test/render";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { MessagesTimeline } from "./MessagesTimeline";
@@ -217,6 +218,43 @@ const TASK_ID = ScheduledTaskId.make("task-1");
 const AUTOMATION_PROMPT = "Triage the inbox\n\nLabel every new issue and close duplicates.";
 
 describe("MessagesTimeline work rows", () => {
+  it("renders one localized expandable task list during active work", async () => {
+    setup();
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    const item = v2Item("todo_list", {
+      id: "task-list",
+      status: "running",
+      steps: [
+        { id: "step-1", text: "Review user-authored content", status: "running" },
+        { id: "step-2", text: "Run checks", status: "pending" },
+      ],
+    });
+    await using screen = await renderTimeline(
+      [
+        work("task-list", {
+          label: "Tasks 0/2 · Review user-authored content",
+          runId: RunId.make("run-1"),
+          tone: "info",
+          itemType: "todo_list",
+          toolLifecycleStatus: "inProgress",
+          projectedItem: item,
+        }),
+      ],
+      { isWorking: true, runningRunId: RunId.make("run-1") },
+    );
+    const label = "任务 0/2 · Review user-authored content";
+    await vi.waitFor(() => expect(screen.buttons(label)).toHaveLength(1));
+    expect(screen.text().split("任务 0/2")).toHaveLength(2);
+    await click(screen.button(label));
+    await expect.element(screen.getByText(/◉ Review user-authored content/)).toBeVisible();
+    await expect.element(screen.getByText(/○ Run checks/)).toBeVisible();
+    await act(() => setLanguagePreference("en"));
+    await vi.waitFor(() =>
+      expect(screen.buttons("Tasks 0/2 · Review user-authored content")).toHaveLength(1),
+    );
+  });
+
   it.each(["delegated", "legacy", "missing"] as const)(
     "uses the reported task for %s completion notifications",
     async (source) => {

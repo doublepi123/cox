@@ -27,6 +27,8 @@ export interface CustomModelDraft {
   readonly slug: string;
   readonly name: string;
   readonly descriptors: ReadonlyArray<EditorDescriptor>;
+  readonly contextWindow?: string;
+  readonly supportsImages?: "unknown" | "yes" | "no";
 }
 
 export interface DescriptorPreset {
@@ -180,6 +182,13 @@ export function draftFromDefinition(entry: CustomModelDefinition): CustomModelDr
   return {
     slug: entry.slug,
     name: entry.name === entry.slug ? "" : entry.name,
+    contextWindow: entry.capabilities?.contextWindow?.toString() ?? "",
+    supportsImages:
+      entry.capabilities?.supportsImages === undefined
+        ? "unknown"
+        : entry.capabilities.supportsImages
+          ? "yes"
+          : "no",
     descriptors: (entry.capabilities?.optionDescriptors ?? []).map(descriptorToEditor),
   };
 }
@@ -195,6 +204,14 @@ export function descriptorsFromCapabilities(
 }
 
 export function validateDraft(draft: CustomModelDraft): string | null {
+  if (
+    draft.contextWindow?.trim() &&
+    (!/^\d+$/.test(draft.contextWindow.trim()) ||
+      !Number.isSafeInteger(Number(draft.contextWindow)) ||
+      Number(draft.contextWindow) <= 0)
+  ) {
+    return "Context window must be a positive integer.";
+  }
   const seenIds = new Set<string>();
   for (const [index, descriptor] of draft.descriptors.entries()) {
     const position = `Option ${index + 1}`;
@@ -250,10 +267,17 @@ export function definitionFromDraft(draft: CustomModelDraft): CustomModelDefinit
     };
   });
   const name = draft.name.trim();
+  const capabilities: ModelCapabilities = {
+    ...(draft.contextWindow?.trim() ? { contextWindow: Number(draft.contextWindow) } : {}),
+    ...(draft.supportsImages && draft.supportsImages !== "unknown"
+      ? { supportsImages: draft.supportsImages === "yes" }
+      : {}),
+    ...(descriptors.length > 0 ? { optionDescriptors: descriptors } : {}),
+  };
   return {
     slug: draft.slug,
     name: name || draft.slug,
     capabilities:
-      descriptors.length > 0 ? createModelCapabilities({ optionDescriptors: descriptors }) : null,
+      Object.keys(capabilities).length > 0 ? createModelCapabilities(capabilities) : null,
   };
 }

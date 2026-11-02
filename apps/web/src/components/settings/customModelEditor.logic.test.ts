@@ -19,6 +19,22 @@ const draft = (overrides: Partial<CustomModelDraft>): CustomModelDraft => ({
 });
 
 describe("customModelEditor.logic", () => {
+  it("round-trips context and explicit multimodal support without inventing unknowns", () => {
+    const definition = {
+      slug: "custom",
+      name: "custom",
+      capabilities: { contextWindow: 128000, supportsImages: false },
+    };
+    expect(definitionFromDraft(draftFromDefinition(definition))).toEqual(definition);
+    expect(
+      definitionFromDraft(draft({ contextWindow: "", supportsImages: "unknown" })).capabilities,
+    ).toBeNull();
+    for (const contextWindow of ["0", "-1", "1.5", "1e6", "NaN", "9007199254740992"]) {
+      expect(validateDraft(draft({ contextWindow }))).toBe(
+        "Context window must be a positive integer.",
+      );
+    }
+  });
   it("round-trips a definition through the draft, marking the current value as default", () => {
     const definition = definitionFromDraft(
       draft({

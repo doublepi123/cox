@@ -26,6 +26,20 @@ const assistantCitation = {
 };
 
 describe("submitComposerDraft", () => {
+  it("blocks explicit text-only models without assuming unknown capabilities", () => {
+    const onSend = vi.fn();
+    const input = {
+      prompt: "describe",
+      submissionTarget: "provider-turn" as const,
+      imageCount: 1,
+      onSend,
+      event: undefined,
+    };
+    expect(submitComposerDraft({ ...input, supportsImages: false }).didDispatch).toBe(false);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(submitComposerDraft(input).didDispatch).toBe(true);
+    expect(submitComposerDraft({ ...input, supportsImages: true }).didDispatch).toBe(true);
+  });
   it("keeps an oversized draft editable and sends a corrected follow-up", () => {
     let draft = "x".repeat(PROVIDER_SEND_TURN_MAX_INPUT_CHARS + 1);
     let validationMessage: string | null = null;

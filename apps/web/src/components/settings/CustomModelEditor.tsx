@@ -48,9 +48,7 @@ export function CustomModelEditor({
   const [draft, setDraft] = useState<CustomModelDraft>(() => draftFromDefinition(entry));
   const [error, setError] = useState<string | null>(null);
   const presets = driverKind ? (DESCRIPTOR_PRESETS_BY_KIND[driverKind] ?? []) : [];
-  const startFromCandidates = builtInModels.filter(
-    (model) => (model.capabilities?.optionDescriptors?.length ?? 0) > 0,
-  );
+  const startFromCandidates = builtInModels.filter((model) => model.capabilities !== null);
   const domId = (suffix: string) => `provider-instance-${instanceId}-custom-model-${suffix}`;
 
   const updateDescriptor = (key: string, patch: Partial<EditorDescriptor>) => {
@@ -118,6 +116,13 @@ export function CustomModelEditor({
     setError(null);
     setDraft((current) => ({
       ...current,
+      contextWindow: model.capabilities?.contextWindow?.toString() ?? "",
+      supportsImages:
+        model.capabilities?.supportsImages === undefined
+          ? "unknown"
+          : model.capabilities.supportsImages
+            ? "yes"
+            : "no",
       descriptors: descriptorsFromCapabilities(model.capabilities, driverKind),
     }));
   };
@@ -125,7 +130,7 @@ export function CustomModelEditor({
   const handleSave = () => {
     const problem = validateDraft(draft);
     if (problem) {
-      setError(problem);
+      setError(t(problem));
       return;
     }
     onSave(definitionFromDraft(draft));
@@ -241,7 +246,7 @@ export function CustomModelEditor({
           }
         >
           <SelectTrigger size="compact" className="w-24" aria-label={t("Option type")}>
-            <SelectValue>{descriptor.type === "boolean" ? "Toggle" : "Choices"}</SelectValue>
+            <SelectValue>{t(descriptor.type === "boolean" ? "Toggle" : "Choices")}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             <SelectItem value="select">{t("Choices")}</SelectItem>
@@ -305,6 +310,56 @@ export function CustomModelEditor({
         />
       </div>
 
+      <div className="flex flex-col gap-1">
+        <label htmlFor={domId("context")} className="text-xs text-muted-foreground">
+          {t("Context window (tokens)")}
+        </label>
+        <Input
+          id={domId("context")}
+          size="sm"
+          inputMode="numeric"
+          value={draft.contextWindow ?? ""}
+          placeholder={t("Unknown / provider default")}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, contextWindow: event.target.value }))
+          }
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-muted-foreground">{t("Image input (multimodal)")}</span>
+        <Select
+          value={draft.supportsImages ?? "unknown"}
+          onValueChange={(value) =>
+            setDraft((current) => ({
+              ...current,
+              supportsImages: value === "yes" ? "yes" : value === "no" ? "no" : "unknown",
+            }))
+          }
+        >
+          <SelectTrigger size="compact" aria-label={t("Image input (multimodal)")}>
+            <SelectValue>
+              {t(
+                draft.supportsImages === "yes"
+                  ? "Supported"
+                  : draft.supportsImages === "no"
+                    ? "Not supported"
+                    : "Unknown / provider default",
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            <SelectItem value="unknown">{t("Unknown / provider default")}</SelectItem>
+            <SelectItem value="yes">{t("Supported")}</SelectItem>
+            <SelectItem value="no">{t("Not supported")}</SelectItem>
+          </SelectPopup>
+        </Select>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Reported gateway capabilities are prefilled. Unknown values are not guessed; saved changes override discovery.",
+        )}
+      </p>
+
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
@@ -350,7 +405,7 @@ export function CustomModelEditor({
                 onClick={() => addDescriptor(descriptorFromPreset(preset))}
               >
                 <PlusIcon className="size-3" />
-                {preset.label}
+                {t(preset.label)}
               </Button>
             ))}
           <Button

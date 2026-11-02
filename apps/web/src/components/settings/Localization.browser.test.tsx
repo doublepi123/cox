@@ -10,6 +10,9 @@ import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 import { act, render } from "../../../test/render";
 import { setLanguagePreference } from "../../i18n";
+import { ContextWindowMeter } from "../chat/ContextWindowMeter";
+import { CustomModelEditor } from "./CustomModelEditor";
+import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import { ScrollToEndButton, WorkspaceFileDropOverlay } from "../chat/TimelineOverlays";
 import { NotificationSettings } from "./NotificationSettings";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
@@ -130,6 +133,65 @@ it("localizes scroll and file-drop controls without translating dynamic summarie
   await screen.getByRole("button", { name: /滚动到底部.*My custom summary/ }).click();
   expect(scroll).toHaveBeenCalledOnce();
   await expect.element(screen.getByText("拖放文件以添加附件")).toBeVisible();
+});
+
+it("localizes context window controls and automatic compaction explanations", async () => {
+  using _language = chineseLanguage();
+  const usage: ContextWindowSnapshot = {
+    usedTokens: 111000,
+    maxTokens: 258000,
+    remainingTokens: 147000,
+    usedPercentage: 43,
+    remainingPercentage: 57,
+    updatedAt: "2026-11-02T00:00:00Z",
+    compactsAutomatically: true,
+  };
+  await using screen = await render(
+    <ContextWindowMeter
+      usage={usage}
+      modelDisplayName="GPT-6.1-Sol"
+      onCompact={vi.fn()}
+      compactDisabled
+      compactDisabledReason="Compacting is unavailable right now"
+    />,
+    { router: false },
+  );
+  await screen.getByRole("button", { name: "上下文窗口已使用 43%" }).click();
+  await expect.element(screen.getByText("上下文窗口", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("GPT-6.1-Sol 的上下文会在需要时自动压缩。")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "压缩上下文" })).toBeDisabled();
+  await expect.element(screen.getByText("当前无法压缩上下文")).toBeVisible();
+});
+
+it("prefills reported model context and image support in the localized editor", async () => {
+  using _language = chineseLanguage();
+  const save = vi.fn();
+  await using screen = await render(
+    <CustomModelEditor
+      instanceId="gateway"
+      driverKind={ProviderDriverKind.make("codex")}
+      entry={{
+        slug: "gateway-model",
+        name: "gateway-model",
+        capabilities: { contextWindow: 128000, supportsImages: false },
+      }}
+      builtInModels={[]}
+      onSave={save}
+      onCancel={vi.fn()}
+    />,
+    { router: false },
+  );
+  await expect.element(screen.getByLabelText("上下文窗口（令牌数）")).toHaveValue("128000");
+  await expect
+    .element(screen.getByRole("combobox", { name: "图片输入（多模态）" }))
+    .toHaveTextContent("不支持");
+  await screen.getByLabelText("上下文窗口（令牌数）").fill("256000");
+  await screen.getByRole("button", { name: "保存", exact: true }).click();
+  expect(save).toHaveBeenCalledWith({
+    slug: "gateway-model",
+    name: "gateway-model",
+    capabilities: { contextWindow: 256000, supportsImages: false },
+  });
 });
 
 it("localizes the notification description, selected value and all dropdown options", async () => {

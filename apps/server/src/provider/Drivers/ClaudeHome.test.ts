@@ -14,6 +14,24 @@ import {
 
 it.layer(NodeServices.layer)("ClaudeHome", (it) => {
   describe("Claude home resolution", () => {
+    it.effect("uses per-instance gateway credentials without modifying inherited credentials", () =>
+      Effect.gen(function* () {
+        const base = {
+          ANTHROPIC_API_KEY: "old",
+          ANTHROPIC_AUTH_TOKEN: "old-token",
+          CLAUDE_CODE_OAUTH_TOKEN: "subscription",
+        };
+        const environment = yield* makeClaudeEnvironment(
+          { homePath: "", baseUrl: "https://gateway.test/v1/", apiKey: "new-api-key" },
+          base,
+        );
+        expect(environment.ANTHROPIC_BASE_URL).toBe("https://gateway.test");
+        expect(environment.ANTHROPIC_API_KEY).toBe("new-api-key");
+        expect(environment.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+        expect(environment.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+        expect(base.CLAUDE_CODE_OAUTH_TOKEN).toBe("subscription");
+      }),
+    );
     it.effect("resolves configured Claude HOME and stamps continuation/cache keys with it", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;

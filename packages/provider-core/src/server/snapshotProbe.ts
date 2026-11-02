@@ -144,14 +144,16 @@ export function providerModelsFromSettings(
   const entries = readCustomModelEntries(customModels);
   if (entries.length === 0) return builtInModels;
 
-  const nameOverrides = new Map(
-    entries.filter((entry) => entry.name !== entry.slug).map((entry) => [entry.slug, entry.name]),
-  );
+  const overrides = new Map(entries.map((entry) => [entry.slug, entry]));
   const resolvedBuiltInModels = builtInModels.map((model) => {
-    const name = nameOverrides.get(model.slug);
-    if (!name) return model;
+    const entry = overrides.get(model.slug);
+    if (!entry) return model;
     const { shortName: _shortName, ...rest } = model;
-    return { ...rest, name };
+    return {
+      ...rest,
+      name: entry.name === entry.slug ? model.name : entry.name,
+      capabilities: entry.capabilities ?? model.capabilities,
+    };
   });
   const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
   const customEntries: ServerProviderModel[] = [];

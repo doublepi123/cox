@@ -77,13 +77,20 @@ export function SidebarDragBoundary(props: {
   label: string;
   visible: boolean;
   isDropTarget: boolean;
+  sectionLabel?: string | undefined;
 }) {
   return (
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="pointer-events-none relative mx-0.5 -mb-px h-0"
+      className={cn(
+        "pointer-events-none relative mx-0.5",
+        props.sectionLabel
+          ? "mt-2 flex h-9 items-center border-t border-sidebar-border px-2 pt-1 text-xs font-medium text-sidebar-muted-foreground"
+          : "-mb-px h-0",
+      )}
     >
+      {props.sectionLabel && !props.visible ? <span>{props.sectionLabel}</span> : null}
       {props.visible ? (
         <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
           <span
@@ -127,7 +134,11 @@ export function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("relative mx-0.5 h-8", props.className)}
+      className={cn(
+        "relative mx-0.5 h-8",
+        props.marker === "working-header" && "rounded-md bg-primary/5",
+        props.className,
+      )}
     >
       <CollapsibleSectionHeader
         role="treeitem"

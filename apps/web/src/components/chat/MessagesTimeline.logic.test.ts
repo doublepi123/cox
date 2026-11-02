@@ -54,6 +54,40 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it("shows a task list once even when its old activity group is expanded", () => {
+    const runId = RunId.make("tasks-run");
+    const createdAt = "2026-11-02T08:00:00.000Z";
+    const entry: TimelineEntry = {
+      kind: "work",
+      id: "tasks-entry",
+      createdAt,
+      entry: {
+        id: "tasks-entry",
+        runId,
+        createdAt,
+        label: "Tasks 0/3 · Review the change",
+        tone: "info",
+        itemType: "todo_list",
+        toolLifecycleStatus: "inProgress",
+      },
+    };
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [entry],
+      expandedWorkGroupIds: new Set(["work-group:tasks-entry"]),
+      runningRunId: runId,
+      isWorking: true,
+      activeTurnStartedAt: createdAt,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+    expect(rows.filter((row) => row.kind === "work-live" || row.kind === "work-toggle")).toEqual(
+      [],
+    );
+    expect(rows.filter((row) => row.kind === "work")).toMatchObject([
+      { groupedEntries: [entry.entry], isExpandedToolGroup: false },
+    ]);
+  });
+
   it("stops stranded thinking after a steer and follows the next thought or tool", () => {
     const runId = RunId.make("steered-run");
     const at = "2026-10-01T06:19:10Z";

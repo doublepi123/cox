@@ -321,6 +321,7 @@ export function nextProviderConfigWithFieldValue(
 }
 
 interface ProviderSettingsFormProps {
+  readonly fieldKeys?: ReadonlyArray<string> | undefined;
   readonly definition: SettingsFormDefinition;
   readonly value: unknown;
   readonly idPrefix: string;
@@ -657,6 +658,7 @@ function ProviderSettingsFieldRow({
 }
 
 export function ProviderSettingsForm({
+  fieldKeys,
   definition,
   value,
   idPrefix,
@@ -664,7 +666,9 @@ export function ProviderSettingsForm({
   onChange,
   environmentId,
 }: ProviderSettingsFormProps) {
-  const fields = deriveProviderSettingsFields(definition, value);
+  const fields = deriveProviderSettingsFields(definition, value).filter(
+    (field) => fieldKeys === undefined || fieldKeys.includes(field.key),
+  );
   const isLocalAcp =
     definition.driverKind === "acpRegistry" &&
     readProviderConfigString(value, "source") === "local";

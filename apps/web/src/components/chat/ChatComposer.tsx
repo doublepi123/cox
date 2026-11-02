@@ -2013,6 +2013,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     const submission = submitComposerDraft({
       prompt: promptRef.current,
+      supportsImages: selectedProviderModels.find((model) => model.slug === selectedModel)
+        ?.capabilities?.supportsImages,
+      imageCount: composerImagesRef.current.length,
       submissionTarget: activePendingProgress ? "pending-user-input" : "provider-turn",
       event,
       onSend: (sendEvent) => {
@@ -2899,6 +2902,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       validateProviderInput: (providerInput: string) => {
         const validationMessage = getComposerSubmissionValidationMessage({
           prompt: promptRef.current,
+          supportsImages: selectedProviderModels.find((model) => model.slug === selectedModel)
+            ?.capabilities?.supportsImages,
+          imageCount: composerImagesRef.current.length,
           providerInput,
           submissionTarget: "provider-turn",
         });

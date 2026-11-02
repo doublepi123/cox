@@ -625,8 +625,50 @@ export function makeProviderSettingsSchema<const Fields extends Schema.Struct.Fi
   );
 }
 
+const gatewaySettingsFields = {
+  baseUrl: Schema.optionalKey(
+    TrimmedString.check(
+      Schema.makeFilter((value) => {
+        if (!value) return true;
+        try {
+          const url = new URL(value);
+          return (
+            (["http:", "https:"].includes(url.protocol) &&
+              !url.username &&
+              !url.password &&
+              !url.search &&
+              !url.hash) ||
+            "API URL must be an HTTP(S) base URL without credentials, query, or fragment."
+          );
+        } catch {
+          return "API URL must be an HTTP(S) base URL without credentials, query, or fragment.";
+        }
+      }),
+    ),
+  ).pipe(
+    Schema.annotateKey({
+      title: "API URL",
+      description: "Optional gateway API base URL. Leave empty to use the provider's default.",
+      providerSettingsForm: {
+        placeholder: "https://gateway.example.com/v1",
+        clearWhenEmpty: "omit",
+      },
+    }),
+  ),
+  apiKey: Schema.optionalKey(TrimmedString).pipe(
+    secretSetting,
+    Schema.annotateKey({
+      title: "API key",
+      description:
+        "Stored separately on this computer. API billing is separate from subscriptions.",
+      providerSettingsForm: { control: "password", clearWhenEmpty: "omit" },
+    }),
+  ),
+};
+
 export const CodexSettings = makeProviderSettingsSchema(
   {
+    ...gatewaySettingsFields,
     setupMode: Schema.optionalKey(Schema.Literals(["managed", "existing"])).pipe(
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
@@ -677,7 +719,7 @@ export const CodexSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs"],
+    order: ["baseUrl", "apiKey", "binaryPath", "homePath", "shadowHomePath", "launchArgs"],
   },
 );
 export type CodexSettings = typeof CodexSettings.Type;
@@ -706,6 +748,7 @@ const InstanceIdleCompaction = Schema.Literals(
 
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
+    ...gatewaySettingsFields,
     enabled: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
@@ -770,7 +813,15 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "idleCompaction", "launchArgs"],
+    order: [
+      "baseUrl",
+      "apiKey",
+      "binaryPath",
+      "homePath",
+      "autoCompactWindow",
+      "idleCompaction",
+      "launchArgs",
+    ],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;

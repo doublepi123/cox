@@ -257,6 +257,7 @@ import {
   type SidebarSweepAction,
 } from "./sidebar/SidebarThreadRow";
 import { SidebarDraftBlock } from "./sidebar/SidebarDraftBlock";
+import { useWorkingShelf } from "./sidebar/useWorkingShelf";
 import {
   SidebarProjectFolderHeader,
   sidebarFolderRowId,
@@ -319,7 +320,6 @@ const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 const SETTLED_SHELF_EXPANDED_KEY = "cox:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "cox:sidebar:snoozed-expanded";
-const WORKING_SHELF_EXPANDED_KEY = "cox:sidebar:working-expanded";
 const inboxReturns = createInboxReturnTracker();
 type SidebarOptimisticDrop = {
   readonly key: string;
@@ -438,11 +438,6 @@ function useSidebarThreads(input: {
     false,
     Schema.Boolean,
   );
-  const [workingShelfExpanded, setWorkingShelfExpanded] = useLocalStorage(
-    WORKING_SHELF_EXPANDED_KEY,
-    true,
-    Schema.Boolean,
-  );
   // Shared with the old per-project sidebar, so folders keep their open state.
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
@@ -497,9 +492,11 @@ function useSidebarThreads(input: {
   const visibleSnoozedThreads = snoozedShelfExpanded
     ? snoozedThreads
     : routeThreadOnly(snoozedThreads, routeRowThreadKey);
-  const visibleWorkingThreads = workingShelfExpanded
-    ? workingThreads
-    : routeThreadOnly(workingThreads, routeRowThreadKey);
+  const {
+    expanded: workingShelfExpanded,
+    toggle: toggleWorkingShelf,
+    visibleThreads: visibleWorkingThreads,
+  } = useWorkingShelf(workingThreads);
   const projectFolders =
     folderGroups === null
       ? null
@@ -564,7 +561,7 @@ function useSidebarThreads(input: {
     snoozedShelfExpanded,
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
     workingShelfExpanded,
-    toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
+    toggleWorkingShelf,
     projectFolders,
     toggleProjectFolder: (group: SidebarProjectSnapshot) => {
       const keys = sidebarFolderExpansionKeys(group);
@@ -2538,6 +2535,34 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       })();
     },
   );
+  const attemptDelete = useStableCallback(async (threadRef: ScopedThreadRef) => {
+    const api = readLocalApi();
+    const thread = threadByKeyRef.current.get(scopedThreadKey(threadRef));
+    if (!api || !thread || !checkThreadOperations([thread])) return;
+    if (confirmThreadDelete) {
+      const confirmed = await settlePromise(() =>
+        api.dialogs.confirm(
+          [
+            t('Delete thread "{title}"?', { title: thread.title }),
+            t("This permanently clears conversation history for this thread."),
+          ].join("\n"),
+          { variant: "destructive" },
+        ),
+      );
+      if (confirmed._tag === "Failure" || !confirmed.value) return;
+    }
+    const result = await deleteThread(threadRef);
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("Failed to delete thread"),
+          description: error instanceof Error ? error.message : t("An error occurred."),
+        }),
+      );
+    }
+  });
   const handleThreadContextMenu = useStableCallback(
     (
       threadRef: ScopedThreadRef,
@@ -2804,30 +2829,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             return;
           }
           case "delete": {
-            if (confirmThreadDelete) {
-              const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(
-                  [
-                    t('Delete thread "{title}"?', { title: thread.title }),
-                    t("This permanently clears conversation history for this thread."),
-                  ].join("\n"),
-                  { variant: "destructive" },
-                ),
-              );
-              if (confirmed._tag === "Failure" || !confirmed.value) return;
-            }
-            const result = await deleteThread(threadRef);
-            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: "Failed to delete thread",
-                  description: error instanceof Error ? error.message : "An error occurred.",
-                }),
-              );
-              return;
-            }
+            await attemptDelete(threadRef);
             return;
           }
           default:
@@ -3365,6 +3367,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
                             onContextMenu={handleThreadContextMenu}
                             onSettle={attemptSettle}
+                            onDelete={attemptDelete}
                             onActionSweepStart={startActionSweep}
                             onUnsettle={attemptUnsettle}
                             onSnooze={attemptSnooze}
@@ -3422,16 +3425,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         }
                         switch (item.marker) {
                           case "pinned-header":
-                            items.push(draftBlock);
+                            if (workingThreads.length === 0) items.push(draftBlock);
                             items.push(
                               <SidebarDragBoundary
                                 key="pinned-header"
                                 marker="pinned-header"
                                 label={t("Pinned")}
+                                sectionLabel={
+                                  workingThreads.length > 0 ? t("Other threads") : undefined
+                                }
                                 visible={from !== null}
                                 isDropTarget={dragTargetSection === "pinned"}
                               />,
                             );
+                            if (workingThreads.length > 0) items.push(draftBlock);
                             break;
                           case "pinned-divider":
                             items.push(

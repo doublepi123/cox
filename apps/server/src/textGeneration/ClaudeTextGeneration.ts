@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import { materializeClaudeGatewaySettings } from "../provider/ClaudeGatewaySettings.ts";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -193,6 +194,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
               )
           : cwd;
       const managedMcpConfig = yield* hasClaudeManagedMcpConfig();
+      const gatewaySettings = yield* materializeClaudeGatewaySettings(
+        claudeSettings,
+        settings,
+      ).pipe(
+        Effect.mapError((cause) =>
+          normalizeCliError("claude", operation, cause, "Failed to prepare gateway settings"),
+        ),
+      );
       const spawnCommand = yield* resolveSpawnCommand(
         claudeSettings.binaryPath || "claude",
         [
@@ -205,7 +214,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
-          settingsJson,
+          typeof gatewaySettings === "string" ? gatewaySettings : settingsJson,
           ...(investigate
             ? [
                 "--tools",

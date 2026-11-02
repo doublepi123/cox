@@ -33,7 +33,8 @@ vi.mock(import("../../state/use-atom-command"), () => ({
       : AsyncResult.failure(Cause.fail(new Error("Connection lost")))) as never,
 }));
 
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
+import { setLanguagePreference } from "../../i18n";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import { ToastProvider } from "../ui/toast";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
@@ -182,4 +183,55 @@ it("opens an idle child from Lineage when its shell has not been loaded", async 
   await vi.waitFor(() =>
     expect(screen.router?.state.location.pathname).toBe("/local/omitted-child"),
   );
+});
+
+it("localizes previous agents, failure counts and pagination without changing agent titles", async () => {
+  setup();
+  setLanguagePreference("zh");
+  using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+  const projection = makeThreadProjectionFixture();
+  state.projection = {
+    ...projection,
+    subagents: Array.from({ length: 8 }, (_, index) => ({
+      id: NodeId.make(`agent-${index}`),
+      threadId: projection.thread.id,
+      runId: null,
+      parentNodeId: NodeId.make("parent"),
+      origin: "app_owned",
+      createdBy: "agent",
+      driver: "codex",
+      providerInstanceId: projection.thread.providerInstanceId,
+      providerThreadId: null,
+      childThreadId: ThreadId.make(`child-${index}`),
+      nativeTaskRef: null,
+      prompt: "Inspect the change",
+      title: `User-authored title ${index}`,
+      model: null,
+      status: index === 0 ? "failed" : "completed",
+      result: null,
+      startedAt: null,
+      completedAt: projection.thread.updatedAt,
+      updatedAt: projection.thread.updatedAt,
+    })),
+  };
+  await using screen = await render(
+    <ThreadRelationshipsPanel
+      environmentId={environmentId}
+      threadId={projection.thread.id}
+      showLineage
+      showSideChats
+    />,
+  );
+  await expect.element(screen.getByText("1 个失败", { exact: true })).toBeVisible();
+  await expect
+    .element(screen.getByText("User-authored title 0", { exact: true }))
+    .not.toBeInTheDocument();
+  await screen.getByRole("button", { name: /历史代理/ }).click();
+  await expect.element(screen.getByText("User-authored title 0", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "再显示 2 项" })).toBeVisible();
+  await act(() => setLanguagePreference("en"));
+  await expect.element(screen.getByRole("button", { name: /Previous agents/ })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Show 2 more" })).toBeVisible();
+  await screen.getByRole("button", { name: "Show 2 more" }).click();
+  await expect.element(screen.getByText("User-authored title 7", { exact: true })).toBeVisible();
 });

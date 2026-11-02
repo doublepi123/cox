@@ -7,6 +7,8 @@ type ComposerSubmissionInput = {
   prompt: string;
   providerInput?: string;
   submissionTarget: "provider-turn" | "pending-user-input";
+  supportsImages?: boolean | undefined;
+  imageCount?: number | undefined;
 };
 
 export function getComposerPromptLengthValidationMessage(prompt: string): string | null {
@@ -25,6 +27,13 @@ export function getComposerPromptLengthValidationMessage(prompt: string): string
 export function getComposerSubmissionValidationMessage(
   options: ComposerSubmissionInput,
 ): string | null {
+  if (
+    options.submissionTarget === "provider-turn" &&
+    options.supportsImages === false &&
+    (options.imageCount ?? 0) > 0
+  ) {
+    return "This model does not support image input. Remove images or choose another model.";
+  }
   return options.submissionTarget === "provider-turn"
     ? getComposerPromptLengthValidationMessage(options.providerInput ?? options.prompt)
     : null;

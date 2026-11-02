@@ -37,6 +37,7 @@ import {
 } from "@t3tools/provider-core/server/snapshotProbe";
 import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
 import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "./Drivers/ClaudeHome.ts";
+import { materializeClaudeGatewaySettings } from "./ClaudeGatewaySettings.ts";
 import { discoverClaudeSkills, readClaudeSettingsBaseUrl } from "./Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
@@ -333,19 +334,27 @@ const probeClaudeCapabilities = (
       claudeEnvironment,
     );
     const managedMcpConfig = yield* hasClaudeManagedMcpConfig();
+    const probeOptions = buildClaudeCapabilitiesProbeQueryOptions({
+      executablePath,
+      abortController: abort,
+      environment: claudeEnvironment,
+      cwd,
+      managedMcpConfig,
+    });
+    const probeSettings = yield* materializeClaudeGatewaySettings(
+      claudeSettings,
+      probeOptions.settings,
+    );
     return yield* Effect.tryPromise(async () => {
       const q = claudeQuery({
         // oxlint-disable-next-line require-yield -- never yields, so no prompt reaches the API
         prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
           await waitForAbortSignal(abort.signal);
         })(),
-        options: buildClaudeCapabilitiesProbeQueryOptions({
-          executablePath,
-          abortController: abort,
-          environment: claudeEnvironment,
-          cwd,
-          managedMcpConfig,
-        }),
+        options: {
+          ...probeOptions,
+          ...(probeSettings === undefined ? {} : { settings: probeSettings }),
+        },
       });
       const init = await q.initializationResult();
       return { q, init };
@@ -398,6 +407,7 @@ const probeClaudeCapabilities = (
     Effect.tapError((error) =>
       Effect.logWarning("Claude capability probe failed.", { errorTag: error._tag }),
     ),
+    Effect.scoped,
   );
 };
 
@@ -601,8 +611,11 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   // First-party account fields cannot verify custom endpoint credentials.
   const baseUrl =
-    (yield* readClaudeSettingsBaseUrl(claudeSettings, cwd, resolvedEnvironment)) ??
-    resolvedEnvironment.ANTHROPIC_BASE_URL;
+    claudeSettings.baseUrl?.trim() ||
+    (claudeSettings.apiKey?.trim()
+      ? "https://api.anthropic.com"
+      : ((yield* readClaudeSettingsBaseUrl(claudeSettings, cwd, resolvedEnvironment)) ??
+        resolvedEnvironment.ANTHROPIC_BASE_URL));
   const endpoint = URL.parse(baseUrl?.trim() ?? "");
   const customApiEndpoint =
     endpoint !== null &&

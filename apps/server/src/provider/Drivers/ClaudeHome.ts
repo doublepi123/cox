@@ -28,10 +28,21 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
 });
 
 export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function* (
-  config: Pick<ClaudeSettings, "homePath">,
+  config: Pick<ClaudeSettings, "homePath" | "baseUrl" | "apiKey">,
   baseEnv?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, Path.Path> {
-  const resolvedBaseEnv = baseEnv ?? process.env;
+  const resolvedBaseEnv = { ...(baseEnv ?? process.env) };
+  if (config.baseUrl?.trim() || config.apiKey?.trim())
+    resolvedBaseEnv.ANTHROPIC_BASE_URL = (config.baseUrl?.trim() || "https://api.anthropic.com")
+      .replace(/\/+$/, "")
+      .replace(/\/v1$/, "");
+  if (config.baseUrl?.trim() || config.apiKey?.trim())
+    delete resolvedBaseEnv.CLAUDE_CODE_OAUTH_TOKEN;
+  if (config.apiKey?.trim()) {
+    resolvedBaseEnv.ANTHROPIC_API_KEY = config.apiKey.trim();
+    delete resolvedBaseEnv.ANTHROPIC_AUTH_TOKEN;
+    delete resolvedBaseEnv.CLAUDE_CODE_OAUTH_TOKEN;
+  }
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;
   const resolvedHomePath = yield* resolveClaudeHomePath(config);

@@ -6,7 +6,21 @@ import {
   hasDismissedResumeCompaction,
   resolveContextWindowModelDisplayName,
   shouldReserveContextWindowMeter,
+  formatContextWindowCompactionMessage,
 } from "./ContextWindowMeter.logic";
+
+it("localizes compaction hints without translating model names", () => {
+  expect(formatContextWindowCompactionMessage("GPT-6.1-Sol", undefined, "zh")).toBe(
+    "GPT-6.1-Sol 的上下文会在需要时自动压缩。",
+  );
+  expect(formatContextWindowCompactionMessage(null, 200000, "zh")).toBe(
+    "达到约 200,000 个令牌时自动压缩上下文。",
+  );
+  expect(formatContextWindowCompactionMessage(null, null, "zh")).toBe("上下文会在需要时自动压缩。");
+  expect(formatContextWindowCompactionMessage("Custom Model")).toBe(
+    "Context for Custom Model compacts automatically when needed.",
+  );
+});
 
 function claudeProvider(input: {
   instanceId: string;

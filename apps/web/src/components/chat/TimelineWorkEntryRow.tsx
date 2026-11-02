@@ -285,12 +285,33 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const questionHeading = workEntry.questionAnswer
     ? getQuestionTextPreview(workEntry.questionAnswer)
     : "";
+  const taskList =
+    workEntry.projectedItem?.item.type === "todo_list"
+      ? workEntry.projectedItem.item
+      : workEntry.structuredPayload?.type === "todo_list"
+        ? workEntry.structuredPayload
+        : null;
+  const currentTask =
+    taskList?.steps.find((step) => step.status === "running") ??
+    taskList?.steps.find((step) => step.status === "pending");
+  const taskListLabel = taskList
+    ? [
+        t("Tasks {completed}/{total}", {
+          completed: taskList.steps.filter((step) => step.status === "completed").length,
+          total: taskList.steps.length,
+        }),
+        currentTask?.text,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
   const previewText =
     isReasoning && expanded
       ? workEntry.toolLifecycleStatus === "inProgress"
         ? "Thinking"
         : "Thought"
-      : questionHeading || (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot));
+      : (taskListLabel ??
+        (questionHeading || (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot))));
   const answerPreview =
     workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
       ? getQuestionAnswerPreview(workEntry.questionAnswer)

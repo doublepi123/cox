@@ -10,6 +10,7 @@ import {
   getProviderOptionCurrentLabel,
   getProviderOptionDescriptors,
   readCustomModelEntries,
+  toCustomModelSetting,
   modelSelectionsEqual,
 } from "./model.ts";
 
@@ -105,6 +106,11 @@ describe("applyClaudePromptEffortPrefix", () => {
 });
 
 describe("readCustomModelEntries", () => {
+  it("preserves context-only and explicit false multimodal capabilities through serialization", () => {
+    const saved = { slug: "custom", capabilities: { contextWindow: 32000, supportsImages: false } };
+    const entry = readCustomModelEntries([saved])[0]!;
+    expect(toCustomModelSetting(entry)).toEqual(saved);
+  });
   const capabilities: ModelCapabilities = {
     optionDescriptors: [
       {

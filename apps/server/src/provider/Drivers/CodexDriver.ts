@@ -56,6 +56,8 @@ import * as CodexManagedTokenBroker from "../CodexManagedTokenBroker.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { codexGatewayRuntime, hasGatewayConfiguration } from "../gatewayConfiguration.ts";
+import { makeGatewayModels } from "../GatewayModels.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -132,7 +134,7 @@ export const CodexDriver: ProviderDriver<
     enabled,
     config,
   }) {
-    if (config.setupMode === "managed")
+    if (config.setupMode === "managed" && !hasGatewayConfiguration(config))
       return yield* makeManagedCodexProvider({
         instanceId,
         displayName,
@@ -148,9 +150,35 @@ export const CodexDriver: ProviderDriver<
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const installation = yield* CodexInstallation.CodexInstallation;
+    const managedExecutable =
+      config.setupMode === "managed"
+        ? yield* installation.resolve().pipe(Effect.orElseSucceed(() => undefined))
+        : undefined;
     const modelCatalog = yield* ModelCatalog.ModelCatalog;
     const currentCatalog = modelCatalog.current(DRIVER_KIND);
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment);
+    const gatewayRuntime = yield* Effect.try(() =>
+      codexGatewayRuntime(config, baseEnvironment),
+    ).pipe(
+      Effect.mapError(
+        () =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Invalid gateway API URL.",
+          }),
+      ),
+    );
+    const processEnv = gatewayRuntime.environment;
+    const gatewayModels = hasGatewayConfiguration(config)
+      ? yield* makeGatewayModels({
+          instanceId,
+          driver: DRIVER_KIND,
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey || processEnv.OPENAI_API_KEY,
+          customModels: config.customModels,
+        })
+      : undefined;
     const homeLayout = yield* resolveCodexHomeLayout(config);
     const continuationIdentity = codexContinuationIdentity(homeLayout);
     const stampIdentity = withInstanceIdentity({
@@ -172,9 +200,12 @@ export const CodexDriver: ProviderDriver<
       ),
     );
     const effectiveConfig = {
-      ...config,
+      ...gatewayRuntime.settings,
+      launchArgs: processEnv.T3CODE_CODEX_LAUNCH_ARGS ?? config.launchArgs,
       enabled,
-      binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
+      binaryPath:
+        managedExecutable?.executablePath ??
+        expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
       homePath: homeLayout.effectiveHomePath ?? "",
     } satisfies CodexSettings;
     const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
@@ -198,7 +229,7 @@ export const CodexDriver: ProviderDriver<
         accentColor,
         environment,
         enabled,
-        config,
+        config: { ...config, binaryPath: effectiveConfig.binaryPath },
       },
       {
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
@@ -225,7 +256,7 @@ export const CodexDriver: ProviderDriver<
           currentCatalog,
           (draft, catalog) => stampIdentity(applyCodexModelCatalog(draft, catalog)),
           { concurrent: true },
-        ),
+        ).pipe(Effect.flatMap(gatewayModels ? gatewayModels.apply : Effect.succeed)),
       ),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -370,6 +401,9 @@ export const CodexDriver: ProviderDriver<
       consumeResetCredit,
       orchestrationAdapter,
       textGeneration,
+      ...(gatewayModels
+        ? { refreshModels: () => gatewayModels.refresh, refreshModelsWhenUninstalled: true }
+        : {}),
     } satisfies ProviderInstance;
   }),
 };

@@ -115,6 +115,14 @@ Cox will not substitute another account's local login. These connections show th
 and a link to the provider's usage dashboard instead. Use the connected account there.
 API-key and custom API connections do not run ChatGPT subscription-limit queries.
 
+### API gateways and custom models
+
+In **Settings → Providers**, open a Codex or Claude instance and configure **API gateway → API URL / API key**. Keys are stored separately on the local host and are not returned to the browser as plaintext. These settings take precedence over subscription authentication for that instance; use separate instances to keep API and subscription connections available together. Codex gateways must support the OpenAI Responses API; Claude gateways must support the Anthropic Messages API.
+
+Save the settings, then choose **Refresh models from gateway** under **Models**. Cox reads the gateway's model-list endpoint (including pagination), without sending paid inference probes. Model IDs, names, context limits, reasoning choices and image-input support are filled only when reported by the gateway. Many `/models` endpoints report only IDs, so unknown capabilities remain unset.
+
+Use a model's edit button to override its context window (tokens), image-input support, or reasoning choices. Overrides are saved per instance and take precedence over subsequent discovery; they do not grant capabilities the upstream model lacks. Clearing the gateway settings restores the instance's original authentication configuration. Existing threads may need a new session to use changed connection settings.
+
 Managed Codex preserves the speed tiers reported by its model catalog and forwards the
 selected tier, including Fast, to app-server. Catalog entries are not proof of entitlement;
 the upstream service can reject a tier for a particular account or connection. Cox does not

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { GatewayModelsRefresh } from "./GatewayModelsRefresh";
 import { Spinner } from "~/components/ui/spinner";
 
 import {
@@ -175,7 +176,20 @@ export function deriveProviderModelsForDisplay(input: {
       model.isCustom ? Result.succeed([model.slug, model] as const) : Result.failVoid,
     ),
   );
-  const serverModels = input.liveModels?.filter((model) => !model.isCustom) ?? [];
+  const overrides = new Map(input.customModels.map((entry) => [entry.slug, entry]));
+  const serverModels =
+    input.liveModels
+      ?.filter((model) => !model.isCustom)
+      .map((model) => {
+        const override = overrides.get(model.slug);
+        return override
+          ? {
+              ...model,
+              name: override.name === override.slug ? model.name : override.name,
+              capabilities: override.capabilities ?? model.capabilities,
+            }
+          : model;
+      }) ?? [];
   const serverSlugs = new Set(serverModels.map((model) => model.slug));
   const customModels = input.customModels.flatMap((entry) =>
     serverSlugs.has(entry.slug)
@@ -1197,6 +1211,13 @@ export function ProviderInstanceCard({
   const runtimeFields = driverOption ? (
     <ProviderSettingsForm
       definition={driverOption}
+      fieldKeys={
+        driverKind === "codex" || driverKind === "claudeAgent"
+          ? Object.keys(driverOption.settingsSchema.fields).filter(
+              (key) => key !== "baseUrl" && key !== "apiKey",
+            )
+          : undefined
+      }
       value={instance.config}
       idPrefix={`provider-instance-${instanceId}`}
       variant="settings"
@@ -1276,6 +1297,24 @@ export function ProviderInstanceCard({
         </SettingsSection>
       ) : null}
 
+      {driverOption && (driverKind === "codex" || driverKind === "claudeAgent") ? (
+        <SettingsSection title={t("API gateway")} inert={readOnly}>
+          <ProviderSettingsForm
+            definition={driverOption}
+            value={instance.config}
+            idPrefix={`provider-instance-${instanceId}-gateway`}
+            variant="settings"
+            onChange={updateConfig}
+            environmentId={environmentId}
+            fieldKeys={["baseUrl", "apiKey"]}
+          />
+          <p className="px-3 pb-3 text-xs text-muted-foreground sm:px-4">
+            {t(
+              "API settings override subscription authentication for this instance. Add a separate provider instance to keep both connections.",
+            )}
+          </p>
+        </SettingsSection>
+      ) : null}
       {instance.driver === "codex" && readCodexSetupMode(instance.config) === "managed" ? (
         <div
           inert={readOnly}
@@ -1327,6 +1366,16 @@ export function ProviderInstanceCard({
       {driverOption !== undefined ? (
         <SettingsSection title={t("Models")}>
           <div className="px-3 py-3 sm:px-4">
+            {environmentId &&
+            (driverKind === "codex" || driverKind === "claudeAgent") &&
+            (readConfigString(instance.config, "baseUrl") ||
+              readConfigString(instance.config, "apiKey")) ? (
+              <GatewayModelsRefresh
+                environmentId={environmentId}
+                instanceId={instanceId}
+                disabled={readOnly || instance.enabled === false}
+              />
+            ) : null}
             <p className="mb-3 text-xs text-muted-foreground">
               Model preferences and custom models are saved on the selected environment and shared
               across connected devices.

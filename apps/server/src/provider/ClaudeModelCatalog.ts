@@ -84,14 +84,27 @@ export function scopeClaudeModelCatalog(
   const customAliases = new Set(customEntries.map((entry) => entry.slug.toLowerCase()));
 
   const builtInModels = catalog.models.map((entry) => {
-    if (!entry.model.aliases?.some((alias) => customAliases.has(alias.toLowerCase()))) {
-      return entry;
+    const override = customEntries.find((custom) => custom.slug === entry.model.slug);
+    const resolved = override?.capabilities
+      ? {
+          ...entry,
+          model: { ...entry.model, capabilities: override.capabilities },
+          runtime: {
+            ...entry.runtime,
+            ...(override.capabilities.contextWindow
+              ? { fixedContextWindowTokens: override.capabilities.contextWindow }
+              : {}),
+          },
+        }
+      : entry;
+    if (!resolved.model.aliases?.some((alias) => customAliases.has(alias.toLowerCase()))) {
+      return resolved;
     }
     return {
-      ...entry,
+      ...resolved,
       model: {
-        ...entry.model,
-        aliases: entry.model.aliases.filter((alias) => !customAliases.has(alias.toLowerCase())),
+        ...resolved.model,
+        aliases: resolved.model.aliases.filter((alias) => !customAliases.has(alias.toLowerCase())),
       },
     };
   });
@@ -106,7 +119,9 @@ export function scopeClaudeModelCatalog(
         isCustom: true,
         capabilities: entry.capabilities,
       },
-      runtime: {},
+      runtime: entry.capabilities.contextWindow
+        ? { fixedContextWindowTokens: entry.capabilities.contextWindow }
+        : {},
       compatibility: {},
     });
   }
