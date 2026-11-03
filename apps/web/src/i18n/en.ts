@@ -3269,4 +3269,9 @@ export const en = {
   "Task completed": "Task completed",
   "Task in progress": "Task in progress",
   "Task pending": "Task pending",
+  "Approval from {title}": "Approval from {title}",
+  "Approval needed from {title}": "Approval needed from {title}",
+  "Provider process is gone. Interrupt or restart the child thread to respond.":
+    "Provider process is gone. Interrupt or restart the child thread to respond.",
+  "Failed to submit approval decision.": "Failed to submit approval decision.",
 } as const;

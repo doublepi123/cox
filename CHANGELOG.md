@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.1.18 — 2026-11-03
+
+- Surface pending tool and command approvals from active child threads directly above the
+  parent thread composer, with full English and Simplified Chinese localization.
+- Show concise system dividers in the conversation timeline when switching models or reasoning
+  effort within the same harness.
+- Enhance MCP preview and pull-request tools: `preview_open` accepts a dev-server `port`
+  directly, `link_pull_request` links multiple PRs in one call, and `unlink_pull_request`
+  unlinks all PRs matching given states in one call.
+- Improve Claude Code, Codex, Cursor, OpenCode, Antigravity and ACP adapter stability: prevent
+  Claude interrupt hangs, close withdrawn approval cards, strip inherited `CLAUDE_CODE_SESSION_ID`
+  and disable throwaway transcript persistence for text generation; respect per-instance
+  `CODEX_HOME`, handle split UTF-8 emoji tails in Codex background wakes, and guard Cursor SDK
+  `write-after-end` errors.
+- Harden Git worktree creation, branch rebinding, restart recovery, and runtime performance
+  across SQLite statement caching, streaming diffs, file-tree search, and terminal I/O.
+
 ## 0.1.17 — 2026-11-03
 
 - Replace the phone settings tab strip with a grouped section picker and a separate search

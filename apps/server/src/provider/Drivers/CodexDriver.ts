@@ -179,7 +179,12 @@ export const CodexDriver: ProviderDriver<
           customModels: config.customModels,
         })
       : undefined;
-    const homeLayout = yield* resolveCodexHomeLayout(config);
+    const environmentHome = processEnv.CODEX_HOME;
+    const homeLayout = yield* resolveCodexHomeLayout(
+      !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome?.trim()
+        ? { ...config, homePath: environmentHome }
+        : config,
+    );
     const continuationIdentity = codexContinuationIdentity(homeLayout);
     const stampIdentity = withInstanceIdentity({
       instanceId,

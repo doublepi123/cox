@@ -3171,4 +3171,9 @@ export const zh = {
   "Task completed": "已完成",
   "Task in progress": "进行中",
   "Task pending": "待处理",
+  "Approval from {title}": "来自 {title} 的批准请求",
+  "Approval needed from {title}": "{title} 需要批准",
+  "Provider process is gone. Interrupt or restart the child thread to respond.":
+    "提供商进程已退出。请中断或重启该子对话以进行响应。",
+  "Failed to submit approval decision.": "提交批准决定失败。",
 } as const;

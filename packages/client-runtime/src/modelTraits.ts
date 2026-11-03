@@ -16,6 +16,16 @@ export const REASONING_SELECT_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
   "thinking",
 ]);
 
+export function isReasoningControl(descriptor: ProviderOptionDescriptor): boolean {
+  return REASONING_SELECT_DESCRIPTOR_IDS.has(descriptor.id);
+}
+
+export function isReasoningSelect(
+  descriptor: ProviderOptionDescriptor,
+): descriptor is Extract<ProviderOptionDescriptor, { type: "select" }> {
+  return descriptor.type === "select" && isReasoningControl(descriptor);
+}
+
 export function replaceDescriptorCurrentValue(
   descriptors: ReadonlyArray<ProviderOptionDescriptor>,
   descriptorId: string,
