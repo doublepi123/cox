@@ -16,6 +16,7 @@ import {
 } from "~/components/ui/autocomplete";
 import { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_CLASS } from "~/components/ui/dialog-styles";
 import { Button } from "~/components/ui/button";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 
 const CommandDialog = CommandDialogPrimitive.Root;
 
@@ -57,13 +58,16 @@ function CommandDialogPopup({
   onBackdropPointerDown?: React.PointerEventHandler<HTMLDivElement>;
 }) {
   const popupRef = useRef<HTMLDivElement>(null);
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
   return (
     <CommandDialogPortal>
       <CommandDialogBackdrop onPointerDown={onBackdropPointerDown} />
       <CommandDialogViewport>
         <CommandDialogPrimitive.Popup
           // The first tabbable can be an input addon, such as a submenu's Back button.
-          initialFocus={() => popupRef.current?.querySelector("input") ?? true}
+          initialFocus={() =>
+            coarsePointer ? popupRef.current : (popupRef.current?.querySelector("input") ?? true)
+          }
           ref={popupRef}
           className={cn(
             DIALOG_POPUP_CLASS,
@@ -101,10 +105,11 @@ function CommandInput({
   placeholder,
   ...props
 }: React.ComponentProps<typeof AutocompleteInput>) {
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
   return (
     <div className="px-[var(--command-shell-inset)] py-1.5 [&_[data-slot=autocomplete-start-addon]]:ps-[calc(var(--command-shell-inset)+0.0625rem)]">
       <AutocompleteInput
-        autoFocus
+        autoFocus={!coarsePointer}
         className={cn(
           "border-transparent! bg-transparent! shadow-none before:hidden has-focus-visible:ring-0 placeholder:text-placeholder *:data-[slot=autocomplete-input]:ps-9! sm:*:data-[slot=autocomplete-input]:ps-[calc(var(--command-shell-inset)+1.5rem)]!",
           className,

@@ -67,12 +67,15 @@ export function classifyCodexManagedError(value: unknown) {
           message:
             "Codex sent a tool namespace that ChatGPT sharing does not support. Use another provider for this request.",
         };
-      if (text.includes("additional_tools"))
+      if (
+        text.includes("unsupported input items") ||
+        text.includes("input item 'additional_tools'")
+      )
         return {
           ...failure,
           code,
           message:
-            "Codex sent an input item that ChatGPT sharing does not support. Use another provider for this request.",
+            "ChatGPT sharing rejected an unsupported input item. Send another message to rebuild the conversation context and continue.",
         };
     }
     return { ...failure, code };

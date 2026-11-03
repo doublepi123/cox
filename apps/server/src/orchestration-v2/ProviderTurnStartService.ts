@@ -1,6 +1,10 @@
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
+  latestExecutedRun,
+  latestRootProviderFailure,
+} from "@t3tools/shared/orchestrationV2ThreadError";
+import {
   CommandId,
   latestProviderTurnForAttempt,
   type OrchestrationV2DomainEvent,
@@ -1224,15 +1228,35 @@ export const layer: Layer.Layer<
             handoff.delivery?.nativeThreadId === providerThread.nativeThreadRef?.nativeId &&
             handoff.delivery?.status === "pending",
         );
+        const previousCodexRun =
+          session.driver === "codex"
+            ? latestExecutedRun(
+                projection.runs.filter(
+                  (candidate) =>
+                    candidate.id !== run.id && candidate.providerThreadId === providerThread.id,
+                ),
+              )
+            : null;
+        const incompatibleCodexHistory =
+          previousCodexRun?.status === "failed" &&
+          latestRootProviderFailure(
+            previousCodexRun,
+            (yield* projectionStore.getThreadRecords(input.threadId, ["turnItems"], {
+              turnItemTypes: ["error"],
+              turnItemRunIds: [previousCodexRun.id],
+            })).turnItems,
+          )?.code === "subscription_sharing_unsupported_capability";
         const resumed = yield* Effect.result(
-          uncertainDelivery
+          uncertainDelivery || incompatibleCodexHistory
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
                   threadId: projection.thread.id,
                   providerThreadId: providerThread.id,
                   runId,
-                  cause: "Uncertain native history injection",
+                  cause: incompatibleCodexHistory
+                    ? "ChatGPT sharing rejected the native conversation history"
+                    : "Uncertain native history injection",
                 }),
               )
             : session.resumeThread({
@@ -1302,11 +1326,13 @@ export const layer: Layer.Layer<
           driver: session.driver,
           providerThreadId: providerThread.id,
           runId,
-          reason: uncertainDelivery
-            ? "uncertain_history_delivery"
-            : resumed._tag === "Success"
-              ? "handoff_budget_exhausted"
-              : "resume_failed",
+          reason: incompatibleCodexHistory
+            ? "unsupported_chatgpt_history"
+            : uncertainDelivery
+              ? "uncertain_history_delivery"
+              : resumed._tag === "Success"
+                ? "handoff_budget_exhausted"
+                : "resume_failed",
           errorTag: resumed._tag === "Failure" ? resumed.failure._tag : "ContextHandoffBudgetError",
         });
         const replacement = yield* loadFromProvider(

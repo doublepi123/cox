@@ -97,12 +97,22 @@ function scrollResultIntoView(row: HTMLElement | null) {
   row?.scrollIntoView({ block: "nearest" });
 }
 
+function scrollSectionIntoView(section: HTMLElement | null) {
+  section?.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
 function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   const Icon = SETTINGS_SECTION_ICONS[to];
   return <Icon className="size-4 shrink-0 text-(--sidebar-icon-color)" />;
 }
 
-export function SettingsSidebarNav({ pathname }: { pathname: string }) {
+export function SettingsSidebarNav({
+  pathname,
+  layout = "sidebar",
+}: {
+  pathname: string;
+  layout?: "sidebar" | "bar";
+}) {
   const { t, language } = useTranslation();
   const navArea = workspaceAreaProps("settings-nav", 0, t("Settings sections"));
   const navigate = useNavigate();
@@ -173,6 +183,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   }, [compactSearchOpen]);
 
   const handleSectionClick = (to: SettingsPath) => {
+    setCompactSearchOpen(false);
     void navigate({
       to,
       hash: "",
@@ -204,10 +215,11 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   };
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape" && isSearching) {
+    if (event.key === "Escape" && (isSearching || layout === "bar")) {
       event.preventDefault();
       event.stopPropagation();
-      clearSearch();
+      if (isSearching) clearSearch();
+      else setCompactSearchOpen(false);
       return;
     }
     if (results.length === 0) return;
@@ -228,10 +240,69 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
     }
   };
 
+  if (layout === "bar" && !compactSearchOpen) {
+    return (
+      <nav
+        role="navigation"
+        aria-label={t("Settings sections")}
+        className="shrink-0 border-b bg-sidebar text-sidebar-foreground"
+      >
+        <div className="flex items-center gap-1 overflow-x-auto px-2 py-1 [scrollbar-width:none]">
+          <SidebarMenuButton
+            size="icon"
+            className="size-10 shrink-0"
+            aria-label={t("Search settings")}
+            onClick={() => setCompactSearchOpen(true)}
+          >
+            <SearchIcon />
+          </SidebarMenuButton>
+          <div
+            {...sectionNavigation.containerProps}
+            role="tree"
+            aria-label={t("Settings sections")}
+            className="flex items-center gap-1"
+          >
+            {SETTINGS_NAV_GROUPS.map((group, index) => (
+              <div
+                key={group.heading ?? index}
+                role="group"
+                aria-label={group.heading ? t(group.heading) : undefined}
+                className="flex items-center gap-1 border-sidebar-border not-first:border-s not-first:ps-1"
+              >
+                {group.paths.map((to) => {
+                  const Icon = SETTINGS_SECTION_ICONS[to];
+                  const isActive = activePath === to || activePath.startsWith(`${to}/`);
+                  return (
+                    <SidebarMenuButton
+                      key={to}
+                      ref={isActive ? scrollSectionIntoView : undefined}
+                      data-settings-section={to}
+                      role="treeitem"
+                      tabIndex={sectionNavigation.tabIndexFor(to)}
+                      aria-selected={isActive}
+                      aria-current={isActive ? "page" : undefined}
+                      isActive={isActive}
+                      className="h-10 w-auto shrink-0 px-3"
+                      onClick={() => handleSectionClick(to)}
+                    >
+                      <Icon />
+                      <span>{t(SETTINGS_SECTION_LABELS[to])}</span>
+                    </SidebarMenuButton>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav
-      {...navArea}
+      {...(layout === "bar" ? {} : navArea)}
       role="navigation"
+      aria-label={t("Settings sections")}
       className={cn(
         "flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
         compactSearchOpen &&
@@ -245,6 +316,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               className={cn(
                 "flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
                 !compactSearchOpen && "max-md:hidden",
+                layout === "bar" && "h-10 pe-0",
               )}
             >
               <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
@@ -260,7 +332,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 onKeyDown={handleSearchKeyDown}
                 onFocus={() => setCompactSearchOpen(true)}
                 onBlur={() => {
-                  if (!isSearching) setCompactSearchOpen(false);
+                  if (!isSearching && layout !== "bar") setCompactSearchOpen(false);
                 }}
                 placeholder={t("Search")}
                 aria-label={t("Search settings")}
@@ -278,7 +350,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               {isSearching ? (
                 <Button
                   type="button"
-                  size="icon-micro"
+                  size={layout === "bar" ? "icon" : "icon-micro"}
                   variant="ghost-muted"
                   className="shrink-0"
                   aria-label={t("Clear settings search")}
@@ -287,7 +359,18 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                     searchInputRef.current?.focus();
                   }}
                 >
-                  <XIcon className="size-3" />
+                  <XIcon className={layout === "bar" ? "size-4" : "size-3"} />
+                </Button>
+              ) : layout === "bar" ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost-muted"
+                  className="shrink-0"
+                  aria-label={t("Close")}
+                  onClick={() => setCompactSearchOpen(false)}
+                >
+                  <XIcon className="size-4" />
                 </Button>
               ) : (
                 <Kbd>/</Kbd>
@@ -389,6 +472,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                                 aria-selected={isActive}
                                 aria-current={isActive ? "page" : undefined}
                                 isActive={isActive}
+                                className={layout === "bar" ? "h-10" : undefined}
                                 onClick={() => handleSectionClick(to)}
                               >
                                 <Icon />

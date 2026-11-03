@@ -615,7 +615,7 @@ function WhenExpressionBuilder({
           ) : null}
         </InputGroup>
         {parseError ? (
-          <div className="flex items-center gap-1.5 text-2xs text-destructive">
+          <div className="flex items-center gap-1.5 text-xs text-destructive">
             <CircleXIcon className="size-3.5" />
             {t(parseError)}
           </div>
@@ -831,7 +831,7 @@ function WhenClauseControl({
         render={
           <Button
             variant={expression ? "ghost" : "ghost-muted"}
-            size="micro"
+            size="xs"
             className="min-w-0 shrink"
           />
         }

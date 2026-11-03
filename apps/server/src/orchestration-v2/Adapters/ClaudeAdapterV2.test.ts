@@ -12008,6 +12008,154 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("keeps a fork running when its transcript replays the launch result", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const TASK_ID = "task-fork-subagent";
+        const TOOL_USE_ID = "toolu-fork-subagent";
+        const FORK_STARTED = "Fork started — that fork is you.";
+        const FINAL_REPORT = "Fork finished the directive.";
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const subagentEvents = () =>
+          harness.events.filter(
+            (
+              event,
+            ): event is Extract<
+              ProviderAdapter.ProviderAdapterV2Event,
+              { type: "subagent.updated" }
+            > => event.type === "subagent.updated",
+          );
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-fork-subagent"),
+            text: "Fork a worker.",
+            attachments: [],
+          }),
+        );
+        const forkFrames = [
+          claudeSdkFrame({
+            type: "system",
+            subtype: "task_started",
+            task_id: TASK_ID,
+            tool_use_id: TOOL_USE_ID,
+            description: "Fork worker",
+            subagent_type: "fork",
+            task_type: "local_agent",
+            prompt: "Execute the directive.",
+            uuid: "00000000-0000-4000-8000-000000000341",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+          claudeSdkFrame({
+            type: "assistant",
+            message: {
+              model: "claude-sonnet-4-6",
+              id: "msg_fork_launch",
+              type: "message",
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: TOOL_USE_ID,
+                  name: "Agent",
+                  input: { description: "Fork worker", prompt: "Execute the directive." },
+                },
+              ],
+            },
+            parent_tool_use_id: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000000342",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+          claudeSdkFrame({
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: TOOL_USE_ID,
+                  content: [{ type: "text", text: FORK_STARTED }],
+                },
+                {
+                  type: "text",
+                  text: "<fork-boilerplate>Execute one directive.</fork-boilerplate>",
+                },
+              ],
+            },
+            parent_tool_use_id: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000000343",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+          ...makeSubagentAssistantFrames({
+            parentToolUseId: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000000344",
+            text: "Working on it.",
+          }),
+        ];
+        for (const frame of forkFrames) {
+          yield* Queue.offer(harness.sdkMessages, frame);
+        }
+        const childThreadId = () => subagentEvents()[0]?.subagent.childThreadId ?? undefined;
+        yield* harness.until(() =>
+          subagentRouting(harness.events, [])
+            .assistantTexts(childThreadId())
+            .includes("Working on it."),
+        );
+        assert.deepEqual(
+          subagentEvents().map((event) => event.subagent.status),
+          subagentEvents().map(() => "running"),
+        );
+
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: TOOL_USE_ID,
+                  content: [{ type: "text", text: FINAL_REPORT }],
+                },
+              ],
+            },
+            parent_tool_use_id: null,
+            uuid: "00000000-0000-4000-8000-000000000345",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000346",
+            result: "The fork reported back.",
+          }),
+        );
+        yield* harness.awaitTerminal(1);
+
+        const completed = subagentEvents().filter((event) => event.subagent.status === "completed");
+        assert.isAbove(completed.length, 0);
+        assert.deepEqual(
+          completed.map((event) => event.subagent.result),
+          completed.map(() => FINAL_REPORT),
+        );
+        assert.notInclude(JSON.stringify(harness.events), FORK_STARTED);
+        assert.deepEqual(subagentRouting(harness.events, []).assistantTexts(childThreadId()), [
+          "Working on it.",
+          FINAL_REPORT,
+        ]);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
   it.effect.each([false, true])(
     "drops an idle start superseded by live completion, later resume %s",
     (resume) =>

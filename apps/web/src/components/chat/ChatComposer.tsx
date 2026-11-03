@@ -197,7 +197,7 @@ import {
   ComposerQueuedAttachmentRow,
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
-import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerPrimaryActions, StopGenerationButton } from "./ComposerPrimaryActions";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
@@ -1214,6 +1214,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : props.resumeCompactionTokens !== null && !props.keepFullHistory
       ? t("Open composer to compact and send")
       : t("Send message");
+  const showCollapsedComposerStopAction =
+    canInterrupt && !composerSendState.hasSendableContent && !isEditingQueuedMessage;
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
   const setPrompt = (nextPrompt: string) => {
@@ -3129,46 +3131,66 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   type="button"
                   data-chat-composer-transition-prompt="true"
                   className={cn(
-                    "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-sm focus:outline-none",
+                    "relative min-w-0 flex-1 bg-transparent p-0 text-left text-sm focus:outline-none after:absolute after:-inset-y-3.5 after:-start-3 after:end-0",
                     prompt.trim() ? "text-foreground" : "text-placeholder",
                   )}
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={expandMobileComposerStable}
                   aria-label={t("Expand composer")}
                 >
-                  {prompt.trim() ||
-                    (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
+                  <span className="block truncate">
+                    {prompt.trim() ||
+                      (showProviderUnavailable
+                        ? t("Enable a provider in Settings")
+                        : t("Ask anything..."))}
+                  </span>
                 </button>
                 {collapsedComposerImagePreviews}
-                <button
-                  type="button"
-                  data-chat-composer-transition-actions="true"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
-                  disabled={collapsedComposerPrimaryActionDisabled}
-                  aria-label={collapsedComposerPrimaryActionLabel}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (showResumeAction) onResume();
-                    else if (props.resumeCompactionTokens !== null && !props.keepFullHistory)
-                      expandMobileComposer();
-                    else submitComposer();
-                  }}
-                >
-                  {showResumeAction ? (
-                    <PlayIcon className="size-4 fill-current" aria-hidden="true" />
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path
-                        d="M8 3L8 13M8 3L4 7M8 3L12 7"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
-                </button>
+                {showCollapsedComposerStopAction ? (
+                  <StopGenerationButton
+                    data-chat-composer-transition-actions="true"
+                    className="size-8"
+                    disabled={!canOperateThread}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onStop={handleInterruptPrimaryActionStable}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    data-chat-composer-transition-actions="true"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
+                    disabled={collapsedComposerPrimaryActionDisabled}
+                    aria-label={collapsedComposerPrimaryActionLabel}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (showResumeAction) onResume();
+                      else if (props.resumeCompactionTokens !== null && !props.keepFullHistory)
+                        expandMobileComposer();
+                      else submitComposer();
+                    }}
+                  >
+                    {showResumeAction ? (
+                      <PlayIcon className="size-4 fill-current" aria-hidden="true" />
+                    ) : (
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M8 3L8 13M8 3L4 7M8 3L12 7"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                )}
               </div>
             ) : null}
 
@@ -3278,7 +3300,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     buildContextClipboardFragment={buildContextClipboardFragmentStable}
                     importContextFragment={importContextFragmentStable}
                     skills={selectedProviderSkills}
-                    className={cn(showMobilePendingAnswerActions && "max-sm:pb-12")}
                     onChange={onPromptChangeStable}
                     onCommandKeyDown={onComposerCommandKeyStable}
                     onPageScrollKeyDown={onPageScrollKeyDown}
@@ -3287,6 +3308,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCitationSubmitAndSend={submitCitationAndSendStable}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
+                    placeholderClassName="max-sm:line-clamp-2"
                     placeholder={
                       isComposerApprovalState
                         ? activePendingApproval?.supportsFeedback
@@ -3315,36 +3337,44 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                   />
                 </ComposerContextActionsContext>
-                {showMobilePendingAnswerActions ? (
-                  <div
-                    data-chat-composer-mobile-pending-actions="true"
-                    className="absolute bottom-0 right-0 flex items-center justify-end gap-1"
-                  >
-                    <ComposerPrimaryActions
-                      compact
-                      canOperateThread={canOperateThread}
-                      pendingAction={pendingPrimaryAction}
-                      isRunning={false}
-                      canInterrupt={false}
-                      showPlanFollowUpPrompt={false}
-                      promptHasText={false}
-                      isSendBusy={isSendBusy}
-                      sendDisabledReason={sendDisabledReason}
-                      isEnvironmentUnavailable={
-                        environmentUnavailable !== null ||
-                        noProviderAvailable ||
-                        projectSelectionRequired
-                      }
-                      isPreparingWorktree={false}
-                      hasSendableContent={false}
-                      preserveComposerFocusOnPointerDown
-                      onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                      onInterrupt={handleInterruptPrimaryActionStable}
-                      onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryActionStable}
-                    />
-                  </div>
-                ) : null}
               </div>
+              {showMobilePendingAnswerActions ? (
+                <div
+                  data-chat-composer-mobile-pending-actions="true"
+                  className="flex items-center justify-end gap-2 pt-1.5"
+                >
+                  {canInterrupt ? (
+                    <StopGenerationButton
+                      className="me-auto size-8"
+                      disabled={!canOperateThread}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onStop={handleInterruptPrimaryActionStable}
+                    />
+                  ) : null}
+                  <ComposerPrimaryActions
+                    compact
+                    canOperateThread={canOperateThread}
+                    pendingAction={pendingPrimaryAction}
+                    isRunning={false}
+                    canInterrupt={false}
+                    showPlanFollowUpPrompt={false}
+                    promptHasText={false}
+                    isSendBusy={isSendBusy}
+                    sendDisabledReason={sendDisabledReason}
+                    isEnvironmentUnavailable={
+                      environmentUnavailable !== null ||
+                      noProviderAvailable ||
+                      projectSelectionRequired
+                    }
+                    isPreparingWorktree={false}
+                    hasSendableContent={false}
+                    preserveComposerFocusOnPointerDown
+                    onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                    onInterrupt={handleInterruptPrimaryActionStable}
+                    onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryActionStable}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <ComposerPromptLengthValidation

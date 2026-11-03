@@ -1,5 +1,5 @@
 import { useTranslation } from "../../i18n";
-import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
+import { memo, type ComponentProps, type MouseEventHandler, type PointerEventHandler } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -89,6 +89,41 @@ const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
   event.preventDefault();
 };
 
+export function StopGenerationButton({
+  className,
+  disabled = false,
+  onStop,
+  ...props
+}: Omit<ComponentProps<"button">, "children" | "onClick" | "type"> & { onStop: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
+              className,
+            )}
+            {...props}
+            disabled={disabled}
+            onClick={() => {
+              if (!disabled) onStop();
+            }}
+            aria-label={t("Stop generation")}
+          />
+        }
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+          <rect x="2" y="2" width="8" height="8" rx="1.5" />
+        </svg>
+      </TooltipTrigger>
+      <TooltipPopup>{t("Interrupt")}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   compact,
   canOperateThread,
@@ -137,30 +172,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
 
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
-    <Tooltip key="interrupt">
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
-              insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
-            )}
-            {...pointerFocusProps}
-            disabled={!canOperateThread}
-            onClick={() => {
-              if (canOperateThread) onInterrupt();
-            }}
-            aria-label={t("Stop generation")}
-          />
-        }
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-          <rect x="2" y="2" width="8" height="8" rx="1.5" />
-        </svg>
-      </TooltipTrigger>
-      <TooltipPopup>{t("Interrupt")}</TooltipPopup>
-    </Tooltip>
+    <StopGenerationButton
+      key="interrupt"
+      className={insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8"}
+      {...pointerFocusProps}
+      disabled={!canOperateThread}
+      onStop={onInterrupt}
+    />
   );
 
   if (pendingAction) {

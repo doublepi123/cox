@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.1.16 — 2026-11-03
+
+- Improve phone layouts for approvals, questions, settings and workspace panels. Enlarge tab
+  controls, keep narrow headers clear of panel buttons, and avoid opening the touch keyboard
+  when a search or file panel opens.
+- Let the system Back gesture dismiss stacked sidebar, panel and model overlays in order,
+  preserving route navigation without extra history entries or unnecessary reloads.
+- Add terminal touch keys for Escape, Tab, Ctrl+C and arrows, scrollable phone terminal tabs,
+  and a single visible terminal pane on narrow screens.
+- Keep Claude fork subagents running when their transcripts replay the launch acknowledgement.
+  Parent and child elapsed timers continue updating until the subagent actually finishes.
+- Disable incompatible native Codex subagents for managed ChatGPT connections, including
+  model-selected multi-agent modes. Recover a rejected conversation on the next message in a
+  fresh native thread while preserving Cox's task history and context.
+- Honor custom Claude model context windows and refresh their capabilities when the selected
+  model changes. Update the managed Codex installation to 0.166.0.
 - Stop publishing Android-specific server bundles. CoCode now installs the standard npm package
   and prepares native dependencies in its own runtime. Keep previously published assets for older
   clients, and run the offline Cursor SDK smoke check against the fresh npm installation instead.

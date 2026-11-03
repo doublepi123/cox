@@ -65,9 +65,12 @@ function formatBytes(value: number): string {
 }
 
 function RelativeTimeNoWrap(props: { value: DateTime.Utc }) {
-  const relative = useRelativeTimeState(DateTime.formatIso(props.value));
+  const { t, language } = useTranslation();
+  const relative = useRelativeTimeState(DateTime.formatIso(props.value), language);
   if (relative.status !== "relative") return null;
-  return relative.suffix ? `${relative.value}\u00a0${relative.suffix}` : relative.value;
+  return relative.suffix
+    ? t("{time} ago", { time: relative.value }).replaceAll(" ", "\u00a0")
+    : relative.value;
 }
 
 function shortenTraceId(traceId: string): string {
@@ -680,8 +683,8 @@ function ProcessResourceHistoryTable({
 }
 
 function DiagnosticsLastChecked({ checkedAt }: { checkedAt: DateTime.Utc | null }) {
-  const { t: translateUi } = useTranslation();
-  const relative = useRelativeTimeState(checkedAt ? DateTime.formatIso(checkedAt) : null);
+  const { t: translateUi, language } = useTranslation();
+  const relative = useRelativeTimeState(checkedAt ? DateTime.formatIso(checkedAt) : null, language);
 
   if (relative.status === "missing") {
     return <span className="text-2xs text-muted-foreground/50">{translateUi("Checking")}</span>;
@@ -696,17 +699,9 @@ function DiagnosticsLastChecked({ checkedAt }: { checkedAt: DateTime.Utc | null 
   }
 
   return (
-    <span className="text-2xs text-muted-foreground/60">
-      {relative.suffix ? (
-        <>
-          {translateUi("Checked")} <span className="font-mono tabular-nums">{relative.value}</span>{" "}
-          {relative.suffix}
-        </>
-      ) : (
-        <>
-          {translateUi("Checked")} {relative.value}
-        </>
-      )}
+    <span className="text-2xs text-muted-foreground/60 tabular-nums">
+      {translateUi("Checked")}{" "}
+      {relative.suffix ? translateUi("{time} ago", { time: relative.value }) : relative.value}
     </span>
   );
 }

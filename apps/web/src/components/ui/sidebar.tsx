@@ -23,6 +23,7 @@ import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
 import * as Schema from "effect/Schema";
 import { announceSidebarVisibility } from "~/lib/accessibilityAnnouncements";
+import { useHistoryBackDismiss } from "~/lib/historyBackDismiss";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -220,6 +221,7 @@ function SidebarProvider({
           className,
         )}
         data-sidebar-state={state}
+        data-mobile-sheet={isMobile && mobileSheetMounted ? "open" : undefined}
         data-slot="sidebar-wrapper"
         style={
           {
@@ -277,7 +279,11 @@ function Sidebar({
 }) {
   const { t } = useTranslation();
   const { isMobile, state, openMobile, setOpenMobile, setMobileSheetElement } = useSidebar();
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
   const offcanvasCollapsed = !isMobile && collapsible === "offcanvas" && state === "collapsed";
+  useHistoryBackDismiss(isMobile && coarsePointer && collapsible !== "none" && openMobile, () =>
+    setOpenMobile(false),
+  );
 
   const resolvedResizable = resolveSidebarResizable({ collapsible, isMobile, resizable });
   const instanceContextValue: SidebarInstanceContextProps = { side, resizable: resolvedResizable };
@@ -609,7 +615,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       className={cn(
-        "relative flex min-w-0 w-full flex-1 flex-col bg-background surface-grain",
+        "relative flex min-w-0 w-full flex-1 flex-col bg-background surface-grain group-data-[mobile-sheet=open]/sidebar-wrapper:isolate",
         "md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm/5",
         className,
       )}

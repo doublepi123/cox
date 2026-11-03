@@ -37,6 +37,8 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
     baseDir?: string;
     local?: { version: string; appServerFails?: boolean; versionFails?: boolean };
     platform?: NodeJS.Platform;
+    arch?: string;
+    useDefaultRelease?: boolean;
     spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"];
     runtimeRenameFailures?: number;
   } = {},
@@ -84,7 +86,7 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
   const spawner = input.spawner ?? (yield* ChildProcessSpawner.ChildProcessSpawner);
   const installation = yield* CodexInstallation.makeCodexInstallation({
     baseDir,
-    releaseAsset: { ...asset, sha256 },
+    ...(input.useDefaultRelease ? {} : { releaseAsset: { ...asset, sha256 } }),
     validate: () => Effect.void,
     ...input.options,
   }).pipe(
@@ -95,7 +97,7 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
       refreshInBackground: Effect.void,
     }),
     Effect.provideService(HostProcess.Platform, input.platform ?? "darwin"),
-    Effect.provideService(HostProcess.Architecture, "arm64"),
+    Effect.provideService(HostProcess.Architecture, input.arch ?? "arm64"),
     Effect.provideService(HostProcess.Environment, {
       PATH: input.local ? localDirectory : "",
       SystemRoot: "C:\\Windows",
@@ -138,7 +140,26 @@ const terminalState = (installation: CodexInstallation.CodexInstallation["Servic
     Effect.map(Option.getOrThrow),
   );
 
-it.effect.each(["0.156.0", "0.156.1", "0.156.2", "0.157.0"])(
+it.effect.each([
+  { platform: "darwin", arch: "arm64", archiveBytes: 165951869 },
+  { platform: "darwin", arch: "x64", archiveBytes: 180076524 },
+  { platform: "linux", arch: "arm64", archiveBytes: 187370368 },
+  { platform: "linux", arch: "x64", archiveBytes: 199694962 },
+  { platform: "win32", arch: "arm64", archiveBytes: 187024318 },
+  { platform: "win32", arch: "x64", archiveBytes: 202589789 },
+] as const)("pins managed Codex 0.166.0 for $platform/$arch", ({ platform, arch, archiveBytes }) =>
+  Effect.gen(function* () {
+    const h = yield* makeHarness({ platform, arch, useDefaultRelease: true });
+    expect(yield* h.installation.state).toMatchObject({
+      version: "0.166.0",
+      totalBytes: archiveBytes,
+      installedVersion: null,
+    });
+    expect(h.downloads()).toBe(0);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect.each(["0.156.0", "0.156.1", "0.156.2", "0.157.0", "0.166.0"])(
   "reuses installed Codex %s without downloading or taking ownership of it",
   (version) =>
     Effect.gen(function* () {

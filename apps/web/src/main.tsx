@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import "@fontsource-variable/inter";
 import "./index.css";
+import "./lib/historyBackDismiss";
 
 import { initializeI18n } from "./i18n";
 

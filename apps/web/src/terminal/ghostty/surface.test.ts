@@ -21,6 +21,7 @@ import {
   terminalWheelDeltaRows,
   GhosttyTerminalSurface,
   type GhosttyTerminalSurfaceOptions,
+  type TerminalKeyPress,
 } from "./surface";
 
 vi.mock("./vendor/ghostty-vt.wasm?url", async () => ({
@@ -341,6 +342,61 @@ describe("GhosttyTerminalSurface visibility", () => {
       "\x1b[57442;5u",
       "\x1b[57442;1:3u",
     ]);
+  });
+
+  it("encodes touch key taps like hardware presses, including application cursor mode", async () => {
+    const harness = createHarness();
+    const surface = await harness.create();
+    surface.pressKey({ key: "Escape", code: "Escape" });
+    surface.pressKey({ key: "Tab", code: "Tab" });
+    surface.pressKey({ key: "c", code: "KeyC", ctrlKey: true });
+    surface.pressKey({ key: "ArrowUp", code: "ArrowUp" });
+    surface.pressKey({ key: "ArrowLeft", code: "ArrowLeft" });
+    surface.write("\x1b[?1h");
+    surface.pressKey({ key: "ArrowUp", code: "ArrowUp" });
+    surface.write("\x1b[?1l\x1b[>11u");
+    surface.pressKey({ key: "c", code: "KeyC", ctrlKey: true });
+
+    expect(harness.onData.mock.calls.map(([data]) => data)).toEqual([
+      "\x1b",
+      "\t",
+      "\x03",
+      "\x1b[A",
+      "\x1b[D",
+      "\x1bOA",
+      "\x1b[99;5u",
+      "\x1b[99;5:3u",
+    ]);
+  });
+
+  it("sends exactly what the matching hardware key events send for every touch key", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ beforeKey: () => true });
+    const presses: TerminalKeyPress[] = [
+      { key: "Escape", code: "Escape" },
+      { key: "Tab", code: "Tab" },
+      { key: "c", code: "KeyC", ctrlKey: true },
+      { key: "ArrowUp", code: "ArrowUp" },
+      { key: "ArrowDown", code: "ArrowDown" },
+      { key: "ArrowLeft", code: "ArrowLeft" },
+      { key: "ArrowRight", code: "ArrowRight" },
+    ];
+    const sent = () => {
+      const data = harness.onData.mock.calls.map(([chunk]) => chunk);
+      harness.onData.mockClear();
+      return data;
+    };
+    for (const mode of ["", "\x1b[?1h", "\x1b[?1l\x1b[>11u", "\x1b[?1h\x1b[>31u"]) {
+      surface.write(mode);
+      for (const press of presses) {
+        key(surface, press.key, press.code, press);
+        key(surface, press.key, press.code, press, "keyup");
+        const hardware = sent();
+        surface.pressKey(press);
+        expect(hardware.length).toBeGreaterThan(0);
+        expect(sent()).toEqual(hardware);
+      }
+    }
   });
 
   it("keeps a held Kitty press through focus changes and an app-consumed repeat", async () => {

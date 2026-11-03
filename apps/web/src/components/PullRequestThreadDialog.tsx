@@ -10,6 +10,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useRef, useState } from "react";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 import {
   readCachedPullRequestResolution,
@@ -70,6 +71,8 @@ export function PullRequestThreadDialog({
   onPrepared,
 }: PullRequestThreadDialogProps) {
   const { t } = useTranslation();
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
+  const popupRef = useRef<HTMLDivElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const [reference, setReference] = useState(initialReference ?? "");
   const [referenceDirty, setReferenceDirty] = useState(false);
@@ -197,8 +200,10 @@ export function PullRequestThreadDialog({
       }}
     >
       <DialogPopup
+        ref={popupRef}
         className="max-w-xl"
         initialFocus={() => {
+          if (coarsePointer) return popupRef.current;
           referenceInputRef.current?.focus();
           referenceInputRef.current?.select();
           return false;

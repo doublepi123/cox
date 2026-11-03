@@ -9045,20 +9045,22 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
+          const messageParentToolUseId = parentToolUseIdFromSdkMessage(message);
           for (const toolUse of claudeToolUseBlocksFromAssistantMessage(message)) {
             const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
             if (toolUse.name === "Agent") {
+              if (toolUse.id === messageParentToolUseId) continue;
               rememberClaudeSubagentLaunch(
                 subagentModelCatalog,
                 context,
                 pendingSubagentLaunchesByToolUseId,
                 toolUse.id,
                 nativeToolInput,
-                parentToolUseIdFromSdkMessage(message),
+                messageParentToolUseId,
               );
               continue;
             }
-            if (toolUse.name === "TodoWrite" && parentToolUseIdFromSdkMessage(message) === null) {
+            if (toolUse.name === "TodoWrite" && messageParentToolUseId === null) {
               yield* emitClaudePlanProjection({
                 context,
                 nativeItemId: toolUse.id,
@@ -9071,7 +9073,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               nativeItemId: toolUse.id,
               toolName: toolUse.name,
               toolInput: nativeToolInput,
-              parentToolUseId: parentToolUseIdFromSdkMessage(message),
+              parentToolUseId: messageParentToolUseId,
               presentation:
                 toolPresentations.get(toolUse.id) ??
                 mcpToolPresentation({
@@ -9091,6 +9093,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           for (const { toolResult, output } of claudeToolResultEntriesFromMessage(message)) {
+            if (toolResult.tool_use_id === messageParentToolUseId) continue;
             const subagent = yield* resolveSubagentByToolUseId(context, toolResult.tool_use_id);
             const runHandles = parseClaudeWorkflowRunHandles(claudeNativeToolOutputValue(output));
             if (subagent !== undefined && runHandles !== undefined) {
@@ -9125,7 +9128,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
               continue;
             }
-            const parentToolUseId = parentToolUseIdFromSdkMessage(message);
             const toolCall =
               findToolCall(context, toolResult.tool_use_id) ??
               (yield* ensureToolCallStarted({
@@ -9133,7 +9135,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 nativeItemId: toolResult.tool_use_id,
                 toolName: toolNameFromClaudeToolResult(toolResult),
                 toolInput: EMPTY_CLAUDE_NATIVE_TOOL_INPUT,
-                parentToolUseId,
+                parentToolUseId: messageParentToolUseId,
               }));
             yield* settleToolCall({
               context,

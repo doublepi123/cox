@@ -14,6 +14,7 @@ import {
   useSettingsScope,
 } from "../components/settings/SettingsScopeContext";
 import { useEnvironments } from "../state/environments";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { SettingsScopeNotice } from "../components/settings/SettingsScopeNotice";
 import { SETTINGS_DEVICE_ONLY_PATHS } from "../components/settings/SettingsScopeSentence";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
@@ -120,11 +121,12 @@ function SettingsContentLayout() {
       ? environment?.environmentId
       : JSON.stringify(search);
   const [restoreSignal, setRestoreSignal] = useState(0);
+  const isPhoneLayout = useMediaQuery("max-sm");
 
   return (
     <AppRouteModal label={t("Settings")}>
       <div className="relative flex min-h-0 flex-1">
-        <SettingsSidebarNav pathname={location.pathname} />
+        {isPhoneLayout ? null : <SettingsSidebarNav pathname={location.pathname} />}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
             <SettingsBreadcrumb pathname={location.pathname} />
@@ -137,6 +139,7 @@ function SettingsContentLayout() {
               <AppRouteModalClose />
             </div>
           </header>
+          {isPhoneLayout ? <SettingsSidebarNav pathname={location.pathname} layout="bar" /> : null}
           <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
             <SettingsScopeBoundary pathname={location.pathname}>
               <Outlet />

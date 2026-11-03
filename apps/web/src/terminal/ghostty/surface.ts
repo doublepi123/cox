@@ -5,6 +5,7 @@ import {
   GHOSTTY_CELL_WIDE,
   GhosttyTerminalCore,
   type GhosttyCell,
+  type GhosttyKeyInput,
   type GhosttyScrollbar,
   type GhosttySnapshot,
   type GhosttyTheme,
@@ -48,6 +49,22 @@ const TERMINAL_FONT_LOAD_VARIANTS = [
 export interface GhosttyTerminalFont {
   readonly family?: string;
   readonly size?: number;
+}
+
+export type TerminalKeyPress = Pick<GhosttyKeyInput, "code" | "key"> &
+  Partial<Pick<GhosttyKeyInput, "altKey" | "ctrlKey" | "shiftKey">>;
+
+export function terminalKeyPressInput(press: TerminalKeyPress): GhosttyKeyInput {
+  return {
+    altKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    ...press,
+    metaKey: false,
+    isComposing: false,
+    repeat: false,
+    getModifierState: () => false,
+  };
 }
 
 let symbolsFontLoad: Promise<void> | null = null;
@@ -967,6 +984,17 @@ export class GhosttyTerminalSurface {
     if (text.length === 0) return;
     const encoded = this.core.encodePaste(text);
     if (encoded.length > 0) this.options.onData(encoded);
+  }
+
+  pressKey(press: TerminalKeyPress): void {
+    if (this.disposed) return;
+    this.clearPrimedCopy();
+    const event = terminalKeyPressInput(press);
+    const data = this.core.encodeKey(event);
+    if (data.length === 0) return;
+    this.options.onData(data);
+    const release = this.core.encodeKey(event, "release");
+    if (release.length > 0) this.options.onData(release);
   }
 
   // The terminal selection is the only browser-readable PRIMARY-like buffer.

@@ -259,7 +259,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 const isSelected =
                   isOptimisticallySelected || draftSelectedOptions?.[index] === true;
                 const className = cn(
-                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-left sm:ps-1.5 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
+                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-left sm:ps-1.5 pointer-coarse:py-3 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
                   isSelected ? "text-foreground" : "text-foreground/70 hover:bg-muted/30",
                   (disabled || isResponding) && "opacity-50 cursor-not-allowed",
                   !disabled && !isResponding && "cursor-pointer",
@@ -281,7 +281,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                       ) : null}
                     </div>
                     {index < 9 ? (
-                      <span className="flex h-5 w-7 shrink-0 items-center justify-center sm:w-6">
+                      <span className="flex h-5 w-7 shrink-0 items-center justify-center sm:w-6 pointer-coarse:hidden">
                         <Kbd>{index + 1}</Kbd>
                       </span>
                     ) : null}

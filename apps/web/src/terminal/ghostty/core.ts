@@ -137,6 +137,19 @@ export interface GhosttyScrollbar {
   readonly len: number;
 }
 
+export type GhosttyKeyInput = Pick<
+  KeyboardEvent,
+  | "altKey"
+  | "code"
+  | "ctrlKey"
+  | "getModifierState"
+  | "isComposing"
+  | "key"
+  | "metaKey"
+  | "repeat"
+  | "shiftKey"
+>;
+
 export interface GhosttyPointInput {
   readonly x: number;
   readonly y: number;
@@ -528,7 +541,7 @@ export class GhosttyTerminalCore {
     );
   }
 
-  encodeKey(event: KeyboardEvent, action: "press" | "release" = "press"): string {
+  encodeKey(event: GhosttyKeyInput, action: "press" | "release" = "press"): string {
     this.ensureActive();
     this.runtime.call("ghostty_key_encoder_setopt_from_terminal", this.keyEncoder, this.terminal);
     this.runtime.call(

@@ -56,6 +56,7 @@ import {
 import {
   GhosttyTerminalSurface,
   type GhosttyTerminalSurfaceOptions,
+  type TerminalKeyPress,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
@@ -80,6 +81,8 @@ import { readLocalApi } from "~/localApi";
 import { confirmTerminalClose } from "~/lib/terminalCloseConfirm";
 import { useClientSettings } from "../hooks/useSettings";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { TerminalTouchKeys } from "./terminal/TerminalTouchKeys";
 import { attachedTerminalSessionAtom } from "../state/terminalSessions";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { serverEnvironment } from "../state/server";
@@ -476,6 +479,7 @@ interface TerminalViewportProps {
   providerInstanceId?: ProviderInstanceId;
   onSessionExited: () => void;
   onAddTerminalContext?: (selection: TerminalContextSelection) => void;
+  onSurfaceChange?: (surface: GhosttyTerminalSurface, attached: boolean) => void;
   /** Focuses the viewport when it mounts; otherwise focus arrives through `focusTerminal`. */
   autoFocus?: boolean;
   visible: boolean;
@@ -512,6 +516,7 @@ function TerminalSessionViewport({
   providerInstanceId,
   onSessionExited,
   onAddTerminalContext,
+  onSurfaceChange,
   autoFocus = false,
   visible,
   keybindings,
@@ -555,6 +560,11 @@ function TerminalSessionViewport({
   const handleAddTerminalContext = useEffectEvent((selection: TerminalContextSelection) => {
     onAddTerminalContext?.(selection);
   });
+  const handleSurfaceChange = useEffectEvent(
+    (surface: GhosttyTerminalSurface, attached: boolean) => {
+      onSurfaceChange?.(surface, attached);
+    },
+  );
   const canAddSelectionToChat = useEffectEvent(() => onAddTerminalContext !== undefined);
   const readTerminalLabel = useEffectEvent(() => terminalLabel);
   const terminalFontFamily = useClientSettings((settings) =>
@@ -1100,7 +1110,9 @@ function TerminalSessionViewport({
       const cleanups = setupCleanups;
       setupCleanups = [];
       setupTerminal = null;
+      handleSurfaceChange(terminal, true);
       return () => {
+        handleSurfaceChange(terminal, false);
         for (const cleanup of cleanups.toReversed()) cleanup();
         if (terminalRef.current === terminal) terminalRef.current = null;
         terminal.dispose();
@@ -1247,6 +1259,15 @@ function TerminalActionButton({
   );
 }
 
+function revealTerminalTab(tab: HTMLButtonElement | null) {
+  const strip = tab?.parentElement;
+  if (!tab || !strip) return;
+  const tabBox = tab.getBoundingClientRect();
+  const stripBox = strip.getBoundingClientRect();
+  if (tabBox.left < stripBox.left) strip.scrollLeft -= stripBox.left - tabBox.left;
+  else if (tabBox.right > stripBox.right) strip.scrollLeft += tabBox.right - stripBox.right;
+}
+
 function TerminalSplitPanes({
   terminalIds,
   splitDirection,
@@ -1259,6 +1280,7 @@ function TerminalSplitPanes({
   threadRef,
   threadId,
   onAddTerminalContext,
+  onSurfaceChange,
   visible,
   keybindings,
 }: {
@@ -1273,6 +1295,7 @@ function TerminalSplitPanes({
   threadRef: ScopedThreadRef;
   threadId: ThreadId;
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
+  onSurfaceChange: (terminalId: string, surface: GhosttyTerminalSurface, attached: boolean) => void;
   visible: boolean;
   keybindings: ResolvedKeybindingsConfig;
 }) {
@@ -1322,6 +1345,9 @@ function TerminalSplitPanes({
                   : {})}
                 onSessionExited={() => onCloseTerminal(terminalId, threadRef)}
                 onAddTerminalContext={onAddTerminalContext}
+                onSurfaceChange={(surface, attached) =>
+                  onSurfaceChange(terminalId, surface, attached)
+                }
                 visible={visible}
                 keybindings={keybindings}
               />
@@ -1463,6 +1489,9 @@ export default function ThreadTerminalDrawer({
   const canOperateTerminal = useEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope);
   const terminalArea = workspaceAreaProps("terminal", 5, "Terminal");
   const isPanel = mode === "panel";
+  const compactLayout = useMediaQuery("max-sm");
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
+  const terminalSurfacesRef = useRef<Map<string, GhosttyTerminalSurface> | null>(null);
   const [advancedTypography] = useLocalStorage(
     TYPOGRAPHY_ADVANCED_STORAGE_KEY,
     false,
@@ -1596,16 +1625,17 @@ export default function ThreadTerminalDrawer({
       ? groupIndexById
       : (groupIndexByTerminalId.get(resolvedActiveTerminalId) ?? 0);
 
-  const visibleTerminalIds =
+  const activeGroupTerminalIds =
     resolvedTerminalGroups[resolvedActiveGroupIndex]?.terminalIds ??
     (normalizedTerminalIds.length > 0 ? [resolvedActiveTerminalId] : []);
+  const visibleTerminalIds = compactLayout ? [resolvedActiveTerminalId] : activeGroupTerminalIds;
   const splitDirection =
     resolvedTerminalGroups[resolvedActiveGroupIndex]?.splitDirection ?? "horizontal";
-  const hasTerminalSidebar = normalizedTerminalIds.length > 1;
+  const hasTerminalSidebar = !compactLayout && normalizedTerminalIds.length > 1;
   const showGroupHeaders =
     resolvedTerminalGroups.length > 1 ||
     resolvedTerminalGroups.some((terminalGroup) => terminalGroup.terminalIds.length > 1);
-  const hasReachedSplitLimit = visibleTerminalIds.length >= MAX_TERMINALS_PER_GROUP;
+  const hasReachedSplitLimit = activeGroupTerminalIds.length >= MAX_TERMINALS_PER_GROUP;
   const resolveTerminalLaunchLocation = (terminalId: string): TerminalLaunchLocation =>
     terminalLaunchLocationsById?.get(terminalId) ?? {
       cwd,
@@ -1648,6 +1678,20 @@ export default function ThreadTerminalDrawer({
         onCloseTerminal(terminalId, threadRef);
       }
     });
+  };
+  const setTerminalSurface = (
+    terminalId: string,
+    surface: GhosttyTerminalSurface,
+    attached: boolean,
+  ) => {
+    const surfaces = terminalSurfacesRef.current ?? new Map<string, GhosttyTerminalSurface>();
+    terminalSurfacesRef.current = surfaces;
+    if (attached) surfaces.set(terminalId, surface);
+    else if (surfaces.get(terminalId) === surface) surfaces.delete(terminalId);
+  };
+  const pressActiveTerminalKey = (press: TerminalKeyPress) => {
+    if (!canOperateTerminal) return;
+    terminalSurfacesRef.current?.get(resolvedActiveTerminalId)?.pressKey(press);
   };
 
   const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1757,7 +1801,7 @@ export default function ThreadTerminalDrawer({
       >
         {!isPanel ? (
           <div
-            className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
+            className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize touch-none"
             onPointerDown={handleResizePointerDown}
             onPointerMove={handleResizePointerMove}
             onPointerUp={handleResizePointerEnd}
@@ -1794,7 +1838,7 @@ export default function ThreadTerminalDrawer({
     >
       {!isPanel ? (
         <div
-          className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
+          className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize touch-none"
           onPointerDown={handleResizePointerDown}
           onPointerMove={handleResizePointerMove}
           onPointerUp={handleResizePointerEnd}
@@ -1803,12 +1847,58 @@ export default function ThreadTerminalDrawer({
         />
       ) : null}
 
-      {!hasTerminalSidebar && (
+      {compactLayout ? (
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/70 ps-1.5 pe-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+            {normalizedTerminalIds.map((terminalId) => {
+              const isActive = terminalId === resolvedActiveTerminalId;
+              return (
+                <button
+                  key={terminalId}
+                  ref={isActive ? revealTerminalTab : undefined}
+                  type="button"
+                  aria-current={isActive ? "true" : undefined}
+                  className={cn(
+                    "relative flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1",
+                    isActive ? "bg-accent text-foreground" : "text-muted-foreground",
+                  )}
+                  onClick={() => onActiveTerminalChange(terminalId)}
+                >
+                  <TerminalSquare className="size-3.5 shrink-0" />
+                  <span className="max-w-32 truncate">
+                    {terminalLabelById.get(terminalId) ?? t("Terminal")}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={t("New terminal")}
+            disabled={!canOperateTerminal}
+            onClick={onNewTerminalAction}
+          >
+            <Plus />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={t("Close terminal")}
+            disabled={!canOperateTerminal}
+            onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ) : null}
+
+      {!compactLayout && !hasTerminalSidebar && (
         <div className="pointer-events-none absolute right-2 top-2 z-20">
           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
             <TerminalActionButton
               disabled={!canOperateTerminal}
-              className={`p-1 text-foreground/90 transition-colors ${
+              className={`p-1 text-foreground/90 transition-colors pointer-coarse:p-2 ${
                 hasReachedSplitLimit
                   ? "cursor-not-allowed opacity-64 hover:bg-transparent"
                   : "hover:bg-accent"
@@ -1821,7 +1911,7 @@ export default function ThreadTerminalDrawer({
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               disabled={!canOperateTerminal}
-              className={`p-1 text-foreground/90 transition-colors ${
+              className={`p-1 text-foreground/90 transition-colors pointer-coarse:p-2 ${
                 hasReachedSplitLimit
                   ? "cursor-not-allowed opacity-64 hover:bg-transparent"
                   : "hover:bg-accent"
@@ -1834,7 +1924,7 @@ export default function ThreadTerminalDrawer({
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               disabled={!canOperateTerminal}
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className="p-1 text-foreground/90 transition-colors hover:bg-accent pointer-coarse:p-2"
               onClick={onNewTerminalAction}
               label={newTerminalActionLabel}
             >
@@ -1843,7 +1933,7 @@ export default function ThreadTerminalDrawer({
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               disabled={!canOperateTerminal}
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className="p-1 text-foreground/90 transition-colors hover:bg-accent pointer-coarse:p-2"
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
@@ -1873,6 +1963,7 @@ export default function ThreadTerminalDrawer({
               threadRef={threadRef}
               threadId={threadId}
               onAddTerminalContext={onAddTerminalContext}
+              onSurfaceChange={setTerminalSurface}
               visible={visible}
               keybindings={keybindings}
             />
@@ -1944,6 +2035,9 @@ export default function ThreadTerminalDrawer({
           )}
         </div>
       </div>
+      {coarsePointer && canOperateTerminal ? (
+        <TerminalTouchKeys onPress={pressActiveTerminalKey} />
+      ) : null}
     </aside>
   );
 }

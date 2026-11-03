@@ -384,6 +384,10 @@ export function showContextMenuFallback<T extends string>(
       parentTrigger?: HTMLButtonElement,
     ) => {
       closeMenusFromLevel(level);
+      const rowMinHeight =
+        typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches
+          ? "2.5rem"
+          : "1.75rem";
 
       const menu = document.createElement("div");
       menu.className =
@@ -441,8 +445,7 @@ export function showContextMenuFallback<T extends string>(
           : isLeafDestructive
             ? `${rowBase} text-destructive-foreground hover:bg-destructive/10 hover:text-destructive-foreground`
             : `${rowBase} text-foreground hover:bg-accent hover:text-accent-foreground`;
-        button.style.cssText =
-          "display:flex;width:100%;min-height:1.75rem;align-items:center;gap:0.5rem;border:0;border-radius:var(--radius-sm);background:transparent;padding:0.25rem 0.5rem;color:var(--contrast-foreground);font-family:var(--font-sans,system-ui,sans-serif);font-size:0.875rem;line-height:1.25rem;text-align:left;cursor:default;";
+        button.style.cssText = `display:flex;width:100%;min-height:${rowMinHeight};align-items:center;gap:0.5rem;border:0;border-radius:var(--radius-sm);background:transparent;padding:0.25rem 0.5rem;color:var(--contrast-foreground);font-family:var(--font-sans,system-ui,sans-serif);font-size:0.875rem;line-height:1.25rem;text-align:left;cursor:default;`;
         if (isLeafDestructive) {
           button.style.color = "var(--destructive-foreground)";
         }

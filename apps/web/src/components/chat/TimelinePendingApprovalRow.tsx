@@ -5,6 +5,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-requests";
 import { ShieldIcon } from "lucide-react";
 import { memo, use } from "react";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { type PendingApproval } from "../../session-logic";
 import { InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -39,8 +40,20 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
 }) {
   const { t: translateUi } = useTranslation();
   const { respondingRequestIds, canOperateThread, onRespondToApproval } = use(TimelineRowCtx);
+  const coarsePointer = useMediaQuery({ pointer: "coarse" });
   const presentation = APPROVAL_PRESENTATION[approval.requestKind];
   const canRespond = approval.responseCapability === "live";
+  const actions = onRespondToApproval ? (
+    <ComposerPendingApprovalActions
+      presentation={coarsePointer ? "touch" : "inline"}
+      requestId={approval.requestId}
+      disabled={!canOperateThread}
+      isResponding={respondingRequestIds.includes(approval.requestId)}
+      canRespond={canRespond}
+      options={approval.options}
+      onRespondToApproval={onRespondToApproval}
+    />
+  ) : null;
   return (
     <WorkLogRow
       role="group"
@@ -80,22 +93,14 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
                 <ShieldIcon aria-hidden className="size-3 shrink-0" />
                 {translateUi("Waiting for approval")}
               </span>
-              {onRespondToApproval ? (
+              {actions === null || coarsePointer ? null : (
                 <>
                   <span aria-hidden className="text-muted-foreground">
                     ·
                   </span>
-                  <ComposerPendingApprovalActions
-                    presentation="inline"
-                    requestId={approval.requestId}
-                    disabled={!canOperateThread}
-                    isResponding={respondingRequestIds.includes(approval.requestId)}
-                    canRespond={canRespond}
-                    options={approval.options}
-                    onRespondToApproval={onRespondToApproval}
-                  />
+                  {actions}
                 </>
-              ) : null}
+              )}
             </>
           ) : (
             <span className="text-warning">
@@ -104,7 +109,15 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
           )}
           {approval.fullAccessOverride ? (
             <Popover>
-              <PopoverTrigger openOnHover render={<InlineButton tone="muted" />}>
+              <PopoverTrigger
+                openOnHover
+                render={
+                  <InlineButton
+                    tone="muted"
+                    className="pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-x-1.5 pointer-coarse:after:-inset-y-2"
+                  />
+                }
+              >
                 {FULL_ACCESS_OVERRIDE_QUESTION}
               </PopoverTrigger>
               <PopoverPopup
@@ -116,6 +129,9 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
                 {fullAccessOverrideExplanation(approval.fullAccessOverride)}
               </PopoverPopup>
             </Popover>
+          ) : null}
+          {canRespond && coarsePointer && actions !== null ? (
+            <div className="flex basis-full items-center gap-2 pt-1">{actions}</div>
           ) : null}
         </div>
       </div>

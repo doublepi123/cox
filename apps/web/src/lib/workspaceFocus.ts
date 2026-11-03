@@ -338,7 +338,11 @@ export function startWorkspaceFocus(router: AnyRouter): () => void {
       if (previous.userActionRevisionByThreadKey[threadKey] === revision) continue;
       const next = state.byThreadKey[threadKey];
       const before = previous.byThreadKey[threadKey];
-      if (next?.isOpen && (!before?.isOpen || next.activeSurfaceId !== before.activeSurfaceId))
+      if (
+        next?.isOpen &&
+        (!before?.isOpen || next.activeSurfaceId !== before.activeSurfaceId) &&
+        !window.matchMedia("(pointer: coarse)").matches
+      )
         requestWorkspaceFocus({ area: "panel" });
     }
   });

@@ -58,3 +58,20 @@ it("preserves credentials for the current subscriber and permission error codes"
     assert.strictEqual(classifyCodexManagedError({ error: { code } })?.code, code);
   }
 });
+
+it("offers context recovery for the rejected subagent history response", () => {
+  const code = "subscription_sharing_unsupported_capability";
+  const response = {
+    error: {
+      code,
+      param: "input",
+      message:
+        "User subscription sharing currently supports only text, image, and file messages, item references, additional tools, compaction summaries, reasoning items, Web Search call items, developer function and custom tool call items, and programmatic tool calling items. Remove unsupported input items or use an API key instead.",
+    },
+  };
+  for (const value of [response, { message: JSON.stringify(response) }]) {
+    assert.equal(classifyCodexManagedError(value)?.code, code);
+    assert.include(classifyCodexManagedError(value)!.message, "rebuild the conversation context");
+    assert.notInclude(classifyCodexManagedError(value)!.message, "another provider");
+  }
+});

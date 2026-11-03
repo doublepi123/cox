@@ -11,7 +11,7 @@ import { Kbd, KbdGroup } from "./ui/kbd";
  * behind the modal. On first open the dialog's own initial focus handles it.
  */
 function claimFocusInOpenDialog(input: HTMLInputElement | null) {
-  if (!input) return;
+  if (!input || window.matchMedia("(pointer: coarse)").matches) return;
   const active = input.ownerDocument.activeElement;
   if (
     active === null ||
@@ -66,7 +66,7 @@ export function CommandPaletteContent({
           {children}
         </CommandPanel>
         <CommandFooter className="max-sm:flex-col max-sm:items-start">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pointer-coarse:hidden">
             <KbdGroup>
               <Kbd>
                 <ArrowUpIcon />

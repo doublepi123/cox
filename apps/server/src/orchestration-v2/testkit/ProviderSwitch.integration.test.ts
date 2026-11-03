@@ -1219,6 +1219,112 @@ describe("orchestration v2 provider switching", () => {
       ),
   );
 
+  it.live.each(["subscription_sharing_unsupported_capability", "simulated_failure"])(
+    "rebuilds Codex history only for sharing capability failures (%s)",
+    (code) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("codex-sharing-history-recovery");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const injectedHistory = yield* Ref.make<ReadonlyArray<unknown>>([]);
+          const generation = yield* Ref.make(0);
+          const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: { 1: "Partial work before the subagent error" },
+              capturedTurns,
+              injectedHistory,
+              nativeThreadGeneration: generation,
+              failedRunOrdinals: new Set([1]),
+              failure: makeProviderFailure({
+                class: "provider_error",
+                code,
+                message: "Codex used a feature that ChatGPT sharing does not support.",
+              }),
+            }),
+          ]);
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("sharing-recovery:create"),
+              threadId,
+              projectId,
+              createdBy: "user",
+              creationSource: "web",
+              title: "Sharing history recovery",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+            });
+            for (const ordinal of [1, 2, 3]) {
+              yield* orchestrator.dispatch({
+                type: "message.dispatch",
+                commandId: CommandId.make(`sharing-recovery:${ordinal}`),
+                threadId,
+                messageId: MessageId.make(`sharing-recovery:${ordinal}`),
+                createdBy: "user",
+                creationSource: "web",
+                text: ordinal === 1 ? "Original mobile interaction task" : `Continue ${ordinal}`,
+                attachments: [],
+                modelSelection: CODEX_MODEL_SELECTION,
+                dispatchMode: { type: "start_immediately" },
+              });
+              yield* orchestrator.streamStoredEvents.pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.type === "run.updated" &&
+                    event.payload.ordinal === ordinal &&
+                    (event.payload.status === "completed" || event.payload.status === "failed"),
+                ),
+                Stream.runHead,
+              );
+              yield* worker.drain();
+            }
+            const projection = yield* orchestrator.getThreadProjection(threadId);
+            assert.deepEqual(
+              projection.runs.map((run) => run.status),
+              ["failed", "completed", "completed"],
+            );
+            const recovered = code === "subscription_sharing_unsupported_capability";
+            assert.equal(yield* Ref.get(generation), recovered ? 2 : 1);
+            assert.lengthOf(projection.providerThreads, 1);
+            const turns = yield* Ref.get(capturedTurns);
+            assert.equal(turns[1]?.nativeThreadId !== turns[0]?.nativeThreadId, recovered);
+            assert.equal(turns[2]?.nativeThreadId, turns[1]?.nativeThreadId);
+            const history = yield* encodeJson(yield* Ref.get(injectedHistory));
+            if (recovered) {
+              assert.include(history, "Original mobile interaction task");
+              assert.include(history, "Partial work before the subagent error");
+              assert.equal(projection.contextHandoffs.at(-1)?.strategy, "full_thread_summary");
+            } else {
+              assert.isEmpty(projection.contextHandoffs);
+            }
+          }).pipe(
+            Effect.provide(
+              ProviderReplayHarness.layerWithRegistry(
+                {
+                  name: "codex-sharing-history-recovery",
+                  runtimePolicyOverride: {
+                    cwd,
+                    approvalPolicy: "never",
+                    sandboxPolicy: { type: "readOnly" },
+                  },
+                },
+                layerRegistry,
+              ),
+            ),
+          );
+        }),
+      ),
+  );
+
   it.live.each(["native", "legacy"] as const)(
     "starts a replacement native thread as new after the resume fallback with %s attempts",
     (attempts) =>

@@ -865,7 +865,7 @@ function RightPanelTab(
               <button
                 type="button"
                 onDoubleClick={() => {}}
-                className="cursor-pointer flex min-w-0 items-center"
+                className="cursor-pointer flex min-w-0 items-center pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:px-1"
                 aria-label={sideChatState === null ? undefined : `${title}, ${sideChatState}`}
                 onClick={() => onActivate(surface)}
               >
@@ -889,7 +889,7 @@ function RightPanelTab(
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
+        "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs pointer-coarse:h-11 pointer-coarse:pl-0.5",
         props.active
           ? "bg-accent text-foreground"
           : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -1161,7 +1161,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     >
       <div
         className={cn(
-          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
+          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2 pointer-coarse:min-h-12",
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}

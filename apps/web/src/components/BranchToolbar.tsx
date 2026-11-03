@@ -679,7 +679,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         <BranchToolbarBranchSelector
           forceNewWorktree={forceNewWorktree}
           ref={branchSelectorRef}
-          className="min-w-0 flex-initial justify-end @xl/composer-surface:ml-auto"
+          className="min-w-0 flex-initial justify-end @max-xl/composer-surface:max-w-2/5 @max-xl/composer-surface:shrink-0 @xl/composer-surface:ml-auto"
           environmentId={environmentId}
           threadId={threadId}
           {...(draftId ? { draftId } : {})}
