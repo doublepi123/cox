@@ -9,7 +9,7 @@
 - Show concise system dividers in the conversation timeline when switching models or reasoning
   effort within the same harness.
 - Enhance MCP preview and pull-request tools: `preview_open` accepts a dev-server `port`
-  directly, `link_pull_request` links multiple PRs in one call, and `unlink_pull_request`
+  directly, `link_pull_requests` links multiple PRs in one call, and `unlink_pull_requests`
   unlinks all PRs matching given states in one call.
 - Improve Claude Code, Codex, Cursor, OpenCode, Antigravity and ACP adapter stability: prevent
   Claude interrupt hangs, close withdrawn approval cards, strip inherited `CLAUDE_CODE_SESSION_ID`
