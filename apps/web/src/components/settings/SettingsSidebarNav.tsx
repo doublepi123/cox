@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type ComponentType, type KeyboardEvent } f
 import {
   GlobeIcon,
   ArchiveIcon,
-  ArrowLeftIcon,
   FlaskConicalIcon,
   BotIcon,
   Layers3Icon,
@@ -29,15 +28,6 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
-import {
-  Select,
-  SelectGroup,
-  SelectGroupLabel,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import {
   SidebarContent,
   SidebarGroup,
@@ -106,9 +96,10 @@ export function SettingsSidebarNav({
   layout = "sidebar",
 }: {
   pathname: string;
-  layout?: "sidebar" | "bar";
+  layout?: "sidebar" | "menu";
 }) {
   const { t, language } = useTranslation();
+  const isMenuLayout = layout === "menu";
   const navArea = workspaceAreaProps("settings-nav", 0, t("Settings sections"));
   const navigate = useNavigate();
   const currentHash = useLocation({ select: (location) => location.hash });
@@ -123,7 +114,8 @@ export function SettingsSidebarNav({
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  // Below md the nav is an icon rail; searching expands it over the page.
+  // Below md the sidebar is an icon rail; searching expands it over the page.
+  // The phone menu layout keeps labels visible and starts with search closed.
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const searchableItems = useAvailableSettingsSearchItems(scopeSearch);
@@ -211,11 +203,10 @@ export function SettingsSidebarNav({
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (event.key === "Escape" && (isSearching || layout === "bar")) {
+    if (event.key === "Escape" && isSearching) {
       event.preventDefault();
       event.stopPropagation();
-      if (isSearching) clearSearch();
-      else setCompactSearchOpen(false);
+      clearSearch();
       return;
     }
     if (results.length === 0) return;
@@ -236,93 +227,17 @@ export function SettingsSidebarNav({
     }
   };
 
-  if (layout === "bar" && !compactSearchOpen) {
-    return (
-      <nav
-        role="navigation"
-        aria-label={t("Settings sections")}
-        className="shrink-0 border-b bg-sidebar px-3 py-2 text-sidebar-foreground"
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1 [&_[data-slot=select-trigger]]:h-11 [&_[data-slot=select-trigger]]:min-w-0">
-            <Select
-              value={
-                navPaths.find((to) => activePath === to || activePath.startsWith(`${to}/`)) ?? null
-              }
-              onValueChange={(value) => {
-                const path = navPaths.find((to) => to === value);
-                if (path) handleSectionClick(path);
-              }}
-            >
-              <SelectTrigger aria-label={t("Settings sections")}>
-                <SelectValue>
-                  {(value: SettingsPath | null) =>
-                    value ? (
-                      <span className="flex min-w-0 items-center gap-2">
-                        <SettingsSectionIcon to={value} />
-                        <span className="truncate">{t(SETTINGS_SECTION_LABELS[value])}</span>
-                      </span>
-                    ) : (
-                      t("Settings")
-                    )
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup alignItemWithTrigger={false}>
-                {SETTINGS_NAV_GROUPS.map((group, index) => (
-                  <SelectGroup key={group.heading ?? index}>
-                    {group.heading ? <SelectGroupLabel>{t(group.heading)}</SelectGroupLabel> : null}
-                    {group.paths.map((to) => (
-                      <SelectItem key={to} value={to}>
-                        <span className="flex min-h-9 items-center gap-2">
-                          <SettingsSectionIcon to={to} />
-                          {t(SETTINGS_SECTION_LABELS[to])}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectPopup>
-            </Select>
-          </div>
-          <Button
-            size="icon-xl"
-            variant="ghost-muted"
-            aria-label={t("Search settings")}
-            onClick={() => setCompactSearchOpen(true)}
-          >
-            <SearchIcon />
-          </Button>
-        </div>
-      </nav>
-    );
-  }
-
+  const showLabels = isMenuLayout || compactSearchOpen;
   const searchField = (
     <div
       className={cn(
         "flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-        !compactSearchOpen && "max-md:hidden",
-        layout === "bar" &&
-          "h-11 px-0 [&_[data-slot=input]]:min-h-11 max-sm:[&_[data-slot=input]]:text-base",
+        !isMenuLayout && !compactSearchOpen && "max-md:hidden",
+        isMenuLayout &&
+          "h-11 rounded-lg bg-sidebar-row-hover px-3 [&_[data-slot=input]]:min-h-11 max-sm:[&_[data-slot=input]]:text-base",
       )}
     >
-      {layout === "bar" ? (
-        <Button
-          type="button"
-          size="icon-xl"
-          variant="ghost-muted"
-          aria-label={t("Close")}
-          onClick={() => {
-            clearSearch();
-            setCompactSearchOpen(false);
-          }}
-        >
-          <ArrowLeftIcon />
-        </Button>
-      ) : (
-        <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-      )}
+      <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
       {/* Native search inputs clear on Escape even during IME composition. */}
       <div className="min-w-0 flex-1">
         <SidebarInput
@@ -338,7 +253,7 @@ export function SettingsSidebarNav({
           autoComplete="off"
           onFocus={() => setCompactSearchOpen(true)}
           onBlur={() => {
-            if (!isSearching && layout !== "bar") setCompactSearchOpen(false);
+            if (!isSearching && !isMenuLayout) setCompactSearchOpen(false);
           }}
           placeholder={t("Search")}
           aria-label={t("Search settings")}
@@ -356,7 +271,7 @@ export function SettingsSidebarNav({
       {isSearching ? (
         <Button
           type="button"
-          size={layout === "bar" ? "icon-xl" : "icon-micro"}
+          size={isMenuLayout ? "icon-xl" : "icon-micro"}
           variant="ghost-muted"
           aria-label={t("Clear settings search")}
           onClick={() => {
@@ -364,9 +279,9 @@ export function SettingsSidebarNav({
             searchInputRef.current?.focus();
           }}
         >
-          <XIcon className={layout === "bar" ? "size-4" : "size-3"} />
+          <XIcon className={isMenuLayout ? "size-4" : "size-3"} />
         </Button>
-      ) : layout !== "bar" ? (
+      ) : !isMenuLayout ? (
         <Kbd>/</Kbd>
       ) : null}
     </div>
@@ -374,23 +289,25 @@ export function SettingsSidebarNav({
 
   return (
     <nav
-      {...(layout === "bar" ? {} : navArea)}
+      {...(isMenuLayout ? {} : navArea)}
       role="navigation"
       aria-label={t("Settings sections")}
       className={cn(
         "flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
-        layout === "bar" && "[&_[data-slot=sidebar-menu-button]]:min-h-11",
-        compactSearchOpen &&
+        isMenuLayout &&
+          "w-full max-md:w-full border-e-0 [&_[data-slot=sidebar-menu-button]]:min-h-11",
+        !isMenuLayout &&
+          compactSearchOpen &&
           "max-md:absolute max-md:inset-y-0 max-md:start-0 max-md:z-10 max-md:w-full",
       )}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden">
         <SidebarContent
-          fixedHeader={layout === "bar" ? <div className="p-2">{searchField}</div> : undefined}
+          fixedHeader={isMenuLayout ? <div className="border-b p-3">{searchField}</div> : undefined}
         >
           <SidebarGroup>
-            <div className="flex flex-col gap-2">
-              {layout === "bar" ? null : searchField}
+            <div className={cn("flex flex-col gap-2", isMenuLayout && "px-1 pt-2")}>
+              {isMenuLayout ? null : searchField}
               {isSearching && results.length === 0 ? (
                 <p
                   role="status"
@@ -399,11 +316,7 @@ export function SettingsSidebarNav({
                   {t("No settings found")}
                 </p>
               ) : null}
-              {layout === "bar" && compactSearchOpen && !isSearching ? (
-                <p role="status" className="px-3 py-6 text-sm text-sidebar-muted-foreground">
-                  {t("Type to search settings")}
-                </p>
-              ) : isSearching ? (
+              {isSearching ? (
                 <SidebarMenu
                   id={hasResults ? "settings-search-results" : undefined}
                   role={hasResults ? "listbox" : undefined}
@@ -441,7 +354,7 @@ export function SettingsSidebarNav({
                 </SidebarMenu>
               ) : (
                 <div className="flex flex-col gap-4">
-                  {compactSearchOpen ? null : (
+                  {!isMenuLayout && !compactSearchOpen ? (
                     <div className="md:hidden">
                       <SidebarMenu>
                         <SidebarMenuItem>
@@ -454,7 +367,7 @@ export function SettingsSidebarNav({
                         </SidebarMenuItem>
                       </SidebarMenu>
                     </div>
-                  )}
+                  ) : null}
                   <div
                     {...sectionNavigation.containerProps}
                     role="tree"
@@ -466,7 +379,12 @@ export function SettingsSidebarNav({
                         key={group.heading ?? index}
                         role="group"
                         aria-label={group.heading ? t(group.heading) : undefined}
-                        className="flex flex-col gap-1 max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0"
+                        className={cn(
+                          "flex flex-col gap-1",
+                          !isMenuLayout &&
+                            "max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0",
+                          isMenuLayout && index > 0 && "border-t border-sidebar-border pt-4",
+                        )}
                       >
                         {group.heading ? (
                           // The group carries this label; a heading is not a valid tree child.
@@ -474,7 +392,7 @@ export function SettingsSidebarNav({
                             aria-hidden="true"
                             className={cn(
                               "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
-                              !compactSearchOpen && "max-md:hidden",
+                              !showLabels && "max-md:hidden",
                             )}
                           >
                             {t(group.heading)}
@@ -483,7 +401,9 @@ export function SettingsSidebarNav({
                         <SidebarMenu role="presentation">
                           {group.paths.map((to) => {
                             const Icon = SETTINGS_SECTION_ICONS[to];
-                            const isActive = activePath === to || activePath.startsWith(`${to}/`);
+                            const isActive =
+                              !isMenuLayout &&
+                              (activePath === to || activePath.startsWith(`${to}/`));
                             return (
                               <SidebarMenuItem key={to} role="presentation">
                                 <SidebarMenuButton
@@ -497,10 +417,7 @@ export function SettingsSidebarNav({
                                 >
                                   <Icon />
                                   <span
-                                    className={cn(
-                                      "truncate",
-                                      !compactSearchOpen && "max-md:sr-only",
-                                    )}
+                                    className={cn("truncate", !showLabels && "max-md:sr-only")}
                                   >
                                     {t(SETTINGS_SECTION_LABELS[to])}
                                   </span>

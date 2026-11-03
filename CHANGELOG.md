@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.24 — 2026-11-03
+
+- Sync recent upstream T3 Code fixes for Claude, Codex, Cursor, OpenCode, Pi, Git, preview and
+  orchestration, including Pi short-lived `--offline` OAuth safety, OpenCode 2 upgrade probing,
+  `diff.relative` subdirectory commit/PR context, and command-palette project opens that skip
+  side chats and subagents.
+- Replace the phone settings section dropdown with a first-level menu on `/settings`. Opening a
+  section shows its page with a back control; desktop still lands on General.
+- Keep copied markdown code blocks' blank lines, and open the project picker from the boring
+  sidebar header instead of starting a thread in the current project.
+
 ## 0.1.21 — 2026-11-03
 
 - Add a model service center for shared base URLs, API keys and model catalogs. Bind agent

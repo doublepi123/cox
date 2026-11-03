@@ -1,8 +1,9 @@
 import { useTranslation } from "../i18n";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
-import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
-import { RotateCcwIcon } from "lucide-react";
+import { Outlet, createFileRoute, redirect, useLocation, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState, type ReactNode } from "react";
+import { ArrowLeftIcon, RotateCcwIcon } from "lucide-react";
+import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
 
@@ -27,7 +28,13 @@ import {
   getThreadAutoSettlementSearchAvailability,
   isSettingsSearchScopeAvailable,
   movedSettingsPath,
+  SETTINGS_SECTION_LABELS,
+  type SettingsPath,
 } from "../components/settings/settingsSearch";
+
+function isSettingsIndexPath(pathname: string): boolean {
+  return pathname.replace(/\/+$/, "") === "/settings";
+}
 
 function RestoreDeviceDefaultsButton({
   compact,
@@ -122,6 +129,7 @@ function SettingsContentLayout() {
   const { t } = useTranslation();
   const contentArea = workspaceAreaProps("settings", 1, "Settings content");
   const location = useLocation();
+  const navigate = useNavigate();
   const { search, environment } = useSettingsScope();
   const contentScopeKey =
     location.pathname === "/settings/diagnostics" ||
@@ -131,14 +139,54 @@ function SettingsContentLayout() {
       : JSON.stringify(search);
   const [restoreSignal, setRestoreSignal] = useState(0);
   const isPhoneLayout = useMediaQuery("max-sm");
+  const isSettingsIndex = isSettingsIndexPath(location.pathname);
+  const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
+  const phoneSectionLabel =
+    isPhoneLayout && !isSettingsIndex
+      ? (SETTINGS_SECTION_LABELS[normalizedPath as SettingsPath] ??
+        (normalizedPath === "/settings/open-source-licenses" ? "Open source licenses" : null))
+      : null;
+
+  // Desktop keeps the old default landing; phone uses /settings as the section menu.
+  useEffect(() => {
+    if (isPhoneLayout || !isSettingsIndex) return;
+    void navigate({ to: "/settings/general", replace: true, search: true });
+  }, [isPhoneLayout, isSettingsIndex, navigate]);
 
   return (
     <AppRouteModal label={t("Settings")}>
       <div className="relative flex min-h-0 flex-1">
         {isPhoneLayout ? null : <SettingsSidebarNav pathname={location.pathname} />}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b ps-4 pe-2 sm:gap-3 sm:ps-5">
-            <SettingsBreadcrumb pathname={location.pathname} showSection={!isPhoneLayout} />
+          <header
+            className={cn(
+              "flex h-12 shrink-0 items-center gap-2 border-b pe-2 sm:gap-3 sm:ps-5",
+              isPhoneLayout && phoneSectionLabel ? "ps-2" : "ps-4",
+            )}
+          >
+            {isPhoneLayout && phoneSectionLabel ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon-xl"
+                  variant="ghost"
+                  aria-label={t("Back")}
+                  onClick={() =>
+                    void navigate({ to: "/settings", replace: true, search: true, hash: "" })
+                  }
+                >
+                  <ArrowLeftIcon />
+                </Button>
+                <div className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {t(phoneSectionLabel)}
+                </div>
+              </>
+            ) : (
+              <SettingsBreadcrumb
+                pathname={location.pathname}
+                showSection={!isPhoneLayout && !isSettingsIndex}
+              />
+            )}
             <div className="ms-auto flex shrink-0 items-center gap-1">
               {location.pathname === "/settings/general" ? (
                 <RestoreDeviceDefaultsButton
@@ -149,12 +197,18 @@ function SettingsContentLayout() {
               <AppRouteModalClose size={isPhoneLayout ? "icon-xl" : "icon-sm"} />
             </div>
           </header>
-          {isPhoneLayout ? <SettingsSidebarNav pathname={location.pathname} layout="bar" /> : null}
-          <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
-            <SettingsScopeBoundary pathname={location.pathname}>
-              <Outlet />
-            </SettingsScopeBoundary>
-          </div>
+          {isPhoneLayout && isSettingsIndex ? (
+            <SettingsSidebarNav pathname={location.pathname} layout="menu" />
+          ) : (
+            <div
+              key={`${contentScopeKey}:${restoreSignal}`}
+              className="min-h-0 flex flex-1 flex-col"
+            >
+              <SettingsScopeBoundary pathname={location.pathname}>
+                <Outlet />
+              </SettingsScopeBoundary>
+            </div>
+          )}
         </div>
       </div>
     </AppRouteModal>
@@ -196,9 +250,6 @@ export const Route = createFileRoute("/_chat/settings")({
   validateSearch: validateSettingsRouteSearch,
   search: { middlewares: [retainSettingsScope] },
   beforeLoad: async ({ location }) => {
-    if (location.pathname === "/settings") {
-      throw redirect({ to: "/settings/general", replace: true });
-    }
     const moved = movedSettingsPath(location.pathname, location.hash);
     if (moved) throw redirect({ to: moved, search: true, hash: true, replace: true });
   },

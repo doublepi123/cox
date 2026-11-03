@@ -211,7 +211,7 @@ export function summarizeDeltaItem(item: OrchestrationV2TurnItem): string | null
     case "command_execution":
       return `- Command: ${compactText(item.input)}`;
     case "file_change":
-      return `- File change: ${item.fileName}`;
+      return `- File change: ${compactText(item.changes?.map((change) => change.path).join(", ") ?? item.fileName)}`;
     case "checkpoint":
       return `- Checkpoint: ${item.files.length} files`;
     case "handoff":
