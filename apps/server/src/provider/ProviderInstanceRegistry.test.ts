@@ -14,6 +14,7 @@ import {
   type ProviderInstanceConfigMap,
   type ResolvedProviderInstanceEnvironment,
   ProviderInstanceId,
+  ModelServiceId,
   SecretProviderId,
   SettingsSecretValue,
   type SecretReference,
@@ -358,6 +359,47 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
       const snapshot = yield* instance!.snapshot.getSnapshot;
       expect(snapshot.enabled).toBe(false);
     }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.live(
+    "keeps a bound Claude instance on its service catalog before and after readiness checks",
+    () =>
+      Effect.gen(function* () {
+        const instanceId = ProviderInstanceId.make("claude_service");
+        const { registry } = yield* makeProviderInstanceRegistry({
+          drivers: [ClaudeDriver],
+          configMap: {
+            [instanceId]: {
+              driver: ClaudeDriver.driverKind,
+              enabled: true,
+              modelService: {
+                serviceId: ModelServiceId.make("service-test"),
+                modelIds: [],
+                defaultModel: "vendor/second",
+              },
+              config: makeClaudeConfig({
+                enabled: true,
+                binaryPath: "/missing-cox-bound-claude",
+                baseUrl: "http://127.0.0.1:3773/api/model-gateway/v1",
+                apiKey: "local-service-token",
+                customModels: ["vendor/first", "vendor/second"],
+              }),
+            },
+          },
+        });
+        const instance = yield* registry.getInstance(instanceId);
+        for (const refresh of [false, true]) {
+          if (refresh) yield* instance!.snapshot.refresh;
+          const snapshot = yield* instance!.snapshot.getSnapshot;
+          expect(snapshot.modelCatalogSource).toBe("model-service");
+          expect(snapshot.models.map((model) => model.slug)).toEqual([
+            "vendor/first",
+            "vendor/second",
+          ]);
+          expect(snapshot.models.find((model) => model.isDefault)?.slug).toBe("vendor/second");
+          expect(snapshot.models.every((model) => model.capabilities === null)).toBe(true);
+        }
+      }).pipe(Effect.provide(layerTest)),
   );
 
   it.live("runs Codex and Claude readiness probes from configured tilde paths", () =>

@@ -8,6 +8,7 @@ import type {
   ProviderDriverKind,
   ResolvedProviderInstanceEnvironment,
   ProviderInstanceId,
+  ModelServiceBinding,
   ProviderInstallState,
   ProviderSetupError,
   ServerProvider,
@@ -105,6 +106,7 @@ export function defaultProviderContinuationIdentity(input: {
 
 export interface ProviderDriverCreateInput<Config> {
   readonly instanceId: ProviderInstanceId;
+  readonly modelService?: ModelServiceBinding | undefined;
   readonly displayName: string | undefined;
   readonly accentColor?: string | undefined;
   readonly environment: ResolvedProviderInstanceEnvironment;

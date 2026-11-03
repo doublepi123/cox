@@ -28,7 +28,7 @@ import { useHistoryBackDismiss } from "~/lib/historyBackDismiss";
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
+const SIDEBAR_WIDTH_MOBILE = "min(24rem, calc(100vw - 1rem))";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 const SIDEBAR_TITLEBAR_CONTROL_SIZE = "max-sm:[--workspace-titlebar-control-size:--spacing(8)]";
@@ -311,10 +311,8 @@ function Sidebar({
         <Sheet onOpenChange={setOpenMobile} open={openMobile}>
           <SheetPopup
             ref={setMobileSheetElement}
-            className={cn(
-              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
-              className,
-            )}
+            className={className}
+            variant="sidebar"
             data-mobile="true"
             data-sidebar="sidebar"
             data-slot="sidebar"
@@ -326,7 +324,7 @@ function Sidebar({
               } as React.CSSProperties
             }
           >
-            <SheetHeader className="sr-only">
+            <SheetHeader visuallyHidden>
               <SheetTitle>{props["aria-label"] ?? t("Sidebar")}</SheetTitle>
               <SheetDescription>Displays the mobile sidebar.</SheetDescription>
             </SheetHeader>
@@ -405,10 +403,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 
   return (
     <Button
-      className={cn(
-        "size-[var(--workspace-titlebar-control-size)]! [-webkit-app-region:no-drag]",
-        className,
-      )}
+      className={className}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       aria-pressed={isOpen}
@@ -416,7 +411,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
         onClick?.(event);
         toggleSidebar();
       }}
-      size="icon"
+      size="sidebar-trigger"
       variant="ghost"
       {...props}
     >
@@ -599,16 +594,7 @@ function SidebarRail({
 }
 
 function SidebarInput({ className, ...props }: Omit<InputProps, "unstyled" | "variant">) {
-  return (
-    <Input
-      className={cn(
-        "[&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground",
-        className,
-      )}
-      unstyled
-      {...props}
-    />
-  );
+  return <Input className={className} variant="sidebar" {...props} />;
 }
 
 function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
@@ -636,11 +622,18 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarFooter({
+  className,
+  mobileNavigation = false,
+  ...props
+}: React.ComponentProps<"div"> & {
+  mobileNavigation?: boolean;
+}) {
   return (
     <div
       className={cn(
         "flex flex-col gap-2 px-[var(--sidebar-content-inset)] pt-1 pb-[var(--sidebar-content-inset)]",
+        mobileNavigation && "shrink-0 border-t border-sidebar-border md:border-t-0",
         className,
       )}
       data-sidebar="footer"
@@ -660,26 +653,27 @@ function SidebarContent({
   return (
     <>
       {fixedHeader ? <div className="w-full shrink-0">{fixedHeader}</div> : null}
-      <ScrollArea
-        hideScrollbars
-        scrollFade
-        scrollFadePadding={false}
-        // Rows provide keyboard access; exclude the viewport from tab order to flatten VoiceOver's WebKit
-        // interaction boundary.
-        viewportTabIndex={-1}
-        className="h-auto min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]]:[--fade-size:0.75rem]"
-      >
-        <div
-          className={cn(
-            "flex w-full min-w-0 flex-col [overflow-anchor:none] group-data-[collapsible=icon]:overflow-hidden [&>[data-sidebar=group]+[data-sidebar=group]]:pt-0",
-            fixedHeader && "[&>[data-sidebar=group]:first-child]:pt-0",
-            className,
-          )}
-          data-sidebar="content"
-          data-slot="sidebar-content"
-          {...props}
-        />
-      </ScrollArea>
+      <div className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:[--fade-size:0.75rem]">
+        <ScrollArea
+          hideScrollbars
+          scrollFade
+          scrollFadePadding={false}
+          // Rows provide keyboard access; exclude the viewport from tab order to flatten VoiceOver's WebKit
+          // interaction boundary.
+          viewportTabIndex={-1}
+        >
+          <div
+            className={cn(
+              "flex w-full min-w-0 flex-col [overflow-anchor:none] group-data-[collapsible=icon]:overflow-hidden [&>[data-sidebar=group]+[data-sidebar=group]]:pt-0",
+              fixedHeader && "[&>[data-sidebar=group]:first-child]:pt-0",
+              className,
+            )}
+            data-sidebar="content"
+            data-slot="sidebar-content"
+            {...props}
+          />
+        </ScrollArea>
+      </div>
     </>
   );
 }
@@ -698,10 +692,20 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
+function SidebarMenu({
+  className,
+  layout = "vertical",
+  ...props
+}: React.ComponentProps<"ul"> & {
+  layout?: "vertical" | "utilities";
+}) {
   return (
     <ul
-      className={cn("flex w-full min-w-0 flex-col gap-1", className)}
+      className={cn(
+        "flex w-full min-w-0 flex-col gap-1",
+        layout === "utilities" && "flex-row items-center",
+        className,
+      )}
       data-sidebar="menu"
       data-slot="sidebar-menu"
       {...props}
@@ -709,10 +713,16 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   );
 }
 
-function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
+function SidebarMenuItem({
+  className,
+  grow = false,
+  ...props
+}: React.ComponentProps<"li"> & {
+  grow?: boolean;
+}) {
   return (
     <li
-      className={cn("group/menu-item relative", className)}
+      className={cn("group/menu-item relative", grow && "min-w-0 flex-1 md:flex-none", className)}
       data-sidebar="menu-item"
       data-slot="sidebar-menu-item"
       {...props}
@@ -732,6 +742,10 @@ const sidebarMenuButtonVariants = cva(
         default:
           "h-8 rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-1.5 text-sm",
         icon: "size-8 justify-center rounded-[var(--control-radius)] p-0",
+        "touch-icon":
+          "relative size-11 shrink-0 justify-center rounded-[var(--control-radius)] p-0 md:size-7",
+        utility:
+          "h-14 flex-col justify-center gap-1 rounded-[var(--control-radius)] px-2 py-2 text-xs md:size-8 md:flex-row md:gap-0 md:p-0",
         lg: "h-12 rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-2 text-sm group-data-[collapsible=icon]:p-0!",
         sm: "h-7 rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-2 text-xs",
       },

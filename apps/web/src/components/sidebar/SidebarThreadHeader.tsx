@@ -8,8 +8,6 @@ import {
   type RefObject,
 } from "react";
 
-import { cn } from "~/lib/utils";
-import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -64,7 +62,7 @@ export function SidebarThreadHeader({
     <div className="flex items-center gap-1">
       <div
         ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70"
+        className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70 md:h-8"
       >
         <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput
@@ -85,14 +83,11 @@ export function SidebarThreadHeader({
               ? `sidebar-thread-search-result-${activeSearchResultIndex}`
               : undefined
           }
-          className="min-w-0 flex-1"
         />
         {isSearching ? (
-          <Button
+          <SidebarMenuButton
             type="button"
-            size="icon-micro"
-            variant="ghost-muted"
-            className="shrink-0"
+            size="touch-icon"
             aria-label={t("Clear thread search")}
             onClick={() => {
               onClearSearch();
@@ -100,7 +95,7 @@ export function SidebarThreadHeader({
             }}
           >
             <XIcon className="size-3" />
-          </Button>
+          </SidebarMenuButton>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
@@ -157,18 +152,18 @@ export function SidebarHeaderIconButton({
       <TooltipTrigger
         render={
           <SidebarMenuButton
-            size="icon"
+            size="touch-icon"
             type="button"
             aria-label={label}
             {...rest}
-            className={cn("relative size-7 shrink-0", className)}
+            className={className}
           />
         }
       >
         {children}
         <span
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+          className="pointer-events-none absolute left-1/2 top-1/2 hidden size-[max(100%,3rem)] -translate-1/2 md:pointer-coarse:block"
         />
       </TooltipTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>

@@ -277,53 +277,58 @@ describe("model services settings", () => {
 });
 
 describe("agent model service binding", () => {
-  it("binds a Codex instance and restores its preserved independent configuration when unbound", async () => {
-    setup({ [id]: configured });
-    const update = vi.fn();
-    const instance: ProviderInstanceConfig = {
-      driver: ProviderDriverKind.make("codex"),
-      config: { binaryPath: "custom-codex", baseUrl: "https://independent.test/v1" },
-    };
-    await using screen = await render(
-      <ModelServiceBindingSection
-        environmentId={environmentId}
-        instance={instance}
-        readOnly={false}
-        onUpdate={update}
-      />,
-    );
-    const select = screen.getByRole("combobox", { name: "Connection", exact: true });
-    await act(async () => {
-      const element = select.element() as HTMLSelectElement;
-      element.value = id;
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await screen.getByRole("checkbox", { name: "Use all compatible models", exact: true }).click();
-    await expect.element(screen.getByText("Protocol conversion", { exact: true })).toBeVisible();
-    await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
-    const bound = update.mock.calls[0]![0] as ProviderInstanceConfig;
-    expect(bound.modelService).toEqual({
-      serviceId: id,
-      modelIds: ["Vendor/Exact"],
-      defaultModel: "Vendor/Exact",
-    });
-    expect(bound.config).toEqual(instance.config);
-    await screen.rerender(
-      <ModelServiceBindingSection
-        environmentId={environmentId}
-        instance={bound}
-        readOnly={false}
-        onUpdate={update}
-      />,
-    );
-    await act(async () => {
-      const element = select.element() as HTMLSelectElement;
-      element.value = "";
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
-    expect(update.mock.calls[1]![0]).toEqual(instance);
-  });
+  it.each(["codex", "claudeAgent"])(
+    "binds a %s instance and restores its preserved independent configuration when unbound",
+    async (driver) => {
+      setup({ [id]: configured });
+      const update = vi.fn();
+      const instance: ProviderInstanceConfig = {
+        driver: ProviderDriverKind.make(driver),
+        config: { binaryPath: "custom-codex", baseUrl: "https://independent.test/v1" },
+      };
+      await using screen = await render(
+        <ModelServiceBindingSection
+          environmentId={environmentId}
+          instance={instance}
+          readOnly={false}
+          onUpdate={update}
+        />,
+      );
+      const select = screen.getByRole("combobox", { name: "Connection", exact: true });
+      await act(async () => {
+        const element = select.element() as HTMLSelectElement;
+        element.value = id;
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await screen
+        .getByRole("checkbox", { name: "Use all compatible models", exact: true })
+        .click();
+      await expect.element(screen.getByText("Protocol conversion", { exact: true })).toBeVisible();
+      await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
+      const bound = update.mock.calls[0]![0] as ProviderInstanceConfig;
+      expect(bound.modelService).toEqual({
+        serviceId: id,
+        modelIds: ["Vendor/Exact"],
+        defaultModel: "Vendor/Exact",
+      });
+      expect(bound.config).toEqual(instance.config);
+      await screen.rerender(
+        <ModelServiceBindingSection
+          environmentId={environmentId}
+          instance={bound}
+          readOnly={false}
+          onUpdate={update}
+        />,
+      );
+      await act(async () => {
+        const element = select.element() as HTMLSelectElement;
+        element.value = "";
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
+      expect(update.mock.calls[1]![0]).toEqual(instance);
+    },
+  );
 
   it("does not offer centralized binding to a closed agent backend", async () => {
     setup({ [id]: configured });

@@ -37,7 +37,10 @@ import {
 } from "../ClaudeProvider.ts";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
-import { resolveClaudeModelCatalog } from "../ClaudeModelCatalog.ts";
+import {
+  resolveClaudeModelCatalog,
+  resolveClaudeModelServiceCatalog,
+} from "../ClaudeModelCatalog.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -121,6 +124,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
   usage: claudeUsageReader,
   create: Effect.fn("ClaudeDriver.create")(function* ({
     instanceId,
+    modelService,
     displayName,
     accentColor,
     environment,
@@ -137,9 +141,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
     const catalogService = yield* ModelCatalog.ModelCatalog;
-    const modelCatalog = catalogService
-      .current(DRIVER_KIND)
-      .pipe(Effect.map(resolveClaudeModelCatalog));
+    const boundCatalog = modelService
+      ? resolveClaudeModelServiceCatalog(config.customModels, modelService.defaultModel)
+      : undefined;
+    const modelCatalog = boundCatalog
+      ? Effect.succeed(boundCatalog)
+      : catalogService.current(DRIVER_KIND).pipe(Effect.map(resolveClaudeModelCatalog));
     const baseEnvironment = yield* makeClaudeEnvironment(
       config,
       yield* mergeProviderInstanceEnvironment(environment),
@@ -162,15 +169,17 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const processEnv = usingManagedInstallation
       ? { ...installation.environment, DISABLE_AUTOUPDATER: "1" }
       : installation.environment;
-    const gatewayModels = hasGatewayConfiguration(config)
-      ? yield* makeGatewayModels({
-          instanceId,
-          driver: DRIVER_KIND,
-          baseUrl: config.baseUrl,
-          apiKey: config.apiKey || processEnv.ANTHROPIC_API_KEY || processEnv.ANTHROPIC_AUTH_TOKEN,
-          customModels: config.customModels,
-        })
-      : undefined;
+    const gatewayModels =
+      !modelService && hasGatewayConfiguration(config)
+        ? yield* makeGatewayModels({
+            instanceId,
+            driver: DRIVER_KIND,
+            baseUrl: config.baseUrl,
+            apiKey:
+              config.apiKey || processEnv.ANTHROPIC_API_KEY || processEnv.ANTHROPIC_AUTH_TOKEN,
+            customModels: config.customModels,
+          })
+        : undefined;
     const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -216,6 +225,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const stampIdentity = (draft: ServerProviderDraft) =>
       stampBaseIdentity({
         ...draft,
+        modelCatalogSource: modelService ? "model-service" : "provider",
         setup: {
           canInstall: installation.canInstall,
           canAuthenticate: false,
@@ -243,7 +253,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         enabled,
         config: effectiveConfig,
       },
-      { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+      {
+        scopedLimitNames,
+        modelCatalog: boundCatalog,
+        onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+      },
     ).pipe(
       Effect.mapError(
         (cause) =>

@@ -231,6 +231,7 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
   const createResult = yield* driver
     .create({
       instanceId,
+      modelService: entry.modelService,
       displayName: entry.displayName,
       accentColor: entry.accentColor,
       environment: secrets.environment,

@@ -1510,6 +1510,7 @@ To wait for a background command or Monitor you started (tests, a build), call \
 
 export function makeClaudeQueryOptions(input: {
   readonly modelSelection: ModelSelection;
+  readonly modelCatalog?: ClaudeModelCatalog | undefined;
   readonly nativeThreadId: string;
   readonly title?: string;
   readonly resume: boolean;
@@ -1535,7 +1536,8 @@ export function makeClaudeQueryOptions(input: {
 }): ClaudeAgentSdkQueryOptions {
   const compiledSelection = compileClaudeModelSelection(
     input.modelSelection,
-    scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, input.settings?.customModels ?? []),
+    input.modelCatalog ??
+      scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, input.settings?.customModels ?? []),
   );
   const {
     // claudeLaunchArgDirectories reads every --add-dir into additionalDirectories.
@@ -4535,6 +4537,7 @@ function claudeProposedPlan(input: unknown): string | null {
 
 export interface ClaudeAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
+  readonly modelCatalog?: ClaudeModelCatalog | undefined;
   readonly settings: ClaudeSettings;
   readonly environment: NodeJS.ProcessEnv;
   readonly attachmentsDir: string;
@@ -4559,10 +4562,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
-  const subagentModelCatalog = scopeClaudeModelCatalog(
-    BUNDLED_CLAUDE_MODEL_CATALOG,
-    adapterOptions.settings.customModels,
-  );
+  const subagentModelCatalog =
+    adapterOptions.modelCatalog ??
+    scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, adapterOptions.settings.customModels);
   const continuationRequests = adapterOptions.continuationRequests ?? {
     offer: () => Effect.void,
   };
@@ -10364,6 +10366,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           const queryOptions = makeClaudeQueryOptions({
             modelSelection: turnInput.modelSelection,
+            modelCatalog: subagentModelCatalog,
             nativeThreadId,
             title: turnInput.appThread.title,
             resume: shouldResume,
@@ -11673,7 +11676,7 @@ export type ClaudeAdapterV2DriverEnv =
 export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
   function* (
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits"> = {},
+    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
   ) {
     const { instanceId, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;

@@ -15,6 +15,7 @@ import {
   readCustomModelEntries,
 } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
+import { providerModelsFromSettings } from "@t3tools/provider-core/server/snapshotProbe";
 
 import {
   type ClaudeCodeCompatibility,
@@ -75,6 +76,23 @@ export function resolveClaudeModelCatalog(
 }
 
 export const BUNDLED_CLAUDE_MODEL_CATALOG = resolveClaudeModelCatalog(undefined);
+
+export function resolveClaudeModelServiceCatalog(
+  customModels: ReadonlyArray<CustomModelSetting>,
+  defaultModel?: string,
+): ClaudeModelCatalog {
+  const models = providerModelsFromSettings([], customModels, null);
+  const selected = models.find((model) => model.slug === defaultModel)?.slug ?? models[0]?.slug;
+  return {
+    models: models.map((model) => ({
+      model: { ...model, isCustom: false, isDefault: model.slug === selected },
+      runtime: model.capabilities?.contextWindow
+        ? { fixedContextWindowTokens: model.capabilities.contextWindow }
+        : {},
+      compatibility: {},
+    })),
+  };
+}
 
 export function scopeClaudeModelCatalog(
   catalog: ClaudeModelCatalog,
