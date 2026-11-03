@@ -76,14 +76,7 @@ import {
 } from "../ProviderUpdateLaunchNotification.logic";
 import { ProviderUpdatesAction } from "../ProviderUpdatesAction";
 import { Button } from "../ui/button";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "../ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import {
   NumberField,
   NumberFieldDecrement,
@@ -102,6 +95,7 @@ import { useSecretSources } from "./SecretSourceInput";
 import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
+import { GrokSetupSection } from "./GrokSetupSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import { providerClients } from "./providerDriverMeta";
@@ -230,7 +224,11 @@ function ProviderSettingsPlaceholder({
             <EmptyTitle>{title}</EmptyTitle>
             <EmptyDescription>{description}</EmptyDescription>
           </EmptyHeader>
-          {children ? <EmptyContent className="max-w-xl">{children}</EmptyContent> : null}
+          {children ? (
+            <div className="flex w-full min-w-0 max-w-xl flex-col items-center gap-4 text-balance text-sm">
+              {children}
+            </div>
+          ) : null}
         </Empty>
       </SettingsGroup>
     </SettingsSection>
@@ -372,52 +370,59 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
     options.length === 1 && options[0]?.entry.target._tag === "PrimaryConnectionTarget";
   const deviceTabs =
     !target.scoped && !onlyPrimaryDevice && options.length > 0 ? (
-      <ScrollArea radius="none" hideScrollbars scrollFade className="h-11 min-w-0 flex-1">
-        <ToggleGroup
-          aria-label={translateUi("Devices")}
-          variant="segmented"
-          className="my-2"
-          value={effectiveEnvironmentId ? [effectiveEnvironmentId] : []}
-          onValueChange={(next) => {
-            const environment = options.find((option) => option.environmentId === next[0]);
-            if (environment) setSelectedEnvironmentId(environment.environmentId);
-          }}
-        >
-          {options.map((environment) => {
-            const machine = resolveEnvironmentMachineKind(environment.serverConfig);
-            const detail = providerEnvironmentDetail(environment);
-            const statusText = connectionStatusTitle(environment.connection);
-            return (
-              <Tooltip key={environment.environmentId}>
-                <TooltipTrigger
-                  render={
-                    <Toggle value={environment.environmentId}>
-                      <EnvironmentMachineIcon
-                        kind={machine}
-                        className="size-3.5 shrink-0"
-                        aria-hidden
-                      />
-                      <span className="max-w-40 truncate">{environment.label}</span>
-                      {environment.connection.phase !== "connected" ? (
-                        <ConnectionStatusDot
-                          dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                          pingClassName={connectionPhasePingClassName(environment.connection.phase)}
-                        />
-                      ) : null}
-                      <span className="sr-only">
-                        {detail}, {statusText}
-                      </span>
-                    </Toggle>
-                  }
-                />
-                <TooltipPopup side="top">
-                  {detail} · {statusText}
-                </TooltipPopup>
-              </Tooltip>
-            );
-          })}
-        </ToggleGroup>
-      </ScrollArea>
+      <div className="h-11 min-w-0 flex-1">
+        <ScrollArea radius="none" hideScrollbars scrollFade>
+          <div className="py-2">
+            <ToggleGroup
+              aria-label={translateUi("Devices")}
+              variant="segmented"
+              value={effectiveEnvironmentId ? [effectiveEnvironmentId] : []}
+              onValueChange={(next) => {
+                const environment = options.find((option) => option.environmentId === next[0]);
+                if (environment) setSelectedEnvironmentId(environment.environmentId);
+              }}
+            >
+              {options.map((environment) => {
+                const machine = resolveEnvironmentMachineKind(environment.serverConfig);
+                const detail = providerEnvironmentDetail(environment);
+                const statusText = connectionStatusTitle(environment.connection);
+                return (
+                  <Tooltip key={environment.environmentId}>
+                    <TooltipTrigger
+                      render={
+                        <Toggle value={environment.environmentId}>
+                          <EnvironmentMachineIcon
+                            kind={machine}
+                            className="size-3.5 shrink-0"
+                            aria-hidden
+                          />
+                          <span className="max-w-40 truncate">{environment.label}</span>
+                          {environment.connection.phase !== "connected" ? (
+                            <ConnectionStatusDot
+                              dotClassName={connectionPhaseDotClassName(
+                                environment.connection.phase,
+                              )}
+                              pingClassName={connectionPhasePingClassName(
+                                environment.connection.phase,
+                              )}
+                            />
+                          ) : null}
+                          <span className="sr-only">
+                            {detail}, {statusText}
+                          </span>
+                        </Toggle>
+                      }
+                    />
+                    <TooltipPopup side="top">
+                      {detail} · {statusText}
+                    </TooltipPopup>
+                  </Tooltip>
+                );
+              })}
+            </ToggleGroup>
+          </div>
+        </ScrollArea>
+      </div>
     ) : null;
 
   return (
@@ -1036,30 +1041,31 @@ export function EnvironmentProviderSettings({
           )}
         >
           <div className="border-b border-border/60 bg-muted/10 @min-[48rem]/providers:flex @min-[48rem]/providers:min-h-0 @min-[48rem]/providers:flex-col @min-[48rem]/providers:border-r @min-[48rem]/providers:border-b-0">
-            <ScrollArea
-              scrollFade
-              chainVerticalScroll
-              className="@min-[48rem]/providers:min-h-0 @min-[48rem]/providers:flex-1"
-            >
-              <div className="divide-y divide-border/50">
-                {rows.map((row) => renderProviderInstance(row, "list"))}
-                {!readOnly ? (
-                  <button
-                    type="button"
-                    className="flex w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm text-muted-foreground transition-colors outline-none hover:bg-muted/25 hover:text-foreground focus-visible:bg-muted/25 focus-visible:text-foreground sm:px-4"
-                    onClick={() => setIsAddInstanceDialogOpen(true)}
-                  >
-                    <PlusIcon className="size-4 shrink-0" />
-                    {t("Add provider")}
-                  </button>
-                ) : null}
-              </div>
-            </ScrollArea>
+            <div className="@min-[48rem]/providers:min-h-0 @min-[48rem]/providers:flex-1">
+              <ScrollArea scrollFade chainVerticalScroll>
+                <div className="divide-y divide-border/50">
+                  {rows.map((row) => renderProviderInstance(row, "list"))}
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      className="flex w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm text-muted-foreground transition-colors outline-none hover:bg-muted/25 hover:text-foreground focus-visible:bg-muted/25 focus-visible:text-foreground sm:px-4"
+                      onClick={() => setIsAddInstanceDialogOpen(true)}
+                    >
+                      <PlusIcon className="size-4 shrink-0" />
+                      {t("Add provider")}
+                    </button>
+                  ) : null}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
 
-          <div data-provider-detail className="min-w-0 @min-[48rem]/providers:min-h-0">
+          <div
+            data-provider-detail
+            className="min-w-0 @min-[48rem]/providers:h-full @min-[48rem]/providers:min-h-0"
+          >
             {selectedRow ? (
-              <ScrollArea scrollFade chainVerticalScroll className="@min-[48rem]/providers:h-full">
+              <ScrollArea scrollFade chainVerticalScroll>
                 {/* Flat sections run dividers edge to edge and inset text like the list beside them. */}
                 <div className="space-y-6 py-4">
                   {renderProviderInstance(selectedRow, "editor")}
@@ -1131,32 +1137,37 @@ export function EnvironmentProviderSettings({
                 !canWriteSettings && "opacity-50 select-none",
               )}
             >
-              <NumberField
-                value={providerHealthRefreshIntervalSeconds}
-                min={0}
-                step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
-                size="sm"
-                className="w-32"
-                onValueChange={(value) =>
-                  updateSettings(
-                    backgroundActivityOverrideSettings(
-                      settings.backgroundActivity,
-                      resolvedBackgroundActivity,
-                      {
-                        providerHealthRefreshInterval: Duration.seconds(
-                          normalizeIntervalSeconds(value),
-                        ),
-                      },
-                    ),
-                  )
-                }
-              >
-                <NumberFieldGroup>
-                  <NumberFieldDecrement aria-label={t("Decrease provider health check interval")} />
-                  <NumberFieldInput aria-label={t("Provider health check interval in seconds")} />
-                  <NumberFieldIncrement aria-label={t("Increase provider health check interval")} />
-                </NumberFieldGroup>
-              </NumberField>
+              <div className="w-32">
+                <NumberField
+                  value={providerHealthRefreshIntervalSeconds}
+                  min={0}
+                  step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
+                  size="sm"
+                  onValueChange={(value) =>
+                    updateSettings(
+                      backgroundActivityOverrideSettings(
+                        settings.backgroundActivity,
+                        resolvedBackgroundActivity,
+                        {
+                          providerHealthRefreshInterval: Duration.seconds(
+                            normalizeIntervalSeconds(value),
+                          ),
+                        },
+                      ),
+                    )
+                  }
+                >
+                  <NumberFieldGroup>
+                    <NumberFieldDecrement
+                      aria-label={t("Decrease provider health check interval")}
+                    />
+                    <NumberFieldInput aria-label={t("Provider health check interval in seconds")} />
+                    <NumberFieldIncrement
+                      aria-label={t("Increase provider health check interval")}
+                    />
+                  </NumberFieldGroup>
+                </NumberField>
+              </div>
               <span className="text-xs text-muted-foreground">{t("seconds")}</span>
             </div>
           }
@@ -1329,6 +1340,16 @@ function ProviderInstanceRow({
             provider={liveProvider}
             binaryPath={configuredBinaryPath(instance.config)}
             authMethod={readAntigravityAuthMethod(instance.config)}
+            enabled={resolveProviderInstanceEnabled(instance)}
+            readOnly={readOnly}
+            onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+          />
+        ) : mode === "editor" && driver === "grok" ? (
+          <GrokSetupSection
+            environmentId={environmentId}
+            environmentLabel={environmentLabel}
+            instanceId={instanceId}
+            provider={liveProvider}
             enabled={resolveProviderInstanceEnabled(instance)}
             readOnly={readOnly}
             onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}

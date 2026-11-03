@@ -546,7 +546,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         version,
         status: "error",
         auth,
-        message: "Grok CLI is installed but not logged in. Run `grok login`.",
+        message: "Grok CLI is installed but not logged in. Sign in from provider settings.",
       },
     });
   }

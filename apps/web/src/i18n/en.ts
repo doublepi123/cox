@@ -1,4 +1,22 @@
 export const en = {
+  "Preparing Grok setup…": "Preparing Grok setup…",
+  "Installing Grok…": "Installing Grok…",
+  "Grok {version} is installed.": "Grok {version} is installed.",
+  "Install the official Grok CLI to use Grok Build.":
+    "Install the official Grok CLI to use Grok Build.",
+  "Grok Build setup": "Grok Build setup",
+  "Grok CLI": "Grok CLI",
+  "Enable Grok": "Enable Grok",
+  "Install Grok": "Install Grok",
+  "Update Grok": "Update Grok",
+  "Uses the custom Grok binary path below.": "Uses the custom Grok binary path below.",
+  "Using your existing Grok CLI.": "Using your existing Grok CLI.",
+  "Cox installs Grok in its own tools directory.": "Cox installs Grok in its own tools directory.",
+  "Grok account": "Grok account",
+  "This instance uses XAI_API_KEY. Remove it from the provider environment to sign in with a Grok account.":
+    "This instance uses XAI_API_KEY. Remove it from the provider environment to sign in with a Grok account.",
+  "Could not install Grok. Check your connection and Node.js/npm installation, then retry.":
+    "Could not install Grok. Check your connection and Node.js/npm installation, then retry.",
   "Connect {name} to save this setting.": "Connect {name} to save this setting.",
   "an environment": "an environment",
   "This setting is environment-wide and cannot be overridden by a project.":

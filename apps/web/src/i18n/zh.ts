@@ -1,4 +1,21 @@
 export const zh = {
+  "Preparing Grok setup…": "正在准备 Grok 设置…",
+  "Installing Grok…": "正在安装 Grok…",
+  "Grok {version} is installed.": "已安装 Grok {version}。",
+  "Install the official Grok CLI to use Grok Build.": "安装官方 Grok CLI，开始使用 Grok Build。",
+  "Grok Build setup": "Grok Build 接入设置",
+  "Grok CLI": "Grok CLI",
+  "Enable Grok": "启用 Grok",
+  "Install Grok": "安装 Grok",
+  "Update Grok": "更新 Grok",
+  "Uses the custom Grok binary path below.": "使用下方配置的 Grok 可执行文件路径。",
+  "Using your existing Grok CLI.": "正在使用本机已有的 Grok CLI。",
+  "Cox installs Grok in its own tools directory.": "Cox 将 Grok 安装在自己的工具目录中。",
+  "Grok account": "Grok 账号",
+  "This instance uses XAI_API_KEY. Remove it from the provider environment to sign in with a Grok account.":
+    "当前实例使用 XAI_API_KEY。如需登录 Grok 账号，请先从提供商环境变量中移除它。",
+  "Could not install Grok. Check your connection and Node.js/npm installation, then retry.":
+    "无法安装 Grok，请检查网络连接和 Node.js/npm 安装后重试。",
   "Connect {name} to save this setting.": "请先连接 {name}，再保存此设置。",
   "an environment": "本机环境",
   "This setting is environment-wide and cannot be overridden by a project.":

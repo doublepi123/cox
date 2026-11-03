@@ -123,6 +123,36 @@ const makeHarness = Effect.fn("providerInstallation.test.makeHarness")(function*
 });
 
 describe("provider installation routing", () => {
+  it.effect("routes driver-owned installation and cancellation to the selected instance", () =>
+    Effect.gen(function* () {
+      const grokId = ProviderInstanceId.make("grok-work");
+      const grokState = { ...state, driver: ProviderDriverKind.make("grok") };
+      const calls: string[] = [];
+      const configured = Object.assign(instance(grokState.driver, grokId), {
+        installation: {
+          start: Effect.sync(() => {
+            calls.push("grok-start");
+            return grokState;
+          }),
+          cancel: (id: string) =>
+            Effect.sync(() => {
+              calls.push(`grok-cancel:${id}`);
+              return grokState;
+            }),
+          changes: Stream.succeed(grokState),
+        },
+      });
+      const harness = yield* makeHarness({ instance: configured });
+      assert.deepEqual(yield* harness.router.start({ instanceId: grokId }), grokState);
+      yield* harness.router.cancel({ instanceId: grokId, operationId: "install-1" });
+      assert.deepEqual(yield* Stream.runCollect(harness.router.subscribe({ instanceId: grokId })), [
+        grokState,
+      ]);
+      assert.deepEqual(calls, ["grok-start", "grok-cancel:install-1"]);
+      assert.deepEqual(harness.calls, []);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("keeps external installs manual without hiding shared install status", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

@@ -106,6 +106,8 @@ export const makeProviderInstallation = Effect.fn("makeProviderInstallation")(fu
       new ProviderSetupError({ instanceId, operation: error.operation, detail: error.detail });
 
   const start = Effect.fn("ProviderInstallation.start")(function* (input: ProviderSetupInput) {
+    const instance = yield* instances.getInstance(input.instanceId);
+    if (instance?.installation) return yield* instance.installation.start;
     const { installation } = yield* requireInstance(input.instanceId, "install", true);
     return yield* installation.start.pipe(Effect.mapError(failure(input.instanceId)));
   });
@@ -113,6 +115,8 @@ export const makeProviderInstallation = Effect.fn("makeProviderInstallation")(fu
   const cancel = Effect.fn("ProviderInstallation.cancel")(function* (
     input: ProviderInstallCancelInput,
   ) {
+    const instance = yield* instances.getInstance(input.instanceId);
+    if (instance?.installation) return yield* instance.installation.cancel(input.operationId);
     const { installation } = yield* requireInstance(input.instanceId, "cancel-install");
     return yield* installation
       .cancel(input.operationId)
@@ -121,9 +125,17 @@ export const makeProviderInstallation = Effect.fn("makeProviderInstallation")(fu
 
   const subscribe = (input: ProviderSetupInput) =>
     Stream.unwrap(
-      requireInstance(input.instanceId, "observe-install").pipe(
-        Effect.map(({ installation }) => installation.changes),
-      ),
+      instances
+        .getInstance(input.instanceId)
+        .pipe(
+          Effect.flatMap((instance) =>
+            instance?.installation
+              ? Effect.succeed(instance.installation.changes)
+              : requireInstance(input.instanceId, "observe-install").pipe(
+                  Effect.map(({ installation }) => installation.changes),
+                ),
+          ),
+        ),
     );
 
   const remove = Effect.fn("ProviderInstallation.remove")(function* (input: ProviderSetupInput) {

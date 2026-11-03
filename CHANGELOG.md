@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.20 — 2026-11-03
+
+- Install the official Grok CLI and sign in or out of Grok Build directly from provider
+  settings, with installation progress, cancellation, retries and device authorization.
+- Keep existing custom Grok binaries and API-key authentication working. Install managed
+  binaries atomically in Cox's tools directory and preserve the previous binary on failure.
+- Show the Grok update action only when a newer version is confirmed, while retaining
+  installation retries after failures or cancellation.
+- Fix nine settings-panel style lint errors while preserving the existing layout.
+
 ## 0.1.19 — 2026-11-03
 
 - Fix promote-to-steer so a queued message keeps its own model selection, restoring

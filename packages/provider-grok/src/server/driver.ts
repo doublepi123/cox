@@ -30,6 +30,8 @@ import {
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import { discoverGrokSkills } from "./skills.ts";
+import { makeGrokAuth } from "./auth.ts";
+import { makeGrokInstallation } from "./installation.ts";
 import {
   homebrewOwnershipFromCommandPath,
   makeCachedProviderMaintenanceResolution,
@@ -125,7 +127,18 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
     const path = yield* Path.Path;
     const host = yield* ProviderHost.ProviderHost;
     const { cwd } = host.paths;
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    let isChangingCredentials = Effect.succeed(false);
+    const installation = yield* makeGrokInstallation({
+      instanceId,
+      baseDir: host.paths.baseDir,
+      ...(config.binaryPath ? { binaryPath: config.binaryPath } : {}),
+      environment: yield* mergeProviderInstanceEnvironment(environment),
+      onChanged: Effect.suspend((): Effect.Effect<void> => snapshot.refresh.pipe(Effect.asVoid)),
+      canStart: Effect.suspend(() =>
+        isChangingCredentials.pipe(Effect.map((changing) => !changing)),
+      ),
+    });
+    const processEnv = installation.environment;
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -137,22 +150,53 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
+    const stampSnapshot = (draft: Parameters<typeof stampIdentity>[0]) =>
+      stampIdentity({
+        ...draft,
+        setup: {
+          canAuthenticate: !processEnv.XAI_API_KEY?.trim(),
+          canInstall: !config.binaryPath || config.binaryPath === "grok",
+          documentationUrl: "https://docs.x.ai/build/overview",
+        },
+        auth: { ...draft.auth, canLogout: !processEnv.XAI_API_KEY?.trim() },
+      });
     const effectiveConfig = { ...config, enabled } satisfies GrokSettings;
     const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
       resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
       }).pipe(
+        Effect.map((capabilities) =>
+          capabilities.update?.executable === installation.executablePath
+            ? makeManualOnlyProviderMaintenanceCapabilities({
+                provider: DRIVER_KIND,
+                packageName: GROK_NPM_PACKAGE,
+                installPath: installation.executablePath,
+              })
+            : capabilities,
+        ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
       ),
     );
+    const auth = yield* makeGrokAuth({
+      instanceId,
+      enabled,
+      ...(config.binaryPath ? { binaryPath: config.binaryPath } : {}),
+      environment: processEnv,
+      canStart: installation.isInstalling.pipe(Effect.map((installing) => !installing)),
+      onChanged: Effect.suspend((): Effect.Effect<void> => snapshot.refresh.pipe(Effect.asVoid)),
+    });
+    isChangingCredentials = auth.isChangingCredentials ?? Effect.succeed(false);
     const orchestrationAdapter = yield* GrokAdapterV2Driver.create({
       instanceId,
       displayName,
       accentColor,
-      environment,
+      environment: [
+        ...environment,
+        { name: installation.pathKey, value: processEnv[installation.pathKey]!, sensitive: false },
+      ],
       enabled,
       config,
     }).pipe(
@@ -185,7 +229,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
             })),
           ),
       ),
-      Effect.map(stampIdentity),
+      Effect.map(stampSnapshot),
       Effect.provideService(HttpClient.HttpClient, httpClient),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
@@ -200,7 +244,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: (settings) =>
-        buildInitialGrokProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+        buildInitialGrokProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
       enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
         resolveMaintenance().pipe(
@@ -256,6 +300,8 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
       snapshotForCwd,
       orchestrationAdapter,
       textGeneration,
+      auth,
+      installation,
     } satisfies ProviderInstance;
   }),
 };
