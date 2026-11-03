@@ -97,6 +97,7 @@ import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetup
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { GrokSetupSection } from "./GrokSetupSection";
 import { PiSetupSection } from "./PiSetupSection";
+import { ClaudeSetupSection } from "./ClaudeSetupSection";
 import { ModelServiceBindingSection } from "./ModelServiceBindingSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
@@ -1360,6 +1361,15 @@ function ProviderInstanceRow({
             <GrokSetupSection
               environmentId={environmentId}
               environmentLabel={environmentLabel}
+              instanceId={instanceId}
+              provider={liveProvider}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
+          ) : mode === "editor" && driver === "claudeAgent" ? (
+            <ClaudeSetupSection
+              environmentId={environmentId}
               instanceId={instanceId}
               provider={liveProvider}
               enabled={resolveProviderInstanceEnabled(instance)}

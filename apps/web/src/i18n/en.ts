@@ -1,4 +1,32 @@
 export const en = {
+  "Preparing Claude Code setup…": "Preparing Claude Code setup…",
+  "Installing Claude Code…": "Installing Claude Code…",
+  "Claude Code {version} is installed.": "Claude Code {version} is installed.",
+  "Install the official Claude Code CLI.": "Install the official Claude Code CLI.",
+  "Claude Code setup": "Claude Code setup",
+  "Claude Code CLI": "Claude Code CLI",
+  "Enable Claude Code": "Enable Claude Code",
+  "Install Claude Code": "Install Claude Code",
+  "Update Claude Code": "Update Claude Code",
+  "Uses the custom Claude Code binary path below.":
+    "Uses the custom Claude Code binary path below.",
+  "Using your existing Claude Code CLI.": "Using your existing Claude Code CLI.",
+  "Cox installs Claude Code in its own tools directory.":
+    "Cox installs Claude Code in its own tools directory.",
+  "Claude Code credentials": "Claude Code credentials",
+  "Use a model service or API key below. For subscription sign-in, run the executable shown above with auth login using the same configuration directory.":
+    "Use a model service or API key below. For subscription sign-in, run the executable shown above with auth login using the same configuration directory.",
+  "Could not install Claude Code. Check your connection and Node.js/npm installation, then retry.":
+    "Could not install Claude Code. Check your connection and Node.js/npm installation, then retry.",
+  "Claude Code installation cancelled.": "Claude Code installation cancelled.",
+  "Clear the custom binary path before installing Claude Code in Cox.":
+    "Clear the custom binary path before installing Claude Code in Cox.",
+  "Installing Claude Code requires Node.js and npm on PATH.":
+    "Installing Claude Code requires Node.js and npm on PATH.",
+  "The downloaded Claude Code CLI did not report a valid version. Retry installation.":
+    "The downloaded Claude Code CLI did not report a valid version. Retry installation.",
+  "Could not start Claude Code installation. Try again.":
+    "Could not start Claude Code installation. Try again.",
   "Use a valid Git branch name.": "Use a valid Git branch name.",
   "Branch name copied": "Branch name copied",
   "Failed to copy branch name": "Failed to copy branch name",

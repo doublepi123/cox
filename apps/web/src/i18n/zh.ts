@@ -1,4 +1,30 @@
 export const zh = {
+  "Preparing Claude Code setup…": "正在准备 Claude Code 接入设置…",
+  "Installing Claude Code…": "正在安装 Claude Code…",
+  "Claude Code {version} is installed.": "已安装 Claude Code {version}。",
+  "Install the official Claude Code CLI.": "安装官方 Claude Code CLI。",
+  "Claude Code setup": "Claude Code 接入设置",
+  "Claude Code CLI": "Claude Code CLI",
+  "Enable Claude Code": "启用 Claude Code",
+  "Install Claude Code": "安装 Claude Code",
+  "Update Claude Code": "更新 Claude Code",
+  "Uses the custom Claude Code binary path below.": "使用下方配置的 Claude Code 可执行文件路径。",
+  "Using your existing Claude Code CLI.": "正在使用本机已有的 Claude Code CLI。",
+  "Cox installs Claude Code in its own tools directory.":
+    "Cox 将 Claude Code 安装到自己的工具目录。",
+  "Claude Code credentials": "Claude Code 凭据",
+  "Use a model service or API key below. For subscription sign-in, run the executable shown above with auth login using the same configuration directory.":
+    "在下方配置模型服务或 API 密钥。使用订阅账号时，请在相同配置目录下，使用上方的可执行文件运行 auth login 登录。",
+  "Could not install Claude Code. Check your connection and Node.js/npm installation, then retry.":
+    "无法安装 Claude Code。请检查网络连接以及 Node.js/npm 安装情况后重试。",
+  "Claude Code installation cancelled.": "Claude Code 安装已取消。",
+  "Clear the custom binary path before installing Claude Code in Cox.":
+    "请先清空自定义可执行文件路径，再由 Cox 安装 Claude Code。",
+  "Installing Claude Code requires Node.js and npm on PATH.":
+    "安装 Claude Code 需要 PATH 中可用的 Node.js 和 npm。",
+  "The downloaded Claude Code CLI did not report a valid version. Retry installation.":
+    "下载的 Claude Code CLI 未返回有效版本号，请重试安装。",
+  "Could not start Claude Code installation. Try again.": "无法开始安装 Claude Code，请重试。",
   "Use a valid Git branch name.": "请输入有效的 Git 分支名。",
   "Branch name copied": "分支名称已复制",
   "Failed to copy branch name": "复制分支名称失败",

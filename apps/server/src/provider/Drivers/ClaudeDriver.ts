@@ -15,6 +15,8 @@ import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGenerat
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as ServerConfig from "../../config.ts";
+import { makeClaudeInstallation } from "../ClaudeInstallation.ts";
+import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import {
@@ -46,6 +48,7 @@ import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makeCachedProviderMaintenanceResolution,
+  makeManualOnlyProviderMaintenanceCapabilities,
   makePackageManagedProviderMaintenanceResolver,
   normalizeCommandPath,
   resolveProviderMaintenanceCapabilitiesEffect,
@@ -129,7 +132,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const path = yield* Path.Path;
     // The server cwd is $HOME in packaged desktop builds, and `claude`
     // wrappers that scope themselves to their cwd refuse to run there.
-    const { stateDir } = yield* ServerConfig.ServerConfig;
+    const { stateDir, baseDir } = yield* ServerConfig.ServerConfig;
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
@@ -137,10 +140,28 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const modelCatalog = catalogService
       .current(DRIVER_KIND)
       .pipe(Effect.map(resolveClaudeModelCatalog));
-    const processEnv = yield* makeClaudeEnvironment(
+    const baseEnvironment = yield* makeClaudeEnvironment(
       config,
       yield* mergeProviderInstanceEnvironment(environment),
     );
+    const installation = yield* makeClaudeInstallation({
+      instanceId,
+      baseDir,
+      binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
+      environment: baseEnvironment,
+      onChanged: Effect.suspend((): Effect.Effect<void> =>
+        resolveMaintenance({ fresh: true }).pipe(
+          Effect.andThen(Cache.invalidateAll(capabilitiesProbeCache)),
+          Effect.andThen(snapshot.refresh),
+          Effect.asVoid,
+        ),
+      ),
+    });
+    const binaryPath = yield* installation.resolveExecutable;
+    const usingManagedInstallation = binaryPath === installation.executablePath;
+    const processEnv = usingManagedInstallation
+      ? { ...installation.environment, DISABLE_AUTOUPDATER: "1" }
+      : installation.environment;
     const gatewayModels = hasGatewayConfiguration(config)
       ? yield* makeGatewayModels({
           instanceId,
@@ -157,13 +178,22 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const effectiveConfig = {
       ...config,
       enabled,
-      binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
+      binaryPath,
     } satisfies ClaudeSettings;
     const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
       resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
       }).pipe(
+        Effect.map((capabilities) =>
+          capabilities.update?.executable === installation.executablePath
+            ? makeManualOnlyProviderMaintenanceCapabilities({
+                provider: DRIVER_KIND,
+                packageName: "@anthropic-ai/claude-code",
+                installPath: installation.executablePath,
+              })
+            : capabilities,
+        ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
@@ -176,13 +206,22 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ? configDir
         : undefined,
     );
-    const stampIdentity = withInstanceIdentity({
+    const stampBaseIdentity = withInstanceIdentity({
       instanceId,
       driverKind: DRIVER_KIND,
       displayName,
       accentColor,
       continuationGroupKey,
     });
+    const stampIdentity = (draft: ServerProviderDraft) =>
+      stampBaseIdentity({
+        ...draft,
+        setup: {
+          canInstall: installation.canInstall,
+          canAuthenticate: false,
+          documentationUrl: "https://code.claude.com/docs/en/setup",
+        },
+      });
 
     const scopedLimitNames = yield* makeClaudeScopedLimitNames;
     const orchestrationAdapter = yield* createClaudeAdapterV2(
@@ -190,9 +229,19 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         instanceId,
         displayName,
         accentColor,
-        environment,
+        environment: [
+          ...environment,
+          {
+            name: installation.pathKey,
+            value: processEnv[installation.pathKey]!,
+            sensitive: false,
+          },
+          ...(usingManagedInstallation
+            ? [{ name: "DISABLE_AUTOUPDATER", value: "1", sensitive: false }]
+            : []),
+        ],
         enabled,
-        config,
+        config: effectiveConfig,
       },
       { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
     ).pipe(
@@ -427,6 +476,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ? { refreshModels: () => gatewayModels.refresh, refreshModelsWhenUninstalled: true }
         : {}),
       consumeResetCredit,
+      installation,
     } satisfies ProviderInstance;
   }),
 };
