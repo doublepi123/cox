@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { translateCurrent, useTranslation } from "../i18n";
+import { WorktreeNameControl } from "./WorktreeNameControl";
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
 import { ComposerContextLabel } from "./ComposerContextLabel";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
@@ -93,7 +94,7 @@ interface BranchToolbarBranchSelectorProps {
 }
 
 function toBranchActionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "An error occurred.";
+  return error instanceof Error ? error.message : translateCurrent("An error occurred.");
 }
 
 export function BranchToolbarBranchSelector({
@@ -318,11 +319,11 @@ export function BranchToolbarBranchSelector({
   const [isBranchActionPending, startBranchActionTransition] = useTransition();
   const totalBranchCount = branchRefState.data?.totalCount ?? 0;
   const branchStatusText = isInitialBranchesLoadPending
-    ? "Loading refs..."
+    ? t("Loading refs...")
     : isFetchingNextPage
-      ? "Loading more refs..."
+      ? t("Loading more refs...")
       : hasNextPage
-        ? `Showing ${refs.length} of ${totalBranchCount} refs`
+        ? t("Showing {count} of {total} refs", { count: refs.length, total: totalBranchCount })
         : null;
 
   const copyBranchName = (branchName: string) => {
@@ -331,7 +332,7 @@ export function BranchToolbarBranchSelector({
         if (!didCopy) return;
         toastManager.add({
           type: "success",
-          title: "Branch name copied",
+          title: t("Branch name copied"),
           description: branchName,
         });
       },
@@ -339,7 +340,7 @@ export function BranchToolbarBranchSelector({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to copy branch name",
+            title: t("Failed to copy branch name"),
             description: toBranchActionErrorMessage(error),
           }),
         );
@@ -354,7 +355,7 @@ export function BranchToolbarBranchSelector({
     event.preventDefault();
     event.stopPropagation();
     const items: ContextMenuItem<"copy-branch-name">[] = [
-      { id: "copy-branch-name", label: "Copy branch name", icon: "copy" },
+      { id: "copy-branch-name", label: t("Copy branch name"), icon: "copy" },
     ];
     void api.contextMenu.show(items, { x: event.clientX, y: event.clientY }).then((action) => {
       if (action === "copy-branch-name") copyBranchName(branchName);
@@ -369,8 +370,8 @@ export function BranchToolbarBranchSelector({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Action unavailable",
-          description: "This connection cannot change the thread's branch.",
+          title: t("Action unavailable"),
+          description: t("This connection cannot change the thread's branch."),
         }),
       );
       return;
@@ -435,7 +436,7 @@ export function BranchToolbarBranchSelector({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to switch ref.",
+            title: t("Failed to switch ref."),
             description: toBranchActionErrorMessage(squashAtomCommandFailure(checkoutResult)),
           }),
         );
@@ -472,7 +473,7 @@ export function BranchToolbarBranchSelector({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to create and switch ref.",
+            title: t("Failed to create and switch ref."),
             description: toBranchActionErrorMessage(squashAtomCommandFailure(createBranchResult)),
           }),
         );
@@ -529,6 +530,7 @@ export function BranchToolbarBranchSelector({
   );
 
   const triggerLabel = resolveBranchTriggerLabel({
+    translate: t,
     activeWorktreePath,
     effectiveEnvMode,
     resolvedActiveBranch,
@@ -616,7 +618,7 @@ export function BranchToolbarBranchSelector({
           value={itemValue}
           onClick={() => selectPickerItem(itemValue)}
         >
-          <span className="truncate">Create new ref &quot;{newRefName}&quot;</span>
+          <span className="truncate">{t('Create new ref "{name}"', { name: newRefName })}</span>
         </ComboboxItem>
       );
     }
@@ -702,6 +704,9 @@ export function BranchToolbarBranchSelector({
             }}
           />
         ) : null}
+        {isSelectingWorktreeBase && !envLocked && draftThread ? (
+          <WorktreeNameControl target={draftId ?? threadRef} multiple={forceNewWorktree} />
+        ) : null}
         <span
           className="flex min-w-0"
           onMouseDownCapture={(event) => {
@@ -716,10 +721,9 @@ export function BranchToolbarBranchSelector({
               displayMode === "panel" ? (
                 <ThreadDetailsControl part="select" />
               ) : (
-                <ComposerControl size="xs" />
+                <ComposerControl size="xs" className="min-w-0 max-w-full active:scale-100" />
               )
             }
-            className="min-w-0 max-w-full active:scale-100"
             disabled={isInitialBranchesLoadPending || isBranchActionPending}
           >
             <GitBranchIcon
@@ -729,11 +733,12 @@ export function BranchToolbarBranchSelector({
               )}
             />
             <ComposerContextLabel displayMode={displayMode}>
-              <MiddleTruncate
-                value={triggerLabel}
-                variant={displayMode === "panel" ? "cap-aligned" : "default"}
-                className="w-full"
-              />
+              <span className="w-full min-w-0">
+                <MiddleTruncate
+                  value={triggerLabel}
+                  variant={displayMode === "panel" ? "cap-aligned" : "default"}
+                />
+              </span>
             </ComposerContextLabel>
           </ComboboxTrigger>
         </span>

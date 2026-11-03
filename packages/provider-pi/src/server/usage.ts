@@ -14,6 +14,7 @@ import {
 } from "@t3tools/provider-core/server/usage";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import type { PiSettings } from "../settings.ts";
+import { piEnvironment } from "./configuration.ts";
 
 const PiScanState = Schema.Struct({ sessionId: Schema.mutableKey(Schema.String) });
 const Usage = Schema.Struct({
@@ -128,10 +129,18 @@ export const piUsageReader: ProviderUsageReader<PiSettings, Path.Path> = {
   kind: "transcripts",
   provider: "pi",
   format: piUsageFormat,
-  directories: Effect.fn("piUsageReader.directories")(function* ({ environment }) {
+  directories: Effect.fn("piUsageReader.directories")(function* ({ environment, config }) {
     const path = yield* Path.Path;
     const home = yield* HostProcess.HomeDirectory;
-    return [{ dir: resolvePiSessionsDir(environment, home, path) }];
+    return [
+      {
+        dir: resolvePiSessionsDir(
+          config ? piEnvironment(config, environment) : environment,
+          home,
+          path,
+        ),
+      },
+    ];
   }),
 };
 

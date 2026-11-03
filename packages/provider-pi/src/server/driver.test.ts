@@ -124,6 +124,34 @@ const create = (config: Partial<PiSettings> = {}, enabled = true) =>
   });
 
 it.layer(layerTest)("PiDriver workspace discovery", (it) => {
+  it.effect("applies Pi configuration to discovery and exposes instance-owned installation", () =>
+    Effect.gen(function* () {
+      const { spawner, launches } = yield* makePiSpawner();
+      const instance = yield* create({
+        provider: "openai",
+        model: "configured-model",
+        apiKey: "test-pi-key",
+        agentDir: "/configured-pi",
+      }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+      yield* instance.snapshot.refresh;
+      assert.isDefined(instance.installation);
+      assert.deepEqual((yield* instance.snapshot.getSnapshot).setup, {
+        canInstall: false,
+        canAuthenticate: false,
+        documentationUrl: "https://pi.dev",
+      });
+      const launch = launches.find((command) => command.args.includes("--mode"));
+      assert.isDefined(launch);
+      assert.includeMembers(
+        [...launch!.args],
+        ["--provider", "openai", "--model", "configured-model"],
+      );
+      assert.equal(launch!.options.env?.OPENAI_API_KEY, "test-pi-key");
+      assert.equal(launch!.options.env?.PI_CODING_AGENT_DIR, "/configured-pi");
+      assert.notInclude(launch!.args, "test-pi-key");
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("keeps each workspace's skills and commands separate from the machine catalog", () =>
     Effect.gen(function* () {
       const { spawner, launches } = yield* makePiSpawner();

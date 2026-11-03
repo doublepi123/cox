@@ -58,9 +58,9 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
   const envModeItems = [
     {
       value: "local",
-      label: resolveCurrentWorkspaceLabel(activeWorktreePath),
+      label: t(resolveCurrentWorkspaceLabel(activeWorktreePath)),
     },
-    { value: "worktree", label: resolveEnvModeLabel("worktree") },
+    { value: "worktree", label: t(resolveEnvModeLabel("worktree")) },
     ...(showPreviousWorktree && previousWorktreeLabel
       ? [{ value: PREVIOUS_WORKTREE_SELECT_VALUE, label: previousWorktreeLabel }]
       : []),
@@ -86,9 +86,11 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
           <FolderIcon className="size-3" />
         )}
         <ComposerContextLabel>
-          {forceNewWorktree
-            ? resolveEnvModeLabel("worktree")
-            : resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode)}
+          {t(
+            forceNewWorktree
+              ? resolveEnvModeLabel("worktree")
+              : resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode),
+          )}
         </ComposerContextLabel>
       </span>
     );
@@ -97,9 +99,11 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       <Tooltip>
         <TooltipTrigger render={lockedRow} />
         <TooltipPopup>
-          {forceNewWorktree
-            ? "Each model starts in its own worktree."
-            : resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode)}
+          {t(
+            forceNewWorktree
+              ? "Each model starts in its own worktree."
+              : resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode),
+          )}
         </TooltipPopup>
       </Tooltip>
     );
@@ -143,41 +147,41 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
           </ComposerContextLabel>
         </TooltipTrigger>
         <TooltipPopup>
-          {effectiveEnvMode === "worktree"
-            ? resolveEnvModeLabel("worktree")
-            : resolveCurrentWorkspaceLabel(activeWorktreePath)}
+          {t(
+            effectiveEnvMode === "worktree"
+              ? resolveEnvModeLabel("worktree")
+              : resolveCurrentWorkspaceLabel(activeWorktreePath),
+          )}
           {shortcutLabel ? ` · ${shortcutLabel}` : null}
         </TooltipPopup>
       </Tooltip>
-      <SelectPopup
-        alignItemWithTrigger={false}
-        {...composerFloatingLayerProps}
-        className={showPreviousWorktree ? "w-[min(21rem,calc(100vw-2rem))]" : undefined}
-      >
-        <SelectGroup>
-          <SelectGroupLabel>{t("Workspace")}</SelectGroupLabel>
-          <SelectItem value="local">
-            <span className="inline-flex items-center gap-1.5">
-              {activeWorktreePath ? (
-                <FolderGitIcon className="size-3" />
-              ) : (
-                <FolderIcon className="size-3" />
-              )}
-              {resolveCurrentWorkspaceLabel(activeWorktreePath)}
-            </span>
-          </SelectItem>
-          <SelectItem value="worktree">
-            <span className="inline-flex items-center gap-1.5">
-              <FolderGit2Icon className="size-3" />
-              {resolveEnvModeLabel("worktree")}
-            </span>
-          </SelectItem>
-          {showPreviousWorktree && previousWorktreeLabel ? (
-            <SelectItem value={PREVIOUS_WORKTREE_SELECT_VALUE}>
-              <PreviousWorktreeItemContent branch={previousWorktreeBranch} />
+      <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
+        <div className={showPreviousWorktree ? "w-[min(21rem,calc(100vw-2rem))]" : undefined}>
+          <SelectGroup>
+            <SelectGroupLabel>{t("Workspace")}</SelectGroupLabel>
+            <SelectItem value="local">
+              <span className="inline-flex items-center gap-1.5">
+                {activeWorktreePath ? (
+                  <FolderGitIcon className="size-3" />
+                ) : (
+                  <FolderIcon className="size-3" />
+                )}
+                {t(resolveCurrentWorkspaceLabel(activeWorktreePath))}
+              </span>
             </SelectItem>
-          ) : null}
-        </SelectGroup>
+            <SelectItem value="worktree">
+              <span className="inline-flex items-center gap-1.5">
+                <FolderGit2Icon className="size-3" />
+                {t(resolveEnvModeLabel("worktree"))}
+              </span>
+            </SelectItem>
+            {showPreviousWorktree && previousWorktreeLabel ? (
+              <SelectItem value={PREVIOUS_WORKTREE_SELECT_VALUE}>
+                <PreviousWorktreeItemContent branch={previousWorktreeBranch} />
+              </SelectItem>
+            ) : null}
+          </SelectGroup>
+        </div>
       </SelectPopup>
     </Select>
   );

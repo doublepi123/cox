@@ -18,7 +18,8 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { buildPiRpcLaunch, resolvePiLaunchArgs } from "./mcpInjection.ts";
+import { buildPiRpcLaunch } from "./mcpInjection.ts";
+import { configuredPiLaunchArgs, piEnvironment } from "./configuration.ts";
 import {
   makePiRpcConnection,
   PiRpcError,
@@ -154,7 +155,7 @@ const makePiDiscoveryConnection = Effect.fnUntraced(function* (
     command: piSettings.binaryPath || "pi",
     args: launch.args,
     cwd,
-    env: launch.env,
+    env: piEnvironment(piSettings, launch.env),
   });
   yield* Stream.fromQueue(connection.events).pipe(
     Stream.runDrain,
@@ -199,7 +200,7 @@ const discoverPiViaRpc = Effect.fn("PiProviderStatus.discoverPiViaRpc")(function
 
 export const discoverPiCommandsForCwd = Effect.fn("discoverPiCommandsForCwd")(
   function* (piSettings: PiSettings, environment: NodeJS.ProcessEnv, cwd: string) {
-    const launchArgs = resolvePiLaunchArgs(piSettings.launchArgs);
+    const launchArgs = configuredPiLaunchArgs(piSettings);
     if (!launchArgs.ok) {
       return yield* new PiRpcError({ operation: "launch", detail: launchArgs.message });
     }
@@ -369,7 +370,7 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
         status: "error",
         auth: { status: "unknown" },
         message: isCommandMissingCause(error)
-          ? "Pi CLI (`pi`) is not installed or not on PATH. Install with `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`."
+          ? "Pi CLI (`pi`) is not installed or not on PATH. Install Pi in Cox settings."
           : "Failed to execute Pi CLI health check.",
       },
     });
@@ -441,7 +442,7 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
     });
   }
 
-  const resolvedLaunchArgs = resolvePiLaunchArgs(piSettings.launchArgs);
+  const resolvedLaunchArgs = configuredPiLaunchArgs(piSettings);
   if (!resolvedLaunchArgs.ok) {
     return buildServerProvider({
       presentation: PI_PRESENTATION,
@@ -503,12 +504,12 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
   const discovery = discoveryExit.value.value;
   const models = piModelsFromSettings(piSettings.customModels, discovery.models);
   const message = !discovery.authenticated
-    ? "Pi has no usable models. Run `pi` in a terminal and use /login, or configure an API key in ~/.pi/agent."
+    ? "Pi has no usable models. Configure a model provider and API key in Cox settings, or use /login in the Pi terminal."
     : discovery.unavailableActiveModel === undefined
       ? undefined
       : yield* describeUnavailablePiModel(
           piSettings,
-          environment,
+          piEnvironment(piSettings, environment),
           version,
           resolvedLaunchArgs.args,
           discovery.unavailableActiveModel,

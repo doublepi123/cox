@@ -170,6 +170,8 @@ import { latestProviderVersionCacheKeys } from "@t3tools/provider-core/server/ma
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
+import { discoverModelService } from "./modelServices/discovery.ts";
+import * as ModelServiceFetchClient from "effect/http/FetchHttpClient";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
@@ -2454,6 +2456,8 @@ export const layerWsRpc = (
         [WS_METHODS.providerAuthSubscribe]: (input) =>
           providerAuth.subscribe(input, currentSessionId),
         [WS_METHODS.providerInstallStart]: (input) => providerInstallation.start(input),
+        [WS_METHODS.modelServiceDiscover]: (input) =>
+          discoverModelService(input).pipe(Effect.provide(ModelServiceFetchClient.layer)),
         [WS_METHODS.providerInstallCancel]: (input) => providerInstallation.cancel(input),
         [WS_METHODS.providerInstallSubscribe]: (input) => providerInstallation.subscribe(input),
         [WS_METHODS.providerInstallRemove]: (input) => providerInstallation.remove(input),

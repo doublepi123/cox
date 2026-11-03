@@ -8,7 +8,8 @@ import { TextGenerationError } from "@t3tools/contracts";
 import type { PiSettings } from "../settings.ts";
 
 import { makePiRpcConnection, parsePiModelSlug, piRecordString } from "./rpc.ts";
-import { buildPiRpcLaunch, resolvePiLaunchArgs } from "./mcpInjection.ts";
+import { buildPiRpcLaunch } from "./mcpInjection.ts";
+import { configuredPiLaunchArgs, piEnvironment } from "./configuration.ts";
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 
 const PI_TIMEOUT_MS = 180_000;
@@ -34,7 +35,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
     function* (request) {
       const { operation, cwd, prompt, modelSelection } = request;
 
-      const resolvedLaunchArgs = resolvePiLaunchArgs(piSettings.launchArgs);
+      const resolvedLaunchArgs = configuredPiLaunchArgs(piSettings);
       if (!resolvedLaunchArgs.ok) {
         return yield* new TextGenerationError({
           operation,
@@ -43,7 +44,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
       }
       const launch = buildPiRpcLaunch({
         launchArgs: resolvedLaunchArgs.args,
-        environment,
+        environment: piEnvironment(piSettings, environment),
         mcpSession: undefined,
         extensionPath: undefined,
         ephemeral: true,

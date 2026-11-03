@@ -2,6 +2,7 @@
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
 import * as Effect from "effect/Effect";
+import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -28,9 +29,12 @@ import {
 } from "@t3tools/provider-core/server/driver";
 import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import { makePiInstallation } from "./installation.ts";
+import { piEnvironment } from "./configuration.ts";
 import {
   makeCachedProviderMaintenanceResolution,
   makePackageManagedProviderMaintenanceResolver,
+  makeManualOnlyProviderMaintenanceCapabilities,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import {
@@ -55,6 +59,7 @@ export type PiDriverEnv =
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | ProviderLatestVersions.ProviderLatestVersions
+  | Crypto.Crypto
   | Path.Path;
 
 const withInstanceIdentity =
@@ -97,7 +102,14 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const host = yield* ProviderHost.ProviderHost;
     const { cwd } = host.paths;
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const installation = yield* makePiInstallation({
+      instanceId,
+      baseDir: host.paths.baseDir,
+      ...(config.binaryPath ? { binaryPath: config.binaryPath } : {}),
+      environment: yield* mergeProviderInstanceEnvironment(environment),
+      onChanged: Effect.suspend((): Effect.Effect<void> => snapshot.refresh.pipe(Effect.asVoid)),
+    });
+    const processEnv = piEnvironment(config, installation.environment);
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -109,11 +121,29 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
       continuationGroupKey: continuationIdentity.continuationKey,
     });
     const effectiveConfig = { ...config, enabled } satisfies PiSettings;
+    const stampSnapshot = (draft: ServerProviderDraft): ServerProvider =>
+      stampIdentity({
+        ...draft,
+        setup: {
+          canInstall: !config.binaryPath || config.binaryPath === "pi",
+          canAuthenticate: false,
+          documentationUrl: "https://pi.dev",
+        },
+      });
     const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
       resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
       }).pipe(
+        Effect.map((capabilities) =>
+          capabilities.update?.executable === installation.executablePath
+            ? makeManualOnlyProviderMaintenanceCapabilities({
+                provider: DRIVER_KIND,
+                packageName: "@earendil-works/pi-coding-agent",
+                installPath: installation.executablePath,
+              })
+            : capabilities,
+        ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, pathService),
@@ -124,7 +154,10 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
       instanceId,
       displayName,
       accentColor,
-      environment,
+      environment: [
+        ...environment,
+        { name: installation.pathKey, value: processEnv[installation.pathKey]!, sensitive: false },
+      ],
       enabled,
       config,
     }).pipe(
@@ -141,7 +174,7 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
     const textGeneration = yield* makePiTextGeneration(effectiveConfig, processEnv);
 
     const checkProvider = checkPiProviderStatus(effectiveConfig, processEnv, cwd).pipe(
-      Effect.map(stampIdentity),
+      Effect.map(stampSnapshot),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
 
@@ -152,7 +185,7 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: (settings) =>
-        buildInitialPiProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+        buildInitialPiProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
       enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
         resolveMaintenance().pipe(
@@ -213,6 +246,7 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
             ),
       orchestrationAdapter,
       textGeneration,
+      installation,
     } satisfies ProviderInstance;
   }),
 };

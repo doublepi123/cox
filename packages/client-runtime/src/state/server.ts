@@ -693,6 +693,10 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId }) => environmentId,
       },
     }),
+    discoverModelService: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:model-service:discover",
+      tag: WS_METHODS.modelServiceDiscover,
+    }),
     cancelProviderInstall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:provider:install-cancel",
       tag: WS_METHODS.providerInstallCancel,

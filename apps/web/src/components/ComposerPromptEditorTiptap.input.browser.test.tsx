@@ -199,6 +199,143 @@ it("lets composition replace selected text without surrounding it", async () => 
   expect(serializeEditorDoc(editor.state.doc).value).toBe('"');
 });
 
+it.each([false, true])(
+  "keeps the preedit DOM through repeated pinyin Backspace and a delayed controlled echo (rich text: %s)",
+  async (richTextEnabled) => {
+    let echo = () => {};
+    let commit = () => {};
+    let pending = { value: "nihao", cursor: 5 };
+    let delayed = pending;
+    function DelayedComposer() {
+      const [prompt, setPrompt] = useState(pending);
+      useEffect(() => {
+        echo = () => setPrompt(delayed);
+        commit = () => setPrompt(pending);
+      }, []);
+      return (
+        <ComposerPromptEditor
+          editorRef={createRef<ComposerPromptEditorHandle>()}
+          value={prompt.value}
+          cursor={prompt.cursor}
+          richTextEnabled={richTextEnabled}
+          contextRecords={new Map()}
+          skills={[]}
+          disabled={false}
+          placeholder=""
+          onChange={(value, cursor) => {
+            pending = { value, cursor };
+          }}
+          onPaste={() => {}}
+        />
+      );
+    }
+    await using screen = await render(<DelayedComposer />);
+    const editor = editorIn(screen.container);
+    await act(async () => {
+      editor.view.focus();
+      editor.view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    });
+    const node = editor.view.dom.querySelector("p")!.firstChild;
+    for (const text of ["niha", "nih"]) {
+      delayed = pending;
+      await act(async () => {
+        editor.view.dom.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Backspace",
+            code: "Backspace",
+            keyCode: 229,
+            isComposing: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      await replaceDomText(editor, text, true);
+      await vi.waitFor(() => expect(serializeEditorDoc(editor.state.doc).value).toBe(text));
+      expect(pending.value).toBe(text);
+      await act(async () => echo());
+      expect(editor.view.dom.querySelector("p")!.firstChild).toBe(node);
+      expect(editor.view.dom.textContent).toBe(text);
+      expect(editor.view.composing).toBe(true);
+    }
+    await replaceDomText(editor, "你好", true);
+    await act(async () => {
+      commit();
+      editor.view.dom.dispatchEvent(
+        new CompositionEvent("compositionend", { bubbles: true, data: "你好" }),
+      );
+    });
+    expect(serializeEditorDoc(editor.state.doc).value).toBe("你好");
+    expect(document.activeElement).toBe(editor.view.dom);
+    await userEvent.keyboard("{Backspace}");
+    await vi.waitFor(() => expect(serializeEditorDoc(editor.state.doc).value).toBe("你"));
+  },
+);
+
+it("defers an external draft replacement until composition ends", async () => {
+  const prompt = (value: string) => (
+    <ComposerPromptEditor
+      editorRef={createRef<ComposerPromptEditorHandle>()}
+      value={value}
+      cursor={value.length}
+      contextRecords={new Map()}
+      skills={[]}
+      disabled={false}
+      placeholder=""
+      onChange={() => {}}
+      onPaste={() => {}}
+    />
+  );
+  await using screen = await render(prompt("nihao"));
+  const editor = editorIn(screen.container);
+  await act(async () => {
+    editor.view.focus();
+    editor.view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+  });
+  await screen.rerender(prompt("replacement"));
+  expect(editor.view.dom.textContent).toBe("nihao");
+  await act(async () => {
+    editor.view.dom.dispatchEvent(
+      new CompositionEvent("compositionend", { bubbles: true, data: "nihao" }),
+    );
+  });
+  await vi.waitFor(() => expect(editor.view.dom.textContent).toBe("replacement"));
+});
+
+it("leaves IME fallback key events to the browser without running composer commands", async () => {
+  const onCommandKeyDown = vi.fn(() => false);
+  await using screen = await render(
+    <ComposerPromptEditor
+      editorRef={createRef<ComposerPromptEditorHandle>()}
+      value="nihao"
+      cursor={5}
+      contextRecords={new Map()}
+      skills={[]}
+      disabled={false}
+      placeholder=""
+      onChange={() => {}}
+      onCommandKeyDown={onCommandKeyDown}
+      onPaste={() => {}}
+    />,
+  );
+  const editor = editorIn(screen.container);
+  for (const composition of [
+    { isComposing: true, keyCode: 8 },
+    { isComposing: false, keyCode: 229 },
+  ]) {
+    const event = new KeyboardEvent("keydown", {
+      key: "Backspace",
+      code: "Backspace",
+      bubbles: true,
+      cancelable: true,
+      ...composition,
+    });
+    editor.view.dom.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  }
+  expect(onCommandKeyDown).not.toHaveBeenCalled();
+});
+
 it("keeps unknown dollar names editable when restoring and pasting a draft", async () => {
   const value = "echo $HOME $PATH $anything $notaskill $20 $20k $babysit ";
   await using screen = await mountEditor(value, true, [babysit]);

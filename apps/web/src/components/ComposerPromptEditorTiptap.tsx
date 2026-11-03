@@ -987,6 +987,8 @@ function ComposerPromptEditorTiptapInner(
   });
   const selectionRangeRef = useRef({ start: initialExpandedCursor, end: initialExpandedCursor });
   const isApplyingControlledUpdateRef = useRef(false);
+  const compositionRef = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
   const hasAppliedControlledSelectionRef = useRef(false);
   const citationRequestRef = useRef<ComposerCitationCommentRequest | null>(null);
   const [openCitation, setOpenCitation] = useState<OpenCitationComment | null>(null);
@@ -1108,6 +1110,19 @@ function ComposerPromptEditorTiptapInner(
       editable: !disabled,
       editorProps: {
         attributes: editorAttributes,
+        handleDOMEvents: {
+          keydown: (view, event) => {
+            if (
+              !compositionRef.current &&
+              !view.composing &&
+              !event.isComposing &&
+              event.keyCode !== 229
+            )
+              return false;
+            event.stopPropagation();
+            return true;
+          },
+        },
         handleKeyDown: (view, event) => {
           // In a right-to-left line the start is on the right.
           const backArrow = caretLineDirection(view.state) === "rtl" ? "ArrowRight" : "ArrowLeft";
@@ -1515,7 +1530,7 @@ function ComposerPromptEditorTiptapInner(
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the controlled value and cursor into the Tiptap document before paint
   useLayoutEffect(() => {
     latestValueRef.current = value;
-    if (!editor) return;
+    if (!editor || isComposing || compositionRef.current || editor.view.composing) return;
     const initialSelection = !hasAppliedControlledSelectionRef.current;
     hasAppliedControlledSelectionRef.current = true;
     const normalizedCursor = clampEditorCursor(value, cursor);
@@ -1586,6 +1601,7 @@ function ComposerPromptEditorTiptapInner(
     });
   }, [
     clampEditorCursor,
+    isComposing,
     cursor,
     editor,
     expandEditorCursor,
@@ -1772,6 +1788,16 @@ function ComposerPromptEditorTiptapInner(
           >
             <EditorContent
               editor={editor}
+              onCompositionStart={() => {
+                compositionRef.current = true;
+                setIsComposing(true);
+              }}
+              onCompositionEnd={() => {
+                compositionRef.current = false;
+                queueMicrotask(() => {
+                  if (editor && !editor.isDestroyed) setIsComposing(false);
+                });
+              }}
               onKeyDown={(event) => {
                 if (
                   event.key === "Control" ||

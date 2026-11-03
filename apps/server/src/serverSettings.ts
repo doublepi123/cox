@@ -1,6 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   ModelSelection,
+  ModelServiceError,
   ProjectId,
   ProjectScript,
   keepUnknownOverrideKeys,
@@ -59,6 +60,10 @@ import {
 } from "./sourceControl/sourceControlHostSecrets.ts";
 
 import { mapSettingsSecrets, SECRET_REDACTED, type SettingsSecret } from "./settingsSecrets.ts";
+import {
+  validateModelServiceBindings,
+  ensureModelServiceRevisions,
+} from "./modelServices/validation.ts";
 
 export {
   resolveReviewGuideModelSelection,
@@ -116,6 +121,12 @@ const normalizeServerSettings = (
 ): Effect.Effect<ServerSettings, ServerSettingsError> =>
   encodeServerSettings(settings).pipe(
     Effect.flatMap(decodeServerSettings),
+    Effect.flatMap((next) => {
+      const problem = validateModelServiceBindings(next);
+      return problem
+        ? Effect.fail(new ModelServiceError({ detail: problem }))
+        : Effect.succeed(next);
+    }),
     Effect.map(foldProviderInstanceEnabledFlags),
     Effect.map((next) => withIdleCompaction(next, globalIdleCompaction(next))),
     Effect.map((next) => ({ ...next, ...deriveLegacyProjectOverrides(next) })),
@@ -197,6 +208,17 @@ function ensureSecretProviderWritesAllowed(
   }
   return Effect.void;
 }
+
+const ensureModelServiceWritesAllowed = (
+  current: ServerSettings,
+  patch: ServerSettingsPatch,
+  settingsPath: string,
+) =>
+  ensureModelServiceRevisions(current, patch).pipe(
+    Effect.mapError(
+      (cause) => new ServerSettingsError({ settingsPath, operation: "normalize", cause }),
+    ),
+  );
 
 function ensureProviderInstanceMutationAllowed(
   settings: ServerSettings,
@@ -286,12 +308,15 @@ const makeTest = Effect.fn("serverSettings.makeTest")(function* (
     getSettings,
     updateSettings: (patch) =>
       updateTestSettings((currentSettings) =>
-        Effect.succeed(applyServerSettingsPatch(currentSettings, patch)),
+        ensureModelServiceWritesAllowed(currentSettings, patch, "<memory>").pipe(
+          Effect.as(applyServerSettingsPatch(currentSettings, patch)),
+        ),
       ),
     updateProviderInstance: (mutation, patch = {}) =>
       updateTestSettings((currentSettings) =>
         Effect.gen(function* () {
           yield* ensureProviderInstanceMutationAllowed(currentSettings, mutation, "test settings");
+          yield* ensureModelServiceWritesAllowed(currentSettings, patch, "test settings");
           const patched = applyServerSettingsPatch(currentSettings, patch);
           return applyProviderInstanceMutation(patched, mutation);
         }),
@@ -1220,6 +1245,7 @@ const make = Effect.gen(function* () {
     updateSettings: (patch) =>
       updateAndPersistSettings((current) =>
         ensureSecretProviderWritesAllowed(patch, settingsPath).pipe(
+          Effect.andThen(ensureModelServiceWritesAllowed(current, patch, settingsPath)),
           Effect.as(applyServerSettingsPatch(current, patch)),
         ),
       ),
@@ -1227,6 +1253,7 @@ const make = Effect.gen(function* () {
       updateAndPersistSettings((current) =>
         Effect.gen(function* () {
           yield* ensureSecretProviderWritesAllowed(patch, settingsPath);
+          yield* ensureModelServiceWritesAllowed(current, patch, settingsPath);
           yield* ensureProviderInstanceMutationAllowed(current, mutation, settingsPath);
           const patched = applyServerSettingsPatch(current, patch);
           return applyProviderInstanceMutation(patched, mutation);

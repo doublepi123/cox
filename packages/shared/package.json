@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./modelServices": {
+      "types": "./src/modelServices.ts",
+      "import": "./src/modelServices.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"

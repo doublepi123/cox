@@ -103,7 +103,25 @@ Cox 支持简体中文和英文。首次打开时，界面会跟随设备或浏�
 
 Cox 托管的 Codex 会保留其模型目录报告的速度档位，并把所选档位（包括快速档位 Fast）转发给 app-server。目录里列出某个档位，并不能证明你有权使用；上游服务可能针对特定账号或连接拒绝该档位。Cox 不会悄悄换用其他档位重试。账号目录中的速度选项会补上原生模型发现缺失的部分，但不会丢弃原生模型设置。两个目录都没有报告 Fast 时，Cox 不会提供该选项。
 
+## 模型服务中心
+
+在 **设置 → 模型服务中心** 配置 base URL、API key 和支持的协议，点击 **保存并获取模型**。
+模型发现只读取元数据，不发起推理请求；服务未提供模型列表时，可以手动添加和编辑模型。
+在 **设置 → Providers** 中，将 Codex、Claude Code、Pi 或 OpenCode 实例绑定到服务，选择模型范围和默认模型。
+解除绑定后恢复实例原有的独立配置。
+
+上游密钥和私有请求头存入本地独立凭据存储，agent 使用各自的本地网关凭据。
+原生协议直接转发，跨协议请求通过内嵌的 MIT 开源项目
+[CLIProxyAPI translator SDK](https://github.com/router-for-me/CLIProxyAPI) 转换，支持 OpenAI Responses、
+Chat Completions、Anthropic Messages 和 Gemini，以及流式响应和工具调用。
+转换无法赋予模型本身不具备的能力；Responses 跨协议转换需要完整对话输入，不支持跨协议估算 token 数。
+集中更新密钥即时生效。修改绑定或模型目录可能重建 agent 会话，请在活跃任务结束后操作。
+
 ## 开发
+
+源码构建还需要 Go `1.27.3`。开发时先运行 `node scripts/build-protocol-bridge.ts`，即可使用协议转换；
+运行 `pnpm test:protocol-bridge` 验证转换器。`pnpm build` 会自动构建转换器，发布包内置原生二进制，
+使用发布包无需安装 Go。构建和协议限制见 [`native/protocol-bridge/README.md`](native/protocol-bridge/README.md)。
 
 ```sh
 pnpm install

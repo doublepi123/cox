@@ -7,6 +7,7 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
   ServerSettings,
+  ModelServiceError,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import type * as Crypto from "effect/Crypto";
@@ -15,6 +16,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
+import * as Option from "effect/Option";
 
 import * as Settings from "../serverSettings.ts";
 import * as SecretResolver from "../secrets/SecretResolver.ts";
@@ -28,6 +30,7 @@ import type * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import type * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../config.ts";
 import type * as PortScanner from "../preview/PortScanner.ts";
+import { ModelServiceGateway } from "../modelServices/ModelServiceGateway.ts";
 
 type ProviderInstanceRegistryHydrationEnv =
   | Exclude<
@@ -121,6 +124,18 @@ export const seedDevReplayInstance = Effect.fn(
   });
 });
 
+export const materializeInstances = Effect.fn("materializeModelServiceInstances")(function* (
+  settings: ServerSettings,
+) {
+  const instances = deriveProviderInstanceConfigMap(settings);
+  const gateway = yield* Effect.serviceOption(ModelServiceGateway);
+  if (Option.isNone(gateway)) {
+    if (!Object.values(instances).some((entry) => entry.modelService)) return instances;
+    return yield* new ModelServiceError({ detail: "The model service gateway is unavailable." });
+  }
+  return yield* gateway.value.materialize(settings, instances);
+});
+
 const layerSettingsWatcher = (settingsChanges: Stream.Stream<ServerSettings>) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -132,7 +147,9 @@ const layerSettingsWatcher = (settingsChanges: Stream.Stream<ServerSettings>) =>
           // older than the seed. A failed current read must leave the registry intact.
           serverSettings.getSettings.pipe(
             Effect.flatMap((current) =>
-              mutator.reconcile(deriveProviderInstanceConfigMap(current)),
+              materializeInstances(current).pipe(
+                Effect.flatMap((entries) => mutator.reconcile(entries)),
+              ),
             ),
             Effect.catchCause((cause) =>
               Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
@@ -163,7 +180,7 @@ export const layer: Layer.Layer<
     const initialConfigMap =
       initialSettings === undefined
         ? ({} as ProviderInstanceConfigMap)
-        : deriveProviderInstanceConfigMap(initialSettings);
+        : yield* materializeInstances(initialSettings).pipe(Effect.orDie);
 
     const layerMutable = ProviderInstanceRegistry.layer({
       drivers: BUILT_IN_DRIVERS,

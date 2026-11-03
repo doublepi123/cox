@@ -17,10 +17,30 @@ import {
   DEV_REPLAY_INSTANCE_ID,
   deriveProviderInstanceConfigMap,
   seedDevReplayInstance,
+  materializeInstances,
 } from "./ProviderInstanceRegistryHydration.ts";
+import { ModelServiceGateway } from "../modelServices/ModelServiceGateway.ts";
+import { HttpServerResponse } from "effect/http";
 
 const projectId = ProjectId.make("project-a");
 const instanceId = ProviderInstanceId.make("codex_work");
+
+effectIt.effect("reconciles the gateway even after the final model binding is removed", () =>
+  Effect.gen(function* () {
+    let reconciled = false;
+    yield* materializeInstances(DEFAULT_SERVER_SETTINGS).pipe(
+      Effect.provideService(ModelServiceGateway, {
+        materialize: (_settings, instances) =>
+          Effect.sync(() => {
+            reconciled = true;
+            return instances;
+          }),
+        handle: Effect.succeed(HttpServerResponse.empty()),
+      }),
+    );
+    expect(reconciled).toBe(true);
+  }),
+);
 
 function settingsWith(overrides: Partial<ServerSettings>): ServerSettings {
   return { ...DEFAULT_SERVER_SETTINGS, ...overrides };

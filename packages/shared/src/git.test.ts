@@ -8,12 +8,38 @@ import {
   buildTemporaryWorktreeBranchName,
   flattenTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
+  isValidGitBranchName,
   normalizeGitRemoteUrl,
   parseOriginUrlFromGitConfig,
   resolveAutoFeatureBranchName,
   sanitizeFeatureBranchName,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
+
+describe("worktree branch names", () => {
+  it("accepts named branches and rejects invalid generated names", () => {
+    for (const name of ["feat/my-worktree", "修复输入法", "worktree-1"])
+      expect(isValidGitBranchName(name)).toBe(true);
+    for (const name of [
+      "",
+      "HEAD",
+      "@",
+      "-option",
+      "../outside",
+      "bad name",
+      "a..b",
+      "a@{b",
+      "a.lock",
+      "a//b",
+      "a/",
+      "a.",
+      "a\\b",
+      "a:b",
+      "a?b",
+    ])
+      expect(isValidGitBranchName(name)).toBe(false);
+  });
+});
 
 describe("normalizeGitRemoteUrl", () => {
   it("canonicalizes equivalent GitHub remotes across protocol variants", () => {

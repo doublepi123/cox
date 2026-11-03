@@ -90,9 +90,12 @@ vi.mock(import("../../state/query"), async (original) => ({
 }));
 vi.mock(import("../../hooks/useSettings"), async (original) => ({
   ...(await original()),
-  useEnvironmentSettings: ((environmentId: string) => {
+  useEnvironmentSettings: ((
+    environmentId: string,
+    selector?: (settings: UnifiedSettings) => unknown,
+  ) => {
     state.readEnvironmentIds.push(environmentId);
-    return state.settings;
+    return selector ? selector(state.settings) : state.settings;
   }) as never,
   useUpdateEnvironmentSettings: ((environmentId: string) => {
     state.updateEnvironmentIds.push(environmentId);

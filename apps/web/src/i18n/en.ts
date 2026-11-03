@@ -1,4 +1,181 @@
 export const en = {
+  "Use a valid Git branch name.": "Use a valid Git branch name.",
+  "Branch name copied": "Branch name copied",
+  "Failed to copy branch name": "Failed to copy branch name",
+  "Copy branch name": "Copy branch name",
+  "Action unavailable": "Action unavailable",
+  "This connection cannot change the thread's branch.":
+    "This connection cannot change the thread's branch.",
+  "Failed to switch ref.": "Failed to switch ref.",
+  "Failed to create and switch ref.": "Failed to create and switch ref.",
+  "Worktree name": "Worktree name",
+  "Worktree name (optional)": "Worktree name (optional)",
+  "Automatic name": "Automatic name",
+  "Leave blank for an LLM recommendation": "Leave blank for an LLM recommendation",
+  "Branch name: {name}": "Branch name: {name}",
+  "Cox recommends a name from your first message before creating the worktree. If generation fails, it uses a random name.":
+    "Cox recommends a name from your first message before creating the worktree. If generation fails, it uses a random name.",
+  "Each model gets a unique suffix when a name is specified.":
+    "Each model gets a unique suffix when a name is specified.",
+  "New worktree": "New worktree",
+  "Current checkout": "Current checkout",
+  "Current worktree": "Current worktree",
+  "Local checkout": "Local checkout",
+  Worktree: "Worktree",
+  "Each model starts in its own worktree.": "Each model starts in its own worktree.",
+  "Run on": "Run on",
+  "Run context: {context}": "Run context: {context}",
+  "Previous worktree ({branch})": "Previous worktree ({branch})",
+  "From {branch}": "From {branch}",
+  "From {branch} (remote)": "From {branch} (remote)",
+  "Select ref": "Select ref",
+  "Loading refs...": "Loading refs...",
+  "Loading more refs...": "Loading more refs...",
+  "Showing {count} of {total} refs": "Showing {count} of {total} refs",
+  'Create new ref "{name}"': 'Create new ref "{name}"',
+  "Copy full path": "Copy full path",
+  "Fill metadata from models.dev": "Fill metadata from models.dev",
+  "Input modalities": "Input modalities",
+  "Output modalities": "Output modalities",
+  "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.":
+    "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
+  "Could not fetch model metadata from models.dev. Try again later.":
+    "Could not fetch model metadata from models.dev. Try again later.",
+  "Model services": "Model services",
+  "Model service": "Model service",
+  "Add model service": "Add model service",
+  "Configure an API once, discover its models, and share it with compatible coding agents.":
+    "Configure an API once, discover its models, and share it with compatible coding agents.",
+  "Connect to Cox to manage model services.": "Connect to Cox to manage model services.",
+  "No model services configured.": "No model services configured.",
+  "Add a service with its API URL, API key and supported protocols.":
+    "Add a service with its API URL, API key and supported protocols.",
+  "Service name": "Service name",
+  "Remove stored API key": "Remove stored API key",
+  "Supported protocols": "Supported protocols",
+  "The first selected protocol is used for model discovery. Each model can declare its own protocols.":
+    "The first selected protocol is used for model discovery. Each model can declare its own protocols.",
+  Primary: "Primary",
+  "Model-list path": "Model-list path",
+  "Optional path on the same service, such as /v1/models.":
+    "Optional path on the same service, such as /v1/models.",
+  "Additional request headers": "Additional request headers",
+  "Request headers JSON": "Request headers JSON",
+  "Header values are stored as secrets. Keep masked values to retain them.":
+    "Header values are stored as secrets. Keep masked values to retain them.",
+  "Enable model service": "Enable model service",
+  "Save service": "Save service",
+  "Working…": "Working…",
+  "Save and fetch models": "Save and fetch models",
+  "Add model": "Add model",
+  "Fetching models does not send a generation request. Unknown capabilities remain unknown.":
+    "Fetching models does not send a generation request. Unknown capabilities remain unknown.",
+  "Fetch models or add them manually before binding an agent.":
+    "Fetch models or add them manually before binding an agent.",
+  "Bound agents: {count}": "Bound agents: {count}",
+  "Confirm removal": "Confirm removal",
+  "Remove service": "Remove service",
+  "Unbind agents before removing this service.": "Unbind agents before removing this service.",
+  "Maximum output tokens": "Maximum output tokens",
+  "Save model": "Save model",
+  "Image input": "Image input",
+  "Tool calling": "Tool calling",
+  "No longer advertised by the service": "No longer advertised by the service",
+  "Share a centrally managed API connection and model catalog with this agent.":
+    "Share a centrally managed API connection and model catalog with this agent.",
+  "Manage model services": "Manage model services",
+  "Use independent agent configuration": "Use independent agent configuration",
+  "Use all compatible models": "Use all compatible models",
+  "Native protocol": "Native protocol",
+  "Protocol conversion": "Protocol conversion",
+  "Apply model service": "Apply model service",
+  "Fetch or add models with tool-calling support before binding this agent.":
+    "Fetch or add models with tool-calling support before binding this agent.",
+  "{count} compatible models. Protocol conversion is applied when required.":
+    "{count} compatible models. Protocol conversion is applied when required.",
+  "The operation was interrupted. Retry to confirm its result.":
+    "The operation was interrupted. Retry to confirm its result.",
+  "The model service operation failed.": "The model service operation failed.",
+  "Check the service name, API URL, protocols and request headers.":
+    "Check the service name, API URL, protocols and request headers.",
+  "Could not fetch models. Check the URL, API key and model-list path.":
+    "Could not fetch models. Check the URL, API key and model-list path.",
+  "Could not prepare the agent's model service configuration.":
+    "Could not prepare the agent's model service configuration.",
+  "Could not save the model catalog. The previous catalog has been retained.":
+    "Could not save the model catalog. The previous catalog has been retained.",
+  "Could not start the protocol converter.": "Could not start the protocol converter.",
+  "Model gateway authentication required.": "Model gateway authentication required.",
+  "No compatible upstream protocol is configured for this model.":
+    "No compatible upstream protocol is configured for this model.",
+  "Protocol conversion failed.": "Protocol conversion failed.",
+  "The agent's model service is missing or unsupported.":
+    "The agent's model service is missing or unsupported.",
+  "The model list exceeded the pagination limit.": "The model list exceeded the pagination limit.",
+  "The model service changed during discovery. Retry with its current settings.":
+    "The model service changed during discovery. Retry with its current settings.",
+  "The model service changed. Reload its current settings before saving.":
+    "The model service changed. Reload its current settings before saving.",
+  "The model service request could not be completed.":
+    "The model service request could not be completed.",
+  "The model service sent an oversized stream event.":
+    "The model service sent an oversized stream event.",
+  "The model service stream was interrupted.": "The model service stream was interrupted.",
+  "The model-list URL must use the model service's origin.":
+    "The model-list URL must use the model service's origin.",
+  "The protocol converter is unavailable. Build Cox before using protocol conversion.":
+    "The protocol converter is unavailable. Build Cox before using protocol conversion.",
+  "The protocol converter stopped unexpectedly.": "The protocol converter stopped unexpectedly.",
+  "The service did not return a model list.": "The service did not return a model list.",
+  "The service repeated a model-list page.": "The service repeated a model-list page.",
+  "The service returned incomplete model pagination.":
+    "The service returned incomplete model pagination.",
+  "This model is no longer advertised by the model service. Refresh its catalog or select another model.":
+    "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
+  "This model is not allowed by the agent binding.":
+    "This model is not allowed by the agent binding.",
+  "This model service is missing or disabled.": "This model service is missing or disabled.",
+  "This model service is unavailable.": "This model service is unavailable.",
+  "Add or discover compatible models before binding an agent.":
+    "Add or discover compatible models before binding an agent.",
+  "This protocol conversion is not supported.": "This protocol conversion is not supported.",
+  "The request cannot be represented by the upstream protocol.":
+    "The request cannot be represented by the upstream protocol.",
+  "The upstream response could not be converted.": "The upstream response could not be converted.",
+  "The upstream tool call could not be converted safely.":
+    "The upstream tool call could not be converted safely.",
+  "Stateful Responses requests require complete conversation input for protocol conversion.":
+    "Stateful Responses requests require complete conversation input for protocol conversion.",
+  "Preparing Pi setup…": "Preparing Pi setup…",
+  "Installing Pi…": "Installing Pi…",
+  "Pi {version} is installed.": "Pi {version} is installed.",
+  "Install the official Pi coding agent.": "Install the official Pi coding agent.",
+  "Pi setup": "Pi setup",
+  "Pi CLI": "Pi CLI",
+  "Enable Pi": "Enable Pi",
+  "Install Pi": "Install Pi",
+  "Update Pi": "Update Pi",
+  "Uses the custom Pi binary path below.": "Uses the custom Pi binary path below.",
+  "Using your existing Pi CLI.": "Using your existing Pi CLI.",
+  "Cox installs Pi in its own tools directory.": "Cox installs Pi in its own tools directory.",
+  "Pi credentials": "Pi credentials",
+  "Configure a model provider and API key below, or keep using your existing Pi login. To sign in with a subscription, run /login in Pi using the same configuration directory.":
+    "Configure a model provider and API key below, or keep using your existing Pi login. To sign in with a subscription, run /login in Pi using the same configuration directory.",
+  "Model provider": "Model provider",
+  "Pi provider ID, such as anthropic, openai, google or openrouter. Leave empty to use Pi's configuration.":
+    "Pi provider ID, such as anthropic, openai, google or openrouter. Leave empty to use Pi's configuration.",
+  "Pi model ID or provider/model. Leave empty to use Pi's default model.":
+    "Pi model ID or provider/model. Leave empty to use Pi's default model.",
+  "Stored separately on this computer. Select a model provider before adding a Pi API key. Leave empty to use existing Pi credentials or environment variables.":
+    "Stored separately on this computer. Select a model provider before adding a Pi API key. Leave empty to use existing Pi credentials or environment variables.",
+  "Pi configuration directory": "Pi configuration directory",
+  "Optional absolute path for Pi credentials, models.json and settings.json. Leave empty to use PI_CODING_AGENT_DIR or ~/.pi/agent.":
+    "Optional absolute path for Pi credentials, models.json and settings.json. Leave empty to use PI_CODING_AGENT_DIR or ~/.pi/agent.",
+  "Pi installation cancelled.": "Pi installation cancelled.",
+  "Could not install Pi. Check your connection and Node.js/npm installation, then retry.":
+    "Could not install Pi. Check your connection and Node.js/npm installation, then retry.",
+  "Select a supported Pi model provider before adding an API key. For custom providers, configure credentials in Pi's models.json or provider environment.":
+    "Select a supported Pi model provider before adding an API key. For custom providers, configure credentials in Pi's models.json or provider environment.",
   "Preparing Grok setup…": "Preparing Grok setup…",
   "Installing Grok…": "Installing Grok…",
   "Grok {version} is installed.": "Grok {version} is installed.",

@@ -17,6 +17,7 @@ import {
   CommandId,
   DEFAULT_SERVER_SETTINGS,
   GitCommandError,
+  TextGenerationError,
   MessageId,
   ProjectId,
   ProviderDriverKind,
@@ -918,6 +919,81 @@ const preparationSettled = (threadId: ThreadId) =>
     );
     return yield* threads.getThreadProjection(threadId);
   });
+
+it.effect.each(["manual", "recommended", "failed", "collision", "invalid"] as const)(
+  "chooses the %s worktree name before creating the checkout",
+  (mode) => {
+    const harness = makeHarness({
+      generateBranchName: () =>
+        mode === "failed"
+          ? Effect.fail(
+              new TextGenerationError({ operation: "generateBranchName", detail: "unavailable" }),
+            )
+          : Effect.succeed({ branch: mode === "invalid" ? "../bad name" : "feat/recommended" }),
+      hasCommit: ({ refName }) =>
+        Effect.succeed(mode === "collision" && refName === "refs/heads/feat/recommended"),
+    });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: `name:${mode}`,
+          thread: `thread:name:${mode}`,
+          message: "Improve worktree names",
+          workspace: {
+            type: "worktree",
+            baseRef: "main",
+            ...(mode === "manual" ? { branch: "feat/my-worktree" } : {}),
+          },
+        }),
+      );
+      const projection = yield* preparationSettled(launched.threadId);
+      const branch = harness.createWorktree.mock.calls[0]?.[0].newRefName;
+      if (mode === "manual") {
+        assert.equal(branch, "feat/my-worktree");
+        assert.equal(harness.generateBranchName.mock.calls.length, 0);
+      } else if (mode === "recommended") {
+        assert.equal(branch, "feat/recommended");
+      } else {
+        assert.match(branch!, /^cox\/[a-f0-9]{8}$/);
+      }
+      assert.equal(projection.thread.branch, branch);
+      assert.equal(harness.renameBranch.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
+it.effect("falls back to a random worktree name when the recommendation times out", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    const interrupted = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      generateBranchName: () =>
+        Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+        ),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "name:timeout",
+          thread: "thread:name:timeout",
+          message: "Improve worktree names",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      yield* Deferred.await(started);
+      assert.equal(harness.createWorktree.mock.calls.length, 0);
+      yield* TestClock.adjust(Duration.seconds(15));
+      const projection = yield* preparationSettled(launched.threadId);
+      assert.match(projection.thread.branch!, /^cox\/[a-f0-9]{8}$/);
+      assert.isTrue(yield* Deferred.isDone(interrupted));
+      assert.equal(harness.createWorktree.mock.calls[0]?.[0].newRefName, projection.thread.branch);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
 
 function scheduledTaskInput(id: string, targetProjectId: ProjectId) {
   return {
@@ -2208,17 +2284,12 @@ it.effect("cancels tracked setup before provider work is released", () =>
   }),
 );
 
-it.effect("stops an in-flight branch rename when tracked setup is cancelled", () =>
+it.effect("cancels an in-flight name recommendation before creating a worktree", () =>
   Effect.gen(function* () {
-    const setupEntered = yield* Deferred.make<void>();
     const branchNameStarted = yield* Deferred.make<void>();
     const allowBranchName = yield* Deferred.make<void>();
     const branchNameInterrupted = yield* Deferred.make<void>();
-    const renameAttempted = yield* Deferred.make<void>();
     const harness = makeHarness({
-      renameBranch: (input) =>
-        Deferred.succeed(renameAttempted, undefined).pipe(Effect.as({ branch: input.newBranch })),
-      runSetup: () => Deferred.succeed(setupEntered, undefined).pipe(Effect.andThen(Effect.never)),
       generateBranchName: () =>
         Deferred.succeed(branchNameStarted, undefined).pipe(
           Effect.andThen(Deferred.await(allowBranchName)),
@@ -2238,19 +2309,16 @@ it.effect("stops an in-flight branch rename when tracked setup is cancelled", ()
           workspace: { type: "worktree", baseRef: "main" },
         }),
       );
-      yield* Deferred.await(setupEntered);
       yield* Deferred.await(branchNameStarted);
       assert.isTrue(yield* tracker.cancel(launched.threadId));
-      yield* Deferred.succeed(allowBranchName, undefined);
-      yield* Effect.raceFirst(
-        Deferred.await(branchNameInterrupted),
-        Deferred.await(renameAttempted),
-      );
+      yield* Deferred.await(branchNameInterrupted);
       assert.isTrue(
         yield* Deferred.isDone(branchNameInterrupted),
-        "the cancelled setup's branch rename kept running",
+        "the cancelled setup's name recommendation kept running",
       );
       assert.equal(harness.renameBranch.mock.calls.length, 0);
+      assert.equal(harness.createWorktree.mock.calls.length, 0);
+      assert.equal(harness.runSetup.mock.calls.length, 0);
       assert.isNull((yield* threads.getThreadProjection(launched.threadId)).thread.worktreePath);
     }).pipe(Effect.provide(harness.layer));
   }),

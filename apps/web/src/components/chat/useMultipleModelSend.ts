@@ -5,6 +5,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { sanitizeNewRefName } from "@t3tools/shared/git";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -114,6 +115,9 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
     readonly isCurrentSend: () => boolean;
   }) => {
     const { attachments: attachmentsSnapshot, messageText } = sendSnapshot;
+    const worktreeName = draftId
+      ? useComposerDraftStore.getState().getDraftSession(draftId)?.worktreeName?.trim()
+      : undefined;
     const failedSelections: ModelSelection[] = [];
     let clearedDraft = false;
     let releasedComposer = false;
@@ -189,6 +193,11 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                     prepareWorktree: {
                       projectCwd: project.workspaceRoot,
                       baseBranch: branch,
+                      ...(worktreeName
+                        ? {
+                            branch: `${sanitizeNewRefName(worktreeName)}-${targetThreadId.slice(-8)}`,
+                          }
+                        : {}),
                       requireWorktree: true,
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
                     },

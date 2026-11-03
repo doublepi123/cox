@@ -878,6 +878,23 @@ describe("composerDraftStore project draft thread mapping", () => {
     }
   });
 
+  it("retains a custom worktree name when other draft settings change and after hydration", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, localDraftId, { threadId, envMode: "worktree" });
+    store.setDraftThreadContext(localDraftId, { worktreeName: "feat/named" });
+    store.setDraftThreadContext(localDraftId, { branch: "main", startFromOrigin: true });
+    expect(useComposerDraftStore.getState().getDraftSession(localDraftId)?.worktreeName).toBe(
+      "feat/named",
+    );
+    const state = useComposerDraftStore.getState();
+    const persisted = partializeComposerDraftStoreState(state);
+    const merged = useComposerDraftStore.persist.getOptions().merge!(persisted, state);
+    expect(
+      Object.values(merged.draftThreadsByThreadKey).find((draft) => draft.threadId === threadId)
+        ?.worktreeName,
+    ).toBe("feat/named");
+  });
+
   it("removes a draft's previous project mapping when retargeted in place", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });

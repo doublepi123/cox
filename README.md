@@ -132,6 +132,21 @@ API-key and custom API connections do not run ChatGPT subscription-limit queries
 
 ### API gateways and custom models
 
+For a shared connection, open **Settings → Model services**, add the base URL, API key and
+supported protocols, then choose **Save and fetch models**. Model discovery reads metadata
+only. You can also add or edit model metadata manually when a service has no model-list API.
+In **Settings → Providers**, bind a Codex, Claude Code, Pi or OpenCode instance to the service,
+select its models and a default. Unbinding restores that instance's independent settings.
+
+Cox keeps upstream keys and private headers in its local secret store. Agents receive
+separate local gateway credentials. Native protocol requests pass through; other requests
+use the embedded MIT-licensed [CLIProxyAPI translator SDK](https://github.com/router-for-me/CLIProxyAPI)
+for OpenAI Responses, Chat Completions, Anthropic Messages and Gemini, including streaming
+and tool calls. Conversion cannot add model capabilities. Stateful Responses conversion
+requires complete conversation input; cross-protocol token counting is unavailable.
+Credential rotation takes effect centrally. Finish active turns before changing bindings
+or model catalogs, because provider configuration changes can recreate agent sessions.
+
 In **Settings → Providers**, open a Codex or Claude instance and configure **API gateway → API URL / API key**. Keys are stored separately on the local host and are not returned to the browser as plaintext. These settings take precedence over subscription authentication for that instance; use separate instances to keep API and subscription connections available together. Codex gateways must support the OpenAI Responses API; Claude gateways must support the Anthropic Messages API.
 
 Save the settings, then choose **Refresh models from gateway** under **Models**. Cox reads the gateway's model-list endpoint (including pagination), without sending paid inference probes. Model IDs, names, context limits, reasoning choices and image-input support are filled only when reported by the gateway. Many `/models` endpoints report only IDs, so unknown capabilities remain unset.
@@ -146,6 +161,12 @@ Account-catalog speed options fill gaps in native model discovery without discar
 native model settings. Cox does not advertise Fast when neither catalog reports it.
 
 ## Development
+
+Source builds require Go `1.27.3` in addition to Node and pnpm. Run
+`node scripts/build-protocol-bridge.ts` before using protocol conversion in development,
+and `pnpm test:protocol-bridge` to test the converter. `pnpm build` builds it automatically;
+published packages include the native converter and do not require Go. See
+[`native/protocol-bridge/README.md`](native/protocol-bridge/README.md) for packaging and limits.
 
 ```sh
 pnpm install

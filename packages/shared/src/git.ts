@@ -265,6 +265,22 @@ export function sanitizeNewRefName(rawName: string): string {
   return rawName.trim().replace(/[ \t\n\r\f\v]+/g, "-");
 }
 
+export function isValidGitBranchName(name: string): boolean {
+  return (
+    name.length > 0 &&
+    name !== "@" &&
+    name !== "HEAD" &&
+    !name.startsWith("-") &&
+    !name.endsWith(".") &&
+    !/[\x00-\x20\x7f~^:?*[\\]/.test(name) &&
+    !name.includes("..") &&
+    !name.includes("@{") &&
+    name
+      .split("/")
+      .every((part) => part.length > 0 && !part.startsWith(".") && !part.endsWith(".lock"))
+  );
+}
+
 export function dedupeRemoteBranchesWithLocalMatches(
   refs: ReadonlyArray<VcsRef>,
 ): ReadonlyArray<VcsRef> {

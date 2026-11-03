@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.1.21 — 2026-11-03
+
+- Add a model service center for shared base URLs, API keys and model catalogs. Bind agent
+  providers to a service and translate OpenAI Responses, Chat Completions, Anthropic Messages
+  and Gemini requests with the embedded CLIProxyAPI SDK when protocols differ.
+- Fill model names, context windows, output limits and modality, tool and reasoning metadata
+  from models.dev using exact model IDs, preserving explicit provider and user values.
+- Install and configure Pi from provider settings, including managed binaries and model
+  service bindings, while preserving existing custom installations.
+- Allow custom worktree names. When omitted, recommend a name from the first message before
+  creating the checkout, with a bounded wait and random fallback. Localize the workspace row.
+- Keep Pinyin composition active through consecutive Backspace presses and delayed composer
+  updates, and prevent editor shortcuts from interrupting an active input method.
+
 ## 0.1.20 — 2026-11-03
 
 - Install the official Grok CLI and sign in or out of Grok Build directly from provider

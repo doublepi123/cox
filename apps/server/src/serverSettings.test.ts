@@ -2,6 +2,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
   ModelSelection,
+  ModelServiceId,
+  ModelServiceConfig,
   ProjectId,
   ProjectScript,
   ProviderDriverKind,
@@ -36,6 +38,7 @@ import { resolveProviderInstanceTerminalEnvironment } from "./terminal/Manager.t
 const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 const decodeServerSettingsJson = Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings));
 const decodeServerSettingsPatch = Schema.decodeUnknownEffect(ServerSettingsPatch);
+const decodeModelService = Schema.decodeSync(ModelServiceConfig);
 
 const layerServerSettings = () =>
   ServerSettingsModule.layer.pipe(
@@ -97,6 +100,54 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
   });
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect(
+    "stores centralized API keys and request headers separately, preserves masked edits, and rejects stale writes",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsModule.ServerSettingsService;
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const id = ModelServiceId.make("central-secrets");
+        const service = decodeModelService({
+          name: "Private service",
+          baseUrl: "https://provider.test/v1",
+          protocols: ["openai-chat"],
+          apiKey: "private-central-key",
+          headers: { "x-vendor-key": "private-header-value" },
+          models: [{ id: "Model-Case", capabilities: null }],
+        });
+        const first = yield* settings.updateSettings({ modelServices: { [id]: service } });
+        assert.equal(first.modelServices[id]?.apiKey, "private-central-key");
+        assert.equal(first.modelServices[id]?.headers["x-vendor-key"], "private-header-value");
+        const disk = yield* fs.readFileString(config.settingsPath);
+        assert.notInclude(disk, "private-central-key");
+        assert.notInclude(disk, "private-header-value");
+        const redacted =
+          ServerSettingsModule.redactServerSettingsForClient(first).modelServices[id]!;
+        assert.notInclude(JSON.stringify(redacted), "private-central-key");
+        assert.notInclude(JSON.stringify(redacted), "private-header-value");
+        const updated = yield* settings.updateSettings({
+          modelServices: { [id]: { ...redacted, name: "Renamed" } },
+        });
+        assert.equal(updated.modelServices[id]?.apiKey, "private-central-key");
+        assert.equal(updated.modelServices[id]?.headers["x-vendor-key"], "private-header-value");
+        const stale = yield* Effect.flip(
+          settings.updateSettings({
+            modelServices: { [id]: { ...redacted, apiKey: "stale-replacement" } },
+          }),
+        );
+        assert.equal(stale.operation, "normalize");
+        assert.equal((yield* settings.getSettings).modelServices[id]?.name, "Renamed");
+        const latest =
+          ServerSettingsModule.redactServerSettingsForClient(updated).modelServices[id]!;
+        const cleared = yield* settings.updateSettings({
+          modelServices: { [id]: { ...latest, apiKey: "", headers: {} } },
+        });
+        assert.equal(cleared.modelServices[id]?.apiKey, "");
+        assert.deepEqual(cleared.modelServices[id]?.headers, {});
+      }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
+  );
+
   it.effect("serializes concurrent model preference edits without cancelling duplicate adds", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;

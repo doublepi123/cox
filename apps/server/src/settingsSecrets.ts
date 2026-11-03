@@ -4,6 +4,7 @@ import {
   CodexSettings,
   type ServerSettings,
   UsageLimitSourceConfig,
+  ModelServiceConfig,
   isSecretReference,
   secretSettingsFields,
 } from "@t3tools/contracts";
@@ -148,6 +149,17 @@ export function mapSettingsSecrets(
 
   return {
     ...settings,
+    modelServices: Object.fromEntries(
+      Object.entries(settings.modelServices).map(([id, service]) => [
+        id,
+        mapFields(
+          service,
+          secretSettingsFields(ModelServiceConfig),
+          (field, header) =>
+            `model-service-${encode(id)}-${encode(field)}${header === null ? "" : `-${encode(header)}`}`,
+        ),
+      ]),
+    ) as ServerSettings["modelServices"],
     providerInstances,
     sourceControlHosts,
     usageLimitSources,

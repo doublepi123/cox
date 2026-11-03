@@ -3,6 +3,10 @@ description: Install the pinned Node and pnpm toolchain and frozen workspace dep
 runs:
   using: composite
   steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: 1.27.3
+        cache-dependency-path: native/protocol-bridge/go.sum
     - uses: actions/setup-node@v4
       with:
         node-version: 26.12.1
@@ -10,3 +14,5 @@ runs:
       run: npm install --global pnpm@12.14.0
     - shell: bash
       run: pnpm install --frozen-lockfile
+    - shell: bash
+      run: node scripts/build-protocol-bridge.ts

@@ -15,6 +15,7 @@ import {
   makeThreadErrorSetter,
 } from "../ChatView.logic";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
+import { sanitizeNewRefName } from "@t3tools/shared/git";
 import {
   AuthOrchestrationOperateScope,
   DEFAULT_MODEL,
@@ -272,7 +273,6 @@ export function useComposerSend(input: ComposerSendInput) {
     sendEnvMode,
     startFromOrigin,
     localCheckoutBranchMismatch,
-    logicalProjectEnvironments,
     providerInstanceEntries,
     composerRef,
     composerDraftTarget,
@@ -1295,6 +1295,9 @@ export function useComposerSend(input: ComposerSendInput) {
                     prepareWorktree: {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
+                      ...(draftThread?.worktreeName?.trim()
+                        ? { branch: sanitizeNewRefName(draftThread.worktreeName) }
+                        : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
                     },
                     runSetupScript: true,

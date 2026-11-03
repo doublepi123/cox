@@ -10,6 +10,7 @@ import { resolveBranchTriggerLabel, sanitizeNewRefName } from "./BranchToolbar.l
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { Button } from "./ui/button";
 import { ComboboxTrigger } from "./ui/combobox";
+import { useTranslation } from "../i18n";
 
 export function WorktreeBaseBranchPicker({
   environmentId,
@@ -30,6 +31,7 @@ export function WorktreeBaseBranchPicker({
   disabled?: boolean;
   id?: string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
@@ -50,6 +52,7 @@ export function WorktreeBaseBranchPicker({
     branches.refs.find((branch) => branch.name === value) ??
     selectedRefQuery.data?.refs.find((branch) => branch.name === value);
   const label = resolveBranchTriggerLabel({
+    translate: t,
     activeWorktreePath: null,
     effectiveEnvMode: "worktree",
     resolvedActiveBranch: value || null,
@@ -62,11 +65,14 @@ export function WorktreeBaseBranchPicker({
   const statusText =
     branches.error ??
     (branches.isPending && branches.data === null
-      ? "Loading refs..."
+      ? t("Loading refs...")
       : branches.isFetchingNextPage
-        ? "Loading more refs..."
+        ? t("Loading more refs...")
         : hasNextPage
-          ? `Showing ${branches.refs.length} of ${branches.data?.totalCount} refs`
+          ? t("Showing {count} of {total} refs", {
+              count: branches.refs.length,
+              total: branches.data?.totalCount ?? 0,
+            })
           : null);
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -106,16 +112,19 @@ export function WorktreeBaseBranchPicker({
         ) : null;
       }}
     >
-      <ComboboxTrigger
-        id={id}
-        disabled={disabled || !cwd}
-        render={<Button variant="outline" size="sm" />}
-        className="w-full justify-between "
-      >
-        <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <MiddleTruncate value={label} className="flex-1 text-left" />
-        <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      </ComboboxTrigger>
+      <div className="grid w-full">
+        <ComboboxTrigger
+          id={id}
+          disabled={disabled || !cwd}
+          render={<Button variant="outline" size="sm" />}
+        >
+          <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="flex-1 text-left">
+            <MiddleTruncate value={label} />
+          </span>
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        </ComboboxTrigger>
+      </div>
     </BranchPicker>
   );
 }

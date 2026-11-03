@@ -65,11 +65,8 @@ import {
   type PiRpcConnection,
   type PiRpcRecord,
 } from "./rpc.ts";
-import {
-  buildPiRpcLaunch,
-  materializePiT3McpExtension,
-  resolvePiLaunchArgs,
-} from "./mcpInjection.ts";
+import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts";
+import { configuredPiLaunchArgs, piEnvironment } from "./configuration.ts";
 import { PI_FILE_CHANGE_TOOLS } from "./mcpExtensionSource.ts";
 
 export const PI_PROVIDER = ProviderDriverKind.make("pi");
@@ -457,13 +454,13 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       const extensionPath = yield* provideCacheFs(
         materializePiT3McpExtension(host.paths.providerStatusCacheDir),
       );
-      const resolvedLaunchArgs = resolvePiLaunchArgs(options.settings.launchArgs);
+      const resolvedLaunchArgs = configuredPiLaunchArgs(options.settings);
       if (!resolvedLaunchArgs.ok) {
         return yield* protocolError(resolvedLaunchArgs.message);
       }
       const launch = buildPiRpcLaunch({
         launchArgs: resolvedLaunchArgs.args,
-        environment: options.environment,
+        environment: piEnvironment(options.settings, options.environment),
         mcpSession,
         extensionPath,
         runtimeMode: input.runtimePolicy.runtimeMode,
@@ -3023,7 +3020,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             // switch_session/clone alone would retain the source cwd.
             const forkLaunch = buildPiRpcLaunch({
               launchArgs: resolvedLaunchArgs.args,
-              environment: options.environment,
+              environment: piEnvironment(options.settings, options.environment),
               mcpSession: undefined,
               extensionPath: undefined,
               disableExtensions: true,

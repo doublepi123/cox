@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { SecretReference } from "./secretReference.ts";
+import { ModelServiceBinding } from "./modelServiceBinding.ts";
 
 const PROVIDER_SLUG_MAX_CHARS = 64;
 const PROVIDER_SLUG_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
@@ -74,6 +75,7 @@ export type ResolvedProviderInstanceEnvironment = ReadonlyArray<
 /** Drivers decode their own config; unknown-driver envelopes round-trip verbatim across versions. */
 export const ProviderInstanceConfig = Schema.Struct({
   driver: ProviderDriverKind,
+  modelService: Schema.optionalKey(ModelServiceBinding),
   displayName: Schema.optional(TrimmedNonEmptyString),
   accentColor: Schema.optional(TrimmedNonEmptyString),
   environment: Schema.optionalKey(ProviderInstanceEnvironment),

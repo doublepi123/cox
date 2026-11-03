@@ -98,10 +98,9 @@ function GrokSetupActions({
       }
     } catch {
       setError(t("Provider setup failed. Try again."));
-    } finally {
-      pendingRef.current = false;
-      setPending(false);
     }
+    pendingRef.current = false;
+    setPending(false);
   }
   return (
     <section aria-label={t("Grok Build setup")} className="divide-y divide-border/50 text-xs">

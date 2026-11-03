@@ -96,6 +96,8 @@ import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { GrokSetupSection } from "./GrokSetupSection";
+import { PiSetupSection } from "./PiSetupSection";
+import { ModelServiceBindingSection } from "./ModelServiceBindingSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import { providerClients } from "./providerDriverMeta";
@@ -1332,74 +1334,94 @@ function ProviderInstanceRow({
       }
       canWriteSettings={canWriteSettings}
       setup={
-        mode === "editor" && driver === "antigravity" ? (
-          <ProviderSetupSection
-            environmentId={environmentId}
-            environmentLabel={environmentLabel}
-            instanceId={instanceId}
-            provider={liveProvider}
-            binaryPath={configuredBinaryPath(instance.config)}
-            authMethod={readAntigravityAuthMethod(instance.config)}
-            enabled={resolveProviderInstanceEnabled(instance)}
-            readOnly={readOnly}
-            onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
-          />
-        ) : mode === "editor" && driver === "grok" ? (
-          <GrokSetupSection
-            environmentId={environmentId}
-            environmentLabel={environmentLabel}
-            instanceId={instanceId}
-            provider={liveProvider}
-            enabled={resolveProviderInstanceEnabled(instance)}
-            readOnly={readOnly}
-            onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
-          />
-        ) : mode === "editor" && codexSetupMode === "managed" ? (
-          <CodexSetupSection
-            environmentId={environmentId}
-            instanceId={instanceId}
-            provider={liveProvider}
-            mode={codexSetupMode}
-            enabled={resolveProviderInstanceEnabled(instance)}
-            readOnly={readOnly}
-            onModeChange={(setupMode) =>
-              actions.enableInstance(instanceId, {
-                ...instance,
-                enabled: true,
-                config: {
-                  ...(instance.config !== null && typeof instance.config === "object"
-                    ? instance.config
-                    : {}),
+        <>
+          {mode === "editor" ? (
+            <ModelServiceBindingSection
+              key={`${instanceId}:${instance.modelService?.serviceId ?? "independent"}`}
+              environmentId={environmentId}
+              instance={instance}
+              readOnly={readOnly}
+              onUpdate={(next) => actions.updateInstance(instanceId, instance, next)}
+            />
+          ) : null}
+          {mode === "editor" && driver === "antigravity" ? (
+            <ProviderSetupSection
+              environmentId={environmentId}
+              environmentLabel={environmentLabel}
+              instanceId={instanceId}
+              provider={liveProvider}
+              binaryPath={configuredBinaryPath(instance.config)}
+              authMethod={readAntigravityAuthMethod(instance.config)}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
+          ) : mode === "editor" && driver === "grok" ? (
+            <GrokSetupSection
+              environmentId={environmentId}
+              environmentLabel={environmentLabel}
+              instanceId={instanceId}
+              provider={liveProvider}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
+          ) : mode === "editor" && driver === "pi" ? (
+            <PiSetupSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              provider={liveProvider}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
+          ) : mode === "editor" && codexSetupMode === "managed" ? (
+            <CodexSetupSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              provider={liveProvider}
+              mode={codexSetupMode}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onModeChange={(setupMode) =>
+                actions.enableInstance(instanceId, {
+                  ...instance,
                   enabled: true,
-                  setupMode,
-                },
-              })
-            }
-          />
-        ) : mode === "editor" &&
-          !readOnly &&
-          liveProvider &&
-          (liveProvider.setup?.canAuthenticate ||
-            (liveProvider.driver === "acpRegistry" && liveProvider.installed)) ? (
-          <ProviderAuthenticationSection
-            key={`${environmentId}:${instanceId}`}
-            environmentId={environmentId}
-            environmentLabel={environmentLabel}
-            instanceId={instanceId}
-            provider={liveProvider}
-            readOnly={readOnly}
-          />
-        ) : mode === "editor" &&
-          !readOnly &&
-          driver === "cursor" &&
-          liveProvider?.setup?.canAuthenticate === false ? (
-          <SettingsRow
-            title={translateUi("Cursor account")}
-            description={translateUi(
-              "Using CURSOR_API_KEY. Remove it from this provider's environment to use browser sign-in.",
-            )}
-          />
-        ) : null
+                  config: {
+                    ...(instance.config !== null && typeof instance.config === "object"
+                      ? instance.config
+                      : {}),
+                    enabled: true,
+                    setupMode,
+                  },
+                })
+              }
+            />
+          ) : mode === "editor" &&
+            !readOnly &&
+            liveProvider &&
+            (liveProvider.setup?.canAuthenticate ||
+              (liveProvider.driver === "acpRegistry" && liveProvider.installed)) ? (
+            <ProviderAuthenticationSection
+              key={`${environmentId}:${instanceId}`}
+              environmentId={environmentId}
+              environmentLabel={environmentLabel}
+              instanceId={instanceId}
+              provider={liveProvider}
+              readOnly={readOnly}
+            />
+          ) : mode === "editor" &&
+            !readOnly &&
+            driver === "cursor" &&
+            liveProvider?.setup?.canAuthenticate === false ? (
+            <SettingsRow
+              title={translateUi("Cursor account")}
+              description={translateUi(
+                "Using CURSOR_API_KEY. Remove it from this provider's environment to use browser sign-in.",
+              )}
+            />
+          ) : null}
+        </>
       }
       onUpdate={(next) => actions.updateInstance(instanceId, instance, next)}
       onDelete={

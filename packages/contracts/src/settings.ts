@@ -20,6 +20,7 @@ import {
 } from "./baseSchemas.ts";
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
+import { ModelServiceId, ModelServiceConfig } from "./modelService.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
 import {
@@ -1376,6 +1377,9 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  modelServices: Schema.Record(ModelServiceId, ModelServiceConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1691,6 +1695,9 @@ export const ServerSettingsPatch = Schema.Struct({
   sourceControlHosts: Schema.optionalKey(Schema.Record(Schema.String, SourceControlHostSettings)),
   // Replace whole maps to avoid half-merged driver configs.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  modelServices: Schema.optionalKey(
+    Schema.Record(ModelServiceId, Schema.NullOr(ModelServiceConfig)),
+  ),
   // Merge per source to avoid racing other edits; null removes an entry.
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
@@ -1720,6 +1727,7 @@ export function requiredScopesForServerSettingsPatch(
     if (
       key === "providers" ||
       key === "providerInstances" ||
+      key === "modelServices" ||
       key === "usageLimitSources" ||
       key === "secretProviders"
     ) {

@@ -23,7 +23,6 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -34,6 +33,7 @@ import {
   buildTemporaryWorktreeBranchName,
   flattenTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
+  isValidGitBranchName,
   WORKTREE_BRANCH_PREFIX,
 } from "@t3tools/shared/git";
 
@@ -307,8 +307,6 @@ const make = Effect.gen(function* () {
     let setupTerminalId: string | null = null;
     let workspaceRecorded = false;
     let runReleased = false;
-    // Stop background renames before forgetting worktrees; completed renames record them again.
-    let branchRename: Fiber.Fiber<unknown> | null = null;
     if (input.workspaceStrategy.type === "worktree") {
       yield* setupTracker.begin({
         threadId,
@@ -367,8 +365,31 @@ const make = Effect.gen(function* () {
       const requestedBranch = input.workspaceStrategy.branch;
       let branch: string | null;
       if (input.workspaceStrategy.type === "worktree" && requestedBranch === undefined) {
-        const uuid = yield* randomUuidV4;
-        branch = buildTemporaryWorktreeBranchName(() => uuid.replaceAll("-", ""));
+        const recommended =
+          initialMessage === undefined
+            ? null
+            : yield* generateBranchNameFor(project.workspaceRoot, initialMessage).pipe(
+                Effect.timeout("15 seconds"),
+                Effect.tapError((cause) =>
+                  Effect.logWarning("Worktree name recommendation failed", { threadId, cause }),
+                ),
+                Effect.orElseSucceed(() => null),
+              );
+        const exists =
+          recommended === null
+            ? false
+            : yield* git
+                .hasCommit({
+                  cwd: project.workspaceRoot,
+                  refName: `refs/heads/${recommended.branch}`,
+                })
+                .pipe(Effect.orElseSucceed(() => true));
+        if (recommended !== null && isValidGitBranchName(recommended.branch) && !exists) {
+          branch = recommended.branch;
+        } else {
+          const uuid = yield* randomUuidV4;
+          branch = buildTemporaryWorktreeBranchName(() => uuid.replaceAll("-", ""));
+        }
       } else {
         branch = requestedBranch ?? null;
       }
@@ -469,87 +490,6 @@ const make = Effect.gen(function* () {
           .pipe(Effect.mapError(mapError(input, "update-thread", threadId)));
       }
       workspaceRecorded = true;
-
-      if (
-        reused === undefined &&
-        worktreePath !== null &&
-        branch !== null &&
-        initialMessage !== undefined &&
-        isTemporaryWorktreeBranch(branch)
-      ) {
-        const oldBranch = branch;
-        const worktreeCwd = worktreePath;
-        branchRename = yield* generateBranchNameFor(worktreeCwd, initialMessage).pipe(
-          Effect.flatMap(({ branch: newBranch, exactName }) =>
-            git.renameBranch({
-              cwd: worktreeCwd,
-              oldBranch,
-              newBranch,
-              ...(exactName ? { exactName: true } : {}),
-            }),
-          ),
-          Effect.flatMap((renamed) =>
-            Effect.gen(function* () {
-              yield* threads
-                .dispatch({
-                  type: "thread.metadata.update",
-                  commandId: CommandId.make(`${input.commandId}:branch-rename`),
-                  threadId,
-                  branch: renamed.branch,
-                  worktreePath: worktreeCwd,
-                  expectedBranch: oldBranch,
-                  expectedWorktreePath: worktreeCwd,
-                })
-                .pipe(
-                  Effect.catchCause((cause) =>
-                    Effect.logWarning("Parent thread worktree branch update failed", {
-                      threadId,
-                      cause,
-                    }),
-                  ),
-                );
-              // Update parents first so children inherit names; reread each pass for newly updated descendants.
-              const visited = new Set([threadId]);
-              while (true) {
-                const snapshot = yield* threads.getShellSnapshot({ worktreePath: worktreeCwd });
-                const sharing = [...snapshot.threads, ...snapshot.archivedThreads].filter(
-                  (thread) => !visited.has(thread.id) && thread.branch === oldBranch,
-                );
-                if (sharing.length === 0) break;
-                for (const thread of sharing) {
-                  visited.add(thread.id);
-                  yield* threads
-                    .dispatch({
-                      type: "thread.metadata.update",
-                      commandId: CommandId.make(`${input.commandId}:branch-rename:${thread.id}`),
-                      threadId: thread.id,
-                      branch: renamed.branch,
-                      expectedBranch: oldBranch,
-                      expectedWorktreePath: worktreeCwd,
-                    })
-                    .pipe(
-                      Effect.catchCause((cause) =>
-                        Effect.logWarning("Shared thread worktree branch update failed", {
-                          threadId: thread.id,
-                          cause,
-                        }),
-                      ),
-                    );
-                }
-              }
-            }),
-          ),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Thread worktree branch rename failed", {
-              commandId: input.commandId,
-              threadId,
-              oldBranch,
-              cause,
-            }),
-          ),
-          Effect.forkIn(preparationScope),
-        );
-      }
 
       if (runId !== null && worktreePath !== null) {
         yield* threads
@@ -672,7 +612,6 @@ const make = Effect.gen(function* () {
             createdWorktreePath &&
             ((cancelled && !runReleased) || !workspaceRecorded)
           ) {
-            if (branchRename !== null) yield* Fiber.interrupt(branchRename);
             const removedPath = createdWorktreePath;
             // Forget worktrees only after removal succeeds; failed removals must not reuse partially written checkouts.
             yield* git

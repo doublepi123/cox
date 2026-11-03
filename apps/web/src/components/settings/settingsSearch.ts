@@ -24,6 +24,7 @@ export type SettingsPath =
   | "/settings/diffs"
   | "/settings/keybindings"
   | "/settings/providers"
+  | "/settings/model-services"
   | "/settings/threads"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
@@ -75,6 +76,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/diffs": "Diffs & pull requests",
   "/settings/keybindings": "Keybindings",
   "/settings/providers": "Providers",
+  "/settings/model-services": "Model services",
   "/settings/threads": "Threads",
   "/settings/scheduled-tasks": "Scheduled tasks",
   "/settings/source-control": "Source control",
@@ -103,7 +105,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Agents",
-    paths: ["/settings/providers", "/settings/threads", "/settings/scheduled-tasks"],
+    paths: [
+      "/settings/providers",
+      "/settings/model-services",
+      "/settings/threads",
+      "/settings/scheduled-tasks",
+    ],
   },
   {
     heading: "Code",
@@ -703,6 +710,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     macProviderSettingsOnly: true,
   },
   {
+    id: "model-services",
+    title: "Model services",
+    to: "/settings/model-services",
+    searchTerms: ["API base URL key protocol gateway provider models responses anthropic gemini"],
+  },
+  {
     id: "provider-health-check-interval",
     title: "Health check interval",
     to: "/settings/providers",
@@ -942,6 +955,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/diffs": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
+  "/settings/model-services": null,
   "/settings/threads": null,
   "/settings/source-control": "environment-defaults",
   "/settings/worktrees": "project-defaults",

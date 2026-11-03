@@ -306,16 +306,17 @@ function ProviderEnvironmentFieldRow(props: {
       control={
         <div className="flex w-full min-w-0 items-center gap-2 @min-[32rem]/settings-row:w-56">
           {props.field.sensitive === false ? (
-            <DraftInput
-              id={inputId}
-              size="sm"
-              className="min-w-0 flex-1"
-              autoComplete="off"
-              value={typeof value === "string" ? value : ""}
-              onCommit={(next) => props.onCommit(props.field, next)}
-              placeholder={props.field.placeholder}
-              spellCheck={false}
-            />
+            <div className="min-w-0 flex-1">
+              <DraftInput
+                id={inputId}
+                size="sm"
+                autoComplete="off"
+                value={typeof value === "string" ? value : ""}
+                onCommit={(next) => props.onCommit(props.field, next)}
+                placeholder={props.field.placeholder}
+                spellCheck={false}
+              />
+            </div>
           ) : (
             <SecretSourceInput
               id={inputId}
@@ -446,16 +447,19 @@ export function ProviderEnvironmentSection(props: {
         <div className="mt-3 min-w-0 space-y-2 pb-2">
           {rows.map((variable, index) => {
             const nameInput = (
-              <DraftInput
-                size="sm"
-                font="mono"
-                className="min-w-0 flex-1"
-                value={variable.name}
-                onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
-                placeholder="VARIABLE_NAME"
-                spellCheck={false}
-                aria-label={translateUi("Environment variable name {index}", { index: index + 1 })}
-              />
+              <div className="min-w-0 flex-1">
+                <DraftInput
+                  size="sm"
+                  font="mono"
+                  value={variable.name}
+                  onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
+                  placeholder="VARIABLE_NAME"
+                  spellCheck={false}
+                  aria-label={translateUi("Environment variable name {index}", {
+                    index: index + 1,
+                  })}
+                />
+              </div>
             );
             const removeButton = (
               <Button
@@ -543,23 +547,24 @@ export function ProviderEnvironmentSection(props: {
                 ) : (
                   layout(
                     null,
-                    <DraftInput
-                      size="sm"
-                      font="mono"
-                      className="min-w-0 flex-1"
-                      value={
-                        variable.valueRedacted || typeof variable.value !== "string"
-                          ? ""
-                          : variable.value
-                      }
-                      onCommit={(value) => updateVariable(variable.id, { value })}
-                      autoComplete="off"
-                      placeholder={translateUi("Value")}
-                      spellCheck={false}
-                      aria-label={translateUi("Environment variable value {index}", {
-                        index: index + 1,
-                      })}
-                    />,
+                    <div className="min-w-0 flex-1">
+                      <DraftInput
+                        size="sm"
+                        font="mono"
+                        value={
+                          variable.valueRedacted || typeof variable.value !== "string"
+                            ? ""
+                            : variable.value
+                        }
+                        onCommit={(value) => updateVariable(variable.id, { value })}
+                        autoComplete="off"
+                        placeholder={translateUi("Value")}
+                        spellCheck={false}
+                        aria-label={translateUi("Environment variable value {index}", {
+                          index: index + 1,
+                        })}
+                      />
+                    </div>,
                   )
                 )}
               </Fragment>
@@ -957,121 +962,124 @@ export function ProviderInstanceCard({
       </>
     );
   const versionAdvisoryNode = versionAdvisory ? (
-    <Popover>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
+    <span className={mode === "list" ? "pointer-events-auto relative shrink-0" : undefined}>
+      <Popover>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <PopoverTrigger
+                render={
+                  <Button
+                    type="button"
+                    size={mode === "list" ? "icon-micro" : "icon-xs"}
+                    variant="ghost-muted"
+                    aria-label={t("{status}, view details", {
+                      status: updateProgress ? t("Updating") : versionAdvisory.title,
+                    })}
+                  >
+                    {updateProgress ? (
+                      <Spinner tone="muted" {...(mode === "list" ? { size: "sm" as const } : {})} />
+                    ) : (
+                      <VersionAdvisoryIcon
+                        className={cn(
+                          mode === "list" && "size-3.5",
+                          hasCompatibilityWarning && "text-warning",
+                        )}
+                      />
+                    )}
+                  </Button>
+                }
+              />
+            }
+          />
+          <TooltipPopup side="top">
+            {updateProgress ? t("Updating") : versionAdvisory.title}
+          </TooltipPopup>
+        </Tooltip>
+        <PopoverPopup side="bottom" align="end" width="md" aria-label={versionAdvisory.title}>
+          <div className="grid min-w-0 gap-3">
+            <div className="grid gap-0.5">
+              <p className="text-sm font-semibold leading-tight text-foreground">
+                {versionAdvisory.title}
+              </p>
+              <p
+                className={cn(
+                  "text-xs leading-snug [overflow-wrap:anywhere]",
+                  versionAdvisory.emphasis === "strong" ? "text-warning" : "text-muted-foreground",
+                )}
+              >
+                {versionAdvisory.detail}
+              </p>
+            </div>
+            {onRunVersionAction ? (
+              <div className="grid">
                 <Button
                   type="button"
-                  size={mode === "list" ? "icon-micro" : "icon-xs"}
-                  variant="ghost-muted"
-                  className={mode === "list" ? "pointer-events-auto relative shrink-0" : undefined}
-                  aria-label={t("{status}, view details", {
-                    status: updateProgress ? t("Updating") : versionAdvisory.title,
-                  })}
+                  size="xs"
+                  variant="outline"
+                  disabled={isUpdating}
+                  onClick={onRunVersionAction}
                 >
-                  {updateProgress ? (
-                    <Spinner tone="muted" {...(mode === "list" ? { size: "sm" as const } : {})} />
-                  ) : (
-                    <VersionAdvisoryIcon
-                      className={cn(
-                        mode === "list" && "size-3.5",
-                        hasCompatibilityWarning && "text-warning",
-                      )}
-                    />
-                  )}
+                  {isUpdating ? <Spinner /> : <DownloadIcon />}
+                  {isUpdating
+                    ? t("Updating")
+                    : versionAdvisory.targetVersion
+                      ? t("Install {name}", {
+                          name:
+                            getProviderVersionLabel(versionAdvisory.targetVersion) ??
+                            versionAdvisory.targetVersion,
+                        })
+                      : t("Update now")}
                 </Button>
-              }
-            />
-          }
-        />
-        <TooltipPopup side="top">
-          {updateProgress ? t("Updating") : versionAdvisory.title}
-        </TooltipPopup>
-      </Tooltip>
-      <PopoverPopup side="bottom" align="end" width="md" aria-label={versionAdvisory.title}>
-        <div className="grid min-w-0 gap-3">
-          <div className="grid gap-0.5">
-            <p className="text-sm font-semibold leading-tight text-foreground">
-              {versionAdvisory.title}
-            </p>
-            <p
-              className={cn(
-                "text-xs leading-snug [overflow-wrap:anywhere]",
-                versionAdvisory.emphasis === "strong" ? "text-warning" : "text-muted-foreground",
-              )}
-            >
-              {versionAdvisory.detail}
-            </p>
+              </div>
+            ) : null}
+            {updateProgress || updateProblem ? (
+              <p
+                aria-live="polite"
+                className={cn(
+                  "text-xs leading-snug [overflow-wrap:anywhere]",
+                  updateProblem ? "text-warning" : "text-muted-foreground",
+                )}
+              >
+                {updateProgress ?? updateProblem}
+              </p>
+            ) : null}
+            {onRunVersionAction && updateCommand ? (
+              <div className="flex items-center gap-2 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
+                <span aria-hidden className="h-px flex-1 bg-border" />
+                {t("or, update manually using")}
+                <span aria-hidden className="h-px flex-1 bg-border" />
+              </div>
+            ) : null}
+            {updateCommand ? (
+              <div className="flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
+                <code className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground">
+                  {updateCommand}
+                </code>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost-muted"
+                        onClick={() =>
+                          copyToClipboard(updateCommand, { providerName: displayName })
+                        }
+                        aria-label={t("Copy update command")}
+                      >
+                        <CopyIcon className="size-3" />
+                      </Button>
+                    }
+                  />
+                  <TooltipPopup side="top">{t("Copy command")}</TooltipPopup>
+                </Tooltip>
+              </div>
+            ) : null}
           </div>
-          {onRunVersionAction ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              className="w-full"
-              disabled={isUpdating}
-              onClick={onRunVersionAction}
-            >
-              {isUpdating ? <Spinner /> : <DownloadIcon />}
-              {isUpdating
-                ? t("Updating")
-                : versionAdvisory.targetVersion
-                  ? t("Install {name}", {
-                      name:
-                        getProviderVersionLabel(versionAdvisory.targetVersion) ??
-                        versionAdvisory.targetVersion,
-                    })
-                  : t("Update now")}
-            </Button>
-          ) : null}
-          {updateProgress || updateProblem ? (
-            <p
-              aria-live="polite"
-              className={cn(
-                "text-xs leading-snug [overflow-wrap:anywhere]",
-                updateProblem ? "text-warning" : "text-muted-foreground",
-              )}
-            >
-              {updateProgress ?? updateProblem}
-            </p>
-          ) : null}
-          {onRunVersionAction && updateCommand ? (
-            <div className="flex items-center gap-2 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-              <span aria-hidden className="h-px flex-1 bg-border" />
-              {t("or, update manually using")}
-              <span aria-hidden className="h-px flex-1 bg-border" />
-            </div>
-          ) : null}
-          {updateCommand ? (
-            <div className="flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
-              <code className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground">
-                {updateCommand}
-              </code>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      className="shrink-0"
-                      onClick={() => copyToClipboard(updateCommand, { providerName: displayName })}
-                      aria-label={t("Copy update command")}
-                    >
-                      <CopyIcon className="size-3" />
-                    </Button>
-                  }
-                />
-                <TooltipPopup side="top">{t("Copy command")}</TooltipPopup>
-              </Tooltip>
-            </div>
-          ) : null}
-        </div>
-      </PopoverPopup>
-    </Popover>
+        </PopoverPopup>
+      </Popover>
+    </span>
   ) : null;
 
   if (mode === "list") {
@@ -1159,9 +1167,11 @@ export function ProviderInstanceCard({
   const editorHeaderAction = (
     <div className="flex shrink-0 items-center gap-1.5">
       {driverOption?.badgeLabel ? (
-        <Badge variant="warning" size="sm" className="shrink-0">
-          {driverOption.badgeLabel}
-        </Badge>
+        <span className="shrink-0">
+          <Badge variant="warning" size="sm">
+            {driverOption.badgeLabel}
+          </Badge>
+        </span>
       ) : null}
       {versionCodeNode}
       {versionAdvisoryNode}
@@ -1229,11 +1239,13 @@ export function ProviderInstanceCard({
     <ProviderSettingsForm
       definition={driverOption}
       fieldKeys={
-        driverKind === "codex" || driverKind === "claudeAgent"
-          ? Object.keys(driverOption.settingsSchema.fields).filter(
-              (key) => key !== "baseUrl" && key !== "apiKey",
-            )
-          : undefined
+        instance.modelService
+          ? ["binaryPath", "launchArgs"]
+          : driverKind === "codex" || driverKind === "claudeAgent"
+            ? Object.keys(driverOption.settingsSchema.fields).filter(
+                (key) => key !== "baseUrl" && key !== "apiKey",
+              )
+            : undefined
       }
       value={instance.config}
       idPrefix={`provider-instance-${instanceId}`}
@@ -1275,15 +1287,16 @@ export function ProviderInstanceCard({
                 value={accentColor}
                 onCommit={updateAccentColor}
               />
-              <DraftInput
-                id={`provider-instance-${instanceId}-display-name`}
-                size="sm"
-                className="min-w-0 flex-1 @min-[32rem]/settings-row:w-56"
-                value={instance.displayName ?? ""}
-                onCommit={updateDisplayName}
-                placeholder={driverOption?.label ?? t("Instance label")}
-                spellCheck={false}
-              />
+              <div className="min-w-0 flex-1 @min-[32rem]/settings-row:w-56">
+                <DraftInput
+                  id={`provider-instance-${instanceId}-display-name`}
+                  size="sm"
+                  value={instance.displayName ?? ""}
+                  onCommit={updateDisplayName}
+                  placeholder={driverOption?.label ?? t("Instance label")}
+                  spellCheck={false}
+                />
+              </div>
             </div>
           }
         />
@@ -1315,7 +1328,9 @@ export function ProviderInstanceCard({
         </SettingsSection>
       ) : null}
 
-      {driverOption && (driverKind === "codex" || driverKind === "claudeAgent") ? (
+      {!instance.modelService &&
+      driverOption &&
+      (driverKind === "codex" || driverKind === "claudeAgent") ? (
         <SettingsSection title={t("API gateway")} inert={readOnly}>
           <ProviderSettingsForm
             definition={driverOption}

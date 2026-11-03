@@ -80,6 +80,7 @@ vi.mock(import("../../localApi"), async (original) => ({
 
 import { ProviderSetupSection } from "./ProviderSetupSection";
 import { GrokSetupSection } from "./GrokSetupSection";
+import { PiSetupSection } from "./PiSetupSection";
 
 const environmentId = EnvironmentId.make("remote-google");
 const instanceId = ProviderInstanceId.make("antigravity_work");
@@ -329,6 +330,113 @@ describe("Grok Build setup", () => {
     expect(screen.container.textContent).toContain("Provider setup is read-only.");
     await expect
       .element(screen.getByRole("button", { name: "Install Grok", exact: true }))
+      .not.toBeInTheDocument();
+  });
+});
+
+function piSection(patch: Partial<ServerProvider> = {}, readOnly = false) {
+  return (
+    <PiSetupSection
+      environmentId={environmentId}
+      instanceId={instanceId}
+      provider={{
+        ...provider,
+        driver: ProviderDriverKind.make("pi"),
+        setup: { canInstall: true, canAuthenticate: false },
+        ...patch,
+      }}
+      enabled
+      readOnly={readOnly}
+      onEnable={vi.fn()}
+    />
+  );
+}
+
+describe("Pi setup", () => {
+  it("installs Pi for the selected instance before installation state arrives", async () => {
+    resetSetup();
+    setup.installation = null;
+    await using screen = await render(piSection({ installed: false }));
+    await screen.getByRole("button", { name: "Install Pi", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+    expect(setup.authState).not.toHaveBeenCalled();
+    expect(screen.container.textContent).toContain("existing Pi login");
+  });
+
+  it("cancels an installation and offers a retry after failure", async () => {
+    resetSetup();
+    setup.installation = {
+      ...setup.installation!,
+      driver: ProviderDriverKind.make("pi"),
+      phase: "downloading",
+      operationId: "pi-install-1",
+    };
+    await using screen = await render(piSection({ installed: false }));
+    await screen.getByRole("button", { name: "Cancel installation", exact: true }).click();
+    expect(setup.cancelInstall).toHaveBeenCalledWith({
+      environmentId,
+      input: { instanceId, operationId: "pi-install-1" },
+    });
+    setup.installation = {
+      ...setup.installation!,
+      phase: "failed",
+      message: "Pi installation failed",
+    };
+    await publish();
+    await expect.element(screen.getByRole("alert")).toHaveTextContent("Pi installation failed");
+    await screen.getByRole("button", { name: "Retry installation", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledOnce();
+  });
+
+  it("hides updates unless a newer managed version is confirmed", async () => {
+    resetSetup();
+    setup.installation = {
+      ...setup.installation!,
+      driver: ProviderDriverKind.make("pi"),
+      installedVersion: "1.5.0",
+      source: "managed",
+    };
+    const advisory = {
+      status: "behind_latest" as const,
+      currentVersion: "1.5.0",
+      latestVersion: "1.5.1",
+      updateCommand: null,
+      canUpdate: false,
+      checkedAt: "2026-11-03T00:00:00.000Z",
+      message: null,
+    };
+    await using screen = await render(piSection({ version: "1.5.0" }));
+    const update = screen.getByRole("button", { name: "Update Pi", exact: true });
+    await expect.element(update).not.toBeInTheDocument();
+    await screen.rerender(
+      piSection({ versionAdvisory: { ...advisory, status: "unknown", latestVersion: null } }),
+    );
+    await expect.element(update).not.toBeInTheDocument();
+    await screen.rerender(piSection({ versionAdvisory: advisory }));
+    await update.click();
+    expect(setup.startInstall).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+    await screen.rerender(
+      piSection({
+        version: "1.5.1",
+        versionAdvisory: { ...advisory, status: "current", currentVersion: "1.5.1" },
+      }),
+    );
+    await expect.element(update).not.toBeInTheDocument();
+  });
+
+  it("respects custom binaries and read-only access", async () => {
+    resetSetup();
+    await using screen = await render(
+      piSection({ installed: false, setup: { canInstall: false, canAuthenticate: false } }),
+    );
+    await expect
+      .element(screen.getByRole("button", { name: "Install Pi", exact: true }))
+      .not.toBeInTheDocument();
+    expect(screen.container.textContent).toContain("custom Pi binary");
+    await screen.rerender(piSection({}, true));
+    expect(screen.container.textContent).toContain("Provider setup is read-only.");
+    await expect
+      .element(screen.getByRole("button", { name: "Install Pi", exact: true }))
       .not.toBeInTheDocument();
   });
 });

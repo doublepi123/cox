@@ -127,6 +127,15 @@ try {
     (response) => response.json(),
   );
   assert.equal(sessionAfter.authenticated, true);
+  for (const headers of [
+    {},
+    { cookie },
+    { cookie, authorization: "Bearer invalid-agent-token", origin },
+  ]) {
+    const gateway = await fetch(`${origin}/api/model-gateway/v1/models`, { headers });
+    assert.equal(gateway.status, 401);
+    assert.equal((await gateway.json()).error.message, "Model gateway authentication required.");
+  }
   const projects = await fetch(`${origin}/api/projects`, { headers: { cookie } });
   assert.equal(projects.status, 200);
   const foreign = await fetch(`${origin}/api/projects`, {
@@ -170,7 +179,7 @@ try {
     }
   }
   console.log(
-    "PASS: isolated built-server startup, local descriptor, auth required, one-use bootstrap, HttpOnly cookie, authenticated projects API, HTTP/WS foreign-origin rejection, authenticated WebSocket upgrade, removed endpoint probes.",
+    "PASS: isolated built-server startup, local descriptor, auth required, one-use bootstrap, HttpOnly cookie, authenticated projects API, HTTP/WS foreign-origin rejection, authenticated WebSocket upgrade, separate agent gateway authentication, removed endpoint probes.",
   );
 } catch (error) {
   const sanitized = output

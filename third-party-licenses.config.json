@@ -1,6 +1,13 @@
 {
   "customNotices": [
     {
+      "name": "Cox model protocol converter (CLIProxyAPI and Go dependencies)",
+      "bundles": ["server"],
+      "license": "Multiple (see notice)",
+      "sourceUrl": "https://github.com/router-for-me/CLIProxyAPI/tree/v8.0.53",
+      "noticeFile": "native/protocol-bridge/dist/PROTOCOL_BRIDGE_NOTICES.txt"
+    },
+    {
       "name": "opencode Office viewers",
       "bundles": ["web"],
       "license": "MIT",

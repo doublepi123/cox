@@ -68,6 +68,24 @@ describe("ProviderSettingsForm helpers", () => {
     ]);
   });
 
+  it("offers Pi model and credential configuration without changing its existing runtime fields", () => {
+    const pi = providerClients.get(ProviderDriverKind.make("pi"));
+    expect(pi).toBeDefined();
+    const fields = deriveProviderSettingsFields(pi!);
+    expect(fields.map((field) => field.key)).toEqual([
+      "provider",
+      "model",
+      "apiKey",
+      "agentDir",
+      "binaryPath",
+      "launchArgs",
+    ]);
+    expect(fields.find((field) => field.key === "apiKey")).toMatchObject({
+      secret: true,
+      control: "password",
+    });
+  });
+
   it("preserves unknown config keys while omitting empty configurable fields", () => {
     const opencode = providerClients.get(ProviderDriverKind.make("opencode"));
     expect(opencode).toBeDefined();

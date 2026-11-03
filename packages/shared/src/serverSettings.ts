@@ -369,6 +369,7 @@ export function applyServerSettingsPatch(
     worktreeCleanup: worktreeCleanupPatch,
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
+    modelServices: modelServicesPatch,
     secretProviders: secretProvidersPatch,
     sourceControlHosts: sourceControlHostsPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
@@ -558,6 +559,26 @@ export function applyServerSettingsPatch(
       : {}),
     ...(patch.defaultProjectScripts !== undefined
       ? { defaultProjectScripts: patch.defaultProjectScripts }
+      : {}),
+    ...(modelServicesPatch !== undefined
+      ? {
+          modelServices: mergeSettingsEntries(
+            current.modelServices,
+            Object.fromEntries(
+              Object.entries(modelServicesPatch).map(([id, service]) => [
+                id,
+                service === null
+                  ? null
+                  : {
+                      ...service,
+                      revision:
+                        (current.modelServices[id as keyof typeof current.modelServices]
+                          ?.revision ?? 0) + 1,
+                    },
+              ]),
+            ),
+          ),
+        }
       : {}),
     ...(usageLimitSourcesPatch !== undefined
       ? {
