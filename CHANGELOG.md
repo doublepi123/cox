@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.19 — 2026-11-03
+
+- Fix promote-to-steer so a queued message keeps its own model selection, restoring
+  timeline model and reasoning-effort dividers when the turn restarts.
+- Refresh the MCP tool-list context budget after the bulk pull-request tools landed,
+  and correct the 0.1.18 changelog names for `link_pull_requests` and
+  `unlink_pull_requests`.
+
 ## 0.1.18 — 2026-11-03
 
 - Surface pending tool and command approvals from active child threads directly above the
