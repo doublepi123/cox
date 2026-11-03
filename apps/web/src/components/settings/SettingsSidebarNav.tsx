@@ -3,9 +3,9 @@ import { useEffect, useRef, useState, type ComponentType, type KeyboardEvent } f
 import {
   GlobeIcon,
   ArchiveIcon,
+  ArrowLeftIcon,
   FlaskConicalIcon,
   BotIcon,
-  createLucideIcon,
   CalendarClockIcon,
   FileDiffIcon,
   FolderTreeIcon,
@@ -29,6 +29,15 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import {
+  Select,
+  SelectGroup,
+  SelectGroupLabel,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import {
   SidebarContent,
   SidebarGroup,
   SidebarMenu,
@@ -49,18 +58,6 @@ import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchIte
 import { validateSettingsScopeSearch } from "./settingsScope";
 import { useSettingsSectionNavigation } from "./useSettingsSectionNavigation";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
-
-const SnapShotIcon = createLucideIcon("snap-shot", [
-  [
-    "path",
-    {
-      d: "M8 3H6a3 3 0 0 0-3 3v2M16 3h2a3 3 0 0 1 3 3v2M21 16v2a3 3 0 0 1-3 3h-2M8 21H6a3 3 0 0 1-3-3v-2",
-      key: "capture-frame",
-    },
-  ],
-  ["rect", { width: "10", height: "8", x: "7", y: "8", rx: "2", key: "window" }],
-  ["circle", { cx: "12", cy: "12", r: "1.5", key: "lens" }],
-]);
 
 const SETTINGS_SECTION_ICONS: Readonly<
   Record<SettingsPath, ComponentType<{ className?: string }>>
@@ -95,10 +92,6 @@ const SETTINGS_DETAIL_PAGE_PARENTS: Readonly<Record<string, SettingsPath>> = {
 // Attached only to the highlighted result, so it runs whenever the highlight lands on a row.
 function scrollResultIntoView(row: HTMLElement | null) {
   row?.scrollIntoView({ block: "nearest" });
-}
-
-function scrollSectionIntoView(section: HTMLElement | null) {
-  section?.scrollIntoView({ block: "nearest", inline: "center" });
 }
 
 function SettingsSectionIcon({ to }: { to: SettingsPath }) {
@@ -245,58 +238,134 @@ export function SettingsSidebarNav({
       <nav
         role="navigation"
         aria-label={t("Settings sections")}
-        className="shrink-0 border-b bg-sidebar text-sidebar-foreground"
+        className="shrink-0 border-b bg-sidebar px-3 py-2 text-sidebar-foreground"
       >
-        <div className="flex items-center gap-1 overflow-x-auto px-2 py-1 [scrollbar-width:none]">
-          <SidebarMenuButton
-            size="icon"
-            className="size-10 shrink-0"
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1 [&_[data-slot=select-trigger]]:h-11 [&_[data-slot=select-trigger]]:min-w-0">
+            <Select
+              value={
+                navPaths.find((to) => activePath === to || activePath.startsWith(`${to}/`)) ?? null
+              }
+              onValueChange={(value) => {
+                const path = navPaths.find((to) => to === value);
+                if (path) handleSectionClick(path);
+              }}
+            >
+              <SelectTrigger aria-label={t("Settings sections")}>
+                <SelectValue>
+                  {(value: SettingsPath | null) =>
+                    value ? (
+                      <span className="flex min-w-0 items-center gap-2">
+                        <SettingsSectionIcon to={value} />
+                        <span className="truncate">{t(SETTINGS_SECTION_LABELS[value])}</span>
+                      </span>
+                    ) : (
+                      t("Settings")
+                    )
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup alignItemWithTrigger={false}>
+                {SETTINGS_NAV_GROUPS.map((group, index) => (
+                  <SelectGroup key={group.heading ?? index}>
+                    {group.heading ? <SelectGroupLabel>{t(group.heading)}</SelectGroupLabel> : null}
+                    {group.paths.map((to) => (
+                      <SelectItem key={to} value={to}>
+                        <span className="flex min-h-9 items-center gap-2">
+                          <SettingsSectionIcon to={to} />
+                          {t(SETTINGS_SECTION_LABELS[to])}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
+          <Button
+            size="icon-xl"
+            variant="ghost-muted"
             aria-label={t("Search settings")}
             onClick={() => setCompactSearchOpen(true)}
           >
             <SearchIcon />
-          </SidebarMenuButton>
-          <div
-            {...sectionNavigation.containerProps}
-            role="tree"
-            aria-label={t("Settings sections")}
-            className="flex items-center gap-1"
-          >
-            {SETTINGS_NAV_GROUPS.map((group, index) => (
-              <div
-                key={group.heading ?? index}
-                role="group"
-                aria-label={group.heading ? t(group.heading) : undefined}
-                className="flex items-center gap-1 border-sidebar-border not-first:border-s not-first:ps-1"
-              >
-                {group.paths.map((to) => {
-                  const Icon = SETTINGS_SECTION_ICONS[to];
-                  const isActive = activePath === to || activePath.startsWith(`${to}/`);
-                  return (
-                    <SidebarMenuButton
-                      key={to}
-                      ref={isActive ? scrollSectionIntoView : undefined}
-                      data-settings-section={to}
-                      role="treeitem"
-                      tabIndex={sectionNavigation.tabIndexFor(to)}
-                      aria-selected={isActive}
-                      aria-current={isActive ? "page" : undefined}
-                      isActive={isActive}
-                      className="h-10 w-auto shrink-0 px-3"
-                      onClick={() => handleSectionClick(to)}
-                    >
-                      <Icon />
-                      <span>{t(SETTINGS_SECTION_LABELS[to])}</span>
-                    </SidebarMenuButton>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          </Button>
         </div>
       </nav>
     );
   }
+
+  const searchField = (
+    <div
+      className={cn(
+        "flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+        !compactSearchOpen && "max-md:hidden",
+        layout === "bar" &&
+          "h-11 px-0 [&_[data-slot=input]]:min-h-11 max-sm:[&_[data-slot=input]]:text-base",
+      )}
+    >
+      {layout === "bar" ? (
+        <Button
+          type="button"
+          size="icon-xl"
+          variant="ghost-muted"
+          aria-label={t("Close")}
+          onClick={() => {
+            clearSearch();
+            setCompactSearchOpen(false);
+          }}
+        >
+          <ArrowLeftIcon />
+        </Button>
+      ) : (
+        <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
+      )}
+      <SidebarInput
+        ref={searchInputRef}
+        nativeInput
+        type="search"
+        value={query}
+        onChange={(event) => {
+          setQuery(event.currentTarget.value);
+          setActiveResultIndex(0);
+        }}
+        onKeyDown={handleSearchKeyDown}
+        autoComplete="off"
+        onFocus={() => setCompactSearchOpen(true)}
+        onBlur={() => {
+          if (!isSearching && layout !== "bar") setCompactSearchOpen(false);
+        }}
+        placeholder={t("Search")}
+        aria-label={t("Search settings")}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={isSearching && hasResults}
+        aria-controls={isSearching && hasResults ? "settings-search-results" : undefined}
+        aria-activedescendant={
+          isSearching && results[activeResultIndex]
+            ? `settings-search-result-${results[activeResultIndex].id}`
+            : undefined
+        }
+        className="min-w-0 flex-1"
+      />
+      {isSearching ? (
+        <Button
+          type="button"
+          size={layout === "bar" ? "icon-xl" : "icon-micro"}
+          variant="ghost-muted"
+          aria-label={t("Clear settings search")}
+          onClick={() => {
+            clearSearch();
+            searchInputRef.current?.focus();
+          }}
+        >
+          <XIcon className={layout === "bar" ? "size-4" : "size-3"} />
+        </Button>
+      ) : layout !== "bar" ? (
+        <Kbd>/</Kbd>
+      ) : null}
+    </div>
+  );
 
   return (
     <nav
@@ -305,77 +374,18 @@ export function SettingsSidebarNav({
       aria-label={t("Settings sections")}
       className={cn(
         "flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
+        layout === "bar" && "[&_[data-slot=sidebar-menu-button]]:min-h-11",
         compactSearchOpen &&
           "max-md:absolute max-md:inset-y-0 max-md:start-0 max-md:z-10 max-md:w-full",
       )}
     >
-      <SidebarContent className="overflow-x-hidden">
+      <SidebarContent
+        className="overflow-x-hidden"
+        fixedHeader={layout === "bar" ? <div className="p-2">{searchField}</div> : undefined}
+      >
         <SidebarGroup>
           <div className="flex flex-col gap-2">
-            <div
-              className={cn(
-                "flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-                !compactSearchOpen && "max-md:hidden",
-                layout === "bar" && "h-10 pe-0",
-              )}
-            >
-              <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-              <SidebarInput
-                ref={searchInputRef}
-                nativeInput
-                type="search"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.currentTarget.value);
-                  setActiveResultIndex(0);
-                }}
-                onKeyDown={handleSearchKeyDown}
-                onFocus={() => setCompactSearchOpen(true)}
-                onBlur={() => {
-                  if (!isSearching && layout !== "bar") setCompactSearchOpen(false);
-                }}
-                placeholder={t("Search")}
-                aria-label={t("Search settings")}
-                role="combobox"
-                aria-autocomplete="list"
-                aria-expanded={isSearching && hasResults}
-                aria-controls={isSearching && hasResults ? "settings-search-results" : undefined}
-                aria-activedescendant={
-                  isSearching && results[activeResultIndex]
-                    ? `settings-search-result-${results[activeResultIndex].id}`
-                    : undefined
-                }
-                className="min-w-0 flex-1"
-              />
-              {isSearching ? (
-                <Button
-                  type="button"
-                  size={layout === "bar" ? "icon" : "icon-micro"}
-                  variant="ghost-muted"
-                  className="shrink-0"
-                  aria-label={t("Clear settings search")}
-                  onClick={() => {
-                    clearSearch();
-                    searchInputRef.current?.focus();
-                  }}
-                >
-                  <XIcon className={layout === "bar" ? "size-4" : "size-3"} />
-                </Button>
-              ) : layout === "bar" ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost-muted"
-                  className="shrink-0"
-                  aria-label={t("Close")}
-                  onClick={() => setCompactSearchOpen(false)}
-                >
-                  <XIcon className="size-4" />
-                </Button>
-              ) : (
-                <Kbd>/</Kbd>
-              )}
-            </div>
+            {layout === "bar" ? null : searchField}
             {isSearching && results.length === 0 ? (
               <p
                 role="status"
@@ -384,7 +394,11 @@ export function SettingsSidebarNav({
                 {t("No settings found")}
               </p>
             ) : null}
-            {isSearching ? (
+            {layout === "bar" && compactSearchOpen && !isSearching ? (
+              <p role="status" className="px-3 py-6 text-sm text-sidebar-muted-foreground">
+                {t("Type to search settings")}
+              </p>
+            ) : isSearching ? (
               <SidebarMenu
                 id={hasResults ? "settings-search-results" : undefined}
                 role={hasResults ? "listbox" : undefined}
@@ -412,7 +426,7 @@ export function SettingsSidebarNav({
                         <span className="block truncate text-sm font-medium text-sidebar-foreground">
                           {t(item.title)}
                         </span>
-                        <span className="block truncate text-2xs text-sidebar-muted-foreground/75">
+                        <span className="block truncate text-2xs text-sidebar-muted-foreground/75 max-sm:text-xs">
                           {t(SETTINGS_SECTION_LABELS[item.to])}
                         </span>
                       </span>
@@ -472,7 +486,6 @@ export function SettingsSidebarNav({
                                 aria-selected={isActive}
                                 aria-current={isActive ? "page" : undefined}
                                 isActive={isActive}
-                                className={layout === "bar" ? "h-10" : undefined}
                                 onClick={() => handleSectionClick(to)}
                               >
                                 <Icon />

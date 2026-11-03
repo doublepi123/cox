@@ -29,13 +29,20 @@ import {
   movedSettingsPath,
 } from "../components/settings/settingsSearch";
 
-function RestoreDeviceDefaultsButton({ onRestored }: { onRestored: () => void }) {
+function RestoreDeviceDefaultsButton({
+  compact,
+  onRestored,
+}: {
+  compact: boolean;
+  onRestored: () => void;
+}) {
   const { t } = useTranslation();
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
   return (
     <Button
-      size="xs"
+      size={compact ? "icon-xl" : "xs"}
       variant="ghost"
+      aria-label={t("Restore device defaults")}
       disabled={changedSettingLabels.length === 0}
       onClick={() => void restoreDefaults()}
     >
@@ -128,15 +135,16 @@ function SettingsContentLayout() {
       <div className="relative flex min-h-0 flex-1">
         {isPhoneLayout ? null : <SettingsSidebarNav pathname={location.pathname} />}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
-            <SettingsBreadcrumb pathname={location.pathname} />
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b ps-4 pe-2 sm:gap-3 sm:ps-5">
+            <SettingsBreadcrumb pathname={location.pathname} showSection={!isPhoneLayout} />
             <div className="ms-auto flex shrink-0 items-center gap-1">
               {location.pathname === "/settings/general" ? (
                 <RestoreDeviceDefaultsButton
+                  compact={isPhoneLayout}
                   onRestored={() => setRestoreSignal((value) => value + 1)}
                 />
               ) : null}
-              <AppRouteModalClose />
+              <AppRouteModalClose size={isPhoneLayout ? "icon-xl" : "icon-sm"} />
             </div>
           </header>
           {isPhoneLayout ? <SettingsSidebarNav pathname={location.pathname} layout="bar" /> : null}

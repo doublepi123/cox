@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.17 — 2026-11-03
+
+- Replace the phone settings tab strip with a grouped section picker and a separate search
+  button. Keep the search field visible while results scroll, distinguish clearing from
+  closing search, and show an input hint when the search is empty.
+- Remove the duplicate section title from the phone settings header. Improve narrow-screen
+  spacing, long labels, theme previews and inline switches while preserving desktop columns.
+- Enlarge phone settings inputs, number controls, section actions and dialog buttons to
+  44-pixel touch targets. Fit selects to narrow screens and avoid keyboard zoom in search.
+
 ## 0.1.16 — 2026-11-03
 
 - Improve phone layouts for approvals, questions, settings and workspace panels. Enlarge tab

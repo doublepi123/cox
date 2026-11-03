@@ -18,9 +18,15 @@ function settingsBreadcrumbLabel(pathname: string): string | null {
   return label === undefined ? null : translateCurrent(label);
 }
 
-export function SettingsBreadcrumb({ pathname }: { pathname: string }) {
+export function SettingsBreadcrumb({
+  pathname,
+  showSection = true,
+}: {
+  pathname: string;
+  showSection?: boolean;
+}) {
   const { t } = useTranslation();
-  const sectionLabel = settingsBreadcrumbLabel(pathname);
+  const sectionLabel = showSection ? settingsBreadcrumbLabel(pathname) : null;
 
   return (
     <WorkspaceBreadcrumb ariaLabel={t("Settings breadcrumb")}>

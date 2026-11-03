@@ -2331,6 +2331,7 @@ export const en = {
   "No text generation providers available.": "No text generation providers available.",
   Search: "Search",
   "Search settings": "Search settings",
+  "Type to search settings": "Type to search settings",
   Off: "Off",
   "Automatic worktree cleanup": "Automatic worktree cleanup",
   "Delete worktrees with deleted threads": "Delete worktrees with deleted threads",

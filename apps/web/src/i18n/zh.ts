@@ -2256,6 +2256,7 @@ export const zh = {
   "No text generation providers available.": "没有可用的文本生成提供商。",
   Search: "搜索",
   "Search settings": "搜索设置",
+  "Type to search settings": "输入关键词搜索设置",
   Off: "关闭",
   "Automatic worktree cleanup": "自动清理工作树",
   "Delete worktrees with deleted threads": "删除已删除对话的工作树",

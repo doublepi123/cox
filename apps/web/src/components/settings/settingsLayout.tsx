@@ -229,7 +229,7 @@ export function SettingsSection({
       {...sectionProps}
       ref={targetRef}
       tabIndex={sectionProps.id ? -1 : sectionProps.tabIndex}
-      className={cn(!hideTitle && "space-y-2.5", className)}
+      className={cn("min-w-0", !hideTitle && "space-y-2.5", className)}
     >
       {hideTitle ? (
         <h2 className="sr-only">{t(title)}</h2>
@@ -479,7 +479,7 @@ export function SettingsRow({
       <div className="flex flex-col gap-3 @min-[32rem]/settings-row:grid @min-[32rem]/settings-row:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] @min-[32rem]/settings-row:items-center @min-[32rem]/settings-row:gap-8">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex min-h-5 items-center gap-1.5">
-            <h3 className="text-sm font-medium text-foreground">
+            <h3 className="min-w-0 [overflow-wrap:anywhere] text-sm font-medium text-foreground">
               {typeof title === "string" ? t(title) : title}
             </h3>
             {renderedInheritance ? (
@@ -500,7 +500,7 @@ export function SettingsRow({
             </span>
           </div>
           {description ? (
-            <p className="max-w-2xl text-balance text-xs leading-normal text-muted-foreground">
+            <p className="max-w-2xl [overflow-wrap:anywhere] text-pretty text-xs leading-relaxed text-muted-foreground">
               {typeof description === "string" ? t(description) : description}
             </p>
           ) : null}
@@ -509,7 +509,10 @@ export function SettingsRow({
           ) : null}
         </div>
         {renderedControl ? (
-          <div className="flex w-full min-w-0 shrink-0 items-center gap-2 @min-[32rem]/settings-row:w-auto @min-[32rem]/settings-row:justify-end">
+          <div
+            data-slot="settings-control"
+            className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2 @min-[32rem]/settings-row:w-auto @min-[32rem]/settings-row:flex-nowrap @min-[32rem]/settings-row:justify-end"
+          >
             {renderedControl}
           </div>
         ) : null}
@@ -592,10 +595,13 @@ export function SettingsPageContainer({
       onTargetHandled={clearTargetHash}
     >
       <div
-        className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto"
+        className="topbar-scroll-fade min-h-0 min-w-0 flex-1 overflow-y-auto sm:scrollbar-gutter-both"
         data-settings-page-scroll
       >
-        <WorkspacePageContainer width={width} className={cn("gap-8", className)}>
+        <WorkspacePageContainer
+          width={width}
+          className={cn("gap-6 px-3 pt-4 sm:gap-8 sm:px-6 sm:pt-6", className)}
+        >
           <SettingsScopeSentence />
           {children}
         </WorkspacePageContainer>

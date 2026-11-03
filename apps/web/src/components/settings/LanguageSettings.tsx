@@ -14,7 +14,7 @@ export function LanguageSettings() {
         control={
           <select
             aria-label={t("Interface language")}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            className="min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base text-foreground sm:min-h-9 sm:text-sm @min-[32rem]/settings-row:w-auto"
             value={languagePreference}
             onChange={(event) => setLanguagePreference(parseLanguagePreference(event.target.value))}
           >

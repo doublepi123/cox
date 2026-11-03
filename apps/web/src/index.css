@@ -1306,6 +1306,63 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   box-shadow: none;
 }
 
+@container settings-row (width < 32rem) {
+  [data-slot="settings-control"]
+    :is([data-slot="input"], [data-slot="number-field-input"], textarea) {
+    min-height: 2.75rem;
+    font-size: 1rem;
+  }
+
+  [data-slot="settings-control"] > :is(button, [data-slot="button"]) {
+    min-height: 2.75rem;
+  }
+
+  [data-slot="settings-control"]
+    :is([data-slot="number-field-decrement"], [data-slot="number-field-increment"]) {
+    min-width: 2.75rem;
+  }
+
+  [data-slot="settings-control"] > :is([data-slot="select-trigger"], select) {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+  }
+
+  [data-slot="settings-control"] > * {
+    max-width: 100%;
+  }
+
+  div:has(> [data-slot="settings-control"] > [data-slot="switch"]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 1rem;
+  }
+
+  [data-slot="settings-control"]:has(> [data-slot="switch"]) {
+    width: auto;
+    padding-block: 0.125rem;
+  }
+
+  [data-slot="settings-control"] > [data-slot="switch"] {
+    position: relative;
+  }
+
+  [data-slot="settings-control"] > [data-slot="switch"]::after {
+    position: absolute;
+    inset: 50% -0.25rem auto;
+    min-height: 2.75rem;
+    transform: translateY(-50%);
+    content: "";
+  }
+}
+
+@media (width < 640px) {
+  [data-settings-scroll-target] button {
+    min-height: 2.75rem;
+  }
+}
+
 /* A diff header's copy button shows on file hover or focus. */
 @media (hover: hover) {
   diffs-container:not(:hover) [data-diff-copy-path]:not(:focus-within) {

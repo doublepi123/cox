@@ -683,7 +683,7 @@ export function ThemeLibrary({
 
   const renderWireframe = (mode: ThemeMode) => (
     <ThemeWireframe
-      className="h-[8.75rem]"
+      className="h-20 sm:h-[8.75rem]"
       panes={
         mode === "system"
           ? [

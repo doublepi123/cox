@@ -1,7 +1,7 @@
 import { useTranslation } from "../i18n";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { useCloseAppModal } from "./sidebar/mainAppLocation";
 import { Button } from "./ui/button";
@@ -68,7 +68,11 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
   );
 }
 
-export function AppRouteModalClose() {
+export function AppRouteModalClose({
+  size = "icon-sm",
+}: {
+  size?: ComponentProps<typeof Button>["size"];
+}) {
   const { t } = useTranslation();
   return (
     <Tooltip>
@@ -76,7 +80,7 @@ export function AppRouteModalClose() {
         render={
           <DialogPrimitive.Close
             aria-label={t("Close")}
-            render={<Button size="icon-sm" variant="ghost" />}
+            render={<Button size={size} variant="ghost" />}
           />
         }
       >
