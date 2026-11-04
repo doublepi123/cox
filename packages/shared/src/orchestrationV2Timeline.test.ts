@@ -4,10 +4,23 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   createOrchestrationV2TurnItemVisibility,
   isOrchestrationV2TurnItemVisible,
+  isReasoningPlaceholder,
 } from "./orchestrationV2Timeline.ts";
 
 const runId = RunId.make("run:timeline-visibility");
 const nodeId = NodeId.make("node:timeline-visibility");
+
+describe("reasoning placeholders", () => {
+  it.each(["[reasoning unavailable]", " \n[Reasoning Unavailable]\t", "[", "[reasoning un"])(
+    "recognizes complete or partially streamed placeholder %j",
+    (text) => expect(isReasoningPlaceholder(text)).toBe(true),
+  );
+
+  it.each(["", "Inspect the diff", "[1, 2]", "[reasoning unavailable] is a placeholder"])(
+    "keeps ordinary content %j",
+    (text) => expect(isReasoningPlaceholder(text)).toBe(false),
+  );
+});
 
 describe.each([
   ["point", isOrchestrationV2TurnItemVisible],

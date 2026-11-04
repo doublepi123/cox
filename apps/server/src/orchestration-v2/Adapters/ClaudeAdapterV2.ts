@@ -1,6 +1,7 @@
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { materializeClaudeGatewaySettings } from "../../provider/ClaudeGatewaySettings.ts";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
+import { isReasoningPlaceholder } from "@t3tools/shared/orchestrationV2Timeline";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
 import {
   dynamicToolTitle,
@@ -7118,6 +7119,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             block.type === "thinking" && block.thinking.trim().length > 0 ? [block.thinking] : [],
           );
           for (const [index, text] of thinking.entries()) {
+            if (isReasoningPlaceholder(text)) continue;
             const nativeItemId = `${message.uuid}:thinking:${index}`;
             yield* emitProviderEvent({
               type: "turn_item.updated",
@@ -7378,7 +7380,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const context = yield* Ref.get(activeTurn);
               if (context === null || context.nativeTurnId !== update.turnId) return;
               const block = context.reasoning.blocks.get(update.itemId);
-              if (block === undefined || update.text.length === 0) return;
+              if (
+                block === undefined ||
+                update.text.length === 0 ||
+                isReasoningPlaceholder(update.text)
+              )
+                return;
               block.text = update.text;
               const now = yield* DateTime.now;
               yield* emitProviderEvent({
@@ -8599,7 +8606,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               context.reasoning.snapshotBlockIndex.set(message.message.id, index + 1);
               const itemId = `${message.message.id}:thinking:${index}`;
               yield* ensureReasoningBlock(context, itemId);
-              const finalText = block.thinking || context.reasoning.blocks.get(itemId)?.text;
+              const snapshotText = isReasoningPlaceholder(block.thinking) ? "" : block.thinking;
+              const finalText = snapshotText || context.reasoning.blocks.get(itemId)?.text;
               const completedText = yield* reasoningDeltas.complete({
                 turnId: context.nativeTurnId,
                 itemId,
@@ -8607,14 +8615,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 emitEmpty: false,
               });
               const previous = context.reasoning.lastThinking;
-              context.reasoning.lastThinking = completedText.trim()
-                ? {
-                    messageId: message.message.id,
-                    itemId,
-                    text: completedText,
-                    followsThinking: previous !== null && previous.messageId === message.message.id,
-                  }
-                : null;
+              context.reasoning.lastThinking =
+                completedText.trim() && !isReasoningPlaceholder(completedText)
+                  ? {
+                      messageId: message.message.id,
+                      itemId,
+                      text: completedText,
+                      followsThinking:
+                        previous !== null && previous.messageId === message.message.id,
+                    }
+                  : null;
             }
           }
 
@@ -9389,7 +9399,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const assistantParentToolUseId = parentToolUseIdFromSdkMessage(message);
           if (message.type === "assistant" && assistantParentToolUseId !== null) {
             const thinking = message.message.content.flatMap((block) =>
-              block.type === "thinking" && block.thinking.trim().length > 0 ? [block.thinking] : [],
+              block.type === "thinking" &&
+              block.thinking.trim().length > 0 &&
+              !isReasoningPlaceholder(block.thinking)
+                ? [block.thinking]
+                : [],
             );
             const subagent =
               thinking.length === 0

@@ -67,6 +67,7 @@ import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
 import { htmlRenderReferencesEqual, type HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { mcpAppReferencesEqual, type McpAppReference } from "@t3tools/shared/mcpApp";
 import { dynamicToolTitle } from "@t3tools/shared/toolActivity";
+import { isReasoningPlaceholder } from "@t3tools/shared/orchestrationV2Timeline";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   collectToolFilePaths,
@@ -1383,7 +1384,13 @@ function settleSupersededReasoning(entries: ReadonlyArray<TimelineEntry>) {
 }
 
 function timelineRowEntries(entries: ReadonlyArray<TimelineEntry>) {
-  return withoutSubagentDelegationRows(settleSupersededReasoning(entries));
+  const visibleEntries = entries.filter(
+    (entry) =>
+      entry.kind !== "work" ||
+      entry.entry.itemType !== "reasoning" ||
+      !isReasoningPlaceholder(entry.entry.detail ?? ""),
+  );
+  return withoutSubagentDelegationRows(settleSupersededReasoning(visibleEntries));
 }
 
 function deriveTimelineTurnFolds(

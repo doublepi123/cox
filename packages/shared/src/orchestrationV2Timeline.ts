@@ -11,6 +11,11 @@ type TimelineTurnItem = Pick<OrchestrationV2TurnItem, "type" | "runId" | "nodeId
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent;
 };
 
+export function isReasoningPlaceholder(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return normalized.length > 0 && "[reasoning unavailable]".startsWith(normalized);
+}
+
 export function isOrchestrationV2SupersededInterrupt(input: {
   readonly item: TimelineTurnItem;
   readonly attempts: ReadonlyArray<TimelineRunAttempt>;

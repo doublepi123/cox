@@ -5120,7 +5120,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   );
 
   it.effect.each(["completed", "interrupted"] as const)(
-    "projects Claude thinking blocks when %s",
+    "projects real Claude thinking and suppresses placeholders when %s",
     (status) =>
       Effect.gen(function* () {
         const harness = yield* makeWakeHarness;
@@ -5188,6 +5188,39 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           snapshot("thought-message", "second-snapshot", ""),
           snapshot("completion-only", "third-snapshot", "Completion only"),
           snapshot("redacted", "empty-snapshot", ""),
+          snapshot("unavailable", "unavailable-snapshot", "[reasoning unavailable]"),
+          snapshot("unavailable-trimmed", "trimmed-snapshot", " \n[Reasoning Unavailable]\t"),
+          snapshot(
+            "placeholder-description",
+            "description-snapshot",
+            "[reasoning unavailable] is a placeholder",
+          ),
+          stream({ type: "message_start", message: { id: "unavailable-stream" } }),
+          stream({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "[" },
+          }),
+          stream({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "thinking_delta", thinking: "reasoning un" },
+          }),
+          stream({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "thinking_delta", thinking: "available]" },
+          }),
+          stream({ type: "content_block_stop", index: 0 }),
+          snapshot("unavailable-stream", "stream-snapshot", "[reasoning unavailable]"),
+          stream({ type: "message_start", message: { id: "preserved-stream" } }),
+          stream({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "Preserved streamed thought" },
+          }),
+          stream({ type: "content_block_stop", index: 0 }),
+          snapshot("preserved-stream", "preserved-snapshot", "[reasoning unavailable]"),
           stream({ type: "message_start", message: { id: "child-message" } }, "child-tool"),
           stream(
             {
@@ -5203,13 +5236,22 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             index: 0,
             content_block: { type: "thinking", thinking: "Partial thought" },
           }),
+          stream({ type: "message_start", message: { id: "unfinished-placeholder" } }),
+          stream({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "[reasoning un" },
+          }),
           makeResultFrame({
             uuid: "reasoning-result",
             result: "",
             ...(status === "interrupted" ? { terminalReason: "aborted_streaming" as const } : {}),
           }),
         ];
-        for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
+        for (const frame of frames) {
+          yield* harness.offerAndWait(frame);
+          yield* TestClock.adjust("50 millis");
+        }
         const terminal = yield* Queue.take(harness.terminalReceipts);
         assert.equal(terminal.status, status);
         const latest = new Map(
@@ -5221,9 +5263,24 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         );
         assert.deepEqual(
           [...latest.values()].map((item) => item.text),
-          ["Authoritative first thought", "Second thought", "Completion only", "Partial thought"],
+          [
+            "Authoritative first thought",
+            "Second thought",
+            "Completion only",
+            "[reasoning unavailable] is a placeholder",
+            "Preserved streamed thought",
+            "Partial thought",
+          ],
         );
-        assert.equal(new Set([...latest.values()].map((item) => item.ordinal)).size, 4);
+        assert.equal(new Set([...latest.values()].map((item) => item.ordinal)).size, 6);
+        assert.isFalse(
+          harness.events.some(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "reasoning" &&
+              ["[", "[reasoning un", "[reasoning unavailable]"].includes(event.turnItem.text),
+          ),
+        );
         for (const item of latest.values()) {
           assert.equal(item.streaming, false);
           assert.isNotNull(item.completedAt);
@@ -16653,6 +16710,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       message: { role: "user", content: "<system-reminder>context</system-reminder>" },
     }),
     memberAssistantLine("line-thinking", "msg_a1", [
+      { type: "thinking", thinking: "[reasoning unavailable]", signature: "" },
       { type: "thinking", thinking: "List the files first.", signature: "sig" },
     ]),
     memberAssistantLine("line-bash", "msg_a1", [
@@ -16720,6 +16778,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             "command completed: README.md",
             "assistant_message",
           ]);
+          assert.equal(
+            latestMemberThreadItems(harness.events, threadId).find(
+              (item) => item.type === "reasoning",
+            )?.nativeItemRef?.nativeId,
+            "line-thinking:thinking:1",
+          );
           assert.deepEqual(
             threadMessages(harness.events, threadId).map((event) => event.message.text),
             ["Reply with exactly: A1", "A1 found README.md"],

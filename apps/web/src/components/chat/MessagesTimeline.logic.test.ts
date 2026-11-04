@@ -54,6 +54,98 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it.each([false, true])(
+    "hides saved reasoning placeholders without changing real activity when working=%s",
+    (isWorking) => {
+      const runId = RunId.make("placeholder-run");
+      const createdAt = "2026-11-04T01:35:00.000Z";
+      const thought = (id: string, detail: string): Extract<TimelineEntry, { kind: "work" }> => ({
+        kind: "work",
+        id,
+        createdAt,
+        entry: {
+          id,
+          runId,
+          createdAt,
+          label: "Thinking",
+          detail,
+          tone: "thinking",
+          itemType: "reasoning",
+          toolLifecycleStatus: "completed",
+        },
+      });
+      const realThought = thought("real-thought", "[reasoning unavailable] is a placeholder");
+      const tool: TimelineEntry = {
+        kind: "work",
+        id: "real-tool",
+        createdAt,
+        entry: {
+          id: "real-tool",
+          runId,
+          createdAt,
+          label: "Ran git status",
+          tone: "tool",
+          itemType: "command_execution",
+          toolLifecycleStatus: "completed",
+        },
+      };
+      const message: TimelineEntry = {
+        kind: "message",
+        id: "real-message",
+        createdAt,
+        message: {
+          id: MessageId.make("real-message"),
+          role: "assistant",
+          text: "[reasoning unavailable]",
+          runId,
+          streaming: false,
+          createdAt,
+          updatedAt: createdAt,
+        },
+      };
+      const input = {
+        expandedWorkGroupIds: new Set(["work-group:real-thought"]),
+        expandedRunIds: new Set([runId]),
+        runningRunId: isWorking ? runId : null,
+        isWorking,
+        activeTurnStartedAt: createdAt,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      };
+      const placeholders = [
+        thought("placeholder-1", "[reasoning unavailable]"),
+        thought("placeholder-2", " \n[Reasoning Unavailable]\t"),
+        thought("placeholder-3", "[reasoning un"),
+      ];
+      const expected = deriveMessagesTimelineRows({
+        ...input,
+        timelineEntries: [realThought, tool, message],
+      });
+      const actual = deriveMessagesTimelineRows({
+        ...input,
+        timelineEntries: [
+          placeholders[0]!,
+          realThought,
+          placeholders[1]!,
+          tool,
+          message,
+          placeholders[2]!,
+        ],
+      });
+
+      expect(actual).toEqual(expected);
+      expect(actual.some((row) => row.kind === "message" && row.message === message.message)).toBe(
+        true,
+      );
+      expect(
+        actual.some((row) => row.kind === "work" && row.groupedEntries.includes(realThought.entry)),
+      ).toBe(true);
+      expect(deriveMessagesTimelineRows({ ...input, timelineEntries: placeholders })).toEqual(
+        deriveMessagesTimelineRows({ ...input, timelineEntries: [] }),
+      );
+    },
+  );
+
   it("shows a task list once even when its old activity group is expanded", () => {
     const runId = RunId.make("tasks-run");
     const createdAt = "2026-11-02T08:00:00.000Z";
