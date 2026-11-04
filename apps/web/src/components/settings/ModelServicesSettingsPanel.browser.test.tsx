@@ -12,8 +12,11 @@ import {
 import type { ReactNode } from "react";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { page } from "vite-plus/test/browser";
 import { act, render } from "../../../test/render";
 import "~/index.css";
+import { LANGUAGE_STORAGE_KEY, setLanguagePreference } from "../../i18n";
+import { parseLanguagePreference } from "../../i18n/language";
 
 const state = vi.hoisted(() => ({
   settings: null as unknown as UnifiedSettings,
@@ -165,6 +168,42 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 }
 
 describe("model services settings", () => {
+  it.each([
+    { width: 320, language: "zh" as const },
+    { width: 390, language: "en" as const },
+  ])("fits the editor in $language", async ({ width, language }) => {
+    setup({ [id]: { ...configured, name: "newapi" } });
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    const originalLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    await page.viewport(width, 812);
+    setLanguagePreference(language);
+    try {
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      for (const label of language === "zh"
+        ? ["服务名称", "API 地址", "API 密钥", "支持的协议"]
+        : ["Service name", "API URL", "API key", "Supported protocols"]) {
+        const element = screen.getByText(label, { exact: true }).element();
+        expect(Number.parseFloat(getComputedStyle(element).fontSize)).toBeGreaterThanOrEqual(12);
+      }
+      expect(
+        screen
+          .getByRole("button", {
+            name: language === "zh" ? "保存并获取模型" : "Save and fetch models",
+            exact: true,
+          })
+          .element()
+          .getBoundingClientRect().width,
+      ).toBeGreaterThan(250);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
+    } finally {
+      setLanguagePreference(parseLanguagePreference(originalLanguage));
+      if (originalLanguage === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+      await page.viewport(originalWidth, originalHeight);
+    }
+  });
+
   it("fills metadata for existing models without saving or rediscovering the connection", async () => {
     setup({ [id]: { ...configured, models: [{ id: "gpt-5", capabilities: null }] } });
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);

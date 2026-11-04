@@ -20,7 +20,9 @@ import { useEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { randomUUID } from "../../lib/utils";
+import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -83,6 +85,7 @@ export function EnvironmentModelServices({
     <SettingsSection
       title={t("Model services")}
       id="model-services"
+      variant="plain"
       headerAction={
         !readOnly ? (
           <Button
@@ -90,12 +93,13 @@ export function EnvironmentModelServices({
             variant="outline"
             onClick={() => setEditing(ModelServiceId.make(`service_${randomUUID()}`))}
           >
+            <PlusIcon />
             {t("Add model service")}
           </Button>
         ) : undefined
       }
     >
-      <p className="px-3 text-sm text-muted-foreground sm:px-4">
+      <p className="px-3 text-sm leading-relaxed text-muted-foreground sm:px-4">
         {t(
           "Configure an API once, discover its models, and share it with compatible coding agents.",
         )}
@@ -111,7 +115,8 @@ export function EnvironmentModelServices({
             <Button
               key={id}
               size="sm"
-              variant={selected === id ? "secondary" : "outline"}
+              variant={selected === id ? "secondary" : "ghost-muted"}
+              aria-pressed={selected === id}
               onClick={() => setEditing(id)}
             >
               {service.name}
@@ -233,16 +238,16 @@ function ModelServiceEditor({
       : null;
   }
   return (
-    <div className="space-y-4 rounded-lg border border-border p-3 sm:p-4">
+    <div className="mx-3 space-y-5 rounded-xl border border-border/60 bg-card/40 p-4 shadow-xs/5 sm:mx-4 sm:p-5">
       <form
-        className="space-y-4"
+        className="space-y-5"
         onSubmit={(event) => {
           event.preventDefault();
           void run(() => save(false));
         }}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm font-medium">
             {t("Service name")}
             <Input
               value={name}
@@ -251,7 +256,7 @@ function ModelServiceEditor({
               required
             />
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm font-medium">
             {t("API URL")}
             <Input
               value={baseUrl}
@@ -263,7 +268,7 @@ function ModelServiceEditor({
             />
           </label>
         </div>
-        <label className="grid gap-1.5 text-sm">
+        <label className="grid gap-2 text-sm font-medium">
           {t("API key")}
           <SecretInput
             value={apiKey}
@@ -273,46 +278,50 @@ function ModelServiceEditor({
           />
         </label>
         {service?.apiKey ? (
-          <label className="flex min-h-10 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+          <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
+            <Checkbox
               checked={clearKey}
               disabled={readOnly || busy}
-              onChange={(event) => setClearKey(event.target.checked)}
+              onCheckedChange={(checked) => setClearKey(checked === true)}
             />
             {t("Remove stored API key")}
           </label>
         ) : null}
-        <fieldset disabled={readOnly || busy} className="space-y-2">
+        <fieldset disabled={readOnly || busy} className="space-y-3">
+          <div className="border-t border-border/60 pt-5" aria-hidden="true" />
           <legend className="text-sm font-medium">{t("Supported protocols")}</legend>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             {t(
               "The first selected protocol is used for model discovery. Each model can declare its own protocols.",
             )}
           </p>
-          <div className="grid gap-1 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             {protocols.map((protocol) => (
-              <label key={protocol} className="flex min-h-10 items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+              <label
+                key={protocol}
+                className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-sm transition-colors hover:bg-accent/50 has-checked:bg-accent/60 sm:px-3"
+              >
+                <Checkbox
                   checked={selectedProtocols.includes(protocol)}
-                  onChange={(event) =>
+                  onCheckedChange={(checked) =>
                     setProtocols(
-                      event.target.checked
+                      checked === true
                         ? [...selectedProtocols, protocol]
                         : selectedProtocols.filter((value) => value !== protocol),
                     )
                   }
                 />
-                {MODEL_SERVICE_PROTOCOL_LABELS[protocol]}
+                <span className="min-w-0 flex-1">{MODEL_SERVICE_PROTOCOL_LABELS[protocol]}</span>
                 {selectedProtocols[0] === protocol ? (
-                  <span className="text-xs text-muted-foreground">{t("Primary")}</span>
+                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+                    {t("Primary")}
+                  </span>
                 ) : null}
               </label>
             ))}
           </div>
         </fieldset>
-        <label className="grid gap-1.5 text-sm">
+        <label className="grid gap-2 text-sm font-medium">
           {t("Model-list path")}
           <Input
             value={modelsPath}
@@ -324,8 +333,10 @@ function ModelServiceEditor({
             {t("Optional path on the same service, such as /v1/models.")}
           </span>
         </label>
-        <details>
-          <summary className="cursor-pointer text-sm">{t("Additional request headers")}</summary>
+        <details className="rounded-lg border border-border/60 bg-muted/15 px-3 py-2.5 open:pb-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            {t("Additional request headers")}
+          </summary>
           <label className="mt-2 grid gap-1.5 text-sm">
             <span className="sr-only">{t("Request headers JSON")}</span>
             <textarea
@@ -341,27 +352,26 @@ function ModelServiceEditor({
             </span>
           </label>
         </details>
-        <label className="flex min-h-10 items-center gap-2 text-sm">
-          <input
-            type="checkbox"
+        <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
+          <Checkbox
             checked={enabled}
             disabled={readOnly || busy}
-            onChange={(event) => setEnabled(event.target.checked)}
+            onCheckedChange={(checked) => setEnabled(checked === true)}
           />
           {t("Enable model service")}
         </label>
         {!readOnly ? (
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={busy}>
+          <div className="grid gap-2 border-t border-border/60 pt-5 sm:flex">
+            <Button type="submit" disabled={busy}>
               {t("Save service")}
             </Button>
             <Button
               type="button"
-              size="sm"
               variant="outline"
               disabled={busy || !enabled}
               onClick={() => void run(() => save(true))}
             >
+              <RefreshCwIcon className={busy ? "animate-spin" : undefined} />
               {t(busy ? "Working…" : "Save and fetch models")}
             </Button>
           </div>
@@ -372,7 +382,7 @@ function ModelServiceEditor({
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-5">
         <h3 className="text-sm font-medium">
           {t("Models")} ({models.length})
         </h3>
@@ -401,6 +411,7 @@ function ModelServiceEditor({
               disabled={busy}
               onClick={() => setModelEditor("new")}
             >
+              <PlusIcon />
               {t("Add model")}
             </Button>
           </div>
@@ -674,13 +685,15 @@ function ModelEditor({
       <fieldset disabled={busy} className="grid gap-1 sm:grid-cols-2">
         <legend className="text-sm">{t("Supported protocols")}</legend>
         {defaults.map((protocol) => (
-          <label key={protocol} className="flex min-h-10 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+          <label
+            key={protocol}
+            className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm"
+          >
+            <Checkbox
               checked={selected.includes(protocol)}
-              onChange={(event) =>
+              onCheckedChange={(checked) =>
                 setSelected(
-                  event.target.checked
+                  checked === true
                     ? [...selected, protocol]
                     : selected.filter((value) => value !== protocol),
                 )
