@@ -5,6 +5,7 @@ import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerControl } from "./ComposerControl";
+import { ComposerFollowUpBehavior } from "./ComposerFollowUpBehavior";
 import {
   ComposerFooterModeControls,
   ComposerModelPicker,
@@ -267,6 +268,9 @@ export function ComposerControlsBar(props: {
   ) : (
     <>
       {composerModelPicker}
+      <div data-composer-fixed-control className="shrink-0">
+        <ComposerFollowUpBehavior size={controlSize} hidden={composerControlsHidden} />
+      </div>
 
       <>
         {restingBlockDefs.map((def, index) => {

@@ -32,6 +32,10 @@ import {
 } from "./providerInstances";
 import { sortModelsForProviderInstance } from "./modelOrdering";
 import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
+import {
+  resolveTextGenerationModelSelection,
+  textGenerationModelSelectionForInstance,
+} from "@t3tools/shared/serverSettings";
 
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 const DEFAULT_TEXT_GENERATION_INSTANCE_ID = ProviderInstanceId.make("codex");
@@ -343,13 +347,24 @@ export function resolveAppModelSelectionState(
   settings: UnifiedSettings,
   providers: ReadonlyArray<ServerProvider>,
 ): ModelSelection {
-  const selection = settings.textGenerationModelSelection ?? {
-    instanceId: DEFAULT_TEXT_GENERATION_INSTANCE_ID,
-    model: DEFAULT_TEXT_GENERATION_MODEL,
-  };
   const supportedProviders = providers.filter(
-    (provider) => provider.supportsTextGeneration !== false,
+    (provider) =>
+      provider.supportsTextGeneration !== false &&
+      textGenerationModelSelectionForInstance(settings, provider.instanceId, provider.driver) !==
+        null,
   );
+  const selection = resolveTextGenerationModelSelection(settings, (instanceId) =>
+    supportedProviders.some(
+      (provider) =>
+        provider.instanceId === instanceId &&
+        provider.enabled &&
+        provider.availability !== "unavailable",
+    ),
+  ) ??
+    settings.textGenerationModelSelection ?? {
+      instanceId: DEFAULT_TEXT_GENERATION_INSTANCE_ID,
+      model: DEFAULT_TEXT_GENERATION_MODEL,
+    };
   const entries = deriveProviderInstanceEntries(supportedProviders);
   const selectedEntry = entries.find(
     (entry) => entry.instanceId === selection.instanceId && entry.enabled && entry.isAvailable,
@@ -358,15 +373,17 @@ export function resolveAppModelSelectionState(
     selectedEntry ?? entries.find((candidate) => candidate.enabled && candidate.isAvailable);
   if (entry) {
     const selectedModel = selectedEntry ? selection.model : null;
-    // Use the cheap generation default; the catalog default is the expensive chat flagship.
     const options = getAppModelOptionsForInstance(settings, entry);
+    const defaultSelection = textGenerationModelSelectionForInstance(
+      settings,
+      entry.instanceId,
+      entry.driverKind,
+      undefined,
+      entry.models,
+    );
     const model =
       resolveSelectableModel(entry.driverKind, selectedModel, options) ??
-      resolveSelectableModel(
-        entry.driverKind,
-        DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER[entry.driverKind],
-        options,
-      ) ??
+      resolveSelectableModel(entry.driverKind, defaultSelection?.model, options) ??
       resolveAppModelSelectionForInstance(
         entry.instanceId,
         settings,
@@ -383,7 +400,7 @@ export function resolveAppModelSelectionState(
       provider,
       model,
       models: entry.models,
-      modelOptions: selectedEntry ? selection.options : undefined,
+      modelOptions: selectedEntry && model === selection.model ? selection.options : undefined,
       planModeEnabled: settings.planModeEnabled || selectsPlanAgent(selection.options),
     });
 

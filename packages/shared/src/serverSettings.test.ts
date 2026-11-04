@@ -1,5 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  ModelServiceConfig,
+  ModelServiceId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -24,12 +26,202 @@ import {
   isModelSelectionProviderEnabled,
   parsePersistedServerObservabilitySettings,
   resolveSourceControlWriterModelSelection,
+  resolveTextGenerationModelSelection,
+  textGenerationModelSelectionForInstance,
 } from "./serverSettings.ts";
 
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
+const decodeModelService = Schema.decodeSync(ModelServiceConfig);
 
 const FOLDED_SERVER_SETTINGS = { ...DEFAULT_SERVER_SETTINGS, projectSettingsFolded: true };
+
+describe("bound text generation defaults", () => {
+  const serviceId = ModelServiceId.make("text-models");
+  const instanceId = ProviderInstanceId.make("codex");
+  const driver = ProviderDriverKind.make("codex");
+  const service = decodeModelService({
+    name: "Text models",
+    baseUrl: "https://models.test/v1",
+    protocols: ["openai-chat"],
+    models: [
+      { id: "not-bound" },
+      { id: "removed", available: false },
+      { id: "no-tools", supportsTools: false },
+      { id: "wrong-protocol", protocols: ["gemini"] },
+      { id: "gpt-5.6-luna" },
+      { id: "gpt-6.1-sol" },
+    ],
+  });
+  const settings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    modelServices: { [serviceId]: service },
+    providerInstances: {
+      [instanceId]: {
+        driver,
+        enabled: true,
+        config: {},
+        modelService: {
+          serviceId,
+          modelIds: ["removed", "no-tools", "wrong-protocol", "gpt-5.6-luna", "gpt-6.1-sol"],
+          defaultModel: "gpt-6.1-sol",
+        },
+      },
+    },
+  };
+
+  it.each(["codex", "claudeAgent", "pi", "opencode"])(
+    "uses the configured binding default for %s rather than an unadvertised built-in",
+    (kind) => {
+      const selected = ProviderInstanceId.make(kind);
+      const configured = {
+        ...settings,
+        providerInstances: {
+          [selected]: {
+            ...settings.providerInstances[instanceId]!,
+            driver: ProviderDriverKind.make(kind),
+          },
+        },
+        textGenerationModelSelection: createModelSelection(selected, "unavailable-built-in", [
+          { id: "reasoningEffort", value: "low" },
+        ]),
+      };
+      expect(resolveTextGenerationModelSelection(configured)).toEqual(
+        createModelSelection(
+          selected,
+          kind === "pi" || kind === "opencode" ? "cox/gpt-6.1-sol" : "gpt-6.1-sol",
+        ),
+      );
+      expect(configured.textGenerationModelSelection.model).toBe("unavailable-built-in");
+    },
+  );
+
+  it("preserves explicit valid selections and options on the bound instance", () => {
+    const selection = createModelSelection(instanceId, "gpt-5.6-luna", [
+      { id: "reasoningEffort", value: "high" },
+    ]);
+    expect(
+      resolveTextGenerationModelSelection({ ...settings, textGenerationModelSelection: selection }),
+    ).toBe(selection);
+  });
+
+  it("falls back within the binding when its configured default is unavailable", () => {
+    const configured = {
+      ...settings,
+      providerInstances: {
+        [instanceId]: {
+          ...settings.providerInstances[instanceId]!,
+          modelService: {
+            ...settings.providerInstances[instanceId]!.modelService,
+            defaultModel: "removed",
+          },
+        },
+      },
+    };
+    expect(resolveTextGenerationModelSelection(configured)).toEqual(
+      createModelSelection(instanceId, "gpt-5.6-luna"),
+    );
+    const withThreadDefault = {
+      ...configured,
+      defaultModelSelection: createModelSelection(instanceId, "gpt-6.1-sol", [
+        { id: "reasoningEffort", value: "ultra" },
+      ]),
+    };
+    expect(resolveTextGenerationModelSelection(withThreadDefault)).toEqual(
+      createModelSelection(instanceId, "gpt-6.1-sol"),
+    );
+  });
+
+  it("finds a custom configured agent without requiring the default Codex instance to be disabled", () => {
+    const customId = ProviderInstanceId.make("codex-service");
+    const configured = {
+      ...settings,
+      providerInstances: { [customId]: settings.providerInstances[instanceId]! },
+    };
+    expect(resolveTextGenerationModelSelection(configured)).toEqual(
+      createModelSelection(customId, "gpt-6.1-sol"),
+    );
+    expect(
+      resolveTextGenerationModelSelection({
+        ...configured,
+        providerInstances: {
+          ...configured.providerInstances,
+          [instanceId]: { driver, enabled: true, config: { binaryPath: "codex" } },
+        },
+      }),
+    ).toEqual(createModelSelection(customId, "gpt-6.1-sol"));
+    expect(
+      resolveTextGenerationModelSelection({
+        ...configured,
+        providerInstances: {
+          [ProviderInstanceId.make("pi")]: {
+            ...settings.providerInstances[instanceId]!,
+            driver: ProviderDriverKind.make("pi"),
+          },
+          ...configured.providerInstances,
+        },
+      }),
+    ).toEqual(createModelSelection(customId, "gpt-6.1-sol"));
+    expect(
+      resolveTextGenerationModelSelection({
+        ...configured,
+        textGenerationModelSelection: createModelSelection(instanceId, "my-explicit-native-model"),
+      }),
+    ).toEqual(createModelSelection(instanceId, "my-explicit-native-model"));
+  });
+
+  it("does not choose an unavailable, disabled, non-tool or incompatible binding entry", () => {
+    const unavailable = {
+      ...service,
+      models: service.models.filter(
+        (model) => model.id !== "gpt-5.6-luna" && model.id !== "gpt-6.1-sol",
+      ),
+    };
+    expect(
+      textGenerationModelSelectionForInstance(
+        { ...settings, modelServices: { [serviceId]: unavailable } },
+        instanceId,
+        driver,
+      ),
+    ).toBeNull();
+    expect(
+      textGenerationModelSelectionForInstance(
+        { ...settings, modelServices: { [serviceId]: { ...service, enabled: false } } },
+        instanceId,
+        driver,
+      ),
+    ).toBeNull();
+  });
+
+  it("uses a fallback provider's actual catalog instead of its missing generation default", () => {
+    const selected = ProviderInstanceId.make("claude-work");
+    const configured = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        [selected]: { driver: ProviderDriverKind.make("claudeAgent"), enabled: true, config: {} },
+      },
+    };
+    const snapshot: ServerProvider = {
+      instanceId: selected,
+      driver: ProviderDriverKind.make("claudeAgent"),
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-11-04T00:00:00Z",
+      models: [{ slug: "actual-model", name: "Actual", isCustom: false, capabilities: null }],
+      slashCommands: [],
+      skills: [],
+    };
+    expect(
+      fallbackTextGenerationModelSelection(configured, (id) => id === selected, {
+        includeConfiguredInstances: true,
+        providers: [snapshot],
+      }),
+    ).toEqual(createModelSelection(selected, "actual-model"));
+  });
+});
 
 describe("fallbackTextGenerationModelSelection", () => {
   it("replaces and clears the fallback without carrying model options", () => {
@@ -56,7 +248,7 @@ describe("fallbackTextGenerationModelSelection", () => {
       [configured]: { driver: ProviderDriverKind.make("codex"), config: {} },
     };
     const fallback = fallbackTextGenerationModelSelection(
-      providerInstances,
+      { ...DEFAULT_SERVER_SETTINGS, providerInstances },
       (instanceId) => instanceId === configured,
     );
     expect(fallback).toBeNull();
@@ -68,7 +260,7 @@ describe("fallbackTextGenerationModelSelection", () => {
       [configured]: { driver: ProviderDriverKind.make("codex"), config: {} },
     };
     const fallback = fallbackTextGenerationModelSelection(
-      providerInstances,
+      { ...DEFAULT_SERVER_SETTINGS, providerInstances },
       (instanceId) => instanceId === configured,
       { includeConfiguredInstances: true },
     );

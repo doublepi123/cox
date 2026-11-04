@@ -10,8 +10,8 @@ import {
 import * as DateTime from "effect/DateTime";
 import { exhaustedUsageWindow } from "@t3tools/shared/usageLimits";
 import {
-  defaultTextGenerationModel,
   fallbackTextGenerationModelSelection,
+  textGenerationModelSelectionForInstance,
 } from "@t3tools/shared/serverSettings";
 import * as ServerSettings from "../serverSettings.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
@@ -85,42 +85,62 @@ export const make = Effect.gen(function* () {
         Effect.forEach(instances, (instance) => instance.snapshot.getSnapshot),
       ),
     );
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(
+        (cause) =>
+          new TextGenerationError({
+            operation,
+            detail: "Could not read text generation model settings.",
+            cause,
+          }),
+      ),
+    );
+    const selectedProvider = snapshots.find(
+      (provider) => provider.instanceId === selection.instanceId,
+    );
+    const configuredInstance = settings.providerInstances[selection.instanceId];
+    const driver = selectedProvider?.driver ?? configuredInstance?.driver;
+    const resolved = driver
+      ? textGenerationModelSelectionForInstance(
+          settings,
+          selection.instanceId,
+          driver,
+          selection,
+          selectedProvider?.models,
+        )
+      : selection;
+    if (resolved) selection = resolved;
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const limited = exhaustedUsageWindow(
       snapshots.find((provider) => provider.instanceId === selection.instanceId),
       now,
       selection.model,
     );
-    if (limited) {
-      const settings = yield* serverSettings.getSettings.pipe(
-        Effect.mapError(
-          (cause) =>
-            new TextGenerationError({
-              operation,
-              detail: "Could not read fallback model settings.",
-              cause,
-            }),
-        ),
+    if (limited || resolved === null) {
+      const fallback = fallbackTextGenerationModelSelection(
+        settings,
+        (instanceId, driver, candidate) => {
+          const provider = snapshots.find((candidate) => candidate.instanceId === instanceId);
+          return (
+            instanceId !== selection.instanceId &&
+            provider?.enabled === true &&
+            resolveProjectProviderInstanceEnabled(settings, null, instanceId) &&
+            provider.installed &&
+            provider.auth.status !== "unauthenticated" &&
+            isProviderAvailable(provider) &&
+            isProviderTextGenerationCapable(provider) &&
+            (operation !== "generateReviewGuide" || INVESTIGATING_DRIVERS.has(driver)) &&
+            !exhaustedUsageWindow(provider, now, candidate.model)
+          );
+        },
+        { includeConfiguredInstances: true, providers: snapshots },
       );
-      selection =
-        fallbackTextGenerationModelSelection(
-          settings.providerInstances,
-          (instanceId, driver) => {
-            const provider = snapshots.find((candidate) => candidate.instanceId === instanceId);
-            return (
-              instanceId !== selection.instanceId &&
-              provider?.enabled === true &&
-              resolveProjectProviderInstanceEnabled(settings, null, instanceId) &&
-              provider.installed &&
-              provider.auth.status !== "unauthenticated" &&
-              isProviderAvailable(provider) &&
-              isProviderTextGenerationCapable(provider) &&
-              (operation !== "generateReviewGuide" || INVESTIGATING_DRIVERS.has(driver)) &&
-              !exhaustedUsageWindow(provider, now, defaultTextGenerationModel(driver))
-            );
-          },
-          { includeConfiguredInstances: true },
-        ) ?? selection;
+      if (fallback) selection = fallback;
+      else if (resolved === null)
+        return yield* new TextGenerationError({
+          operation,
+          detail: "No available text generation model is configured for the agent's model binding.",
+        });
     }
     return yield* resolveInstance(registry, operation, selection.instanceId).pipe(
       Effect.flatMap((service) => invoke(service, selection)),

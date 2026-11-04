@@ -49,8 +49,7 @@ import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJso
 import {
   applyServerSettingsPatch,
   deriveLegacyProjectOverrides,
-  fallbackTextGenerationModelSelection,
-  isModelSelectionProviderEnabled,
+  resolveTextGenerationModelSelection,
 } from "@t3tools/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import { secretProviderDefinitions } from "./secrets/secretProviderDefinitions.ts";
@@ -477,32 +476,11 @@ function migrateLegacyProviderSettings(
   };
 }
 
-const ACP_REGISTRY_DRIVER = ProviderDriverKind.make("acpRegistry");
-
-function selectionSupportsTextGeneration(
-  settings: ServerSettings,
-  selection: ModelSelection,
-): boolean {
-  return settings.providerInstances[selection.instanceId]?.driver !== ACP_REGISTRY_DRIVER;
-}
-
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  return isModelSelectionProviderEnabled(settings, settings.textGenerationModelSelection) &&
-    selectionSupportsTextGeneration(settings, settings.textGenerationModelSelection)
+  const selection = resolveTextGenerationModelSelection(settings);
+  return selection === null || selection === settings.textGenerationModelSelection
     ? settings
-    : fallbackTextGenerationProvider(settings);
-}
-
-function fallbackTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const fallback = fallbackTextGenerationModelSelection(
-    settings.providerInstances,
-    (instanceId, driver) =>
-      resolveProviderInstanceEnabled(
-        settings.providerInstances[instanceId] ?? { driver, config: {} },
-      ),
-    { defaultModelSelection: settings.defaultModelSelection },
-  );
-  return fallback === null ? settings : { ...settings, textGenerationModelSelection: fallback };
+    : { ...settings, textGenerationModelSelection: selection };
 }
 
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([

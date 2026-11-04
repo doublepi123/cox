@@ -1,10 +1,13 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  ModelServiceConfig,
+  ModelServiceId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
 import { createModelSelection } from "./model.ts";
 import {
   clearProjectSettingsOverrides,
@@ -18,6 +21,7 @@ import { applyServerSettingsPatch } from "./serverSettings.ts";
 
 const projectId = ProjectId.make("project-a");
 const otherProjectId = ProjectId.make("project-b");
+const decodeModelService = Schema.decodeSync(ModelServiceConfig);
 
 describe("resolveSendEnvMode", () => {
   // regression: #21404 non-git projects send from the current checkout, git repos keep their mode
@@ -155,6 +159,52 @@ describe("resolveProjectSettings", () => {
     expect(
       resolveProjectSettings(settings, projectId).settings.textGenerationModelSelection.instanceId,
     ).toBe(codexWork);
+  });
+
+  it("chooses a bound model from an agent enabled only for the project", () => {
+    const codex = ProviderInstanceId.make("codex");
+    const claude = ProviderInstanceId.make("claudeAgent");
+    const custom = ProviderInstanceId.make("project-agent");
+    const serviceId = ModelServiceId.make("project-text-models");
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        [custom]: {
+          driver: ProviderDriverKind.make("codex"),
+          enabled: false,
+          config: {},
+          modelService: { serviceId, modelIds: [], defaultModel: "project-model" },
+        },
+      },
+      modelServices: {
+        [serviceId]: decodeModelService({
+          name: "Project models",
+          baseUrl: "https://project.test/v1",
+          protocols: ["openai-chat"],
+          models: [{ id: "project-model" }],
+        }),
+      },
+      projectSettingsOverrides: {
+        [projectId]: {
+          providerInstances: {
+            [codex]: { enabled: false },
+            [claude]: { enabled: false },
+            [custom]: { enabled: true },
+          },
+          textGenerationModelSelection: createModelSelection(custom, "gpt-6-luna"),
+        },
+      },
+    };
+    const resolved = resolveProjectSettings(settings, projectId);
+    expect(resolved.settings.textGenerationModelSelection).toEqual(
+      createModelSelection(custom, "project-model"),
+    );
+    expect(settings.projectSettingsOverrides[projectId]?.textGenerationModelSelection.model).toBe(
+      "gpt-6-luna",
+    );
+    expect(
+      resolveProjectSettings(settings, otherProjectId).settings.textGenerationModelSelection,
+    ).toBe(settings.textGenerationModelSelection);
   });
 });
 

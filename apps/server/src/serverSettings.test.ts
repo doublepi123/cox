@@ -696,6 +696,82 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect.each(["codex", "codex-service"])(
+    "defaults auxiliary text to the bound catalog after configuring %s without overwriting manual settings",
+    (id) =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const serviceId = ModelServiceId.make("default-text-test");
+        const instanceId = ProviderInstanceId.make(id);
+        if (id !== "codex") {
+          yield* serverSettings.updateProviderInstance({
+            operation: "upsert",
+            instanceId: ProviderInstanceId.make("codex"),
+            instance: {
+              driver: ProviderDriverKind.make("codex"),
+              enabled: true,
+              config: { binaryPath: "codex" },
+            },
+          });
+        }
+        yield* serverSettings.updateSettings({
+          modelServices: {
+            [serviceId]: decodeModelService({
+              name: "Configured models",
+              baseUrl: "https://models.test/v1",
+              protocols: ["openai-chat"],
+              models: [{ id: "gpt-5.6-luna" }, { id: "gpt-6.1-sol" }],
+            }),
+          },
+        });
+        const changes = yield* serverSettings.subscribeChanges;
+        const next = yield* serverSettings.updateProviderInstance({
+          operation: "upsert",
+          instanceId,
+          instance: {
+            driver: ProviderDriverKind.make("codex"),
+            enabled: true,
+            config: {},
+            modelService: {
+              serviceId,
+              modelIds: ["gpt-5.6-luna", "gpt-6.1-sol"],
+              defaultModel: "gpt-6.1-sol",
+            },
+          },
+        });
+        const expected = { instanceId, model: "gpt-6.1-sol" };
+        assert.deepEqual(next.textGenerationModelSelection, expected);
+        assert.deepEqual(
+          (yield* serverSettings.getSettings).textGenerationModelSelection,
+          expected,
+        );
+        assert.deepEqual(
+          (yield* serverSettings.withSettingsSnapshot(Effect.succeed)).textGenerationModelSelection,
+          expected,
+        );
+        const change = Option.getOrUndefined(yield* Stream.runHead(changes));
+        assert.deepEqual(change?.textGenerationModelSelection, expected);
+        const raw = JSON.parse(yield* fs.readFileString(config.settingsPath));
+        assert.isUndefined(raw.textGenerationModelSelection);
+
+        const custom = {
+          instanceId,
+          model: "gpt-5.6-luna",
+          options: [{ id: "reasoningEffort", value: "high" }],
+        };
+        yield* serverSettings.updateSettings({ textGenerationModelSelection: custom });
+        const current = (yield* serverSettings.getSettings).modelServices[serviceId]!;
+        const renamed = yield* serverSettings.updateSettings({
+          modelServices: { [serviceId]: { ...current, name: "Renamed" } },
+        });
+        assert.deepEqual(renamed.textGenerationModelSelection, custom);
+        const after = JSON.parse(yield* fs.readFileString(config.settingsPath));
+        assert.deepEqual(after.textGenerationModelSelection, custom);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect(
     "keeps a custom instance's selection when the driver's default instance is disabled",
     () =>

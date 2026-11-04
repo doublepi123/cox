@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.30 — 2026-11-04
+
+- Add a Queue / Steer preference menu beside the model picker in the composer footer.
+  Share the saved setting with the settings page, keep one-message overrides, and do not
+  send a message when changing the preference. Fit narrow English and Chinese layouts.
+- Automatically choose an auxiliary text model from the configured agent's available
+  model-service binding instead of sending an unsupported built-in model to the gateway.
+  Keep valid manual selections and their options, without persisting automatic fallbacks.
+- Use the same model-selection rules in settings, project overrides and text-generation
+  requests. Prefer configured bindings over an untouched stock default, drop stale model
+  options on replacement, and honor actual model catalogs during usage-limit fallback.
+- Cover saved preference changes, keyboard and focus handling, mobile footer measurements,
+  bound model defaults, provider setup, project-only agents and text-generation preflight
+  without using live application data or paid inference.
+
 ## 0.1.29 — 2026-11-04
 
 - Resume restart-held user queues after their matching continuation completes, including

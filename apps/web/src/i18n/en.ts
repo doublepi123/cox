@@ -1,4 +1,9 @@
 export const en = {
+  "Follow-up behavior: {behavior}": "Follow-up behavior: {behavior}",
+  "Choose how follow-up messages are sent while the agent runs.":
+    "Choose how follow-up messages are sent while the agent runs.",
+  "Wait for the current run to finish.": "Wait for the current run to finish.",
+  "Send feedback to the current run immediately.": "Send feedback to the current run immediately.",
   "Service tiers": "Service tiers",
   "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.":
     "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.",

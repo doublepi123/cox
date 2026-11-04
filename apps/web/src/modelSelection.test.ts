@@ -4,11 +4,13 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ModelServiceId,
+  ModelServiceConfig,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
 import { createModelSelection } from "@t3tools/shared/model";
+import * as Schema from "effect/Schema";
 import { deriveEffectiveComposerModelState } from "./composerDraftStore";
 import { getComposerProviderState } from "./components/chat/composerProviderState";
 import { resolveComposerProviderSelection } from "./components/ChatView.logic";
@@ -23,6 +25,8 @@ import {
   resolveAppModelSelectionState,
   resolveEffectiveDefaultModelSelection,
 } from "./modelSelection";
+
+const decodeModelService = Schema.decodeSync(ModelServiceConfig);
 
 function provider(input: {
   provider?: ProviderDriverKind;
@@ -670,6 +674,56 @@ describe("instance-scoped model selection", () => {
       ProviderInstanceId.make("codex"),
     );
   });
+
+  it.each(["codex", "claudeAgent", "pi", "opencode"])(
+    "shows the configured %s agent's bound default for automatic text generation",
+    (kind) => {
+      const instanceId = ProviderInstanceId.make(`${kind}-bound`);
+      const serviceId = ModelServiceId.make("auto-text");
+      const driver = ProviderDriverKind.make(kind);
+      const slug = kind === "pi" || kind === "opencode" ? "cox/gpt-6.1-sol" : "gpt-6.1-sol";
+      const service = decodeModelService({
+        name: "Automatic",
+        baseUrl: "https://models.test/v1",
+        protocols: ["openai-chat"],
+        models: [{ id: "gpt-5.6-luna" }, { id: "gpt-6.1-sol" }],
+      });
+      const settings = {
+        ...DEFAULT_UNIFIED_SETTINGS,
+        modelServices: { [serviceId]: service },
+        providerInstances: {
+          [instanceId]: {
+            driver,
+            enabled: true,
+            config: {},
+            modelService: { serviceId, modelIds: [], defaultModel: "gpt-6.1-sol" },
+          },
+        },
+      };
+      const snapshot = {
+        ...provider({ provider: driver, instanceId, models: [slug] }),
+        modelCatalogSource: "model-service" as const,
+      };
+      expect(resolveAppModelSelectionState(settings, [snapshot])).toEqual(
+        createModelSelection(instanceId, slug),
+      );
+      const selected = createModelSelection(
+        instanceId,
+        kind === "pi" || kind === "opencode" ? "cox/gpt-5.6-luna" : "gpt-5.6-luna",
+      );
+      expect(
+        resolveAppModelSelectionState({ ...settings, textGenerationModelSelection: selected }, [
+          {
+            ...snapshot,
+            models: [
+              { slug: selected.model, name: "Luna", isCustom: false, capabilities: null },
+              ...snapshot.models,
+            ],
+          },
+        ]),
+      ).toEqual(selected);
+    },
+  );
   it("falls back to the text generation default, not the chat default, for a removed model", () => {
     const codex = provider({ instanceId: "codex", models: ["gpt-6-astra", "gpt-6-luna"] });
     const providers = [

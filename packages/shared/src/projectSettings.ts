@@ -14,7 +14,7 @@ import {
   type WorktreeCleanupRules,
 } from "@t3tools/contracts";
 import { normalizeProjectPathForComparison } from "./path.ts";
-import { fallbackTextGenerationModelSelection } from "./serverSettings.ts";
+import { resolveTextGenerationModelSelection } from "./serverSettings.ts";
 
 export type ProjectSettingSource = "environment" | "project" | "t3.json";
 
@@ -150,18 +150,11 @@ function resolveProjectOverrides(
     effective[key] = value;
     sources[key] = "project";
   }
-  const textGeneration = effective.textGenerationModelSelection as ModelSelection;
-  if (!resolveProjectProviderInstanceEnabled(settings, projectId, textGeneration.instanceId)) {
-    const fallback = fallbackTextGenerationModelSelection(
-      settings.providerInstances,
-      (instanceId) => resolveProjectProviderInstanceEnabled(settings, projectId, instanceId),
-      {
-        includeConfiguredInstances: true,
-        defaultModelSelection: effective.defaultModelSelection as ModelSelection | null,
-      },
-    );
-    if (fallback !== null) effective.textGenerationModelSelection = fallback;
-  }
+  const textGeneration = resolveTextGenerationModelSelection(
+    effective as ServerSettings,
+    (instanceId) => resolveProjectProviderInstanceEnabled(settings, projectId, instanceId),
+  );
+  if (textGeneration !== null) effective.textGenerationModelSelection = textGeneration;
   return { settings: effective as ServerSettings, sources, overrides };
 }
 

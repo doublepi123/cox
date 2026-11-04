@@ -1,6 +1,7 @@
 import type { ModelPreferences } from "@t3tools/contracts/settings";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_SERVER_SETTINGS,
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
@@ -26,7 +27,9 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { deepMerge } from "./Struct.ts";
 import { fromLenientJson } from "./schemaJson.ts";
-import { createModelSelection, readCustomModelEntries } from "./model.ts";
+import { createModelSelection, readCustomModelEntries, resolveSelectableModel } from "./model.ts";
+import { boundModelServiceModels, modelServiceModelSlug } from "./modelServices.ts";
+import * as Equal from "effect/Equal";
 import {
   getBackgroundActivityBaseProfile,
   normalizeBackgroundActivitySettings,
@@ -60,39 +63,160 @@ const TEXT_GENERATION_FALLBACK_DRIVERS = [
   "antigravity",
 ].map((driver) => ProviderDriverKind.make(driver));
 
-/** Only project-scoped callers may include configured instances when falling back; machine-level callers leave it unset. */
-export function fallbackTextGenerationModelSelection(
-  providerInstances: ServerSettings["providerInstances"],
-  isEnabled: (instanceId: ProviderInstanceId, driver: ProviderDriverKind) => boolean,
-  options?: {
-    readonly includeConfiguredInstances?: boolean;
-    readonly defaultModelSelection?: ModelSelection | null;
-  },
+export function textGenerationModelSelectionForInstance(
+  settings: Pick<ServerSettings, "providerInstances" | "modelServices" | "defaultModelSelection">,
+  instanceId: ProviderInstanceId,
+  driver: ProviderDriverKind,
+  selection?: ModelSelection,
+  models?: ServerProvider["models"],
 ): ModelSelection | null {
-  const candidates = [
-    ...TEXT_GENERATION_FALLBACK_DRIVERS.map(
-      (driver) => [defaultInstanceIdForDriver(driver), driver] as const,
-    ),
-    ...(options?.includeConfiguredInstances === true
-      ? Object.entries(providerInstances).flatMap(([instanceId, instance]) =>
-          TEXT_GENERATION_FALLBACK_DRIVERS.includes(instance.driver)
-            ? [[ProviderInstanceId.make(instanceId), instance.driver] as const]
-            : [],
-        )
-      : []),
-  ];
-  const match = candidates.find(([instanceId, driver]) => isEnabled(instanceId, driver));
-  if (match === undefined) return null;
-  const [instanceId, driver] = match;
-  const threadDefault = options?.defaultModelSelection;
-  const config = providerInstances[instanceId]?.config as { customModels?: unknown } | undefined;
+  const instance = settings.providerInstances[instanceId];
+  const binding = instance?.modelService;
+  const threadDefault = settings.defaultModelSelection;
+  const preferred = defaultTextGenerationModel(driver);
+  if (binding) {
+    const service = settings.modelServices[binding.serviceId];
+    if (!service?.enabled) return null;
+    const available = boundModelServiceModels(service, binding)
+      .filter((model) => model.available !== false)
+      .map((model) => ({ ...model, slug: modelServiceModelSlug(driver, model.id) }));
+    if (selection && available.some((model) => model.slug === selection.model)) return selection;
+    const model =
+      available.find((model) => model.id === binding.defaultModel) ??
+      available.find(
+        (model) => threadDefault?.instanceId === instanceId && model.slug === threadDefault.model,
+      ) ??
+      available.find((model) => model.slug === preferred) ??
+      available[0];
+    return model ? createModelSelection(instanceId, model.slug) : null;
+  }
+  if (
+    selection &&
+    (selection.model !== preferred ||
+      !models?.length ||
+      resolveSelectableModel(driver, selection.model, models) !== null)
+  )
+    return selection;
+  const config = instance?.config as { customModels?: unknown } | undefined;
   if (
     threadDefault?.instanceId === instanceId &&
     readCustomModelEntries(config?.customModels).some((entry) => entry.slug === threadDefault.model)
   ) {
     return threadDefault;
   }
-  return { instanceId, model: defaultTextGenerationModel(driver) };
+  const model =
+    resolveSelectableModel(driver, preferred, models ?? []) ??
+    models?.find((model) => model.isDefault)?.slug ??
+    models?.[0]?.slug ??
+    preferred;
+  return createModelSelection(instanceId, model);
+}
+
+export function fallbackTextGenerationModelSelection(
+  settings: Pick<ServerSettings, "providerInstances" | "modelServices" | "defaultModelSelection">,
+  isEnabled: (
+    instanceId: ProviderInstanceId,
+    driver: ProviderDriverKind,
+    selection: ModelSelection,
+  ) => boolean,
+  options?: {
+    readonly includeConfiguredInstances?: boolean;
+    readonly providers?: ReadonlyArray<ServerProvider>;
+  },
+): ModelSelection | null {
+  const { providerInstances } = settings;
+  const preferred = settings.defaultModelSelection;
+  const preferredInstance = preferred && providerInstances[preferred.instanceId];
+  const configured = options?.includeConfiguredInstances
+    ? Object.entries(providerInstances).flatMap(([instanceId, instance]) =>
+        TEXT_GENERATION_FALLBACK_DRIVERS.includes(instance.driver)
+          ? [[ProviderInstanceId.make(instanceId), instance.driver] as const]
+          : [],
+      )
+    : [];
+  const candidates = [
+    ...(options?.includeConfiguredInstances &&
+    preferredInstance &&
+    TEXT_GENERATION_FALLBACK_DRIVERS.includes(preferredInstance.driver)
+      ? [[preferred.instanceId, preferredInstance.driver] as const]
+      : []),
+    ...configured.toSorted(
+      (left, right) =>
+        TEXT_GENERATION_FALLBACK_DRIVERS.indexOf(left[1]) -
+          TEXT_GENERATION_FALLBACK_DRIVERS.indexOf(right[1]) ||
+        Number(right[0] === defaultInstanceIdForDriver(right[1])) -
+          Number(left[0] === defaultInstanceIdForDriver(left[1])),
+    ),
+    ...TEXT_GENERATION_FALLBACK_DRIVERS.map(
+      (driver) => [defaultInstanceIdForDriver(driver), driver] as const,
+    ),
+  ];
+  for (const [instanceId, driver] of candidates) {
+    const selection = textGenerationModelSelectionForInstance(
+      settings,
+      instanceId,
+      driver,
+      undefined,
+      options?.providers?.find((provider) => provider.instanceId === instanceId)?.models,
+    );
+    if (selection && isEnabled(instanceId, driver, selection)) return selection;
+  }
+  return null;
+}
+
+export function resolveTextGenerationModelSelection(
+  settings: ServerSettings,
+  isEnabled: (instanceId: ProviderInstanceId, driver: ProviderDriverKind) => boolean = (
+    instanceId,
+  ) =>
+    settings.providerInstances[instanceId] === undefined
+      ? isUnconfiguredDefaultInstanceEnabled(instanceId)
+      : resolveProviderInstanceEnabled(settings.providerInstances[instanceId]!),
+): ModelSelection | null {
+  const selection = settings.textGenerationModelSelection;
+  const instance = settings.providerInstances[selection.instanceId];
+  const driver = instance?.driver ?? ProviderDriverKind.make(selection.instanceId);
+  if (
+    !instance?.modelService &&
+    Equal.equals(selection, DEFAULT_SERVER_SETTINGS.textGenerationModelSelection)
+  ) {
+    const configured = fallbackTextGenerationModelSelection(
+      settings,
+      (instanceId, driver) =>
+        settings.providerInstances[instanceId]?.modelService !== undefined &&
+        isEnabled(instanceId, driver),
+      { includeConfiguredInstances: true },
+    );
+    if (configured) return configured;
+  }
+  if (isEnabled(selection.instanceId, driver) && instance?.driver !== "acpRegistry") {
+    const resolved = textGenerationModelSelectionForInstance(
+      settings,
+      selection.instanceId,
+      driver,
+      selection,
+    );
+    if (resolved) {
+      if (
+        !instance &&
+        Equal.equals(selection, DEFAULT_SERVER_SETTINGS.textGenerationModelSelection)
+      ) {
+        return (
+          fallbackTextGenerationModelSelection(
+            settings,
+            (instanceId, driver) =>
+              Object.hasOwn(settings.providerInstances, instanceId) &&
+              isEnabled(instanceId, driver),
+            { includeConfiguredInstances: true },
+          ) ?? resolved
+        );
+      }
+      return resolved;
+    }
+  }
+  return fallbackTextGenerationModelSelection(settings, isEnabled, {
+    includeConfiguredInstances: true,
+  });
 }
 
 export function defaultTextGenerationModel(driver: ProviderDriverKind): string {

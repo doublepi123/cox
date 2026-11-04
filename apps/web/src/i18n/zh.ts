@@ -1,4 +1,9 @@
 export const zh = {
+  "Follow-up behavior: {behavior}": "后续消息行为：{behavior}",
+  "Choose how follow-up messages are sent while the agent runs.":
+    "选择代理运行时后续消息的发送方式。",
+  "Wait for the current run to finish.": "等待当前运行结束后发送。",
+  "Send feedback to the current run immediately.": "立即向当前运行发送反馈。",
   "Service tiers": "服务优先级档位",
   "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.":
     "仅填写该通道支持的档位。priority 或 fast 请求 Fast 加速路由；未知时留空。",
