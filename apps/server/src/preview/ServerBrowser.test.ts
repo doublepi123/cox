@@ -48,6 +48,12 @@ vi.mock("./ServerBrowserContexts.ts", () => ({
       if (contextFailure) throw contextFailure;
       await contextGate?.promise;
       const context = makeContext(this.onClose);
+      const setupFailure = pageSetupFailure;
+      if (setupFailure) {
+        context.newCDPSession = async () => {
+          throw setupFailure;
+        };
+      }
       contexts.push(context);
       return context as unknown as BrowserContext;
     }
@@ -294,6 +300,7 @@ let pageCopy = "";
 let keyCopy = "";
 let focusedFrame: ReturnType<typeof makeFrame> | null = null;
 let contextFailure: Error | null = null;
+let pageSetupFailure: Error | null = null;
 let initialNavigation: (() => Promise<void>) | null = null;
 /** Replaces the answer to the desktop page's size reads. */
 let desktopSizeAnswer: (() => Promise<Record<string, unknown>>) | null = null;
@@ -361,6 +368,7 @@ beforeEach(() => {
   contextRequests.length = 0;
   contextGate = null;
   contextFailure = null;
+  pageSetupFailure = null;
   initialNavigation = null;
   pageCopy = "";
   keyCopy = "";
@@ -1820,6 +1828,12 @@ it.live("failed session and browser launches release capacity, as does closing a
       // A failed launch must not leave a session a viewer can relaunch past the budget.
       expect((yield* manager.list({ threadId: scope.thread.threadId })).sessions).toHaveLength(7);
       contextFailure = null;
+      pageSetupFailure = new Error("Target page, context or browser has been closed");
+      expect(yield* open.pipe(Effect.result)).toMatchObject({ _tag: "Failure" });
+      pageSetupFailure = null;
+      expect(contexts.at(-1)!.close).toHaveBeenCalled();
+      expect(contexts.at(-1)!.page.isClosed()).toBe(true);
+      expect((yield* manager.list({ threadId: scope.thread.threadId })).sessions).toHaveLength(7);
       expect((yield* open).available).toBe(true);
       expect(yield* open.pipe(Effect.flip)).toMatchObject({ reason: "tabLimit" });
       expect(

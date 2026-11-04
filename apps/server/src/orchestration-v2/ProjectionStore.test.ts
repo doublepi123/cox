@@ -2162,6 +2162,22 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       );
       yield* insertMessageItem("null-id", threadId, -2, null);
       yield* insertMessageItem("missing-id", threadId, -3, undefined);
+      const absentMessageId = MessageId.make("message:bounded-sql-history:absent");
+      const messageReadTrace = traceSqlStatements();
+      const selected = yield* projectionStore
+        .getMessagesById(threadId, [firstMessageId, lastMessageId, firstMessageId, absentMessageId])
+        .pipe(Effect.withTracer(messageReadTrace.tracer));
+      assert.isFalse(messageReadTrace.statements.some((query) => query.includes("turn_items")));
+      assert.equal(selected.size, 2);
+      assert.equal(selected.get(firstMessageId)?.id, firstMessageId);
+      assert.equal(selected.get(lastMessageId)?.id, lastMessageId);
+      assert.isFalse(selected.has(absentMessageId));
+      assert.equal((yield* projectionStore.getMessagesById(threadId, [])).size, 0);
+      assert.equal(
+        (yield* projectionStore.getMessagesById(ThreadId.make("other-thread"), [firstMessageId]))
+          .size,
+        0,
+      );
       const readMessageIds = (filter?: ProjectionStore.ProjectionRecordFilter) =>
         projectionStore
           .getThreadRecords(threadId, ["messages"], filter)
@@ -2171,6 +2187,8 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         lastMessageId,
         firstMessageId,
       ]);
+      const canonical = yield* projectionStore.getThreadRecords(threadId, ["messages"]);
+      for (const message of canonical.messages) assert.deepEqual(selected.get(message.id), message);
       for (const filter of [
         {
           messageIds: [

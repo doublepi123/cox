@@ -1,7 +1,11 @@
 import { assert, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as TestClock from "effect/testing/TestClock";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { describe } from "vite-plus/test";
@@ -34,6 +38,36 @@ const authorizationFor = (password: string | Redacted.Redacted) => {
 
 const utf8Basic = (password: string) =>
   `Basic ${Buffer.from(`opencode:${password}`, "utf8").toString("base64")}`;
+
+describe("OpenCode2Client event subscription", () => {
+  it.effect("times out and cancels a subscription with no response headers", () =>
+    Effect.gen(function* () {
+      const cancelled = yield* Deferred.make<void>();
+      const transport = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          assert.strictEqual(request.url, "http://127.0.0.1:4096/api/event");
+          return Effect.never.pipe(Effect.ensuring(Deferred.succeed(cancelled, undefined)));
+        }),
+      );
+      const opencode = yield* OpenCode2Client.OpenCode2Client.pipe(
+        Effect.provide(OpenCode2Client.layer.pipe(Layer.provide(transport))),
+      );
+      const { events } = yield* opencode.connect({
+        baseUrl: "http://127.0.0.1:4096",
+        password: "test-password",
+      });
+      const opening = yield* events.pipe(Effect.flip, Effect.forkScoped);
+
+      yield* TestClock.adjust("10 seconds");
+      assert.isTrue(yield* Deferred.isDone(cancelled));
+      const error = yield* Fiber.join(opening);
+      assert.strictEqual(error._tag, "HttpClientError");
+      assert.strictEqual(error.reason._tag, "TransportError");
+      assert.isTrue(Cause.isTimeoutError(error.cause));
+    }).pipe(Effect.scoped),
+  );
+});
 
 describe("OpenCode2Client authorization", () => {
   // OpenCode requires UTF-8 Basic auth; btoa rejects or misencodes non-ASCII.

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Port high-value upstream T3 Code fixes: retry unstarted runs after recovery, avoid
+  message-ordering scans during recovery/settlement, load selected diff metadata before
+  patches, cut long-thread work-row derivation, list Claude Code reported models, and show
+  MCP/OpenCode tool-output images.
+- Also port auto-settle after dismissed link cards, review-guide hook isolation, MCP SSE
+  CR/mixed newlines, Claude context windows for non-catalog models, PR-watch conflict wakes,
+  project-disabled provider filtering in `orchestrator_capabilities`, child worktree cleanup
+  on settle, OpenCode command/status/stall fixes, ACP multi-diff and post-rollback events,
+  preview setup failure cleanup, Antigravity sign-in startup errors, delegated event-log
+  isolation, and closed-PR sync pruning.
+
 ## 0.1.31 — 2026-11-04
 
 - Automatically offer native Codex Ultra for every model declaring a Max reasoning level,
