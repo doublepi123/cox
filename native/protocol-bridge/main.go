@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strings"
 
 	tr "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/translator/builtin"
@@ -40,6 +42,8 @@ type session struct {
 	translated []byte
 	parameter  any
 }
+
+var reasoningChatModel = regexp.MustCompile(`^(?:gpt-[5-9](?:[.-]|$)|o[1-9](?:[.-]|$))`)
 
 func (s *session) handle(in input) (out output) {
 	defer func() {
@@ -90,6 +94,28 @@ func (s *session) handle(in input) (out output) {
 			}
 			if fields["include"] == nil {
 				delete(converted, "include")
+			}
+			request.Body, _ = json.Marshal(converted)
+		}
+		if to == tr.FormatOpenAI || to == tr.FormatCodex {
+			var converted map[string]json.RawMessage
+			if json.Unmarshal(request.Body, &converted) != nil {
+				return output{Error: "Invalid OpenAI conversion."}
+			}
+			if tier := fields["service_tier"]; tier != nil {
+				converted["service_tier"] = tier
+			}
+			model := strings.ToLower(in.Model)
+			if index := strings.LastIndex(model, "/"); index >= 0 {
+				model = model[index+1:]
+			}
+			if to == tr.FormatOpenAI && reasoningChatModel.MatchString(model) {
+				if limit := converted["max_tokens"]; limit != nil {
+					if converted["max_completion_tokens"] == nil {
+						converted["max_completion_tokens"] = limit
+					}
+					delete(converted, "max_tokens")
+				}
 			}
 			request.Body, _ = json.Marshal(converted)
 		}

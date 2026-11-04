@@ -1,4 +1,14 @@
-import { ProviderDriverKind, ProviderInstanceId, type ModelSelection } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ModelServiceId,
+  type ModelSelection,
+  type ProviderOptionSelection,
+} from "@t3tools/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { getAppModelOptionsForInstance } from "../../modelSelection";
+import { ComposerEffortColumn, ComposerPickerFooter } from "./ComposerModelEffort";
+import { runtimeModeConfig } from "./runtimeModeConfig";
 import { useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -8,6 +18,110 @@ import "~/index.css";
 import { render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+
+it.each(["codex", "claudeAgent"])(
+  "shows service models and an actionable Fast tier for %s",
+  async (kind) => {
+    const instanceId = ProviderInstanceId.make(`${kind}-service`);
+    const driver = ProviderDriverKind.make(kind);
+    const models = [
+      {
+        slug: "gpt-6.1-sol",
+        name: "Service model",
+        isCustom: true,
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "serviceTier",
+              label: "Service Tier",
+              type: "select" as const,
+              options: [
+                { id: "default", label: "Standard", isDefault: true },
+                { id: "priority", label: "Fast" },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const entries = deriveProviderInstanceEntries([
+      {
+        instanceId,
+        driver,
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-01-01T00:00:00Z",
+        models,
+        skills: [],
+        slashCommands: [],
+      },
+    ]);
+    const settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [instanceId]: {
+          driver,
+          modelService: { serviceId: ModelServiceId.make("service"), modelIds: [] },
+        },
+      },
+    };
+    const options = getAppModelOptionsForInstance(settings, entries[0]!);
+    function Picker() {
+      const [modelOptions, setModelOptions] = useState<
+        ReadonlyArray<ProviderOptionSelection> | undefined
+      >();
+      const traits = {
+        provider: driver,
+        instanceId,
+        models,
+        model: "gpt-6.1-sol",
+        modelOptions,
+        planModeEnabled: false,
+        onModelOptionsChange: setModelOptions,
+      };
+      return (
+        <>
+          <output aria-label="Selected service tier">
+            {modelOptions?.find((option) => option.id === "serviceTier")?.value ?? "default"}
+          </output>
+          <ProviderModelPicker
+            environmentId={null}
+            activeInstanceId={instanceId}
+            model="gpt-6.1-sol"
+            lockedProvider={null}
+            instanceEntries={entries}
+            modelOptionsByInstance={new Map([[instanceId, options]])}
+            triggerAriaLabel="Choose model"
+            onInstanceModelChange={() => {}}
+            effortColumn={<ComposerEffortColumn traits={traits} />}
+            footer={
+              <ComposerPickerFooter
+                traits={traits}
+                runtimeMode="full-access"
+                runtimeModeOptions={[{ mode: "full-access", ...runtimeModeConfig["full-access"] }]}
+                onRuntimeModeChange={() => {}}
+              />
+            }
+          />
+        </>
+      );
+    }
+    await using screen = await render(<Picker />);
+    await screen.getByRole("button", { name: "Choose model" }).click();
+    await expect.element(page.getByRole("option", { name: /Service model/ })).toBeVisible();
+    await page.getByRole("radio", { name: "Fast", exact: true }).click();
+    await expect
+      .element(screen.getByRole("status", { name: "Selected service tier" }))
+      .toHaveTextContent("priority");
+    await expect
+      .element(page.getByRole("radio", { name: "Fast", exact: true }))
+      .toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Escape}");
+  },
+);
 
 it("keeps each registry image when adding a model from another ACP agent", async () => {
   const icons = [

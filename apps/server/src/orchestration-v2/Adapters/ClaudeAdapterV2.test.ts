@@ -3258,6 +3258,74 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect("reopens service queries only when the request service tier changes", () =>
+    Effect.gen(function* () {
+      const modelCatalog = resolveClaudeModelServiceCatalog([
+        {
+          slug: "service-model",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "serviceTier",
+                label: "Service Tier",
+                type: "select",
+                options: [
+                  { id: "default", label: "Standard", isDefault: true },
+                  { id: "priority", label: "Fast" },
+                  { id: "fast", label: "Fast" },
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+      const harness = yield* makeWakeHarnessWithOptions({
+        freshQueueOnReopen: true,
+        close: Queue.shutdown,
+        modelCatalog,
+      });
+      for (const [ordinal, tier, processCount] of [
+        [1, undefined, 1],
+        [2, "priority", 2],
+        [3, "priority", 2],
+        [4, "fast", 3],
+        [5, undefined, 4],
+      ] as const) {
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`service-tier-${ordinal}`),
+            text: "Check service tier",
+            attachments: [],
+            providerTurnOrdinal: ordinal,
+            modelSelection: {
+              instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+              model: "service-model",
+              ...(tier === undefined ? {} : { options: [{ id: "serviceTier", value: tier }] }),
+            },
+          }),
+        );
+        const options = harness.getOpenedOptions();
+        assert.isUndefined(options?.effort);
+        assert.equal(
+          options?.env?.CLAUDE_CODE_EXTRA_BODY,
+          JSON.stringify({ service_tier: tier ?? "default" }),
+        );
+        assert.lengthOf(harness.processQueues, processCount);
+        yield* harness.offerAndWait(turnOneResult);
+        yield* Queue.take(harness.terminalReceipts);
+      }
+      assert.deepEqual(harness.liveSelectionChanges, []);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("reopens queries when switching between saved custom context windows", () =>
     Effect.gen(function* () {
       const harness = yield* makeWakeHarnessWithOptions({

@@ -76,21 +76,64 @@ export function parseGatewayModel(
         ),
       ]
     : [];
+  const rawTiers =
+    model.service_tiers ?? model.supported_service_tiers ?? capabilities.service_tiers;
+  const tiers = Array.isArray(rawTiers)
+    ? rawTiers.flatMap((value: unknown) => {
+        const entry = record(value);
+        const id = typeof value === "string" ? value : entry.id;
+        if (typeof id !== "string" || !id.trim()) return [];
+        const name = entry.name ?? entry.label;
+        return [
+          {
+            id: id.trim(),
+            label:
+              typeof name === "string" && name.trim()
+                ? name.trim()
+                : id === "priority" || id === "fast"
+                  ? "Fast"
+                  : id === "default"
+                    ? "Standard"
+                    : id,
+          },
+        ];
+      })
+    : [];
+  const tierDescriptor = tiers.length
+    ? [
+        {
+          id: "serviceTier",
+          label: "Service Tier",
+          type: "select" as const,
+          options: tiers.map((tier) => ({
+            ...tier,
+            ...(tier.id === model.default_service_tier ? { isDefault: true } : {}),
+          })),
+          ...(typeof model.default_service_tier === "string" &&
+          tiers.some((tier) => tier.id === model.default_service_tier)
+            ? { currentValue: model.default_service_tier }
+            : {}),
+        },
+      ]
+    : [];
   const metadata: ModelCapabilities = {
     ...(context !== undefined ? { contextWindow: context } : {}),
     ...(images !== undefined ? { supportsImages: images } : {}),
-    ...(Array.isArray(rawEfforts)
+    ...(Array.isArray(rawEfforts) || tierDescriptor.length
       ? {
-          optionDescriptors: efforts.length
-            ? [
-                {
-                  id: driver === "codex" ? "reasoningEffort" : "effort",
-                  label: "Reasoning",
-                  type: "select" as const,
-                  options: efforts.map((effort) => ({ id: effort, label: effort })),
-                },
-              ]
-            : [],
+          optionDescriptors: [
+            ...(efforts.length
+              ? [
+                  {
+                    id: driver === "codex" ? "reasoningEffort" : "effort",
+                    label: "Reasoning",
+                    type: "select" as const,
+                    options: efforts.map((effort) => ({ id: effort, label: effort })),
+                  },
+                ]
+              : []),
+            ...tierDescriptor,
+          ],
         }
       : {}),
   };

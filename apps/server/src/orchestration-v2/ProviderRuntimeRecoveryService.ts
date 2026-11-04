@@ -320,6 +320,12 @@ export const make = Effect.gen(function* () {
         }
       };
       const queuedRuns = projection.runs.filter((run) => run.status === "queued");
+      const restartRun = continueAfterRestart
+        ? restartContinuationRun(
+            { ...projection, providerSessions: sessionsLiveAtStart(projection, stoppedThisPass) },
+            now,
+          )
+        : undefined;
       const queuedMessages =
         queuedRuns.length === 0
           ? []
@@ -353,7 +359,11 @@ export const make = Effect.gen(function* () {
           runId: run.id,
           providerInstanceId: run.providerInstanceId,
           occurredAt: now,
-          payload: { ...run, queueHeld: true },
+          payload: {
+            ...run,
+            queueHeld: true,
+            ...(restartRun === undefined ? {} : { queueResumeAfterRunId: restartRun.id }),
+          },
         });
       }
       for (const question of questions) {
@@ -649,13 +659,7 @@ export const make = Effect.gen(function* () {
           },
         });
       }
-      const continuationRun =
-        continueAfterRestart && trigger === "startup"
-          ? restartContinuationRun(
-              { ...projection, providerSessions: sessionsLiveAtStart(projection, stoppedThisPass) },
-              now,
-            )
-          : undefined;
+      const continuationRun = trigger === "startup" ? restartRun : undefined;
       const effects: Array<EffectOutbox.PendingOrchestrationEffectV2> = continuationRun
         ? [
             {

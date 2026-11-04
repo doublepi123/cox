@@ -1,4 +1,4 @@
-import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { CodexSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -58,6 +58,7 @@ import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { codexGatewayRuntime, hasGatewayConfiguration } from "../gatewayConfiguration.ts";
 import { makeGatewayModels } from "../GatewayModels.ts";
+import { modelServiceProviderModels } from "@t3tools/shared/modelServices";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -131,6 +132,7 @@ export const CodexDriver: ProviderDriver<
     displayName,
     accentColor,
     environment,
+    modelService,
     enabled,
     config,
   }) {
@@ -170,15 +172,16 @@ export const CodexDriver: ProviderDriver<
       ),
     );
     const processEnv = gatewayRuntime.environment;
-    const gatewayModels = hasGatewayConfiguration(config)
-      ? yield* makeGatewayModels({
-          instanceId,
-          driver: DRIVER_KIND,
-          baseUrl: config.baseUrl,
-          apiKey: config.apiKey || processEnv.OPENAI_API_KEY,
-          customModels: config.customModels,
-        })
-      : undefined;
+    const gatewayModels =
+      !modelService && hasGatewayConfiguration(config)
+        ? yield* makeGatewayModels({
+            instanceId,
+            driver: DRIVER_KIND,
+            baseUrl: config.baseUrl,
+            apiKey: config.apiKey || processEnv.OPENAI_API_KEY,
+            customModels: config.customModels,
+          })
+        : undefined;
     const environmentHome = processEnv.CODEX_HOME;
     const homeLayout = yield* resolveCodexHomeLayout(
       !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome?.trim()
@@ -193,6 +196,15 @@ export const CodexDriver: ProviderDriver<
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
+    const boundModels = modelService
+      ? modelServiceProviderModels(config.customModels, modelService.defaultModel)
+      : undefined;
+    const stampSnapshot = (draft: Parameters<typeof stampIdentity>[0]): ServerProvider =>
+      stampIdentity(
+        boundModels === undefined
+          ? draft
+          : { ...draft, modelCatalogSource: "model-service", models: boundModels },
+      );
     yield* materializeCodexShadowHome(homeLayout).pipe(
       Effect.mapError(
         (cause) =>
@@ -259,7 +271,7 @@ export const CodexDriver: ProviderDriver<
         Effect.zipWith(
           checkCodexProviderStatus(effectiveConfig, undefined, processEnv),
           currentCatalog,
-          (draft, catalog) => stampIdentity(applyCodexModelCatalog(draft, catalog)),
+          (draft, catalog) => stampSnapshot(applyCodexModelCatalog(draft, catalog)),
           { concurrent: true },
         ).pipe(Effect.flatMap(gatewayModels ? gatewayModels.apply : Effect.succeed)),
       ),
@@ -277,7 +289,7 @@ export const CodexDriver: ProviderDriver<
         Effect.zipWith(
           makePendingCodexProvider(settings.provider),
           currentCatalog,
-          (draft, catalog) => stampIdentity(applyCodexModelCatalog(draft, catalog)),
+          (draft, catalog) => stampSnapshot(applyCodexModelCatalog(draft, catalog)),
         ),
       checkProvider,
       enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>

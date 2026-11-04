@@ -204,9 +204,14 @@ export function getAppModelOptionsForInstance(
   entry: ProviderInstanceEntry,
   selectedModel?: string | null,
 ): AppModelOption[] {
+  const bound =
+    entry.snapshot.modelCatalogSource === "model-service" ||
+    settings.providerInstances?.[entry.instanceId]?.modelService !== undefined;
   const options: AppModelOption[] = entry.models
-    .filter((model) => !model.isCustom)
-    .map((model) => toAppModelOption(model, entry.driverKind));
+    .filter((model) => !model.isCustom || bound)
+    .map((model) =>
+      toAppModelOption(bound ? { ...model, isCustom: false } : model, entry.driverKind),
+    );
   const seen = new Set(options.map((option) => option.slug));
   const builtInModelSlugs = new Set(
     Arr.filterMap(entry.models, (model) =>
@@ -214,7 +219,9 @@ export function getAppModelOptionsForInstance(
     ),
   );
 
-  const customModels = readInstanceCustomModels(settings, entry.instanceId, entry.driverKind);
+  const customModels = bound
+    ? []
+    : readInstanceCustomModels(settings, entry.instanceId, entry.driverKind);
   for (const custom of normalizeCustomModelEntries(customModels, builtInModelSlugs)) {
     if (seen.has(custom.slug)) {
       continue;

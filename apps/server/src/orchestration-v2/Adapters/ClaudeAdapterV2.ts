@@ -1441,6 +1441,7 @@ function canApplyClaudeSelectionLive(
     live.settings.alwaysThinkingEnabled === next.settings.alwaysThinkingEnabled &&
     live.contextWindowTokens === next.contextWindowTokens &&
     live.requestEffort === next.requestEffort &&
+    live.requestServiceTier === next.requestServiceTier &&
     (next.effort !== undefined || live.effort === undefined)
   );
 }
@@ -1598,6 +1599,7 @@ export function makeClaudeQueryOptions(input: {
     (typeof compactQuerySettings === "object"
       ? compactQuerySettings?.env?.CLAUDE_CODE_EXTRA_BODY
       : undefined) ?? input.environment?.CLAUDE_CODE_EXTRA_BODY,
+    compiledSelection.requestServiceTier,
   );
   const selectionEnvironment =
     contextEnvironment === undefined && requestEnvironment === undefined

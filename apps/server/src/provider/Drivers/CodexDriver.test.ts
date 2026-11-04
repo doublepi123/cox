@@ -7,7 +7,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodePath from "node:path";
 import { expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
-import { EnvironmentId, ProviderInstanceId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ModelServiceId,
+  ProviderInstanceId,
+  ProviderSessionId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -105,6 +111,40 @@ const noSpawn = ChildProcessSpawner.make(() =>
 const encodeCredentials = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 it.layer(layerTest)("CodexDriver", (it) => {
+  it.effect(
+    "publishes a bound model service catalog even when discovery and CLI probes are unavailable",
+    () =>
+      Effect.gen(function* () {
+        const instance = yield* CodexDriver.create({
+          instanceId: ProviderInstanceId.make("codex-bound"),
+          displayName: "Bound",
+          enabled: false,
+          environment: [],
+          modelService: {
+            serviceId: ModelServiceId.make("service"),
+            modelIds: [],
+            defaultModel: "vendor/second",
+          },
+          config: {
+            ...CodexDriver.defaultConfig(),
+            baseUrl: "http://127.0.0.1:9/v1",
+            apiKey: "test-only",
+            customModels: ["vendor/first", "vendor/second"],
+          },
+        }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
+        for (const refresh of [false, true]) {
+          if (refresh) yield* instance.snapshot.refresh;
+          const snapshot = yield* instance.snapshot.getSnapshot;
+          expect(snapshot.modelCatalogSource).toBe("model-service");
+          expect(
+            snapshot.models.map((model) => [model.slug, model.isCustom, model.isDefault]),
+          ).toEqual([
+            ["vendor/first", false, false],
+            ["vendor/second", false, true],
+          ]);
+        }
+      }).pipe(Effect.scoped),
+  );
   const checkManagedAccount = (
     replacementTiming: "unchanged" | "during-probe" | "with-speed-tiers",
   ) =>

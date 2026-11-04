@@ -22,6 +22,53 @@ const selection = (
 });
 
 describe("compileClaudeModelSelection", () => {
+  it("passes service-tier selections through extra body without turning on Claude native Fast", () => {
+    const catalog = resolveClaudeModelServiceCatalog([
+      {
+        slug: "speed-model",
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "serviceTier",
+              label: "Service Tier",
+              type: "select",
+              options: [
+                { id: "default", label: "Standard", isDefault: true },
+                { id: "priority", label: "Fast" },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+    const normal = compileClaudeModelSelection(selection("speed-model", []), catalog);
+    const fast = compileClaudeModelSelection(
+      selection("speed-model", [{ id: "serviceTier", value: "priority" }]),
+      catalog,
+    );
+    expect(fast.requestServiceTier).toBe("priority");
+    expect(fast.settings.fastMode).toBeUndefined();
+    expect(normal.requestServiceTier).toBe("default");
+    expect(fast.queryIdentity).not.toBe(normal.queryIdentity);
+    expect(
+      JSON.parse(
+        claudeRequestEffortEnvironment(
+          "ultra",
+          '{"metadata":{"source":"kept"}}',
+          fast.requestServiceTier,
+        )!.CLAUDE_CODE_EXTRA_BODY!,
+      ),
+    ).toEqual({
+      metadata: { source: "kept" },
+      output_config: { effort: "ultra" },
+      service_tier: "priority",
+    });
+    expect(
+      JSON.parse(
+        claudeRequestEffortEnvironment(undefined, undefined, "priority")!.CLAUDE_CODE_EXTRA_BODY!,
+      ),
+    ).toEqual({ service_tier: "priority" });
+  });
   it("includes custom context limits in query identity", () => {
     const customSelection = selection("custom-context", []);
     const compile = (contextWindow: number) =>

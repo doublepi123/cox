@@ -217,6 +217,45 @@ function withFakeClaudeEnv<A, E, R>(
 }
 
 it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
+  it.effect("passes service Fast routing to text generation without native Claude Fast flags", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({ structured_output: { title: "Service speed" } }),
+        argsMustContain:
+          '--model service-model --settings {"disableAllHooks":true,"env":{"CLAUDE_CODE_EXTRA_BODY":"{\\"service_tier\\":\\"priority\\"}"}}',
+        argsMustNotContain: '"fastMode":true',
+        modelCatalog: resolveClaudeModelServiceCatalog([
+          {
+            slug: "service-model",
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "serviceTier",
+                  label: "Service Tier",
+                  type: "select",
+                  options: [
+                    { id: "default", label: "Standard", isDefault: true },
+                    { id: "priority", label: "Fast" },
+                  ],
+                },
+              ],
+            },
+          },
+        ]),
+      },
+      (textGeneration) =>
+        textGeneration.generateThreadTitle({
+          cwd: process.cwd(),
+          message: "Test service speed",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "service-model",
+            options: [{ id: "serviceTier", value: "priority" }],
+          },
+        }),
+    ),
+  );
+
   it.effect("passes service ultra effort to text generation without an unsupported CLI flag", () =>
     withFakeClaudeEnv(
       {

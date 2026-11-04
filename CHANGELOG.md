@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.29 — 2026-11-04
+
+- Resume restart-held user queues after their matching continuation completes, including
+  repeated restarts and recovery between completion and queue release. Preserve manual
+  holds and do not release queues after a stop, failed continuation or pending request.
+- Keep model-center Codex catalogs authoritative instead of filtering their models out as
+  custom entries. Preserve instance visibility preferences and exclude stale custom lists.
+- Preserve explicitly declared service tiers for Codex and Claude through model catalogs,
+  picker controls and outgoing requests. Add editable service tiers to model-center entries
+  without assuming that third-party channels support Fast processing.
+- Forward Claude service-tier selections through the request body and reopen the native
+  query when the tier changes. Keep channel routing separate from Claude's native Fast mode.
+- Use completion-token limits for reasoning-model Chat Completions conversions and retain
+  service tiers across OpenAI protocol conversions. Expose only allowlisted rejection
+  parameter roots and error codes, with bounded error-body reads and no inference retries.
+
 ## 0.1.27 — 2026-11-04
 
 - Preserve model-service reasoning levels reported for Codex, including `max` and `ultra`, in

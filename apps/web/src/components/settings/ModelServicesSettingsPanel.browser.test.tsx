@@ -288,6 +288,49 @@ describe("model services settings", () => {
   it.each([
     { width: 320, language: "zh" as const },
     { width: 390, language: "en" as const },
+  ])("edits explicit service tiers for Fast routing at $widthpx", async ({ width, language }) => {
+    setup({ [id]: configured });
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    const originalLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    await page.viewport(width, 812);
+    setLanguagePreference(language);
+    try {
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await screen
+        .getByRole("button", { name: language === "zh" ? "编辑" : "Edit", exact: true })
+        .click();
+      const field = screen.getByLabelText(language === "zh" ? "服务优先级档位" : "Service tiers", {
+        exact: true,
+      });
+      await expect.element(field).toHaveValue("");
+      await field.fill("default，priority, priority");
+      expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
+      await screen
+        .getByRole("button", { name: language === "zh" ? "保存模型" : "Save model", exact: true })
+        .click();
+      const next = decodeService(state.save.mock.calls[0]![0].input.patch.modelServices[id]);
+      expect(next.models[0]?.capabilities?.optionDescriptors).toEqual([
+        {
+          id: "serviceTier",
+          label: "Service Tier",
+          type: "select",
+          options: [
+            { id: "default", label: "Standard", isDefault: true },
+            { id: "priority", label: "Fast" },
+          ],
+        },
+      ]);
+    } finally {
+      setLanguagePreference(parseLanguagePreference(originalLanguage));
+      if (originalLanguage === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+      await page.viewport(originalWidth, originalHeight);
+    }
+  });
+
+  it.each([
+    { width: 320, language: "zh" as const },
+    { width: 390, language: "en" as const },
   ])(
     "edits reasoning levels at $widthpx without losing model metadata",
     async ({ width, language }) => {

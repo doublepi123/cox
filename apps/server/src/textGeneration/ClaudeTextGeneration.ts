@@ -157,6 +157,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     const requestEnvironment = claudeRequestEffortEnvironment(
       compiledSelection.requestEffort,
       claudeEnvironment.CLAUDE_CODE_EXTRA_BODY,
+      compiledSelection.requestServiceTier,
     );
     const environment = { ...claudeEnvironment, ...requestEnvironment };
     const cliEffort = compiledSelection.nativeEffort;

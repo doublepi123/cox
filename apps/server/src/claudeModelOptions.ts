@@ -5,6 +5,7 @@ import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
+  getProviderOptionCurrentValue,
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
 
@@ -23,6 +24,7 @@ export interface CompiledClaudeModelSelection {
   readonly effort: string | undefined;
   readonly nativeEffort: string | undefined;
   readonly requestEffort: string | undefined;
+  readonly requestServiceTier: string | undefined;
   readonly promptEffort: string | undefined;
   readonly contextWindowTokens: number | undefined;
   readonly settings: Readonly<Record<string, boolean>>;
@@ -42,6 +44,14 @@ export function compileClaudeModelSelection(
   const effort = normalizeClaudeCatalogEffort(catalog, resolvedEffort, selection.model);
   const nativeEffort = catalog.source === "model-service" ? undefined : effort;
   const requestEffort = catalog.source === "model-service" ? effort : undefined;
+  const tier = getProviderOptionCurrentValue(
+    getProviderOptionDescriptors({
+      caps: capabilities,
+      selections: selection.options,
+    }).find((descriptor) => descriptor.id === "serviceTier" && descriptor.type === "select"),
+  );
+  const requestServiceTier =
+    catalog.source === "model-service" && typeof tier === "string" ? tier : undefined;
   const fastMode = supportsBoolean("fastMode")
     ? (getModelSelectionBooleanOptionValue(selection, "fastMode") ?? false)
     : undefined;
@@ -61,6 +71,7 @@ export function compileClaudeModelSelection(
     effort,
     nativeEffort,
     requestEffort,
+    requestServiceTier,
     promptEffort,
     contextWindowTokens,
     settings,
@@ -68,6 +79,7 @@ export function compileClaudeModelSelection(
       apiModelId,
       effort: effort ?? null,
       requestEffort: requestEffort ?? null,
+      requestServiceTier: requestServiceTier ?? null,
       settings,
       contextWindowTokens,
     }),
@@ -81,8 +93,9 @@ const decodeExtraBody = Schema.decodeUnknownOption(
 export function claudeRequestEffortEnvironment(
   effort: string | undefined,
   extraBody?: string,
+  serviceTier?: string,
 ): Record<string, string> | undefined {
-  if (effort === undefined) return undefined;
+  if (effort === undefined && serviceTier === undefined) return undefined;
   const body: Readonly<Record<string, unknown>> = Option.getOrElse(
     decodeExtraBody(extraBody ?? "{}"),
     () => ({}),
@@ -91,10 +104,17 @@ export function claudeRequestEffortEnvironment(
   return {
     CLAUDE_CODE_EXTRA_BODY: JSON.stringify({
       ...body,
-      output_config: {
-        ...(typeof config === "object" && config !== null && !Array.isArray(config) ? config : {}),
-        effort,
-      },
+      ...(effort === undefined
+        ? {}
+        : {
+            output_config: {
+              ...(typeof config === "object" && config !== null && !Array.isArray(config)
+                ? config
+                : {}),
+              effort,
+            },
+          }),
+      ...(serviceTier === undefined ? {} : { service_tier: serviceTier }),
     }),
   };
 }

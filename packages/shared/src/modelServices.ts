@@ -4,7 +4,9 @@ import type {
   ModelServiceConfig,
   ModelServiceModel,
   ModelServiceProtocol,
+  ServerProviderModel,
 } from "@t3tools/contracts";
+import { readCustomModelEntries } from "./model.ts";
 
 export const MODEL_SERVICE_AGENT_DRIVERS = ["codex", "claudeAgent", "pi", "opencode"] as const;
 
@@ -65,6 +67,19 @@ export function modelServiceModelSlug(driver: string, id: string): string {
   return driver === "pi" || driver === "opencode" ? `cox/${id}` : id;
 }
 
+export function modelServiceProviderModels(
+  customModels: unknown,
+  defaultModel?: string,
+): ReadonlyArray<ServerProviderModel> {
+  const entries = readCustomModelEntries(customModels);
+  const selected = entries.find((entry) => entry.slug === defaultModel)?.slug ?? entries[0]?.slug;
+  return entries.map((entry) => ({
+    ...entry,
+    isCustom: false,
+    isDefault: entry.slug === selected,
+  }));
+}
+
 export function modelServiceAgentCapabilities(
   driver: string,
   capabilities: ModelCapabilities | null,
@@ -90,26 +105,38 @@ export function modelServiceAgentCapabilities(
     ...(capabilities.optionDescriptors === undefined
       ? {}
       : {
-          optionDescriptors: options.length
-            ? [
-                {
-                  id:
-                    driver === "pi"
-                      ? "thinking"
-                      : driver === "claudeAgent"
-                        ? "effort"
-                        : "reasoningEffort",
-                  label: "Reasoning",
-                  type: "select" as const,
-                  options,
-                  ...(descriptor?.type === "select" &&
-                  descriptor.currentValue !== undefined &&
-                  options.some((option) => option.id === descriptor.currentValue)
-                    ? { currentValue: descriptor.currentValue }
-                    : {}),
-                },
-              ]
-            : [],
+          optionDescriptors: [
+            ...(options.length
+              ? [
+                  {
+                    id:
+                      driver === "pi"
+                        ? "thinking"
+                        : driver === "claudeAgent"
+                          ? "effort"
+                          : "reasoningEffort",
+                    label: "Reasoning",
+                    type: "select" as const,
+                    options,
+                    ...(descriptor?.type === "select" &&
+                    descriptor.currentValue !== undefined &&
+                    options.some((option) => option.id === descriptor.currentValue)
+                      ? { currentValue: descriptor.currentValue }
+                      : {}),
+                  },
+                ]
+              : []),
+            ...(capabilities.optionDescriptors ?? []).filter(
+              (option) =>
+                option !== descriptor &&
+                (((driver === "codex" || driver === "claudeAgent") &&
+                  option.id === "serviceTier" &&
+                  option.type === "select") ||
+                  (driver === "claudeAgent" &&
+                    option.id === "fastMode" &&
+                    option.type === "boolean")),
+            ),
+          ],
         }),
   };
 }

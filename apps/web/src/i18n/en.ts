@@ -1,4 +1,7 @@
 export const en = {
+  "Service tiers": "Service tiers",
+  "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.":
+    "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.",
   "Preparing OpenCode setup…": "Preparing OpenCode setup…",
   "Installing OpenCode…": "Installing OpenCode…",
   "OpenCode {version} is installed.": "OpenCode {version} is installed.",

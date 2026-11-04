@@ -1,4 +1,7 @@
 export const zh = {
+  "Service tiers": "服务优先级档位",
+  "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.":
+    "仅填写该通道支持的档位。priority 或 fast 请求 Fast 加速路由；未知时留空。",
   "Preparing OpenCode setup…": "正在准备 OpenCode 接入设置…",
   "Installing OpenCode…": "正在安装 OpenCode…",
   "OpenCode {version} is installed.": "已安装 OpenCode {version}。",

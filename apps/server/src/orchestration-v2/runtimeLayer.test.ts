@@ -5323,6 +5323,386 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       return { send, runFor, end, startedRunIds, releasedAfter, awaitHeld };
     });
 
+  it.effect.each([false, true])(
+    "automatically resumes restart-held user messages after the continuation succeeds (restarted again: %s)",
+    (restartedAgain) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const recovery = yield* ProviderRuntimeRecoveryService.ProviderRuntimeRecoveryService;
+        const threadId = ThreadId.make(`runtime-layer-restart-held-queue-${restartedAgain}`);
+        const dispatcher = yield* queueTestThread(threadId);
+        const witness = yield* queueTestThread(ThreadId.make(`${threadId}:witness`));
+        yield* dispatcher.send("active", "user", true);
+        yield* dispatcher.send("first-queued", "user", false);
+        yield* dispatcher.send("second-queued", "user", false);
+        const before = yield* orchestrator.getThreadProjection(threadId);
+        const source = yield* dispatcher.runFor("active");
+        const now = yield* DateTime.now;
+        const providerSessionId = ProviderSessionId.make(`${threadId}:session`);
+        const providerThread = before.providerThreads.find(
+          (thread) => thread.id === source.providerThreadId,
+        )!;
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make(`${threadId}:source:running`),
+              type: "run.updated",
+              threadId,
+              runId: source.id,
+              occurredAt: now,
+              payload: { ...source, status: "running", startedAt: now },
+            },
+            {
+              id: EventId.make(`${threadId}:provider-session`),
+              type: "provider-session.attached",
+              threadId,
+              driver,
+              providerInstanceId: source.providerInstanceId,
+              occurredAt: now,
+              payload: {
+                id: providerSessionId,
+                driver,
+                providerInstanceId: source.providerInstanceId,
+                status: "ready",
+                cwd: process.cwd(),
+                model: modelSelection.model,
+                capabilities: CodexProviderCapabilitiesV2,
+                createdAt: now,
+                updatedAt: now,
+                lastError: null,
+              },
+            },
+            {
+              id: EventId.make(`${threadId}:provider-thread`),
+              type: "provider-thread.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                ...providerThread,
+                providerSessionId,
+                status: "active",
+                nativeThreadRef: { driver, nativeId: `${threadId}:native`, strength: "strong" },
+              },
+            },
+            {
+              id: EventId.make(`${threadId}:provider-turn`),
+              type: "provider-turn.updated",
+              threadId,
+              runId: source.id,
+              occurredAt: now,
+              payload: {
+                id: ProviderTurnId.make(`${threadId}:turn`),
+                providerThreadId: providerThread.id,
+                nodeId: source.rootNodeId!,
+                runAttemptId: source.activeAttemptId,
+                nativeTurnRef: null,
+                ordinal: 1,
+                status: "running",
+                startedAt: now,
+                completedAt: null,
+              },
+            },
+          ],
+        });
+        yield* recovery.prepareForShutdown;
+        yield* recovery.reconcile("shutdown");
+        yield* recovery.reconcile("startup");
+        assert.isTrue(
+          (yield* (yield* ProjectionMaintenance.ProjectionMaintenanceV2).rebuild).valid,
+        );
+        const recovered = yield* orchestrator.getThreadProjection(threadId);
+        assert.equal(recovered.runs.find((run) => run.id === source.id)?.status, "cancelled");
+        for (const run of recovered.runs.filter((run) => run.status === "queued")) {
+          assert.equal(run.queueResumeAfterRunId, source.id);
+        }
+        const continueRun = (key: string, sourceRunId: RunId) =>
+          orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make(`${threadId}:message:${key}`),
+            threadId,
+            messageId: MessageId.make(`${threadId}:message:${key}`),
+            text: key,
+            attachments: [],
+            modelSelection,
+            dispatchMode: { type: "start_immediately" },
+            createdBy: "agent",
+            creationSource: "server",
+            restartContinuationOfRunId: sourceRunId,
+          });
+        yield* continueRun("continuation", source.id);
+        let completedKey = "continuation";
+        if (restartedAgain) {
+          const continuation = yield* dispatcher.runFor(completedKey);
+          yield* eventSink.write({
+            commandId: CommandId.make(`command:runtime-reconcile:shutdown:${threadId}:again`),
+            events: [
+              {
+                id: EventId.make(`${threadId}:continuation:cancelled`),
+                type: "run.updated",
+                threadId,
+                runId: continuation.id,
+                occurredAt: now,
+                payload: { ...continuation, status: "cancelled", startedAt: now, completedAt: now },
+              },
+            ],
+          });
+          yield* continueRun("continuation-again", continuation.id);
+          completedKey = "continuation-again";
+        }
+        for (const key of ["first-queued", "second-queued"]) {
+          const queued = yield* dispatcher.runFor(key);
+          assert.equal(queued.status, "queued");
+          assert.isTrue(queued.queueHeld);
+        }
+        yield* witness.send("active", "agent", true);
+        yield* witness.send("queued", "agent", false);
+        yield* dispatcher.end(completedKey, "completed");
+        yield* witness.end("active", "completed");
+        assert.equal(
+          yield* Queue.take(witness.startedRunIds),
+          (yield* witness.runFor("queued")).id,
+        );
+        assert.equal((yield* dispatcher.runFor("first-queued")).status, "starting");
+        assert.equal(
+          yield* Queue.take(dispatcher.startedRunIds),
+          (yield* dispatcher.runFor("first-queued")).id,
+        );
+        yield* dispatcher.releasedAfter("first-queued", completedKey);
+        assert.isFalse((yield* dispatcher.runFor("second-queued")).queueHeld);
+        yield* dispatcher.end("first-queued", "completed");
+        assert.equal(
+          yield* Queue.take(dispatcher.startedRunIds),
+          (yield* dispatcher.runFor("second-queued")).id,
+        );
+        const after = yield* orchestrator.getThreadProjection(threadId);
+        assert.equal(after.runs.length, restartedAgain ? 5 : 4);
+        for (const queued of before.runs.filter((run) => run.status === "queued")) {
+          assert.deepEqual(
+            after.messages.find((message) => message.id === queued.userMessageId),
+            before.messages.find((message) => message.id === queued.userMessageId),
+          );
+        }
+      }),
+  );
+
+  it.effect(
+    "recovers a restart queue if the server stopped after continuation completion but before queue release",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const threadId = ThreadId.make("runtime-layer-restart-queue-completed-before-release");
+        const dispatcher = yield* queueTestThread(threadId);
+        yield* dispatcher.send("active", "user", true);
+        yield* dispatcher.send("queued", "user", false);
+        const source = yield* dispatcher.runFor("active");
+        const queued = yield* dispatcher.runFor("queued");
+        const now = yield* DateTime.now;
+        yield* eventSink.write({
+          commandId: CommandId.make(`command:runtime-reconcile:shutdown:${threadId}`),
+          events: [
+            {
+              id: EventId.make(`${threadId}:source:cancelled`),
+              type: "run.updated",
+              threadId,
+              runId: source.id,
+              occurredAt: now,
+              payload: { ...source, status: "cancelled", startedAt: now, completedAt: now },
+            },
+            {
+              id: EventId.make(`${threadId}:queued:held`),
+              type: "run.updated",
+              threadId,
+              runId: queued.id,
+              occurredAt: now,
+              payload: { ...queued, queueHeld: true, queueResumeAfterRunId: source.id },
+            },
+          ],
+        });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`${threadId}:continuation`),
+          threadId,
+          messageId: MessageId.make(`${threadId}:message:continuation`),
+          text: "continuation",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "agent",
+          creationSource: "server",
+          restartContinuationOfRunId: source.id,
+        });
+        const continuation = yield* dispatcher.runFor("continuation");
+        yield* projections.apply({
+          id: EventId.make(`${threadId}:continuation:completed`),
+          type: "run.updated",
+          threadId,
+          runId: continuation.id,
+          occurredAt: now,
+          payload: { ...continuation, status: "completed", startedAt: now, completedAt: now },
+        });
+        assert.isTrue((yield* dispatcher.runFor("queued")).queueHeld);
+        assert.equal(yield* orchestrator.resumeQueuedRuns, 1);
+        assert.equal(yield* Queue.take(dispatcher.startedRunIds), queued.id);
+        assert.equal(yield* orchestrator.resumeQueuedRuns, 0);
+        assert.equal((yield* dispatcher.runFor("queued")).status, "starting");
+        assert.isFalse((yield* dispatcher.runFor("queued")).queueHeld);
+        assert.isNull((yield* dispatcher.runFor("queued")).queueResumeAfterRunId);
+        const after = yield* orchestrator.getThreadProjection(threadId);
+        assert.lengthOf(after.runs, 3);
+        assert.lengthOf(
+          after.messages.filter((message) => message.id === queued.userMessageId),
+          1,
+        );
+      }),
+  );
+
+  it.effect.each([
+    "thread.stop",
+    "run.interrupt",
+    "provider failure",
+    "user-held",
+    "unrelated completion",
+    "pending request",
+    "worktree setup",
+  ] as const)("does not automatically release the restart queue after %s", (reason) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const threadId = ThreadId.make(`runtime-layer-restart-queue-guard:${reason}`);
+      const dispatcher = yield* queueTestThread(threadId);
+      const witness = yield* queueTestThread(ThreadId.make(`${threadId}:witness`));
+      yield* dispatcher.send("active", "user", true);
+      yield* dispatcher.send("queued", "user", false);
+      const source = yield* dispatcher.runFor("active");
+      const queued = yield* dispatcher.runFor("queued");
+      const now = yield* DateTime.now;
+      yield* eventSink.write({
+        commandId: CommandId.make(`command:runtime-reconcile:shutdown:${threadId}`),
+        events: [
+          {
+            id: EventId.make(`${threadId}:source:cancelled`),
+            type: "run.updated",
+            threadId,
+            runId: source.id,
+            occurredAt: now,
+            payload: { ...source, status: "cancelled", startedAt: now, completedAt: now },
+          },
+          {
+            id: EventId.make(`${threadId}:queued:held`),
+            type: "run.updated",
+            threadId,
+            runId: queued.id,
+            occurredAt: now,
+            payload: {
+              ...queued,
+              queueHeld: true,
+              ...(reason === "user-held" ? {} : { queueResumeAfterRunId: source.id }),
+            },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`${threadId}:continuation`),
+        threadId,
+        messageId: MessageId.make(`${threadId}:message:continuation`),
+        text: "continuation",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "agent",
+        creationSource: "server",
+        restartContinuationOfRunId: source.id,
+      });
+      const continuation = yield* dispatcher.runFor("continuation");
+      if (reason === "thread.stop" || reason === "run.interrupt") {
+        yield* orchestrator.dispatch(
+          reason === "thread.stop"
+            ? { type: "thread.stop", commandId: CommandId.make(`${threadId}:stop`), threadId }
+            : {
+                type: "run.interrupt",
+                commandId: CommandId.make(`${threadId}:stop`),
+                threadId,
+                runId: continuation.id,
+                holdQueue: true,
+              },
+        );
+        assert.isNull((yield* dispatcher.runFor("queued")).queueResumeAfterRunId);
+      }
+      if (reason === "pending request") {
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make(`${threadId}:pending-request`),
+              type: "runtime-request.updated",
+              threadId,
+              runId: continuation.id,
+              occurredAt: now,
+              payload: {
+                id: RuntimeRequestId.make(`${threadId}:request`),
+                nodeId: continuation.rootNodeId!,
+                providerTurnId: null,
+                nativeRequestRef: null,
+                kind: "user_input",
+                status: "pending",
+                responseCapability: { type: "message" },
+                createdAt: now,
+                resolvedAt: null,
+              },
+            },
+          ],
+        });
+      }
+      if (reason === "worktree setup") {
+        const { thread } = yield* orchestrator.getThreadProjection(threadId);
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make(`${threadId}:missing-worktree`),
+              type: "thread.metadata-updated",
+              threadId,
+              occurredAt: now,
+              payload: { ...thread, worktreePath: null },
+            },
+            {
+              id: EventId.make(`${threadId}:failed-setup`),
+              type: "run.updated",
+              threadId,
+              runId: source.id,
+              occurredAt: now,
+              payload: {
+                ...source,
+                status: "failed",
+                startedAt: now,
+                completedAt: now,
+                workspacePreparation: { type: "worktree", baseRef: "main" },
+              },
+            },
+          ],
+        });
+      }
+      yield* witness.send("active", "agent", true);
+      yield* witness.send("queued", "agent", false);
+      if (reason === "unrelated completion") {
+        yield* dispatcher.end("continuation", "completed", "", {
+          restartContinuationOfRunId: RunId.make("run:unrelated-source"),
+        });
+      } else {
+        yield* dispatcher.end(
+          "continuation",
+          reason === "provider failure" ? "failed" : "completed",
+        );
+      }
+      yield* witness.end("active", "completed");
+      assert.equal(yield* Queue.take(witness.startedRunIds), (yield* witness.runFor("queued")).id);
+      assert.equal((yield* dispatcher.runFor("queued")).status, "queued");
+      assert.isTrue((yield* dispatcher.runFor("queued")).queueHeld);
+    }),
+  );
+
   it.effect("releases held agent messages once a later run completes, not the user's", () =>
     Effect.gen(function* () {
       const eventSink = yield* EventSink.EventSinkV2;

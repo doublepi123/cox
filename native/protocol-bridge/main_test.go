@@ -44,6 +44,32 @@ func TestResponsesToChatAndBack(t *testing.T) {
 	}
 }
 
+func TestPreservesServiceTierAcrossOpenAIConversions(t *testing.T) {
+	for _, route := range [][2]string{{"openai-response", "openai"}, {"claude", "openai"}, {"claude", "openai-response"}} {
+		t.Run(route[0]+" to "+route[1], func(t *testing.T) {
+			body := `{"service_tier":"priority","max_tokens":100,"input":"hello","messages":[{"role":"user","content":"hello"}]}`
+			_, request := start(t, route[0], route[1], body, false)
+			if request["service_tier"] != "priority" {
+				t.Fatalf("service tier was lost: %v", request)
+			}
+		})
+	}
+}
+
+func TestClaudeToReasoningChatUsesCompletionTokenLimit(t *testing.T) {
+	for _, model := range []string{"gpt-6.1-sol", "openai/gpt-5.4", "o3"} {
+		s := &session{registry: builtin.Registry()}
+		out := s.handle(input{Type: "request", From: "claude", To: "openai", Model: model, Body: json.RawMessage(`{"max_tokens":32000,"output_config":{"effort":"ultra"},"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"hi"}]}`)})
+		var body map[string]any
+		if out.Error != "" || json.Unmarshal(out.Body, &body) != nil {
+			t.Fatalf("conversion failed: %s", out.Error)
+		}
+		if body["max_completion_tokens"] != float64(32000) || body["max_tokens"] != nil || body["reasoning_effort"] != "ultra" {
+			t.Fatalf("invalid reasoning request: %s", out.Body)
+		}
+	}
+}
+
 func TestAnthropicToolHistoryToChat(t *testing.T) {
 	s, _ := start(t, "claude", "openai", `{"max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_a","name":"read","input":{"path":"one"}},{"type":"tool_use","id":"call_b","name":"read","input":{"path":"two"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_a","content":"first"},{"type":"tool_result","tool_use_id":"call_b","content":"second"}]}]}`, false)
 	for _, expected := range []string{`"tool_calls"`, `"tool_call_id":"call_a"`, `"tool_call_id":"call_b"`, "first", "second"} {

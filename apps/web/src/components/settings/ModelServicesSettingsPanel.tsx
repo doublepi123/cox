@@ -617,6 +617,13 @@ function ModelEditor({
   const [reasoning, setReasoning] = useState(
     reasoningDescriptor?.options.map((option) => option.id).join(", ") ?? "",
   );
+  const serviceTierDescriptor = model?.capabilities?.optionDescriptors?.find(
+    (option) => option.id === "serviceTier" && option.type === "select",
+  );
+  const serviceTier = serviceTierDescriptor?.type === "select" ? serviceTierDescriptor : undefined;
+  const [serviceTiers, setServiceTiers] = useState(
+    serviceTier?.options.map((option) => option.id).join(", ") ?? "",
+  );
   const validNumber = (value: string) =>
     value === "" || (Number.isSafeInteger(Number(value)) && Number(value) > 0);
   return (
@@ -633,8 +640,34 @@ function ModelEditor({
           currentValue: undefined,
         };
         const optionDescriptors = (model?.capabilities?.optionDescriptors ?? []).filter(
-          (option) => option !== reasoningDescriptor,
+          (option) => option !== reasoningDescriptor && option !== serviceTierDescriptor,
         );
+        const tiers = [...new Set(serviceTiers.split(/[,，\s]+/u).filter(Boolean))];
+        if (tiers.length) {
+          const { currentValue: tierValue, ...metadata } = serviceTier ?? {
+            id: "serviceTier",
+            label: "Service Tier",
+            type: "select" as const,
+            currentValue: undefined,
+          };
+          optionDescriptors.push({
+            ...metadata,
+            options: tiers.map(
+              (id) =>
+                serviceTier?.options.find((option) => option.id === id) ?? {
+                  id,
+                  label:
+                    id === "priority" || id === "fast"
+                      ? "Fast"
+                      : id === "default"
+                        ? "Standard"
+                        : id,
+                  ...(id === "default" ? { isDefault: true } : {}),
+                },
+            ),
+            ...(tierValue && tiers.includes(tierValue) ? { currentValue: tierValue } : {}),
+          });
+        }
         if (levels.length) {
           optionDescriptors.push({
             ...reasoningMetadata,
@@ -663,7 +696,9 @@ function ModelEditor({
           protocols: selected,
           capabilities: {
             ...model?.capabilities,
-            ...(reasoningDescriptor || levels.length ? { optionDescriptors } : {}),
+            ...(reasoningDescriptor || levels.length || serviceTier || tiers.length
+              ? { optionDescriptors }
+              : {}),
             contextWindow: context ? Number(context) : undefined,
             supportsImages: images === "unknown" ? undefined : images === "true",
           },
@@ -720,6 +755,22 @@ function ModelEditor({
         </label>
         <p className="text-xs text-muted-foreground">
           {t("Comma-separated levels supported by this channel. Leave blank if unknown.")}
+        </p>
+      </div>
+      <div className="grid gap-1">
+        <label className="grid gap-1 text-sm">
+          {t("Service tiers")}
+          <Input
+            value={serviceTiers}
+            onChange={(event) => setServiceTiers(event.target.value)}
+            placeholder="default, priority"
+            disabled={busy}
+          />
+        </label>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Only enter tiers supported by this channel. priority or fast requests Fast routing; leave blank if unknown.",
+          )}
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">

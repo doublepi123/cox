@@ -897,6 +897,69 @@ const queuedFollowUp = {
   queueHeld: true,
 };
 
+it.effect.each([
+  { trigger: "startup", enabled: true, held: false, sourceStatus: "running", expected: true },
+  { trigger: "shutdown", enabled: true, held: false, sourceStatus: "running", expected: true },
+  { trigger: "startup", enabled: false, held: false, sourceStatus: "running", expected: false },
+  { trigger: "shutdown", enabled: false, held: false, sourceStatus: "running", expected: false },
+  { trigger: "startup", enabled: true, held: true, sourceStatus: "running", expected: false },
+  { trigger: "startup", enabled: true, held: false, sourceStatus: "interrupted", expected: false },
+] as const)(
+  "tracks restart queue recovery on $trigger (enabled: $enabled, held: $held, source: $sourceStatus)",
+  ({ trigger, enabled, held, sourceStatus, expected }) =>
+    Effect.gen(function* () {
+      const base = makeProjection();
+      const queued = {
+        ...base.runs[0]!,
+        id: RunId.make("run:restart-queued"),
+        ordinal: 2,
+        status: "queued" as const,
+        queueHeld: held,
+        startedAt: null,
+        userMessageId: MessageId.make("message:restart-queued"),
+      };
+      const projection = {
+        ...base,
+        runs: [{ ...base.runs[0]!, status: sourceStatus }, queued],
+      };
+      let committed: Parameters<EventSink.EventSinkV2["Service"]["commitCommand"]>[0] | undefined;
+      const recovery = yield* ProviderRuntimeRecovery.make.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ServerSettings.layerTest({ continueThreadsAfterServerUpdate: enabled }),
+            Layer.mock(ProjectionStore.ProjectionStoreV2)({
+              getRecoveryThreadIds: () => Effect.succeed([threadId]),
+              getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+              getThreadRecords: () => Effect.succeed(projection),
+            }),
+            Layer.mock(EventSink.EventSinkV2)({
+              commitCommand: (input) => {
+                committed = input;
+                return Effect.succeed({ committed: true, cancelledEffectCount: 0 } as never);
+              },
+            }),
+            IdAllocator.layer,
+            Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({}),
+            Layer.mock(EffectOutbox.EffectOutboxV2)({
+              reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+            }),
+          ),
+        ),
+      );
+      yield* recovery.reconcile(trigger);
+      const update = committed?.events.find(
+        (event) => event.type === "run.updated" && event.payload.id === queued.id,
+      );
+      if (held) assert.isUndefined(update);
+      else {
+        assert.equal(update?.type, "run.updated");
+        if (update?.type !== "run.updated") return;
+        assert.isTrue(update.payload.queueHeld);
+        assert.equal(update.payload.queueResumeAfterRunId, expected ? runId : undefined);
+      }
+    }),
+);
+
 it.effect("continues a cut run past queued follow-ups, which stay held", () =>
   Effect.gen(function* () {
     const live = makeProjection();

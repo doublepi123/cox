@@ -167,8 +167,18 @@ export const make = Effect.gen(function* () {
           const catalog = path.join(directory, "codex-models.json");
           yield* write(catalog, {
             models: models.map((model, index) => {
-              const reasoning = modelServiceAgentCapabilities("codex", model.capabilities)
-                ?.optionDescriptors?.[0];
+              const descriptors = modelServiceAgentCapabilities(
+                "codex",
+                model.capabilities,
+              )?.optionDescriptors;
+              const reasoning = descriptors?.find(
+                (descriptor) => descriptor.id === "reasoningEffort",
+              );
+              const speed = descriptors?.find((descriptor) => descriptor.id === "serviceTier");
+              const tiers =
+                speed?.type === "select"
+                  ? speed.options.filter((option) => option.id !== "default")
+                  : [];
               const levels = reasoning?.type === "select" ? reasoning.options : [];
               return {
                 slug: model.id,
@@ -180,6 +190,21 @@ export const make = Effect.gen(function* () {
                   effort: option.id,
                   description: option.label,
                 })),
+                ...(tiers.length
+                  ? {
+                      service_tiers: tiers.map((tier) => ({
+                        id: tier.id,
+                        name: tier.label,
+                        description: tier.description ?? "",
+                      })),
+                      default_service_tier:
+                        speed?.type === "select"
+                          ? (speed.currentValue ??
+                            speed.options.find((option) => option.isDefault)?.id ??
+                            null)
+                          : null,
+                    }
+                  : {}),
                 shell_type: "shell_command",
                 visibility: model.available === false ? "hide" : "list",
                 supported_in_api: true,
@@ -467,11 +492,58 @@ export const make = Effect.gen(function* () {
         Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
         Effect.timeout("120 seconds"),
       );
-    if (response.status < 200 || response.status >= 300)
+    if (response.status < 200 || response.status >= 300) {
+      let errorBytes = 0;
+      const rejected = record(
+        yield* response.stream.pipe(
+          Stream.takeUntil(
+            (chunk) => {
+              errorBytes += chunk.length;
+              return errorBytes > 16384;
+            },
+            { excludeLast: true },
+          ),
+          Stream.decodeText(),
+          Stream.runFold(
+            () => "",
+            (body, chunk) => body + chunk,
+          ),
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))),
+          Effect.timeout("5 seconds"),
+          Effect.orElseSucceed(() => ({})),
+        ),
+      );
+      const error = record(rejected.error);
+      const parameter =
+        typeof error.param === "string"
+          ? /^(model|max_tokens|max_completion_tokens|reasoning_effort|service_tier|thinking|output_config|tools|messages)(?:\.|\[|$)/.exec(
+              error.param,
+            )?.[1]
+          : undefined;
+      const code =
+        typeof error.code === "string" &&
+        [
+          "unsupported_parameter",
+          "unsupported_value",
+          "invalid_request_error",
+          "invalid_parameter",
+          "context_length_exceeded",
+        ].includes(error.code)
+          ? error.code
+          : undefined;
+      const details = [
+        parameter ? `parameter: ${parameter}` : undefined,
+        code ? `code: ${code}` : undefined,
+      ].filter(Boolean);
       return HttpServerResponse.jsonUnsafe(
-        { error: { message: `The upstream model service returned HTTP ${response.status}.` } },
+        {
+          error: {
+            message: `The upstream model service returned HTTP ${response.status}.${details.length ? ` Rejected request (${details.join(", ")}).` : ""}`,
+          },
+        },
         { status: response.status >= 400 && response.status < 600 ? response.status : 502 },
       );
+    }
     if (stream) {
       const parse = makeModelServiceSseParser();
       const bytes = (

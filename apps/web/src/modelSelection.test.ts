@@ -3,6 +3,7 @@ import {
   DEFAULT_TEXT_GENERATION_MODEL,
   ProviderDriverKind,
   ProviderInstanceId,
+  ModelServiceId,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
@@ -74,6 +75,41 @@ function settingsWithProviderInstances(): UnifiedSettings {
 }
 
 describe("instance-scoped model selection", () => {
+  it.each([false, true])(
+    "keeps service-bound custom snapshot rows visible before and after source refresh (%s)",
+    (refreshed) => {
+      const instanceId = ProviderInstanceId.make("codex-service");
+      const snapshot: ServerProvider = {
+        ...provider({ instanceId }),
+        ...(refreshed ? { modelCatalogSource: "model-service" as const } : {}),
+        models: ["gpt-6.1-sol", "vendor/second"].map((slug) => ({
+          slug,
+          name: slug,
+          isCustom: !refreshed,
+          capabilities: null,
+        })),
+      };
+      const settings: UnifiedSettings = {
+        ...DEFAULT_UNIFIED_SETTINGS,
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            modelService: { serviceId: ModelServiceId.make("service"), modelIds: [] },
+            config: { customModels: ["stale-independent-model"] },
+          },
+        },
+        providerModelPreferences: {
+          [instanceId]: { hiddenModels: ["vendor/second"], modelOrder: [] },
+        },
+      };
+      const options = getAppModelOptionsForInstance(
+        settings,
+        deriveProviderInstanceEntries([snapshot])[0]!,
+      );
+      expect(options.map((model) => model.slug)).toEqual(["gpt-6.1-sol"]);
+      expect(options[0]?.isCustom).toBe(false);
+    },
+  );
   it("keeps custom models on the provider instance that declared them", () => {
     const providers = [
       provider({

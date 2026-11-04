@@ -524,6 +524,11 @@ const make = Effect.fn("serverRuntimeStartup.make")(function* (options?: Startup
       recoverDelegatedTasks: runStartupPhase(
         "orchestration-v2.delegated-tasks.recover",
         orchestrator.recoverDelegatedTasks,
+      ).pipe(
+        Effect.andThen(
+          runStartupPhase("orchestration-v2.queue.recover", orchestrator.resumeQueuedRuns),
+        ),
+        Effect.asVoid,
       ),
       startEffectWorker: runStartupPhase(
         "orchestration-v2.effect-worker.start",

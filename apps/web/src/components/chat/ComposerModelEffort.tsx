@@ -30,14 +30,10 @@ type BooleanDescriptor = Extract<ProviderOptionDescriptor, { type: "boolean" }>;
 
 /** Codex service tiers and Claude's Fast mode share the footer's speed control. */
 function splitSpeed(
-  provider: TraitsSelectionInput["provider"],
   selects: ReadonlyArray<SelectDescriptor>,
   toggles: ReadonlyArray<BooleanDescriptor>,
 ) {
-  const speedSelect =
-    provider === "codex"
-      ? (selects.find((descriptor) => descriptor.id === "serviceTier") ?? null)
-      : null;
+  const speedSelect = selects.find((descriptor) => descriptor.id === "serviceTier") ?? null;
   const fastToggle = toggles.find((descriptor) => descriptor.id === "fastMode") ?? null;
   return {
     speedSelect,
@@ -56,11 +52,10 @@ type ColumnControl =
  * its other options.
  */
 function columnControls(
-  provider: TraitsSelectionInput["provider"],
   selects: ReadonlyArray<SelectDescriptor>,
   toggles: ReadonlyArray<BooleanDescriptor>,
 ) {
-  const { columnSelects, columnToggles } = splitSpeed(provider, selects, toggles);
+  const { columnSelects, columnToggles } = splitSpeed(selects, toggles);
   const controls: ReadonlyArray<ColumnControl> = [
     ...columnSelects.map((descriptor) => ({ kind: "select" as const, descriptor })),
     ...columnToggles.map((descriptor) => ({ kind: "boolean" as const, descriptor })),
@@ -223,8 +218,8 @@ function ColumnRow(props: {
   return (
     <Tooltip>
       <TooltipTrigger render={<button {...rowProps} />}>{content}</TooltipTrigger>
-      <TooltipPopup side="right" className="max-w-56">
-        {props.description}
+      <TooltipPopup side="right">
+        <div className="max-w-56">{props.description}</div>
       </TooltipPopup>
     </Tooltip>
   );
@@ -249,11 +244,7 @@ function EffortLevels(props: { traits: TraitsSelectionInput; layout: "popover" |
   const { t } = useTranslation();
   const traits = useTraitsSelection(props.traits);
   const sheet = props.layout === "sheet";
-  const { effort, others } = columnControls(
-    props.traits.provider,
-    traits.selectDescriptors,
-    traits.booleanDescriptors,
-  );
+  const { effort, others } = columnControls(traits.selectDescriptors, traits.booleanDescriptors);
   if (traits.modelIsUnavailable) {
     return (
       <>
@@ -414,11 +405,7 @@ export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | nul
   const visibility = props.traits ? getTraitsSectionVisibility(props.traits) : null;
   const effort =
     props.traits && visibility
-      ? columnControls(
-          props.traits.provider,
-          visibility.selectDescriptors,
-          visibility.booleanDescriptors,
-        ).effort
+      ? columnControls(visibility.selectDescriptors, visibility.booleanDescriptors).effort
       : null;
   return (
     <>
@@ -482,7 +469,6 @@ function SpeedControl(props: { traits: TraitsSelectionInput }) {
   const sheet = use(DockedPickerContext).layout === "sheet";
   const traits = useTraitsSelection(props.traits);
   const { speedSelect, fastToggle } = splitSpeed(
-    props.traits.provider,
     traits.selectDescriptors,
     traits.booleanDescriptors,
   );

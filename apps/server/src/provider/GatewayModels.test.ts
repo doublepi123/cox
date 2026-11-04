@@ -21,6 +21,30 @@ const snapshot: ServerProvider = {
 };
 
 describe("gateway models", () => {
+  it("imports only explicitly advertised service tiers and their defaults", () => {
+    expect(
+      parseGatewayModel(
+        {
+          id: "speed-model",
+          service_tiers: ["default", { id: "priority", name: "Fast", description: "Low latency" }],
+          default_service_tier: "default",
+        },
+        codex,
+      )?.capabilities?.optionDescriptors,
+    ).toEqual([
+      {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select",
+        options: [
+          { id: "default", label: "Standard", isDefault: true },
+          { id: "priority", label: "Fast" },
+        ],
+        currentValue: "default",
+      },
+    ]);
+    expect(parseGatewayModel({ id: "gpt-6.1-sol" }, codex)?.capabilities).toBeNull();
+  });
   it("only fills capabilities reported by the gateway", () => {
     expect(parseGatewayModel({ id: "unknown" }, codex)?.capabilities).toBeNull();
     expect(

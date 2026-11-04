@@ -6,6 +6,7 @@ import {
   boundModelServiceModels,
   modelServiceAgentCapabilities,
   modelServiceDisplayName,
+  modelServiceProviderModels,
 } from "./modelServices.ts";
 
 const id = ModelServiceId.make("shared");
@@ -22,6 +23,65 @@ const service = Schema.decodeSync(ModelServiceConfig)({
 });
 
 describe("central model settings", () => {
+  it("treats bound service models as an authoritative catalog, not user-added rows", () => {
+    const models = modelServiceProviderModels(
+      [
+        { slug: "vendor/first", name: "First", capabilities: { contextWindow: 64000 } },
+        "vendor/second",
+      ],
+      "vendor/second",
+    );
+    expect(models.map((model) => [model.slug, model.isCustom, model.isDefault])).toEqual([
+      ["vendor/first", false, false],
+      ["vendor/second", false, true],
+    ]);
+    expect(models[0]?.capabilities?.contextWindow).toBe(64000);
+    expect(modelServiceProviderModels([])).toEqual([]);
+    expect(modelServiceProviderModels(["first"], "missing")[0]?.isDefault).toBe(true);
+  });
+
+  it.each(["codex", "claudeAgent"])(
+    "preserves declared service tiers beside reasoning for %s",
+    (driver) => {
+      const tiers = {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select" as const,
+        currentValue: "default",
+        options: [
+          { id: "default", label: "Standard", isDefault: true },
+          { id: "priority", label: "Fast" },
+        ],
+      };
+      const fast = { id: "fastMode", label: "Fast Mode", type: "boolean" as const };
+      expect(
+        modelServiceAgentCapabilities(driver, {
+          optionDescriptors: [
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select",
+              options: [{ id: "ultra", label: "Ultra" }],
+            },
+            tiers,
+            fast,
+          ],
+        })?.optionDescriptors,
+      ).toEqual([
+        {
+          id: driver === "codex" ? "reasoningEffort" : "effort",
+          label: "Reasoning",
+          type: "select",
+          options: [{ id: "ultra", label: "Ultra" }],
+        },
+        tiers,
+        ...(driver === "claudeAgent" ? [fast] : []),
+      ]);
+      expect(
+        modelServiceAgentCapabilities(driver, { optionDescriptors: [tiers] })?.optionDescriptors,
+      ).toEqual([tiers]);
+    },
+  );
   it("formats familiar model names without changing unknown IDs or custom display names", () => {
     expect(modelServiceDisplayName("gpt-5.2-codex")).toBe("GPT-5.2 Codex");
     expect(modelServiceDisplayName("gemini-2.5-pro")).toBe("Gemini 2.5 Pro");

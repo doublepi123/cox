@@ -426,6 +426,229 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "returns safe rejected parameter metadata without echoing error text or private fields",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "claudeAgent",
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  message: "private-upstream-key request content",
+                  param: "max_tokens",
+                  code: "unsupported_parameter",
+                },
+              },
+              { status: 400 },
+            ),
+        });
+        const result = yield* h.invoke("/v1/messages", {
+          model: "Vendor/Exact",
+          max_tokens: 100,
+          messages: [{ role: "user", content: "test" }],
+        });
+        expect(result.status).toBe(400);
+        expect(result.text).toContain("parameter: max_tokens");
+        expect(result.text).toContain("code: unsupported_parameter");
+        expect(result.text).not.toContain("private-upstream-key");
+        expect(result.text).not.toContain("request content");
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { param: "tools[0].private-key", code: "unsupported_value", root: "tools", safeCode: true },
+    {
+      param: "output_config.private-key",
+      code: "private-key",
+      root: "output_config",
+      safeCode: false,
+    },
+    { param: "service_tier-private-key", code: "private-key", root: undefined, safeCode: false },
+    { param: "private-key", code: "invalid_parameter", root: undefined, safeCode: true },
+  ])("redacts upstream rejection metadata $param", ({ param, code, root, safeCode }) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        driver: "pi",
+        respond: () => Response.json({ error: { param, code } }, { status: 400 }),
+      });
+      const result = yield* h.invoke("/v1/chat/completions", {
+        model: "Vendor/Exact",
+        messages: [],
+      });
+      expect(result.status).toBe(400);
+      expect(result.text).not.toContain("private-key");
+      expect(result.text.includes("parameter:")).toBe(root !== undefined);
+      if (root !== undefined) expect(result.text).toContain(`parameter: ${root}`);
+      expect(result.text.includes("code:")).toBe(safeCode);
+      if (safeCode) expect(result.text).toContain(`code: ${code}`);
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("cancels oversized upstream error bodies without exposing their contents", () =>
+    Effect.gen(function* () {
+      let cancelled = false;
+      const h = yield* harness({
+        driver: "pi",
+        respond: () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      error: { param: "service_tier", code: "unsupported_parameter" },
+                      content: "private-key".repeat(2000),
+                    }),
+                  ),
+                );
+              },
+              cancel() {
+                cancelled = true;
+              },
+            }),
+            { status: 400 },
+          ),
+      });
+      const result = yield* h.invoke("/v1/chat/completions", {
+        model: "Vendor/Exact",
+        messages: [],
+      });
+      expect(result.status).toBe(400);
+      expect(result.text).not.toContain("private-key");
+      expect(result.text).not.toContain("parameter:");
+      expect(result.text).not.toContain("code:");
+      expect(cancelled).toBe(true);
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["codex", "claudeAgent"])(
+    "preserves Fast routing for %s and native Codex catalog metadata",
+    (driver) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        const tiers = [
+          { id: "default", label: "Standard", isDefault: true },
+          { id: "priority", label: "Fast", description: "Low latency" },
+        ];
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...current,
+              models: [
+                {
+                  ...current.models[0]!,
+                  capabilities: {
+                    optionDescriptors: [
+                      {
+                        id: "serviceTier",
+                        label: "Service Tier",
+                        type: "select",
+                        currentValue: "default",
+                        options: tiers,
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        });
+        const bound = yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+        expect(record(bound[instanceId]!.config).customModels).toMatchObject([
+          { capabilities: { optionDescriptors: [{ id: "serviceTier", options: tiers }] } },
+        ]);
+        if (driver === "codex") {
+          const fs = yield* FileSystem.FileSystem;
+          const config = yield* ServerConfig.ServerConfig;
+          const catalog = JSON.parse(
+            yield* fs.readFileString(
+              `${config.baseDir}/model-services/runtime/${instanceId}/codex-models.json`,
+            ),
+          );
+          expect(catalog.models[0]).toMatchObject({
+            default_service_tier: "default",
+            service_tiers: [{ id: "priority", name: "Fast", description: "Low latency" }],
+          });
+        }
+        const response = yield* h.invoke(driver === "codex" ? "/v1/responses" : "/v1/messages", {
+          model: "Vendor/Exact",
+          input: "hi",
+          max_tokens: 100,
+          messages: [{ role: "user", content: "hi" }],
+          service_tier: "priority",
+        });
+        expect(response.status).toBe(200);
+        const body = h.calls[0]!.body;
+        if (body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+        expect(JSON.parse(new TextDecoder().decode(body.body))).toMatchObject({
+          service_tier: "priority",
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "uses a completion-token limit for Claude requests converted to a GPT reasoning model",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "claudeAgent",
+          respond: (request) => {
+            const raw = request.body;
+            if (raw._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+            const body = JSON.parse(new TextDecoder().decode(raw.body));
+            return body.max_tokens !== undefined
+              ? Response.json(
+                  { error: { param: "max_tokens", code: "unsupported_parameter" } },
+                  { status: 400 },
+                )
+              : Response.json({
+                  id: "test",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "ok" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 1, completion_tokens: 1 },
+                });
+          },
+        });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: { ...current, models: [{ ...current.models[0]!, id: "gpt-6.1-sol" }] },
+          },
+        });
+        yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: ["gpt-6.1-sol"] },
+          },
+        });
+        const response = yield* h.invoke("/v1/messages", {
+          model: "gpt-6.1-sol",
+          max_tokens: 32000,
+          thinking: { type: "adaptive" },
+          output_config: { effort: "ultra" },
+          messages: [{ role: "user", content: "hi" }],
+        });
+        expect(response.status).toBe(200);
+        const body = h.calls[0]!.body;
+        if (body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+        const sent = JSON.parse(new TextDecoder().decode(body.body));
+        expect(sent).toMatchObject({ max_completion_tokens: 32000, reasoning_effort: "ultra" });
+        expect(sent.max_tokens).toBeUndefined();
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("revokes local credentials when the bound instance is disabled", () =>
     Effect.gen(function* () {
       const h = yield* harness();
