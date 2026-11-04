@@ -3258,6 +3258,81 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect("starts and clears bound Ultracode workflow mode across turns", () =>
+    Effect.gen(function* () {
+      const modelCatalog = resolveClaudeModelServiceCatalog([
+        {
+          slug: "gpt-6.1-sol",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "high", label: "High" },
+                  { id: "xhigh", label: "Extra High" },
+                  { id: "max", label: "Max" },
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+      const harness = yield* makeWakeHarnessWithOptions({
+        freshQueueOnReopen: true,
+        close: Queue.shutdown,
+        modelCatalog,
+      });
+      for (const [ordinal, selected, effort, processCount] of [
+        [1, "high", "high", 1],
+        [2, "ultracode", "xhigh", 2],
+        [3, "ultracode", "xhigh", 2],
+        [4, "high", "high", 3],
+      ] as const) {
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`workflow-mode-${ordinal}`),
+            text: "Check workflow mode",
+            attachments: [],
+            providerTurnOrdinal: ordinal,
+            modelSelection: {
+              instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+              model: "gpt-6.1-sol",
+              options: [{ id: "effort", value: selected }],
+            },
+          }),
+        );
+        const options = harness.getOpenedOptions();
+        assert.equal(
+          options?.env?.CLAUDE_CODE_EXTRA_BODY,
+          JSON.stringify({ output_config: { effort } }),
+        );
+        assert.equal(options?.effort, selected === "ultracode" ? "xhigh" : undefined);
+        assert.equal(
+          typeof options?.settings === "object" ? options.settings?.ultracode : undefined,
+          selected === "ultracode" ? true : undefined,
+        );
+        assert.equal(
+          typeof options?.settings === "object" ? options.settings?.enableWorkflows : undefined,
+          selected === "ultracode" ? true : undefined,
+        );
+        assert.lengthOf(harness.processQueues, processCount);
+        yield* harness.offerAndWait(turnOneResult);
+        yield* Queue.take(harness.terminalReceipts);
+      }
+      assert.deepEqual(harness.liveSelectionChanges, []);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("reopens service queries only when the request service tier changes", () =>
     Effect.gen(function* () {
       const modelCatalog = resolveClaudeModelServiceCatalog([
@@ -5163,7 +5238,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           yield* harness.runtime.startTurn(turn(4, { ...normal, model: "claude-sonnet-4-6" }));
           yield* settle;
           assert.deepEqual(harness.liveSelectionChanges, [
-            { effortLevel: "xhigh", fastMode: true, ultracode: true },
+            { effortLevel: "xhigh", fastMode: true, ultracode: true, enableWorkflows: true },
             { model: "claude-sonnet-4-6" },
             { effortLevel: "high", fastMode: null, ultracode: null },
           ]);

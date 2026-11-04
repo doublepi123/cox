@@ -18,6 +18,8 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { make } from "./ModelServiceGateway.ts";
 import { resolveClaudeModelServiceCatalog } from "../provider/ClaudeModelCatalog.ts";
 import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
+import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import { createModelSelection } from "@t3tools/shared/model";
 import { ClaudeSettings } from "@t3tools/contracts";
 
 const serviceId = ModelServiceId.make("shared-test");
@@ -142,54 +144,70 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("keeps max and ultra in both bound Codex models and the generated native catalog", () =>
-    Effect.gen(function* () {
-      const h = yield* harness();
-      const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
-      const options = [
-        { id: "high", label: "High" },
-        { id: "max", label: "Max" },
-        { id: "ultra", label: "Ultra", isDefault: true },
-      ];
-      yield* h.settings.updateSettings({
-        modelServices: {
-          [serviceId]: {
-            ...current,
-            models: [
-              {
-                ...current.models[0]!,
-                capabilities: {
-                  optionDescriptors: [
-                    { id: "reasoningEffort", label: "Reasoning", type: "select", options },
-                  ],
+  it.effect.each([false, true])(
+    "supplements max-only Codex catalogs and keeps explicit Ultra metadata (declared: %s)",
+    (declared) =>
+      Effect.gen(function* () {
+        const h = yield* harness();
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        const declaredOptions = [
+          { id: "high", label: "High" },
+          { id: "max", label: "Max", ...(!declared ? { isDefault: true } : {}) },
+          ...(declared ? [{ id: "ultra", label: "Ultra", isDefault: true }] : []),
+        ];
+        const options = declared
+          ? declaredOptions
+          : [
+              ...declaredOptions,
+              { id: "ultra", label: "Ultra", description: "Enable Codex Ultra mode" },
+            ];
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...current,
+              models: [
+                {
+                  ...current.models[0]!,
+                  capabilities: {
+                    optionDescriptors: [
+                      {
+                        id: "reasoningEffort",
+                        label: "Reasoning",
+                        type: "select",
+                        options: declaredOptions,
+                      },
+                    ],
+                  },
                 },
-              },
-            ],
+              ],
+            },
           },
-        },
-      });
-      const materialized = yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
-      expect(record(materialized[instanceId]!.config).customModels).toMatchObject([
-        { capabilities: { optionDescriptors: [{ id: "reasoningEffort", options }] } },
-      ]);
-      const config = yield* ServerConfig.ServerConfig;
-      const fs = yield* FileSystem.FileSystem;
-      const catalog = JSON.parse(
-        yield* fs.readFileString(
-          `${config.baseDir}/model-services/runtime/${instanceId}/codex-models.json`,
-        ),
-      );
-      expect(catalog.models[0]).toMatchObject({
-        slug: "Vendor/Exact",
-        default_reasoning_level: "ultra",
-        supported_reasoning_levels: [
-          { effort: "high", description: "High" },
-          { effort: "max", description: "Max" },
-          { effort: "ultra", description: "Ultra" },
-        ],
-      });
-      expect(h.calls).toEqual([]);
-    }).pipe(Effect.scoped),
+        });
+        const materialized = yield* h.gateway.materialize(
+          yield* h.settings.getSettings,
+          h.instances,
+        );
+        expect(record(materialized[instanceId]!.config).customModels).toMatchObject([
+          { capabilities: { optionDescriptors: [{ id: "reasoningEffort", options }] } },
+        ]);
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const catalog = JSON.parse(
+          yield* fs.readFileString(
+            `${config.baseDir}/model-services/runtime/${instanceId}/codex-models.json`,
+          ),
+        );
+        expect(catalog.models[0]).toMatchObject({
+          slug: "Vendor/Exact",
+          default_reasoning_level: declared ? "ultra" : "max",
+          supported_reasoning_levels: [
+            { effort: "high", description: "High" },
+            { effort: "max", description: "Max" },
+            { effort: "ultra", description: "Ultra" },
+          ],
+        });
+        expect(h.calls).toEqual([]);
+      }).pipe(Effect.scoped),
   );
 
   it.effect(
@@ -593,6 +611,398 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect(
+    "maps Claude ultra to the GPT Chat wire maximum rejected in the recorded upstream failure",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "claudeAgent",
+          respond: (request) => {
+            const raw = request.body;
+            if (raw._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+            const body = JSON.parse(new TextDecoder().decode(raw.body));
+            return body.reasoning_effort === "ultra"
+              ? Response.json(
+                  {
+                    error: {
+                      message:
+                        "Invalid value: 'ultra'. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'.",
+                      type: "openai_error",
+                      code: "unknown_error",
+                      param: "",
+                    },
+                  },
+                  { status: 400 },
+                )
+              : Response.json({
+                  id: "chat-test",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "ok" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 1, completion_tokens: 1 },
+                });
+          },
+        });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: { ...current, models: [{ ...current.models[0]!, id: "gpt-6.1-sol" }] },
+          },
+        });
+        yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: ["gpt-6.1-sol"] },
+          },
+        });
+        const response = yield* h.invoke("/v1/messages", {
+          model: "gpt-6.1-sol",
+          max_tokens: 32000,
+          output_config: { effort: "ultra" },
+          thinking: { type: "adaptive" },
+          messages: [{ role: "user", content: "hi" }],
+        });
+        expect(response.status).toBe(200);
+        expect(h.calls).toHaveLength(1);
+        const body = h.calls[0]!.body;
+        if (body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+        expect(JSON.parse(new TextDecoder().decode(body.body))).toMatchObject({
+          model: "gpt-6.1-sol",
+          reasoning_effort: "max",
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { toolCount: 13, stream: false },
+    { toolCount: 90, stream: false },
+    { toolCount: 13, stream: true },
+    { toolCount: 90, stream: true },
+  ])(
+    "preserves recorded Claude tool payload sizes with ultra (tools: $toolCount, stream: $stream)",
+    ({ toolCount, stream }) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "claudeAgent",
+          respond: (request) => {
+            const raw = request.body;
+            if (raw._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+            const body = JSON.parse(new TextDecoder().decode(raw.body));
+            expect(body.reasoning_effort).toBe("max");
+            expect(body.service_tier).toBe("priority");
+            expect(body.max_completion_tokens).toBe(32000);
+            expect(body.tools).toHaveLength(toolCount);
+            expect(body.tools[0]).toEqual({
+              type: "function",
+              function: {
+                name: "Read",
+                description: "Read a test fixture",
+                parameters: {
+                  type: "object",
+                  properties: { path: { type: "string" } },
+                  required: ["path"],
+                  additionalProperties: false,
+                },
+              },
+            });
+            expect(body.messages).toMatchObject([
+              { role: "system" },
+              { role: "user" },
+              {
+                role: "assistant",
+                tool_calls: [{ id: "call_fixture", function: { name: "Read" } }],
+              },
+              { role: "tool", tool_call_id: "call_fixture", content: "fixture result" },
+            ]);
+            return stream
+              ? new Response(
+                  'data: {"id":"offline","model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"role":"assistant","content":"verified"},"finish_reason":null}]}\n\n' +
+                    'data: {"id":"offline","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\n' +
+                    "data: [DONE]\n\n",
+                  { headers: { "content-type": "text/event-stream" } },
+                )
+              : Response.json({
+                  id: "offline",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "verified" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 1, completion_tokens: 1 },
+                });
+          },
+        });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: { ...current, models: [{ ...current.models[0]!, id: "gpt-6.1-sol" }] },
+          },
+        });
+        yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: ["gpt-6.1-sol"] },
+          },
+        });
+        const response = yield* h.invoke("/v1/messages", {
+          model: "gpt-6.1-sol",
+          max_tokens: 32000,
+          output_config: { effort: "ultra" },
+          thinking: { type: "adaptive", display: "summarized" },
+          context_management: { edits: [{ type: "clear_thinking_20251015", keep: "all" }] },
+          service_tier: "priority",
+          stream,
+          system: [{ type: "text", text: "Fixture instructions" }],
+          tools: Array.from({ length: toolCount }, (_, index) => ({
+            name: index === 0 ? "Read" : `FixtureTool_${index}`,
+            description: "Read a test fixture",
+            input_schema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+              additionalProperties: false,
+            },
+          })),
+          messages: [
+            { role: "user", content: "hi" },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_fixture",
+                  name: "Read",
+                  input: { path: "fixture.txt" },
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                { type: "tool_result", tool_use_id: "call_fixture", content: "fixture result" },
+              ],
+            },
+          ],
+        });
+        expect(response.status).toBe(200);
+        expect(response.text).toContain("verified");
+        expect(response.text).toContain(stream ? "message_stop" : "end_turn");
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "reports the recorded rejection reason when an upstream omits its parameter field",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "pi",
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  message:
+                    "Invalid value: 'ultra'. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'. (request id: private-upstream-id)",
+                  type: "openai_error",
+                  param: "",
+                  code: "unknown_error",
+                },
+              },
+              { status: 400 },
+            ),
+        });
+        const result = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          reasoning_effort: "ultra",
+          messages: [],
+        });
+        expect(result.status).toBe(400);
+        expect(result.text).toContain("parameter: reasoning_effort");
+        expect(result.text).toContain("unsupported effort; allowed maximum: max");
+        expect(result.text).not.toContain("private-upstream-id");
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["codex", "pi"])(
+    "normalizes GPT ultra for %s independently of protocol conversion",
+    (driver) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        const protocol = driver === "codex" ? "openai-responses" : "openai-chat";
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...current,
+              protocols: [protocol],
+              models: [{ ...current.models[0]!, id: "gpt-6.1-sol" }],
+            },
+          },
+        });
+        yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: ["gpt-6.1-sol"] },
+          },
+        });
+        yield* h.invoke(driver === "codex" ? "/v1/responses" : "/v1/chat/completions", {
+          model: "gpt-6.1-sol",
+          ...(driver === "codex"
+            ? { reasoning: { effort: "ultra", summary: "detailed" }, input: "hello" }
+            : { reasoning_effort: "ultra", messages: [{ role: "user", content: "hello" }] }),
+        });
+        const raw = h.calls[0]!.body;
+        if (raw._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+        expect(JSON.parse(new TextDecoder().decode(raw.body))).toMatchObject(
+          driver === "codex"
+            ? { reasoning: { effort: "max", summary: "detailed" } }
+            : { reasoning_effort: "max" },
+        );
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { driver: "codex", protocol: "openai-chat" as const },
+    { driver: "codex", protocol: "openai-responses" as const },
+    { driver: "claudeAgent", protocol: "openai-chat" as const },
+    { driver: "claudeAgent", protocol: "openai-responses" as const },
+  ])(
+    "activates native Codex Ultra or Claude Ultracode and compiles the correct wire effort for $driver to $protocol",
+    ({ driver, protocol }) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver,
+          respond: () =>
+            protocol === "openai-responses"
+              ? Response.json({
+                  id: "response-ultra",
+                  object: "response",
+                  model: "gpt-6.1-sol",
+                  status: "completed",
+                  output: [
+                    {
+                      id: "message-ultra",
+                      type: "message",
+                      role: "assistant",
+                      content: [{ type: "output_text", text: "Ultra verified", annotations: [] }],
+                    },
+                  ],
+                  usage: { input_tokens: 1, output_tokens: 1 },
+                })
+              : Response.json({
+                  id: "chat-ultra",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "Ultra verified" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 1, completion_tokens: 1 },
+                }),
+        });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        const levelId = driver === "codex" ? "reasoningEffort" : "effort";
+        const mode = driver === "codex" ? "ultra" : "ultracode";
+        const selection = createModelSelection(instanceId, "gpt-6.1-sol", [
+          { id: levelId, value: mode },
+        ]);
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...current,
+              protocols: [protocol],
+              models: [
+                {
+                  ...current.models[0]!,
+                  id: selection.model,
+                  capabilities: {
+                    optionDescriptors: [
+                      {
+                        id: "reasoningEffort",
+                        label: "Reasoning",
+                        type: "select",
+                        options: [
+                          { id: "xhigh", label: "Extra High" },
+                          { id: "max", label: "Max" },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        });
+        const bound = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: [selection.model], defaultModel: selection.model },
+          },
+        });
+        let body: Record<string, unknown>;
+        if (driver === "codex") {
+          const params = yield* buildCodexTurnStartParams({
+            nativeThreadId: "native-ultra",
+            codexInput: [{ type: "text", text: "Verify Ultra" }],
+            runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+            modelSelection: selection,
+          });
+          expect(params.effort).toBe("ultra");
+          body = {
+            model: params.model,
+            input: "Verify Ultra",
+            reasoning: { effort: params.effort },
+          };
+        } else {
+          const settings = decodeClaudeSettings(bound[instanceId]!.config);
+          const catalog = resolveClaudeModelServiceCatalog(settings.customModels, selection.model);
+          const options = makeClaudeQueryOptions({
+            modelSelection: selection,
+            modelCatalog: catalog,
+            nativeThreadId: "native-ultra",
+            resume: false,
+            cwd: null,
+            environment: {},
+          });
+          expect(options.effort).toBe("xhigh");
+          expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+          const extraBody = JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!);
+          expect(extraBody.output_config.effort).toBe("xhigh");
+          body = {
+            model: options.model,
+            max_tokens: 32000,
+            messages: [{ role: "user", content: "Verify Ultra" }],
+            thinking: { type: "adaptive" },
+            ...extraBody,
+          };
+        }
+        const response = yield* h.invoke(
+          driver === "codex" ? "/v1/responses" : "/v1/messages",
+          body,
+        );
+        expect(response.status).toBe(200);
+        expect(response.text).toContain("Ultra verified");
+        expect(selection.options).toEqual([{ id: levelId, value: mode }]);
+        expect(h.calls).toHaveLength(1);
+        const raw = h.calls[0]!.body;
+        if (raw._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+        expect(JSON.parse(new TextDecoder().decode(raw.body))).toMatchObject(
+          protocol === "openai-chat"
+            ? { reasoning_effort: driver === "codex" ? "max" : "xhigh" }
+            : { reasoning: { effort: driver === "codex" ? "max" : "xhigh" } },
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
     "uses a completion-token limit for Claude requests converted to a GPT reasoning model",
     () =>
       Effect.gen(function* () {
@@ -643,7 +1053,7 @@ it.layer(layer)("model service gateway", (it) => {
         const body = h.calls[0]!.body;
         if (body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
         const sent = JSON.parse(new TextDecoder().decode(body.body));
-        expect(sent).toMatchObject({ max_completion_tokens: 32000, reasoning_effort: "ultra" });
+        expect(sent).toMatchObject({ max_completion_tokens: 32000, reasoning_effort: "max" });
         expect(sent.max_tokens).toBeUndefined();
         expect(h.calls).toHaveLength(1);
       }).pipe(Effect.scoped),

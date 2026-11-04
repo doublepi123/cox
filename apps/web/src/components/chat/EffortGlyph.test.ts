@@ -29,6 +29,16 @@ describe("resolveEffortGlyph", () => {
     expect(resolveEffortGlyph(claude, "max")?.special).toBe("Max");
   });
 
+  it("keeps Ultra named when ordinary effort levels use bars", () => {
+    const service = descriptor(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(resolveEffortGlyph(service, "ultra")).toEqual({
+      count: 4,
+      filled: 4,
+      special: "Ultra",
+      label: "Ultra",
+    });
+  });
+
   it("names Ultracode and Ultrathink instead of drawing a level", () => {
     expect(resolveEffortGlyph(claude, "ultracode")?.special).toBe("Ultracode");
     expect(resolveEffortGlyph(claude, "ultrathink")?.special).toBe("Ultrathink");

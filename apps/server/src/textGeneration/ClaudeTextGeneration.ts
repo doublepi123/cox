@@ -174,7 +174,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       disableAllHooks: true,
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
       ...(fastMode ? { fastMode: true } : {}),
-      ...(compiledSelection.settings.ultracode ? { ultracode: true } : {}),
+      ...(compiledSelection.settings.ultracode ? { ultracode: true, enableWorkflows: true } : {}),
       ...(requestEnvironment === undefined ? {} : { env: requestEnvironment }),
     };
     const settingsJson = yield* encodeJsonForOperation(

@@ -38,6 +38,40 @@ export function createModelCapabilities(input: ModelCapabilities): ModelCapabili
   };
 }
 
+export function withCodexUltraCapabilities(capabilities: ModelCapabilities): ModelCapabilities;
+export function withCodexUltraCapabilities(
+  capabilities: ModelCapabilities | null,
+): ModelCapabilities | null;
+export function withCodexUltraCapabilities(
+  capabilities: ModelCapabilities | null,
+): ModelCapabilities | null {
+  const descriptors = capabilities?.optionDescriptors;
+  if (!descriptors) return capabilities;
+  const effort = descriptors.find(
+    (descriptor) => descriptor.id === "reasoningEffort" && descriptor.type === "select",
+  );
+  if (effort?.type !== "select" || effort.options.some((option) => option.id === "ultra")) {
+    return capabilities;
+  }
+  const maxIndex = effort.options.findIndex((option) => option.id === "max");
+  if (maxIndex === -1) return capabilities;
+  return {
+    ...capabilities,
+    optionDescriptors: descriptors.map((descriptor) =>
+      descriptor === effort
+        ? {
+            ...effort,
+            options: [
+              ...effort.options.slice(0, maxIndex + 1),
+              { id: "ultra", label: "Ultra", description: "Enable Codex Ultra mode" },
+              ...effort.options.slice(maxIndex + 1),
+            ],
+          }
+        : descriptor,
+    ),
+  };
+}
+
 function getRawSelectionValueById(
   selections: ReadonlyArray<ProviderOptionSelection> | null | undefined,
   id: string,
@@ -150,6 +184,13 @@ function resolveDescriptorChoiceValue(
   }
   if (descriptor.options.some((option) => option.id === trimmed)) {
     return trimmed;
+  }
+  if (
+    descriptor.id === "effort" &&
+    trimmed === "ultra" &&
+    descriptor.options.some((option) => option.id === "ultracode")
+  ) {
+    return "ultracode";
   }
   return descriptor.currentValue ?? descriptor.options.find((option) => option.isDefault)?.id;
 }

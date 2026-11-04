@@ -42,7 +42,8 @@ export function compileClaudeModelSelection(
   const rawEffort = getModelSelectionStringOptionValue(selection, "effort");
   const resolvedEffort = resolveClaudeCatalogEffort(catalog, selection.model, rawEffort);
   const effort = normalizeClaudeCatalogEffort(catalog, resolvedEffort, selection.model);
-  const nativeEffort = catalog.source === "model-service" ? undefined : effort;
+  const ultracode = isClaudeCatalogUltracodeEffort(resolvedEffort);
+  const nativeEffort = catalog.source === "model-service" && !ultracode ? undefined : effort;
   const requestEffort = catalog.source === "model-service" ? effort : undefined;
   const tier = getProviderOptionCurrentValue(
     getProviderOptionDescriptors({
@@ -61,7 +62,7 @@ export function compileClaudeModelSelection(
   const settings = {
     ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
     ...(typeof fastMode === "boolean" ? { fastMode } : {}),
-    ...(isClaudeCatalogUltracodeEffort(resolvedEffort) ? { ultracode: true } : {}),
+    ...(ultracode ? { ultracode: true, enableWorkflows: true } : {}),
   };
   const apiModelId = resolveClaudeCatalogApiModelId(catalog, selection);
   const contextWindowTokens = capabilities.contextWindow;

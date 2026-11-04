@@ -13,6 +13,8 @@ import {
   resolveClaudeModelSlug,
   resolveClaudeUpdateRequiredModels,
   scopeClaudeModelCatalog,
+  BUNDLED_CLAUDE_MODEL_CATALOG,
+  resolveClaudeModelServiceCatalog,
 } from "./ClaudeModelCatalog.ts";
 
 const manifest = (): ModelManifestData => ({
@@ -69,6 +71,78 @@ const catalogFromManifest = (data: ModelManifestData) =>
   resolveClaudeModelCatalog(resolveProviderCatalog(data, CLAUDE) ?? undefined);
 
 describe("Claude model catalog", () => {
+  it("keeps native Ultracode distinct from an Ultra to max alias", () => {
+    const catalog = BUNDLED_CLAUDE_MODEL_CATALOG;
+    for (const entry of catalog.models) {
+      const effort = entry.model.capabilities?.optionDescriptors?.find(
+        (descriptor) => descriptor.id === "effort" && descriptor.type === "select",
+      );
+      if (effort?.type !== "select") continue;
+      assert.equal(
+        effort.options.some((option) => option.id === "ultra"),
+        false,
+      );
+      if (!effort.options.some((option) => option.id === "ultracode")) continue;
+      assert.equal(normalizeClaudeCatalogEffort(catalog, "ultracode", entry.model.slug), "xhigh");
+      assert.equal(resolveClaudeCatalogEffort(catalog, entry.model.slug, "ultracode"), "ultracode");
+    }
+    const declared = [{ id: "ultra", label: "Vendor Ultra", isDefault: true }];
+    const bound = resolveClaudeModelServiceCatalog([
+      {
+        slug: "Vendor/Exact",
+        capabilities: {
+          optionDescriptors: [
+            { id: "effort", label: "Reasoning", type: "select", options: declared },
+          ],
+        },
+      },
+    ]);
+    assert.equal(normalizeClaudeCatalogEffort(bound, "ultra", "Vendor/Exact"), "ultra");
+    assert.deepEqual(bound.models[0]?.model.capabilities?.optionDescriptors?.[0], {
+      id: "effort",
+      label: "Reasoning",
+      type: "select",
+      options: declared,
+    });
+  });
+
+  it("does not override explicit native Ultra declarations or a disabled maximum", () => {
+    const source = manifest();
+    const original = source.providers!.claudeAgent!;
+    for (const effortMap of [{ ultra: "xhigh" }, { max: null }] as const) {
+      const catalog = catalogFromManifest({
+        ...source,
+        providers: {
+          claudeAgent: {
+            ...original,
+            profiles: {
+              synthetic: {
+                capabilities: {
+                  optionDescriptors: [
+                    {
+                      id: "effort",
+                      label: "Reasoning",
+                      type: "select",
+                      options: [{ id: "max", label: "Max", isDefault: true }],
+                    },
+                  ],
+                },
+                adapter: { claudeCode: { effortMap } },
+              },
+            },
+          },
+        },
+      });
+      const descriptor = catalog.models[0]?.model.capabilities?.optionDescriptors?.[0];
+      assert.deepEqual(descriptor, {
+        id: "effort",
+        label: "Reasoning",
+        type: "select",
+        options: [{ id: "max", label: "Max", isDefault: true }],
+      });
+    }
+  });
+
   it("uses saved context limits for custom and overridden catalog models", () => {
     const catalog = scopeClaudeModelCatalog(catalogFromManifest(manifest()), [
       { slug: "custom-context", capabilities: { contextWindow: 123000, supportsImages: false } },

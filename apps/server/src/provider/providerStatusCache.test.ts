@@ -32,6 +32,38 @@ const makeProvider = (
 });
 
 it.layer(NodeServices.layer)("providerStatusCache", (it) => {
+  it("supplements Ultra in cached max-capable Codex models before the first probe", () => {
+    const fallback = makeProvider(CODEX_DRIVER, { installed: false, models: [] });
+    const cached = makeProvider(CODEX_DRIVER, {
+      models: [
+        {
+          slug: "vendor-model",
+          name: "Vendor",
+          isCustom: false,
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select",
+                options: [{ id: "max", label: "Max", isDefault: true }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const hydrated = hydrateCachedProvider({ fallbackProvider: fallback, cachedProvider: cached });
+    assert.deepEqual(hydrated.models[0]?.capabilities?.optionDescriptors?.[0], {
+      id: "reasoningEffort",
+      label: "Reasoning",
+      type: "select",
+      options: [
+        { id: "max", label: "Max", isDefault: true },
+        { id: "ultra", label: "Ultra", description: "Enable Codex Ultra mode" },
+      ],
+    });
+  });
   it("hydrates cached provider status while preserving current settings-derived models", () => {
     const cachedCodex = makeProvider(CODEX_DRIVER, {
       checkedAt: "2026-04-10T12:00:00.000Z",

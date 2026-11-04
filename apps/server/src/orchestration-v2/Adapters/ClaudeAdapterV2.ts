@@ -1455,6 +1455,7 @@ function claudeLiveSelectionFlagSettings(
       : { effortLevel: selection.nativeEffort as EffortLevel }),
     fastMode: selection.settings.fastMode ?? null,
     ultracode: selection.settings.ultracode ?? null,
+    ...(selection.settings.enableWorkflows === true ? { enableWorkflows: true } : {}),
   };
 }
 

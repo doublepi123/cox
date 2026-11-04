@@ -6,7 +6,7 @@ import type {
   ModelServiceProtocol,
   ServerProviderModel,
 } from "@t3tools/contracts";
-import { readCustomModelEntries } from "./model.ts";
+import { readCustomModelEntries, withCodexUltraCapabilities } from "./model.ts";
 
 export const MODEL_SERVICE_AGENT_DRIVERS = ["codex", "claudeAgent", "pi", "opencode"] as const;
 
@@ -100,13 +100,29 @@ export function modelServiceAgentCapabilities(
             : [];
         })
       : [];
-  return {
+  const workflow = driver === "claudeAgent" && options.some((option) => option.id === "xhigh");
+  const workflowOptions = workflow ? options.filter((option) => option.id !== "ultra") : options;
+  if (workflow && !workflowOptions.some((option) => option.id === "ultracode")) {
+    workflowOptions.push({
+      id: "ultracode",
+      label: "Ultracode",
+      description: "xhigh effort plus native Claude Code workflow orchestration",
+      ...(options.some((option) => option.id === "ultra" && option.isDefault)
+        ? { isDefault: true }
+        : {}),
+    });
+  }
+  const currentValue =
+    descriptor?.type === "select" && workflow && descriptor.currentValue === "ultra"
+      ? "ultracode"
+      : descriptor?.currentValue;
+  const mapped: ModelCapabilities = {
     ...capabilities,
     ...(capabilities.optionDescriptors === undefined
       ? {}
       : {
           optionDescriptors: [
-            ...(options.length
+            ...(workflowOptions.length
               ? [
                   {
                     id:
@@ -117,11 +133,10 @@ export function modelServiceAgentCapabilities(
                           : "reasoningEffort",
                     label: "Reasoning",
                     type: "select" as const,
-                    options,
-                    ...(descriptor?.type === "select" &&
-                    descriptor.currentValue !== undefined &&
-                    options.some((option) => option.id === descriptor.currentValue)
-                      ? { currentValue: descriptor.currentValue }
+                    options: workflowOptions,
+                    ...(typeof currentValue === "string" &&
+                    workflowOptions.some((option) => option.id === currentValue)
+                      ? { currentValue }
                       : {}),
                   },
                 ]
@@ -139,4 +154,5 @@ export function modelServiceAgentCapabilities(
           ],
         }),
   };
+  return driver === "codex" ? withCodexUltraCapabilities(mapped) : mapped;
 }

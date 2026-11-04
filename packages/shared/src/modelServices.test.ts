@@ -119,7 +119,7 @@ describe("central model settings", () => {
     );
   });
 
-  it("maps only reported reasoning levels into each agent's supported controls", () => {
+  it("maps reported reasoning controls and adds Codex Ultra when max is supported", () => {
     const capabilities = {
       contextWindow: 64000,
       optionDescriptors: [
@@ -133,7 +133,10 @@ describe("central model settings", () => {
     };
     expect(
       modelServiceAgentCapabilities("codex", capabilities)?.optionDescriptors?.[0],
-    ).toMatchObject({ id: "reasoningEffort", options: capabilities.optionDescriptors[0]!.options });
+    ).toMatchObject({
+      id: "reasoningEffort",
+      options: [{ id: "none" }, { id: "high" }, { id: "max" }, { id: "ultra" }, { id: "unknown" }],
+    });
     expect(
       modelServiceAgentCapabilities("claudeAgent", capabilities)?.optionDescriptors?.[0],
     ).toMatchObject({ id: "effort", options: capabilities.optionDescriptors[0]!.options });
@@ -146,7 +149,7 @@ describe("central model settings", () => {
     });
   });
 
-  it("preserves reported Codex reasoning levels without adding unreported levels", () => {
+  it("preserves reported Codex Ultra metadata without adding duplicates", () => {
     const options = [
       { id: "max", label: "Maximum", description: "Maximum effort" },
       { id: "ultra", label: "Ultra", isDefault: true },
@@ -164,6 +167,41 @@ describe("central model settings", () => {
         ],
       })?.optionDescriptors,
     ).toEqual([]);
+  });
+
+  it("exposes a real Claude Ultracode workflow choice for service models with xhigh", () => {
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          currentValue: "ultra",
+          options: [
+            { id: "high", label: "High" },
+            { id: "xhigh", label: "Extra High" },
+            { id: "max", label: "Maximum" },
+            { id: "ultra", label: "Old Ultra", isDefault: true },
+          ],
+        },
+      ],
+    };
+    const mapped = modelServiceAgentCapabilities("claudeAgent", capabilities);
+    expect(mapped?.optionDescriptors?.[0]).toMatchObject({
+      id: "effort",
+      currentValue: "ultracode",
+      options: [
+        { id: "high" },
+        { id: "xhigh" },
+        { id: "max" },
+        { id: "ultracode", label: "Ultracode", isDefault: true },
+      ],
+    });
+    expect(modelServiceAgentCapabilities("claudeAgent", mapped!)?.optionDescriptors).toEqual(
+      mapped?.optionDescriptors,
+    );
+    expect(capabilities.optionDescriptors[0]?.currentValue).toBe("ultra");
+    expect(capabilities.optionDescriptors[0]?.options.at(-1)?.id).toBe("ultra");
   });
 
   it("preserves Claude service reasoning choices, defaults and current values", () => {

@@ -47,6 +47,7 @@ import {
   latestProviderVersionCacheKeys,
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import type { ProviderSnapshotSource } from "./builtInProviderCatalog.ts";
+import { withCodexUltraCapabilities } from "@t3tools/shared/model";
 
 export type ProviderMaintenanceActionKind = "update";
 
@@ -270,18 +271,33 @@ export const mergeProviderSnapshot = (
   nextProvider: ServerProvider,
 ): ServerProvider => {
   if (!previousProvider) {
-    return nextProvider;
+    return nextProvider.driver === "codex"
+      ? {
+          ...nextProvider,
+          models: nextProvider.models.map((model) => ({
+            ...model,
+            capabilities: withCodexUltraCapabilities(model.capabilities),
+          })),
+        }
+      : nextProvider;
   }
   const savedAccount = carrySavedAntigravityAccount(previousProvider, nextProvider);
   const { message: _uncheckedMessage, ...nextWithoutMessage } = nextProvider;
+  const models =
+    nextProvider.modelCatalogSource === "model-service" ||
+    previousProvider.modelCatalogSource === "model-service"
+      ? nextProvider.models
+      : mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models);
   return {
     ...(savedAccount?.status === "ready" ? nextWithoutMessage : nextProvider),
     ...savedAccount,
     models:
-      nextProvider.modelCatalogSource === "model-service" ||
-      previousProvider.modelCatalogSource === "model-service"
-        ? nextProvider.models
-        : mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models),
+      nextProvider.driver === "codex"
+        ? models.map((model) => ({
+            ...model,
+            capabilities: withCodexUltraCapabilities(model.capabilities),
+          }))
+        : models,
     ...(nextProvider.workspaceSnapshots !== undefined
       ? { workspaceSnapshots: nextProvider.workspaceSnapshots }
       : previousProvider.workspaceSnapshots !== undefined

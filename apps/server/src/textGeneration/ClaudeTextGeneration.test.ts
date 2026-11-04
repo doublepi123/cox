@@ -23,6 +23,7 @@ import { sanitizeThreadTitle } from "@t3tools/provider-core/server/textGeneratio
 import { makeClaudeTextGeneration } from "./ClaudeTextGeneration.ts";
 import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
 import {
+  BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeModelServiceCatalog,
   type ClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
@@ -217,6 +218,28 @@ function withFakeClaudeEnv<A, E, R>(
 }
 
 it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
+  it.effect("enables native Claude Ultracode workflows instead of aliasing Ultra to max", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({ structured_output: { title: "Native Ultra" } }),
+        modelCatalog: BUNDLED_CLAUDE_MODEL_CATALOG,
+        argsMustContain:
+          '--model claude-opus-5-5 --effort xhigh --settings {"disableAllHooks":true,"ultracode":true,"enableWorkflows":true}',
+        argsMustNotContain: "--effort ultra ",
+      },
+      (textGeneration) =>
+        textGeneration.generateThreadTitle({
+          cwd: process.cwd(),
+          message: "Test native Ultra",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "claude-opus-5-5",
+            options: [{ id: "effort", value: "ultracode" }],
+          },
+        }),
+    ),
+  );
+
   it.effect("passes service Fast routing to text generation without native Claude Fast flags", () =>
     withFakeClaudeEnv(
       {

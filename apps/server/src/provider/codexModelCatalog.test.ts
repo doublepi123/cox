@@ -50,6 +50,29 @@ const draft = (version: string | null, models: ReadonlyArray<ServerProviderModel
 });
 
 describe("applyCodexModelCatalog", () => {
+  it("supplements Ultra after native and catalog capabilities have been merged", () => {
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          options: [{ id: "max", label: "Maximum", isDefault: true }],
+        },
+      ],
+    };
+    const result = applyCodexModelCatalog(
+      draft("1.2.0", [model({ slug: "vendor/exact", capabilities })]),
+      undefined,
+    );
+    assert.deepEqual(result.models[0]?.capabilities?.optionDescriptors?.[0], {
+      ...capabilities.optionDescriptors[0]!,
+      options: [
+        { id: "max", label: "Maximum", isDefault: true },
+        { id: "ultra", label: "Ultra", description: "Enable Codex Ultra mode" },
+      ],
+    });
+  });
   it("names current models that need a newer Codex and are missing from discovery", () => {
     assert.deepStrictEqual(applyCodexModelCatalog(draft("1.1.9"), catalog).updateRequiredModels, [
       { slug: "gpt-next", name: "GPT Next", badge: "new", minVersion: "1.2.0" },

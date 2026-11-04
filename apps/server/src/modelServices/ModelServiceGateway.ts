@@ -27,6 +27,7 @@ import * as ServerConfig from "../config.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
 import { makeModelServiceSseParser } from "./sse.ts";
+import { modelServiceRequestBody } from "./requestCompatibility.ts";
 import { ChildProcessSpawner } from "effect/process";
 import {
   HttpClient,
@@ -484,7 +485,7 @@ export const make = Effect.gen(function* () {
       headers["anthropic-beta"] = request.headers["anthropic-beta"];
     const outgoing = yield* HttpClientRequest.bodyJson(
       HttpClientRequest.post(upstreamUrl.href).pipe(HttpClientRequest.setHeaders(headers)),
-      bridge ? bridge.body : body,
+      modelServiceRequestBody(protocol, selected.id, bridge ? record(bridge.body) : body),
     );
     const response = yield* http
       .execute(outgoing)
@@ -514,8 +515,15 @@ export const make = Effect.gen(function* () {
         ),
       );
       const error = record(rejected.error);
-      const parameter =
-        typeof error.param === "string"
+      const unsupportedUltra =
+        protocol === "openai-chat" &&
+        typeof error.message === "string" &&
+        /^Invalid value: 'ultra'\. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'\.(?: \(request id: [A-Za-z0-9_-]+\))?$/.test(
+          error.message,
+        );
+      const parameter = unsupportedUltra
+        ? "reasoning_effort"
+        : typeof error.param === "string"
           ? /^(model|max_tokens|max_completion_tokens|reasoning_effort|service_tier|thinking|output_config|tools|messages)(?:\.|\[|$)/.exec(
               error.param,
             )?.[1]
@@ -534,6 +542,7 @@ export const make = Effect.gen(function* () {
       const details = [
         parameter ? `parameter: ${parameter}` : undefined,
         code ? `code: ${code}` : undefined,
+        unsupportedUltra ? "unsupported effort; allowed maximum: max" : undefined,
       ].filter(Boolean);
       return HttpServerResponse.jsonUnsafe(
         {

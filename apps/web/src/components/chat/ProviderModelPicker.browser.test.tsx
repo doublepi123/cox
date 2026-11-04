@@ -6,8 +6,13 @@ import {
   type ProviderOptionSelection,
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { modelServiceAgentCapabilities } from "@t3tools/shared/modelServices";
 import { getAppModelOptionsForInstance } from "../../modelSelection";
-import { ComposerEffortColumn, ComposerPickerFooter } from "./ComposerModelEffort";
+import {
+  ComposerEffortColumn,
+  ComposerPickerFooter,
+  describeComposerEffort,
+} from "./ComposerModelEffort";
 import { runtimeModeConfig } from "./runtimeModeConfig";
 import { useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
@@ -19,29 +24,57 @@ import { render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 
-it.each(["codex", "claudeAgent"])(
-  "shows service models and an actionable Fast tier for %s",
-  async (kind) => {
+it.each([
+  { kind: "codex", width: 320 },
+  { kind: "claudeAgent", width: 320 },
+  { kind: "codex", width: 1024 },
+  { kind: "claudeAgent", width: 1024 },
+])(
+  "offers native Codex Ultra or Claude Ultracode and retains Fast routing for $kind at $width px",
+  async ({ kind, width }) => {
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    await using _viewport = {
+      async [Symbol.asyncDispose]() {
+        await page.viewport(viewport.width, viewport.height);
+      },
+    };
+    await page.viewport(width, 812);
     const instanceId = ProviderInstanceId.make(`${kind}-service`);
     const driver = ProviderDriverKind.make(kind);
+    const effortId = kind === "codex" ? "reasoningEffort" : "effort";
+    const mode = kind === "codex" ? "ultra" : "ultracode";
+    const modeLabel = kind === "codex" ? "Ultra" : "Ultracode";
     const models = [
       {
         slug: "gpt-6.1-sol",
         name: "Service model",
         isCustom: true,
-        capabilities: {
-          optionDescriptors: [
-            {
-              id: "serviceTier",
-              label: "Service Tier",
-              type: "select" as const,
-              options: [
-                { id: "default", label: "Standard", isDefault: true },
-                { id: "priority", label: "Fast" },
-              ],
-            },
-          ],
-        },
+        capabilities:
+          modelServiceAgentCapabilities(kind, {
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select" as const,
+                options: [
+                  { id: "low", label: "Low" },
+                  { id: "medium", label: "Medium" },
+                  { id: "high", label: "High", isDefault: true },
+                  { id: "xhigh", label: "Extra High" },
+                  { id: "max", label: "Max" },
+                ],
+              },
+              {
+                id: "serviceTier",
+                label: "Service Tier",
+                type: "select" as const,
+                options: [
+                  { id: "default", label: "Standard", isDefault: true },
+                  { id: "priority", label: "Fast" },
+                ],
+              },
+            ],
+          }) ?? null,
       },
     ];
     const entries = deriveProviderInstanceEntries([
@@ -82,10 +115,14 @@ it.each(["codex", "claudeAgent"])(
         planModeEnabled: false,
         onModelOptionsChange: setModelOptions,
       };
+      const display = describeComposerEffort(traits, "bars", "sm");
       return (
         <>
           <output aria-label="Selected service tier">
             {modelOptions?.find((option) => option.id === "serviceTier")?.value ?? "default"}
+          </output>
+          <output aria-label="Selected effort">
+            {modelOptions?.find((option) => option.id === effortId)?.value ?? "high"}
           </output>
           <ProviderModelPicker
             environmentId={null}
@@ -95,6 +132,8 @@ it.each(["codex", "claudeAgent"])(
             instanceEntries={entries}
             modelOptionsByInstance={new Map([[instanceId, options]])}
             triggerAriaLabel="Choose model"
+            triggerSuffix={display.suffix}
+            triggerDetail={display.detail}
             onInstanceModelChange={() => {}}
             effortColumn={<ComposerEffortColumn traits={traits} />}
             footer={
@@ -110,12 +149,32 @@ it.each(["codex", "claudeAgent"])(
       );
     }
     await using screen = await render(<Picker />);
-    await screen.getByRole("button", { name: "Choose model" }).click();
+    await screen.getByRole("button", { name: /^Choose model/ }).click();
     await expect.element(page.getByRole("option", { name: /Service model/ })).toBeVisible();
+    await page.getByRole("radio", { name: modeLabel, exact: true }).click();
+    await expect
+      .element(screen.getByRole("status", { name: "Selected effort" }))
+      .toHaveTextContent(mode);
+    await expect
+      .element(page.getByRole("radio", { name: modeLabel, exact: true }))
+      .toHaveAttribute("aria-checked", "true");
     await page.getByRole("radio", { name: "Fast", exact: true }).click();
     await expect
       .element(screen.getByRole("status", { name: "Selected service tier" }))
       .toHaveTextContent("priority");
+    await expect
+      .element(page.getByRole("radio", { name: "Fast", exact: true }))
+      .toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Escape}");
+    await expect
+      .element(
+        screen.getByRole("button", { name: /^Choose model/ }).getByText(modeLabel, { exact: true }),
+      )
+      .toBeVisible();
+    await screen.getByRole("button", { name: /^Choose model/ }).click();
+    await expect
+      .element(page.getByRole("radio", { name: modeLabel, exact: true }))
+      .toHaveAttribute("aria-checked", "true");
     await expect
       .element(page.getByRole("radio", { name: "Fast", exact: true }))
       .toHaveAttribute("aria-checked", "true");

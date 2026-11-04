@@ -21,6 +21,42 @@ const snapshot: ServerProvider = {
 };
 
 describe("gateway models", () => {
+  it.effect("supplements Codex Ultra after manual max-only gateway capabilities are merged", () =>
+    Effect.gen(function* () {
+      const http = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(request, Response.json({ data: [{ id: "vendor/exact" }] })),
+        ),
+      );
+      const gateway = yield* makeGatewayModels({
+        instanceId,
+        driver: codex,
+        baseUrl: "https://gateway.test/v1",
+        customModels: [
+          {
+            slug: "vendor/exact",
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "reasoningEffort",
+                  label: "Reasoning",
+                  type: "select",
+                  currentValue: "max",
+                  options: [{ id: "max", label: "Maximum", isDefault: true }],
+                },
+              ],
+            },
+          },
+        ],
+      }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+      const result = yield* gateway.apply(snapshot);
+      expect(result.models[0]?.capabilities?.optionDescriptors?.[0]).toMatchObject({
+        currentValue: "max",
+        options: [{ id: "max", isDefault: true }, { id: "ultra" }],
+      });
+    }),
+  );
+
   it("imports only explicitly advertised service tiers and their defaults", () => {
     expect(
       parseGatewayModel(

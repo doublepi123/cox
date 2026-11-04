@@ -1,7 +1,7 @@
 import type { ServerProviderUpdateRequiredModel } from "@t3tools/contracts";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
-import { codexModelFamily } from "@t3tools/shared/model";
+import { codexModelFamily, withCodexUltraCapabilities } from "@t3tools/shared/model";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -44,8 +44,13 @@ export function applyCodexModelCatalog(
   catalog: ModelCatalog.ProviderCatalog | undefined,
 ): ServerProviderDraft {
   const updateRequiredModels = codexUpdateRequiredModels(catalog, draft);
+  const applied = ModelCatalog.applyModelCatalog(draft, catalog, CODEX_MATCHING);
   return {
-    ...ModelCatalog.applyModelCatalog(draft, catalog, CODEX_MATCHING),
+    ...applied,
+    models: applied.models.map((model) => ({
+      ...model,
+      capabilities: withCodexUltraCapabilities(model.capabilities),
+    })),
     ...(updateRequiredModels.length > 0 ? { updateRequiredModels } : {}),
   };
 }

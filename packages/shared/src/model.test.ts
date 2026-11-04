@@ -13,6 +13,7 @@ import {
   readCustomModelEntries,
   toCustomModelSetting,
   modelSelectionsEqual,
+  withCodexUltraCapabilities,
 } from "./model.ts";
 
 const codexCaps: ModelCapabilities = createModelCapabilities({
@@ -36,6 +37,83 @@ const codexCaps: ModelCapabilities = createModelCapabilities({
 });
 
 describe("descriptor helpers", () => {
+  it("restores legacy Claude Ultra selections as Ultracode instead of dropping them to a default", () => {
+    const descriptors = getProviderOptionDescriptors({
+      caps: {
+        optionDescriptors: [
+          {
+            id: "effort",
+            label: "Reasoning",
+            type: "select",
+            options: [
+              { id: "high", label: "High", isDefault: true },
+              { id: "ultracode", label: "Ultracode" },
+            ],
+          },
+        ],
+      },
+      selections: [{ id: "effort", value: "ultra" }],
+    });
+    expect(descriptors[0]?.currentValue).toBe("ultracode");
+    expect(
+      buildExplicitProviderOptionSelectionsFromDescriptors(descriptors, [
+        { id: "effort", value: "ultra" },
+      ]),
+    ).toEqual([{ id: "effort", value: "ultracode" }]);
+  });
+
+  it("adds Codex Ultra after max without changing defaults, current values or unrelated controls", () => {
+    const input: ModelCapabilities = {
+      contextWindow: 64000,
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          currentValue: "max",
+          options: [
+            { id: "low", label: "Low" },
+            { id: "max", label: "Maximum", isDefault: true, description: "Kept" },
+            { id: "vendor", label: "Vendor" },
+          ],
+        },
+        { id: "fastMode", label: "Fast", type: "boolean", currentValue: false },
+      ],
+    };
+    const output = withCodexUltraCapabilities(input);
+    const effort = output.optionDescriptors?.[0];
+    expect(effort).toMatchObject({ id: "reasoningEffort", currentValue: "max" });
+    expect(effort?.type === "select" ? effort.options : []).toEqual([
+      { id: "low", label: "Low" },
+      { id: "max", label: "Maximum", isDefault: true, description: "Kept" },
+      { id: "ultra", label: "Ultra", description: "Enable Codex Ultra mode" },
+      { id: "vendor", label: "Vendor" },
+    ]);
+    expect(output.optionDescriptors?.[1]).toBe(input.optionDescriptors?.[1]);
+    expect(input.optionDescriptors?.[0]).not.toEqual(effort);
+    expect(withCodexUltraCapabilities(output)).toBe(output);
+  });
+
+  it("does not add Ultra to an undeclared maximum or duplicate an explicitly configured Ultra", () => {
+    for (const options of [
+      [],
+      [{ id: "high", label: "High" }],
+      [{ id: "ultra", label: "Custom Ultra", isDefault: true }],
+    ]) {
+      const input: ModelCapabilities = {
+        optionDescriptors: [{ id: "reasoningEffort", label: "Reasoning", type: "select", options }],
+      };
+      expect(withCodexUltraCapabilities(input)).toBe(input);
+    }
+    const input: ModelCapabilities = {
+      optionDescriptors: [
+        { id: "effort", label: "Effort", type: "select", options: [{ id: "max", label: "Max" }] },
+      ],
+    };
+    expect(withCodexUltraCapabilities(input)).toBe(input);
+    expect(withCodexUltraCapabilities(null)).toBeNull();
+  });
+
   it("builds dispatch options only from explicit selections", () => {
     const descriptors = getProviderOptionDescriptors({
       caps: codexCaps,

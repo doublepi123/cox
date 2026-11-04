@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.31 — 2026-11-04
+
+- Automatically offer native Codex Ultra for every model declaring a Max reasoning level,
+  including model-center, custom and cached catalogs. Preserve explicit model capabilities,
+  defaults and saved selections while enabling Codex's native Ultra mode.
+- Enable real Claude Code Ultracode workflows, including model-center models declaring
+  xhigh. Pass the native workflow settings and xhigh effort instead of aliasing Ultra to
+  Max; retain compatible saved selections and show Ultracode distinctly in the composer.
+- Normalize unsupported GPT Ultra wire values to Max after model-service protocol
+  conversion for OpenAI Chat Completions and Responses. Preserve unrelated vendor efforts
+  and expose only safe, allowlisted diagnostics for the confirmed HTTP 400 rejection.
+- Cover model catalogs, native provider requests, workflow selection, protocol conversions
+  and saved composer state. Verify actual Codex Ultra and Claude Ultracode workflow events
+  against isolated loopback endpoints without paid inference or live application data.
+
 ## 0.1.30 — 2026-11-04
 
 - Add a Queue / Steer preference menu beside the model picker in the composer footer.

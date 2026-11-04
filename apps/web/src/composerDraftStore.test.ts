@@ -1713,6 +1713,40 @@ describe("composerDraftStore modelSelection", () => {
     ).toEqual(modelSelection(CODEX_DRIVER, "gpt-5.4", { reasoningEffort: "xhigh" }));
   });
 
+  it.each([
+    { driver: CODEX_DRIVER, optionId: "reasoningEffort", mode: "ultra" },
+    { driver: CLAUDE_AGENT_DRIVER, optionId: "effort", mode: "ultracode" },
+  ])(
+    "persists $mode as the selected mode for $driver without changing it to the wire value",
+    ({ driver, optionId, mode }) => {
+      const store = useComposerDraftStore.getState();
+      const instanceId = ProviderInstanceId.make(`${driver}-ultra`);
+      const selection = createModelSelection(instanceId, "gpt-6.1-sol", [
+        { id: optionId, value: mode },
+      ]);
+      store.setProviderModelOptions(threadRef, driver, selection.options, {
+        instanceId,
+        model: selection.model,
+        persistSticky: true,
+      });
+      const current = useComposerDraftStore.getState();
+      expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.modelSelectionByProvider[instanceId]).toEqual(
+        selection,
+      );
+      expect(current.stickyModelSelectionByProvider[instanceId]).toEqual(selection);
+      expect(current.stickyOptionsByModelByProvider[instanceId]?.[selection.model]).toEqual(
+        selection.options,
+      );
+      const persisted = partializeComposerDraftStoreState(current);
+      expect(
+        persisted.draftsByThreadKey[scopedThreadKey(threadRef)]?.modelSelectionByProvider?.[
+          instanceId
+        ],
+      ).toEqual(selection);
+      expect(persisted.stickyModelSelectionByProvider?.[instanceId]).toEqual(selection);
+    },
+  );
+
   it("stores provider option changes on a selected custom instance", () => {
     const store = useComposerDraftStore.getState();
 

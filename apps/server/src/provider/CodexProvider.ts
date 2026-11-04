@@ -33,6 +33,7 @@ import {
   codexModelFamily,
   createModelCapabilities,
   formatCodexModelName,
+  withCodexUltraCapabilities,
 } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import { codexAppServerArgs, resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
@@ -242,9 +243,11 @@ export function mapCodexModelCapabilities(
     });
   }
 
-  return createModelCapabilities({
-    optionDescriptors,
-  });
+  return withCodexUltraCapabilities(
+    createModelCapabilities({
+      optionDescriptors,
+    }),
+  );
 }
 
 function parseCodexModelListResponse(
@@ -321,7 +324,10 @@ function appendCustomCodexModels(
   customModels: ReadonlyArray<CustomModelSetting>,
 ): ReadonlyArray<ServerProviderModel> {
   const fallbackCapabilities = models.find((model) => model.capabilities)?.capabilities ?? null;
-  return providerModelsFromSettings(models, customModels, fallbackCapabilities);
+  return providerModelsFromSettings(models, customModels, fallbackCapabilities).map((model) => ({
+    ...model,
+    capabilities: withCodexUltraCapabilities(model.capabilities),
+  }));
 }
 
 function parseCodexSkillsListResponse(

@@ -59,6 +59,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { codexGatewayRuntime, hasGatewayConfiguration } from "../gatewayConfiguration.ts";
 import { makeGatewayModels } from "../GatewayModels.ts";
 import { modelServiceProviderModels } from "@t3tools/shared/modelServices";
+import { withCodexUltraCapabilities } from "@t3tools/shared/model";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -197,7 +198,10 @@ export const CodexDriver: ProviderDriver<
       continuationGroupKey: continuationIdentity.continuationKey,
     });
     const boundModels = modelService
-      ? modelServiceProviderModels(config.customModels, modelService.defaultModel)
+      ? modelServiceProviderModels(config.customModels, modelService.defaultModel).map((model) => ({
+          ...model,
+          capabilities: withCodexUltraCapabilities(model.capabilities),
+        }))
       : undefined;
     const stampSnapshot = (draft: Parameters<typeof stampIdentity>[0]): ServerProvider =>
       stampIdentity(

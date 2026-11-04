@@ -15,6 +15,7 @@ import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ProviderDriverError } from "./Errors.ts";
 import { gatewayBaseUrl } from "./gatewayConfiguration.ts";
+import { withCodexUltraCapabilities } from "@t3tools/shared/model";
 
 class GatewayModelDiscoveryError extends Schema.TaggedError<GatewayModelDiscoveryError>()(
   "GatewayModelDiscoveryError",
@@ -231,6 +232,10 @@ export const makeGatewayModels = Effect.fn("makeGatewayModels")(function* (input
           (yield* Ref.get(models)) ?? [],
           input.customModels,
           null,
+        ).map((model) =>
+          input.driver === "codex"
+            ? { ...model, capabilities: withCodexUltraCapabilities(model.capabilities) }
+            : model,
         ),
       };
     }),

@@ -11,6 +11,7 @@ import {
   resolveClaudeModelServiceCatalog,
   scopeClaudeModelCatalog,
 } from "./provider/ClaudeModelCatalog.ts";
+import { makeClaudeQueryOptions } from "./orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 
 const selection = (
   model: string,
@@ -22,6 +23,73 @@ const selection = (
 });
 
 describe("compileClaudeModelSelection", () => {
+  it("compiles native Claude Ultracode as a workflow mode rather than an Ultra to max alias", () => {
+    const selected = selection("claude-opus-5-5", [{ id: "effort", value: "ultracode" }]);
+    const compiled = compileClaudeModelSelection(selected);
+    expect(compiled).toMatchObject({
+      effort: "xhigh",
+      nativeEffort: "xhigh",
+      requestEffort: undefined,
+    });
+    expect(compiled.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+    expect(selected.options).toEqual([{ id: "effort", value: "ultracode" }]);
+    const options = makeClaudeQueryOptions({
+      modelSelection: selected,
+      nativeThreadId: "native-claude-ultra",
+      resume: false,
+      cwd: null,
+    });
+    expect(options.effort).toBe("xhigh");
+    expect(options.env?.CLAUDE_CODE_EXTRA_BODY).toBeUndefined();
+    expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+  });
+
+  it.each(["ultracode", "ultra"])(
+    "enables real Claude workflows for service selection %s and sends a valid reasoning level",
+    (mode) => {
+      const catalog = resolveClaudeModelServiceCatalog([
+        {
+          slug: "gpt-6.1-sol",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "high", label: "High" },
+                  { id: "xhigh", label: "Extra High" },
+                  { id: "max", label: "Max" },
+                  { id: "ultra", label: "Old Ultra", isDefault: true },
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+      const selected = selection("gpt-6.1-sol", [{ id: "effort", value: mode }]);
+      const compiled = compileClaudeModelSelection(selected, catalog);
+      expect(compiled).toMatchObject({
+        nativeEffort: "xhigh",
+        requestEffort: "xhigh",
+        settings: { ultracode: true, enableWorkflows: true },
+      });
+      const options = makeClaudeQueryOptions({
+        modelSelection: selected,
+        modelCatalog: catalog,
+        nativeThreadId: "bound-workflow",
+        resume: false,
+        cwd: null,
+      });
+      expect(options.effort).toBe("xhigh");
+      expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+      expect(JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!)).toEqual({
+        output_config: { effort: "xhigh" },
+      });
+      expect(selected.options?.[0]?.value).toBe(mode);
+    },
+  );
+
   it("passes service-tier selections through extra body without turning on Claude native Fast", () => {
     const catalog = resolveClaudeModelServiceCatalog([
       {

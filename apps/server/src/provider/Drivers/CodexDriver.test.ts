@@ -129,7 +129,22 @@ it.layer(layerTest)("CodexDriver", (it) => {
             ...CodexDriver.defaultConfig(),
             baseUrl: "http://127.0.0.1:9/v1",
             apiKey: "test-only",
-            customModels: ["vendor/first", "vendor/second"],
+            customModels: [
+              {
+                slug: "vendor/first",
+                capabilities: {
+                  optionDescriptors: [
+                    {
+                      id: "reasoningEffort",
+                      label: "Reasoning",
+                      type: "select",
+                      options: [{ id: "max", label: "Maximum", isDefault: true }],
+                    },
+                  ],
+                },
+              },
+              "vendor/second",
+            ],
           },
         }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
         for (const refresh of [false, true]) {
@@ -142,6 +157,10 @@ it.layer(layerTest)("CodexDriver", (it) => {
             ["vendor/first", false, false],
             ["vendor/second", false, true],
           ]);
+          expect(snapshot.models[0]?.capabilities?.optionDescriptors?.[0]).toMatchObject({
+            id: "reasoningEffort",
+            options: [{ id: "max", isDefault: true }, { id: "ultra" }],
+          });
         }
       }).pipe(Effect.scoped),
   );

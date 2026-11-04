@@ -10,6 +10,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
+import { withCodexUltraCapabilities } from "@t3tools/shared/model";
 
 const decodeProviderStatusCache = Schema.decodeUnknownEffect(
   Schema.fromJsonString(ServerProviderSchema),
@@ -91,6 +92,16 @@ export const hydrateCachedProvider = (input: {
     slashCommands: input.cachedProvider.slashCommands,
     skills: input.cachedProvider.skills,
   };
+  if (hydratedProvider.driver === "codex") {
+    return {
+      ...hydratedProvider,
+      models: hydratedProvider.models.map((model) => ({
+        ...model,
+        capabilities: withCodexUltraCapabilities(model.capabilities),
+      })),
+      ...(input.cachedProvider.message ? { message: input.cachedProvider.message } : {}),
+    };
+  }
 
   return input.cachedProvider.message
     ? { ...hydratedProvider, message: input.cachedProvider.message }

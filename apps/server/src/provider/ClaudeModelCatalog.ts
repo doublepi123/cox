@@ -25,6 +25,7 @@ import {
 } from "./ClaudeModelManifest.ts";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import { BUNDLED_MODEL_MANIFEST, resolveProviderCatalog } from "./ModelManifest.ts";
+import { modelServiceAgentCapabilities } from "@t3tools/shared/modelServices";
 
 const CLAUDE = ProviderDriverKind.make("claudeAgent");
 const EMPTY_CAPABILITIES: ModelCapabilities = { optionDescriptors: [] };
@@ -82,15 +83,27 @@ export function resolveClaudeModelServiceCatalog(
   customModels: ReadonlyArray<CustomModelSetting>,
   defaultModel?: string,
 ): ClaudeModelCatalog {
-  const models = providerModelsFromSettings([], customModels, null);
+  const models = providerModelsFromSettings([], customModels, null).map((model) => ({
+    ...model,
+    capabilities: modelServiceAgentCapabilities("claudeAgent", model.capabilities) ?? null,
+  }));
   const selected = models.find((model) => model.slug === defaultModel)?.slug ?? models[0]?.slug;
   return {
     source: "model-service",
     models: models.map((model) => ({
       model: { ...model, isCustom: false, isDefault: model.slug === selected },
-      runtime: model.capabilities?.contextWindow
-        ? { fixedContextWindowTokens: model.capabilities.contextWindow }
-        : {},
+      runtime: {
+        ...(model.capabilities?.contextWindow
+          ? { fixedContextWindowTokens: model.capabilities.contextWindow }
+          : {}),
+        ...(model.capabilities?.optionDescriptors?.some(
+          (descriptor) =>
+            descriptor.type === "select" &&
+            descriptor.options.some((option) => option.id === "ultracode"),
+        )
+          ? { effortMap: { ultracode: "xhigh" } }
+          : {}),
+      },
       compatibility: {},
     })),
   };

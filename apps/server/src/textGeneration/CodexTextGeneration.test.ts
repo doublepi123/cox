@@ -196,6 +196,26 @@ function withFakeCodexEnv<A, E, R>(
 }
 
 it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
+  it.effect("keeps Ultra selected when invoking native Codex for text generation", () =>
+    withFakeCodexEnv(
+      {
+        output: JSON.stringify({ title: "Ultra title" }),
+        requireReasoningEffort: "ultra",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const result = yield* textGeneration.generateThreadTitle({
+            cwd: process.cwd(),
+            message: "Name this thread",
+            modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-6.1-sol", [
+              { id: "reasoningEffort", value: "ultra" },
+            ]),
+          });
+          expect(result.title).toBe("Ultra title");
+        }),
+    ),
+  );
+
   it.effect.each(["exec", "mcp list"] as const)(
     "kills a stalled %s CLI when its request is interrupted",
     (command) =>

@@ -2,6 +2,36 @@ import { assert, it } from "@effect/vitest";
 
 import { applyPreferredCodexDefaultModel, mapCodexModelCapabilities } from "./CodexProvider.ts";
 
+it.each(["gpt-test", "qwen-model", "vendor/exact"])(
+  "adds native Codex Ultra when %s supports max",
+  (model) => {
+    const capabilities = mapCodexModelCapabilities({
+      id: model,
+      model,
+      displayName: model,
+      description: "Test",
+      hidden: false,
+      isDefault: false,
+      defaultReasoningEffort: "max",
+      supportedReasoningEfforts: [
+        { reasoningEffort: "high", description: "High" },
+        { reasoningEffort: "max", description: "Maximum" },
+      ],
+    });
+    assert.deepEqual(capabilities.optionDescriptors?.[0], {
+      id: "reasoningEffort",
+      label: "Reasoning",
+      currentValue: "max",
+      type: "select",
+      options: [
+        { id: "high", label: "High" },
+        { id: "max", label: "Max", isDefault: true },
+        { id: "ultra", label: "Ultra", description: "Enable Codex Ultra mode" },
+      ],
+    });
+  },
+);
+
 it("maps current Codex model capability fields", () => {
   const capabilities = mapCodexModelCapabilities({
     additionalSpeedTiers: [],
