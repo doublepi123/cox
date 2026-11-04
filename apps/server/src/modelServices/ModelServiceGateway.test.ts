@@ -16,10 +16,14 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { make } from "./ModelServiceGateway.ts";
+import { resolveClaudeModelServiceCatalog } from "../provider/ClaudeModelCatalog.ts";
+import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
+import { ClaudeSettings } from "@t3tools/contracts";
 
 const serviceId = ModelServiceId.make("shared-test");
 const instanceId = ProviderInstanceId.make("bound-test");
 const decodeService = Schema.decodeSync(ModelServiceConfig);
+const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 const service = decodeService({
   name: "Shared test",
   baseUrl: "https://upstream.test/v1",
@@ -203,6 +207,78 @@ it.layer(layer)("model service gateway", (it) => {
           403,
         );
         expect(h.calls).toEqual([]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "keeps ultra from Claude's bound catalog through Messages-to-Chat protocol conversion",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "claudeAgent" });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...current,
+              models: [
+                {
+                  ...current.models[0]!,
+                  capabilities: {
+                    optionDescriptors: [
+                      {
+                        id: "reasoningEffort",
+                        label: "Reasoning",
+                        type: "select",
+                        options: [
+                          { id: "high", label: "High" },
+                          { id: "ultra", label: "Ultra", isDefault: true },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        });
+        const materialized = yield* h.gateway.materialize(
+          yield* h.settings.getSettings,
+          h.instances,
+        );
+        const settings = decodeClaudeSettings(materialized[instanceId]!.config);
+        const catalog = resolveClaudeModelServiceCatalog(settings.customModels, "Vendor/Exact");
+        expect(catalog.models[0]?.model.capabilities?.optionDescriptors?.[0]).toMatchObject({
+          id: "effort",
+          options: [{ id: "high" }, { id: "ultra", isDefault: true }],
+        });
+        const options = makeClaudeQueryOptions({
+          modelSelection: {
+            instanceId,
+            model: "Vendor/Exact",
+            options: [{ id: "effort", value: "ultra" }],
+          },
+          modelCatalog: catalog,
+          nativeThreadId: "service-gateway-test",
+          resume: false,
+          cwd: null,
+          environment: {},
+        });
+        expect(options.effort).toBeUndefined();
+        const response = yield* h.invoke("/v1/messages", {
+          model: options.model,
+          max_tokens: 100,
+          messages: [{ role: "user", content: "hello" }],
+          thinking: { type: "adaptive" },
+          ...JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!),
+        });
+        expect(response.status).toBe(200);
+        expect(h.calls).toHaveLength(1);
+        const body = h.calls[0]!.body;
+        if (body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+        expect(JSON.parse(new TextDecoder().decode(body.body))).toMatchObject({
+          model: "Vendor/Exact",
+          reasoning_effort: "ultra",
+        });
       }).pipe(Effect.scoped),
   );
 

@@ -123,7 +123,7 @@ const makeHarness = Effect.fn("providerInstallation.test.makeHarness")(function*
 });
 
 describe("provider installation routing", () => {
-  it.effect.each(["grok", "claudeAgent"] as const)(
+  it.effect.each(["grok", "claudeAgent", "pi", "opencode"] as const)(
     "routes %s installation and cancellation to the selected instance",
     (driverKind) =>
       Effect.gen(function* () {

@@ -16,17 +16,17 @@ import {
 } from "@t3tools/provider-core/server/textGenerationUtils";
 import {
   getModelSelectionBooleanOptionValue,
-  getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
+import {
+  claudeRequestEffortEnvironment,
+  compileClaudeModelSelection,
+} from "../claudeModelOptions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,
   getClaudeCatalogModelCapabilities,
-  isClaudeCatalogUltracodeEffort,
-  normalizeClaudeCatalogEffort,
   resolveClaudeCatalogApiModelId,
-  resolveClaudeCatalogEffort,
   resolveClaudeModelSlug,
   scopeClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
@@ -153,18 +153,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       selections: resolvedModelSelection.options,
     });
     const findDescriptor = (id: string) => descriptors.find((descriptor) => descriptor.id === id);
-    const rawEffortSelection = getModelSelectionStringOptionValue(resolvedModelSelection, "effort");
-    const resolvedEffort = resolveClaudeCatalogEffort(
-      catalog,
-      resolvedModelSelection.model,
-      rawEffortSelection,
+    const compiledSelection = compileClaudeModelSelection(resolvedModelSelection, catalog);
+    const requestEnvironment = claudeRequestEffortEnvironment(
+      compiledSelection.requestEffort,
+      claudeEnvironment.CLAUDE_CODE_EXTRA_BODY,
     );
-    const cliEffort = normalizeClaudeCatalogEffort(
-      catalog,
-      resolvedEffort,
-      resolvedModelSelection.model,
-    );
-    const ultracode = isClaudeCatalogUltracodeEffort(resolvedEffort);
+    const environment = { ...claudeEnvironment, ...requestEnvironment };
+    const cliEffort = compiledSelection.nativeEffort;
     const thinkingDescriptor = findDescriptor("thinking");
     const fastModeDescriptor = findDescriptor("fastMode");
     // Only a chosen value; otherwise Claude Code's own default applies, as in chat turns.
@@ -178,7 +173,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       disableAllHooks: true,
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
       ...(fastMode ? { fastMode: true } : {}),
-      ...(ultracode ? { ultracode: true } : {}),
+      ...(compiledSelection.settings.ultracode ? { ultracode: true } : {}),
+      ...(requestEnvironment === undefined ? {} : { env: requestEnvironment }),
     };
     const settingsJson = yield* encodeJsonForOperation(
       operation,
@@ -238,10 +234,10 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--permission-mode",
           "dontAsk",
         ],
-        { env: claudeEnvironment },
+        { env: environment },
       );
       const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        env: claudeEnvironment,
+        env: environment,
         cwd: workingDirectory,
         shell: spawnCommand.shell,
         stdin: {

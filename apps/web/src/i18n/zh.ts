@@ -1,4 +1,36 @@
 export const zh = {
+  "Preparing OpenCode setup…": "正在准备 OpenCode 接入设置…",
+  "Installing OpenCode…": "正在安装 OpenCode…",
+  "OpenCode {version} is installed.": "已安装 OpenCode {version}。",
+  "Install the official OpenCode V2 CLI.": "安装官方 OpenCode V2 CLI。",
+  "OpenCode setup": "OpenCode 接入设置",
+  "OpenCode CLI": "OpenCode CLI",
+  "Enable OpenCode": "启用 OpenCode",
+  "Install OpenCode": "安装 OpenCode",
+  "Update OpenCode": "更新 OpenCode",
+  "Uses the custom OpenCode binary path below.": "使用下方配置的 OpenCode 可执行文件路径。",
+  "Using your existing OpenCode CLI.": "正在使用本机已有的 OpenCode CLI。",
+  "Cox installs OpenCode in its own tools directory.": "Cox 将 OpenCode 安装到自己的工具目录。",
+  "OpenCode model access": "OpenCode 模型接入",
+  "Bind a model service above, or use the installed executable with auth login to configure OpenCode providers. Existing OpenCode credentials and projects are kept.":
+    "在上方绑定模型服务，或使用安装后的可执行文件运行 auth login 配置 OpenCode 模型提供商。现有 OpenCode 凭据和项目会保留。",
+  "OpenCode service": "OpenCode 服务",
+  "Using the configured OpenCode server. Local CLI installation is not required.":
+    "使用已配置的 OpenCode 服务，无需安装本地 CLI。",
+  "Could not install OpenCode. Check your connection and Node.js/npm installation, then retry.":
+    "无法安装 OpenCode。请检查网络连接以及 Node.js/npm 安装情况后重试。",
+  "OpenCode installation cancelled.": "OpenCode 安装已取消。",
+  "Clear the custom binary path before installing OpenCode in Cox.":
+    "请先清空自定义可执行文件路径，再由 Cox 安装 OpenCode。",
+  "Clear the server URL before installing a local OpenCode CLI in Cox.":
+    "请先清空服务地址，再由 Cox 安装本地 OpenCode CLI。",
+  "OpenCode already uses a local installation. Update it with its existing installation method.":
+    "OpenCode 已使用本机已有的安装，请通过原安装方式更新。",
+  "Installing OpenCode requires Node.js and npm on PATH.":
+    "安装 OpenCode 需要 PATH 中可用的 Node.js 和 npm。",
+  "The downloaded OpenCode CLI did not report a supported V2 version. Retry installation.":
+    "下载的 OpenCode CLI 未返回支持的 V2 版本号，请重试安装。",
+  "Could not start OpenCode installation. Try again.": "无法开始安装 OpenCode，请重试。",
   "Preparing Claude Code setup…": "正在准备 Claude Code 接入设置…",
   "Installing Claude Code…": "正在安装 Claude Code…",
   "Claude Code {version} is installed.": "已安装 Claude Code {version}。",

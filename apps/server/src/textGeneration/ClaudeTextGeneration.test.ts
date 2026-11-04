@@ -22,6 +22,10 @@ import * as TextGeneration from "./TextGeneration.ts";
 import { sanitizeThreadTitle } from "@t3tools/provider-core/server/textGenerationUtils";
 import { makeClaudeTextGeneration } from "./ClaudeTextGeneration.ts";
 import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
+import {
+  resolveClaudeModelServiceCatalog,
+  type ClaudeModelCatalog,
+} from "../provider/ClaudeModelCatalog.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const layerClaudeTextGenerationTest = ServerConfig.ServerConfig.layerTest(process.cwd(), {
@@ -67,6 +71,7 @@ function withFakeClaudeEnv<A, E, R>(
     configDirMustBe?: string;
     cwdMustNotBe?: string;
     claudeConfig?: Partial<ClaudeSettings>;
+    modelCatalog?: ClaudeModelCatalog;
   },
   effectFn: (textGeneration: TextGeneration.TextGeneration["Service"]) => Effect.Effect<A, E, R>,
 ) {
@@ -205,13 +210,48 @@ function withFakeClaudeEnv<A, E, R>(
     const textGeneration = yield* makeClaudeTextGeneration(
       config,
       undefined,
-      Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
+      Effect.succeed(input.modelCatalog ?? SYNTHETIC_CLAUDE_MODEL_CATALOG),
     );
     return yield* effectFn(textGeneration);
   }).pipe(Effect.scoped);
 }
 
 it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
+  it.effect("passes service ultra effort to text generation without an unsupported CLI flag", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({ structured_output: { title: "Service effort" } }),
+        argsMustContain:
+          '--model service-model --settings {"disableAllHooks":true,"env":{"CLAUDE_CODE_EXTRA_BODY":"{\\"output_config\\":{\\"effort\\":\\"ultra\\"}}"}}',
+        argsMustNotContain: "--effort",
+        modelCatalog: resolveClaudeModelServiceCatalog([
+          {
+            slug: "service-model",
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Reasoning",
+                  type: "select",
+                  options: [{ id: "ultra", label: "Ultra", isDefault: true }],
+                },
+              ],
+            },
+          },
+        ]),
+      },
+      (textGeneration) =>
+        textGeneration.generateThreadTitle({
+          cwd: process.cwd(),
+          message: "Test service effort",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "service-model",
+          },
+        }),
+    ),
+  );
+
   it.effect(
     "keeps canonical built-in capabilities when a custom model collides with its alias",
     () =>

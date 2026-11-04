@@ -72,6 +72,25 @@ const create = (config: Partial<OpenCodeSettings>, http: HttpClient.HttpClient) 
 const noHttp = HttpClient.make(() => Effect.die("A local binary must not be probed over HTTP"));
 
 it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
+  it.effect("offers installation only for local instances without a custom executable", () =>
+    Effect.gen(function* () {
+      for (const [config, canInstall] of [
+        [{ enabled: false }, true],
+        [{ enabled: false, binaryPath: "/custom/opencode" }, false],
+        [{ enabled: false, serverUrl: "http://127.0.0.1:4096" }, false],
+      ] as const) {
+        const instance = yield* create(config, noHttp);
+        assert.isDefined(instance.installation);
+        const snapshot = yield* instance.snapshot.getSnapshot;
+        assert.deepEqual(snapshot.setup, {
+          canInstall,
+          canAuthenticate: false,
+          documentationUrl: "https://opencode.ai/v2/docs/",
+        });
+      }
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("never starts a 1.x server for an OpenCode 2 instance", () =>
     Effect.gen(function* () {
       serverStarts.length = 0;

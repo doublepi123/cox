@@ -23,6 +23,7 @@ import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { openCodeUsageReader, type OpenCodeUsageReaderEnv } from "./usage.ts";
 import { readOpenCodeGoUsageLimits } from "./usageLimits.ts";
 import { loadOpenCode2Catalog } from "./openCode2Catalog.ts";
+import { makeOpenCodeInstallation } from "./installation.ts";
 import {
   checkOpenCodeProviderStatus,
   loadOpenCode2Workspace,
@@ -194,7 +195,15 @@ export const OpenCodeDriver: ProviderDriver<
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const crypto = yield* Crypto.Crypto;
     const host = yield* ProviderHost.ProviderHost;
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const installation = yield* makeOpenCodeInstallation({
+      instanceId,
+      baseDir: host.paths.baseDir,
+      binaryPath: config.binaryPath,
+      serverUrl: config.serverUrl,
+      environment: yield* mergeProviderInstanceEnvironment(environment),
+      onChanged: Effect.suspend((): Effect.Effect<void> => snapshot.refresh.pipe(Effect.asVoid)),
+    });
+    const processEnv = installation.environment;
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -206,6 +215,15 @@ export const OpenCodeDriver: ProviderDriver<
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
+    const stampSnapshot: typeof stampIdentity = (draft) =>
+      stampIdentity({
+        ...draft,
+        setup: {
+          canInstall: installation.canInstall,
+          canAuthenticate: false,
+          documentationUrl: "https://opencode.ai/v2/docs/",
+        },
+      });
     const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
     const runtimeProbe = yield* makeOpenCodeRuntimeProbe(
       probeOpenCodeRuntime(effectiveConfig, processEnv).pipe(
@@ -227,7 +245,17 @@ export const OpenCodeDriver: ProviderDriver<
             : resolveProviderMaintenanceCapabilitiesEffect(openCodeUpdateFor(generation.value), {
                 binaryPath: effectiveConfig.binaryPath,
                 env: processEnv,
-              }),
+              }).pipe(
+                Effect.map((capabilities) =>
+                  capabilities.update?.executable === installation.executablePath
+                    ? makeManualOnlyProviderMaintenanceCapabilities({
+                        provider: DRIVER_KIND,
+                        packageName: "@opencode/cli",
+                        installPath: installation.executablePath,
+                      })
+                    : capabilities,
+                ),
+              ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -249,7 +277,10 @@ export const OpenCodeDriver: ProviderDriver<
       instanceId,
       displayName,
       accentColor,
-      environment,
+      environment: [
+        ...environment,
+        { name: installation.pathKey, value: processEnv[installation.pathKey]!, sensitive: false },
+      ],
       enabled,
       config,
     }).pipe(
@@ -355,7 +386,7 @@ export const OpenCodeDriver: ProviderDriver<
       { concurrency: "unbounded" },
     ).pipe(
       Effect.map(({ provider, usageLimits }) => ({ ...provider, usageLimits })),
-      Effect.map(stampIdentity),
+      Effect.map(stampSnapshot),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, pathService),
       Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -443,7 +474,7 @@ export const OpenCodeDriver: ProviderDriver<
         snapshot.status !== "ready" &&
         snapshot.auth.status === "unknown",
       initialSnapshot: (settings) =>
-        makePendingOpenCodeProvider(settings.provider).pipe(Effect.map(stampIdentity)),
+        makePendingOpenCodeProvider(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
       enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
         resolveMaintenance().pipe(
@@ -527,6 +558,7 @@ export const OpenCodeDriver: ProviderDriver<
             }),
       orchestrationAdapter,
       textGeneration,
+      installation,
     } satisfies ProviderInstance;
   }),
 };

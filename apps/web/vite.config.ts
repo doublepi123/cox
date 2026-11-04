@@ -108,6 +108,26 @@ const browserTestProject = {
         resetPointer: async ({ page }) => {
           await page.mouse.move(-1, -1);
         },
+        setImeComposition: async ({ page }, text: string) => {
+          const session = await page.context().newCDPSession(page);
+          try {
+            await session.send("Input.imeSetComposition", {
+              text,
+              selectionStart: text.length,
+              selectionEnd: text.length,
+            });
+          } finally {
+            await session.detach();
+          }
+        },
+        commitImeText: async ({ page }, text: string) => {
+          const session = await page.context().newCDPSession(page);
+          try {
+            await session.send("Input.insertText", { text });
+          } finally {
+            await session.detach();
+          }
+        },
       },
     },
   },

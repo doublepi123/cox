@@ -81,6 +81,7 @@ vi.mock(import("../../localApi"), async (original) => ({
 import { ProviderSetupSection } from "./ProviderSetupSection";
 import { GrokSetupSection } from "./GrokSetupSection";
 import { PiSetupSection } from "./PiSetupSection";
+import { OpenCodeSetupSection } from "./OpenCodeSetupSection";
 import { ClaudeSetupSection } from "./ClaudeSetupSection";
 import { setLanguagePreference } from "../../i18n";
 
@@ -560,6 +561,150 @@ describe("Pi setup", () => {
     expect(screen.container.textContent).toContain("Provider setup is read-only.");
     await expect
       .element(screen.getByRole("button", { name: "Install Pi", exact: true }))
+      .not.toBeInTheDocument();
+  });
+});
+
+function openCodeSection(patch: Partial<ServerProvider> = {}, readOnly = false) {
+  return (
+    <OpenCodeSetupSection
+      environmentId={environmentId}
+      instanceId={instanceId}
+      provider={{
+        ...provider,
+        driver: ProviderDriverKind.make("opencode"),
+        setup: { canInstall: true, canAuthenticate: false },
+        ...patch,
+      }}
+      enabled
+      readOnly={readOnly}
+      onEnable={vi.fn()}
+    />
+  );
+}
+
+describe("OpenCode setup", () => {
+  it("shows the install action in Chinese", async () => {
+    resetSetup();
+    using _locale = {
+      [Symbol.dispose]() {
+        setLanguagePreference("system");
+      },
+    };
+    setLanguagePreference("zh");
+    await using screen = await render(openCodeSection({ installed: false }));
+    await screen.getByRole("button", { name: "安装 OpenCode", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+  });
+
+  it("installs OpenCode for the selected instance before installation state arrives", async () => {
+    resetSetup();
+    setup.installation = null;
+    await using screen = await render(openCodeSection({ installed: false }));
+    await screen.getByRole("button", { name: "Install OpenCode", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+    expect(setup.authState).not.toHaveBeenCalled();
+    expect(screen.container.textContent).toContain("Existing OpenCode credentials");
+  });
+
+  it("cancels an installation and offers a retry after failure", async () => {
+    resetSetup();
+    setup.installation = {
+      ...setup.installation!,
+      driver: ProviderDriverKind.make("opencode"),
+      phase: "downloading",
+      operationId: "opencode-install-1",
+    };
+    await using screen = await render(openCodeSection({ installed: false }));
+    await screen.getByRole("button", { name: "Cancel installation", exact: true }).click();
+    expect(setup.cancelInstall).toHaveBeenCalledWith({
+      environmentId,
+      input: { instanceId, operationId: "opencode-install-1" },
+    });
+    setup.installation = {
+      ...setup.installation!,
+      phase: "failed",
+      message: "OpenCode installation failed",
+    };
+    await publish();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("OpenCode installation failed");
+    await screen.getByRole("button", { name: "Retry installation", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledOnce();
+  });
+
+  it("hides updates unless a newer managed version is confirmed", async () => {
+    resetSetup();
+    setup.installation = {
+      ...setup.installation!,
+      driver: ProviderDriverKind.make("opencode"),
+      installedVersion: "1.5.0",
+      source: "managed",
+    };
+    const advisory = {
+      status: "behind_latest" as const,
+      currentVersion: "1.5.0",
+      latestVersion: "1.5.1",
+      updateCommand: null,
+      canUpdate: false,
+      checkedAt: "2026-11-03T00:00:00.000Z",
+      message: null,
+    };
+    await using screen = await render(openCodeSection({ version: "1.5.0" }));
+    const update = screen.getByRole("button", { name: "Update OpenCode", exact: true });
+    await expect.element(update).not.toBeInTheDocument();
+    await screen.rerender(
+      openCodeSection({ versionAdvisory: { ...advisory, status: "unknown", latestVersion: null } }),
+    );
+    await expect.element(update).not.toBeInTheDocument();
+    await screen.rerender(openCodeSection({ versionAdvisory: advisory }));
+    await update.click();
+    expect(setup.startInstall).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+    await screen.rerender(
+      openCodeSection({
+        version: "1.5.1",
+        versionAdvisory: { ...advisory, status: "current", currentVersion: "1.5.1" },
+      }),
+    );
+    await expect.element(update).not.toBeInTheDocument();
+  });
+
+  it("respects custom binaries and read-only access", async () => {
+    resetSetup();
+    await using screen = await render(
+      openCodeSection({ installed: false, setup: { canInstall: false, canAuthenticate: false } }),
+    );
+    await expect
+      .element(screen.getByRole("button", { name: "Install OpenCode", exact: true }))
+      .not.toBeInTheDocument();
+    expect(screen.container.textContent).toContain("custom OpenCode binary");
+    await screen.rerender(openCodeSection({}, true));
+    expect(screen.container.textContent).toContain("Provider setup is read-only.");
+    await expect
+      .element(screen.getByRole("button", { name: "Install OpenCode", exact: true }))
+      .not.toBeInTheDocument();
+  });
+});
+
+describe("OpenCode external service", () => {
+  it("does not offer local installation for a configured service", async () => {
+    resetSetup();
+    await using screen = await render(
+      <OpenCodeSetupSection
+        environmentId={environmentId}
+        instanceId={instanceId}
+        provider={provider}
+        serverUrl="http://127.0.0.1:4096"
+        enabled
+        readOnly={false}
+        onEnable={vi.fn()}
+      />,
+    );
+    expect(screen.container.textContent).toContain("Local CLI installation is not required");
+    expect(setup.installState).not.toHaveBeenCalled();
+    await expect
+      .element(screen.getByRole("button", { name: "Install OpenCode", exact: true }))
       .not.toBeInTheDocument();
   });
 });

@@ -76,7 +76,7 @@ describe("central model settings", () => {
     ).toMatchObject({ id: "reasoningEffort", options: capabilities.optionDescriptors[0]!.options });
     expect(
       modelServiceAgentCapabilities("claudeAgent", capabilities)?.optionDescriptors?.[0],
-    ).toMatchObject({ id: "effort", options: [{ id: "high" }, { id: "max" }] });
+    ).toMatchObject({ id: "effort", options: capabilities.optionDescriptors[0]!.options });
     expect(modelServiceAgentCapabilities("pi", capabilities)?.optionDescriptors?.[0]).toMatchObject(
       { id: "thinking", options: [{ id: "off" }, { id: "high" }, { id: "max" }] },
     );
@@ -103,6 +103,32 @@ describe("central model settings", () => {
           { id: "reasoningEffort", label: "Reasoning", type: "select", options: [] },
         ],
       })?.optionDescriptors,
+    ).toEqual([]);
+  });
+
+  it("preserves Claude service reasoning choices, defaults and current values", () => {
+    const options = [
+      { id: "max", label: "Maximum", description: "Maximum effort" },
+      { id: "ultra", label: "Ultra", isDefault: true },
+      { id: "vendor-effort", label: "Vendor effort" },
+    ];
+    expect(
+      modelServiceAgentCapabilities("claudeAgent", {
+        optionDescriptors: [
+          {
+            id: "reasoningEffort",
+            label: "Reasoning",
+            type: "select",
+            currentValue: "ultra",
+            options,
+          },
+        ],
+      })?.optionDescriptors,
+    ).toEqual([
+      { id: "effort", label: "Reasoning", type: "select", currentValue: "ultra", options },
+    ]);
+    expect(
+      modelServiceAgentCapabilities("claudeAgent", { optionDescriptors: [] })?.optionDescriptors,
     ).toEqual([]);
   });
 });

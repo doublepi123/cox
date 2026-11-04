@@ -16,6 +16,7 @@ import {
 import { checkClaudeProviderStatus, makePendingClaudeProvider } from "./ClaudeProvider.ts";
 import { mergeProviderSnapshot } from "./ProviderRegistry.ts";
 import { hydrateCachedProvider } from "./providerStatusCache.ts";
+import { modelServiceAgentCapabilities } from "@t3tools/shared/modelServices";
 
 const customModels = [
   { slug: "vendor/unknown", name: "Unknown metadata" },
@@ -34,6 +35,73 @@ const settings = Schema.decodeSync(ClaudeSettings)({
 });
 
 it.layer(NodeServices.layer)("Claude model service", (it) => {
+  it.effect("keeps ultra in provider snapshots and supplies it without unsupported SDK flags", () =>
+    Effect.gen(function* () {
+      const capabilities = modelServiceAgentCapabilities("claudeAgent", {
+        contextWindow: 1000000,
+        optionDescriptors: [
+          {
+            id: "reasoningEffort",
+            label: "Reasoning",
+            type: "select",
+            currentValue: "ultra",
+            options: [
+              { id: "high", label: "High" },
+              { id: "ultra", label: "Ultra", isDefault: true },
+            ],
+          },
+        ],
+      })!;
+      const models = [{ slug: "gpt-service-model", capabilities }];
+      const catalog = resolveClaudeModelServiceCatalog(models);
+      const pending = yield* makePendingClaudeProvider(
+        { ...settings, customModels: models },
+        catalog,
+      );
+      assert.deepEqual(
+        pending.models[0]?.capabilities?.optionDescriptors,
+        capabilities.optionDescriptors,
+      );
+      for (const effort of ["high", "ultra"]) {
+        const options = makeClaudeQueryOptions({
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claude-service"),
+            model: "gpt-service-model",
+            options: [{ id: "effort", value: effort }],
+          },
+          modelCatalog: catalog,
+          nativeThreadId: "service-effort-thread",
+          resume: false,
+          cwd: "/workspace",
+          settings,
+          environment: { PATH: "/test/bin", CLAUDE_CODE_EXTRA_BODY: '{"process_setting":true}' },
+          sdkSettings: {
+            env: {
+              KEPT: "settings",
+              CLAUDE_CODE_EXTRA_BODY:
+                '{"metadata":{"source":"test"},"output_config":{"format":{"type":"json"}}}',
+            },
+          },
+        });
+        assert.isUndefined(options.effort);
+        assert.equal(options.env?.PATH, "/test/bin");
+        const extraBody = JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!);
+        assert.deepEqual(extraBody, {
+          metadata: { source: "test" },
+          output_config: { format: { type: "json" }, effort },
+        });
+        assert.isObject(options.settings);
+        if (typeof options.settings === "object") {
+          assert.equal(options.settings.env?.KEPT, "settings");
+          assert.equal(
+            options.settings.env?.CLAUDE_CODE_EXTRA_BODY,
+            options.env?.CLAUDE_CODE_EXTRA_BODY,
+          );
+        }
+      }
+    }),
+  );
+
   it.effect("replaces old models and metadata when binding, editing, or unbinding a service", () =>
     Effect.gen(function* () {
       const pending = yield* makePendingClaudeProvider(settings, catalog);

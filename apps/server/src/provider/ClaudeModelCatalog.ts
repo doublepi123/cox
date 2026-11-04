@@ -37,6 +37,7 @@ export interface ClaudeCatalogModel {
 
 export interface ClaudeModelCatalog {
   readonly models: ReadonlyArray<ClaudeCatalogModel>;
+  readonly source?: "model-service";
 }
 
 function tryResolveClaudeModelCatalog(
@@ -84,6 +85,7 @@ export function resolveClaudeModelServiceCatalog(
   const models = providerModelsFromSettings([], customModels, null);
   const selected = models.find((model) => model.slug === defaultModel)?.slug ?? models[0]?.slug;
   return {
+    source: "model-service",
     models: models.map((model) => ({
       model: { ...model, isCustom: false, isDefault: model.slug === selected },
       runtime: model.capabilities?.contextWindow
@@ -148,7 +150,7 @@ export function scopeClaudeModelCatalog(
     });
   }
 
-  return { models: [...builtInModels, ...customCatalogModels] };
+  return { ...catalog, models: [...builtInModels, ...customCatalogModels] };
 }
 
 function resolveClaudeCatalogModel(

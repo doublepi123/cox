@@ -11,7 +11,7 @@ import type { ServerProviderSkill } from "@t3tools/contracts";
 import type { Editor } from "@tiptap/core";
 import { createElement, createRef, useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { commands, userEvent } from "vite-plus/test/browser";
 
 import { act, fakeTimers, render } from "../../test/render";
 
@@ -28,6 +28,13 @@ const babysit: ServerProviderSkill = {
   path: "/skills/babysit/SKILL.md",
   enabled: true,
 };
+
+declare module "vite-plus/test/browser" {
+  interface BrowserCommands {
+    setImeComposition: (text: string) => Promise<void>;
+    commitImeText: (text: string) => Promise<void>;
+  }
+}
 
 function Composer({
   value,
@@ -300,6 +307,111 @@ it("defers an external draft replacement until composition ends", async () => {
     );
   });
   await vi.waitFor(() => expect(editor.view.dom.textContent).toBe("replacement"));
+});
+
+it.each([
+  { richTextEnabled: false, value: "" },
+  { richTextEnabled: true, value: "" },
+  { richTextEnabled: false, value: "前文 " },
+  { richTextEnabled: true, value: "前文 " },
+])(
+  "keeps native pinyin composition active through repeated Backspace (rich text: $richTextEnabled, prefix: '$value')",
+  async ({ richTextEnabled, value }) => {
+    await using screen = await mountEditor(value, richTextEnabled);
+    const { editor } = screen;
+    const compositionStart = vi.fn();
+    const compositionEnd = vi.fn();
+    editor.view.dom.addEventListener("compositionstart", compositionStart);
+    editor.view.dom.addEventListener("compositionend", compositionEnd);
+    await act(async () => editor.view.focus());
+    await commands.setImeComposition("nihao");
+    await vi.waitFor(() =>
+      expect(serializeEditorDoc(editor.state.doc).value).toBe(`${value}nihao`),
+    );
+    for (const text of ["niha", "nih", "ni", "n"]) {
+      const event = new KeyboardEvent("keydown", {
+        key: "Backspace",
+        code: "Backspace",
+        keyCode: 229,
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      editor.view.dom.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      await commands.setImeComposition(text);
+      await vi.waitFor(() =>
+        expect(serializeEditorDoc(editor.state.doc).value).toBe(`${value}${text}`),
+      );
+      expect(editor.view.dom.textContent).toBe(`${value}${text}`);
+      expect(editor.view.composing).toBe(true);
+      expect(compositionStart).toHaveBeenCalledOnce();
+      expect(compositionEnd).not.toHaveBeenCalled();
+    }
+    await commands.setImeComposition("nihao");
+    await commands.commitImeText("你好");
+    await vi.waitFor(() => expect(serializeEditorDoc(editor.state.doc).value).toBe(`${value}你好`));
+    expect(editor.view.composing).toBe(false);
+    expect(compositionEnd).toHaveBeenCalledOnce();
+    await userEvent.keyboard("{Backspace}{Backspace}");
+    await vi.waitFor(() => expect(serializeEditorDoc(editor.state.doc).value).toBe(value));
+  },
+);
+
+it.each([false, true])(
+  "can cancel native pinyin composition after deleting its final character (rich text: %s)",
+  async (richTextEnabled) => {
+    await using screen = await mountEditor("前文 ", richTextEnabled);
+    const { editor } = screen;
+    const compositionStart = vi.fn();
+    const compositionEnd = vi.fn();
+    editor.view.dom.addEventListener("compositionstart", compositionStart);
+    editor.view.dom.addEventListener("compositionend", compositionEnd);
+    await act(async () => editor.view.focus());
+    for (const text of ["ni", "n", ""]) {
+      await commands.setImeComposition(text);
+      await vi.waitFor(() =>
+        expect(serializeEditorDoc(editor.state.doc).value).toBe(`前文 ${text}`),
+      );
+    }
+    expect(editor.view.composing).toBe(false);
+    expect(compositionStart).toHaveBeenCalledOnce();
+    expect(compositionEnd).toHaveBeenCalledOnce();
+    await commands.setImeComposition("hao");
+    await commands.commitImeText("好");
+    await vi.waitFor(() => expect(serializeEditorDoc(editor.state.doc).value).toBe("前文 好"));
+  },
+);
+
+it("skips only inert transactions during composition", async () => {
+  await using screen = await mountEditor("nihao");
+  const { editor } = screen;
+  await act(async () => {
+    editor.view.focus();
+    editor.view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+  });
+  const onTransaction = vi.fn();
+  editor.on("transaction", onTransaction);
+  await act(async () => editor.view.dispatch(editor.state.tr));
+  expect(onTransaction).not.toHaveBeenCalled();
+  for (const buildTransaction of [
+    () => editor.state.tr.setMeta("addToHistory", false),
+    () => editor.state.tr.setSelection(editor.state.selection),
+    () => editor.state.tr.scrollIntoView(),
+    () => editor.state.tr.insertText("你好"),
+    () => editor.state.tr.setStoredMarks([]),
+  ]) {
+    const transaction = buildTransaction();
+    await act(async () => editor.view.dispatch(transaction));
+    expect(onTransaction).toHaveBeenCalledWith(expect.objectContaining({ transaction }));
+  }
+  await act(async () => {
+    editor.view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  });
+  onTransaction.mockClear();
+  const transaction = editor.state.tr;
+  await act(async () => editor.view.dispatch(transaction));
+  expect(onTransaction).toHaveBeenCalledWith(expect.objectContaining({ transaction }));
 });
 
 it("leaves IME fallback key events to the browser without running composer commands", async () => {

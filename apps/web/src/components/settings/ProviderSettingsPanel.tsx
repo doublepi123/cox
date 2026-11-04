@@ -97,6 +97,7 @@ import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetup
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { GrokSetupSection } from "./GrokSetupSection";
 import { PiSetupSection } from "./PiSetupSection";
+import { OpenCodeSetupSection } from "./OpenCodeSetupSection";
 import { ClaudeSetupSection } from "./ClaudeSetupSection";
 import { ModelServiceBindingSection } from "./ModelServiceBindingSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
@@ -149,9 +150,10 @@ const PROVIDER_SETTINGS = providerClients.definitions.map((definition) => ({
   hasDefaultInstance: definition.hasDefaultInstance !== false,
 }));
 
-function configuredBinaryPath(config: unknown): string {
-  if (config === null || typeof config !== "object" || !("binaryPath" in config)) return "";
-  return typeof config.binaryPath === "string" ? config.binaryPath.trim() : "";
+function configuredString(config: unknown, key: "binaryPath" | "serverUrl"): string {
+  if (config === null || typeof config !== "object" || !(key in config)) return "";
+  const value: unknown = Reflect.get(config, key);
+  return typeof value === "string" ? value.trim() : "";
 }
 
 // Subscribe only in the label because every status push restamps all providers' checkedAt.
@@ -1351,7 +1353,7 @@ function ProviderInstanceRow({
               environmentLabel={environmentLabel}
               instanceId={instanceId}
               provider={liveProvider}
-              binaryPath={configuredBinaryPath(instance.config)}
+              binaryPath={configuredString(instance.config, "binaryPath")}
               authMethod={readAntigravityAuthMethod(instance.config)}
               enabled={resolveProviderInstanceEnabled(instance)}
               readOnly={readOnly}
@@ -1381,6 +1383,16 @@ function ProviderInstanceRow({
               environmentId={environmentId}
               instanceId={instanceId}
               provider={liveProvider}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
+          ) : mode === "editor" && driver === "opencode" ? (
+            <OpenCodeSetupSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              provider={liveProvider}
+              serverUrl={configuredString(instance.config, "serverUrl")}
               enabled={resolveProviderInstanceEnabled(instance)}
               readOnly={readOnly}
               onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}

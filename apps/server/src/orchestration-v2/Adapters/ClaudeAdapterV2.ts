@@ -145,6 +145,7 @@ import {
   discoverClaudeSkills,
 } from "../../provider/Drivers/ClaudeSkills.ts";
 import {
+  claudeRequestEffortEnvironment,
   compileClaudeModelSelection,
   type CompiledClaudeModelSelection,
 } from "../../claudeModelOptions.ts";
@@ -1439,6 +1440,7 @@ function canApplyClaudeSelectionLive(
   return (
     live.settings.alwaysThinkingEnabled === next.settings.alwaysThinkingEnabled &&
     live.contextWindowTokens === next.contextWindowTokens &&
+    live.requestEffort === next.requestEffort &&
     (next.effort !== undefined || live.effort === undefined)
   );
 }
@@ -1447,7 +1449,9 @@ function claudeLiveSelectionFlagSettings(
   selection: CompiledClaudeModelSelection,
 ): ClaudeFlagSettings {
   return {
-    ...(selection.effort === undefined ? {} : { effortLevel: selection.effort as EffortLevel }),
+    ...(selection.nativeEffort === undefined
+      ? {}
+      : { effortLevel: selection.nativeEffort as EffortLevel }),
     fastMode: selection.settings.fastMode ?? null,
     ultracode: selection.settings.ultracode ?? null,
   };
@@ -1589,12 +1593,22 @@ export function makeClaudeQueryOptions(input: {
     compiledSelection.contextWindowTokens === undefined
       ? undefined
       : { CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(compiledSelection.contextWindowTokens) };
+  const requestEnvironment = claudeRequestEffortEnvironment(
+    compiledSelection.requestEffort,
+    (typeof compactQuerySettings === "object"
+      ? compactQuerySettings?.env?.CLAUDE_CODE_EXTRA_BODY
+      : undefined) ?? input.environment?.CLAUDE_CODE_EXTRA_BODY,
+  );
+  const selectionEnvironment =
+    contextEnvironment === undefined && requestEnvironment === undefined
+      ? undefined
+      : { ...contextEnvironment, ...requestEnvironment };
   const contextQuerySettings =
-    contextEnvironment === undefined || typeof compactQuerySettings === "string"
+    selectionEnvironment === undefined || typeof compactQuerySettings === "string"
       ? compactQuerySettings
       : ({
           ...compactQuerySettings,
-          env: { ...compactQuerySettings?.env, ...contextEnvironment },
+          env: { ...compactQuerySettings?.env, ...selectionEnvironment },
         } as ClaudeSdkSettings);
   // A settings file path cannot take extra keys, so it goes through unchanged.
   const effectiveQuerySettings =
@@ -1615,10 +1629,10 @@ export function makeClaudeQueryOptions(input: {
         ? "bypassPermissions"
         : (input.permissionMode ?? "default")),
     includePartialMessages: true,
-    ...(compiledSelection.effort === undefined
+    ...(compiledSelection.nativeEffort === undefined
       ? {}
       : {
-          effort: compiledSelection.effort as NonNullable<ClaudeQueryOptions["effort"]>,
+          effort: compiledSelection.nativeEffort as NonNullable<ClaudeQueryOptions["effort"]>,
         }),
     ...threadIdentity,
     ...(input.resumeSessionAt === undefined ? {} : { resumeSessionAt: input.resumeSessionAt }),
@@ -1650,9 +1664,9 @@ export function makeClaudeQueryOptions(input: {
     ...(input.settings?.binaryPath
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
-    ...(input.environment === undefined && contextEnvironment === undefined
+    ...(input.environment === undefined && selectionEnvironment === undefined
       ? {}
-      : { env: { ...input.environment, ...contextEnvironment } }),
+      : { env: { ...(input.environment ?? process.env), ...selectionEnvironment } }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
     systemPrompt: {
       type: "preset" as const,

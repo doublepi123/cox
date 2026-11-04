@@ -796,16 +796,25 @@ export function ComposerPromptEditorTiptap(props: ComposerPromptEditorProps) {
   );
 }
 
-/** Decide grouping in dispatch middleware before the history plugin applies the transaction. */
-const ComposerUndoGroupingExtension = Extension.create<
+const ComposerInputTransactionsExtension = Extension.create<
   Record<string, never>,
   { previous: ComposerChangeKind | null }
 >({
-  name: "composer-undo-grouping",
+  name: "composer-input-transactions",
   addStorage() {
     return { previous: null };
   },
   dispatchTransaction({ transaction, next }) {
+    if (
+      this.editor.view.composing &&
+      transaction.isGeneric &&
+      !transaction.docChanged &&
+      !transaction.selectionSet &&
+      !transaction.storedMarksSet &&
+      !transaction.scrolledIntoView
+    ) {
+      return;
+    }
     this.storage.previous = groupUndoByChangeKind(transaction, this.storage.previous);
     next(transaction);
   },
@@ -833,7 +842,7 @@ function createComposerExtensions(richText: boolean) {
       italic: false,
       ...(richText ? {} : { bold: false, strike: false }),
     }),
-    ComposerUndoGroupingExtension,
+    ComposerInputTransactionsExtension,
     ComposerTextDirectionExtension,
     ComposerMentionExtension,
     ComposerSkillExtension,

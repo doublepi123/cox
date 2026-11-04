@@ -2,9 +2,13 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { ProviderInstanceId, type ModelSelection } from "@t3tools/contracts";
 
-import { compileClaudeModelSelection } from "./claudeModelOptions.ts";
+import {
+  claudeRequestEffortEnvironment,
+  compileClaudeModelSelection,
+} from "./claudeModelOptions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
+  resolveClaudeModelServiceCatalog,
   scopeClaudeModelCatalog,
 } from "./provider/ClaudeModelCatalog.ts";
 
@@ -64,5 +68,57 @@ describe("compileClaudeModelSelection", () => {
     expect(
       compileClaudeModelSelection(selection("claude-pool-model-not-in-catalog", [])).effort,
     ).toBeUndefined();
+  });
+
+  it.each(["high", "ultra", "vendor-effort"])(
+    "routes a bound service's %s effort through the request body rather than Claude CLI flags",
+    (effort) => {
+      const catalog = resolveClaudeModelServiceCatalog([
+        {
+          slug: "gpt-service-model",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Reasoning",
+                type: "select",
+                options: ["high", "ultra", "vendor-effort"].map((id) => ({
+                  id,
+                  label: id,
+                  isDefault: id === "ultra",
+                })),
+              },
+            ],
+          },
+        },
+      ]);
+      expect(
+        compileClaudeModelSelection(
+          selection("gpt-service-model", [{ id: "effort", value: effort }]),
+          catalog,
+        ),
+      ).toMatchObject({ effort, nativeEffort: undefined, requestEffort: effort });
+      expect(
+        compileClaudeModelSelection(selection("gpt-service-model", []), catalog),
+      ).toMatchObject({ effort: "ultra", nativeEffort: undefined, requestEffort: "ultra" });
+    },
+  );
+
+  it("merges service effort without discarding unrelated extra-body settings", () => {
+    const environment = claudeRequestEffortEnvironment(
+      "ultra",
+      JSON.stringify({
+        metadata: { source: "kept" },
+        output_config: { format: { type: "json" }, effort: "high" },
+      }),
+    );
+    expect(JSON.parse(environment!.CLAUDE_CODE_EXTRA_BODY!)).toEqual({
+      metadata: { source: "kept" },
+      output_config: { format: { type: "json" }, effort: "ultra" },
+    });
+    expect(claudeRequestEffortEnvironment(undefined, "invalid")).toBeUndefined();
+    expect(
+      JSON.parse(claudeRequestEffortEnvironment("ultra", "invalid")!.CLAUDE_CODE_EXTRA_BODY!),
+    ).toEqual({ output_config: { effort: "ultra" } });
   });
 });

@@ -1,4 +1,38 @@
 export const en = {
+  "Preparing OpenCode setup…": "Preparing OpenCode setup…",
+  "Installing OpenCode…": "Installing OpenCode…",
+  "OpenCode {version} is installed.": "OpenCode {version} is installed.",
+  "Install the official OpenCode V2 CLI.": "Install the official OpenCode V2 CLI.",
+  "OpenCode setup": "OpenCode setup",
+  "OpenCode CLI": "OpenCode CLI",
+  "Enable OpenCode": "Enable OpenCode",
+  "Install OpenCode": "Install OpenCode",
+  "Update OpenCode": "Update OpenCode",
+  "Uses the custom OpenCode binary path below.": "Uses the custom OpenCode binary path below.",
+  "Using your existing OpenCode CLI.": "Using your existing OpenCode CLI.",
+  "Cox installs OpenCode in its own tools directory.":
+    "Cox installs OpenCode in its own tools directory.",
+  "OpenCode model access": "OpenCode model access",
+  "Bind a model service above, or use the installed executable with auth login to configure OpenCode providers. Existing OpenCode credentials and projects are kept.":
+    "Bind a model service above, or use the installed executable with auth login to configure OpenCode providers. Existing OpenCode credentials and projects are kept.",
+  "OpenCode service": "OpenCode service",
+  "Using the configured OpenCode server. Local CLI installation is not required.":
+    "Using the configured OpenCode server. Local CLI installation is not required.",
+  "Could not install OpenCode. Check your connection and Node.js/npm installation, then retry.":
+    "Could not install OpenCode. Check your connection and Node.js/npm installation, then retry.",
+  "OpenCode installation cancelled.": "OpenCode installation cancelled.",
+  "Clear the custom binary path before installing OpenCode in Cox.":
+    "Clear the custom binary path before installing OpenCode in Cox.",
+  "Clear the server URL before installing a local OpenCode CLI in Cox.":
+    "Clear the server URL before installing a local OpenCode CLI in Cox.",
+  "OpenCode already uses a local installation. Update it with its existing installation method.":
+    "OpenCode already uses a local installation. Update it with its existing installation method.",
+  "Installing OpenCode requires Node.js and npm on PATH.":
+    "Installing OpenCode requires Node.js and npm on PATH.",
+  "The downloaded OpenCode CLI did not report a supported V2 version. Retry installation.":
+    "The downloaded OpenCode CLI did not report a supported V2 version. Retry installation.",
+  "Could not start OpenCode installation. Try again.":
+    "Could not start OpenCode installation. Try again.",
   "Preparing Claude Code setup…": "Preparing Claude Code setup…",
   "Installing Claude Code…": "Installing Claude Code…",
   "Claude Code {version} is installed.": "Claude Code {version} is installed.",
