@@ -49,7 +49,7 @@ export function ModelServicesSettingsPanel() {
   const { t } = useTranslation();
   const { environment, scope } = useSettingsScope();
   return (
-    <SettingsPageContainer>
+    <SettingsPageContainer width="wide">
       {environment?.connection.phase === "connected" ? (
         <EnvironmentModelServices
           key={environment.environmentId}
@@ -238,142 +238,150 @@ function ModelServiceEditor({
       : null;
   }
   return (
-    <div className="mx-3 space-y-5 rounded-xl border border-border/60 bg-card/40 p-4 shadow-xs/5 sm:mx-4 sm:p-5">
+    <div className="mx-3 overflow-hidden rounded-xl border border-border/60 bg-card/40 shadow-xs/5 sm:mx-4">
       <form
-        className="space-y-5"
+        className="grid lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]"
         onSubmit={(event) => {
           event.preventDefault();
           void run(() => save(false));
         }}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-medium">
-            {t("Service name")}
-            <Input
-              value={name}
-              disabled={readOnly || busy}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            {t("API URL")}
-            <Input
-              value={baseUrl}
-              disabled={readOnly || busy}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="https://api.example.com/v1"
-              type="url"
-              required
-            />
-          </label>
-        </div>
-        <label className="grid gap-2 text-sm font-medium">
-          {t("API key")}
-          <SecretInput
-            value={apiKey}
-            configured={Boolean(service?.apiKey) && !clearKey}
-            disabled={readOnly || busy || clearKey}
-            onChange={(event) => setApiKey(event.target.value)}
-          />
-        </label>
-        {service?.apiKey ? (
-          <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
-            <Checkbox
-              checked={clearKey}
-              disabled={readOnly || busy}
-              onCheckedChange={(checked) => setClearKey(checked === true)}
-            />
-            {t("Remove stored API key")}
-          </label>
-        ) : null}
-        <fieldset disabled={readOnly || busy} className="space-y-3">
-          <div className="border-t border-border/60 pt-5" aria-hidden="true" />
-          <legend className="text-sm font-medium">{t("Supported protocols")}</legend>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t(
-              "The first selected protocol is used for model discovery. Each model can declare its own protocols.",
-            )}
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {protocols.map((protocol) => (
-              <label
-                key={protocol}
-                className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-sm transition-colors hover:bg-accent/50 has-checked:bg-accent/60 sm:px-3"
-              >
-                <Checkbox
-                  checked={selectedProtocols.includes(protocol)}
-                  onCheckedChange={(checked) =>
-                    setProtocols(
-                      checked === true
-                        ? [...selectedProtocols, protocol]
-                        : selectedProtocols.filter((value) => value !== protocol),
-                    )
-                  }
-                />
-                <span className="min-w-0 flex-1">{MODEL_SERVICE_PROTOCOL_LABELS[protocol]}</span>
-                {selectedProtocols[0] === protocol ? (
-                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
-                    {t("Primary")}
-                  </span>
-                ) : null}
-              </label>
-            ))}
+        <div className="space-y-5 p-4 sm:p-5 lg:p-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-medium">
+              {t("Service name")}
+              <Input
+                value={name}
+                disabled={readOnly || busy}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              {t("API URL")}
+              <Input
+                value={baseUrl}
+                disabled={readOnly || busy}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                placeholder="https://api.example.com/v1"
+                type="url"
+                required
+              />
+            </label>
           </div>
-        </fieldset>
-        <label className="grid gap-2 text-sm font-medium">
-          {t("Model-list path")}
-          <Input
-            value={modelsPath}
-            disabled={readOnly || busy}
-            onChange={(event) => setModelsPath(event.target.value)}
-            placeholder={t("Automatic")}
-          />
-          <span className="text-xs text-muted-foreground">
-            {t("Optional path on the same service, such as /v1/models.")}
-          </span>
-        </label>
-        <details className="rounded-lg border border-border/60 bg-muted/15 px-3 py-2.5 open:pb-3">
-          <summary className="cursor-pointer text-sm font-medium">
-            {t("Additional request headers")}
-          </summary>
-          <label className="mt-2 grid gap-1.5 text-sm">
-            <span className="sr-only">{t("Request headers JSON")}</span>
-            <textarea
-              aria-label={t("Request headers JSON")}
-              className="min-h-24 w-full rounded-md border border-input bg-transparent p-2 font-mono text-base sm:text-sm"
-              value={headers}
+          <label className="grid gap-2 text-sm font-medium">
+            {t("API key")}
+            <SecretInput
+              value={apiKey}
+              configured={Boolean(service?.apiKey) && !clearKey}
+              disabled={readOnly || busy || clearKey}
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </label>
+          {service?.apiKey ? (
+            <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
+              <Checkbox
+                checked={clearKey}
+                disabled={readOnly || busy}
+                onCheckedChange={(checked) => setClearKey(checked === true)}
+              />
+              {t("Remove stored API key")}
+            </label>
+          ) : null}
+        </div>
+        <div className="space-y-5 p-4 sm:p-5 lg:border-l lg:border-border/60 lg:bg-muted/10 lg:p-6">
+          <fieldset disabled={readOnly || busy} className="space-y-3">
+            <legend className="text-sm font-medium">{t("Supported protocols")}</legend>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t(
+                "The first selected protocol is used for model discovery. Each model can declare its own protocols.",
+              )}
+            </p>
+            <div className="grid gap-2">
+              {protocols.map((protocol) => (
+                <label
+                  key={protocol}
+                  className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-sm transition-colors hover:bg-accent/50 has-checked:bg-accent/60 sm:px-3 lg:border lg:border-border/50 lg:bg-background/60 lg:px-3 lg:has-checked:border-primary/20 lg:has-checked:bg-accent/60"
+                >
+                  <Checkbox
+                    checked={selectedProtocols.includes(protocol)}
+                    onCheckedChange={(checked) =>
+                      setProtocols(
+                        checked === true
+                          ? [...selectedProtocols, protocol]
+                          : selectedProtocols.filter((value) => value !== protocol),
+                      )
+                    }
+                  />
+                  <span className="min-w-0 flex-1">{MODEL_SERVICE_PROTOCOL_LABELS[protocol]}</span>
+                  {selectedProtocols[0] === protocol ? (
+                    <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+                      {t("Primary")}
+                    </span>
+                  ) : null}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="grid gap-2 text-sm font-medium">
+            <span className="flex items-center justify-between gap-3">
+              {t("Model-list path")}
+              <span className="text-xs font-normal text-muted-foreground">{t("Automatic")}</span>
+            </span>
+            <Input
+              value={modelsPath}
               disabled={readOnly || busy}
-              onChange={(event) => setHeaders(event.target.value)}
-              spellCheck={false}
+              onChange={(event) => setModelsPath(event.target.value)}
+              placeholder={t("Automatic")}
             />
             <span className="text-xs text-muted-foreground">
-              {t("Header values are stored as secrets. Keep masked values to retain them.")}
+              {t("Optional path on the same service, such as /v1/models.")}
             </span>
           </label>
-        </details>
-        <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
-          <Checkbox
-            checked={enabled}
-            disabled={readOnly || busy}
-            onCheckedChange={(checked) => setEnabled(checked === true)}
-          />
-          {t("Enable model service")}
-        </label>
+          <details className="rounded-lg border border-border/60 bg-muted/15 px-3 py-2.5 open:pb-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              {t("Additional request headers")}
+            </summary>
+            <label className="mt-2 grid gap-1.5 text-sm">
+              <span className="sr-only">{t("Request headers JSON")}</span>
+              <textarea
+                aria-label={t("Request headers JSON")}
+                className="min-h-24 w-full rounded-md border border-input bg-transparent p-2 font-mono text-base sm:text-sm"
+                value={headers}
+                disabled={readOnly || busy}
+                onChange={(event) => setHeaders(event.target.value)}
+                spellCheck={false}
+              />
+              <span className="text-xs text-muted-foreground">
+                {t("Header values are stored as secrets. Keep masked values to retain them.")}
+              </span>
+            </label>
+          </details>
+          <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
+            <Checkbox
+              checked={enabled}
+              disabled={readOnly || busy}
+              onCheckedChange={(checked) => setEnabled(checked === true)}
+            />
+            {t("Enable model service")}
+          </label>
+        </div>
         {!readOnly ? (
-          <div className="grid gap-2 border-t border-border/60 pt-5 sm:flex">
-            <Button type="submit" disabled={busy}>
-              {t("Save service")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy || !enabled}
-              onClick={() => void run(() => save(true))}
-            >
-              <RefreshCwIcon className={busy ? "animate-spin" : undefined} />
-              {t(busy ? "Working…" : "Save and fetch models")}
-            </Button>
+          <div className="grid gap-2 lg:col-span-2 lg:border-t lg:border-border/60 lg:p-5 lg:pt-5">
+            <div className="grid gap-2 sm:flex sm:justify-end lg:col-start-2">
+              <Button type="submit" disabled={busy}>
+                {t("Save service")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || !enabled}
+                onClick={() => void run(() => save(true))}
+              >
+                <RefreshCwIcon className={busy ? "animate-spin" : undefined} />
+                {t(busy ? "Working…" : "Save and fetch models")}
+              </Button>
+            </div>
           </div>
         ) : null}
       </form>
@@ -382,7 +390,7 @@ function ModelServiceEditor({
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 bg-muted/10 px-4 py-4 sm:px-5 lg:px-6">
         <h3 className="text-sm font-medium">
           {t("Models")} ({models.length})
         </h3>
@@ -417,118 +425,124 @@ function ModelServiceEditor({
           </div>
         ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {t(
-          "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
-        )}
-      </p>
-      {models.length ? (
-        <div className="max-h-96 overflow-y-auto divide-y divide-border">
-          {models.map((model) => (
-            <div key={model.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-              <div className="min-w-0">
-                <p className="break-all text-sm">
-                  {!model.name || model.name === model.id
-                    ? modelServiceDisplayName(model.id)
-                    : model.name}
-                </p>
-                {model.available === false ? (
-                  <p className="text-xs text-destructive">
-                    {t("No longer advertised by the service")}
+      <div className="space-y-4 bg-muted/10 px-4 pb-4 sm:px-5 sm:pb-5 lg:px-6 lg:pb-6">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t(
+            "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
+          )}
+        </p>
+        {models.length ? (
+          <div className="max-h-96 overflow-y-auto divide-y divide-border rounded-lg border border-border/60 bg-background/60 px-3">
+            {models.map((model) => (
+              <div
+                key={model.id}
+                className="flex flex-wrap items-center justify-between gap-3 py-3"
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="break-all text-sm">
+                    {!model.name || model.name === model.id
+                      ? modelServiceDisplayName(model.id)
+                      : model.name}
                   </p>
-                ) : null}
-                <p className="break-all font-mono text-xs text-muted-foreground">{model.id}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t("Context")}:{" "}
-                  {model.capabilities?.contextWindow?.toLocaleString() ?? t("Unknown")} ·{" "}
-                  {(model.protocols ?? service?.protocols ?? [])
-                    .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
-                    .join(" / ")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t("Maximum output tokens")}:{" "}
-                  {model.maxOutputTokens?.toLocaleString() ?? t("Unknown")} · {t("Image input")}:{" "}
-                  {model.capabilities?.supportsImages === undefined
-                    ? t("Unknown")
-                    : model.capabilities.supportsImages
-                      ? t("Supported")
-                      : t("Unsupported")}{" "}
-                  · {t("Tool calling")}:{" "}
-                  {model.supportsTools === undefined
-                    ? t("Unknown")
-                    : model.supportsTools
-                      ? t("Supported")
-                      : t("Unsupported")}
-                  {model.supportsReasoning !== undefined ? (
-                    <>
-                      {" "}
-                      · {t("Reasoning")}:{" "}
-                      {model.supportsReasoning ? t("Supported") : t("Unsupported")}
-                    </>
+                  {model.available === false ? (
+                    <p className="text-xs text-destructive">
+                      {t("No longer advertised by the service")}
+                    </p>
                   ) : null}
-                </p>
-                {model.inputModalities || model.outputModalities ? (
+                  <p className="break-all font-mono text-xs text-muted-foreground">{model.id}</p>
                   <p className="text-xs text-muted-foreground">
-                    {t("Input modalities")}: {model.inputModalities?.join(" / ") ?? t("Unknown")} ·{" "}
-                    {t("Output modalities")}: {model.outputModalities?.join(" / ") ?? t("Unknown")}
+                    {t("Context")}:{" "}
+                    {model.capabilities?.contextWindow?.toLocaleString() ?? t("Unknown")} ·{" "}
+                    {(model.protocols ?? service?.protocols ?? [])
+                      .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
+                      .join(" / ")}
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("Maximum output tokens")}:{" "}
+                    {model.maxOutputTokens?.toLocaleString() ?? t("Unknown")} · {t("Image input")}:{" "}
+                    {model.capabilities?.supportsImages === undefined
+                      ? t("Unknown")
+                      : model.capabilities.supportsImages
+                        ? t("Supported")
+                        : t("Unsupported")}{" "}
+                    · {t("Tool calling")}:{" "}
+                    {model.supportsTools === undefined
+                      ? t("Unknown")
+                      : model.supportsTools
+                        ? t("Supported")
+                        : t("Unsupported")}
+                    {model.supportsReasoning !== undefined ? (
+                      <>
+                        {" "}
+                        · {t("Reasoning")}:{" "}
+                        {model.supportsReasoning ? t("Supported") : t("Unsupported")}
+                      </>
+                    ) : null}
+                  </p>
+                  {model.inputModalities || model.outputModalities ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("Input modalities")}: {model.inputModalities?.join(" / ") ?? t("Unknown")}{" "}
+                      · {t("Output modalities")}:{" "}
+                      {model.outputModalities?.join(" / ") ?? t("Unknown")}
+                    </p>
+                  ) : null}
+                </div>
+                {!readOnly ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => setModelEditor(model)}
+                  >
+                    {t("Edit")}
+                  </Button>
                 ) : null}
               </div>
-              {!readOnly ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => setModelEditor(model)}
-                >
-                  {t("Edit")}
-                </Button>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {t("Fetch models or add them manually before binding an agent.")}
-        </p>
-      )}
-      {modelEditor && service ? (
-        <ModelEditor
-          key={modelEditor === "new" ? "new" : modelEditor.id}
-          model={modelEditor === "new" ? undefined : modelEditor}
-          protocols={service.protocols}
-          busy={busy}
-          onCancel={() => setModelEditor(null)}
-          onSave={(model) =>
-            void run(async () => {
-              const previousId = modelEditor === "new" ? null : modelEditor.id;
-              const result = await update({
-                environmentId,
-                input: {
-                  patch: {
-                    modelServices: {
-                      [id]: {
-                        ...service,
-                        models: [
-                          ...models.filter(
-                            (entry) => entry.id !== model.id && entry.id !== previousId,
-                          ),
-                          model,
-                        ],
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
+            {t("Fetch models or add them manually before binding an agent.")}
+          </p>
+        )}
+        {modelEditor && service ? (
+          <ModelEditor
+            key={modelEditor === "new" ? "new" : modelEditor.id}
+            model={modelEditor === "new" ? undefined : modelEditor}
+            protocols={service.protocols}
+            busy={busy}
+            onCancel={() => setModelEditor(null)}
+            onSave={(model) =>
+              void run(async () => {
+                const previousId = modelEditor === "new" ? null : modelEditor.id;
+                const result = await update({
+                  environmentId,
+                  input: {
+                    patch: {
+                      modelServices: {
+                        [id]: {
+                          ...service,
+                          models: [
+                            ...models.filter(
+                              (entry) => entry.id !== model.id && entry.id !== previousId,
+                            ),
+                            model,
+                          ],
+                        },
                       },
                     },
                   },
-                },
-              });
-              const problem = commandError(result);
-              if (!problem) setModelEditor(null);
-              return problem;
-            })
-          }
-        />
-      ) : null}
+                });
+                const problem = commandError(result);
+                if (!problem) setModelEditor(null);
+                return problem;
+              })
+            }
+          />
+        ) : null}
+      </div>
       {service && !readOnly ? (
-        <div className="space-y-2 border-t border-border pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-4 py-3 sm:px-5 lg:px-6">
           <p className="text-xs text-muted-foreground">
             {t("Bound agents: {count}", { count: bound })}
           </p>

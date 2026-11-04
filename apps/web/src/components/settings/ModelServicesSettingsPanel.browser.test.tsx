@@ -169,9 +169,10 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 
 describe("model services settings", () => {
   it.each([
-    { width: 320, language: "zh" as const },
-    { width: 390, language: "en" as const },
-  ])("fits the editor in $language", async ({ width, language }) => {
+    { width: 320, language: "zh" as const, desktop: false },
+    { width: 390, language: "en" as const, desktop: false },
+    { width: 1280, language: "zh" as const, desktop: true },
+  ])("fits the editor at $widthpx", async ({ width, language, desktop }) => {
     setup({ [id]: { ...configured, name: "newapi" } });
     const originalWidth = window.innerWidth;
     const originalHeight = window.innerHeight;
@@ -186,15 +187,22 @@ describe("model services settings", () => {
         const element = screen.getByText(label, { exact: true }).element();
         expect(Number.parseFloat(getComputedStyle(element).fontSize)).toBeGreaterThanOrEqual(12);
       }
-      expect(
-        screen
-          .getByRole("button", {
-            name: language === "zh" ? "保存并获取模型" : "Save and fetch models",
-            exact: true,
-          })
-          .element()
-          .getBoundingClientRect().width,
-      ).toBeGreaterThan(250);
+      const fetchButton = screen
+        .getByRole("button", {
+          name: language === "zh" ? "保存并获取模型" : "Save and fetch models",
+          exact: true,
+        })
+        .element()
+        .getBoundingClientRect();
+      expect(width < 640 ? fetchButton.width : fetchButton.right).toBeGreaterThan(250);
+      if (desktop) {
+        const name = screen.getByLabelText("服务名称", { exact: true }).element();
+        const protocols = screen.getByText("支持的协议", { exact: true }).element();
+        const nameBox = name.getBoundingClientRect();
+        const protocolBox = protocols.getBoundingClientRect();
+        expect(protocolBox.left).toBeGreaterThan(nameBox.right);
+        expect(Math.abs(protocolBox.top - nameBox.top)).toBeLessThan(40);
+      }
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
       expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
     } finally {

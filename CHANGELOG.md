@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.26 — 2026-11-04
+
+- Simplify the model service editor with a single card, consistent protocol controls and
+  phone-sized save actions.
+- Add a two-column desktop connection and protocol layout with a clearer model catalog.
+- Cover 320px, 390px and desktop model-service layouts with browser tests.
+- Suppress unavailable reasoning placeholders from the v0.1.25 release.
 
 ## 0.1.24 — 2026-11-03
 
