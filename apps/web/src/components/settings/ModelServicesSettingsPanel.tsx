@@ -609,6 +609,14 @@ function ModelEditor({
   const [selected, setSelected] = useState<ReadonlyArray<ModelServiceProtocol>>(
     model?.protocols ?? defaults,
   );
+  const descriptor = model?.capabilities?.optionDescriptors?.find(
+    (option) =>
+      option.type === "select" && ["reasoningEffort", "effort", "thinking"].includes(option.id),
+  );
+  const reasoningDescriptor = descriptor?.type === "select" ? descriptor : undefined;
+  const [reasoning, setReasoning] = useState(
+    reasoningDescriptor?.options.map((option) => option.id).join(", ") ?? "",
+  );
   const validNumber = (value: string) =>
     value === "" || (Number.isSafeInteger(Number(value)) && Number(value) > 0);
   return (
@@ -617,6 +625,29 @@ function ModelEditor({
       onSubmit={(event) => {
         event.preventDefault();
         if (!id.trim() || !validNumber(context) || !validNumber(output) || !selected.length) return;
+        const levels = [...new Set(reasoning.split(/[,，\s]+/u).filter(Boolean))];
+        const { currentValue, ...reasoningMetadata } = reasoningDescriptor ?? {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          currentValue: undefined,
+        };
+        const optionDescriptors = (model?.capabilities?.optionDescriptors ?? []).filter(
+          (option) => option !== reasoningDescriptor,
+        );
+        if (levels.length) {
+          optionDescriptors.push({
+            ...reasoningMetadata,
+            options: levels.map(
+              (id) =>
+                reasoningDescriptor?.options.find((option) => option.id === id) ?? {
+                  id,
+                  label: id,
+                },
+            ),
+            ...(currentValue && levels.includes(currentValue) ? { currentValue } : {}),
+          });
+        }
         onSave({
           ...(model?.id === id.trim() && model.inputModalities
             ? { inputModalities: model.inputModalities }
@@ -632,6 +663,7 @@ function ModelEditor({
           protocols: selected,
           capabilities: {
             ...model?.capabilities,
+            ...(reasoningDescriptor || levels.length ? { optionDescriptors } : {}),
             contextWindow: context ? Number(context) : undefined,
             supportsImages: images === "unknown" ? undefined : images === "true",
           },
@@ -675,6 +707,20 @@ function ModelEditor({
             disabled={busy}
           />
         </label>
+      </div>
+      <div className="grid gap-1">
+        <label className="grid gap-1 text-sm">
+          {t("Reasoning levels")}
+          <Input
+            value={reasoning}
+            onChange={(event) => setReasoning(event.target.value)}
+            placeholder="low, medium, high, xhigh, max, ultra"
+            disabled={busy}
+          />
+        </label>
+        <p className="text-xs text-muted-foreground">
+          {t("Comma-separated levels supported by this channel. Leave blank if unknown.")}
+        </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {[

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.27 — 2026-11-04
+
+- Preserve model-service reasoning levels reported for Codex, including `max` and `ultra`, in
+  model controls, native catalogs and outgoing requests.
+- Add editable reasoning levels to model-center entries, with English and Chinese labels.
+  Keep existing option labels, descriptions and defaults when editing the supported levels.
+- Verify that repeated model-list refreshes and metadata enrichment preserve manually edited
+  reasoning levels, including explicitly cleared lists, when upstream metadata differs.
+
 ## 0.1.26 — 2026-11-04
 
 - Simplify the model service editor with a single card, consistent protocol controls and

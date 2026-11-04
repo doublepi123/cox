@@ -73,7 +73,7 @@ describe("central model settings", () => {
     };
     expect(
       modelServiceAgentCapabilities("codex", capabilities)?.optionDescriptors?.[0],
-    ).toMatchObject({ id: "reasoningEffort", options: [{ id: "none" }, { id: "high" }] });
+    ).toMatchObject({ id: "reasoningEffort", options: capabilities.optionDescriptors[0]!.options });
     expect(
       modelServiceAgentCapabilities("claudeAgent", capabilities)?.optionDescriptors?.[0],
     ).toMatchObject({ id: "effort", options: [{ id: "high" }, { id: "max" }] });
@@ -84,5 +84,25 @@ describe("central model settings", () => {
     expect(modelServiceAgentCapabilities("pi", { contextWindow: 64000 })).toEqual({
       contextWindow: 64000,
     });
+  });
+
+  it("preserves reported Codex reasoning levels without adding unreported levels", () => {
+    const options = [
+      { id: "max", label: "Maximum", description: "Maximum effort" },
+      { id: "ultra", label: "Ultra", isDefault: true },
+      { id: "vendor-effort", label: "Vendor effort" },
+    ];
+    expect(
+      modelServiceAgentCapabilities("codex", {
+        optionDescriptors: [{ id: "effort", label: "Effort", type: "select", options }],
+      })?.optionDescriptors,
+    ).toEqual([{ id: "reasoningEffort", label: "Reasoning", type: "select", options }]);
+    expect(
+      modelServiceAgentCapabilities("codex", {
+        optionDescriptors: [
+          { id: "reasoningEffort", label: "Reasoning", type: "select", options: [] },
+        ],
+      })?.optionDescriptors,
+    ).toEqual([]);
   });
 });

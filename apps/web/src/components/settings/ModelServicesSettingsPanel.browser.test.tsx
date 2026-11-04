@@ -280,9 +280,137 @@ describe("model services settings", () => {
       source: "manual",
     });
     expect(next.models[0].capabilities.supportsImages).toBeUndefined();
+    expect(next.models[0].capabilities.optionDescriptors).toBeUndefined();
     expect(next.models[0].supportsTools).toBeUndefined();
     await expect.element(screen.getByText("Vendor/Case", { exact: true }).first()).toBeVisible();
   });
+
+  it.each([
+    { width: 320, language: "zh" as const },
+    { width: 390, language: "en" as const },
+  ])(
+    "edits reasoning levels at $widthpx without losing model metadata",
+    async ({ width, language }) => {
+      const speed = { id: "fastMode", label: "Fast Mode", type: "boolean" as const };
+      setup({
+        [id]: {
+          ...configured,
+          models: [
+            {
+              ...configured.models[0]!,
+              capabilities: {
+                contextWindow: 64000,
+                optionDescriptors: [
+                  {
+                    id: "reasoningEffort",
+                    label: "Reasoning",
+                    type: "select",
+                    currentValue: "high",
+                    options: [
+                      { id: "low", label: "Low" },
+                      { id: "high", label: "High", description: "Deep thought", isDefault: true },
+                    ],
+                  },
+                  speed,
+                ],
+              },
+            },
+          ],
+        },
+      });
+      const originalWidth = window.innerWidth;
+      const originalHeight = window.innerHeight;
+      const originalLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      await page.viewport(width, 812);
+      setLanguagePreference(language);
+      try {
+        await using screen = await render(
+          <EnvironmentModelServices environmentId={environmentId} />,
+        );
+        await screen
+          .getByRole("button", { name: language === "zh" ? "编辑" : "Edit", exact: true })
+          .click();
+        const input = screen.getByLabelText(
+          language === "zh" ? "思考强度档位" : "Reasoning levels",
+          { exact: true },
+        );
+        await expect.element(input).toHaveValue("low, high");
+        await input.fill("low，high, max, ultra, ultra");
+        expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
+        await screen
+          .getByRole("button", { name: language === "zh" ? "保存模型" : "Save model", exact: true })
+          .click();
+        const next = decodeService(state.save.mock.calls[0]![0].input.patch.modelServices[id]);
+        expect(next.models[0]?.source).toBe("manual");
+        expect(next.models[0]?.capabilities).toEqual({
+          contextWindow: 64000,
+          optionDescriptors: [
+            speed,
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select",
+              currentValue: "high",
+              options: [
+                { id: "low", label: "Low" },
+                { id: "high", label: "High", description: "Deep thought", isDefault: true },
+                { id: "max", label: "max" },
+                { id: "ultra", label: "ultra" },
+              ],
+            },
+          ],
+        });
+      } finally {
+        setLanguagePreference(parseLanguagePreference(originalLanguage));
+        if (originalLanguage === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+        await page.viewport(originalWidth, originalHeight);
+      }
+    },
+  );
+
+  it.each(["ultra", ""])(
+    "removes stale reasoning defaults when levels change to '%s'",
+    async (levels) => {
+      setup({
+        [id]: {
+          ...configured,
+          models: [
+            {
+              ...configured.models[0]!,
+              capabilities: {
+                optionDescriptors: [
+                  {
+                    id: "reasoningEffort",
+                    label: "Reasoning",
+                    type: "select",
+                    currentValue: "high",
+                    options: [{ id: "high", label: "High", isDefault: true }],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await screen.getByRole("button", { name: "Edit", exact: true }).click();
+      await screen.getByLabelText("Reasoning levels", { exact: true }).fill(levels);
+      await screen.getByRole("button", { name: "Save model", exact: true }).click();
+      const next = state.save.mock.calls[0]![0].input.patch.modelServices[id];
+      expect(next.models[0].capabilities.optionDescriptors).toEqual(
+        levels
+          ? [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select",
+                options: [{ id: "ultra", label: "ultra" }],
+              },
+            ]
+          : [],
+      );
+    },
+  );
 
   it("keeps the previous catalog after discovery failure and permits retry", async () => {
     setup({ [id]: configured });

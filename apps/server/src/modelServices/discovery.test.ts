@@ -26,6 +26,90 @@ const config = (patch: Partial<ModelServiceConfig> = {}): ModelServiceConfig =>
   });
 
 describe("model service discovery", () => {
+  it.effect.each([
+    { metadataOnly: false, cleared: false },
+    { metadataOnly: true, cleared: false },
+    { metadataOnly: false, cleared: true },
+    { metadataOnly: true, cleared: true },
+  ])(
+    "preserves manual reasoning across repeated refreshes with metadataOnly=$metadataOnly and cleared=$cleared",
+    ({ metadataOnly, cleared }) => {
+      const optionDescriptors = cleared
+        ? []
+        : [
+            {
+              id: "reasoningEffort",
+              label: "My reasoning levels",
+              type: "select" as const,
+              currentValue: "ultra",
+              options: [
+                { id: "high", label: "High" },
+                { id: "max", label: "Maximum", description: "Custom maximum" },
+                { id: "ultra", label: "Ultra", isDefault: true },
+              ],
+            },
+          ];
+      return Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        let upstreamRequests = 0;
+        const http = HttpClient.make((request) =>
+          Effect.sync(() => {
+            const metadata = request.url === "https://models.dev/api.json";
+            if (!metadata) upstreamRequests++;
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                metadata
+                  ? {
+                      openai: {
+                        models: {
+                          "gpt-test": {
+                            id: "gpt-test",
+                            limit: { context: 128000 },
+                            reasoning_options: [{ type: "effort", values: ["low", "high"] }],
+                          },
+                        },
+                      },
+                    }
+                  : {
+                      data: [
+                        { id: "gpt-test", supported_reasoning_efforts: ["medium", "high"] },
+                        { id: "new-model" },
+                      ],
+                    },
+              ),
+            );
+          }),
+        );
+        for (let refresh = 0; refresh < 2; refresh++) {
+          const result = yield* discoverModelService({ serviceId: id, metadataOnly }).pipe(
+            Effect.provideService(HttpClient.HttpClient, http),
+          );
+          const model = result.models.find((model) => model.id === "gpt-test");
+          expect(model?.source).toBe("manual");
+          expect(model?.capabilities?.optionDescriptors).toEqual(optionDescriptors);
+          expect(model?.capabilities?.contextWindow).toBe(128000);
+          const saved = (yield* settings.getSettings).modelServices[id]!;
+          expect(saved.models.find((model) => model.id === "gpt-test")).toEqual(model);
+          expect(saved.revision).toBe(refresh + 1);
+          if (!metadataOnly)
+            expect(result.models.some((model) => model.id === "new-model")).toBe(true);
+        }
+        expect(upstreamRequests).toBe(metadataOnly ? 0 : 2);
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [id]: config({
+                models: [{ id: "gpt-test", source: "manual", capabilities: { optionDescriptors } }],
+              }),
+            },
+          }),
+        ),
+      );
+    },
+  );
+
   it.effect("enriches manually added models without calling the upstream model-list endpoint", () =>
     Effect.gen(function* () {
       const http = HttpClient.make((request) =>

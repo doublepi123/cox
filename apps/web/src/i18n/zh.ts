@@ -102,6 +102,9 @@ export const zh = {
   "Remove service": "移除服务",
   "Unbind agents before removing this service.": "移除服务前，请先解除助手绑定。",
   "Maximum output tokens": "最大输出令牌数",
+  "Reasoning levels": "思考强度档位",
+  "Comma-separated levels supported by this channel. Leave blank if unknown.":
+    "填写渠道支持的档位，以逗号分隔；不确定时留空。",
   "Save model": "保存模型",
   "Image input": "图片输入",
   "Tool calling": "工具调用",

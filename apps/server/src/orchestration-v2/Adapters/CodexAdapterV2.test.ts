@@ -176,7 +176,13 @@ describe("CodexAdapterV2 runtime policy", () => {
     (hasT3Mcp) =>
       Effect.gen(function* () {
         for (const interactionMode of ["plan", "default"] as const) {
-          for (const reasoningEffort of [undefined, "high"] as const) {
+          for (const reasoningEffort of [
+            undefined,
+            "high",
+            "max",
+            "ultra",
+            "vendor-effort",
+          ] as const) {
             const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
               nativeThreadId: "native-mode-switch",
               codexInput: [{ type: "text", text: "test" }],

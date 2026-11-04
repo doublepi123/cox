@@ -105,6 +105,9 @@ export const en = {
   "Remove service": "Remove service",
   "Unbind agents before removing this service.": "Unbind agents before removing this service.",
   "Maximum output tokens": "Maximum output tokens",
+  "Reasoning levels": "Reasoning levels",
+  "Comma-separated levels supported by this channel. Leave blank if unknown.":
+    "Comma-separated levels supported by this channel. Leave blank if unknown.",
   "Save model": "Save model",
   "Image input": "Image input",
   "Tool calling": "Tool calling",

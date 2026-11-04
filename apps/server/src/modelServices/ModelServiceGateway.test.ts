@@ -138,6 +138,56 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("keeps max and ultra in both bound Codex models and the generated native catalog", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+      const options = [
+        { id: "high", label: "High" },
+        { id: "max", label: "Max" },
+        { id: "ultra", label: "Ultra", isDefault: true },
+      ];
+      yield* h.settings.updateSettings({
+        modelServices: {
+          [serviceId]: {
+            ...current,
+            models: [
+              {
+                ...current.models[0]!,
+                capabilities: {
+                  optionDescriptors: [
+                    { id: "reasoningEffort", label: "Reasoning", type: "select", options },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      });
+      const materialized = yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+      expect(record(materialized[instanceId]!.config).customModels).toMatchObject([
+        { capabilities: { optionDescriptors: [{ id: "reasoningEffort", options }] } },
+      ]);
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const catalog = JSON.parse(
+        yield* fs.readFileString(
+          `${config.baseDir}/model-services/runtime/${instanceId}/codex-models.json`,
+        ),
+      );
+      expect(catalog.models[0]).toMatchObject({
+        slug: "Vendor/Exact",
+        default_reasoning_level: "ultra",
+        supported_reasoning_levels: [
+          { effort: "high", description: "High" },
+          { effort: "max", description: "Max" },
+          { effort: "ultra", description: "Ultra" },
+        ],
+      });
+      expect(h.calls).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect(
     "rejects browser origins, wrong credentials, and models outside the binding before calling upstream",
     () =>
@@ -180,13 +230,14 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect(
-    "converts a Codex Responses request and a Chat Completions reply through the real SDK bridge",
+    "preserves ultra reasoning when converting a Codex request through the real SDK bridge",
     () =>
       Effect.gen(function* () {
         const h = yield* harness();
         const response = yield* h.invoke("/v1/responses", {
           model: "Vendor/Exact",
           input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }],
+          reasoning: { effort: "ultra" },
         });
         expect(response.status).toBe(200);
         const result = JSON.parse(response.text);
@@ -200,6 +251,7 @@ it.layer(layer)("model service gateway", (it) => {
           expect(JSON.parse(text)).toMatchObject({
             model: "Vendor/Exact",
             messages: [{ role: "user" }],
+            reasoning_effort: "ultra",
           });
           expect(text).toContain("hello");
         }

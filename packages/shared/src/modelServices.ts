@@ -75,18 +75,16 @@ export function modelServiceAgentCapabilities(
       ["reasoningEffort", "effort", "thinking"].includes(option.id) && option.type === "select",
   );
   const allowed =
-    driver === "codex"
-      ? ["none", "minimal", "low", "medium", "high", "xhigh"]
-      : driver === "claudeAgent"
-        ? ["low", "medium", "high", "xhigh", "max"]
-        : driver === "pi"
-          ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
-          : [];
+    driver === "claudeAgent"
+      ? ["low", "medium", "high", "xhigh", "max"]
+      : driver === "pi"
+        ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        : [];
   const options =
     descriptor?.type === "select"
       ? descriptor.options.flatMap((option) => {
           const id = driver === "pi" && option.id === "none" ? "off" : option.id;
-          return allowed.includes(id) ? [{ ...option, id }] : [];
+          return driver === "codex" || allowed.includes(id) ? [{ ...option, id }] : [];
         })
       : [];
   return {
