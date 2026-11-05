@@ -8,13 +8,17 @@ import { userEvent } from "vite-plus/test/browser";
 import { act, render } from "../../../test/render";
 
 type PatchAtom = Atom.Writable<AsyncResult.AsyncResult<ReviewDiffPreviewSource, Error>>;
-const state = vi.hoisted(() => ({ patches: new Map<string, PatchAtom>() }));
+const state = vi.hoisted(() => ({
+  patches: new Map<string, PatchAtom>(),
+  requests: [] as string[],
+}));
 vi.mock("~/state/review", () => ({
   reviewEnvironment: {
     diffFilePatch: (target: {
       input: { cacheKey: string; request: { file: { path: string } } };
     }) => {
       const key = JSON.stringify([target.input.cacheKey, target.input.request.file.path]);
+      state.requests.push(key);
       let atom = state.patches.get(key);
       if (!atom) {
         atom = Atom.make<AsyncResult.AsyncResult<ReviewDiffPreviewSource, Error>>(
@@ -44,12 +48,12 @@ function source(paths: string[], hash: string): ReviewDiffPreviewSource {
   };
 }
 
-function Probe({ source }: { source: ReviewDiffPreviewSource }) {
+function Probe({ source }: { source: ReviewDiffPreviewSource | null }) {
   const files = useReviewFilePatches({
     environmentId: EnvironmentId.make("environment"),
     cwd: "/project",
     source,
-    baseRef: "HEAD",
+    baseRef: source?.baseRef ?? null,
     ignoreWhitespace: false,
     theme: "dark",
     previewInput: { cwd: "/project", metadataOnly: true },
@@ -142,4 +146,53 @@ it("preserves deletion and addition patches for a file replaced by a symlink", a
   await expect.element(screen.getByText("deleted", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("new", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("Pending files: 0")).toBeVisible();
+});
+
+it("resets requested paths when the comparison or selection changes", async () => {
+  state.patches.clear();
+  const registry = AtomRegistry.make();
+  using _registry = { [Symbol.dispose]: () => registry.dispose() };
+  const metadata = {
+    ...source(["a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt"], "initial"),
+    baseRef: "reset-base",
+  };
+  const view = (source: ReviewDiffPreviewSource | null) => (
+    <RegistryContext.Provider value={registry}>
+      <Probe source={source} />
+    </RegistryContext.Provider>
+  );
+  await using screen = await render(view(metadata));
+  await userEvent.click(screen.getByRole("button", { name: "Open f" }));
+  expect(state.patches.size).toBe(5);
+  await screen.rerender(view({ ...metadata, baseRef: "other" }));
+  const otherPaths = [...state.patches.keys()]
+    .map((key) => JSON.parse(key) as [string, string])
+    .filter(([scope]) => (JSON.parse(scope) as unknown[]).includes("other"))
+    .map(([, path]) => path);
+  expect(otherPaths).toEqual(["a.txt", "b.txt", "c.txt", "d.txt"]);
+  await screen.rerender(view(null));
+  await expect.element(screen.getByText("Pending files: 0")).toBeVisible();
+  state.requests.length = 0;
+  await screen.rerender(view(metadata));
+  expect([...new Set(state.requests.map((key) => JSON.parse(key)[1]))]).toEqual([
+    "a.txt",
+    "b.txt",
+    "c.txt",
+    "d.txt",
+  ]);
+  await expect.element(screen.getByText("f.txt:pending")).toBeVisible();
+  await expect.element(screen.getByText("f.txt:loaded")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Open f" }));
+  const fAtom = [...state.patches].find(([key]) => JSON.parse(key)[1] === "f.txt")![1];
+  await act(() =>
+    registry.set(
+      fAtom,
+      AsyncResult.success({
+        ...metadata,
+        files: metadata.files!.filter((file) => file.path === "f.txt"),
+        diff: "diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -1 +1 @@\n-old\n+new\n",
+      }),
+    ),
+  );
+  await expect.element(screen.getByText("f.txt:loaded")).toBeVisible();
 });

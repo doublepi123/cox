@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.32 — 2026-11-05
 
 - Port high-value upstream T3 Code fixes: retry unstarted runs after recovery, avoid
   message-ordering scans during recovery/settlement, load selected diff metadata before
@@ -12,6 +12,10 @@
   on settle, OpenCode command/status/stall fixes, ACP multi-diff and post-rollback events,
   preview setup failure cleanup, Antigravity sign-in startup errors, delegated event-log
   isolation, and closed-PR sync pruning.
+- Fix the port's diff-panel integration so deferred patches load beyond the first batch,
+  selected files expand on the first click, and comparison errors remain recoverable.
+- Keep Claude model-service catalogs exclusive, resolve reported context windows against
+  the instance catalog, and exclude restored session history from new-turn usage totals.
 
 ## 0.1.31 — 2026-11-04
 

@@ -184,7 +184,7 @@ export function claudeReportedModels(
   customModels: ReadonlyArray<CustomModelSetting>,
   reported: ReadonlyArray<ClaudeModelInfo> | undefined,
 ): ReadonlyArray<ServerProviderModel> {
-  if (!reported?.length) return [];
+  if (catalog.source === "model-service" || !reported?.length) return [];
   const known = new Set(
     [
       ...catalog.models.flatMap(({ model }) => [model.slug, ...(model.aliases ?? [])]),

@@ -44,7 +44,10 @@ import { createModelCapabilities } from "@t3tools/shared/model";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 
 import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
-import { BUNDLED_CLAUDE_MODEL_CATALOG } from "./ClaudeModelCatalog.ts";
+import {
+  BUNDLED_CLAUDE_MODEL_CATALOG,
+  resolveClaudeModelServiceCatalog,
+} from "./ClaudeModelCatalog.ts";
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as AntigravityInstallation from "./AntigravityInstallation.ts";
@@ -2684,6 +2687,39 @@ it.layer(
             ],
           },
         ]);
+      }).pipe(
+        Effect.provide(
+          layerMockSpawner((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("keeps checked model-service catalogs exclusive after CLI initialization", () =>
+      Effect.gen(function* () {
+        const customModels = [{ slug: "sonnet", name: "Service Sonnet" }];
+        const catalog = resolveClaudeModelServiceCatalog(customModels, "sonnet");
+        const status = yield* checkClaudeProviderStatus(
+          { ...defaultClaudeSettings, customModels },
+          claudeCapabilities({
+            models: [
+              { value: "sonnet", displayName: "Native Sonnet", description: "" },
+              { value: "opus", displayName: "Native Opus", description: "" },
+              { value: "gateway/unbound", displayName: "Unbound", description: "" },
+            ],
+          }),
+          {},
+          undefined,
+          catalog,
+        );
+        assert.deepEqual(
+          status.models.map((model) => [model.slug, model.name, model.isCustom]),
+          [["sonnet", "Service Sonnet", false]],
+        );
+        assert.isTrue(status.models[0]?.isDefault);
       }).pipe(
         Effect.provide(
           layerMockSpawner((args) => {

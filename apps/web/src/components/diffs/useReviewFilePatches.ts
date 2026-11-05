@@ -152,6 +152,7 @@ export function useReviewFilePatches({
     }),
   );
   return {
+    scope,
     fileStates,
     isPending: [...patches.values()].some((patch) => patch._tag === "Initial" || patch.waiting),
     retry,

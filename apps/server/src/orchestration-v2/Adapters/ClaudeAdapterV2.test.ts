@@ -721,7 +721,7 @@ describe("ClaudeAdapterV2 context usage", () => {
       resolveClaudeCatalogContextWindowTokens(catalog, {
         ...CLAUDE_TEST_MODEL_SELECTION,
         model: "custom-context",
-      }),
+      }) ?? null,
       "2026-11-02T00:00:00.000Z",
       "150000",
     );
@@ -6995,6 +6995,166 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
     ),
+  );
+
+  it.effect.each(["fresh", "resumed", "forked", "fresh-after-prior-turns"] as const)(
+    "accounts only for new ledger growth in a %s session",
+    (kind) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({
+          forkSession: () => Effect.succeed({ sessionId: "native-thread-claude-usage-fork" }),
+        });
+        const threadId =
+          kind === "forked" ? ThreadId.make("thread-claude-usage-fork") : harness.threadId;
+        const providerThread =
+          kind === "forked"
+            ? yield* harness.runtime.forkThread({
+                sourceProviderThread: harness.providerThread,
+                targetThreadId: threadId,
+              })
+            : harness.providerThread;
+        const resumed = kind === "resumed" || kind === "forked";
+        const historyInput = resumed ? 10_000 : 0;
+        const historyOutput = resumed ? 1_000 : 0;
+        for (const ordinal of [1, 2]) {
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId,
+              providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make(`attempt-usage-${kind}-${ordinal}`),
+              text: "Continue.",
+              attachments: [],
+              providerTurnOrdinal: ordinal + (kind === "resumed" ? 1 : 0),
+              ...(kind === "fresh-after-prior-turns"
+                ? { providerTurnOrdinal: ordinal + 3, nativeThreadHasTurns: ordinal > 1 }
+                : {}),
+            }),
+          );
+          if (ordinal === 1) {
+            assert.strictEqual(
+              harness.getOpenedOptions()?.resume,
+              resumed ? providerThread.nativeThreadRef?.nativeId : undefined,
+            );
+          }
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              ...makeResultFrame({
+                uuid: `result-usage-${kind}-${ordinal}`,
+                result: "Done.",
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 20,
+                  cache_read_input_tokens: 0,
+                  cache_creation_input_tokens: 0,
+                },
+                modelUsage: {
+                  "claude-sonnet-4-6": {
+                    inputTokens: historyInput + ordinal * 150,
+                    outputTokens: historyOutput + ordinal * 25,
+                    cacheReadInputTokens: 0,
+                    cacheCreationInputTokens: 0,
+                    webSearchRequests: 0,
+                    costUSD: 0,
+                    contextWindow: 200_000,
+                    maxOutputTokens: 32_000,
+                  },
+                },
+              }),
+              session_id: providerThread.nativeThreadRef?.nativeId,
+            }),
+          );
+          assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+          const completed = harness.events.findLast(
+            (event) => event.type === "provider_turn.updated",
+          );
+          assert.deepEqual(
+            completed?.type === "provider_turn.updated"
+              ? completed.providerTurn.turnTokenUsage
+              : undefined,
+            {
+              usageScope: "main_agent",
+              usageStatus: "complete",
+              hasSubagents: false,
+              inputTokens: 100,
+              outputTokens: 20,
+              cachedInputTokens: 0,
+              cacheCreationTokens: 0,
+              ...(resumed && ordinal === 1
+                ? {}
+                : { otherUsage: { inputTokens: 50, outputTokens: 5 } }),
+            },
+          );
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each(["service", "custom"] as const)(
+    "uses the scoped %s model ID for reported context windows",
+    (kind) =>
+      Effect.gen(function* () {
+        const customModels = [{ slug: "sonnet", capabilities: {} }];
+        const harness = yield* makeWakeHarnessWithOptions({
+          modelCatalog:
+            kind === "service"
+              ? resolveClaudeModelServiceCatalog(customModels)
+              : scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, customModels),
+        });
+        const modelSelection = { ...CLAUDE_TEST_MODEL_SELECTION, model: "sonnet" };
+        assert.isUndefined(harness.runtime.getModelContextWindow?.(modelSelection));
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`attempt-scoped-context-${kind}`),
+            text: "Continue.",
+            attachments: [],
+            modelSelection,
+          }),
+        );
+        assert.equal(harness.getOpenedOptions()?.model, "sonnet");
+        yield* harness.offerAndWait(
+          usageStreamFrame({
+            type: "message_start",
+            message: { id: "msg_scoped_window", usage: { ...zeroUsage, input_tokens: 100 } },
+          }),
+        );
+        yield* harness.offerAndWait(
+          makeResultFrame({
+            uuid: `result-scoped-context-${kind}`,
+            result: "Done.",
+            modelUsage: {
+              sonnet: {
+                inputTokens: 100,
+                outputTokens: 1,
+                cacheReadInputTokens: 0,
+                cacheCreationInputTokens: 0,
+                webSearchRequests: 0,
+                costUSD: 0,
+                contextWindow: 64_000,
+                maxOutputTokens: 8_000,
+              },
+            },
+          }),
+        );
+        assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+        const windows = harness.events.flatMap((event) =>
+          event.type === "provider_turn.updated" && event.providerTurn.tokenUsage
+            ? [event.providerTurn.tokenUsage.maxTokens]
+            : [],
+        );
+        assert.deepEqual(windows, [null, 64_000]);
+        assert.equal(harness.runtime.getModelContextWindow?.(modelSelection), 64_000);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
   );
 
   it.effect("measures a model outside the catalog against the window Claude reports", () =>

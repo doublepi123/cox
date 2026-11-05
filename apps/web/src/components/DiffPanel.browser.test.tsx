@@ -23,12 +23,15 @@ import { act, render } from "../../test/render";
 import { makeThreadFixture } from "~/test-fixtures";
 
 type ResultAtom<A> = Atom.Atom<AsyncResult.AsyncResult<A, Error>>;
+type PatchAtom = Atom.Writable<AsyncResult.AsyncResult<ReviewDiffPreviewSource, Error>>;
 
 const state = vi.hoisted(() => ({
   thread: null as ReturnType<typeof makeThreadFixture> | null,
   threadRef: null as ScopedThreadRef | null,
   previews: new Map<string | null, ResultAtom<ReviewDiffPreviewResult>>(),
   patch: null as unknown as ResultAtom<ReviewDiffPreviewSource>,
+  filePatches: new Map<string, PatchAtom>(),
+  requestedPaths: new Set<string>(),
   diffFilesCollapsed: false,
   config: null as unknown as Atom.Atom<null>,
   status: null as unknown as ResultAtom<VcsStatusResult>,
@@ -45,7 +48,11 @@ vi.mock("~/state/review", () => ({
     diffPreview: ({ input }: { input: { baseRef?: string } }) =>
       state.previews.get(input.baseRef ?? null)!,
     branchCommits: () => state.commits,
-    diffFilePatch: () => state.patch,
+    diffFilePatch: ({ input }: { input: { request: { file: { path: string } } } }) => {
+      const path = input.request.file.path;
+      state.requestedPaths.add(path);
+      return state.filePatches.get(path) ?? state.patch;
+    },
     diffFileContents: {},
   },
 }));
@@ -75,6 +82,7 @@ vi.mock("~/hooks/useTheme", () => ({
   useRenderedAppearance: () => "dark",
   getRenderedAppearance: () => "dark",
   subscribeRenderedAppearance: () => () => {},
+  useTheme: () => ({ resolvedTheme: "dark" }),
 }));
 vi.mock("~/state/queries", () => ({
   useCheckpointDiff: () => ({ data: null, error: null, isPending: false }),
@@ -84,7 +92,6 @@ vi.mock("~/state/use-atom-command", () => ({ useAtomCommand: () => async () => {
 vi.mock("~/editorPreferences", () => ({ useOpenInPreferredEditor: () => async () => {} }));
 vi.mock("~/fileContextMenu", () => ({ useFileContextMenuHandler: () => () => {} }));
 vi.mock("~/browser/useOpenLink", () => ({ useOpenLink: () => async () => {} }));
-vi.mock("./diffs/DiffFileTree", () => ({ DiffFileTree: () => null }));
 vi.mock("./DiffFilePathCopyButton", () => ({ DiffFilePathCopyButton: () => null }));
 
 import DiffPanel from "./DiffPanel";
@@ -124,6 +131,9 @@ function setup(failedBaseRef: string | null) {
     useDiffPanelSessionStore.setState({ collapsedFileKeysByScopeKey: {} });
   };
   reset();
+  localStorage.removeItem("t3code.diffFileTreeOpen");
+  state.filePatches.clear();
+  state.requestedPaths.clear();
   state.diffFilesCollapsed = false;
   const patch = Atom.make<AsyncResult.AsyncResult<ReviewDiffPreviewSource, Error>>(
     AsyncResult.initial(),
@@ -266,3 +276,92 @@ it.each([false, true])(
     await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
   },
 );
+
+function setupFiles(paths: string[]) {
+  const context = setup("origin/orphan");
+  const metadata = preview();
+  const source = {
+    ...metadata.sources[0]!,
+    files: paths.map((path) => ({ path, previousPath: null, additions: 1, deletions: 1 })),
+  };
+  state.previews.set("main", Atom.make(AsyncResult.success({ ...metadata, sources: [source] })));
+  for (const path of paths) {
+    state.filePatches.set(
+      path,
+      Atom.make<AsyncResult.AsyncResult<ReviewDiffPreviewSource, Error>>(AsyncResult.initial()),
+    );
+  }
+  useDiffPanelStore.getState().selectBranchBaseRef(context.threadRef, "main");
+  return {
+    ...context,
+    load(path: string, lineCount = 1) {
+      const before = Array.from({ length: lineCount }, (_, index) => `-before-${path}-${index}`);
+      const after = Array.from({ length: lineCount }, (_, index) => `+after-${path}-${index}`);
+      return act(() =>
+        context.registry.set(
+          state.filePatches.get(path)!,
+          AsyncResult.success({
+            ...source,
+            files: source.files.filter((file) => file.path === path),
+            diff: `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,${lineCount} +1,${lineCount} @@\n${[...before, ...after].join("\n")}\n`,
+          }),
+        ),
+      );
+    },
+  };
+}
+
+it("loads deferred patches in batches when the footer is reached", async () => {
+  const paths = Array.from({ length: 9 }, (_, index) => `file-${index + 1}.txt`);
+  using context = setupFiles(paths);
+  await using screen = await render(
+    <RegistryContext.Provider value={context.registry}>
+      <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>,
+  );
+  expect([...state.requestedPaths]).toEqual(paths.slice(0, 4));
+  for (const path of paths.slice(0, 4)) await context.load(path, 80);
+  await expect
+    .element(screen.getByRole("button", { name: "Collapse file-1.txt", exact: true }))
+    .toHaveAttribute("aria-expanded", "true");
+  expect([...state.requestedPaths]).toEqual(paths.slice(0, 4));
+  const footer = screen.getByRole("status", { name: "Loading diff…" });
+  footer.element().scrollIntoView({ block: "end" });
+  await vi.waitFor(() => expect([...state.requestedPaths]).toEqual(paths.slice(0, 8)));
+  for (const path of paths.slice(4, 8)) await context.load(path);
+  footer.element().scrollIntoView({ block: "end" });
+  await vi.waitFor(() => expect([...state.requestedPaths]).toEqual(paths));
+  await context.load(paths[8]!);
+  await expect.element(footer).not.toBeInTheDocument();
+  await expect.element(screen.getByText("after-file-9.txt-0", { exact: true })).toBeVisible();
+});
+
+it("selects an unloaded file by path from the tree without requesting the intervening files", async () => {
+  const paths = Array.from({ length: 6 }, (_, index) => `tree-${index + 1}.txt`);
+  using context = setupFiles(paths);
+  state.diffFilesCollapsed = true;
+  await using screen = await render(
+    <RegistryContext.Provider value={context.registry}>
+      <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>,
+  );
+  expect([...state.requestedPaths]).toEqual(paths.slice(0, 4));
+  await userEvent.click(screen.getByRole("button", { name: "Show file tree", exact: true }));
+  await userEvent.click(screen.getByRole("treeitem", { name: paths[5]!, exact: true }));
+  await vi.waitFor(() =>
+    expect([...state.requestedPaths]).toEqual([...paths.slice(0, 4), paths[5]!]),
+  );
+  await context.load(paths[5]!);
+  const toggle = screen.getByRole("button", { name: `Collapse ${paths[5]}`, exact: true });
+  await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect.element(screen.getByText("after-tree-6.txt-0", { exact: true })).toBeVisible();
+  await userEvent.click(toggle);
+  await expect
+    .element(screen.getByRole("button", { name: `Expand ${paths[5]}`, exact: true }))
+    .toHaveAttribute("aria-expanded", "false");
+  expect(state.requestedPaths.has(paths[4]!)).toBe(false);
+});
