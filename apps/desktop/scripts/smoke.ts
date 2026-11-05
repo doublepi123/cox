@@ -131,7 +131,12 @@ const pty = require('node-pty');
 const terminal = pty.spawn(process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', process.platform === 'win32' ? ['-NoProfile', '-Command', "[Console]::Write('COX_DESKTOP_PTY_OK')"] : ['-c', "printf COX_DESKTOP_PTY_OK"], { cols: 80, rows: 24, env: process.env });
 let output = '';
 terminal.onData((chunk) => { output += chunk; });
-terminal.onExit(() => { if (!output.includes('COX_DESKTOP_PTY_OK')) { console.error(output); process.exitCode = 1; } });
+terminal.onExit(({ exitCode }) => {
+  const success = exitCode === 0 && output.includes('COX_DESKTOP_PTY_OK');
+  if (!success) console.error({ exitCode, output });
+  else console.log('PASS: native terminal produced the marker and exited successfully.');
+  process.exit(success ? 0 : 1);
+});
 `;
   execFileSync(node, ["--input-type=module", "-e", ptyProbe], {
     cwd: join(resources, "server"),
