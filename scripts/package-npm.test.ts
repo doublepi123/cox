@@ -64,8 +64,8 @@ async function fixture() {
     dirname(require.resolve("yaml/package.json")),
     join(root, "scripts/node_modules/yaml"),
   );
-  const pack = (tag = "v0.1.0") =>
-    execFileSync(process.execPath, ["scripts/package-npm.ts"], {
+  const pack = (tag = "v0.1.0", extraArgs: ReadonlyArray<string> = []) =>
+    execFileSync(process.execPath, ["scripts/package-npm.ts", ...extraArgs], {
       cwd: root,
       env: { ...process.env, RELEASE_TAG: tag },
       encoding: "utf8",
@@ -81,6 +81,15 @@ afterEach(async () => {
 });
 
 describe("npm distribution", () => {
+  it("can stage the runtime for desktop packaging without invoking npm pack", async () => {
+    const { root, pack } = await fixture();
+    pack("v0.1.0", ["--no-pack"]);
+    const manifest = JSON.parse(await readFile(join(root, "release/npm/package.json"), "utf8"));
+    expect(manifest.name).toBe("@doublepi123/cox");
+    expect(await readFile(join(root, "release/npm/dist/bin.mjs"), "utf8")).toContain("fixture");
+    await expect(readFile(join(root, "release/npm/doublepi123-cox-0.1.0.tgz"))).rejects.toThrow();
+  });
+
   it("packs the scoped CLI, browser, workers and licenses without workspace or local state", async () => {
     const { root, pack } = await fixture();
     pack();

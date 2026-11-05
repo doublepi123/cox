@@ -102,4 +102,10 @@ await writeFile(
     2,
   )}\n`,
 );
-execFileSync("npm", ["pack", "--ignore-scripts", "--quiet"], { cwd: output, stdio: "inherit" });
+if (!process.argv.includes("--no-pack")) {
+  execFileSync("npm", ["pack", "--ignore-scripts", "--quiet"], {
+    cwd: output,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+}

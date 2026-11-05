@@ -1,0 +1,26 @@
+{
+  "name": "@cox/desktop",
+  "version": "0.1.39",
+  "private": true,
+  "description": "Cox desktop client with an embedded local backend",
+  "license": "MIT",
+  "author": "Cox contributors",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "pnpm build && node scripts/dev.ts",
+    "package": "node scripts/package.ts",
+    "smoke": "node scripts/smoke.ts",
+    "smoke:app": "node scripts/smoke-app.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "playwright-core": "1.60.0",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

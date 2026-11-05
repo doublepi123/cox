@@ -17,6 +17,17 @@ Run `pnpm pages:test` and `pnpm pages:build` to validate and build it. See the
 
 ## Quick start (npm)
 
+### Desktop client (macOS / Windows)
+
+The optional [Cox Desktop client](apps/desktop/README.md) embeds the existing Web UI,
+a standalone Node runtime and a loopback-only backend. Desktop builds launch by
+double-clicking and use `~/.cox/desktop`, separately from CLI data. Build installers
+on the target operating system with `pnpm desktop:build`; signing and native-platform
+acceptance are required before public distribution. Agent installation and authentication
+remain separate. The browser/CLI workflow below is unchanged.
+
+### CLI installation
+
 The public npm package is [`@doublepi123/cox`](https://www.npmjs.com/package/@doublepi123/cox).
 Use Node.js `26.12.1` (the version tested in CI) and npm. A source checkout and pnpm are
 not required: the package includes the built browser UI and local server.

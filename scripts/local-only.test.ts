@@ -80,7 +80,6 @@ describe("local-only distribution boundary", () => {
 
   it("does not ship removed application or infrastructure surfaces", () => {
     for (const directory of [
-      "apps/desktop",
       "apps/mobile",
       "apps/marketing",
       "infra",
@@ -106,7 +105,7 @@ describe("local-only distribution boundary", () => {
     }
   });
 
-  it("keeps desktop, native-client and cloud-account dependencies out of workspace manifests", () => {
+  it("isolates the desktop shell and keeps mobile and cloud dependencies out of manifests", () => {
     const manifests = ["package.json", "scripts/package.json"];
     for (const directory of ["apps", "packages"]) {
       for (const entry of NodeFS.readdirSync(NodePath.join(root, directory))) {
@@ -124,6 +123,11 @@ describe("local-only distribution boundary", () => {
         ...manifest.optionalDependencies,
       };
       for (const name of Object.keys(dependencies)) {
+        if (
+          relative === NodePath.join("apps", "desktop", "package.json") &&
+          /^(?:electron(?:-|$)|@electron\/)/.test(name)
+        )
+          continue;
         expect(forbidden.test(name), `${relative}: ${name}`).toBe(false);
       }
     }
