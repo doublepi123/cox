@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@t3tools/contracts": "workspace:*",
     "@types/node": "catalog:",
     "electron": "45.2.3",
     "electron-builder": "26.18.0",

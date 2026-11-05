@@ -9,6 +9,7 @@ macOS / Windows 桌面壳，复用 Cox Web UI，内置独立 Node 运行时和�
 - 开发版数据位于仓库 `.cox/desktop-dev`，与正式版和现有 CLI 数据隔离。
 - 重复双击只唤醒已有桌面窗口，不启动第二个后端。
 - macOS 关闭窗口后程序和任务继续运行，通过 Dock 再次打开；Windows 关闭窗口进入退出确认。菜单 Quit / 系统退出均提示中断风险，确认后停止自有后端和终端。
+- Windows 默认隐藏原生菜单栏（Alt 可临时调用），窗口按钮融入应用顶部并跟随主题颜色，保留原生最小化、最大化和关闭，以及顶部空白区域拖动。退出确认复用应用内弹窗、字体与主题，默认聚焦取消；确认后才停止后端。仅在页面未就绪或崩溃时回退系统提示框。
 - 桌面进程异常结束时，IPC 断开触发后端清理。强制退出和机器断电无法保证运行中任务完成。
 - 内嵌页面禁用 Node 集成，启用 sandbox / context isolation；外部 HTTP(S) 链接在系统浏览器中打开。不提供自动更新、云账号、远程连接或遥测服务。
 - 后端不会继承 `COX_*`、`T3CODE_*`、`VITE_*`、`ELECTRON_*`、`NODE_OPTIONS` 和 `NODE_PATH` 覆盖配置；其他 provider 环境变量保留。macOS 启动时尝试读取登录 shell 的 PATH。
@@ -61,6 +62,8 @@ pnpm --filter @cox/desktop smoke:app
 GitHub Actions 的 `Cox desktop packages` 工作流支持手动触发，在 macOS arm64 / Intel 和 Windows x64 上构建、运行上述 smoke 并上传安装包，不自动发布 Release。
 
 macOS 的 DMG 与 ZIP 分开上传：默认 `cox-desktop-macos-*` 附件只含 DMG，便携 ZIP 在对应 `-zip` 附件中，无需同时下载两份相同的应用。
+
+仅调整 Windows 客户端时，可在手动触发工作流时勾选 `windows_only`，避免重复构建两个 macOS 安装包；默认仍验证全部三个目标。
 
 ### 签名与发布边界
 

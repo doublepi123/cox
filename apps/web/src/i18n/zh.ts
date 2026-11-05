@@ -1,4 +1,9 @@
 export const zh = {
+  "Quit Cox?": "退出 Cox？",
+  "Quit Cox": "退出 Cox",
+  "Quitting…": "正在退出…",
+  "Quitting stops the local backend and interrupts running agent tasks and terminals.":
+    "退出会停止本地后端，并中断正在运行的 Agent 任务和终端。",
   "Follow-up behavior: {behavior}": "后续消息行为：{behavior}",
   "Choose how follow-up messages are sent while the agent runs.":
     "选择代理运行时后续消息的发送方式。",

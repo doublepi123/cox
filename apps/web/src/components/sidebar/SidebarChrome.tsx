@@ -43,6 +43,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader() {
       : null;
   return (
     <div
+      data-workspace-titlebar
       className={cn(
         "relative flex h-14 shrink-0 flex-row items-center gap-2 px-3 [--workspace-titlebar-control-size:2.75rem] md:h-[var(--workspace-topbar-height)] md:pl-0",
         false,

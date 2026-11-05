@@ -312,6 +312,9 @@ importers:
 
   apps/desktop:
     devDependencies:
+      '@t3tools/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4

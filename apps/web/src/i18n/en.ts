@@ -1,4 +1,9 @@
 export const en = {
+  "Quit Cox?": "Quit Cox?",
+  "Quit Cox": "Quit Cox",
+  "Quitting…": "Quitting…",
+  "Quitting stops the local backend and interrupts running agent tasks and terminals.":
+    "Quitting stops the local backend and interrupts running agent tasks and terminals.",
   "Follow-up behavior: {behavior}": "Follow-up behavior: {behavior}",
   "Choose how follow-up messages are sent while the agent runs.":
     "Choose how follow-up messages are sent while the agent runs.",

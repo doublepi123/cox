@@ -162,6 +162,25 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   );
 }
 
+html[data-cox-desktop="windows"] :is([data-workspace-titlebar], [data-chat-header]) {
+  -webkit-app-region: drag;
+}
+
+html[data-cox-desktop="windows"] [data-chat-header] {
+  padding-inline-end: max(var(--workspace-gutter-end), var(--workspace-native-controls-inset));
+}
+
+html[data-cox-desktop="windows"]
+  :is([data-workspace-titlebar], [data-chat-header])
+  :is(button, a, input, select, textarea, [role="button"], [contenteditable="true"]) {
+  -webkit-app-region: no-drag;
+}
+
+html[data-cox-desktop="windows"]
+  :is([data-slot="alert-dialog-backdrop"], [data-slot="alert-dialog-viewport"]) {
+  -webkit-app-region: no-drag;
+}
+
 /* The font tokens are declared outside the inline theme so utilities reference
    the variables and Settings -> Appearance can override them at runtime. The
    default stacks are mirrored in `appearanceFonts.ts`. */

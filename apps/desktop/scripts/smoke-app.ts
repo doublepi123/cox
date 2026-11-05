@@ -76,10 +76,33 @@ try {
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
     1,
   );
-  await application.evaluate(({ dialog }) => {
-    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
-  });
-  await application.close();
+  if (process.platform === "win32") {
+    assert.equal(
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.isMenuBarVisible(),
+      ),
+      false,
+    );
+    await page.waitForFunction(() => document.documentElement.classList.contains("wco"));
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.coxDesktop), "windows");
+    await application.evaluate(({ BrowserWindow, dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
+      BrowserWindow.getAllWindows()[0]?.close();
+    });
+    await page.getByRole("alertdialog").waitFor();
+    await page.getByRole("button", { name: /^(Cancel|取消)$/ }).click();
+    assert.equal(existsSync(runtimePath), true);
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+    const exit = once(applicationProcess, "exit", { signal: AbortSignal.timeout(20_000) });
+    await page.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
+    const [exitCode] = await exit;
+    assert.equal(exitCode, 0);
+  } else {
+    await application.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    });
+    await application.close();
+  }
   assert.equal(existsSync(runtimePath), false);
   console.log(
     "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation and graceful quit.",

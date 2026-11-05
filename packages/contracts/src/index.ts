@@ -63,3 +63,4 @@ export * from "./settingsSecretValue.ts";
 export * from "./modelService.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./browserUi.ts";
+export type { DesktopShellBridge } from "./desktopShell.ts";

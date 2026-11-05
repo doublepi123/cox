@@ -10,8 +10,8 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { app, BrowserWindow, dialog, Menu, shell } from "electron";
-import type { Event, MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import type { Event, IpcMainEvent, MenuItemConstructorOptions } from "electron";
 import { BackendProcess } from "./backend.ts";
 import { backendEnvironment, isBackendNavigation, isExternalNavigation } from "./config.ts";
 
@@ -28,6 +28,8 @@ let window: BrowserWindow | undefined;
 let backend: BackendProcess | undefined;
 let approvedQuit = false;
 let quitPending = false;
+let desktopReady = false;
+let stoppingBackend = false;
 let origin: string | undefined;
 
 function showWindow() {
@@ -40,6 +42,11 @@ function showWindow() {
 async function requestQuit() {
   if (quitPending) return;
   quitPending = true;
+  if (process.platform === "win32" && desktopReady && window && !window.webContents.isCrashed()) {
+    showWindow();
+    window.webContents.send("cox:quit-requested");
+    return;
+  }
   const result = await dialog.showMessageBox({
     type: "warning",
     title: "Quit Cox / 退出 Cox",
@@ -54,12 +61,23 @@ async function requestQuit() {
     quitPending = false;
     return;
   }
+  await finishQuit();
+}
+
+async function finishQuit() {
+  if (stoppingBackend) return;
+  stoppingBackend = true;
   try {
     await backend?.stop();
     approvedQuit = true;
     app.quit();
   } catch (error) {
     quitPending = false;
+    stoppingBackend = false;
+    if (desktopReady && process.platform === "win32") {
+      quitPending = true;
+      window?.webContents.send("cox:quit-requested");
+    }
     dialog.showErrorBox("Cox could not stop its backend", String(error));
   }
 }
@@ -105,17 +123,58 @@ async function start() {
     minWidth: 800,
     minHeight: 600,
     title: "Cox",
+    ...(process.platform === "win32"
+      ? {
+          autoHideMenuBar: true,
+          titleBarStyle: "hidden" as const,
+          titleBarOverlay: { color: "#151518", symbolColor: "#eeeeee", height: 52 },
+        }
+      : {}),
     backgroundColor: "#151518",
     icon: app.isPackaged
       ? join(process.resourcesPath, "icon.png")
       : join(root, "apps/web/public/icon-512.png"),
     webPreferences: {
+      preload: join(import.meta.dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
       partition: "persist:cox-desktop",
     },
+  });
+  const isTrustedSender = (event: IpcMainEvent) =>
+    Boolean(
+      window &&
+      origin &&
+      event.sender === window.webContents &&
+      event.senderFrame === window.webContents.mainFrame &&
+      isBackendNavigation(event.senderFrame.url, origin),
+    );
+  ipcMain.on("cox:desktop-ready", (event) => {
+    if (!isTrustedSender(event)) return;
+    desktopReady = true;
+    if (quitPending && !stoppingBackend) window?.webContents.send("cox:quit-requested");
+  });
+  ipcMain.on("cox:quit-answer", (event, confirmed: unknown) => {
+    if (!isTrustedSender(event) || !quitPending || stoppingBackend) return;
+    if (confirmed === false) quitPending = false;
+    else if (confirmed === true) void finishQuit();
+  });
+  ipcMain.on("cox:window-colors", (event, background: unknown, foreground: unknown) => {
+    if (
+      process.platform !== "win32" ||
+      !isTrustedSender(event) ||
+      typeof background !== "string" ||
+      typeof foreground !== "string" ||
+      !/^#[a-f0-9]{6}$/i.test(background) ||
+      !/^#[a-f0-9]{6}$/i.test(foreground)
+    )
+      return;
+    window?.setTitleBarOverlay({ color: background, symbolColor: foreground, height: 52 });
+  });
+  window.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
+    if (isMainFrame && !inPlace) desktopReady = false;
   });
   window.on("close", (event) => {
     if (approvedQuit) return;
@@ -238,6 +297,7 @@ async function start() {
     { role: "windowMenu" },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
+  if (process.platform === "win32") window.setMenuBarVisibility(false);
   await window.loadURL(
     `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><title>Cox</title><body style="background:#151518;color:#eee;font:18px system-ui;display:grid;place-content:center;height:90vh;text-align:center"><h1>Cox</h1><p>Starting local backend… / 正在启动本地后端…</p>')}`,
   );

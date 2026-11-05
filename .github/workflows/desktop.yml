@@ -1,6 +1,11 @@
 name: Cox desktop packages
 on:
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Build only Windows for Windows-specific changes
+        type: boolean
+        default: false
   pull_request:
     paths:
       - apps/desktop/**
@@ -20,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-15-intel, windows-2025]
+        os: ${{ fromJSON(inputs.windows_only && '["windows-2025"]' || '["macos-15","macos-15-intel","windows-2025"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
