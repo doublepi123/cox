@@ -262,6 +262,14 @@ Package tests can also be run with `pnpm exec vp test run <test-file>`.
 
 The full server suite (`pnpm --filter cox test`) additionally needs a C compiler for native-launcher fixtures and Playwright Chromium with its platform libraries for headless browser tests. Install the browser with `pnpm --filter cox exec playwright-core install chromium`; these are test prerequisites, not desktop-client components.
 
+## npm publishing
+
+The `Publish npm package` workflow (`.github/workflows/npm-publish.yml`) defaults to npm Trusted Publishing (OIDC) on GitHub-hosted runners. Tag-triggered publishing uses OIDC; the `token` option is only an explicit bootstrap fallback, never an automatic retry.
+
+In the npm settings for `@doublepi123/cox`, configure a GitHub Actions trusted publisher with organization/user `doublepi123`, repository `cox`, and workflow filename `npm-publish.yml`. Leave the environment field empty unless the workflow is also configured to use that GitHub environment. This npm-side trust binding is separate from the checked-in workflow and cannot be inferred from `id-token: write` alone.
+
+After the binding is configured, publish through the workflow with `authentication=oidc`; no `NPM_TOKEN` repository secret is required for that mode. Local `npm publish` does not inherit GitHub's OIDC identity. Do not remove an existing bootstrap token until a real workflow publish has verified the trust binding. Version tags and package publication remain explicit release operations, not part of desktop test builds.
+
 ## Layout
 
 - `apps/web`: browser UI.
