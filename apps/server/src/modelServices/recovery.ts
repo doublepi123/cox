@@ -16,6 +16,10 @@ export class ModelServiceRequestFailure extends Data.TaggedError("ModelServiceRe
   readonly retryAfterMs?: number;
 }> {}
 
+export class ModelServiceRequestCancelled extends Data.TaggedError("ModelServiceRequestCancelled")<{
+  readonly detail: string;
+}> {}
+
 export interface RecoveryProgress {
   readonly phase: "retrying" | "hedging" | "recovered" | "failed" | "cancelled";
   readonly attempt: number;
@@ -154,7 +158,10 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     if (hedge) yield* report("hedging");
   });
   while (true) {
-    if (options.cancelled && (yield* options.cancelled)) return yield* Effect.interrupt;
+    if (options.cancelled && (yield* options.cancelled))
+      return yield* new ModelServiceRequestCancelled({
+        detail: "The model service request was cancelled.",
+      });
     const now = yield* Clock.currentTimeMillis;
     if (!(yield* options.enabled)) {
       lastFailure = new ModelServiceRequestFailure({

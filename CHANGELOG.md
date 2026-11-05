@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.37 — 2026-11-05
+
+- Keep model-gateway requests from background agents and workflows running when
+  their parent turn completes or another turn starts in the same provider session.
+- Separate session cancellation from turn progress and failure tracking. Preserve
+  explicit stop and session-close cancellation without cancelling sibling requests
+  when one child request ends.
+- Report explicit gateway cancellation with a structured, non-retryable error before
+  output starts and protocol-specific error events after streaming output begins.
+
 ## 0.1.36 — 2026-11-05
 
 - Disable Claude's built-in WebSearch for model-center sessions while preserving

@@ -13,24 +13,34 @@ type RecoveryTurn = Pick<ProviderAdapterV2TurnInput, "threadId" | "runId" | "roo
   readonly providerThread: Pick<ProviderAdapterV2TurnInput["providerThread"], "id" | "driver">;
 };
 
+interface RecoveryEntry {
+  readonly input: RecoveryTurn;
+  readonly emit: (event: ProviderAdapterV2Event) => Effect.Effect<void>;
+  turn: OrchestrationV2ProviderTurn | undefined;
+  ordinal: number;
+  active: boolean;
+  latest: RecoveryProgress | undefined;
+  started: DateTime.Utc | undefined;
+  readonly failures: Map<string, ModelServiceRequestFailure>;
+  readonly requests: Map<string, RecoveryProgress>;
+}
+
 export function makeRecoveryTracker() {
   const sessions = new Map<
     ProviderSessionId,
-    {
-      readonly input: RecoveryTurn;
-      readonly emit: (event: ProviderAdapterV2Event) => Effect.Effect<void>;
-      turn: OrchestrationV2ProviderTurn | undefined;
-      ordinal: number;
-      cancelled: boolean;
-      latest: RecoveryProgress | undefined;
-      started: DateTime.Utc | undefined;
-      readonly failures: Map<string, ModelServiceRequestFailure>;
-      readonly requests: Map<string, RecoveryProgress>;
-    }
+    { cancelled: boolean; entry: RecoveryEntry | undefined }
   >();
-  const flush = Effect.fnUntraced(function* (entry: NonNullable<ReturnType<typeof sessions.get>>) {
+  const sessionFor = (sessionId: ProviderSessionId) => {
+    let session = sessions.get(sessionId);
+    if (!session) {
+      session = { cancelled: false, entry: undefined };
+      sessions.set(sessionId, session);
+    }
+    return session;
+  };
+  const flush = Effect.fnUntraced(function* (entry: RecoveryEntry) {
     const progress = entry.latest;
-    if (!progress || !entry.turn) return;
+    if (!entry.active || !progress || !entry.turn) return;
     const now = yield* DateTime.now;
     entry.started ??= now;
     const { input } = entry;
@@ -86,9 +96,13 @@ export function makeRecoveryTracker() {
       emit: (event: ProviderAdapterV2Event) => Effect.Effect<void>,
     ) =>
       Effect.sync(() => {
-        const old = sessions.get(sessionId);
-        if (old) old.cancelled = true;
-        sessions.set(sessionId, {
+        let session = sessionFor(sessionId);
+        if (session.entry) session.entry.active = false;
+        if (session.cancelled) {
+          session = { cancelled: false, entry: undefined };
+          sessions.set(sessionId, session);
+        }
+        session.entry = {
           input: {
             threadId: input.threadId,
             runId: input.runId,
@@ -98,21 +112,22 @@ export function makeRecoveryTracker() {
           emit,
           turn: undefined,
           ordinal: 0,
-          cancelled: false,
+          active: true,
           latest: undefined,
           started: undefined,
           failures: new Map(),
           requests: new Map(),
-        });
+        };
       }),
     observe: Effect.fnUntraced(function* (
       sessionId: ProviderSessionId,
       event: ProviderAdapterV2Event,
     ) {
-      const entry = sessions.get(sessionId);
-      if (!entry) return;
+      const entry = sessions.get(sessionId)?.entry;
+      if (!entry?.active) return;
       if (
         event.type === "provider_turn.updated" &&
+        event.providerTurn.providerThreadId === entry.input.providerThread.id &&
         event.providerTurn.nodeId === entry.input.rootNodeId
       ) {
         entry.turn = event.providerTurn;
@@ -127,34 +142,37 @@ export function makeRecoveryTracker() {
         entry.ordinal = Math.max(entry.ordinal, event.turnItem.ordinal + 1);
       if (
         event.type === "turn.terminal" &&
-        event.providerThreadId === entry.input.providerThread.id
+        event.providerThreadId === entry.input.providerThread.id &&
+        event.providerTurnId === entry.turn?.id
       ) {
-        entry.cancelled = true;
-        sessions.delete(sessionId);
+        entry.active = false;
       }
     }),
     cancel: (sessionId: ProviderSessionId) =>
       Effect.sync(() => {
-        const entry = sessions.get(sessionId);
-        if (entry) entry.cancelled = true;
+        sessionFor(sessionId).cancelled = true;
       }),
     close: (sessionId: ProviderSessionId) =>
       Effect.sync(() => {
-        const entry = sessions.get(sessionId);
-        if (entry) entry.cancelled = true;
+        const session = sessions.get(sessionId);
+        if (session) {
+          session.cancelled = true;
+          if (session.entry) session.entry.active = false;
+        }
         sessions.delete(sessionId);
       }),
     request: (sessionId: ProviderSessionId | undefined, key: string) => {
-      const entry = sessionId ? sessions.get(sessionId) : undefined;
+      const session = sessionId ? sessionFor(sessionId) : undefined;
+      const entry = session?.entry;
       return {
-        cancelled: Effect.sync(() => entry?.cancelled === true),
-        failure: entry?.failures.get(key),
+        cancelled: Effect.sync(() => session?.cancelled === true),
+        failure: session?.cancelled ? undefined : entry?.failures.get(key),
         failed: (error: ModelServiceRequestFailure) =>
           Effect.sync(() => {
             entry?.failures.set(key, error);
           }),
         progress: (progress: RecoveryProgress) =>
-          entry
+          entry?.active
             ? Effect.suspend(() => {
                 entry.requests.set(key, progress);
                 entry.latest =

@@ -39,6 +39,7 @@ import {
 } from "./responseProgress.ts";
 import {
   ModelServiceRequestFailure,
+  ModelServiceRequestCancelled,
   recoverModelServiceRequest,
   retryAfterMilliseconds,
   isRetryableModelServiceError,
@@ -686,7 +687,10 @@ export const make = Effect.gen(function* () {
           Stream.interruptWhen(
             Effect.gen(function* () {
               while (true) {
-                if (yield* tracking.cancelled) return yield* Effect.interrupt;
+                if (yield* tracking.cancelled)
+                  return yield* new ModelServiceRequestCancelled({
+                    detail: "The model service request was cancelled.",
+                  });
                 if (!(yield* enabled))
                   return yield* new ModelServiceError({
                     detail: "This model service is unavailable.",
@@ -695,6 +699,31 @@ export const make = Effect.gen(function* () {
                 yield* Effect.sleep(250);
               }
             }),
+          ),
+          Stream.catchTag("ModelServiceRequestCancelled", (error) =>
+            Stream.succeed(
+              new TextEncoder().encode(
+                `event: error\ndata: ${JSON.stringify(
+                  incoming === "gemini"
+                    ? { error: { code: 499, status: "CANCELLED", message: error.detail } }
+                    : incoming === "openai-responses"
+                      ? {
+                          type: "error",
+                          code: "cox_model_service_request_cancelled",
+                          message: error.detail,
+                          param: null,
+                        }
+                      : {
+                          type: "error",
+                          error: {
+                            type: "request_cancelled",
+                            code: "cox_model_service_request_cancelled",
+                            message: error.detail,
+                          },
+                        },
+                )}\n\n`,
+              ),
+            ),
           ),
           Stream.mapError(
             (_error: unknown) =>
@@ -770,18 +799,33 @@ export const make = Effect.gen(function* () {
       attempt: () => attempt,
       progress: tracking.progress,
     }).pipe(
-      Effect.catchTag("ModelServiceRequestFailure", (error) =>
-        tracking
-          .failed(error)
-          .pipe(
+      Effect.catchTags({
+        ModelServiceRequestCancelled: (error) =>
+          Effect.succeed(
+            HttpServerResponse.jsonUnsafe(
+              {
+                type: "error",
+                error: {
+                  type: "request_cancelled",
+                  message: error.detail,
+                  code: "cox_model_service_request_cancelled",
+                },
+              },
+              { status: 499, headers: { "x-should-retry": "false" } },
+            ),
+          ),
+        ModelServiceRequestFailure: (error) =>
+          tracking.failed(error).pipe(
             Effect.as(
               HttpServerResponse.jsonUnsafe(
-                { error: { message: error.detail, code: "cox_model_service_recovery_exhausted" } },
+                {
+                  error: { message: error.detail, code: "cox_model_service_recovery_exhausted" },
+                },
                 { status: error.status, headers: { "x-should-retry": "false" } },
               ),
             ),
           ),
-      ),
+      }),
     );
   }).pipe(
     Effect.catchTag("ModelServiceError", (error) =>

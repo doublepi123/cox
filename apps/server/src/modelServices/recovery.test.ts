@@ -181,7 +181,7 @@ it.effect.each([
       )
       .pipe(Effect.flip, Effect.forkChild);
     yield* TestClock.adjust("2 seconds");
-    expect((yield* Fiber.join(fiber)).status).toBe(scenario.status);
+    expect(yield* Fiber.join(fiber)).toMatchObject({ status: scenario.status });
     expect(h.started).toHaveLength(scenario.attempts);
     expect(h.load.inFlight).toBe(0);
   }),
@@ -235,7 +235,7 @@ it.effect("stops forced 429 retries when the recovery time budget expires", () =
       .pipe(Effect.flip, Effect.forkChild);
     yield* Deferred.await(retrying);
     yield* TestClock.adjust("1 second");
-    expect((yield* Fiber.join(fiber)).status).toBe(429);
+    expect(yield* Fiber.join(fiber)).toMatchObject({ status: 429 });
     expect(h.started).toEqual([1]);
     expect(h.load.inFlight).toBe(0);
   }),
@@ -246,7 +246,7 @@ it.effect("cancels every stalled attempt when the recovery budget expires", () =
     const h = harness({ budgetMs: 1000, hedgeDelayMs: 100 });
     const fiber = yield* h.run(() => Effect.never).pipe(Effect.flip, Effect.forkChild);
     yield* TestClock.adjust("2 seconds");
-    expect((yield* Fiber.join(fiber)).status).toBe(504);
+    expect(yield* Fiber.join(fiber)).toMatchObject({ status: 504 });
     expect(h.started).toHaveLength(2);
     expect(h.closed.toSorted()).toEqual([1, 2]);
   }),
@@ -255,13 +255,30 @@ it.effect("cancels every stalled attempt when the recovery budget expires", () =
 it.effect("stops rather than retrying when the user cancels", () =>
   Effect.gen(function* () {
     const h = harness({ hedgeDelayMs: 100 });
-    const fiber = yield* h.run(() => Effect.never).pipe(Effect.forkChild);
+    const fiber = yield* h.run(() => Effect.never).pipe(Effect.flip, Effect.forkChild);
     yield* TestClock.adjust("1 second");
     h.cancel();
     yield* TestClock.adjust("1 second");
+    expect(yield* Fiber.join(fiber)).toMatchObject({
+      _tag: "ModelServiceRequestCancelled",
+      detail: "The model service request was cancelled.",
+    });
+    expect(h.load.inFlight).toBe(0);
+    expect(h.closed.toSorted()).toEqual(h.started);
+    expect(h.phases.at(-1)?.phase).toBe("cancelled");
+  }),
+);
+
+it.effect("preserves external interruption and releases its upstream attempts", () =>
+  Effect.gen(function* () {
+    const h = harness({ hedgeDelayMs: 100 });
+    const fiber = yield* h.run(() => Effect.never).pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    yield* Fiber.interrupt(fiber);
     const result = yield* Fiber.await(fiber);
     expect(Exit.isFailure(result) && Cause.hasInterrupts(result.cause)).toBe(true);
     expect(h.load.inFlight).toBe(0);
+    expect(h.closed.toSorted()).toEqual(h.started);
   }),
 );
 
@@ -272,10 +289,10 @@ it.effect("stops when the service is disabled and never retries permanent errors
     yield* TestClock.adjust("1 second");
     h.disable();
     yield* TestClock.adjust("1 second");
-    expect((yield* Fiber.join(fiber)).status).toBe(503);
+    expect(yield* Fiber.join(fiber)).toMatchObject({ status: 503 });
     const permanent = harness();
     expect(
-      (yield* permanent
+      yield* permanent
         .run(() =>
           Effect.fail(
             new ModelServiceRequestFailure({
@@ -285,8 +302,8 @@ it.effect("stops when the service is disabled and never retries permanent errors
             }),
           ),
         )
-        .pipe(Effect.flip)).status,
-    ).toBe(401);
+        .pipe(Effect.flip),
+    ).toMatchObject({ status: 401 });
     expect(permanent.started).toEqual([1]);
   }),
 );

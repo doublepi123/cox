@@ -8,12 +8,15 @@ import {
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
+  ProviderTurnId,
   ThreadId,
   RunId,
   NodeId,
   type ProviderInstanceConfigMap,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -29,6 +32,7 @@ import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapt
 import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ClaudeSettings } from "@t3tools/contracts";
+import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/ProviderAdapter";
 
 const serviceId = ModelServiceId.make("shared-test");
 const instanceId = ProviderInstanceId.make("bound-test");
@@ -56,6 +60,42 @@ const layer = Layer.mergeAll(
   ServerConfig.layerTest(process.cwd(), { prefix: "cox-model-gateway-test-" }),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 const record = (value: unknown): Record<string, unknown> => value as Record<string, unknown>;
+const recoveryInput = (id: string) => ({
+  threadId: ThreadId.make("recovery-thread"),
+  runId: RunId.make(`recovery-run-${id}`),
+  rootNodeId: NodeId.make(`recovery-node-${id}`),
+  providerThread: {
+    id: ProviderThreadId.make("recovery-provider-thread"),
+    driver: ProviderDriverKind.make("claudeAgent"),
+  },
+});
+const recoveryTurn = (id: string): ProviderAdapterV2Event => ({
+  type: "provider_turn.updated",
+  driver: ProviderDriverKind.make("claudeAgent"),
+  providerTurn: {
+    id: ProviderTurnId.make(`recovery-turn-${id}`),
+    providerThreadId: recoveryInput(id).providerThread.id,
+    nodeId: recoveryInput(id).rootNodeId,
+    runAttemptId: null,
+    nativeTurnRef: null,
+    ordinal: 1,
+    status: "running",
+    startedAt: DateTime.makeUnsafe(0),
+    completedAt: null,
+  },
+});
+const recoveryTerminal = (
+  id: string,
+): Extract<ProviderAdapterV2Event, { type: "turn.terminal"; failure: null }> => ({
+  type: "turn.terminal",
+  driver: ProviderDriverKind.make("claudeAgent"),
+  providerThreadId: recoveryInput(id).providerThread.id,
+  providerTurnId: ProviderTurnId.make(`recovery-turn-${id}`),
+  runOrdinal: 1,
+  status: "completed",
+  failure: null,
+  threadDisposition: "reusable",
+});
 
 const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
@@ -143,12 +183,347 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
       Effect.provideService(HttpServerRequest.HttpServerRequest, request),
     );
     const text = yield* Effect.promise(() => HttpServerResponse.toWeb(response).text());
-    return { status: response.status, text };
+    return { status: response.status, headers: response.headers, text };
   }, Effect.scoped);
   return { gateway, instances, materialized, config, token, calls, invoke, settings };
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each([
+    { nextTurn: false, stream: false },
+    { nextTurn: true, stream: false },
+    { nextTurn: false, stream: true },
+    { nextTurn: true, stream: true },
+  ])(
+    "keeps sibling background requests alive across parent completion and the next turn (%j)",
+    ({ nextTurn, stream }) =>
+      Effect.gen(function* () {
+        const firstReady = yield* Deferred.make<void>();
+        const ready = yield* Deferred.make<void>();
+        const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+        const cancelled: number[] = [];
+        const h = yield* harness({
+          driver: "claudeAgent",
+          protocol: "openai-responses",
+          respond: () => {
+            const id = controllers.length;
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controllers.push(controller);
+                  if (controllers.length === 1) Deferred.doneUnsafe(firstReady, Effect.void);
+                  if (controllers.length === 2) Deferred.doneUnsafe(ready, Effect.void);
+                },
+                cancel() {
+                  cancelled.push(id);
+                },
+              }),
+              { headers: { "content-type": stream ? "text/event-stream" : "application/json" } },
+            );
+          },
+        });
+        const session = ProviderSessionId.make("background-session");
+        yield* h.gateway.lifecycle.begin(session, recoveryInput("a"), () => Effect.void);
+        yield* h.gateway.lifecycle.observe(session, recoveryTurn("a"));
+        const headers = { authorization: `Bearer ${h.token}.${session}` };
+        const invoke = (content: string) =>
+          h.invoke(
+            "/v1/messages",
+            {
+              model: "Vendor/Exact",
+              stream,
+              max_tokens: 100,
+              messages: [{ role: "user", content }],
+            },
+            headers,
+          );
+        const first = yield* invoke("first child").pipe(Effect.forkChild);
+        yield* Deferred.await(firstReady);
+        const second = yield* invoke("second child").pipe(Effect.forkChild);
+        yield* Deferred.await(ready);
+        yield* h.gateway.lifecycle.observe(session, recoveryTerminal("a"));
+        if (nextTurn) {
+          yield* h.gateway.lifecycle.begin(session, recoveryInput("b"), () => Effect.void);
+          yield* h.gateway.lifecycle.observe(session, recoveryTurn("b"));
+          yield* h.gateway.lifecycle.observe(session, recoveryTerminal("a"));
+        }
+        yield* TestClock.adjust("1 second");
+        expect(cancelled).toEqual([]);
+        const finish = (id: number) => {
+          const response = {
+            id: `response-${id}`,
+            object: "response",
+            status: "completed",
+            model: "Vendor/Exact",
+            output: [
+              {
+                id: `message-${id}`,
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [{ type: "output_text", text: `child ${id} succeeded`, annotations: [] }],
+              },
+            ],
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          };
+          const item = response.output[0]!;
+          const text = stream
+            ? [
+                {
+                  type: "response.created",
+                  response: { id: response.id, model: response.model, created_at: 1 },
+                },
+                {
+                  type: "response.output_item.added",
+                  output_index: 0,
+                  item: { ...item, content: [] },
+                },
+                {
+                  type: "response.content_part.added",
+                  item_id: item.id,
+                  output_index: 0,
+                  content_index: 0,
+                  part: { type: "output_text", text: "" },
+                },
+                {
+                  type: "response.output_text.delta",
+                  item_id: item.id,
+                  output_index: 0,
+                  content_index: 0,
+                  delta: item.content[0]!.text,
+                },
+                { type: "response.completed", response },
+              ]
+                .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+                .join("")
+            : JSON.stringify(response);
+          controllers[id]!.enqueue(new TextEncoder().encode(text));
+          controllers[id]!.close();
+        };
+        finish(0);
+        expect(yield* Fiber.join(first)).toMatchObject({
+          status: 200,
+          text: expect.stringContaining("child 0 succeeded"),
+        });
+        yield* h.gateway.lifecycle.observe(session, {
+          ...recoveryTerminal("a"),
+          providerTurnId: ProviderTurnId.make("completed-child-turn"),
+        });
+        yield* TestClock.adjust("1 second");
+        expect(cancelled).toEqual([]);
+        finish(1);
+        expect(yield* Fiber.join(second)).toMatchObject({
+          status: 200,
+          text: expect.stringContaining("child 1 succeeded"),
+        });
+        expect(h.calls).toHaveLength(2);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("cancels one child request without cancelling another child sharing the session", () =>
+    Effect.gen(function* () {
+      const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+      const cancelled: number[] = [];
+      const h = yield* harness({
+        respond: () => {
+          const id = controllers.length;
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controllers.push(controller);
+              },
+              cancel() {
+                cancelled.push(id);
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      });
+      const session = ProviderSessionId.make("child-stop-session");
+      yield* h.gateway.lifecycle.begin(session, recoveryInput("a"), () => Effect.void);
+      yield* h.gateway.lifecycle.observe(session, recoveryTurn("a"));
+      const headers = { authorization: `Bearer ${h.token}.${session}` };
+      const invoke = (id: number) =>
+        h.invoke(
+          "/v1/chat/completions",
+          {
+            model: "Vendor/Exact",
+            stream: true,
+            messages: [{ role: "user", content: `child ${id}` }],
+          },
+          headers,
+        );
+      const first = yield* invoke(0).pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      const second = yield* invoke(1).pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      yield* h.gateway.lifecycle.observe(session, recoveryTerminal("a"));
+      yield* Fiber.interrupt(first);
+      yield* TestClock.adjust("1 second");
+      expect(cancelled).toEqual([0]);
+      controllers[1]!.enqueue(
+        new TextEncoder().encode(
+          'data: {"choices":[{"delta":{"content":"sibling survived"}}]}\n\ndata: [DONE]\n\n',
+        ),
+      );
+      controllers[1]!.close();
+      const response = yield* Fiber.join(second);
+      expect(response.status).toBe(200);
+      expect(response.text).toContain("sibling survived");
+      expect(h.calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    {
+      protocol: "openai-chat",
+      path: "/v1/chat/completions",
+      chunk: { choices: [{ delta: { content: "before stop" } }] },
+    },
+    {
+      protocol: "openai-responses",
+      path: "/v1/responses",
+      chunk: { type: "response.output_text.delta", delta: "before stop" },
+    },
+    {
+      protocol: "anthropic-messages",
+      path: "/v1/messages",
+      chunk: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "before stop" },
+      },
+    },
+    {
+      protocol: "gemini",
+      path: "/v1beta/models/Vendor%2FExact:streamGenerateContent",
+      chunk: { candidates: [{ content: { parts: [{ text: "before stop" }] } }] },
+    },
+  ] as const)(
+    "reports cancellation after output as a protocol error instead of an empty response (%j)",
+    (scenario) =>
+      Effect.gen(function* () {
+        let cancelled = false;
+        const h = yield* harness({
+          protocol: scenario.protocol,
+          respond: () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(
+                    new TextEncoder().encode(`data: ${JSON.stringify(scenario.chunk)}\n\n`),
+                  );
+                },
+                cancel() {
+                  cancelled = true;
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const session = ProviderSessionId.make("stream-stop-session");
+        yield* h.gateway.lifecycle.begin(session, recoveryInput("a"), () => Effect.void);
+        yield* h.gateway.lifecycle.observe(session, recoveryTurn("a"));
+        yield* Effect.gen(function* () {
+          const request = HttpServerRequest.fromWeb(
+            new Request(`http://127.0.0.1/api/model-gateway${scenario.path}`, {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${h.token}.${session}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ model: "Vendor/Exact", stream: true }),
+            }),
+          );
+          const response = yield* h.gateway.handle.pipe(
+            Effect.provideService(HttpServerRequest.HttpServerRequest, request),
+          );
+          expect(response.status).toBe(200);
+          if (response.body._tag !== "Stream") throw new Error("Expected streaming response");
+          const reading = yield* response.body.stream.pipe(
+            Stream.decodeText(),
+            Stream.mkString,
+            Effect.orDie,
+            Effect.forkChild,
+          );
+          yield* TestClock.adjust("1 second");
+          yield* h.gateway.lifecycle.observe(session, recoveryTerminal("a"));
+          yield* h.gateway.lifecycle.cancel(session);
+          yield* TestClock.adjust("1 second");
+          const text = yield* Fiber.join(reading);
+          expect(text).toContain("before stop");
+          expect(text).toContain("The model service request was cancelled.");
+          expect(text).toContain(
+            scenario.protocol === "gemini"
+              ? '"status":"CANCELLED"'
+              : "cox_model_service_request_cancelled",
+          );
+        }).pipe(Effect.scoped);
+        expect(cancelled).toBe(true);
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["cancel", "close"] as const)(
+    "explicitly cancels old and new background requests with a non-retryable error (%s)",
+    (action) =>
+      Effect.gen(function* () {
+        const cancelled: number[] = [];
+        let calls = 0;
+        const h = yield* harness({
+          recovery: { retryEnabled: true, hedgeEnabled: true },
+          respond: () => {
+            const id = ++calls;
+            return new Response(
+              new ReadableStream({
+                cancel() {
+                  cancelled.push(id);
+                },
+              }),
+              {
+                headers: { "content-type": "text/event-stream" },
+              },
+            );
+          },
+        });
+        const session = ProviderSessionId.make("cancel-session");
+        const headers = { authorization: `Bearer ${h.token}.${session}` };
+        yield* h.gateway.lifecycle.begin(session, recoveryInput("a"), () => Effect.void);
+        yield* h.gateway.lifecycle.observe(session, recoveryTurn("a"));
+        const first = yield* h
+          .invoke(
+            "/v1/chat/completions",
+            { model: "Vendor/Exact", stream: true, messages: ["old"] },
+            headers,
+          )
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("1 second");
+        yield* h.gateway.lifecycle.observe(session, recoveryTerminal("a"));
+        yield* h.gateway.lifecycle.begin(session, recoveryInput("b"), () => Effect.void);
+        const second = yield* h
+          .invoke(
+            "/v1/chat/completions",
+            { model: "Vendor/Exact", stream: true, messages: ["new"] },
+            headers,
+          )
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("1 second");
+        yield* h.gateway.lifecycle[action](session);
+        yield* TestClock.adjust("1 second");
+        for (const fiber of [first, second]) {
+          const response = yield* Fiber.join(fiber);
+          expect(response.status).toBe(499);
+          expect(response.headers["x-should-retry"]).toBe("false");
+          expect(JSON.parse(response.text)).toMatchObject({
+            error: { type: "request_cancelled", code: "cox_model_service_request_cancelled" },
+          });
+        }
+        expect(cancelled.toSorted()).toEqual([1, 2]);
+        expect(h.calls).toHaveLength(2);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect.each([false, true])("makes quota 429 retries configurable (%s)", (retryOn429) =>
     Effect.gen(function* () {
       let calls = 0;
