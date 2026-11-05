@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.38 — 2026-11-05
+
+- Report model-service recovery budget exhaustion as HTTP 504 with a distinct
+  termination reason, elapsed time, attempt count and the last attempt failure.
+  Preserve the result when a native SDK reconnects with the same request.
+- Keep surviving in-flight requests running when a competing attempt fails
+  permanently, while stopping additional attempts for that recovery.
+- Make each attempt's response-header timeout configurable, defaulting to 120
+  seconds and bounded by the shared recovery budget. Preserve long output streams.
+- Default backup delays to 30 seconds for ordinary requests and 60 seconds for
+  reasoning requests. Preserve explicitly configured service delays.
+- Log effective recovery policies, backup suppression reasons, response-header
+  and usable-output timing, attempt results and cancellation causes without
+  recording request bodies or credentials. Distinguish terminal causes in the UI.
+
 ## 0.1.37 — 2026-11-05
 
 - Keep model-gateway requests from background agents and workflows running when

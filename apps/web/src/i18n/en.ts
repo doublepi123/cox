@@ -155,6 +155,9 @@ export const en = {
   "Reasoning backup delay (seconds)": "Reasoning backup delay (seconds)",
   "Maximum attempts (including backups)": "Maximum attempts (including backups)",
   "Recovery budget (seconds)": "Recovery budget (seconds)",
+  "Response headers timeout (seconds)": "Response headers timeout (seconds)",
+  "The response headers timeout applies to each attempt within the remaining recovery budget. Normal streaming output is not limited by these timers.":
+    "The response headers timeout applies to each attempt within the remaining recovery budget. Normal streaming output is not limited by these timers.",
   "Maximum concurrent requests": "Maximum concurrent requests",
   "Model service backup running ({progress} attempts)":
     "Model service backup running ({progress} attempts)",

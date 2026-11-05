@@ -50,7 +50,11 @@ export function makeRecoveryTracker() {
         : progress.phase === "recovered"
           ? "The model service recovered."
           : progress.phase === "failed"
-            ? "The model service recovery budget was exhausted."
+            ? progress.reason === "recovery_budget_exhausted"
+              ? "The model service recovery budget was exhausted."
+              : progress.reason === "recovery_attempts_exhausted"
+                ? "The model service recovery attempt limit was reached."
+                : "The model service request failed; recovery has stopped."
             : progress.phase === "cancelled"
               ? "Model service recovery was stopped."
               : "The model service is temporarily unavailable; retrying.";
@@ -68,7 +72,7 @@ export function makeRecoveryTracker() {
         failure: {
           class: "provider_error",
           message,
-          code: `cox_model_service_${progress.phase}`,
+          code: `cox_model_service_${progress.reason ?? progress.phase}`,
           retryable: progress.phase !== "failed",
         },
         retry: {
@@ -165,6 +169,13 @@ export function makeRecoveryTracker() {
       const session = sessionId ? sessionFor(sessionId) : undefined;
       const entry = session?.entry;
       return {
+        context: entry
+          ? {
+              threadId: entry.input.threadId,
+              runId: entry.input.runId,
+              providerTurnId: entry.turn?.id,
+            }
+          : undefined,
         cancelled: Effect.sync(() => session?.cancelled === true),
         failure: session?.cancelled ? undefined : entry?.failures.get(key),
         failed: (error: ModelServiceRequestFailure) =>

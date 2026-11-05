@@ -14,6 +14,20 @@ export class ModelServiceRequestFailure extends Data.TaggedError("ModelServiceRe
   readonly status: number;
   readonly retryable: boolean;
   readonly retryAfterMs?: number;
+  readonly code?: string | undefined;
+  readonly source?: "gateway" | "upstream" | undefined;
+  readonly timeoutMs?: number;
+  readonly terminationReason?: string;
+  readonly budgetMs?: number;
+  readonly elapsedMs?: number;
+  readonly attempts?: number;
+  readonly lastAttemptFailure?: {
+    readonly code?: string | undefined;
+    readonly source?: "gateway" | "upstream" | undefined;
+    readonly status: number;
+    readonly detail: string;
+    readonly timeoutMs?: number | undefined;
+  };
 }> {}
 
 export class ModelServiceRequestCancelled extends Data.TaggedError("ModelServiceRequestCancelled")<{
@@ -25,6 +39,23 @@ export interface RecoveryProgress {
   readonly attempt: number;
   readonly maxAttempts: number;
   readonly delayMs: number;
+  readonly reason?: string;
+}
+
+export interface RecoveryDiagnostic {
+  readonly event:
+    | "attempt_started"
+    | "attempt_closed"
+    | "attempt_failed"
+    | "hedge_waiting"
+    | "terminal";
+  readonly attempt?: number;
+  readonly reason?: string;
+  readonly hedge?: boolean;
+  readonly status?: number;
+  readonly code?: string | undefined;
+  readonly source?: "gateway" | "upstream" | undefined;
+  readonly elapsedMs: number;
 }
 
 export interface ModelServiceRecoveryLoad {
@@ -88,6 +119,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   readonly cancelled?: Effect.Effect<boolean>;
   readonly attempt: (attempt: number) => Effect.Effect<A, ModelServiceRequestFailure, Scope.Scope>;
   readonly progress: (progress: RecoveryProgress) => Effect.Effect<void>;
+  readonly diagnostic?: (event: RecoveryDiagnostic) => Effect.Effect<void>;
 }) {
   const { policy, load } = options;
   const scope = yield* Scope.Scope;
@@ -104,25 +136,45 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   let retryAt = Infinity;
   let announced = false;
   let settled = false;
+  let terminationReason = "recovery_budget_exhausted";
+  let permanentFailure: ModelServiceRequestFailure | undefined;
+  let lastAttemptFailure: ModelServiceRequestFailure | undefined;
+  let closeReason = "client_disconnected";
+  const waits = new Set<string>();
   let lastFailure = new ModelServiceRequestFailure({
     detail: "The model service did not produce a usable response within its recovery budget.",
     status: 504,
     retryable: false,
   });
-  const report = (phase: RecoveryProgress["phase"], delayMs = 0) => {
+  const diagnostic = (event: Omit<RecoveryDiagnostic, "elapsedMs">) =>
+    Clock.currentTimeMillis.pipe(
+      Effect.flatMap(
+        (now) => options.diagnostic?.({ ...event, elapsedMs: now - started }) ?? Effect.void,
+      ),
+    );
+  const report = (phase: RecoveryProgress["phase"], delayMs = 0, reason?: string) => {
     announced = true;
-    return options.progress({ phase, attempt: attempts, maxAttempts: policy.maxAttempts, delayMs });
+    return options.progress({
+      phase,
+      attempt: attempts,
+      maxAttempts: policy.maxAttempts,
+      delayMs,
+      ...(reason ? { reason } : {}),
+    });
   };
-  const close = Effect.fnUntraced(function* (id: number) {
+  const close = Effect.fnUntraced(function* (id: number, reason = closeReason) {
     const entry = active.get(id);
     if (!entry) return;
     active.delete(id);
     load.inFlight--;
     if (entry.hedge) load.hedges--;
+    yield* diagnostic({ event: "attempt_closed", attempt: id, reason });
     yield* Scope.close(entry.scope, Exit.void);
   });
-  yield* Effect.addFinalizer(() =>
+  yield* Effect.addFinalizer((exit) =>
     Effect.gen(function* () {
+      if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))
+        closeReason = "client_disconnected";
       for (const id of active.keys()) yield* close(id);
       if (!settled && announced) yield* report("cancelled");
     }),
@@ -134,6 +186,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     load.inFlight++;
     if (hedge) load.hedges++;
     nextHedgeAt = (yield* Clock.currentTimeMillis) + delay;
+    yield* diagnostic({ event: "attempt_started", attempt: id, hedge });
     yield* options.attempt(id).pipe(
       Scope.provide(attemptScope),
       Effect.catchCause((cause) => {
@@ -158,25 +211,49 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     if (hedge) yield* report("hedging");
   });
   while (true) {
-    if (options.cancelled && (yield* options.cancelled))
+    if (options.cancelled && (yield* options.cancelled)) {
+      closeReason = "request_cancelled";
+      yield* diagnostic({ event: "terminal", reason: closeReason });
       return yield* new ModelServiceRequestCancelled({
         detail: "The model service request was cancelled.",
       });
+    }
     const now = yield* Clock.currentTimeMillis;
     if (!(yield* options.enabled)) {
       lastFailure = new ModelServiceRequestFailure({
         detail: "This model service is unavailable.",
         status: 503,
         retryable: false,
+        code: "model_service_unavailable",
+        source: "gateway",
       });
+      terminationReason = "service_disabled";
       break;
     }
     if (now >= deadline) break;
     const queued = yield* Queue.poll(events);
     const cooled = !policy.respectRetryAfter || now >= load.cooldownUntil;
+    if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt) {
+      const reason = permanentFailure
+        ? "permanent_attempt_failure"
+        : !cooled
+          ? "retry_after_cooldown"
+          : attempts >= policy.maxAttempts
+            ? "attempt_limit"
+            : active.size >= policy.maxConcurrent
+              ? "concurrency_limit"
+              : load.hedges >= 4 || load.inFlight >= 16
+                ? "service_load_limit"
+                : undefined;
+      if (reason && !waits.has(reason)) {
+        waits.add(reason);
+        yield* diagnostic({ event: "hedge_waiting", reason });
+      }
+    }
     if (Option.isNone(queued) && attempts === 0 && cooled) yield* launch(false);
     else if (
       Option.isNone(queued) &&
+      !permanentFailure &&
       attempts < policy.maxAttempts &&
       cooled &&
       active.size < policy.maxConcurrent &&
@@ -192,9 +269,16 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     if (
       active.size === 0 &&
       attempts > 0 &&
-      (!policy.retryEnabled || attempts >= policy.maxAttempts)
-    )
+      (permanentFailure || !policy.retryEnabled || attempts >= policy.maxAttempts)
+    ) {
+      if (permanentFailure) lastFailure = permanentFailure;
+      terminationReason = permanentFailure
+        ? "non_retryable_error"
+        : attempts >= policy.maxAttempts
+          ? "recovery_attempts_exhausted"
+          : "retry_disabled";
       break;
+    }
     const next = Option.isSome(queued)
       ? queued
       : yield* Queue.take(events).pipe(
@@ -204,7 +288,10 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
               Math.min(
                 250,
                 deadline - now,
-                cooled && active.size < policy.maxConcurrent && attempts < policy.maxAttempts
+                !permanentFailure &&
+                  cooled &&
+                  active.size < policy.maxConcurrent &&
+                  attempts < policy.maxAttempts
                   ? Math.min(
                       policy.hedgeEnabled && active.size > 0 ? nextHedgeAt - now : Infinity,
                       policy.retryEnabled ? retryAt - now : Infinity,
@@ -218,19 +305,33 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     const event = next.value;
     if (!active.has(event.id)) continue;
     if (event.type === "ready") {
-      for (const id of active.keys()) if (id !== event.id) yield* close(id);
+      for (const id of active.keys()) if (id !== event.id) yield* close(id, "winner_selected");
+      closeReason = "response_finished";
       settled = true;
+      yield* diagnostic({ event: "terminal", reason: "response_ready", attempt: event.id });
       if (announced) yield* report("recovered");
       return event.value;
     }
-    yield* close(event.id);
+    yield* close(event.id, "attempt_failed");
     lastFailure = event.error;
-    if (!lastFailure.retryable && !(policy.retryOn429 && lastFailure.status === 429)) break;
+    lastAttemptFailure = event.error;
+    yield* diagnostic({
+      event: "attempt_failed",
+      attempt: event.id,
+      status: lastFailure.status,
+      code: lastFailure.code,
+      source: lastFailure.source,
+    });
+    if (!lastFailure.retryable && !(policy.retryOn429 && lastFailure.status === 429)) {
+      permanentFailure ??= lastFailure;
+      retryAt = Infinity;
+      continue;
+    }
     const failedAt = yield* Clock.currentTimeMillis;
     if (policy.respectRetryAfter && lastFailure.retryAfterMs) {
       load.cooldownUntil = Math.max(load.cooldownUntil, failedAt + lastFailure.retryAfterMs);
     }
-    if (policy.retryEnabled && attempts < policy.maxAttempts) {
+    if (!permanentFailure && policy.retryEnabled && attempts < policy.maxAttempts) {
       const ladder = [250, 500, 1000, 2000, 3000, 5000];
       const jitter = 0.75 + (yield* Random.next) * 0.5;
       const wait = Math.round(ladder[Math.min(attempts - 1, ladder.length - 1)]! * jitter);
@@ -238,8 +339,40 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       yield* report("retrying", retryAt - failedAt);
     }
   }
+  closeReason = terminationReason;
   for (const id of active.keys()) yield* close(id);
   settled = true;
-  if (announced) yield* report("failed");
-  return yield* lastFailure;
+  yield* diagnostic({ event: "terminal", reason: terminationReason });
+  yield* report("failed", 0, terminationReason);
+  const budgetExhausted = terminationReason === "recovery_budget_exhausted";
+  return yield* new ModelServiceRequestFailure({
+    detail: budgetExhausted
+      ? `The model service did not produce a usable response within its ${policy.budgetMs} ms recovery budget.`
+      : lastFailure.detail,
+    status: budgetExhausted ? 504 : lastFailure.status,
+    retryable: false,
+    code:
+      budgetExhausted || terminationReason === "recovery_attempts_exhausted"
+        ? terminationReason
+        : lastFailure.code,
+    source:
+      budgetExhausted || terminationReason === "recovery_attempts_exhausted"
+        ? "gateway"
+        : lastFailure.source,
+    terminationReason,
+    budgetMs: policy.budgetMs,
+    elapsedMs: (yield* Clock.currentTimeMillis) - started,
+    attempts,
+    ...(lastAttemptFailure
+      ? {
+          lastAttemptFailure: {
+            code: lastAttemptFailure.code,
+            source: lastAttemptFailure.source,
+            status: lastAttemptFailure.status,
+            detail: lastAttemptFailure.detail,
+            timeoutMs: lastAttemptFailure.timeoutMs,
+          },
+        }
+      : {}),
+  });
 });

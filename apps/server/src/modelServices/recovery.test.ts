@@ -12,6 +12,7 @@ import {
   retryAfterMilliseconds,
   isRetryableModelServiceError,
   type RecoveryProgress,
+  type RecoveryDiagnostic,
 } from "./recovery.ts";
 
 const failure = (retryAfterMs = 0) =>
@@ -22,9 +23,10 @@ const failure = (retryAfterMs = 0) =>
     retryAfterMs,
   });
 
-const harness = (policy: Partial<ModelServiceRecovery> = {}) => {
+const harness = (policy: Partial<ModelServiceRecovery> = {}, reasoning = false) => {
   const load = { inFlight: 0, hedges: 0, cooldownUntil: 0 };
   const phases: RecoveryProgress[] = [];
+  const diagnostics: RecoveryDiagnostic[] = [];
   const started: number[] = [];
   const closed: number[] = [];
   let enabled = true;
@@ -35,10 +37,14 @@ const harness = (policy: Partial<ModelServiceRecovery> = {}) => {
   ) =>
     recoverModelServiceRequest({
       policy: { ...DEFAULT_MODEL_SERVICE_RECOVERY, ...policy },
-      reasoning: false,
+      reasoning,
       load,
       enabled: Effect.sync(() => enabled),
       cancelled: Effect.sync(() => cancelled),
+      diagnostic: (event) =>
+        Effect.sync(() => {
+          diagnostics.push(event);
+        }),
       attempt: (id) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -59,6 +65,7 @@ const harness = (policy: Partial<ModelServiceRecovery> = {}) => {
     run,
     load,
     phases,
+    diagnostics,
     started,
     closed,
     disable: () => {
@@ -91,7 +98,7 @@ it.effect("starts one backup after the threshold and cancels the stalled primary
     const fiber = yield* h
       .run((id) => Effect.sleep(id === 1 ? "1 minute" : "1 second").pipe(Effect.as(id)))
       .pipe(Effect.forkChild);
-    yield* TestClock.adjust("14 seconds");
+    yield* TestClock.adjust("29 seconds");
     expect(h.started).toEqual([1]);
     yield* TestClock.adjust("3 seconds");
     expect(yield* Fiber.join(fiber)).toBe(2);
@@ -100,15 +107,29 @@ it.effect("starts one backup after the threshold and cancels the stalled primary
   }),
 );
 
+it.effect("uses the 60 second default for reasoning backups", () =>
+  Effect.gen(function* () {
+    const h = harness({ retryEnabled: false }, true);
+    const fiber = yield* h
+      .run((id) => (id === 1 ? Effect.never : Effect.succeed(id)))
+      .pipe(Effect.forkChild);
+    yield* TestClock.adjust("59 seconds");
+    expect(h.started).toEqual([1]);
+    yield* TestClock.adjust("2 seconds");
+    expect(yield* Fiber.join(fiber)).toBe(2);
+    expect(h.started).toEqual([1, 2]);
+  }),
+);
+
 it.effect("keeps waiting for the primary when the backup fails", () =>
   Effect.gen(function* () {
     const h = harness({ retryEnabled: false });
     const fiber = yield* h
       .run((id) =>
-        id === 1 ? Effect.sleep("20 seconds").pipe(Effect.as(id)) : Effect.fail(failure()),
+        id === 1 ? Effect.sleep("40 seconds").pipe(Effect.as(id)) : Effect.fail(failure()),
       )
       .pipe(Effect.forkChild);
-    yield* TestClock.adjust("21 seconds");
+    yield* TestClock.adjust("41 seconds");
     expect(yield* Fiber.join(fiber)).toBe(1);
     expect(h.started).toEqual([1, 2]);
   }),
@@ -118,9 +139,9 @@ it.effect("commits exactly one winner when both attempts become ready together",
   Effect.gen(function* () {
     const h = harness();
     const fiber = yield* h
-      .run((id) => Effect.sleep(id === 1 ? "16 seconds" : "1 second").pipe(Effect.as(id)))
+      .run((id) => Effect.sleep(id === 1 ? "31 seconds" : "1 second").pipe(Effect.as(id)))
       .pipe(Effect.forkChild);
-    yield* TestClock.adjust("17 seconds");
+    yield* TestClock.adjust("32 seconds");
     expect([1, 2]).toContain(yield* Fiber.join(fiber));
     expect(h.started).toHaveLength(2);
     expect(h.phases.filter((event) => event.phase === "recovered")).toHaveLength(1);
@@ -235,7 +256,11 @@ it.effect("stops forced 429 retries when the recovery time budget expires", () =
       .pipe(Effect.flip, Effect.forkChild);
     yield* Deferred.await(retrying);
     yield* TestClock.adjust("1 second");
-    expect(yield* Fiber.join(fiber)).toMatchObject({ status: 429 });
+    expect(yield* Fiber.join(fiber)).toMatchObject({
+      status: 504,
+      code: "recovery_budget_exhausted",
+      lastAttemptFailure: { status: 429 },
+    });
     expect(h.started).toEqual([1]);
     expect(h.load.inFlight).toBe(0);
   }),
@@ -246,9 +271,137 @@ it.effect("cancels every stalled attempt when the recovery budget expires", () =
     const h = harness({ budgetMs: 1000, hedgeDelayMs: 100 });
     const fiber = yield* h.run(() => Effect.never).pipe(Effect.flip, Effect.forkChild);
     yield* TestClock.adjust("2 seconds");
-    expect(yield* Fiber.join(fiber)).toMatchObject({ status: 504 });
+    const error = yield* Fiber.join(fiber);
+    expect(error).toMatchObject({ status: 504, code: "recovery_budget_exhausted", attempts: 2 });
+    expect(error).not.toHaveProperty("lastAttemptFailure");
     expect(h.started).toHaveLength(2);
     expect(h.closed.toSorted()).toEqual([1, 2]);
+  }),
+);
+
+it.effect.each([1, 2])(
+  "keeps the other in-flight request alive when attempt %s fails permanently",
+  (failedId) =>
+    Effect.gen(function* () {
+      const h = harness({ hedgeDelayMs: 100, maxConcurrent: 3 });
+      const fiber = yield* h
+        .run((id) =>
+          id === failedId
+            ? Effect.sleep(id === 1 ? 150 : 10).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new ModelServiceRequestFailure({
+                      detail: "Invalid credentials",
+                      status: 401,
+                      retryable: false,
+                    }),
+                  ),
+                ),
+              )
+            : Effect.sleep(400).pipe(Effect.as(id)),
+        )
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      expect(yield* Fiber.join(fiber)).toBe(failedId === 1 ? 2 : 1);
+      expect(h.started).toEqual([1, 2]);
+      expect(h.load.inFlight).toBe(0);
+      expect(h.diagnostics).toContainEqual(
+        expect.objectContaining({ event: "terminal", reason: "response_ready" }),
+      );
+    }),
+);
+
+it.effect(
+  "stops additional launches after a permanent failure and preserves it if the sibling fails",
+  () =>
+    Effect.gen(function* () {
+      const h = harness({ hedgeDelayMs: 100 });
+      const fiber = yield* h
+        .run((id) =>
+          Effect.sleep(id === 1 ? 400 : 10).pipe(
+            Effect.andThen(
+              Effect.fail(
+                id === 1
+                  ? failure()
+                  : new ModelServiceRequestFailure({
+                      detail: "Invalid credentials",
+                      status: 401,
+                      retryable: false,
+                    }),
+              ),
+            ),
+          ),
+        )
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      expect(yield* Fiber.join(fiber)).toMatchObject({
+        status: 401,
+        terminationReason: "non_retryable_error",
+        attempts: 2,
+        lastAttemptFailure: { status: 503 },
+      });
+      expect(h.started).toEqual([1, 2]);
+    }),
+);
+
+it.effect("reports the budget as the terminal cause after four overlapping header waits", () =>
+  Effect.gen(function* () {
+    const h = harness({ hedgeDelayMs: 45000, budgetMs: 180000 });
+    const fiber = yield* h
+      .run(() =>
+        Effect.sleep("120 seconds").pipe(
+          Effect.andThen(
+            Effect.fail(
+              new ModelServiceRequestFailure({
+                detail: "Headers timed out",
+                status: 504,
+                retryable: true,
+                code: "upstream_response_headers_timeout",
+                source: "gateway",
+                timeoutMs: 120000,
+              }),
+            ),
+          ),
+        ),
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("181 seconds");
+    expect(yield* Fiber.join(fiber)).toMatchObject({
+      code: "recovery_budget_exhausted",
+      status: 504,
+      attempts: 4,
+      elapsedMs: 180000,
+      lastAttemptFailure: {
+        code: "upstream_response_headers_timeout",
+        source: "gateway",
+        timeoutMs: 120000,
+      },
+    });
+    expect(h.closed.toSorted()).toEqual([1, 2, 3, 4]);
+    expect(h.phases.at(-1)).toMatchObject({ phase: "failed", reason: "recovery_budget_exhausted" });
+    expect(h.diagnostics).toContainEqual(
+      expect.objectContaining({
+        event: "attempt_closed",
+        attempt: 3,
+        reason: "recovery_budget_exhausted",
+      }),
+    );
+  }),
+);
+
+it.effect("distinguishes the attempt limit from the time budget", () =>
+  Effect.gen(function* () {
+    const h = harness({ maxAttempts: 1 });
+    expect(yield* h.run(() => Effect.fail(failure())).pipe(Effect.flip)).toMatchObject({
+      status: 503,
+      code: "recovery_attempts_exhausted",
+      terminationReason: "recovery_attempts_exhausted",
+      attempts: 1,
+    });
+    expect(h.phases.at(-1)).toMatchObject({
+      phase: "failed",
+      reason: "recovery_attempts_exhausted",
+    });
   }),
 );
 

@@ -149,6 +149,9 @@ export const zh = {
   "Reasoning backup delay (seconds)": "深度推理备用等待时间（秒）",
   "Maximum attempts (including backups)": "最大尝试次数（含备用）",
   "Recovery budget (seconds)": "恢复时间预算（秒）",
+  "Response headers timeout (seconds)": "单次响应头等待上限（秒）",
+  "The response headers timeout applies to each attempt within the remaining recovery budget. Normal streaming output is not limited by these timers.":
+    "单次响应头等待仍受剩余恢复预算限制。正常流式输出不受这两个计时限制。",
   "Maximum concurrent requests": "最大并发请求数",
   "Model service backup running ({progress} attempts)":
     "模型服务备用请求运行中（{progress} 次尝试）",

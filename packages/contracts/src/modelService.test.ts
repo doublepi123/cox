@@ -29,10 +29,11 @@ describe("model service contracts", () => {
       retryToolRequests: false,
       hedgeEnabled: true,
       respectRetryAfter: true,
-      hedgeDelayMs: 15000,
-      reasoningHedgeDelayMs: 45000,
+      hedgeDelayMs: 30000,
+      reasoningHedgeDelayMs: 60000,
       maxAttempts: 12,
       budgetMs: 180000,
+      responseHeadersTimeoutMs: 120000,
       maxConcurrent: 2,
     });
     expect(
@@ -44,6 +45,8 @@ describe("model service contracts", () => {
       { hedgeDelayMs: -1 },
       { reasoningHedgeDelayMs: 0 },
       { budgetMs: 0 },
+      { responseHeadersTimeoutMs: 0 },
+      { responseHeadersTimeoutMs: 1800001 },
       { maxAttempts: 1.5 },
     ])
       expect(() => recovery(invalid)).toThrow();
@@ -53,6 +56,11 @@ describe("model service contracts", () => {
       protocols: ["openai-chat"],
     });
     expect(service.recovery).toEqual(DEFAULT_MODEL_SERVICE_RECOVERY);
+    expect(recovery({ hedgeDelayMs: 15000, reasoningHedgeDelayMs: 45000 })).toMatchObject({
+      hedgeDelayMs: 15000,
+      reasoningHedgeDelayMs: 45000,
+      responseHeadersTimeoutMs: 120000,
+    });
     expect(
       decodeService(
         encodeService({

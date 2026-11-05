@@ -25,6 +25,7 @@ export function ModelServiceRecoverySettings({
     ["reasoningHedgeDelayMs", "Reasoning backup delay (seconds)", 1000, 0.1, 600],
     ["maxAttempts", "Maximum attempts (including backups)", 1, 1, 100],
     ["budgetMs", "Recovery budget (seconds)", 1000, 0.1, 1800],
+    ["responseHeadersTimeoutMs", "Response headers timeout (seconds)", 1000, 0.1, 1800],
     ["maxConcurrent", "Maximum concurrent requests", 1, 1, 4],
   ] as const;
   return (
@@ -42,6 +43,11 @@ export function ModelServiceRecoverySettings({
       <p className="text-xs leading-relaxed text-muted-foreground">
         {t(
           "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.",
+        )}
+      </p>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {t(
+          "The response headers timeout applies to each attempt within the remaining recovery budget. Normal streaming output is not limited by these timers.",
         )}
       </p>
       {value.retryOn429 ? (

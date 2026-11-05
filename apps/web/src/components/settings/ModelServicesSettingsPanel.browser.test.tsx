@@ -203,6 +203,7 @@ describe("model services settings", () => {
     await screen.getByLabelText("Reasoning backup delay (seconds)", { exact: true }).fill("5");
     await screen.getByLabelText("Maximum attempts (including backups)", { exact: true }).fill("7");
     await screen.getByLabelText("Recovery budget (seconds)", { exact: true }).fill("60");
+    await screen.getByLabelText("Response headers timeout (seconds)", { exact: true }).fill("30");
     await screen.getByRole("button", { name: "Save service", exact: true }).click();
     expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery).toEqual({
       retryEnabled: false,
@@ -214,6 +215,7 @@ describe("model services settings", () => {
       reasoningHedgeDelayMs: 5000,
       maxAttempts: 7,
       budgetMs: 60000,
+      responseHeadersTimeoutMs: 30000,
       maxConcurrent: 2,
     });
   });

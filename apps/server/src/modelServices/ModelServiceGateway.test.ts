@@ -23,6 +23,7 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientResponse, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
+import * as Logger from "effect/Logger";
 import { TestClock } from "effect/testing";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -102,6 +103,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     readonly driver?: string;
     readonly protocol?: ModelServiceConfig["protocols"][number];
     readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
+    readonly headersDelayMs?: number;
     readonly respond?: (
       request: import("effect/http/HttpClientRequest").HttpClientRequest,
     ) => Response;
@@ -126,8 +128,9 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     },
   });
   const http = HttpClient.make((request) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       calls.push(request);
+      if (options.headersDelayMs) yield* Effect.sleep(options.headersDelayMs);
       return HttpClientResponse.fromWeb(
         request,
         options.respond?.(request) ??
@@ -747,6 +750,124 @@ it.layer(layer)("model service gateway", (it) => {
       expect((yield* h.invoke("/v1/chat/completions", body, headers)).status).toBe(503);
       expect(h.calls).toHaveLength(2);
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "keeps a budget exhaustion cached across native reconnects with the original cause",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          recovery: {
+            retryEnabled: true,
+            hedgeEnabled: true,
+            hedgeDelayMs: 100,
+            budgetMs: 1000,
+            responseHeadersTimeoutMs: 300,
+          },
+          headersDelayMs: 10000,
+        });
+        const session = ProviderSessionId.make("budget-session");
+        yield* h.gateway.lifecycle.begin(session, recoveryInput("budget"), () => Effect.void);
+        const body = { model: "Vendor/Exact", messages: [] };
+        const headers = { authorization: `Bearer ${h.token}.${session}` };
+        const fiber = yield* h.invoke("/v1/chat/completions", body, headers).pipe(Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        const first = yield* Fiber.join(fiber);
+        expect(first.status).toBe(504);
+        expect(JSON.parse(first.text)).toMatchObject({
+          error: {
+            code: "recovery_budget_exhausted",
+            source: "gateway",
+            budgetMs: 1000,
+            lastAttemptFailure: {
+              code: "upstream_response_headers_timeout",
+              timeoutMs: 300,
+              source: "gateway",
+            },
+          },
+        });
+        const count = h.calls.length;
+        const repeated = yield* h.invoke("/v1/chat/completions", body, headers);
+        expect(repeated.text).toBe(first.text);
+        expect(repeated.headers["x-should-retry"]).toBe("false");
+        expect(h.calls).toHaveLength(count);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("allows response headers beyond the old 120 second limit when configured", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        recovery: { responseHeadersTimeoutMs: 150000, budgetMs: 180000 },
+        headersDelayMs: 130000,
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("131 seconds");
+      expect((yield* Fiber.join(fiber)).status).toBe(200);
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("uses the remaining budget when the configured headers timeout is longer", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        recovery: { responseHeadersTimeoutMs: 10000, budgetMs: 1000 },
+        headersDelayMs: 5000,
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(504);
+      expect(JSON.parse(result.text)).toMatchObject({
+        error: { code: "recovery_budget_exhausted", elapsedMs: 1000, attempts: 1 },
+      });
+      expect(JSON.parse(result.text).error).not.toHaveProperty("lastAttemptFailure");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "logs effective policy, header timing and terminal causes without request secrets",
+    () => {
+      const messages: unknown[] = [];
+      const logger = Logger.make(({ message }) => {
+        messages.push(message);
+      });
+      return Effect.gen(function* () {
+        const h = yield* harness({
+          protocol: "openai-responses",
+          recovery: { retryEnabled: true, hedgeEnabled: true },
+          respond: () =>
+            Response.json(
+              { error: { message: "private-upstream-key", code: "server_error" } },
+              { status: 502 },
+            ),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "private-business-document",
+          previous_response_id: "private-conversation",
+          tools: [{ type: "web_search" }],
+        });
+        expect(result.status).toBe(502);
+        const logs = JSON.stringify(messages);
+        expect(logs).toContain('"hedgeDisabledReason":"stateful_request"');
+        expect(logs).toContain('"retryDisabledReason":"stateful_request"');
+        expect(logs).toContain('"event":"response_headers"');
+        expect(logs).toContain('"reason":"retry_disabled"');
+        expect(logs).toContain('"source":"upstream"');
+        for (const secret of [
+          "private-upstream-key",
+          "private-header",
+          "private-business-document",
+          "private-conversation",
+          h.token,
+        ])
+          expect(logs).not.toContain(secret);
+      }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+    },
   );
 
   it.effect("recovers transient HTTP failures without leaking rejected bodies", () =>

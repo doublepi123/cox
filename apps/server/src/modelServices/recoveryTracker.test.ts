@@ -52,6 +52,41 @@ const terminal = (
   threadDisposition: "reusable",
 });
 
+it.effect.each([
+  {
+    reason: "recovery_budget_exhausted",
+    message: "The model service recovery budget was exhausted.",
+  },
+  {
+    reason: "recovery_attempts_exhausted",
+    message: "The model service recovery attempt limit was reached.",
+  },
+  {
+    reason: "non_retryable_error",
+    message: "The model service request failed; recovery has stopped.",
+  },
+])("reports the actual terminal reason $reason in the UI", ({ reason, message }) =>
+  Effect.gen(function* () {
+    const tracker = makeRecoveryTracker();
+    const session = ProviderSessionId.make("reason-session");
+    const events: ProviderAdapterV2Event[] = [];
+    yield* tracker.begin(session, input("reason"), (event) =>
+      Effect.sync(() => {
+        events.push(event);
+      }),
+    );
+    yield* tracker.observe(session, turn("reason"));
+    yield* tracker.request(session, "request").progress({ ...progress, phase: "failed", reason });
+    const items = events.flatMap((event) =>
+      event.type === "turn_item.updated" ? [event.turnItem] : [],
+    );
+    expect(items).toHaveLength(1);
+    expect(JSON.stringify(items[0])).toContain(message);
+    expect(JSON.stringify(items[0])).toContain(`cox_model_service_${reason}`);
+    expect(items[0]?.status).toBe("failed");
+  }),
+);
+
 it.effect("routes gateway progress to the correct turn and updates one stable item", () =>
   Effect.gen(function* () {
     const tracker = makeRecoveryTracker();
