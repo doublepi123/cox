@@ -183,6 +183,13 @@ describe("model services settings", () => {
       .getByRole("checkbox", { name: "Automatically retry temporary failures", exact: true })
       .click();
     await screen.getByRole("checkbox", { name: "Respect 429 cooldown", exact: true }).click();
+    for (const name of [
+      "Retry all 429 responses, including quota limits",
+      "Retry failed requests with upstream tools",
+    ]) {
+      await expect.element(screen.getByRole("checkbox", { name, exact: true })).not.toBeChecked();
+      await screen.getByRole("checkbox", { name, exact: true }).click();
+    }
     await expect
       .element(
         screen.getByRole("checkbox", {
@@ -199,6 +206,8 @@ describe("model services settings", () => {
     await screen.getByRole("button", { name: "Save service", exact: true }).click();
     expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery).toEqual({
       retryEnabled: false,
+      retryOn429: true,
+      retryToolRequests: true,
       hedgeEnabled: true,
       respectRetryAfter: false,
       hedgeDelayMs: 2000,

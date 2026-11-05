@@ -137,6 +137,13 @@ export const en = {
   "Request recovery": "Request recovery",
   "Next attempt in {seconds}s.": "Next attempt in {seconds}s.",
   "Automatically retry temporary failures": "Automatically retry temporary failures",
+  "Retry all 429 responses, including quota limits":
+    "Retry all 429 responses, including quota limits",
+  "Retry failed requests with upstream tools": "Retry failed requests with upstream tools",
+  "429 retries share the recovery budget. The cooldown setting still controls how long to wait.":
+    "429 retries share the recovery budget. The cooldown setting still controls how long to wait.",
+  "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.":
+    "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.",
   "Start backup requests when responses are slow": "Start backup requests when responses are slow",
   "Respect 429 cooldown": "Respect 429 cooldown",
   "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.":

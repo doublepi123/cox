@@ -60,6 +60,7 @@ const record = (value: unknown): Record<string, unknown> => value as Record<stri
 const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
     readonly driver?: string;
+    readonly protocol?: ModelServiceConfig["protocols"][number];
     readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
     readonly respond?: (
       request: import("effect/http/HttpClientRequest").HttpClientRequest,
@@ -74,6 +75,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
       [serviceId]: {
         ...service,
         revision: previous?.revision ?? 0,
+        protocols: [options.protocol ?? "openai-chat"],
         recovery: {
           ...DEFAULT_MODEL_SERVICE_RECOVERY,
           retryEnabled: false,
@@ -147,6 +149,201 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each([false, true])("makes quota 429 retries configurable (%s)", (retryOn429) =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const h = yield* harness({
+        recovery: { retryEnabled: true, retryOn429 },
+        respond: () =>
+          ++calls === 1
+            ? Response.json({ error: { code: "insufficient_quota" } }, { status: 429 })
+            : Response.json({ choices: [{ message: { content: "quota recovered" } }] }),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(retryOn429 ? 200 : 429);
+      expect(h.calls).toHaveLength(retryOn429 ? 2 : 1);
+      if (retryOn429) expect(result.text).toContain("quota recovered");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([false, true])(
+    "recognizes quota 429 errors inside successful HTTP responses (stream=%s)",
+    (stream) =>
+      Effect.gen(function* () {
+        let calls = 0;
+        const h = yield* harness({
+          recovery: { retryEnabled: true, retryOn429: true },
+          respond: () => {
+            calls++;
+            if (!stream)
+              return Response.json(
+                calls === 1
+                  ? { error: { status: 429, code: "insufficient_quota" } }
+                  : { choices: [{ message: { content: "quota recovered" } }] },
+              );
+            return new Response(
+              calls === 1
+                ? 'data: {"error":{"status":429,"code":"insufficient_quota"}}\n\n'
+                : 'data: {"choices":[{"delta":{"content":"quota recovered"}}]}\n\ndata: [DONE]\n\n',
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          },
+        });
+        const fiber = yield* h
+          .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [], stream })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        const result = yield* Fiber.join(fiber);
+        expect(result.status).toBe(200);
+        expect(result.text).toContain("quota recovered");
+        expect(result.text).not.toContain("insufficient_quota");
+        expect(h.calls).toHaveLength(2);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { retryToolRequests: false, retryOn429: false, status: 503, attempts: 1 },
+    { retryToolRequests: true, retryOn429: false, status: 503, attempts: 2 },
+    { retryToolRequests: true, retryOn429: false, status: 429, attempts: 1 },
+    { retryToolRequests: false, retryOn429: true, status: 429, attempts: 1 },
+    { retryToolRequests: true, retryOn429: true, status: 429, attempts: 2 },
+    { retryToolRequests: true, retryOn429: true, status: 401, attempts: 1 },
+  ])("configures recovery for upstream web search requests (%j)", (scenario) =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const h = yield* harness({
+        protocol: "openai-responses",
+        recovery: {
+          retryEnabled: true,
+          retryOn429: scenario.retryOn429,
+          retryToolRequests: scenario.retryToolRequests,
+        },
+        respond: () =>
+          ++calls === 1
+            ? Response.json(
+                {
+                  error: {
+                    code: scenario.status === 429 ? "insufficient_quota" : "upstream_error",
+                  },
+                },
+                { status: scenario.status },
+              )
+            : Response.json({
+                status: "completed",
+                output: [{ type: "message", content: [{ type: "output_text", text: "found" }] }],
+              }),
+      });
+      const fiber = yield* h
+        .invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "search",
+          tools: [{ type: "web_search" }],
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(scenario.attempts === 2 ? 200 : scenario.status);
+      expect(h.calls).toHaveLength(scenario.attempts);
+      if (scenario.attempts === 2) expect(result.text).toContain("found");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("retries failed web search streams without forwarding failed tool events", () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const h = yield* harness({
+        protocol: "openai-responses",
+        recovery: { retryEnabled: true, retryToolRequests: true },
+        respond: () =>
+          new Response(
+            ++calls === 1
+              ? 'data: {"type":"response.output_item.added","item":{"type":"web_search_call","id":"failed-search"}}\n\ndata: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
+              : 'data: {"type":"response.output_text.delta","delta":"found"}\n\ndata: {"type":"response.completed"}\n\n',
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const fiber = yield* h
+        .invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          stream: true,
+          input: "search",
+          tools: [{ type: "web_search" }],
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(200);
+      expect(result.text).toContain("found");
+      expect(result.text).not.toContain("failed-search");
+      expect(h.calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("keeps tool requests sequential and cancels stalled requests at the budget", () =>
+    Effect.gen(function* () {
+      let cancelled = false;
+      const h = yield* harness({
+        protocol: "openai-responses",
+        recovery: {
+          retryEnabled: true,
+          retryToolRequests: true,
+          hedgeEnabled: true,
+          hedgeDelayMs: 100,
+          budgetMs: 2000,
+        },
+        respond: () =>
+          new Response(
+            new ReadableStream({
+              cancel() {
+                cancelled = true;
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const fiber = yield* h
+        .invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          stream: true,
+          input: "search",
+          tools: [{ type: "web_search" }],
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      expect(h.calls).toHaveLength(1);
+      yield* TestClock.adjust("2 seconds");
+      expect((yield* Fiber.join(fiber)).status).toBe(504);
+      expect(h.calls).toHaveLength(1);
+      expect(cancelled).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { background: true },
+    { previous_response_id: "prior-response" },
+    { conversation: "prior-conversation" },
+  ])("preserves stateful request limits when retry overrides are enabled (%j)", (state) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "openai-responses",
+        recovery: { retryEnabled: true, retryOn429: true, retryToolRequests: true },
+        respond: () => Response.json({ error: { code: "insufficient_quota" } }, { status: 429 }),
+      });
+      const result = yield* h.invoke("/v1/responses", {
+        model: "Vendor/Exact",
+        input: "search",
+        tools: [{ type: "web_search" }],
+        ...state,
+      });
+      expect(result.status).toBe(429);
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("does not spend a new upstream budget when an SDK repeats an exhausted request", () =>
     Effect.gen(function* () {
       const h = yield* harness({

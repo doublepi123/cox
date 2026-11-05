@@ -57,6 +57,8 @@ const boundedInteger = (minimum: number, maximum: number, fallback: number) =>
 
 export const ModelServiceRecovery = Schema.Struct({
   retryEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  retryOn429: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  retryToolRequests: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   hedgeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   respectRetryAfter: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   hedgeDelayMs: boundedInteger(100, 600_000, 15_000),

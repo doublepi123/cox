@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import { TestClock } from "effect/testing";
 import {
   ModelServiceRequestFailure,
@@ -28,7 +29,10 @@ const harness = (policy: Partial<ModelServiceRecovery> = {}) => {
   const closed: number[] = [];
   let enabled = true;
   let cancelled = false;
-  const run = (attempt: (id: number) => Effect.Effect<number, ModelServiceRequestFailure>) =>
+  const run = (
+    attempt: (id: number) => Effect.Effect<number, ModelServiceRequestFailure>,
+    progress: (event: RecoveryProgress) => Effect.Effect<void> = () => Effect.void,
+  ) =>
     recoverModelServiceRequest({
       policy: { ...DEFAULT_MODEL_SERVICE_RECOVERY, ...policy },
       reasoning: false,
@@ -49,7 +53,7 @@ const harness = (policy: Partial<ModelServiceRecovery> = {}) => {
       progress: (event) =>
         Effect.sync(() => {
           phases.push(event);
-        }),
+        }).pipe(Effect.andThen(progress(event))),
     }).pipe(Effect.scoped);
   return {
     run,
@@ -148,6 +152,91 @@ it.effect("counts retries and backups against the same attempt limit", () =>
     yield* TestClock.adjust("4 seconds");
     expect(Exit.isFailure(yield* Fiber.join(fiber))).toBe(true);
     expect(h.started).toEqual([1, 2]);
+    expect(h.load.inFlight).toBe(0);
+  }),
+);
+
+it.effect.each([
+  { retryOn429: false, retryEnabled: true, status: 429, attempts: 1 },
+  { retryOn429: true, retryEnabled: true, status: 429, attempts: 2 },
+  { retryOn429: true, retryEnabled: false, status: 429, attempts: 1 },
+  { retryOn429: true, retryEnabled: true, status: 401, attempts: 1 },
+  { retryOn429: true, retryEnabled: true, status: 422, attempts: 1 },
+])("bounds forced 429 retries and preserves other failures (%j)", (scenario) =>
+  Effect.gen(function* () {
+    const h = harness({
+      retryOn429: scenario.retryOn429,
+      retryEnabled: scenario.retryEnabled,
+      maxAttempts: 2,
+    });
+    const fiber = yield* h
+      .run(() =>
+        Effect.fail(
+          new ModelServiceRequestFailure({
+            detail: "Permanent test failure",
+            status: scenario.status,
+            retryable: false,
+          }),
+        ),
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    expect((yield* Fiber.join(fiber)).status).toBe(scenario.status);
+    expect(h.started).toHaveLength(scenario.attempts);
+    expect(h.load.inFlight).toBe(0);
+  }),
+);
+
+it.effect.each([true, false])(
+  "applies the cooldown setting to forced quota retries (%s)",
+  (respectRetryAfter) =>
+    Effect.gen(function* () {
+      const h = harness({ retryOn429: true, respectRetryAfter, hedgeEnabled: false });
+      const fiber = yield* h
+        .run((id) =>
+          id === 1
+            ? Effect.fail(
+                new ModelServiceRequestFailure({
+                  detail: "Quota exhausted",
+                  status: 429,
+                  retryable: false,
+                  retryAfterMs: 5000,
+                }),
+              )
+            : Effect.succeed(id),
+        )
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      expect(h.started).toHaveLength(respectRetryAfter ? 1 : 2);
+      yield* TestClock.adjust("5 seconds");
+      expect(yield* Fiber.join(fiber)).toBe(2);
+    }),
+);
+
+it.effect("stops forced 429 retries when the recovery time budget expires", () =>
+  Effect.gen(function* () {
+    const h = harness({ retryOn429: true, budgetMs: 100 });
+    const retrying = yield* Deferred.make<void>();
+    const fiber = yield* h
+      .run(
+        () =>
+          Effect.fail(
+            new ModelServiceRequestFailure({
+              detail: "Quota exhausted",
+              status: 429,
+              retryable: false,
+            }),
+          ),
+        (event) =>
+          event.phase === "retrying"
+            ? Deferred.succeed(retrying, undefined).pipe(Effect.asVoid)
+            : Effect.void,
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* Deferred.await(retrying);
+    yield* TestClock.adjust("1 second");
+    expect((yield* Fiber.join(fiber)).status).toBe(429);
+    expect(h.started).toEqual([1]);
     expect(h.load.inFlight).toBe(0);
   }),
 );

@@ -132,6 +132,12 @@ export const zh = {
   "Request recovery": "请求恢复",
   "Next attempt in {seconds}s.": "{seconds} 秒后再次尝试。",
   "Automatically retry temporary failures": "自动重试临时故障",
+  "Retry all 429 responses, including quota limits": "忽略 429／额度限制错误，继续重试",
+  "Retry failed requests with upstream tools": "允许含上游工具调用的失败请求重试",
+  "429 retries share the recovery budget. The cooldown setting still controls how long to wait.":
+    "429 重试沿用恢复预算，等待时间仍由冷却时间开关控制。",
+  "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.":
+    "含网页搜索等工具的请求在输出开始前失败时串行重试，上游工具可能再次执行。",
   "Start backup requests when responses are slow": "响应缓慢时启动备用请求",
   "Respect 429 cooldown": "遵守 429 冷却时间",
   "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.":

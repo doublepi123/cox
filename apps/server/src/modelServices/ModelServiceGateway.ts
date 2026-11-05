@@ -709,12 +709,18 @@ export const make = Effect.gen(function* () {
       const result = yield* response.json.pipe(
         Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(32 * 1024 * 1024)),
       );
-      if (record(result).error)
+      if (record(result).error) {
+        const error = record(record(result).error);
+        const status = Number(error.status ?? error.code);
         return yield* new ModelServiceRequestFailure({
           detail: "The model service returned an error in a successful HTTP response.",
-          status: 502,
-          retryable: isRetryableModelServiceError(502, record(record(result).error)),
+          status: status >= 400 && status < 600 ? status : 502,
+          retryable: isRetryableModelServiceError(
+            status >= 400 && status < 600 ? status : 502,
+            error,
+          ),
         });
+      }
       if (!countTokens && !modelServiceResponseIsValid(protocol, result))
         return yield* new ModelServiceRequestFailure({
           detail: "The model service returned an empty or invalid response.",
@@ -735,23 +741,28 @@ export const make = Effect.gen(function* () {
             }),
       ),
     );
-    const unsafe =
-      countTokens ||
-      Boolean(body.background || body.previous_response_id || body.conversation) ||
-      (Array.isArray(body.tools) &&
-        body.tools.some((tool) => {
-          const type = record(tool).type;
-          return (
-            (typeof type === "string" && !["function", "custom", "computer"].includes(type)) ||
-            Boolean(
-              record(tool).googleSearch || record(tool).codeExecution || record(tool).urlContext,
-            )
-          );
-        }));
+    const stateful =
+      countTokens || Boolean(body.background || body.previous_response_id || body.conversation);
+    const upstreamTools =
+      Array.isArray(body.tools) &&
+      body.tools.some((tool) => {
+        const type = record(tool).type;
+        return (
+          (typeof type === "string" && !["function", "custom", "computer"].includes(type)) ||
+          Boolean(
+            record(tool).googleSearch || record(tool).codeExecution || record(tool).urlContext,
+          )
+        );
+      });
     return yield* recoverModelServiceRequest({
-      policy: unsafe
-        ? { ...service.recovery, retryEnabled: false, hedgeEnabled: false }
-        : service.recovery,
+      policy: {
+        ...service.recovery,
+        retryEnabled:
+          service.recovery.retryEnabled &&
+          !stateful &&
+          (!upstreamTools || service.recovery.retryToolRequests),
+        hedgeEnabled: service.recovery.hedgeEnabled && !stateful && !upstreamTools,
+      },
       reasoning: modelServiceHasReasoning(body, selected.supportsReasoning),
       load,
       enabled,

@@ -218,7 +218,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     }
     yield* close(event.id);
     lastFailure = event.error;
-    if (!lastFailure.retryable) break;
+    if (!lastFailure.retryable && !(policy.retryOn429 && lastFailure.status === 429)) break;
     const failedAt = yield* Clock.currentTimeMillis;
     if (policy.respectRetryAfter && lastFailure.retryAfterMs) {
       load.cooldownUntil = Math.max(load.cooldownUntil, failedAt + lastFailure.retryAfterMs);

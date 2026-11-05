@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.35 — 2026-11-05
+
+- Add an opt-in switch to retry all model-service HTTP 429 responses, including quota
+  errors previously treated as permanent. Retain the configured attempt and time limits,
+  and control Retry-After waiting separately through the existing cooldown setting.
+- Add an independent opt-in switch to retry failed requests containing upstream tools
+  such as web search before output starts. Retry these requests sequentially and retain
+  the existing limits for background and stateful requests.
+- Recognize embedded 429 errors in successful HTTP responses and streams, preserve older
+  service settings, and cover the switches with gateway, budget and settings regressions.
+
 ## 0.1.34 — 2026-11-05
 
 - Recover transient model-service failures with configurable aggressive retries and

@@ -15,6 +15,8 @@ export function ModelServiceRecoverySettings({
   const { t } = useTranslation();
   const toggles = [
     ["retryEnabled", "Automatically retry temporary failures"],
+    ["retryOn429", "Retry all 429 responses, including quota limits"],
+    ["retryToolRequests", "Retry failed requests with upstream tools"],
     ["hedgeEnabled", "Start backup requests when responses are slow"],
     ["respectRetryAfter", "Respect 429 cooldown"],
   ] as const;
@@ -42,6 +44,20 @@ export function ModelServiceRecoverySettings({
           "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.",
         )}
       </p>
+      {value.retryOn429 ? (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "429 retries share the recovery budget. The cooldown setting still controls how long to wait.",
+          )}
+        </p>
+      ) : null}
+      {value.retryToolRequests ? (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.",
+          )}
+        </p>
+      ) : null}
       {!value.respectRetryAfter ? (
         <p className="text-xs text-muted-foreground">
           {t("429 responses use the local retry interval instead of the service cooldown.")}

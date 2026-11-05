@@ -25,6 +25,8 @@ describe("model service contracts", () => {
     expect(recovery({})).toEqual(DEFAULT_MODEL_SERVICE_RECOVERY);
     expect(DEFAULT_MODEL_SERVICE_RECOVERY).toEqual({
       retryEnabled: true,
+      retryOn429: false,
+      retryToolRequests: false,
       hedgeEnabled: true,
       respectRetryAfter: true,
       hedgeDelayMs: 15000,
@@ -55,10 +57,20 @@ describe("model service contracts", () => {
       decodeService(
         encodeService({
           ...service,
-          recovery: recovery({ respectRetryAfter: false, maxAttempts: 20 }),
+          recovery: recovery({
+            retryOn429: true,
+            retryToolRequests: true,
+            respectRetryAfter: false,
+            maxAttempts: 20,
+          }),
         }),
       ).recovery,
-    ).toMatchObject({ respectRetryAfter: false, maxAttempts: 20 });
+    ).toMatchObject({
+      retryOn429: true,
+      retryToolRequests: true,
+      respectRetryAfter: false,
+      maxAttempts: 20,
+    });
   });
   it("retains multimodal metadata across settings serialization", () => {
     const service = decodeService({
