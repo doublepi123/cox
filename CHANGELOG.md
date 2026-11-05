@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.36 — 2026-11-05
+
+- Disable Claude's built-in WebSearch for model-center sessions while preserving
+  existing tool restrictions and normal Claude provider behavior.
+- Read the Settings version from the root release manifest so the browser and
+  published npm package display the same release version.
+
 ## 0.1.35 — 2026-11-05
 
 - Add an opt-in switch to retry all model-service HTTP 429 responses, including quota

@@ -1784,6 +1784,21 @@ export function makeClaudeQueryOptions(input: {
     ? { resume: input.nativeThreadId }
     : { sessionId: input.nativeThreadId };
   const selectedTools = input.tools ?? CLAUDE_CODE_PRESET_TOOLS;
+  const disallowedTools = input.environment?.COX_MODEL_SERVICE_KEY
+    ? Array.from(
+        new Set([
+          ...(input.disallowedTools ?? []),
+          ...[extraArgs.disallowedTools, extraArgs["disallowed-tools"]].filter(
+            (tools): tools is string => typeof tools === "string" && tools.length > 0,
+          ),
+          "WebSearch",
+        ]),
+      )
+    : input.disallowedTools;
+  if (input.environment?.COX_MODEL_SERVICE_KEY) {
+    delete extraArgs.disallowedTools;
+    delete extraArgs["disallowed-tools"];
+  }
   const selectionSettings =
     Object.keys(compiledSelection.settings).length === 0
       ? undefined
@@ -1850,7 +1865,7 @@ export function makeClaudeQueryOptions(input: {
     ...threadIdentity,
     ...(input.resumeSessionAt === undefined ? {} : { resumeSessionAt: input.resumeSessionAt }),
     ...(input.allowedTools === undefined ? {} : { allowedTools: [...input.allowedTools] }),
-    ...(input.disallowedTools === undefined ? {} : { disallowedTools: [...input.disallowedTools] }),
+    ...(disallowedTools === undefined ? {} : { disallowedTools: [...disallowedTools] }),
     ...(input.canUseTool === undefined ? {} : { canUseTool: input.canUseTool }),
     ...(input.allowDangerouslySkipPermissions === true
       ? { allowDangerouslySkipPermissions: true }

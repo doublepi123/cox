@@ -245,6 +245,72 @@ function makeClaudeTestTurnInput(input: {
 
 describe("ClaudeAdapterV2 runtime query policy", () => {
   it.each([
+    { disallowedTools: undefined, expected: ["WebSearch"] },
+    { disallowedTools: ["Bash"], expected: ["Bash", "WebSearch"] },
+    { disallowedTools: ["WebSearch", "Bash"], expected: ["WebSearch", "Bash"] },
+  ])(
+    "disables built-in web search for model-service requests and preserves denied tools (%j)",
+    ({ disallowedTools, expected }) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+        nativeThreadId: "model-service-no-web-search",
+        resume: false,
+        cwd: "/workspace",
+        environment: { COX_MODEL_SERVICE_KEY: "local-test-token" },
+        allowedTools: ["WebSearch", "WebFetch", "mcp__search__websearch"],
+        ...(disallowedTools === undefined ? {} : { disallowedTools }),
+      });
+      assert.deepEqual(options.disallowedTools, expected);
+      assert.deepEqual(options.allowedTools, ["WebSearch", "WebFetch", "mcp__search__websearch"]);
+    },
+  );
+
+  it.each(["--disallowedTools", "--disallowed-tools"])(
+    "merges model-service web search restrictions with launch arguments (%s)",
+    (flag) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+        nativeThreadId: "model-service-denied-tools",
+        resume: false,
+        cwd: "/workspace",
+        environment: { COX_MODEL_SERVICE_KEY: "local-test-token" },
+        settings: {
+          ...DEFAULT_CLAUDE_SETTINGS,
+          launchArgs: `${flag} 'Bash(git status),Write' --verbose`,
+        },
+        disallowedTools: ["Edit"],
+      });
+      assert.deepEqual(options.disallowedTools, ["Edit", "Bash(git status),Write", "WebSearch"]);
+      assert.isUndefined(options.extraArgs?.disallowedTools);
+      assert.isUndefined(options.extraArgs?.["disallowed-tools"]);
+      assert.property(options.extraArgs, "verbose");
+    },
+  );
+
+  it.each([{ disallowedTools: undefined }, { disallowedTools: ["Bash"] }])(
+    "preserves native web search configuration outside model services (%j)",
+    ({ disallowedTools }) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+        nativeThreadId: "native-web-search",
+        resume: false,
+        cwd: "/workspace",
+        settings: {
+          ...DEFAULT_CLAUDE_SETTINGS,
+          baseUrl: "https://custom-gateway.test",
+          apiKey: "custom-key",
+          launchArgs: "--disallowedTools Write",
+        },
+        allowedTools: ["WebSearch"],
+        ...(disallowedTools === undefined ? {} : { disallowedTools }),
+      });
+      assert.deepEqual(options.disallowedTools, disallowedTools);
+      assert.deepEqual(options.allowedTools, ["WebSearch"]);
+      assert.equal(options.extraArgs?.disallowedTools, "Write");
+    },
+  );
+
+  it.each([
     "-- --thinking-display omitted",
     "--thinking-display summarized -- --thinking-display omitted",
   ])("does not treat operands after -- as SDK flags: %s", (launchArgs) => {

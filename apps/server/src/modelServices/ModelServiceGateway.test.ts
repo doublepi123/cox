@@ -528,6 +528,29 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("disables native Claude web search for materialized model-service instances", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "claudeAgent" });
+      const instance = h.materialized[instanceId]!;
+      const settings = decodeClaudeSettings(instance.config);
+      const options = makeClaudeQueryOptions({
+        modelSelection: { instanceId, model: "Vendor/Exact" },
+        modelCatalog: resolveClaudeModelServiceCatalog(settings.customModels, "Vendor/Exact"),
+        nativeThreadId: "service-no-web-search",
+        resume: false,
+        cwd: null,
+        settings,
+        environment: Object.fromEntries(
+          (instance.environment ?? []).flatMap(({ name, value }) =>
+            typeof value === "string" ? [[name, value]] : [],
+          ),
+        ),
+      });
+      expect(options.disallowedTools).toEqual(["WebSearch"]);
+      expect(h.calls).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect.each([false, true])(
     "supplements max-only Codex catalogs and keeps explicit Ultra metadata (declared: %s)",
     (declared) =>

@@ -9,7 +9,7 @@ import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/te
 import "vite-plus/test/config";
 import { defineConfig, type Connect, type Plugin } from "vite-plus";
 import * as Hash from "effect/Hash";
-import pkg from "./package.json" with { type: "json" };
+import pkg from "../../package.json" with { type: "json" };
 import pdfjsPkg from "pdfjs-dist/package.json" with { type: "json" };
 
 import {
