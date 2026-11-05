@@ -1033,16 +1033,16 @@ function OpenCommandPaletteDialog(props: {
     defaultAddProjectEnvironmentId !== null &&
     newProjectsRootFor(defaultAddProjectEnvironmentId) !== null;
 
-  const openConnectionSettings = () => {
+  const openConnectionDiagnostics = () => {
     setOpen(false);
-    void navigate({ to: "/settings/access" });
+    void navigate({ to: "/settings/diagnostics" });
   };
 
   const openAddProjectFlow = () => {
     if (defaultAddProjectEnvironmentId !== null) {
       startAddProjectSourceSelection(defaultAddProjectEnvironmentId);
     } else {
-      openConnectionSettings();
+      openConnectionDiagnostics();
     }
   };
 
@@ -1060,13 +1060,13 @@ function OpenCommandPaletteDialog(props: {
         items: [
           {
             kind: "action",
-            value: "action:add-project:local-access",
+            value: "action:add-project:local-diagnostics",
             searchTerms: ["local", "connection", "settings"],
             title: t("Local server unavailable"),
             description: t("Check the local server connection to add a project."),
             icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
             run: async () => {
-              openConnectionSettings();
+              openConnectionDiagnostics();
             },
           },
         ],

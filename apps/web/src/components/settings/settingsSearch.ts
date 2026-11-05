@@ -118,10 +118,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Connections",
-    paths: [
-      "/settings/access",
-      ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
-    ],
+    paths: isSecretsFeatureEnabled ? ["/settings/secrets"] : [],
   },
   {
     heading: null,
@@ -919,13 +916,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Actions",
     to: "/settings/projects",
     searchTerms: ["commands scripts setup run dev server checkout worktree t3.json import"],
-  },
-
-  {
-    id: "connections-environment",
-    title: "This machine",
-    to: "/settings/access",
-    searchTerms: ["local server authentication browser session cookie access token"],
   },
 
   {

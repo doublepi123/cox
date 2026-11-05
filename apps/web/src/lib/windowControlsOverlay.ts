@@ -18,19 +18,26 @@ function getWindowControlsOverlay(): WindowControlsOverlayLike | null {
   }
   return (navigator as NavigatorWithWindowControlsOverlay).windowControlsOverlay ?? null;
 }
+function macosTitlebarHeight(): number {
+  return typeof document !== "undefined" &&
+    document.documentElement.dataset.coxDesktop === "macos" &&
+    document.documentElement.dataset.desktopFullscreen !== "true"
+    ? MACOS_TITLEBAR_HEIGHT
+    : 0;
+}
 /** Height of the native caption strip drawn over the page, or 0 when the window has none. */
 export function windowControlsOverlayHeight(): number {
   const overlay = getWindowControlsOverlay();
-  return overlay?.visible ? overlay.getTitlebarAreaRect().height : 0;
+  return overlay?.visible ? overlay.getTitlebarAreaRect().height : macosTitlebarHeight();
 }
 export function onWindowControlsOverlayGeometryChange(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
   const overlay = getWindowControlsOverlay();
-  if (!overlay) {
-    return () => {};
-  }
-  overlay.addEventListener("geometrychange", listener);
+  overlay?.addEventListener("geometrychange", listener);
+  window.addEventListener("cox:window-controls-changed", listener);
   return () => {
-    overlay.removeEventListener("geometrychange", listener);
+    overlay?.removeEventListener("geometrychange", listener);
+    window.removeEventListener("cox:window-controls-changed", listener);
   };
 }
 export function syncDocumentWindowControlsOverlayClass(): () => void {
@@ -39,19 +46,24 @@ export function syncDocumentWindowControlsOverlayClass(): () => void {
   }
   const overlay = getWindowControlsOverlay();
   const update = () => {
-    document.documentElement.classList.toggle(WCO_CLASS_NAME, overlay !== null && overlay.visible);
+    document.documentElement.classList.toggle(
+      WCO_CLASS_NAME,
+      Boolean(overlay?.visible || macosTitlebarHeight()),
+    );
   };
   update();
-  return onWindowControlsOverlayGeometryChange(update);
+  const unsubscribe = onWindowControlsOverlayGeometryChange(update);
+  return () => {
+    unsubscribe();
+    document.documentElement.classList.remove(WCO_CLASS_NAME);
+  };
 }
 function subscribeTitlebarArea(listener: () => void): () => void {
-  const overlay = getWindowControlsOverlay();
-  overlay?.addEventListener("geometrychange", listener);
-  return () => overlay?.removeEventListener("geometrychange", listener);
+  return onWindowControlsOverlayGeometryChange(listener);
 }
 function getNativeTitlebarHeight(): number {
   const overlay = getWindowControlsOverlay();
-  return overlay?.visible ? overlay.getTitlebarAreaRect().bottom : 0;
+  return overlay?.visible ? overlay.getTitlebarAreaRect().bottom : macosTitlebarHeight();
 }
 export function useNativeTitlebarHeight(): number {
   return useSyncExternalStore(subscribeTitlebarArea, getNativeTitlebarHeight, () => 0);

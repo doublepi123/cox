@@ -32,6 +32,15 @@ let desktopReady = false;
 let stoppingBackend = false;
 let origin: string | undefined;
 
+function syncWindowControls() {
+  if (!window || window.isDestroyed()) return;
+  const fullscreen = window.isFullScreen();
+  const zoomFactor = window.webContents.getZoomFactor();
+  if (process.platform === "darwin" && !fullscreen)
+    window.setWindowButtonPosition({ x: 16, y: Math.max(0, Math.round(26 * zoomFactor - 7)) });
+  if (desktopReady) window.webContents.send("cox:window-state", { fullscreen, zoomFactor });
+}
+
 function showWindow() {
   if (!window) return;
   if (window.isMinimized()) window.restore();
@@ -42,7 +51,7 @@ function showWindow() {
 async function requestQuit() {
   if (quitPending) return;
   quitPending = true;
-  if (process.platform === "win32" && desktopReady && window && !window.webContents.isCrashed()) {
+  if (desktopReady && window && !window.webContents.isCrashed()) {
     showWindow();
     window.webContents.send("cox:quit-requested");
     return;
@@ -74,7 +83,7 @@ async function finishQuit() {
   } catch (error) {
     quitPending = false;
     stoppingBackend = false;
-    if (desktopReady && process.platform === "win32") {
+    if (desktopReady) {
       quitPending = true;
       window?.webContents.send("cox:quit-requested");
     }
@@ -129,7 +138,9 @@ async function start() {
           titleBarStyle: "hidden" as const,
           titleBarOverlay: { color: "#151518", symbolColor: "#eeeeee", height: 52 },
         }
-      : {}),
+      : process.platform === "darwin"
+        ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 19 } }
+        : {}),
     backgroundColor: "#151518",
     icon: app.isPackaged
       ? join(process.resourcesPath, "icon.png")
@@ -154,8 +165,16 @@ async function start() {
   ipcMain.on("cox:desktop-ready", (event) => {
     if (!isTrustedSender(event)) return;
     desktopReady = true;
+    syncWindowControls();
     if (quitPending && !stoppingBackend) window?.webContents.send("cox:quit-requested");
   });
+  ipcMain.on("cox:sync-window-controls", (event) => {
+    if (isTrustedSender(event)) syncWindowControls();
+  });
+  window.on("enter-full-screen", syncWindowControls);
+  window.on("leave-full-screen", syncWindowControls);
+  window.webContents.on("did-finish-load", syncWindowControls);
+  window.webContents.on("zoom-changed", () => setImmediate(syncWindowControls));
   ipcMain.on("cox:quit-answer", (event, confirmed: unknown) => {
     if (!isTrustedSender(event) || !quitPending || stoppingBackend) return;
     if (confirmed === false) quitPending = false;
@@ -299,7 +318,7 @@ async function start() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   if (process.platform === "win32") window.setMenuBarVisibility(false);
   await window.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><title>Cox</title><body style="background:#151518;color:#eee;font:18px system-ui;display:grid;place-content:center;height:90vh;text-align:center"><h1>Cox</h1><p>Starting local backend… / 正在启动本地后端…</p>')}`,
+    `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><title>Cox</title><body style="background:#151518;color:#eee;font:18px system-ui;display:grid;place-content:center;height:90vh;text-align:center"><h1>Cox</h1>')}`,
   );
   const nodePath = app.isPackaged
     ? join(

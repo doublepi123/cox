@@ -44,6 +44,10 @@ const application = await _electron.launch({
 const applicationProcess = application.process();
 try {
   const page = await application.firstWindow();
+  page.on("pageerror", (error) => console.error("Renderer error:", error));
+  page.on("console", (message) => {
+    if (message.type() === "error") console.error("Renderer console:", message.text());
+  });
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
   await page.waitForFunction(
     async () => {
@@ -76,23 +80,45 @@ try {
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
     1,
   );
-  if (process.platform === "win32") {
-    assert.equal(
-      await application.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0]?.isMenuBarVisible(),
-      ),
-      false,
-    );
+  if (process.platform === "win32" || process.platform === "darwin") {
+    if (process.platform === "win32") {
+      assert.equal(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.isMenuBarVisible(),
+        ),
+        false,
+      );
+    }
     await page.waitForFunction(() => document.documentElement.classList.contains("wco"));
-    assert.equal(await page.evaluate(() => document.documentElement.dataset.coxDesktop), "windows");
-    await application.evaluate(({ BrowserWindow, dialog }) => {
+    assert.equal(
+      await page.evaluate(() => document.documentElement.dataset.coxDesktop),
+      process.platform === "darwin" ? "macos" : "windows",
+    );
+    if (process.platform === "darwin") {
+      assert.deepEqual(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.getWindowButtonPosition(),
+        ),
+        { x: 16, y: 19 },
+      );
+      await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+      assert.equal(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.isVisible(),
+        ),
+        false,
+      );
+      assert.equal(existsSync(runtimePath), true);
+      await application.evaluate(({ app }) => app.emit("activate"));
+    }
+    await application.evaluate(({ app, dialog }) => {
       dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
-      BrowserWindow.getAllWindows()[0]?.close();
+      app.quit();
     });
     await page.getByRole("alertdialog").waitFor();
     await page.getByRole("button", { name: /^(Cancel|取消)$/ }).click();
     assert.equal(existsSync(runtimePath), true);
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+    await application.evaluate(({ app }) => app.quit());
     const exit = once(applicationProcess, "exit", { signal: AbortSignal.timeout(20_000) });
     await page.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
     const [exitCode] = await exit;
@@ -107,9 +133,37 @@ try {
   console.log(
     "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation and graceful quit.",
   );
+} catch (error) {
+  console.error("Packaged window smoke failed:", error);
+  console.error(
+    "Electron output:",
+    applicationProcess.stdout?.read(),
+    applicationProcess.stderr?.read(),
+  );
+  for (const page of application.windows()) {
+    console.error(
+      "Renderer state:",
+      await page
+        .evaluate(() => ({
+          url: location.href,
+          bridge: typeof Reflect.get(window, "coxDesktop"),
+          desktop: document.documentElement.dataset.coxDesktop,
+          classes: document.documentElement.className,
+          text: document.body.innerText.slice(0, 2000),
+        }))
+        .catch(String),
+    );
+  }
+  throw error;
 } finally {
   if (applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
+    const exited = once(applicationProcess, "exit", { signal: AbortSignal.timeout(15_000) });
     applicationProcess.kill("SIGKILL");
+    await exited;
   }
-  await rm(temporary, { recursive: true, force: true });
+  await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+    (error: unknown) => {
+      console.error("Could not clean smoke directory:", temporary, error);
+    },
+  );
 }

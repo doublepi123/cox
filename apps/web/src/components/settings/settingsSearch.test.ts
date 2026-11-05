@@ -71,6 +71,12 @@ describe("searchSettings", () => {
     expect(searchSettings("1password").map((item) => item.to)).not.toContain("/settings/secrets");
   });
 
+  it("removes the read-only local access page from navigation and search", () => {
+    expect(SETTINGS_NAV_GROUPS.flatMap((group) => group.paths)).not.toContain("/settings/access");
+    expect(SETTINGS_SEARCH_ITEMS.some((item) => item.to === "/settings/access")).toBe(false);
+    expect(searchSettings("local authentication")).toEqual([]);
+  });
+
   it("matches normalized title substrings", () => {
     expect(searchSettings("  WORD   WRAP  ", ITEMS).map((item) => item.id)).toEqual(["word-wrap"]);
     expect(searchSettings("glass").map((item) => item.id)).toEqual(["setting-glass-opacity"]);
@@ -88,9 +94,6 @@ describe("searchSettings", () => {
 
   it("matches query words across fields and ranks the strongest result first", () => {
     expect(searchSettings("token backend", ITEMS).map((item) => item.id)).toEqual(["local-access"]);
-    expect(searchSettings("local authentication").map((item) => item.id)).toContain(
-      "connections-environment",
-    );
   });
 
   it("hides settings whose controls are unavailable", () => {

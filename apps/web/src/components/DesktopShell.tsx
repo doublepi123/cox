@@ -39,9 +39,16 @@ export function DesktopShell() {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const bridge = window.coxDesktop;
-    if (bridge?.platform !== "win32") return;
-    document.documentElement.dataset.coxDesktop = "windows";
+    if (!bridge || !["win32", "darwin"].includes(bridge.platform)) return;
+    document.documentElement.dataset.coxDesktop =
+      bridge.platform === "darwin" ? "macos" : "windows";
     const stopOverlay = syncDocumentWindowControlsOverlayClass();
+    const stopWindowState = bridge.onWindowState((state) => {
+      document.documentElement.dataset.desktopFullscreen = String(state.fullscreen);
+      document.documentElement.style.setProperty("--desktop-window-zoom", String(state.zoomFactor));
+      window.dispatchEvent(new Event("cox:window-controls-changed"));
+    });
+    window.addEventListener("resize", bridge.syncWindowControls);
     const unsubscribe = bridge.onQuitRequested(() => {
       setQuitting(false);
       setOpen(true);
@@ -58,11 +65,16 @@ export function DesktopShell() {
     return () => {
       unsubscribe();
       observer.disconnect();
+      stopWindowState();
+      window.removeEventListener("resize", bridge.syncWindowControls);
       stopOverlay();
       delete document.documentElement.dataset.coxDesktop;
+      delete document.documentElement.dataset.desktopFullscreen;
+      document.documentElement.style.removeProperty("--desktop-window-zoom");
+      window.dispatchEvent(new Event("cox:window-controls-changed"));
     };
   }, []);
-  if (window.coxDesktop?.platform !== "win32") return null;
+  if (!window.coxDesktop || !["win32", "darwin"].includes(window.coxDesktop.platform)) return null;
   return (
     <AlertDialog
       open={open}

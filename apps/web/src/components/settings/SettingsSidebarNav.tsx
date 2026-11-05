@@ -374,60 +374,62 @@ export function SettingsSidebarNav({
                     aria-label={t("Settings sections")}
                     className="flex flex-col gap-4"
                   >
-                    {SETTINGS_NAV_GROUPS.map((group, index) => (
-                      <div
-                        key={group.heading ?? index}
-                        role="group"
-                        aria-label={group.heading ? t(group.heading) : undefined}
-                        className={cn(
-                          "flex flex-col gap-1",
-                          !isMenuLayout &&
-                            "max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0",
-                          isMenuLayout && index > 0 && "border-t border-sidebar-border pt-4",
-                        )}
-                      >
-                        {group.heading ? (
-                          // The group carries this label; a heading is not a valid tree child.
-                          <h3
-                            aria-hidden="true"
-                            className={cn(
-                              "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
-                              !showLabels && "max-md:hidden",
-                            )}
-                          >
-                            {t(group.heading)}
-                          </h3>
-                        ) : null}
-                        <SidebarMenu role="presentation">
-                          {group.paths.map((to) => {
-                            const Icon = SETTINGS_SECTION_ICONS[to];
-                            const isActive =
-                              !isMenuLayout &&
-                              (activePath === to || activePath.startsWith(`${to}/`));
-                            return (
-                              <SidebarMenuItem key={to} role="presentation">
-                                <SidebarMenuButton
-                                  data-settings-section={to}
-                                  role="treeitem"
-                                  tabIndex={sectionNavigation.tabIndexFor(to)}
-                                  aria-selected={isActive}
-                                  aria-current={isActive ? "page" : undefined}
-                                  isActive={isActive}
-                                  onClick={() => handleSectionClick(to)}
-                                >
-                                  <Icon />
-                                  <span
-                                    className={cn("truncate", !showLabels && "max-md:sr-only")}
+                    {SETTINGS_NAV_GROUPS.filter((group) => group.paths.length > 0).map(
+                      (group, index) => (
+                        <div
+                          key={group.heading ?? index}
+                          role="group"
+                          aria-label={group.heading ? t(group.heading) : undefined}
+                          className={cn(
+                            "flex flex-col gap-1",
+                            !isMenuLayout &&
+                              "max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0",
+                            isMenuLayout && index > 0 && "border-t border-sidebar-border pt-4",
+                          )}
+                        >
+                          {group.heading ? (
+                            // The group carries this label; a heading is not a valid tree child.
+                            <h3
+                              aria-hidden="true"
+                              className={cn(
+                                "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
+                                !showLabels && "max-md:hidden",
+                              )}
+                            >
+                              {t(group.heading)}
+                            </h3>
+                          ) : null}
+                          <SidebarMenu role="presentation">
+                            {group.paths.map((to) => {
+                              const Icon = SETTINGS_SECTION_ICONS[to];
+                              const isActive =
+                                !isMenuLayout &&
+                                (activePath === to || activePath.startsWith(`${to}/`));
+                              return (
+                                <SidebarMenuItem key={to} role="presentation">
+                                  <SidebarMenuButton
+                                    data-settings-section={to}
+                                    role="treeitem"
+                                    tabIndex={sectionNavigation.tabIndexFor(to)}
+                                    aria-selected={isActive}
+                                    aria-current={isActive ? "page" : undefined}
+                                    isActive={isActive}
+                                    onClick={() => handleSectionClick(to)}
                                   >
-                                    {t(SETTINGS_SECTION_LABELS[to])}
-                                  </span>
-                                </SidebarMenuButton>
-                              </SidebarMenuItem>
-                            );
-                          })}
-                        </SidebarMenu>
-                      </div>
-                    ))}
+                                    <Icon />
+                                    <span
+                                      className={cn("truncate", !showLabels && "max-md:sr-only")}
+                                    >
+                                      {t(SETTINGS_SECTION_LABELS[to])}
+                                    </span>
+                                  </SidebarMenuButton>
+                                </SidebarMenuItem>
+                              );
+                            })}
+                          </SidebarMenu>
+                        </div>
+                      ),
+                    )}
                   </div>
                 </div>
               )}

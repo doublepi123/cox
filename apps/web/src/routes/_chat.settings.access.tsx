@@ -1,10 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ConnectionsSettings } from "../components/settings/ConnectionsSettings";
-
-function SettingsAccessRoute() {
-  return <ConnectionsSettings />;
-}
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_chat/settings/access")({
-  component: SettingsAccessRoute,
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/diagnostics", replace: true });
+  },
 });
