@@ -1,13 +1,47 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import { SecretProviderId } from "@t3tools/contracts";
+import { ProviderSessionId, SecretProviderId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
-import { mergeProviderInstanceEnvironment } from "./instanceEnvironment.ts";
+import {
+  mergeProviderInstanceEnvironment,
+  scopeModelServiceEnvironment,
+} from "./instanceEnvironment.ts";
 
 describe("mergeProviderInstanceEnvironment", () => {
+  it("isolates model service credentials across sessions without changing unrelated keys", () => {
+    const environment = {
+      COX_MODEL_SERVICE_KEY: "local-key",
+      COX_CODEX_API_KEY: "local-key",
+      OPENAI_API_KEY: "independent-key",
+      ANTHROPIC_API_KEY: "local-key",
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        provider: {
+          cox: {
+            options: { apiKey: "local-key", baseURL: "http://127.0.0.1/api/model-gateway/v1" },
+          },
+        },
+      }),
+    };
+    const a = scopeModelServiceEnvironment(environment, ProviderSessionId.make("session-a"));
+    const b = scopeModelServiceEnvironment(environment, ProviderSessionId.make("session-b"));
+    expect(a.COX_CODEX_API_KEY).toBe("local-key.session-a");
+    expect(b.COX_CODEX_API_KEY).toBe("local-key.session-b");
+    expect(a.OPENAI_API_KEY).toBe("independent-key");
+    expect(a.ANTHROPIC_API_KEY).toBe("local-key.session-a");
+    expect(JSON.parse(a.OPENCODE_CONFIG_CONTENT!).provider.cox.options.apiKey).toBe(
+      "local-key.session-a",
+    );
+    expect(environment.COX_MODEL_SERVICE_KEY).toBe("local-key");
+    expect(
+      scopeModelServiceEnvironment(
+        { OPENAI_API_KEY: "direct" },
+        ProviderSessionId.make("session-a"),
+      ),
+    ).toEqual({ OPENAI_API_KEY: "direct" });
+  });
   it.effect.each([
     { value: "~/.account", tail: ".account" },
     { value: "~\\.account\\work", tail: ".account\\work" },

@@ -2,9 +2,15 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
   ModelServiceConfig,
+  DEFAULT_MODEL_SERVICE_RECOVERY,
   ModelServiceId,
   ProviderDriverKind,
   ProviderInstanceId,
+  ProviderSessionId,
+  ProviderThreadId,
+  ThreadId,
+  RunId,
+  NodeId,
   type ProviderInstanceConfigMap,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -13,6 +19,8 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientResponse, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Stream from "effect/Stream";
+import * as Fiber from "effect/Fiber";
+import { TestClock } from "effect/testing";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { make } from "./ModelServiceGateway.ts";
@@ -52,6 +60,7 @@ const record = (value: unknown): Record<string, unknown> => value as Record<stri
 const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
     readonly driver?: string;
+    readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
     readonly respond?: (
       request: import("effect/http/HttpClientRequest").HttpClientRequest,
     ) => Response;
@@ -61,7 +70,18 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
   const settings = yield* ServerSettingsService;
   const previous = (yield* settings.getSettings).modelServices[serviceId];
   yield* settings.updateSettings({
-    modelServices: { [serviceId]: { ...service, revision: previous?.revision ?? 0 } },
+    modelServices: {
+      [serviceId]: {
+        ...service,
+        revision: previous?.revision ?? 0,
+        recovery: {
+          ...DEFAULT_MODEL_SERVICE_RECOVERY,
+          retryEnabled: false,
+          hedgeEnabled: false,
+          ...options.recovery,
+        },
+      },
+    },
   });
   const http = HttpClient.make((request) =>
     Effect.sync(() => {
@@ -127,6 +147,173 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect("does not spend a new upstream budget when an SDK repeats an exhausted request", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        recovery: { retryEnabled: true, maxAttempts: 2 },
+        respond: () => Response.json({ error: { code: "server_error" } }, { status: 503 }),
+      });
+      const session = ProviderSessionId.make("tracked-session");
+      yield* h.gateway.lifecycle.begin(
+        session,
+        {
+          threadId: ThreadId.make("tracked-thread"),
+          runId: RunId.make("tracked-run"),
+          rootNodeId: NodeId.make("tracked-node"),
+          providerThread: {
+            id: ProviderThreadId.make("tracked-provider-thread"),
+            driver: ProviderDriverKind.make("codex"),
+          },
+        },
+        () => Effect.void,
+      );
+      const body = { model: "Vendor/Exact", messages: [] };
+      const headers = { authorization: `Bearer ${h.token}.${session}` };
+      const first = yield* h.invoke("/v1/chat/completions", body, headers).pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      expect((yield* Fiber.join(first)).status).toBe(503);
+      expect((yield* h.invoke("/v1/chat/completions", body, headers)).status).toBe(503);
+      expect(h.calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("recovers transient HTTP failures without leaking rejected bodies", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const h = yield* harness({
+        recovery: { retryEnabled: true },
+        respond: () =>
+          ++attempts === 1
+            ? Response.json({ error: { message: "private-upstream-key" } }, { status: 503 })
+            : Response.json({ choices: [{ message: { content: "recovered" } }] }),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(200);
+      expect(result.text).toContain("recovered");
+      expect(result.text).not.toContain("private-upstream-key");
+      expect(h.calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("races effective output rather than HTTP headers or SSE heartbeats", () =>
+    Effect.gen(function* () {
+      const encoder = new TextEncoder();
+      let calls = 0;
+      let cancelled = false;
+      const h = yield* harness({
+        recovery: { hedgeEnabled: true, hedgeDelayMs: 100 },
+        respond: () => {
+          calls++;
+          return calls === 1
+            ? new Response(
+                new ReadableStream({
+                  start(controller) {
+                    controller.enqueue(
+                      encoder.encode(
+                        ': ping\n\ndata: {"choices":[{"delta":{"role":"assistant"}}]}\n\n',
+                      ),
+                    );
+                  },
+                  cancel() {
+                    cancelled = true;
+                  },
+                }),
+                { headers: { "content-type": "text/event-stream" } },
+              )
+            : new Response(
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"winner-tool","function":{"name":"shell","arguments":"{}"}}]}}]}\n\ndata: [DONE]\n\n',
+                { headers: { "content-type": "text/event-stream" } },
+              );
+        },
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", stream: true, messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(200);
+      expect(result.text.match(/winner-tool/g)).toHaveLength(1);
+      expect(result.text).not.toContain("ping");
+      expect(result.text).not.toContain('"role":"assistant"');
+      expect(calls).toBe(2);
+      expect(cancelled).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("recovers errors embedded in a 200 SSE stream before forwarding any events", () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const h = yield* harness({
+        recovery: { retryEnabled: true },
+        respond: () =>
+          new Response(
+            ++calls === 1
+              ? 'data: {"type":"error","error":{"type":"overloaded_error","message":"private-upstream-key"}}\n\n'
+              : 'data: {"choices":[{"delta":{"content":"recovered stream"}}]}\n\ndata: [DONE]\n\n',
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", stream: true, messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.text).toContain("recovered stream");
+      expect(result.text).not.toContain("private-upstream-key");
+      expect(calls).toBe(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not start backups once reasoning has been committed", () =>
+    Effect.gen(function* () {
+      let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+      const encoder = new TextEncoder();
+      const h = yield* harness({
+        recovery: { hedgeEnabled: true, hedgeDelayMs: 100, budgetMs: 200 },
+        respond: () =>
+          new Response(
+            new ReadableStream({
+              start(next) {
+                controller = next;
+                next.enqueue(
+                  encoder.encode(
+                    'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n',
+                  ),
+                );
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const response = yield* h.gateway.handle.pipe(
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          HttpServerRequest.fromWeb(
+            new Request("http://127.0.0.1/api/model-gateway/v1/chat/completions", {
+              method: "POST",
+              headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
+              body: JSON.stringify({ model: "Vendor/Exact", stream: true, messages: [] }),
+            }),
+          ),
+        ),
+      );
+      yield* TestClock.adjust("1 second");
+      expect(h.calls).toHaveLength(1);
+      controller!.enqueue(
+        encoder.encode('data: {"choices":[{"delta":{"content":"answer"}}]}\n\ndata: [DONE]\n\n'),
+      );
+      controller!.close();
+      expect(yield* Effect.promise(() => HttpServerResponse.toWeb(response).text())).toContain(
+        "answer",
+      );
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("provides scoped local credentials and filters the model list", () =>
     Effect.gen(function* () {
       const h = yield* harness();
@@ -428,7 +615,7 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("does not leak upstream error bodies or retry generation on failure", () =>
+  it.effect("redacts upstream errors and respects disabled request recovery", () =>
     Effect.gen(function* () {
       const h = yield* harness({
         driver: "pi",

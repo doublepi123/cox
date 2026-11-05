@@ -53,6 +53,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { ModelServiceGateway } from "../modelServices/ModelServiceGateway.ts";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
@@ -339,6 +340,8 @@ export const layerWithOptions = (
       const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
       /** Unreadable settings must preserve explicit browser-access opt-outs. */
       const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+      const modelGateway = yield* Effect.serviceOption(ModelServiceGateway);
+      const modelRecovery = Option.isSome(modelGateway) ? modelGateway.value.lifecycle : undefined;
       const projectService = yield* Effect.serviceOption(ProjectService.ProjectService);
       const eventSink = yield* EventSink.EventSinkV2;
       const commandOutput = yield* CommandOutputHub.CommandOutputHub;
@@ -1813,6 +1816,11 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
+              Effect.andThen(
+                modelRecovery?.begin(providerSessionId, input, (event) =>
+                  publishToSubscribers(eventSubscribers, { type: "event", event }),
+                ) ?? Effect.void,
+              ),
               // Failed or stopped starts may omit turn.terminal; clear their turns so sessions can idle.
               Effect.andThen(
                 holdThreadLoaded({
@@ -1869,6 +1877,7 @@ export const layerWithOptions = (
           // A provider starved of memory can stop answering, so no caller may wait on it unbounded.
           interruptTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
+              Effect.andThen(modelRecovery?.cancel(providerSessionId) ?? Effect.void),
               Effect.andThen(
                 runtime.interruptTurn(input).pipe(
                   Effect.timeoutOrElse({
@@ -1970,6 +1979,9 @@ export const layerWithOptions = (
                 event.type === "provider_session.updated"
                   ? persistProviderSessionUpdate(entry, event)
                   : Effect.void,
+              ),
+              Effect.andThen(
+                modelRecovery?.observe(entry.runtime.providerSessionId, event) ?? Effect.void,
               ),
               Effect.andThen(
                 Effect.gen(function* () {
@@ -2170,6 +2182,9 @@ export const layerWithOptions = (
                 }
               });
               const sessionScope = yield* Scope.fork(sessionScopes);
+              yield* Effect.addFinalizer(
+                () => modelRecovery?.close(input.providerSessionId) ?? Effect.void,
+              ).pipe(Scope.provide(sessionScope));
               yield* agentScope.clear(input.threadId);
               const runtime = yield* adapter
                 .openSession({

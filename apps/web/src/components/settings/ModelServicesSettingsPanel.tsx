@@ -1,5 +1,6 @@
 import {
   ModelServiceConfig,
+  DEFAULT_MODEL_SERVICE_RECOVERY,
   ModelServiceId,
   type EnvironmentId,
   type ModelServiceModel,
@@ -27,6 +28,7 @@ import { Input } from "../ui/input";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { ModelServiceRecoverySettings } from "./ModelServiceRecoverySettings";
 
 export const MODEL_SERVICE_PROTOCOL_LABELS: Record<ModelServiceProtocol, string> = {
   "openai-responses": "OpenAI Responses",
@@ -172,6 +174,7 @@ function ModelServiceEditor({
   );
   const [modelsPath, setModelsPath] = useState(service?.modelsPath ?? "");
   const [enabled, setEnabled] = useState(service?.enabled ?? true);
+  const [recovery, setRecovery] = useState(service?.recovery ?? DEFAULT_MODEL_SERVICE_RECOVERY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
@@ -206,6 +209,7 @@ function ModelServiceEditor({
         protocols: selectedProtocols,
         modelsPath,
         enabled,
+        recovery,
         models,
         ...(service?.discoveredAt ? { discoveredAt: service.discoveredAt } : {}),
       });
@@ -365,6 +369,11 @@ function ModelServiceEditor({
             />
             {t("Enable model service")}
           </label>
+          <ModelServiceRecoverySettings
+            value={recovery}
+            disabled={readOnly || busy}
+            onChange={setRecovery}
+          />
         </div>
         {!readOnly ? (
           <div className="grid gap-2 lg:col-span-2 lg:border-t lg:border-border/60 lg:p-5 lg:pt-5">

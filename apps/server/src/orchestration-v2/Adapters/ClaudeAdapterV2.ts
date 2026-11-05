@@ -201,7 +201,10 @@ import {
   type ClaudeScopedLimitNames,
 } from "../../provider/claudeUsageLimits.ts";
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  scopeModelServiceEnvironment,
+} from "@t3tools/provider-core/server/instanceEnvironment";
 import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import {
@@ -4985,6 +4988,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     }),
     openSession: Effect.fn("ClaudeAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
+        const environment = scopeModelServiceEnvironment(
+          adapterOptions.environment,
+          input.providerSessionId,
+        );
+        const gatewayConfig = {
+          ...adapterOptions.settings,
+          ...(environment.COX_MODEL_SERVICE_KEY &&
+          adapterOptions.settings.apiKey === adapterOptions.environment.COX_MODEL_SERVICE_KEY
+            ? { apiKey: environment.COX_MODEL_SERVICE_KEY }
+            : {}),
+        };
         const sessionScope = yield* Effect.scope;
         const now = yield* DateTime.now;
         const session = providerSession({
@@ -10854,8 +10868,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             .realPath(turnInput.runtimePolicy.cwd ?? ".")
             .pipe(Effect.orElseSucceed(() => turnInput.runtimePolicy.cwd));
           const gatewaySettings = yield* materializeClaudeGatewaySettings(
-            adapterOptions.settings,
+            gatewayConfig,
             queryOptions.settings,
+            environment,
           ).pipe(
             Effect.provideService(FileSystem.FileSystem, fileSystem),
             Effect.mapError(

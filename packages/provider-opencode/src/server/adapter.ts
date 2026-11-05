@@ -61,7 +61,10 @@ import {
   structuralProtocolMethod,
   summarizeNativeProtocolPayload,
 } from "@t3tools/provider-core/server/nativeProtocolLogging";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  scopeModelServiceEnvironment,
+} from "@t3tools/provider-core/server/instanceEnvironment";
 import { t3OrchestrationSystemPrompt } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
@@ -949,7 +952,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           ...(options.settings.serverPassword
             ? { serverPassword: options.settings.serverPassword }
             : {}),
-          environment: options.environment,
+          environment: scopeModelServiceEnvironment(options.environment, input.providerSessionId),
         });
         const client = runtime.createOpenCodeSdkClient({
           baseUrl: connection.url,

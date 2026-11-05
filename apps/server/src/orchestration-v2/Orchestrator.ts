@@ -913,6 +913,31 @@ function latestContextTransfer(
   }, undefined);
 }
 
+export const resolveProviderSessionId = Effect.fn("resolveProviderSessionId")(function* (input: {
+  readonly adapter: Pick<ProviderAdapter.ProviderAdapterV2["Service"], "getCapabilities">;
+  readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
+  readonly providerInstanceId: ProviderInstanceId;
+  readonly threadId: ThreadId;
+  readonly existingProviderSessionId?: ProviderSessionId | null | undefined;
+}) {
+  const capabilities = yield* input.adapter.getCapabilities();
+  const shared = input.idAllocator.derive.providerSession({
+    providerInstanceId: input.providerInstanceId,
+  });
+  const existing = input.existingProviderSessionId;
+  if (
+    existing &&
+    (capabilities.sessions.supportsMultipleProviderThreadsPerSession || existing !== shared)
+  )
+    return existing;
+  return capabilities.sessions.supportsMultipleProviderThreadsPerSession
+    ? shared
+    : yield* input.idAllocator.allocate.providerSession({
+        providerInstanceId: input.providerInstanceId,
+        threadId: input.threadId,
+      });
+});
+
 export function shouldPrepareLegacyImportHandoff(input: {
   readonly hasCompletedRun: boolean;
   readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
@@ -1061,21 +1086,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly adapter: ProviderAdapter.ProviderAdapterV2["Service"];
     readonly providerInstanceId: ProviderInstanceId;
     readonly threadId: ThreadId;
-  }) =>
-    input.adapter.getCapabilities().pipe(
-      Effect.flatMap((capabilities) =>
-        capabilities.sessions.supportsMultipleProviderThreadsPerSession
-          ? Effect.succeed(
-              idAllocator.derive.providerSession({
-                providerInstanceId: input.providerInstanceId,
-              }),
-            )
-          : idAllocator.allocate.providerSession({
-              providerInstanceId: input.providerInstanceId,
-              threadId: input.threadId,
-            }),
-      ),
-    );
+    readonly existingProviderSessionId?: ProviderSessionId | null | undefined;
+  }) => resolveProviderSessionId({ ...input, idAllocator });
 
   const makeEvent =
     /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
@@ -1978,29 +1990,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 }),
             ),
           ));
-      const providerSessionId =
-        (!canResumeAcrossInstances &&
-        queuedProviderThread.providerSessionId !== null &&
-        !switchPlan?.releaseProviderSessionIds.includes(queuedProviderThread.providerSessionId)
-          ? queuedProviderThread.providerSessionId
-          : null) ??
-        (yield* providerAdapters.get(queuedRun.providerInstanceId).pipe(
-          Effect.flatMap((adapter) =>
-            providerSessionIdFor({
-              adapter,
-              providerInstanceId: queuedRun.providerInstanceId,
-              threadId,
+      const providerSessionId = yield* providerAdapters.get(queuedRun.providerInstanceId).pipe(
+        Effect.flatMap((adapter) =>
+          providerSessionIdFor({
+            adapter,
+            providerInstanceId: queuedRun.providerInstanceId,
+            threadId,
+            existingProviderSessionId:
+              !canResumeAcrossInstances &&
+              queuedProviderThread.providerSessionId !== null &&
+              !switchPlan?.releaseProviderSessionIds.includes(
+                queuedProviderThread.providerSessionId,
+              )
+                ? queuedProviderThread.providerSessionId
+                : null,
+          }),
+        ),
+        Effect.mapError(
+          (cause) =>
+            new OrchestratorDispatchError({
+              commandId,
+              commandType: "message.dispatch",
+              cause,
             }),
-          ),
-          Effect.mapError(
-            (cause) =>
-              new OrchestratorDispatchError({
-                commandId,
-                commandType: "message.dispatch",
-                cause,
-              }),
-          ),
-        ));
+        ),
+      );
       const providerThread: OrchestrationV2ProviderThread = {
         ...deliveryProviderThread,
         providerSessionId,
@@ -5000,15 +5014,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         input.projection,
         input.modelSelection.instanceId,
       ).find((candidate) => candidate.id !== providerThread.id);
-      const targetProviderSessionId =
-        existingTargetProviderThread?.providerSessionId ??
-        (yield* mapDispatchError(input.command)(
-          providerSessionIdFor({
-            adapter: targetAdapter,
-            providerInstanceId: input.modelSelection.instanceId,
-            threadId: input.command.threadId,
-          }),
-        ));
+      const targetProviderSessionId = yield* mapDispatchError(input.command)(
+        providerSessionIdFor({
+          adapter: targetAdapter,
+          providerInstanceId: input.modelSelection.instanceId,
+          threadId: input.command.threadId,
+          existingProviderSessionId: existingTargetProviderThread?.providerSessionId,
+        }),
+      );
       const targetProviderThreadBase: OrchestrationV2ProviderThread =
         existingTargetProviderThread === undefined
           ? {
@@ -6244,15 +6257,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             }),
         ),
       );
-      const providerSessionId =
-        activeProviderThread?.providerSessionId ??
-        (yield* mapDispatchError(command)(
-          providerSessionIdFor({
-            adapter,
-            providerInstanceId: modelSelection.instanceId,
-            threadId: command.threadId,
-          }),
-        ));
+      const providerSessionId = yield* mapDispatchError(command)(
+        providerSessionIdFor({
+          adapter,
+          providerInstanceId: modelSelection.instanceId,
+          threadId: command.threadId,
+          existingProviderSessionId: activeProviderThread?.providerSessionId,
+        }),
+      );
       const providerThreadId =
         activeProviderThread?.id ??
         idAllocator.derive.providerThread({
@@ -6637,15 +6649,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       isProviderSwitch && !canResumeAcrossInstances
         ? rootProviderThreadsForProvider(projection, modelSelection.instanceId)[0]
         : activeProviderThread;
-    const providerSessionId =
-      (canResumeAcrossInstances ? undefined : targetProviderThread?.providerSessionId) ??
-      (yield* mapDispatchError(command)(
-        providerSessionIdFor({
-          adapter,
-          providerInstanceId: modelSelection.instanceId,
-          threadId: command.threadId,
-        }),
-      ));
+    const providerSessionId = yield* mapDispatchError(command)(
+      providerSessionIdFor({
+        adapter,
+        providerInstanceId: modelSelection.instanceId,
+        threadId: command.threadId,
+        existingProviderSessionId: canResumeAcrossInstances
+          ? undefined
+          : targetProviderThread?.providerSessionId,
+      }),
+    );
     const existingProviderSession = projection.providerSessions.find(
       (candidate) => candidate.id === providerSessionId,
     );

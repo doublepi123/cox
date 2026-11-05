@@ -11,6 +11,24 @@ const decodeSettings = Schema.decodeUnknownSync(
 
 it.layer(NodeServices.layer)("Claude gateway settings", (it) => {
   describe("credential precedence", () => {
+    it.effect(
+      "gives the model service its retry and timeout policy over user environment settings",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const file = yield* materializeClaudeGatewaySettings(
+            { baseUrl: "http://127.0.0.1/api/model-gateway/v1", apiKey: "local-token.session-a" },
+            { env: { CLAUDE_CODE_MAX_RETRIES: "20", API_TIMEOUT_MS: "1000" } },
+            { COX_MODEL_SERVICE_KEY: "local-token.session-a", API_TIMEOUT_MS: "330000" },
+          );
+          if (typeof file !== "string") throw new Error("Expected gateway settings");
+          expect(decodeSettings(yield* fs.readFileString(file)).env).toMatchObject({
+            CLAUDE_CODE_MAX_RETRIES: "0",
+            API_TIMEOUT_MS: "330000",
+            ANTHROPIC_API_KEY: "local-token.session-a",
+          });
+        }).pipe(Effect.scoped),
+    );
     it.effect("keeps subscription settings unchanged", () =>
       Effect.gen(function* () {
         const settings = { disableAllHooks: true };

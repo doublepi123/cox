@@ -125,7 +125,10 @@ import {
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { codexAppServerArgs, resolveCodexLaunchArgs } from "../../provider/codexLaunchArgs.ts";
 import { codexGatewayRuntime } from "../../provider/gatewayConfiguration.ts";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  scopeModelServiceEnvironment,
+} from "@t3tools/provider-core/server/instanceEnvironment";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import {
@@ -1698,12 +1701,21 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
     threadId === null ? Effect.succeed(undefined) : mcpSessions.read(threadId);
   const { clientFactory, crypto, fileSystem, idAllocator, serverConfig } = adapterOptions;
   const continuationRequests = adapterOptions.continuationRequests;
+  const capabilities = adapterOptions.environment.COX_MODEL_SERVICE_KEY
+    ? {
+        ...CodexProviderCapabilitiesV2,
+        sessions: {
+          ...CodexProviderCapabilitiesV2.sessions,
+          supportsMultipleProviderThreadsPerSession: false,
+        },
+      }
+    : CodexProviderCapabilitiesV2;
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
     driver: CODEX_PROVIDER,
     getCapabilities: Effect.fn("CodexAdapterV2.getCapabilities")(function () {
-      return Effect.succeed(CodexProviderCapabilitiesV2);
+      return Effect.succeed(capabilities);
     }),
     planSelectionTransition: Effect.fn("CodexAdapterV2.planSelectionTransition")(function () {
       return Effect.succeed(turnScopedSelectionTransition());
@@ -1730,7 +1742,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           providerSessionId: input.providerSessionId,
           runtimePolicy: input.runtimePolicy,
           settings: resolvedRuntime?.config ?? adapterOptions.settings,
-          environment: resolvedRuntime?.environment ?? adapterOptions.environment,
+          environment: scopeModelServiceEnvironment(
+            resolvedRuntime?.environment ?? adapterOptions.environment,
+            input.providerSessionId,
+          ),
         });
         const additionalContextByThread = yield* Ref.make(
           new Map<
@@ -1819,13 +1834,16 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         // A failed open is discarded, so the next turn spawns the updated binary.
         if (adapterOptions.compatibility !== undefined) yield* ensureInitialized;
         const now = yield* DateTime.now;
-        const session = providerSession({
-          providerSessionId: input.providerSessionId,
-          providerInstanceId: adapterOptions.instanceId,
-          cwd: input.runtimePolicy.cwd,
-          model: input.modelSelection.model,
-          now,
-        });
+        const session = {
+          ...providerSession({
+            providerSessionId: input.providerSessionId,
+            providerInstanceId: adapterOptions.instanceId,
+            cwd: input.runtimePolicy.cwd,
+            model: input.modelSelection.model,
+            now,
+          }),
+          capabilities,
+        };
         const events = yield* Queue.unbounded<
           ProviderAdapter.ProviderAdapterV2Event,
           ProviderAdapter.ProviderAdapterEventStreamError
@@ -6378,6 +6396,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           if (
             terminal.status !== "failed" ||
             code !== "serverOverloaded" ||
+            Boolean(adapterOptions.environment.COX_MODEL_SERVICE_KEY) ||
             context.subagent !== null ||
             (context.input.message.attachments.length === 0 &&
               context.input.message.text.trim().toLowerCase() === "/compact")

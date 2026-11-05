@@ -51,6 +51,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Equal from "effect/Equal";
 import { shallow } from "zustand/vanilla/shallow";
+import { translateCurrent } from "./i18n";
 
 export { formatDuration } from "@t3tools/shared/orchestrationTiming";
 export {
@@ -377,6 +378,26 @@ export function providerErrorPresentation(
     item.retry.maxAttempts === null
       ? `${item.retry.attempt}`
       : `${item.retry.attempt}/${item.retry.maxAttempts}`;
+  if (item.failure.code?.startsWith("cox_model_service_")) {
+    const key =
+      item.status === "running"
+        ? item.failure.code === "cox_model_service_hedging"
+          ? "Model service backup running ({progress} attempts)"
+          : "Retrying model service ({progress} attempts)"
+        : item.status === "completed"
+          ? "Model service recovered ({progress} attempts)"
+          : item.status === "failed"
+            ? "Model service recovery failed ({progress} attempts)"
+            : "Model service recovery stopped ({progress} attempts)";
+    const wait =
+      item.status === "running" && item.retry.retryDelayMs
+        ? ` ${translateCurrent("Next attempt in {seconds}s.", { seconds: Number((item.retry.retryDelayMs / 1000).toFixed(1)) })}`
+        : "";
+    return {
+      label: translateCurrent(key, { progress }),
+      detail: translateCurrent(item.failure.message) + wait,
+    };
+  }
   const label =
     item.status === "running"
       ? `Retrying provider (${progress})`

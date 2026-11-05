@@ -19,6 +19,7 @@ export const materializeClaudeGatewaySettings = Effect.fn("materializeClaudeGate
   function* (
     config: Pick<ClaudeSettings, "baseUrl" | "apiKey">,
     settings: string | ClaudeSdkSettings | undefined,
+    runtimeEnvironment?: NodeJS.ProcessEnv,
   ) {
     if (!hasGatewayConfiguration(config)) return settings;
     const fs = yield* FileSystem.FileSystem;
@@ -35,6 +36,12 @@ export const materializeClaudeGatewaySettings = Effect.fn("materializeClaudeGate
       ANTHROPIC_BASE_URL: gatewayBaseUrl(baseUrl, "https://api.anthropic.com").replace(/\/v1$/, ""),
       CLAUDE_CODE_OAUTH_TOKEN: "",
       ...(key ? { ANTHROPIC_API_KEY: key, ANTHROPIC_AUTH_TOKEN: "" } : {}),
+      ...(runtimeEnvironment?.COX_MODEL_SERVICE_KEY
+        ? {
+            CLAUDE_CODE_MAX_RETRIES: "0",
+            API_TIMEOUT_MS: runtimeEnvironment.API_TIMEOUT_MS ?? "210000",
+          }
+        : {}),
     };
     const file = yield* fs.makeTempFileScoped({ prefix: "cox-claude-gateway-", suffix: ".json" });
     yield* fs.chmod(file, 0o600);

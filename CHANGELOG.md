@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.34 — 2026-11-05
+
+- Recover transient model-service failures with configurable aggressive retries and
+  delayed backup requests when no usable output arrives. Share attempt, time and
+  concurrency limits, select the first usable response, and cancel losing requests.
+- Configure retries and backups independently for each model service, including normal
+  and reasoning response thresholds and whether to respect upstream retry cooldowns.
+- Show recovery progress in the session, correlate requests with their active turns,
+  and prevent native SDK retries from restarting an exhausted gateway recovery budget.
+- Preserve stream output and tool-call delivery, cancel recovery when a turn stops or
+  a service is disabled, and migrate older shared sessions to dedicated sessions where
+  required without losing their native conversation history.
+
 ## 0.1.33 — 2026-11-05
 
 - Keep thread subscriptions recoverable after stream defects and preserve older pending

@@ -42,7 +42,10 @@ import { providerMessageTextWithAttachmentPaths } from "@t3tools/provider-core/s
 import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { parsePiCompactCommand, type PiCompactCommand } from "./commands.ts";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  scopeModelServiceEnvironment,
+} from "@t3tools/provider-core/server/instanceEnvironment";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -467,9 +470,13 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       if (!resolvedLaunchArgs.ok) {
         return yield* protocolError(resolvedLaunchArgs.message);
       }
+      const sessionEnvironment = scopeModelServiceEnvironment(
+        piEnvironment(options.settings, options.environment),
+        input.providerSessionId,
+      );
       const launch = buildPiRpcLaunch({
         launchArgs: resolvedLaunchArgs.args,
-        environment: piEnvironment(options.settings, options.environment),
+        environment: sessionEnvironment,
         mcpSession,
         extensionPath,
         runtimeMode: input.runtimePolicy.runtimeMode,
@@ -3097,7 +3104,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             // switch_session/clone alone would retain the source cwd.
             const forkLaunch = buildPiRpcLaunch({
               launchArgs: resolvedLaunchArgs.args,
-              environment: piEnvironment(options.settings, options.environment),
+              environment: sessionEnvironment,
               mcpSession: undefined,
               extensionPath: undefined,
               shortLived: true,

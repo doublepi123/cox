@@ -49,6 +49,25 @@ export const ModelServiceModel = Schema.Struct({
 });
 export type ModelServiceModel = typeof ModelServiceModel.Type;
 
+const boundedInteger = (minimum: number, maximum: number, fallback: number) =>
+  Schema.Int.check(
+    Schema.isGreaterThanOrEqualTo(minimum),
+    Schema.isLessThanOrEqualTo(maximum),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(fallback)));
+
+export const ModelServiceRecovery = Schema.Struct({
+  retryEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  hedgeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  respectRetryAfter: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  hedgeDelayMs: boundedInteger(100, 600_000, 15_000),
+  reasoningHedgeDelayMs: boundedInteger(100, 600_000, 45_000),
+  maxAttempts: boundedInteger(1, 100, 12),
+  budgetMs: boundedInteger(100, 1_800_000, 180_000),
+  maxConcurrent: boundedInteger(1, 4, 2),
+});
+export type ModelServiceRecovery = typeof ModelServiceRecovery.Type;
+export const DEFAULT_MODEL_SERVICE_RECOVERY = Schema.decodeSync(ModelServiceRecovery)({});
+
 export const ModelServiceConfig = Schema.Struct({
   name: TrimmedNonEmptyString,
   revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(
@@ -65,6 +84,9 @@ export const ModelServiceConfig = Schema.Struct({
   models: Schema.Array(ModelServiceModel).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   discoveredAt: Schema.optionalKey(Schema.String),
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  recovery: ModelServiceRecovery.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_MODEL_SERVICE_RECOVERY)),
+  ),
 });
 export type ModelServiceConfig = typeof ModelServiceConfig.Type;
 

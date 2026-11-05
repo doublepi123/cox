@@ -33,6 +33,9 @@ export function codexGatewayRuntime(config: CodexSettings, environment: NodeJS.P
     'model_providers.cox_gateway.wire_api="responses"',
     `model_providers.cox_gateway.env_key=${JSON.stringify(key ? "COX_CODEX_API_KEY" : "OPENAI_API_KEY")}`,
     "model_providers.cox_gateway.requires_openai_auth=false",
+    ...(environment.COX_MODEL_SERVICE_KEY
+      ? ["model_providers.cox_gateway.request_max_retries=0"]
+      : []),
   ]
     .map((value) => `-c ${JSON.stringify(value)}`)
     .join(" ");

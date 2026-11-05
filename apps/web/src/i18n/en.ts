@@ -134,6 +134,37 @@ export const en = {
   "Header values are stored as secrets. Keep masked values to retain them.":
     "Header values are stored as secrets. Keep masked values to retain them.",
   "Enable model service": "Enable model service",
+  "Request recovery": "Request recovery",
+  "Next attempt in {seconds}s.": "Next attempt in {seconds}s.",
+  "Automatically retry temporary failures": "Automatically retry temporary failures",
+  "Start backup requests when responses are slow": "Start backup requests when responses are slow",
+  "Respect 429 cooldown": "Respect 429 cooldown",
+  "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.":
+    "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.",
+  "429 responses use the local retry interval instead of the service cooldown.":
+    "429 responses use the local retry interval instead of the service cooldown.",
+  "Recovery limits and timing": "Recovery limits and timing",
+  "Backup delay (seconds)": "Backup delay (seconds)",
+  "Reasoning backup delay (seconds)": "Reasoning backup delay (seconds)",
+  "Maximum attempts (including backups)": "Maximum attempts (including backups)",
+  "Recovery budget (seconds)": "Recovery budget (seconds)",
+  "Maximum concurrent requests": "Maximum concurrent requests",
+  "Model service backup running ({progress} attempts)":
+    "Model service backup running ({progress} attempts)",
+  "Retrying model service ({progress} attempts)": "Retrying model service ({progress} attempts)",
+  "Model service recovered ({progress} attempts)": "Model service recovered ({progress} attempts)",
+  "Model service recovery failed ({progress} attempts)":
+    "Model service recovery failed ({progress} attempts)",
+  "Model service recovery stopped ({progress} attempts)":
+    "Model service recovery stopped ({progress} attempts)",
+  "The model service is slow; a backup request is running.":
+    "The model service is slow; a backup request is running.",
+  "The model service recovered.": "The model service recovered.",
+  "The model service recovery budget was exhausted.":
+    "The model service recovery budget was exhausted.",
+  "Model service recovery was stopped.": "Model service recovery was stopped.",
+  "The model service is temporarily unavailable; retrying.":
+    "The model service is temporarily unavailable; retrying.",
   "Save service": "Save service",
   "Working…": "Working…",
   "Save and fetch models": "Save and fetch models",

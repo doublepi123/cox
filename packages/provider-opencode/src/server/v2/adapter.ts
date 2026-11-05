@@ -648,7 +648,14 @@ const turnTokenUsage = (turn: ActiveTurn, status: OrchestrationV2ProviderTurn["s
         hasSubagents: turn.usedSubagents,
       };
 
-export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: ProviderInstanceId) {
+export const make = Effect.fn("OpenCode2Adapter.make")(function* (
+  instanceId: ProviderInstanceId,
+  options?: {
+    readonly sessionServer: (
+      input: ProviderAdapter.ProviderAdapterV2OpenSessionInput,
+    ) => Effect.Effect<OpenCode2Server.OpenCode2Server["Service"], never, Scope.Scope>;
+  },
+) {
   const server = yield* OpenCode2Server.OpenCode2Server;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const host = yield* ProviderHost.ProviderHost;
@@ -657,10 +664,21 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const crypto = yield* Crypto.Crypto;
   const driver = OPENCODE_PROVIDER;
+  const capabilities = options
+    ? {
+        ...OpenCode2ProviderCapabilities,
+        sessions: {
+          ...OpenCode2ProviderCapabilities.sessions,
+          supportsMultipleProviderThreadsPerSession: false,
+        },
+      }
+    : OpenCode2ProviderCapabilities;
   const mcpServerNameFor = (threadId: string) =>
     t3McpServerName(threadId).pipe(Effect.provideService(Crypto.Crypto, crypto));
 
-  const borrow = Effect.gen(function* () {
+  const borrowFrom = Effect.fn("OpenCode2Adapter.borrowFrom")(function* (
+    server: OpenCode2Server.OpenCode2Server["Service"],
+  ) {
     const lent = yield* Deferred.make<
       OpenCode2Server.OpenCode2Connection,
       OpenCodeRuntime.OpenCodeRuntimeError
@@ -681,8 +699,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     initial: {
       readonly connection: OpenCode2Server.OpenCode2Connection;
       readonly scope: Scope.Closeable;
+      readonly server: OpenCode2Server.OpenCode2Server["Service"];
     },
   ) {
+    const borrow = borrowFrom(initial.server);
     let connection = initial.connection;
     let client = connection.client;
     const sessionScope = yield* Effect.scope;
@@ -699,7 +719,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       status: "ready",
       cwd: input.runtimePolicy.cwd ?? host.paths.cwd,
       model: input.modelSelection.model,
-      capabilities: OpenCode2ProviderCapabilities,
+      capabilities,
       createdAt: now,
       updatedAt: now,
       lastError: null,
@@ -2592,8 +2612,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               ? {
                   status: "failed",
                   failure: makeProviderFailure({
-                    message:
-                      "OpenCode ended the turn with an error while Cox was reconnecting.",
+                    message: "OpenCode ended the turn with an error while Cox was reconnecting.",
                     class: "provider_error",
                   }),
                 }
@@ -4083,7 +4102,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     instanceId,
     driver,
     getCapabilities: Effect.fn("OpencodeAdapter.getCapabilities")(function () {
-      return Effect.succeed(OpenCode2ProviderCapabilities);
+      return Effect.succeed(capabilities);
     }),
     planSelectionTransition: Effect.fn("OpencodeAdapter.planSelectionTransition")(function () {
       return Effect.succeed(turnScopedSelectionTransition());
@@ -4094,8 +4113,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       function* (input) {
         const scope = yield* Scope.make();
         yield* Effect.addFinalizer((exit) => Scope.close(scope, exit));
-        const connection = yield* borrow.pipe(Effect.provideService(Scope.Scope, scope));
-        return yield* openSession(input, { connection, scope });
+        const sessionServer = options ? yield* options.sessionServer(input) : server;
+        const connection = yield* borrowFrom(sessionServer).pipe(
+          Effect.provideService(Scope.Scope, scope),
+        );
+        return yield* openSession(input, { connection, scope, server: sessionServer });
       },
       (effect, input) =>
         effect.pipe(

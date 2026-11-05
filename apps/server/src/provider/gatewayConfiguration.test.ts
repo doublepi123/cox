@@ -7,6 +7,20 @@ import { codexGatewayRuntime, gatewayBaseUrl } from "./gatewayConfiguration.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 describe("gateway configuration", () => {
+  it("lets the model service own HTTP retries without changing direct gateway launches", () => {
+    const config = decodeCodexSettings({
+      baseUrl: "http://127.0.0.1/api/model-gateway/v1",
+      apiKey: "local-token",
+    });
+    expect(
+      tokenizeCliArgs(
+        codexGatewayRuntime(config, { COX_MODEL_SERVICE_KEY: "local-token" }).settings.launchArgs,
+      ),
+    ).toContain("model_providers.cox_gateway.request_max_retries=0");
+    expect(codexGatewayRuntime(config, {}).settings.launchArgs).not.toContain(
+      "request_max_retries",
+    );
+  });
   it("keeps subscription launches unchanged without API settings", () => {
     const config = decodeCodexSettings({});
     const environment = { OPENAI_API_KEY: "ambient" };

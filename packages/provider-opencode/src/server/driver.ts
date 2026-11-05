@@ -50,7 +50,10 @@ import {
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  scopeModelServiceEnvironment,
+} from "@t3tools/provider-core/server/instanceEnvironment";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makeCachedProviderMaintenanceResolution,
@@ -294,25 +297,36 @@ export const OpenCodeDriver: ProviderDriver<
           }),
       ),
     );
-    const openCode2Server = yield* OpenCode2Server.make({
-      binaryPath: effectiveConfig.binaryPath,
-      serverUrl: effectiveConfig.serverUrl,
-      serverPassword: effectiveConfig.serverPassword,
-      directory: host.paths.cwd,
-      environment: processEnv,
-    }).pipe(
-      Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, openCodeRuntime),
-      Effect.provideService(
-        OpenCode2Client.OpenCode2Client,
-        yield* OpenCode2Client.make.pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
-      ),
+    const openCode2Client = yield* OpenCode2Client.make.pipe(
+      Effect.provideService(HttpClient.HttpClient, httpClient),
     );
+    const makeOpenCode2Server = (environment: NodeJS.ProcessEnv) =>
+      OpenCode2Server.make({
+        binaryPath: effectiveConfig.binaryPath,
+        serverUrl: effectiveConfig.serverUrl,
+        serverPassword: effectiveConfig.serverPassword,
+        directory: host.paths.cwd,
+        environment,
+      }).pipe(
+        Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, openCodeRuntime),
+        Effect.provideService(Crypto.Crypto, crypto),
+        Effect.provideService(OpenCode2Client.OpenCode2Client, openCode2Client),
+      );
+    const openCode2Server = yield* makeOpenCode2Server(processEnv);
     const orchestrationAdapter = selectOpenCodeRuntimeAdapter({
       probe: runtimeProbe,
       v1: openCodeV1Adapter,
-      v2: yield* OpenCode2AdapterV2.make(instanceId).pipe(
-        Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server),
-      ),
+      v2: yield* OpenCode2AdapterV2.make(
+        instanceId,
+        processEnv.COX_MODEL_SERVICE_KEY
+          ? {
+              sessionServer: (input) =>
+                makeOpenCode2Server(
+                  scopeModelServiceEnvironment(processEnv, input.providerSessionId),
+                ),
+            }
+          : undefined,
+      ).pipe(Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server)),
     });
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
       openCode2Server.withConnection(({ client }) => loadOpenCode2Catalog(client, host.paths.cwd)),

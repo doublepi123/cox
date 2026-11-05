@@ -60,11 +60,15 @@ const layer = Layer.mergeAll(
   Layer.succeed(OpenCodeRuntime.OpenCodeRuntime, openCode2Runtime),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
-const create = (config: Partial<OpenCodeSettings>, http: HttpClient.HttpClient) =>
+const create = (
+  config: Partial<OpenCodeSettings>,
+  http: HttpClient.HttpClient,
+  environment: Parameters<typeof OpenCodeDriver.create>[0]["environment"] = [],
+) =>
   OpenCodeDriver.create({
     instanceId: ProviderInstanceId.make("opencode-test"),
     displayName: undefined,
-    environment: [],
+    environment,
     enabled: true,
     config: { ...OpenCodeDriver.defaultConfig(), ...config },
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));
@@ -72,6 +76,26 @@ const create = (config: Partial<OpenCodeSettings>, http: HttpClient.HttpClient) 
 const noHttp = HttpClient.make(() => Effect.die("A local binary must not be probed over HTTP"));
 
 it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
+  it.effect(
+    "isolates model service sessions while preserving shared servers for other instances",
+    () =>
+      Effect.gen(function* () {
+        const shared = yield* create({}, noHttp);
+        const bound = yield* create({}, noHttp, [
+          { name: "COX_MODEL_SERVICE_KEY", value: "local-key", sensitive: true },
+        ]);
+        yield* shared.snapshot.refresh;
+        yield* bound.snapshot.refresh;
+        assert.isTrue(
+          (yield* shared.orchestrationAdapter.getCapabilities()).sessions
+            .supportsMultipleProviderThreadsPerSession,
+        );
+        assert.isFalse(
+          (yield* bound.orchestrationAdapter.getCapabilities()).sessions
+            .supportsMultipleProviderThreadsPerSession,
+        );
+      }).pipe(Effect.scoped),
+  );
   it.effect("offers installation only for local instances without a custom executable", () =>
     Effect.gen(function* () {
       for (const [config, canInstall] of [

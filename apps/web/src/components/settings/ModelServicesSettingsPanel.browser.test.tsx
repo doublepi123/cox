@@ -168,6 +168,46 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 }
 
 describe("model services settings", () => {
+  it("saves independent recovery switches, thresholds and shared limits", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(
+        screen.getByRole("checkbox", {
+          name: "Automatically retry temporary failures",
+          exact: true,
+        }),
+      )
+      .toBeChecked();
+    await screen
+      .getByRole("checkbox", { name: "Automatically retry temporary failures", exact: true })
+      .click();
+    await screen.getByRole("checkbox", { name: "Respect 429 cooldown", exact: true }).click();
+    await expect
+      .element(
+        screen.getByRole("checkbox", {
+          name: "Start backup requests when responses are slow",
+          exact: true,
+        }),
+      )
+      .toBeChecked();
+    await screen.getByText("Recovery limits and timing", { exact: true }).click();
+    await screen.getByLabelText("Backup delay (seconds)", { exact: true }).fill("2");
+    await screen.getByLabelText("Reasoning backup delay (seconds)", { exact: true }).fill("5");
+    await screen.getByLabelText("Maximum attempts (including backups)", { exact: true }).fill("7");
+    await screen.getByLabelText("Recovery budget (seconds)", { exact: true }).fill("60");
+    await screen.getByRole("button", { name: "Save service", exact: true }).click();
+    expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery).toEqual({
+      retryEnabled: false,
+      hedgeEnabled: true,
+      respectRetryAfter: false,
+      hedgeDelayMs: 2000,
+      reasoningHedgeDelayMs: 5000,
+      maxAttempts: 7,
+      budgetMs: 60000,
+      maxConcurrent: 2,
+    });
+  });
   it.each([
     { width: 320, language: "zh" as const, desktop: false },
     { width: 390, language: "en" as const, desktop: false },
