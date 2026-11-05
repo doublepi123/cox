@@ -14,6 +14,7 @@
     "package": "pnpm electron:install && node scripts/package.ts",
     "smoke": "node scripts/smoke.ts",
     "smoke:app": "node scripts/smoke-app.ts",
+    "verify:mac": "node scripts/verify-mac.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

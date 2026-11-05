@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { chmod, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { build, Platform, Arch } from "electron-builder";
+import { pruneDesktopPayload } from "../src/package-payload.ts";
 
 const directory = resolve(import.meta.dirname, "..");
 const root = resolve(directory, "../..");
@@ -101,6 +102,12 @@ execFileSync(node, [npm, "install", "--omit=dev", "--no-audit", "--no-fund"], {
   env: environment,
   stdio: "inherit",
 });
+await pruneDesktopPayload({
+  runtime,
+  server,
+  platform: process.platform,
+  architecture: process.arch,
+});
 execFileSync(
   node,
   [
@@ -160,7 +167,8 @@ const artifacts = await build({
     productName: "Cox",
     electronVersion: manifest.devDependencies.electron,
     directories: { app: application, output },
-    files: ["dist/**", "package.json", "LICENSE", "THIRD_PARTY_NOTICES.json"],
+    files: ["dist/**", "!**/*.map", "package.json", "LICENSE", "THIRD_PARTY_NOTICES.json"],
+    compression: "maximum",
     asar: true,
     npmRebuild: false,
     publish: null,
@@ -177,6 +185,11 @@ const artifacts = await build({
       { from: join(root, "apps/web/public/icon-512.png"), to: "icon.png" },
     ],
     mac: {
+      ...(process.env.CSC_NAME
+        ? { identity: process.env.CSC_NAME }
+        : process.env.CSC_LINK
+          ? {}
+          : { identity: "-" }),
       category: "public.app-category.developer-tools",
       icon: join(root, "apps/web/public/icon-512.png"),
       hardenedRuntime: true,

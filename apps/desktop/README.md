@@ -40,6 +40,7 @@ pnpm desktop:build
 - macOS arm64 / x64：生成 `.dmg` 和 `.zip`，分别使用 Apple Silicon / Intel 构建机。
 - Windows x64：生成当前用户安装的 NSIS `.exe`，可选择目录并创建桌面快捷方式。
 - 输出在根目录 `release/desktop`，附 SHA-256 和构建版本信息。
+- 安装包使用最大压缩；只保留当前系统与架构的协议桥和终端预编译文件，移除调试 source map、Node 开发头文件和 man 手册，保留 npm、运行依赖、完整 UI 功能与许可证。以后通过 npm 安装需要编译的扩展时，构建工具可能需要联网下载 Node 头文件。
 - 不跨系统或跨架构复用原生依赖；Windows 构建机可能需要 Visual Studio C++ Build Tools 和 Python，以便 `node-pty` 无可用预编译产物时编译。
 - 打包从 Node 官方 HTTPS 地址下载仓库固定版本的完整 Node/npm 发行版，验证其官方 SHA-256，安装并修补独立后端运行依赖，检查原生模块后再封装。缓存、临时文件均位于 `release`，不会打包 workspace、用户配置、数据库或凭据。
 - Node、Electron、Chromium、原生依赖和 Cox 的许可证随发行包保留。
@@ -59,8 +60,12 @@ pnpm --filter @cox/desktop smoke:app
 
 GitHub Actions 的 `Cox desktop packages` 工作流支持手动触发，在 macOS arm64 / Intel 和 Windows x64 上构建、运行上述 smoke 并上传安装包，不自动发布 Release。
 
+macOS 的 DMG 与 ZIP 分开上传：默认 `cox-desktop-macos-*` 附件只含 DMG，便携 ZIP 在对应 `-zip` 附件中，无需同时下载两份相同的应用。
+
 ### 签名与发布边界
 
-本地没有签名凭据时生成未签名内测包。macOS 公开分发前需要 Apple Developer ID 签名、公证及干净机器验收，Windows 公开分发前需要代码签名和安装验收；未签名包可能触发 Gatekeeper / SmartScreen 拦截。不要把证书或密码提交到仓库。`electron-builder` 支持通过其标准环境变量配置签名；当前 CI 不注入发布证书，也不自动上传或发布安装包。
+本地没有签名凭据时，macOS 显式使用 ad-hoc 签名生成内测包，Windows 生成未签名内测包。ad-hoc 签名保证应用签名结构完整，但不提供开发者身份认证或公证，仍可能被 Gatekeeper 拦截。macOS 公开分发前需要 Apple Developer ID 签名、公证及干净机器验收，Windows 公开分发前需要代码签名和安装验收。不要把证书或密码提交到仓库。macOS 可通过 `CSC_NAME` 指定钥匙串身份，或通过 `CSC_LINK` 等标准环境变量导入发布证书；当前 CI 不注入发布证书，也不自动上传或发布安装包。
+
+macOS 构建后运行 `pnpm --filter @cox/desktop verify:mac`：严格校验解包目录、ZIP 解压结果和只读挂载 DMG 内的应用及内置 Node 签名。CI 在窗口 smoke 前执行该检查；直接启动构建目录不能证明下载后的应用签名有效。此检查不等于 Gatekeeper 公证验收。
 
 发布前应在两种系统真机覆盖：首次启动、重复启动、已有 CLI 服务并行运行、项目/Git/终端、各目标 Agent 的安装与认证、关闭窗口与退出、崩溃恢复、含空格和非 ASCII 的路径、卸载重装后数据保留。Linux 上的测试和构建不等于 macOS / Windows 真机验证。

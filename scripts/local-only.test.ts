@@ -5,6 +5,29 @@ import { describe, expect, it } from "vite-plus/test";
 const root = NodePath.resolve(import.meta.dirname, "..");
 
 describe("local-only distribution boundary", () => {
+  it("signs macOS test packages and verifies the distributable signatures before smoke", () => {
+    const packaging = NodeFS.readFileSync(
+      NodePath.join(root, "apps/desktop/scripts/package.ts"),
+      "utf8",
+    );
+    expect(packaging).toContain("{ identity: process.env.CSC_NAME }");
+    expect(packaging).toContain(': { identity: "-" }');
+    const workflow = NodeFS.readFileSync(
+      NodePath.join(root, ".github/workflows/desktop.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("pnpm --filter @cox/desktop verify:mac");
+    expect(workflow.indexOf("verify:mac")).toBeLessThan(workflow.indexOf("@cox/desktop smoke"));
+    const verification = NodeFS.readFileSync(
+      NodePath.join(root, "apps/desktop/scripts/verify-mac.ts"),
+      "utf8",
+    );
+    expect(verification).toContain('"--deep", "--strict"');
+    expect(verification).toContain("`${basename}.zip`");
+    expect(verification).toContain("`${basename}.dmg`");
+    expect(verification).toContain('"detach", mounted');
+  });
+
   it("installs the Electron runtime explicitly before desktop startup and packaging", () => {
     const manifest = JSON.parse(
       NodeFS.readFileSync(NodePath.join(root, "apps/desktop/package.json"), "utf8"),

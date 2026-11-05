@@ -29,6 +29,8 @@ jobs:
       - run: pnpm desktop:test
       - run: pnpm --filter @cox/desktop typecheck
       - run: pnpm desktop:build
+      - run: pnpm --filter @cox/desktop verify:mac
+        if: runner.os == 'macOS'
       - run: pnpm --filter @cox/desktop smoke
       - run: pnpm --filter @cox/desktop smoke:app
       - uses: actions/upload-artifact@v4
@@ -36,9 +38,23 @@ jobs:
           name: cox-desktop-${{ matrix.os }}
           path: |
             release/desktop/*.dmg
-            release/desktop/*.zip
+            release/desktop/*.dmg.sha256
+            release/desktop/*.dmg.blockmap
+            release/desktop/*.dmg.blockmap.sha256
             release/desktop/*.exe
-            release/desktop/*.blockmap
-            release/desktop/*.sha256
+            release/desktop/*.exe.sha256
+            release/desktop/*.exe.blockmap
+            release/desktop/*.exe.blockmap.sha256
+            release/desktop/BUILD-*.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: cox-desktop-${{ matrix.os }}-zip
+          path: |
+            release/desktop/*.zip
+            release/desktop/*.zip.sha256
+            release/desktop/*.zip.blockmap
+            release/desktop/*.zip.blockmap.sha256
             release/desktop/BUILD-*.json
           if-no-files-found: error
