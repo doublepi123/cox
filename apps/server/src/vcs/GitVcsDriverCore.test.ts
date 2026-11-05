@@ -2378,6 +2378,36 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("keeps submodule commit patches when diff.submodule is log", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const path = yield* Path.Path;
+        const sub = path.join(cwd, "sub");
+        yield* git(cwd, ["init", "sub"]);
+        yield* initRepoWithCommit(sub);
+        yield* git(cwd, ["add", "sub"]);
+        yield* git(cwd, ["commit", "-m", "add gitlink"]);
+        yield* git(cwd, ["checkout", "-b", "feature/submodule-patch"]);
+        yield* git(cwd, ["config", "diff.submodule", "log"]);
+        yield* git(sub, ["commit", "--allow-empty", "-m", "first move"]);
+        yield* git(cwd, ["add", "sub"]);
+        yield* git(cwd, ["commit", "-m", "move gitlink"]);
+        yield* git(sub, ["commit", "--allow-empty", "-m", "second move"]);
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          baseRef: initialBranch,
+          ignoreWhitespace: false,
+        });
+        for (const kind of ["working-tree", "branch-range"]) {
+          const diff = preview.sources.find((source) => source.kind === kind)?.diff ?? "";
+          assert.include(diff, "diff --git a/sub b/sub");
+          assert.include(diff, "+Subproject commit ");
+        }
+      }),
+    );
+
     it.effect("keeps untracked filenames with pathspec magic in the review", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

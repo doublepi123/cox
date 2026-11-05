@@ -6,6 +6,7 @@ import {
   extractMarkdownLinkHrefs,
   inlineCodeFilePathCandidate,
 } from "@t3tools/shared/markdownLinks";
+import { taskListMarkerOffset } from "@t3tools/shared/markdownTaskList";
 import { isHostPath, resolveWorkspaceFilePath } from "@t3tools/shared/path";
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import {
@@ -311,16 +312,6 @@ function CodexArtifactTemplateCard(props: {
   );
 }
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
-function findTaskListMarkerOffset(markdown: string, listItemStart: number): number | null {
-  const firstLineEnd = markdown.indexOf("\n", listItemStart);
-  const firstLine = markdown.slice(
-    listItemStart,
-    firstLineEnd === -1 ? markdown.length : firstLineEnd,
-  );
-  const match = firstLine.match(/^(?:\s*(?:[-+*]|\d+[.)])\s+)(\[[ xX]\])/);
-  if (!match?.[1]) return null;
-  return listItemStart + firstLine.indexOf(match[1]);
-}
 function orderedListGutterStyle(
   itemCount: number,
   start: unknown,
@@ -905,6 +896,7 @@ const ChatMarkdownRendererContext = React.createContext<
 >(null!);
 // Isolate streamed source text from the renderer context; only offset-based renderers need it.
 const ChatMarkdownTextContext = React.createContext("");
+const MarkdownTaskPositionContext = React.createContext<number | undefined>(undefined);
 function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
   return function MarkdownHeading({
@@ -982,20 +974,25 @@ const CHAT_MARKDOWN_COMPONENTS = {
     // Resolve checkbox markers by offset to avoid rerendering list items on every streamed token.
     const isTaskItem = String(props.className ?? "").includes("task-list-item");
     return (
-      <li {...props} data-list-item-offset={isTaskItem ? node?.position?.start.offset : undefined}>
-        {renderSkillInlineMarkdownChildren(children, skills, threadRef)}
-      </li>
+      <MarkdownTaskPositionContext value={isTaskItem ? node?.position?.start.offset : undefined}>
+        <li {...props}>{renderSkillInlineMarkdownChildren(children, skills, threadRef)}</li>
+      </MarkdownTaskPositionContext>
     );
   },
-  input: function MarkdownInput({ node: _node, type, checked, disabled: _disabled, ...props }) {
+  input: function MarkdownInput({ node, type, checked, disabled: _disabled, ...props }) {
     const { onTaskListChange } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
-    if (type !== "checkbox" || !onTaskListChange) {
+    const listItemStart = use(MarkdownTaskPositionContext);
+    const markerOffset =
+      listItemStart === undefined || node?.position !== undefined
+        ? null
+        : taskListMarkerOffset(text, listItemStart);
+    if (type !== "checkbox" || !onTaskListChange || node?.position !== undefined) {
       return (
         <input
           {...props}
           type={type}
-          checked={checked}
+          checked={type === "checkbox" ? checked === true : checked}
           disabled={_disabled}
           readOnly={type === "checkbox"}
         />
@@ -1007,11 +1004,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
         type="checkbox"
         name="markdown-task"
         aria-label="Toggle task"
-        checked={checked}
+        checked={checked === true}
+        disabled={markerOffset === null}
         onChange={(event) => {
-          const listItemStart = Number(event.currentTarget.closest("li")?.dataset.listItemOffset);
-          if (!Number.isSafeInteger(listItemStart)) return;
-          const markerOffset = findTaskListMarkerOffset(text, listItemStart);
           if (markerOffset === null) return;
           onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
         }}

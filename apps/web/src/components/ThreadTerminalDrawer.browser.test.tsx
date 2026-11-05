@@ -1,5 +1,16 @@
 import { EMPTY_TERMINAL_SESSION_STATE } from "@t3tools/client-runtime/state/terminal";
-import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  AuthFilesystemReadScope,
+  AuthOrchestrationOperateScope,
+  EnvironmentId,
+  ThreadId,
+  type ScopedThreadRef,
+  type FilesystemEntryMetadata,
+} from "@t3tools/contracts";
+import { Atom, AsyncResult } from "effect/reactivity";
+import type { GhosttyTerminalSurfaceOptions } from "~/terminal/ghostty/surface";
+import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
+import { extractTerminalLinks } from "../terminal-links";
 import { expect, it, vi } from "vite-plus/test";
 import { act, fakeTimers, render } from "../../test/render";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
@@ -7,6 +18,13 @@ import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 const fixture = vi.hoisted(() => ({
   statusByThreadId: new Map<string, "running" | "exited">(),
   pendingSurfaces: [] as Array<() => void>,
+  surfaceOptions: [] as GhosttyTerminalSurfaceOptions[],
+  deniedScopes: new Set<string>(),
+  metadataRequests: [] as string[],
+  metadata: new Map<
+    string,
+    Atom.Writable<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>
+  >(),
   attachedTerminalIds: new Set<string>(),
   pressedKeys: [] as unknown[],
   compact: false,
@@ -26,8 +44,9 @@ const fakeSurface: object = new Proxy(
 );
 vi.mock("~/terminal/ghostty/surface", () => ({
   GhosttyTerminalSurface: {
-    create: () =>
+    create: (_mount: HTMLElement, options: GhosttyTerminalSurfaceOptions) =>
       new Promise((resolve) => {
+        fixture.surfaceOptions.push(options);
         fixture.pendingSurfaces.push(() => resolve(fakeSurface));
       }),
   },
@@ -58,8 +77,10 @@ vi.mock("../state/terminalSessions", async () => {
   };
 });
 vi.mock("../state/session", () => ({
-  useEnvironmentScope: () => true,
-  readEnvironmentScope: () => true,
+  useEnvironmentScope: (_environmentId: EnvironmentId, scope: string) =>
+    !fixture.deniedScopes.has(scope),
+  readEnvironmentScope: (_environmentId: EnvironmentId, scope: string) =>
+    !fixture.deniedScopes.has(scope),
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: () => async () => ({ _tag: "Success" }),
@@ -72,6 +93,31 @@ vi.mock("../state/server", async () => {
 });
 vi.mock("../state/terminal", () => ({ terminalEnvironment: { write: {}, resize: {} } }));
 vi.mock("../state/preview", () => ({ previewEnvironment: { open: {} } }));
+vi.mock("../state/projects", async () => {
+  const { Atom, AsyncResult } = await import("effect/reactivity");
+  return {
+    projectEnvironment: {
+      fileMetadata: ({
+        environmentId,
+        input,
+      }: {
+        environmentId: string;
+        input: { path: string };
+      }) => {
+        const key = JSON.stringify([environmentId, input.path]);
+        fixture.metadataRequests.push(key);
+        let atom = fixture.metadata.get(key);
+        if (!atom) {
+          atom = Atom.make<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>(
+            AsyncResult.success(null),
+          );
+          fixture.metadata.set(key, atom);
+        }
+        return atom;
+      },
+    },
+  };
+});
 vi.mock("../editorPreferences", () => ({ useOpenInPreferredEditor: () => () => {} }));
 vi.mock("./preview/openTerminalLinkInPreview", () => ({ openTerminalLinkInPreview: () => {} }));
 vi.mock("~/localApi", () => ({ readLocalApi: () => null }));
@@ -85,13 +131,14 @@ vi.mock("../hooks/useSettings", async () => {
 
 function Drawer(props: {
   threadRef: ScopedThreadRef;
+  cwd?: string;
   onCloseTerminal: (terminalId: string, threadRef?: ScopedThreadRef) => void;
 }) {
   return (
     <ThreadTerminalDrawer
       threadRef={props.threadRef}
       threadId={props.threadRef.threadId}
-      cwd="/repo"
+      cwd={props.cwd ?? "/repo"}
       height={240}
       terminalIds={["term-1"]}
       activeTerminalId="term-1"
@@ -123,6 +170,10 @@ function setup() {
     [other.threadId, "running"],
   ]);
   fixture.pendingSurfaces = [];
+  fixture.surfaceOptions = [];
+  fixture.deniedScopes.clear();
+  fixture.metadataRequests = [];
+  fixture.metadata.clear();
   fixture.attachedTerminalIds = new Set();
   fixture.pressedKeys = [];
   fixture.compact = false;
@@ -220,4 +271,141 @@ it("keeps split panes, the floating actions and no touch keys on desktop", async
   expect([...fixture.attachedTerminalIds].toSorted()).toEqual(["term-1", "term-2"]);
   expect(screen.container.querySelectorAll('[aria-label^="Split Terminal"]')).toHaveLength(2);
   expect(screen.container.querySelector("[data-terminal-touch-keys]")).toBeNull();
+});
+
+it("only activates terminal paths confirmed to exist on their environment", async () => {
+  const { other: threadRef } = setup();
+  const key = (path: string) => JSON.stringify([threadRef.environmentId, path]);
+  const pending = Atom.make<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>(
+    AsyncResult.initial(),
+  );
+  fixture.metadata.set(key("/repo/src/main.ts"), pending);
+  fixture.metadata.set(
+    key("/repo/src/…notes.ts"),
+    Atom.make<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>(
+      AsyncResult.success<FilesystemEntryMetadata | null>({ kind: "file" }),
+    ),
+  );
+  fixture.metadata.set(
+    key("/repo/src"),
+    Atom.make<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>(
+      AsyncResult.success<FilesystemEntryMetadata | null>({ kind: "directory" }),
+    ),
+  );
+  await using screen = await render(
+    <AppAtomRegistryProvider>
+      <Drawer threadRef={threadRef} onCloseTerminal={() => {}} />
+    </AppAtomRegistryProvider>,
+  );
+  await act(async () => {
+    fixture.pendingSurfaces.shift()?.();
+  });
+  const canActivate = (text: string) => fixture.surfaceOptions.at(-1)!.canActivateLink!(text);
+  const validate = (text: string) => fixture.surfaceOptions.at(-1)!.validateLink!(text);
+  const hover = (text: string | null) =>
+    act(() => fixture.surfaceOptions.at(-1)!.onLinkHover!(text));
+
+  expect(canActivate("https://example.com")).toBe(true);
+  for (const branch of ["t3/fix-html-image-details", "t3/fix-html-…mage-details"]) {
+    const candidates = extractTerminalLinks(branch);
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const candidate of candidates) {
+      expect(canActivate(candidate.text)).toBe(false);
+      await hover(candidate.text);
+      expect(canActivate(candidate.text)).toBe(false);
+      expect(await validate(candidate.text)).toBe(false);
+    }
+  }
+  const pressedValidation = validate("src/main.ts:12:7");
+  await hover("src/main.ts:12:7");
+  expect(canActivate("src/main.ts:12:7")).toBe(false);
+  await act(async () => {
+    appAtomRegistry.set(pending, AsyncResult.success({ kind: "file" }));
+  });
+  expect(canActivate("src/main.ts:12:7")).toBe(true);
+  expect(await pressedValidation).toBe(true);
+  expect(canActivate("missing/file.ts")).toBe(false);
+  await hover("missing/file.ts");
+  expect(canActivate("missing/file.ts")).toBe(false);
+  for (const path of ["/repo/src/…notes.ts", "/repo/src"]) {
+    await hover(path);
+    expect(canActivate(path)).toBe(true);
+  }
+  await hover(null);
+  expect(canActivate("/repo/src")).toBe(false);
+  fixture.metadata.set(
+    key("/home/alice/notes.ts"),
+    Atom.make<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>(
+      AsyncResult.success<FilesystemEntryMetadata | null>({ kind: "file" }),
+    ),
+  );
+  await screen.rerender(
+    <AppAtomRegistryProvider>
+      <Drawer threadRef={threadRef} cwd="/home/alice/project" onCloseTerminal={() => {}} />
+    </AppAtomRegistryProvider>,
+  );
+  await act(async () => {
+    fixture.pendingSurfaces.shift()?.();
+  });
+  expect(await validate("~/notes.ts:5:2")).toBe(true);
+  await hover("~/notes.ts:5:2");
+  expect(canActivate("~/notes.ts:5:2")).toBe(true);
+});
+
+it("rejects terminal metadata probes for network paths, long paths and missing grants", async () => {
+  const { other: threadRef } = setup();
+  await using screen = await render(
+    <AppAtomRegistryProvider>
+      <Drawer threadRef={threadRef} onCloseTerminal={() => {}} />
+    </AppAtomRegistryProvider>,
+  );
+  const options = fixture.surfaceOptions.at(-1)!;
+  const networkPaths = [
+    String.raw`\\host\share\file.ts`,
+    "//host/share/file.ts",
+    String.raw`/\host\share\file.ts`,
+    String.raw`\/host/share/file.ts`,
+    String.raw`\\?\UNC\host\share\file.ts`,
+  ];
+  for (const path of [...networkPaths, `/repo/${"a".repeat(513)}.ts`]) {
+    expect(await options.validateLink!(path)).toBe(false);
+    await act(() => options.onLinkHover!(path));
+    expect(options.canActivateLink!(path)).toBe(false);
+  }
+  for (const scope of [AuthFilesystemReadScope, AuthOrchestrationOperateScope]) {
+    fixture.deniedScopes.add(scope);
+    expect(await options.validateLink!("src/denied.ts")).toBe(false);
+    expect(options.canActivateLink!("src/denied.ts")).toBe(false);
+    expect(await options.validateLink!("https://example.com")).toBe(true);
+    await screen.rerender(
+      <AppAtomRegistryProvider>
+        <Drawer threadRef={threadRef} onCloseTerminal={() => {}} />
+      </AppAtomRegistryProvider>,
+    );
+    await act(() => options.onLinkHover!("src/denied.ts"));
+    fixture.deniedScopes.delete(scope);
+  }
+  expect(fixture.metadataRequests).toEqual([]);
+});
+
+it("rechecks terminal filesystem grants after pending metadata completes", async () => {
+  const { other: threadRef } = setup();
+  const pending = Atom.make<AsyncResult.AsyncResult<FilesystemEntryMetadata | null>>(
+    AsyncResult.initial(),
+  );
+  fixture.metadata.set(JSON.stringify([threadRef.environmentId, "/repo/src/pending.ts"]), pending);
+  await using _screen = await render(
+    <AppAtomRegistryProvider>
+      <Drawer threadRef={threadRef} onCloseTerminal={() => {}} />
+    </AppAtomRegistryProvider>,
+  );
+  const options = fixture.surfaceOptions.at(-1)!;
+  const validation = options.validateLink!("src/pending.ts");
+  await act(() => options.onLinkHover!("src/pending.ts"));
+  fixture.deniedScopes.add(AuthFilesystemReadScope);
+  await act(() => {
+    appAtomRegistry.set(pending, AsyncResult.success({ kind: "file" }));
+  });
+  expect(await validation).toBe(false);
+  expect(options.canActivateLink!("src/pending.ts")).toBe(false);
 });

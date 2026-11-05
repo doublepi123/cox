@@ -241,6 +241,7 @@ export function makeAntigravityAcpAdapterFlavor(
     // ACP 1.3.0 treats /compact as ordinary model input.
     supportsCompaction: false,
     requiresSignIn: isAntigravitySignInRequiredError,
+    promptInactivityTimeout: "15 minutes",
   };
 }
 

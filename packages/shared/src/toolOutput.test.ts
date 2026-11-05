@@ -4,6 +4,7 @@ import {
   compactDynamicToolOutput,
   MAX_TOOL_OUTPUT_IMAGES,
   mcpToolResultOutput,
+  omitToolOutputImageData,
   toolOutputImages,
   toolOutputIndicatesFailure,
 } from "./toolOutput.ts";
@@ -195,6 +196,50 @@ describe("toolOutputImages", () => {
     expect(output).toEqual({ content, structuredContent });
     expect(mcpToolResultOutput({ content: [text], structuredContent })).toBe(structuredContent);
     expect(mcpToolResultOutput({ content })).toBe(content);
+  });
+
+  it.each([false, true])("keeps image assets readable inside result envelopes: %s", (app) => {
+    const content = [text, claudeImage, mcpImage];
+    const result = { content, structuredContent: { tempC: 21 } };
+    const metadata = app
+      ? {
+          t3McpApp: {
+            attachmentId: "weather-app",
+            server: "weather",
+            tool: "show",
+            resourceUri: "ui://weather/app.html",
+          },
+        }
+      : {};
+    const output = { ...metadata, result };
+    expect(toolOutputImages(output)).toEqual([
+      { mimeType: "image/jpeg", data: "BBBB" },
+      { mimeType: "image/png", data: "AAAA" },
+    ]);
+    expect(omitToolOutputImageData(output)).toEqual({
+      ...metadata,
+      result: {
+        ...result,
+        content: [
+          text,
+          { type: "image", mimeType: "image/jpeg" },
+          { type: "image", mimeType: "image/png" },
+        ],
+      },
+    });
+    expect(toolOutputImages(omitToolOutputImageData(output))).toEqual([
+      { mimeType: "image/jpeg" },
+      { mimeType: "image/png" },
+    ]);
+    expect(omitToolOutputImageData({ result: content })).toEqual({
+      result: [
+        text,
+        { type: "image", mimeType: "image/jpeg" },
+        { type: "image", mimeType: "image/png" },
+      ],
+    });
+    expect(omitToolOutputImageData(output)).not.toBe(output);
+    expect(toolOutputImages(output)[0]?.data).toBe("BBBB");
   });
 
   it("skips types the server must not serve inline", () => {

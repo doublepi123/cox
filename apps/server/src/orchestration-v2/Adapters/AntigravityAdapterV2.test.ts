@@ -66,6 +66,10 @@ function permissionRequest(
 }
 
 describe("AntigravityAdapterV2 flavor", () => {
+  it("opts in to a fifteen-minute prompt inactivity timeout", () => {
+    assert.equal(flavor.promptInactivityTimeout, "15 minutes");
+  });
+
   it("keeps a successful subagent launch running until the parent turn becomes idle", () => {
     const batch = flavor.extractSubagentUpdate?.({
       toolCallId: "trajectory:4",

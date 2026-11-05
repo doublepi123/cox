@@ -7,6 +7,12 @@ import {
   type ResolvedPos,
 } from "@tiptap/pm/model";
 import { Code } from "@tiptap/extension-code";
+import {
+  Bold,
+  starInputRegex as boldStarInputRegex,
+  underscoreInputRegex as boldUnderscoreInputRegex,
+} from "@tiptap/extension-bold";
+import { Strike, inputRegex as strikeInputRegex } from "@tiptap/extension-strike";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { CodeBlock } from "@tiptap/extension-code-block";
 import { Heading } from "@tiptap/extension-heading";
@@ -16,6 +22,7 @@ import {
   type Command,
   type Editor,
   Extension,
+  InputRule,
   markInputRule,
   markPasteRule,
   mergeAttributes,
@@ -34,7 +41,12 @@ import {
 
 import { splitPromptIntoComposerSegments } from "~/composer-editor-mentions";
 import { nextOrderedMarkerText } from "~/composer-list-continuation";
-import { parseInlineMarkdown, RICH_TEXT_DELIMITERS, type RichTextMark } from "~/composer-rich-text";
+import {
+  MARKDOWN_SOURCE_MARK,
+  parseInlineMarkdown,
+  RICH_TEXT_DELIMITERS,
+  type RichTextMark,
+} from "~/composer-rich-text";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { composerMathRanges } from "@t3tools/shared/composerInlineTokens";
 
@@ -80,6 +92,7 @@ function codePairCaretPlugin(type: MarkType) {
     props: {
       handleTextInput(view, from, to, text, insert) {
         if (view.composing || from !== to || text !== "`") return false;
+        if (touchesMarkdownSource(view.state, from, to)) return false;
         const $from = view.state.doc.resolve(from);
         if (
           !$from.parent.isTextblock ||
@@ -138,7 +151,50 @@ export const ComposerCodeExtension = Code.extend({
   addProseMirrorPlugins() {
     return [...(this.parent?.() ?? []), codePairCaretPlugin(this.type)];
   },
+  addInputRules() {
+    return (this.parent?.() ?? []).map(
+      (rule) =>
+        new InputRule({
+          find: rule.find,
+          undoable: rule.undoable,
+          handler: (props) =>
+            touchesMarkdownSource(props.state, props.range.from, props.range.to)
+              ? null
+              : rule.handler(props),
+        }),
+    );
+  },
 });
+
+function touchesMarkdownSource(state: EditorState, from: number, to: number): boolean {
+  const type = state.schema.marks[MARKDOWN_SOURCE_MARK];
+  if (!type) return false;
+  if (from < to) return state.doc.rangeHasMark(from, to, type);
+  const $pos = state.doc.resolve(from);
+  return [$pos.nodeBefore, $pos.nodeAfter].some((node) => node && type.isInSet(node.marks));
+}
+
+function markInputRuleOutsideCode(find: RegExp, type: MarkType) {
+  const rule = markInputRule({ find, type });
+  return new InputRule({
+    find,
+    handler: (props) => {
+      const { state, range, match } = props;
+      if (touchesMarkdownSource(state, range.from, range.to)) return null;
+      const code = state.schema.marks.code;
+      const content = match[match.length - 1] ?? "";
+      const textStart = range.from + match[0].indexOf(content);
+      const textEnd = textStart + content.length;
+      if (
+        code &&
+        (state.doc.rangeHasMark(range.from + match[0].search(/\S/), textStart, code) ||
+          state.doc.rangeHasMark(textEnd, state.selection.from, code))
+      )
+        return null;
+      return rule.handler(props);
+    },
+  });
+}
 
 /**
  * The composer writes italic as `*text*`, so it keeps only the `*` shortcuts.
@@ -147,10 +203,25 @@ export const ComposerCodeExtension = Code.extend({
  */
 export const ComposerItalicExtension = Italic.extend({
   addInputRules() {
-    return [markInputRule({ find: starInputRegex, type: this.type })];
+    return [markInputRuleOutsideCode(starInputRegex, this.type)];
   },
   addPasteRules() {
     return [markPasteRule({ find: starPasteRegex, type: this.type })];
+  },
+});
+
+export const ComposerBoldExtension = Bold.extend({
+  addInputRules() {
+    return [
+      markInputRuleOutsideCode(boldStarInputRegex, this.type),
+      markInputRuleOutsideCode(boldUnderscoreInputRegex, this.type),
+    ];
+  },
+});
+
+export const ComposerStrikeExtension = Strike.extend({
+  addInputRules() {
+    return [markInputRuleOutsideCode(strikeInputRegex, this.type)];
   },
 });
 
@@ -1062,7 +1133,7 @@ function renumberFollowingItems(
   });
 }
 
-export function splitOrLiftListItem(editor: Editor): boolean {
+export function splitOrLiftListItem(editor: Editor, prepare: Command): boolean {
   const $from = editor.state.selection.$from;
   const itemType = listItemTypeAt($from);
   if (!itemType) return false;
@@ -1077,7 +1148,7 @@ export function splitOrLiftListItem(editor: Editor): boolean {
     if (moved) alignListItemWithSiblings(tr, itemType);
     return moved;
   };
-  return editor.can().command(move) && editor.chain().command(move).run();
+  return editor.can().command(move) && editor.chain().command(prepare).command(move).run();
 }
 
 export function convertBulletItemToTask(
@@ -1494,15 +1565,19 @@ export function pmToFlat(map: RichDocMap, pmPos: number): number {
 
 // Styled boundaries need two caret stops at one position, one for each side's marks.
 
+function styleMarks(marks: readonly Mark[]): readonly Mark[] {
+  return marks.filter((mark) => mark.type.name !== MARKDOWN_SOURCE_MARK);
+}
+
 function styledEdge(state: EditorState) {
   const { selection } = state;
   if (!selection.empty) return null;
   const { $from } = selection;
   if (!$from.parent.inlineContent) return null;
-  const before = $from.nodeBefore?.marks ?? Mark.none;
-  const after = $from.nodeAfter?.marks ?? Mark.none;
+  const before = styleMarks($from.nodeBefore?.marks ?? Mark.none);
+  const after = styleMarks($from.nodeAfter?.marks ?? Mark.none);
   if (Mark.sameSet(before, after)) return null;
-  return { before, after, current: state.storedMarks ?? $from.marks() };
+  return { before, after, current: styleMarks(state.storedMarks ?? $from.marks()) };
 }
 
 export function caretTakesMarksBefore(state: EditorState): boolean {

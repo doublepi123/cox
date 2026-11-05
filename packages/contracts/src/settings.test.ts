@@ -48,6 +48,19 @@ const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodeServerSettingsPatch = Schema.encodeSync(ServerSettingsPatch);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
+describe("clone layout settings", () => {
+  it("keeps existing clone layouts by default and round-trips explicit preferences", () => {
+    expect(decodeServerSettings({}).ghqCloneLayout).toBe(false);
+    expect(decodeServerSettings({ ghqCloneLayout: true }).ghqCloneLayout).toBe(true);
+    expect(decodeServerSettingsPatch({ ghqCloneLayout: true })).toEqual({ ghqCloneLayout: true });
+    expect(encodeServerSettingsPatch({ ghqCloneLayout: false })).toEqual({ ghqCloneLayout: false });
+    expect(
+      decodeServerSettings(encodeServerSettings(decodeServerSettings({ ghqCloneLayout: true })))
+        .ghqCloneLayout,
+    ).toBe(true);
+  });
+});
+
 describe("storage cleanup settings", () => {
   it("keeps cleanup disabled for existing installations", () => {
     expect(decodeServerSettings({}).worktreeCleanup).toBeNull();

@@ -3,6 +3,7 @@ import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
+  executeAtomQuery,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -21,6 +22,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  AuthFilesystemReadScope,
   AuthPreviewOperateScope,
   AuthOrchestrationOperateScope,
   AuthTerminalOperateScope,
@@ -32,9 +34,11 @@ import {
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
+import { AsyncResult } from "effect/reactivity";
 import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  useContext,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -61,6 +65,7 @@ import {
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
+import { isNetworkPath } from "@t3tools/shared/path";
 import { isTerminalUrl } from "../terminal-links";
 import {
   isDiffToggleShortcut,
@@ -80,6 +85,8 @@ import {
 import { readLocalApi } from "~/localApi";
 import { confirmTerminalClose } from "~/lib/terminalCloseConfirm";
 import { useClientSettings } from "../hooks/useSettings";
+import { getFileMetadataQueryAtom } from "../hooks/useFileMetadata";
+import { FileMetadataThreadContext } from "../hooks/FileMetadataThreadProvider";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { TerminalTouchKeys } from "./terminal/TerminalTouchKeys";
@@ -188,7 +195,7 @@ export function synchronizeTerminalOutput(
   const selection = cells > 0 && compared ? terminal.getSelection() : "";
   writeTerminalOutputUpdate(terminal, update);
   if (!compared || (cells > 0 && terminal.getSelection() !== selection)) {
-    terminal.clearSelection();
+    terminal.clearSelection({ source: "output" });
   }
   return update.cursor;
 }
@@ -531,10 +538,52 @@ function TerminalSessionViewport({
     readEnvironmentScope(environmentId, AuthTerminalOperateScope),
   );
   const canOpenHostEditor = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
-  const canActivateTerminalLink = useEffectEvent(
-    (text: string) =>
-      isTerminalUrl(text) || readEnvironmentScope(environmentId, AuthOrchestrationOperateScope),
-  );
+  const canReadFilesystem = useEnvironmentScope(environmentId, AuthFilesystemReadScope);
+  const [linkPath, setLinkPath] = useState<string | null>(null);
+  const metadataThreadRef = useContext(FileMetadataThreadContext);
+  const linkMetadataQuery =
+    linkPath !== null && !isNetworkPath(linkPath) && canOpenHostEditor && canReadFilesystem
+      ? getFileMetadataQueryAtom(
+          environmentId,
+          resolvePathLinkTarget(linkPath, cwd),
+          cwd,
+          metadataThreadRef,
+        )
+      : null;
+  const canActivateTerminalLink = useEffectEvent((text: string) => {
+    if (isTerminalUrl(text)) return true;
+    if (
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+      !readEnvironmentScope(environmentId, AuthFilesystemReadScope)
+    )
+      return false;
+    if (text !== linkPath || !linkMetadataQuery) return false;
+    const metadata = AsyncResult.getOrElse(appAtomRegistry.get(linkMetadataQuery), () => null);
+    return metadata?.kind === "file" || metadata?.kind === "directory";
+  });
+  const validateTerminalLink = useEffectEvent(async (text: string) => {
+    if (isTerminalUrl(text)) return true;
+    if (
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+      !readEnvironmentScope(environmentId, AuthFilesystemReadScope) ||
+      isNetworkPath(text)
+    )
+      return false;
+    const query = getFileMetadataQueryAtom(
+      environmentId,
+      resolvePathLinkTarget(text, cwd),
+      cwd,
+      metadataThreadRef,
+    );
+    if (!query) return false;
+    const result = await executeAtomQuery(appAtomRegistry, query, { reportFailure: false });
+    return (
+      result._tag === "Success" &&
+      (result.value?.kind === "file" || result.value?.kind === "directory") &&
+      readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) &&
+      readEnvironmentScope(environmentId, AuthFilesystemReadScope)
+    );
+  });
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const openInPreferredEditor = useOpenInPreferredEditor(
     environmentId,
@@ -648,13 +697,18 @@ function TerminalSessionViewport({
   }, [canOperateTerminal, terminalId, threadRef]);
 
   // Links re-read the grant on activation; only the hovered link's styling needs a nudge.
-  const linkActivationScopeRef = useRef(canOpenHostEditor);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes link activation styling on the imperative terminal surface when the editor grant changes
   useEffect(() => {
-    if (linkActivationScopeRef.current === canOpenHostEditor) return;
-    linkActivationScopeRef.current = canOpenHostEditor;
-    terminalRef.current?.refreshLinkActivation();
-  }, [canOpenHostEditor]);
+    if (!linkMetadataQuery) {
+      terminalRef.current?.refreshLinkActivation();
+      return;
+    }
+    return appAtomRegistry.subscribe(
+      linkMetadataQuery,
+      () => terminalRef.current?.refreshLinkActivation(),
+      { immediate: true },
+    );
+  }, [linkMetadataQuery]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes visibility into the terminal surface before paint and consumes focus requests made while hidden
   useLayoutEffect(() => {
@@ -695,6 +749,8 @@ function TerminalSessionViewport({
         beforeKey: (event) => handleBeforeKey(event),
         onLinkActivate: (text, event) => handleLinkActivate(text, event),
         canActivateLink: (text) => canActivateTerminalLink(text),
+        validateLink: (text) => validateTerminalLink(text),
+        onLinkHover: (text) => setLinkPath(text !== null && !isTerminalUrl(text) ? text : null),
         // Surface listeners start before WASM loading finishes and the terminal handler exists.
         onContextMenu: (event) => {
           if (terminalRef.current) void showTerminalContextMenu(event);
@@ -1003,7 +1059,12 @@ function TerminalSessionViewport({
       }
 
       function handleLinkActivate(text: string, event: MouseEvent): void {
-        if (!canActivateTerminalLink(text)) return;
+        if (
+          !isTerminalUrl(text) &&
+          (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+            !readEnvironmentScope(environmentId, AuthFilesystemReadScope))
+        )
+          return;
         const latestTerminal = terminalRef.current;
         if (!latestTerminal) return;
         if (isTerminalUrl(text)) {

@@ -49,36 +49,93 @@ const failures = {
       "ChatGPT could not authorize this connection. Check the client and sharing permissions.",
   },
 };
-export function classifyCodexManagedError(value: unknown) {
-  let text: string;
-  try {
-    text = typeof value === "string" ? value : JSON.stringify(value);
-  } catch {
-    return undefined;
-  }
-  if (typeof text !== "string") return undefined;
-  for (const [code, failure] of Object.entries(failures)) {
-    if (!text.includes(code)) continue;
-    if (code === "subscription_sharing_unsupported_capability") {
-      if (text.includes("tool 'namespace'"))
-        return {
-          ...failure,
-          code,
-          message:
-            "Codex sent a tool namespace that ChatGPT sharing does not support. Use another provider for this request.",
-        };
-      if (
-        text.includes("unsupported input items") ||
-        text.includes("input item 'additional_tools'")
-      )
-        return {
-          ...failure,
-          code,
-          message:
-            "ChatGPT sharing rejected an unsupported input item. Send another message to rebuild the conversation context and continue.",
-        };
+const usageLimitCodes = new Set<string>([
+  "subscription_sharing_usage_limit_exceeded",
+  "subscription_sharing_workplace_individual_usage_limit_exceeded",
+]);
+
+function unwrapError(value: unknown): unknown {
+  if (typeof value === "string") {
+    const text = value;
+    try {
+      value = JSON.parse(text);
+    } catch {
+      if (text.length > 65_536) return value;
+      const prefix = /^(?:error: )?unexpected status [45]\d{2} [A-Za-z][A-Za-z -]{0,79}:\s*/.exec(
+        text,
+      );
+      if (prefix === null) return value;
+      try {
+        const parsed: unknown = JSON.parse(text.slice(prefix[0].length));
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          !("error" in parsed) ||
+          typeof parsed.error !== "object" ||
+          parsed.error === null ||
+          !("code" in parsed.error)
+        ) {
+          return value;
+        }
+        value = parsed;
+      } catch {
+        return value;
+      }
     }
-    return { ...failure, code };
   }
-  return undefined;
+  return typeof value === "object" && value !== null && "error" in value ? value.error : value;
+}
+
+function isManagedCode(value: unknown): value is keyof typeof failures {
+  return typeof value === "string" && Object.hasOwn(failures, value);
+}
+
+function sharingCode(value: unknown) {
+  const error = unwrapError(value);
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : error;
+  return isManagedCode(code) ? code : undefined;
+}
+
+export function classifyCodexManagedError(value: unknown) {
+  const error = unwrapError(value);
+  const messagesOf = (error: unknown) =>
+    typeof error === "string"
+      ? [error]
+      : typeof error === "object" && error !== null
+        ? [
+            "message" in error ? error.message : null,
+            "additionalDetails" in error ? error.additionalDetails : null,
+          ].filter((message): message is string => typeof message === "string")
+        : [];
+  const directMessages = messagesOf(error);
+  const messages = [
+    ...directMessages,
+    ...directMessages.flatMap((message) => messagesOf(unwrapError(message))),
+  ];
+  const code =
+    sharingCode(error) ??
+    messages.map(sharingCode).find((code) => code !== undefined) ??
+    (messages.some((message) =>
+      message.includes("has reached their Subscription Sharing usage limit"),
+    )
+      ? "subscription_sharing_usage_limit_exceeded"
+      : undefined);
+  if (code === undefined) return undefined;
+  const failure = { ...failures[code], code, usageLimit: usageLimitCodes.has(code) };
+  const text = messages.join(" ");
+  if (code === "subscription_sharing_unsupported_capability") {
+    if (text.includes("tool 'namespace'"))
+      return {
+        ...failure,
+        message:
+          "Codex sent a tool namespace that ChatGPT sharing does not support. Use another provider for this request.",
+      };
+    if (text.includes("unsupported input items") || text.includes("input item 'additional_tools'"))
+      return {
+        ...failure,
+        message:
+          "ChatGPT sharing rejected an unsupported input item. Send another message to rebuild the conversation context and continue.",
+      };
+  }
+  return failure;
 }

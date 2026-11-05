@@ -3089,7 +3089,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               return value === null ? [] : [value];
             }),
           );
-        const cohortRunIds = cohortJson("runId");
+        let cohortRunIds = cohortJson("runId");
         const cohortNodeIds =
           window === undefined ||
           (fields !== undefined &&
@@ -3140,6 +3140,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ORDER BY COALESCE(node.started_at, ''), retained.node_id ASC
           `).map((row) => row.node_id),
               );
+        if (window !== undefined && (fields === undefined || fields.includes("nodes"))) {
+          const pendingNodeRunIds = yield* sql<{ readonly run_id: string }>`
+            SELECT DISTINCT item.run_id
+            FROM orchestration_v2_projection_runtime_requests AS request
+            CROSS JOIN orchestration_v2_projection_turn_items AS item
+              ON item.node_id = request.node_id AND item.thread_id = request.thread_id
+                AND item.type IN ('approval_request', 'user_input_request')
+                AND json_extract(item.payload_json, '$.requestId') = request.runtime_request_id
+            WHERE request.thread_id = ${threadId}
+              AND request.status = 'pending' AND item.run_id IS NOT NULL
+          `;
+          cohortRunIds = encodeIdList([
+            ...new Set([
+              ...turnItems.flatMap((item) => (item.runId === null ? [] : [String(item.runId)])),
+              ...pendingNodeRunIds.map((row) => row.run_id),
+            ]),
+          ]);
+        }
         const cohortProviderThreadIds = cohortJson("providerThreadId");
         const cohortProviderTurnIds = cohortJson("providerTurnId");
         const cohortMessageIds = cohortJson("messageId");
@@ -5868,6 +5886,32 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 : {}),
               ...(historyAnchor === undefined ? {} : { historyAnchor }),
             });
+            const retainedIds = new Set(projection.turnItems.map((item) => item.id));
+            const pendingCards = (yield* decodeRows(
+              decodeTurnItemPayload,
+              threadId,
+            )(
+              yield* sql<PayloadRow>`
+                SELECT item.payload_json
+                FROM orchestration_v2_projection_runtime_requests AS request
+                CROSS JOIN orchestration_v2_projection_turn_items AS item
+                  ON item.node_id = request.node_id
+                  AND item.type IN ('approval_request', 'user_input_request')
+                  AND json_extract(item.payload_json, '$.requestId') = request.runtime_request_id
+                WHERE request.thread_id = ${threadId} AND request.status = 'pending'
+                  AND item.thread_id = ${threadId}
+              `,
+            )).filter((item) => !retainedIds.has(item.id));
+            const windowProjection =
+              pendingCards.length === 0
+                ? projection
+                : {
+                    ...projection,
+                    turnItems: [...projection.turnItems, ...pendingCards].toSorted(
+                      (left, right) =>
+                        left.ordinal - right.ordinal || left.id.localeCompare(right.id),
+                    ),
+                  };
             const rows = yield* sql<{ readonly snapshot_sequence: number | null }>`
               SELECT MAX(sequence) AS snapshot_sequence
               FROM orchestration_events
@@ -5878,7 +5922,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             return {
               schemaVersion: ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION,
               snapshotSequence: rows[0]?.snapshot_sequence ?? 0,
-              projection,
+              projection: windowProjection,
             };
           }),
         )

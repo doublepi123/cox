@@ -60,6 +60,7 @@ export function PullRequestMarkdown({
   threadRef,
   lineBreaks,
   className,
+  onTaskListChange,
 }: {
   text: string;
   cwd: string;
@@ -67,6 +68,7 @@ export function PullRequestMarkdown({
   threadRef?: ScopedThreadRef | null;
   lineBreaks?: boolean;
   className?: string;
+  onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
 }) {
   const segments = splitPullRequestBody(text);
   const context = useContext(PullRequestMarkdownContext);
@@ -92,6 +94,15 @@ export function PullRequestMarkdown({
               {...(context ? { extraRemarkPlugins: context.remarkPlugins } : {})}
               lineBreaks={lineBreaks ?? context?.lineBreaks ?? false}
               sourceControlMedia
+              onTaskListChange={
+                onTaskListChange && segment.kind === "markdown"
+                  ? ({ markerOffset, checked }) =>
+                      onTaskListChange({
+                        markerOffset: segment.sourceOffset + markerOffset,
+                        checked,
+                      })
+                  : undefined
+              }
             />
           );
         }

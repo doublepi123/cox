@@ -324,7 +324,24 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe(false);
   });
 
-  it("reports failed only while the latest run failed", () => {
+  it("reports worktree setup as preparing, and failed only while the latest run failed", () => {
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        runtime: { ...runtime, status: "preparing" as const },
+      }),
+    ).toBe("preparing");
+    for (const isActive of [false, true]) {
+      expect(
+        shouldRecedeSidebarThread({
+          status: "preparing",
+          isUnread: false,
+          isWoke: false,
+          isActive,
+          isSelected: false,
+        }),
+      ).toBe(!isActive);
+    }
     expect(
       resolveSidebarThreadStatus({
         ...idle,
@@ -1709,6 +1726,9 @@ describe("resolveSidebarFolderDot", () => {
       resolveSidebarFolderDot([{ ...unread, runtime: { ...runtime, status: "idle" as const } }]),
     ).toBeNull();
     expect(resolveSidebarFolderDot([idle, working])).toBe("working");
+    expect(
+      resolveSidebarFolderDot([{ ...idle, runtime: { ...runtime, status: "preparing" as const } }]),
+    ).toBe("working");
     expect(resolveSidebarFolderDot([working, unread])).toBe("unread");
     expect(resolveSidebarFolderDot([unread, limited])).toBe("attention");
   });

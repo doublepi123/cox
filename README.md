@@ -114,6 +114,16 @@ is preserved; steering is unavailable while the agent cannot accept it.
 Move queued messages up or down to change the order in which they are sent. A dot beside a
 thread title marks a completed result you have not viewed yet.
 
+Styled inline Markdown markers in the composer are editable: move into formatted text to
+edit its delimiters, then move outside to restore the formatted view. PR description task
+checkboxes save when the connected account and local connection both permit editing.
+
+In **Settings → Threads → New projects**, enable **Clone into host folders** to default new
+clones to `<base directory>/<host>/<owner>/<repository>`, like ghq. It is off by default and
+does not move existing checkouts. Unsafe or local URLs keep the ordinary repository-folder
+fallback. Supported Claude Code versions can render MCP Apps from connected tools using
+the current session; older CLIs keep ordinary tool output, and app calls respect permissions.
+
 ## Requirements
 
 - Node.js `26.12.1` (tested); npm for the published package, or pnpm `12.14.0` for source development and GitHub Release archives.

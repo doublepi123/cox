@@ -9,7 +9,12 @@ import {
   readHtmlRenderReference,
   type HtmlRenderReference,
 } from "./htmlRender.ts";
-import { MCP_APP_OUTPUT_KEY, readMcpAppReference, type McpAppReference } from "./mcpApp.ts";
+import {
+  claudeMcpToolName,
+  MCP_APP_OUTPUT_KEY,
+  readMcpAppReference,
+  type McpAppReference,
+} from "./mcpApp.ts";
 import { resolveT3McpToolId } from "./t3McpToolPresentation.ts";
 
 const MAX_PARSED_BYTES = 16_384;
@@ -212,7 +217,11 @@ export function mcpAppFromToolItem(item: {
   readonly output?: unknown;
 }): McpAppReference | undefined {
   const app = compactDynamicToolOutput(item.output)?.[MCP_APP_OUTPUT_KEY];
-  return app !== undefined && item.toolName === `${app.server}.${app.tool}` ? app : undefined;
+  return app !== undefined &&
+    (item.toolName === `${app.server}.${app.tool}` ||
+      item.toolName === claudeMcpToolName(app.server, app.tool))
+    ? app
+    : undefined;
 }
 
 /** Some providers report completion even when command output describes a failure. */
@@ -251,6 +260,11 @@ export function readToolOutputImage(block: unknown): ToolOutputImage | null {
 function outputBlocks(value: unknown): ReadonlyArray<unknown> {
   if (Array.isArray(value)) return value;
   if (Predicate.isObject(value) && Array.isArray(value.content)) return value.content;
+  if (Predicate.isObject(value)) {
+    const result = value.result;
+    if (Array.isArray(result)) return result;
+    if (Predicate.isObject(result) && Array.isArray(result.content)) return result.content;
+  }
   return [value];
 }
 
@@ -292,6 +306,13 @@ export function omitToolOutputImageData(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(omit);
   if (Predicate.isObject(value) && Array.isArray(value.content)) {
     return { ...value, content: value.content.map(omit) };
+  }
+  if (Predicate.isObject(value)) {
+    const result = value.result;
+    if (Array.isArray(result)) return { ...value, result: result.map(omit) };
+    if (Predicate.isObject(result) && Array.isArray(result.content)) {
+      return { ...value, result: { ...result, content: result.content.map(omit) } };
+    }
   }
   return omit(value);
 }

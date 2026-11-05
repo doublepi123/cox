@@ -1,4 +1,5 @@
 import {
+  ProviderDriverKind,
   ProviderSessionId,
   ProviderThreadId,
   ThreadId,
@@ -14,7 +15,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as McpAppModelContext from "./McpAppModelContext.ts";
@@ -137,8 +138,12 @@ describe("McpAppRequests", () => {
   const mcpApps: ProviderAdapter.ProviderAdapterV2McpApps = {
     listTools: () =>
       Effect.succeed([
-        { name: "refresh", annotations: { readOnlyHint: true } },
-        { name: "model_only", _meta: { ui: { visibility: ["model"] } } },
+        { name: "refresh", inputSchema: { type: "object" }, annotations: { readOnlyHint: true } },
+        {
+          name: "model_only",
+          inputSchema: { type: "object" },
+          _meta: { ui: { visibility: ["model"] } },
+        },
       ]),
     callTool: (input) =>
       Effect.sync(() => {
@@ -162,7 +167,11 @@ describe("McpAppRequests", () => {
       assert.deepEqual(yield* requests.toolInfo({ threadId, itemId, name: "refresh" }), {
         callable: true,
         readOnly: true,
-        tool: { name: "refresh", annotations: { readOnlyHint: true } },
+        tool: {
+          name: "refresh",
+          inputSchema: { type: "object" },
+          annotations: { readOnlyHint: true },
+        },
       });
     }).pipe(Effect.provide(makeLayer({ item: appItem({ t3McpApp: app }), mcpApps }))),
   );
@@ -179,6 +188,40 @@ describe("McpAppRequests", () => {
       }
       assert.equal(calls.length, before);
     }).pipe(Effect.provide(makeLayer({ item: appItem({ t3McpApp: app }), mcpApps }))),
+  );
+
+  it.effect.each(["listTools", "callTool", "readResource"] as const)(
+    "reports a provider whose process has stopped during %s as a stopped session",
+    (method) =>
+      Effect.gen(function* () {
+        const requests = yield* McpAppRequests.McpAppRequests;
+        const operation =
+          method === "readResource"
+            ? requests
+                .readResource({ threadId, itemId, uri: "ui://weather/app.html" })
+                .pipe(Effect.asVoid)
+            : method === "callTool"
+              ? requests
+                  .callTool({ threadId, itemId, name: "refresh", arguments: {} })
+                  .pipe(Effect.asVoid)
+              : requests.toolInfo({ threadId, itemId, name: "refresh" }).pipe(Effect.asVoid);
+        assert.equal(yield* reason(operation), "session-stopped");
+      }).pipe(
+        Effect.provide(
+          makeLayer({
+            item: appItem({ t3McpApp: app }),
+            mcpApps: {
+              ...mcpApps,
+              [method]: () =>
+                Effect.fail(
+                  new ProviderAdapter.ProviderAdapterSessionStoppedError({
+                    driver: ProviderDriverKind.make("claudeAgent"),
+                  }),
+                ),
+            },
+          }),
+        ),
+      ),
   );
 
   it.effect("keeps each app's latest model context, without a live session", () =>

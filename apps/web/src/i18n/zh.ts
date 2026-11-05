@@ -2601,6 +2601,12 @@ export const zh = {
   "In-app notifications": "应用内通知",
   "New projects": "新项目",
   "Add project base directory": "添加项目的基础目录",
+  "Clone into host folders": "按主机目录克隆",
+  "Clone repositories into host/owner/repository folders, like ghq.":
+    "像 ghq 一样，将仓库克隆到 主机/所有者/仓库 目录。",
+  "Setting up": "正在设置",
+  Uncommitted: "未提交",
+  "vs {ref}": "相对 {ref}",
   "Thread title instructions": "对话标题说明",
   Thread: "对话",
   Browser: "浏览器",

@@ -9,7 +9,7 @@ import "../index.css";
 
 import { filesystemEnvironment } from "../state/filesystem";
 import { useRightPanelStore } from "../rightPanelStore";
-import { setMarkdownTaskChecked } from "./files/filePreviewMode";
+import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
 
 const { workspaceSearch, filesystemMetadata } = vi.hoisted(() => ({
@@ -271,6 +271,9 @@ describe("ChatMarkdown streaming", () => {
     await act(async () => original.click());
     expect(editedText).toBe("- [ ] A longer first task\n- [x] Second");
     await vi.waitFor(() => expect(checkboxes()[1]!.checked).toBe(true));
+    await rerender(message("- [ ] A longer first task\n- [ ] Second"));
+    expect(checkboxes()[1]).toBe(original);
+    expect(checkboxes()[1]!.checked).toBe(false);
   });
 });
 
@@ -409,3 +412,40 @@ describe("ChatMarkdown Windows file links", () => {
     }
   });
 });
+
+it("disables synthetic checkbox offsets in the shared file-preview renderer", async () => {
+  setup();
+  const onTaskListChange = vi.fn();
+  const text =
+    "This PR updates local tool config\n\n- [ ] Earlier\n-       Prose\n\n        - [ ] Nested\n";
+  await using screen = await renderText(text, { onTaskListChange });
+  const boxes = screen.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+  expect(boxes).toHaveLength(2);
+  expect(boxes[0]!.disabled).toBe(false);
+  expect(boxes[1]!.disabled).toBe(true);
+  await act(async () => boxes[1]!.click());
+  expect(onTaskListChange).not.toHaveBeenCalled();
+  expect(screen.container.textContent).toContain("Prose");
+  expect(screen.container.textContent).toContain("Nested");
+});
+
+it.each([false, true])(
+  "keeps raw HTML checkboxes inert alongside real tasks parseRawHtml=%s",
+  async (parseRawHtml) => {
+    setup();
+    const text =
+      '- [ ] Real <input type="checkbox">\n\n<ul class="contains-task-list"><li class="task-list-item"><input type="checkbox">Fake</li></ul>';
+    const onTaskListChange = vi.fn();
+    await using screen = await renderText(text, { onTaskListChange, parseRawHtml });
+    const boxes = screen.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    expect(boxes).toHaveLength(parseRawHtml ? 3 : 1);
+    expect(boxes[0]!.disabled).toBe(false);
+    for (const box of [...boxes].slice(1)) {
+      expect(box.disabled).toBe(true);
+      await act(async () => box.click());
+    }
+    expect(onTaskListChange).not.toHaveBeenCalled();
+    await act(async () => boxes[0]!.click());
+    expect(onTaskListChange).toHaveBeenCalledExactlyOnceWith({ markerOffset: 2, checked: true });
+  },
+);

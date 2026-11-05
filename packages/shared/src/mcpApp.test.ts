@@ -2,11 +2,14 @@ import * as NodeVM from "node:vm";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  claudeMcpToolName,
+  claudeMcpToolPrefix,
   injectMcpAppCsp,
   injectMcpAppThemeBootstrap,
   injectMcpAppCookieBootstrap,
   mcpAppContentSecurityPolicy,
   mcpAppToolCallableByApp,
+  mcpAppToolResourceUri,
   readMcpAppCsp,
   readMcpAppReference,
 } from "./mcpApp.ts";
@@ -135,8 +138,43 @@ describe("readMcpAppReference", () => {
   });
 });
 
+describe("Claude MCP tool names", () => {
+  it.each([
+    ["probe.server", "show.weather", "mcp__probe_server__show_weather"],
+    ["probe__server", "refresh__weather", "mcp__probe__server__refresh__weather"],
+    ["probe-server", "refresh_weather", "mcp__probe-server__refresh_weather"],
+    ["claude.ai Asana (Beta)", "refresh.weather", "mcp__claude_ai_Asana_Beta__refresh_weather"],
+  ])("normalizes %s / %s", (server, tool, expected) => {
+    expect(claudeMcpToolName(server, tool)).toBe(expected);
+    expect(expected.startsWith(claudeMcpToolPrefix(server))).toBe(true);
+  });
+});
+
 describe("tool metadata", () => {
+  it("rejects invalid or oversized app resource metadata", () => {
+    for (const meta of [
+      null,
+      [],
+      {},
+      { ui: { resourceUri: 1 } },
+      { ui: { resourceUri: `ui://${"x".repeat(4096)}` } },
+    ]) {
+      expect(mcpAppToolResourceUri(meta)).toBeUndefined();
+    }
+    expect(mcpAppToolResourceUri({ "ui/resourceUri": "ui://legacy/app.html" })).toBe(
+      "ui://legacy/app.html",
+    );
+  });
+
   it("reads the resource URI from either spelling and honors app visibility", () => {
+    const uri = "ui://weather/card.html";
+    expect(mcpAppToolResourceUri({ ui: { resourceUri: uri } })).toBe(uri);
+    expect(
+      mcpAppToolResourceUri({ ui: { visibility: ["model", "app"] }, "ui/resourceUri": uri }),
+    ).toBe(uri);
+    expect(
+      mcpAppToolResourceUri({ ui: { resourceUri: "https://weather/card.html" } }),
+    ).toBeUndefined();
     expect(mcpAppToolCallableByApp(undefined)).toBe(true);
     expect(mcpAppToolCallableByApp({ ui: { visibility: ["model"] } })).toBe(false);
     expect(mcpAppToolCallableByApp({ ui: { visibility: ["model", "app"] } })).toBe(true);
@@ -170,6 +208,12 @@ describe("mcpAppFromToolItem", () => {
     };
     expect(mcpAppFromToolItem({ toolName: "evil.lookup", output: forged })).toBeUndefined();
     expect(mcpAppFromToolItem({ toolName: "bank.transfer", output: forged })).toBeDefined();
+    expect(mcpAppFromToolItem({ toolName: "mcp__bank__transfer", output: forged })).toBeDefined();
+    expect(mcpAppFromToolItem({ toolName: "mcp__evil__transfer", output: forged })).toBeUndefined();
+    const connector = { t3McpApp: { ...forged.t3McpApp, server: "claude.ai Asana (Beta)" } };
+    expect(
+      mcpAppFromToolItem({ toolName: "mcp__claude_ai_Asana_Beta__transfer", output: connector }),
+    ).toBeDefined();
   });
 
   it("keeps an app whose resource URI is longer than a name", async () => {

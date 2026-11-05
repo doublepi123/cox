@@ -1502,6 +1502,257 @@ it.effect("SQL list older settled threads below a cursor", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("SQL snapshot windows keep cards for requests still pending", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const now = yield* DateTime.now;
+    const threadId = ThreadId.make("thread:pending-request-window");
+    yield* store.apply({
+      id: EventId.make("event:pending-request-window:thread"),
+      type: "thread.created",
+      threadId,
+      occurredAt: now,
+      payload: {
+        createdBy: "user",
+        creationSource: "web",
+        id: threadId,
+        projectId: ProjectId.make("project:pending-request-window"),
+        title: "Pending request window",
+        providerInstanceId,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        activeProviderThreadId: null,
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
+        lastVisitedAt: null,
+        deletedAt: null,
+      },
+    });
+    let ordinal = 0;
+    const itemBase = (runId: RunId, nodeId: NodeId, id: string) => ({
+      id: TurnItemId.make(`item:pending-request-window:${id}`),
+      threadId,
+      runId,
+      nodeId,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: ++ordinal,
+      status: "completed" as const,
+      title: null,
+      startedAt: now,
+      completedAt: now,
+      updatedAt: now,
+    });
+    const request = (id: string, nodeId: NodeId, kind: "user_input" | "command") => ({
+      id: RuntimeRequestId.make(`request:pending-request-window:${id}`),
+      nodeId,
+      providerTurnId: null,
+      nativeRequestRef: null,
+      kind,
+      responseCapability: {
+        type: "live" as const,
+        providerSessionId: ProviderSessionId.make("session:pending-request-window"),
+      },
+      createdAt: now,
+    });
+    const turnCount = THREAD_HISTORY_PAGE_POLICY.maxUserTurns + 4;
+    for (let turn = 1; turn <= turnCount; turn += 1) {
+      const runId = RunId.make(`run:pending-request-window:${turn}`);
+      const nodeId = NodeId.make(`node:pending-request-window:${turn}`);
+      yield* store.apply({
+        id: EventId.make(`event:pending-request-window:run:${turn}`),
+        type: "run.created",
+        threadId,
+        runId,
+        nodeId,
+        driver,
+        occurredAt: now,
+        payload: {
+          id: runId,
+          threadId,
+          ordinal: turn,
+          providerInstanceId,
+          modelSelection,
+          providerThreadId: null,
+          userMessageId: MessageId.make(`message:pending-request-window:${turn}`),
+          rootNodeId: nodeId,
+          activeAttemptId: null,
+          status: "completed",
+          requestedAt: now,
+          startedAt: now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        },
+      });
+      const items: Array<OrchestrationV2TurnItem> = [
+        {
+          ...itemBase(runId, nodeId, `message:${turn}`),
+          type: "user_message",
+          createdBy: "user",
+          creationSource: "web",
+          messageId: MessageId.make(`message:pending-request-window:${turn}`),
+          inputIntent: "turn_start",
+          text: `Turn ${turn}`,
+          attachments: [],
+        },
+      ];
+      if (turn === 1) {
+        const question = {
+          id: "scope",
+          header: "Scope",
+          question: "Which scope?",
+          options: [{ label: "All", description: "Everything" }],
+        };
+        items.push(
+          {
+            ...itemBase(runId, nodeId, "question:pending"),
+            status: "running",
+            type: "user_input_request",
+            requestId: request("question:pending", nodeId, "user_input").id,
+            questions: [question],
+          },
+          {
+            ...itemBase(runId, nodeId, "approval:pending"),
+            status: "running",
+            type: "approval_request",
+            requestId: request("approval:pending", nodeId, "command").id,
+            requestKind: "command",
+            prompt: "rm -rf build",
+          },
+          {
+            ...itemBase(runId, nodeId, "question:resolved"),
+            type: "user_input_request",
+            requestId: request("question:resolved", nodeId, "user_input").id,
+            questions: [question],
+          },
+        );
+        for (const [id, kind, status] of [
+          ["question:pending", "user_input", "pending"],
+          ["approval:pending", "command", "pending"],
+          ["question:resolved", "user_input", "resolved"],
+        ] as const) {
+          yield* store.apply({
+            id: EventId.make(`event:pending-request-window:request:${id}`),
+            type: "runtime-request.updated",
+            threadId,
+            nodeId,
+            driver,
+            occurredAt: now,
+            payload: {
+              ...request(id, nodeId, kind),
+              status,
+              resolvedAt: status === "pending" ? null : now,
+            },
+          });
+        }
+      }
+      for (const item of items) {
+        yield* store.apply({
+          id: EventId.make(`event:pending-request-window:${item.id}`),
+          type: "turn-item.updated",
+          threadId,
+          runId,
+          nodeId,
+          driver,
+          occurredAt: now,
+          payload: item,
+        });
+      }
+    }
+
+    const pendingCardIds = [
+      TurnItemId.make("item:pending-request-window:question:pending"),
+      TurnItemId.make("item:pending-request-window:approval:pending"),
+    ];
+    const { statements, tracer } = traceSqlStatements();
+    const snapshot = yield* store
+      .getThreadSnapshotWindow(threadId, {
+        rowLimit: THREAD_HISTORY_PAGE_POLICY.maxItems + 2,
+        userTurnLimit: THREAD_HISTORY_PAGE_POLICY.maxUserTurns,
+      })
+      .pipe(Effect.withTracer(tracer));
+    const sql = yield* SqlClient.SqlClient;
+    const query = statements.find(
+      (statement) =>
+        statement.includes("FROM orchestration_v2_projection_runtime_requests AS request") &&
+        statement.includes("SELECT item.payload_json"),
+    );
+    assert.isDefined(query);
+    const plan = (yield* sql.unsafe<{ readonly detail: string }>(
+      `EXPLAIN QUERY PLAN ${query}`,
+    )).map((row) => row.detail);
+    assert.include(
+      plan[0],
+      "SEARCH request USING INDEX orchestration_v2_projection_runtime_requests_thread_status_idx",
+    );
+    assert.include(
+      plan[1],
+      "SEARCH item USING INDEX orchestration_v2_projection_turn_items_node_ordinal_idx",
+    );
+    const bounded = buildBoundedThreadProjection({
+      projection: snapshot.projection,
+      snapshotSequence: snapshot.snapshotSequence,
+    });
+    assert.isTrue(bounded.hasMoreHistory);
+    assert.notInclude(
+      bounded.projection.turnItems.map((item) => item.id),
+      TurnItemId.make("item:pending-request-window:question:resolved"),
+    );
+    for (const projection of [snapshot.projection, bounded.projection]) {
+      const visibleIds = projection.visibleTurnItems.map((row) => row.sourceItemId);
+      assert.notInclude(visibleIds, TurnItemId.make("item:pending-request-window:message:1"));
+      assert.includeMembers(
+        projection.turnItems.map((item) => item.id),
+        pendingCardIds,
+      );
+      for (const id of pendingCardIds) assert.notInclude(visibleIds, id);
+    }
+    const rolledBackRunId = RunId.make("run:pending-request-window:1");
+    yield* sql`
+      UPDATE orchestration_v2_projection_runs
+      SET status = 'rolled_back', payload_json = json_set(payload_json, '$.status', 'rolled_back')
+      WHERE thread_id = ${threadId} AND run_id = ${rolledBackRunId}
+    `;
+    const cold = yield* store.getThreadSnapshotWindow(threadId, {
+      rowLimit: 10_000,
+      userTurnLimit: 10_000,
+    });
+    const coldBounded = buildBoundedThreadProjection({
+      projection: cold.projection,
+      snapshotSequence: cold.snapshotSequence,
+      policy: { ...THREAD_HISTORY_PAGE_POLICY, maxUserTurns: 10_000, maxEncodedBytes: 10_000_000 },
+    });
+    assert.isFalse(coldBounded.hasMoreHistory);
+    for (const projection of [cold.projection, coldBounded.projection]) {
+      assert.equal(
+        projection.runs.find((run) => run.id === rolledBackRunId)?.status,
+        "rolled_back",
+      );
+      assert.includeMembers(
+        projection.turnItems.map((item) => item.id),
+        pendingCardIds,
+      );
+      for (const id of pendingCardIds) {
+        assert.notInclude(
+          projection.visibleTurnItems.map((row) => row.sourceItemId),
+          id,
+        );
+      }
+    }
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("lists only active subagent IDs without loading shell data", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
@@ -2999,6 +3250,176 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       assert.isTrue(
         agentWindow.projection.visibleTurnItems.some((row) => row.sourceItemId === agentPromptId),
       );
+    }),
+  );
+
+  it.effect("keeps an open question's row in the window after the run kept working", () =>
+    Effect.gen(function* () {
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const sql = yield* SqlClient.SqlClient;
+      const now = yield* DateTime.now;
+      const nowIso = DateTime.formatIso(now);
+      const threadId = ThreadId.make("thread:open-question-window");
+      yield* projectionStore.apply({
+        id: EventId.make("event:open-question-window:thread"),
+        type: "thread.created",
+        threadId,
+        occurredAt: now,
+        payload: {
+          createdBy: "user",
+          creationSource: "web",
+          id: threadId,
+          projectId: ProjectId.make("project:open-question-window"),
+          title: "Open question window",
+          providerInstanceId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          activeProviderThreadId: null,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+          forkedFrom: null,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        },
+      });
+      for (let ordinal = 10; ordinal <= 300; ordinal += 1) {
+        const id = `turn-item:open-question-window:${ordinal}`;
+        yield* sql`
+          INSERT INTO orchestration_v2_projection_turn_items (
+            turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id,
+            parent_item_id, ordinal, type, status, updated_at, payload_json
+          ) VALUES (
+            ${id}, ${threadId}, NULL, NULL, NULL, NULL, NULL, ${ordinal},
+            'command_execution', 'completed', ${nowIso},
+            ${encodeUnknownJsonString({
+              id,
+              threadId,
+              runId: null,
+              nodeId: null,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal,
+              status: "completed",
+              title: `command ${ordinal}`,
+              input: `echo ${ordinal}`,
+              output: "ok",
+              exitCode: 0,
+              startedAt: nowIso,
+              completedAt: nowIso,
+              updatedAt: nowIso,
+              type: "command_execution",
+            })}
+          )
+        `;
+      }
+      const requestId = RuntimeRequestId.make("request:open-question-window");
+      const nodeId = NodeId.make("node:open-question-window");
+      const itemId = TurnItemId.make("turn-item:open-question-window:question");
+      yield* projectionStore.apply({
+        id: EventId.make("event:open-question-window:node"),
+        type: "node.updated",
+        threadId,
+        nodeId,
+        occurredAt: now,
+        payload: {
+          id: nodeId,
+          threadId,
+          runId: null,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "user_input_request",
+          status: "waiting",
+          countsForRun: false,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: requestId,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      });
+      const request = {
+        id: requestId,
+        nodeId,
+        providerTurnId: null,
+        nativeRequestRef: null,
+        kind: "user_input" as const,
+        status: "pending" as const,
+        responseCapability: { type: "message" as const },
+        createdAt: now,
+        resolvedAt: null,
+      };
+      yield* projectionStore.apply({
+        id: EventId.make("event:open-question-window:request"),
+        type: "runtime-request.updated",
+        threadId,
+        nodeId,
+        occurredAt: now,
+        payload: request,
+      });
+      yield* projectionStore.apply({
+        id: EventId.make("event:open-question-window:item"),
+        type: "turn-item.updated",
+        threadId,
+        nodeId,
+        occurredAt: now,
+        payload: {
+          id: itemId,
+          type: "user_input_request",
+          threadId,
+          runId: null,
+          nodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 5,
+          status: "waiting",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          requestId,
+          responseMode: "message",
+          questions: [{ id: "choice", header: "Choice", question: "Continue?", options: [] }],
+        },
+      });
+
+      const questionRows = (snapshot: {
+        readonly projection: { readonly turnItems: ReadonlyArray<{ readonly id: string }> };
+      }) => snapshot.projection.turnItems.filter((item) => item.id === itemId).length;
+      const open = yield* projectionStore.getThreadSnapshotWindow(threadId, { rowLimit: 76 });
+      assert.strictEqual(questionRows(open), 1);
+      const bounded = buildBoundedThreadProjection({
+        policy: { ...THREAD_HISTORY_PAGE_POLICY, maxUserTurns: undefined, maxItems: 50 },
+        projection: open.projection,
+        snapshotSequence: open.snapshotSequence,
+      });
+      assert.strictEqual(questionRows(bounded), 1);
+      assert.isFalse(
+        bounded.projection.visibleTurnItems.some((row) => row.sourceItemId === itemId),
+      );
+
+      yield* projectionStore.apply({
+        id: EventId.make("event:open-question-window:resolved"),
+        type: "runtime-request.updated",
+        threadId,
+        nodeId,
+        occurredAt: now,
+        payload: { ...request, status: "resolved", resolvedAt: now },
+      });
+      const answered = yield* projectionStore.getThreadSnapshotWindow(threadId, { rowLimit: 76 });
+      assert.strictEqual(questionRows(answered), 0);
     }),
   );
 

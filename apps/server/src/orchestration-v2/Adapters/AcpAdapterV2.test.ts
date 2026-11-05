@@ -35,7 +35,7 @@ import { deriveBlockedOnThreadWait } from "@t3tools/shared/orchestrationV2Pendin
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
-import type * as Duration from "effect/Duration";
+import * as Duration from "effect/Duration";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -444,6 +444,110 @@ function makeMockRuntime(input: {
       return input.wrapRuntime?.(wrapped, runtimeOrdinal) ?? wrapped;
     });
 }
+
+const isProviderAdapterProtocolError = Schema.is(ProviderAdapter.ProviderAdapterProtocolError);
+
+const makePromptInactivityHarness = Effect.fnUntraced(function* (input: {
+  readonly environment: (runtimeOrdinal: number) => Readonly<Record<string, string>>;
+  readonly runtimeMode?: "full-access" | "approval-required";
+  readonly watchdog?: boolean;
+  readonly extractSubagentUpdate?: AcpAdapterV2Flavor["extractSubagentUpdate"];
+}) {
+  const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const path = yield* Path.Path;
+  const natives: Array<AcpSessionRuntime.AcpSessionRuntime["Service"]> = [];
+  const runtimeInputs: Array<AcpAdapterV2RuntimeInput> = [];
+  const sessionUpdateHandlers: Array<
+    Parameters<AcpSessionRuntime.AcpSessionRuntime["Service"]["handleSessionUpdate"]>[0]
+  > = [];
+  const instanceId = ProviderInstanceId.make("acp-prompt-inactivity");
+  const makeRuntime = makeMockRuntime({
+    childProcessSpawner,
+    mockAgentPath: yield* path.fromFileUrl(
+      new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+    ),
+    environment: input.environment,
+    wrapRuntime: (runtime) => {
+      natives.push(runtime);
+      return {
+        ...runtime,
+        handleSessionUpdate: (handler) => {
+          sessionUpdateHandlers.push(handler);
+          return runtime.handleSessionUpdate(handler);
+        },
+      };
+    },
+  });
+  const adapter = yield* makeAcpAdapterV2({
+    instanceId,
+    flavor: {
+      driver: ACP_TEST_DRIVER,
+      capabilities: AcpProviderCapabilitiesV2,
+      ...(input.watchdog === false ? {} : { promptInactivityTimeout: "15 minutes" }),
+      ...(input.extractSubagentUpdate
+        ? { extractSubagentUpdate: input.extractSubagentUpdate }
+        : {}),
+      makeRuntime: (runtimeInput) => {
+        runtimeInputs.push(runtimeInput);
+        return makeRuntime(runtimeInput);
+      },
+    },
+    selfInvocation: yield* resolveSelfInvocation(),
+  });
+  const threadId = ThreadId.make("thread-acp-prompt-inactivity");
+  const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+    runtimeMode: input.runtimeMode ?? "full-access",
+    interactionMode: "default",
+    cwd: process.cwd(),
+  });
+  const modelSelection = { instanceId, model: "default" } as const;
+  const runtime = yield* adapter.openSession({
+    threadId,
+    providerSessionId: ProviderSessionId.make("provider-session-acp-prompt-inactivity"),
+    modelSelection,
+    runtimePolicy,
+  });
+  const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+  const startTurn = (ordinal: number) =>
+    DateTime.now.pipe(
+      Effect.flatMap((now) =>
+        runtime.startTurn(
+          makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now, ordinal }),
+        ),
+      ),
+    );
+  return {
+    runtime,
+    natives,
+    runtimeInputs,
+    sessionUpdateHandlers,
+    startTurn,
+    nextTurnRejected: (ordinal: number) =>
+      startTurn(ordinal).pipe(
+        Effect.flip,
+        Effect.map(
+          (error) =>
+            isProviderAdapterProtocolError(error.cause) &&
+            error.cause.reason === "previous_turn_active",
+        ),
+        Effect.catchCause(() => Effect.succeed(false)),
+      ),
+    emitUpdate: (notification: EffectAcpSchema.SessionNotification) =>
+      natives.at(-1)!.request("_test/emit-update", notification),
+    terminals: (count: number) =>
+      runtime.events.pipe(
+        Stream.filter((event) => event.type === "turn.terminal"),
+        Stream.take(count),
+        Stream.runCollect,
+        Effect.map((events) =>
+          Array.from(events, (event) => {
+            if (event.type !== "turn.terminal") throw new Error("Expected a turn terminal");
+            return event;
+          }),
+        ),
+      ),
+  };
+});
 
 function rawProtocolMethod(event: EffectAcpProtocol.AcpProtocolLogEvent): string | undefined {
   if (event.stage !== "raw" || typeof event.payload !== "string") return undefined;
@@ -3734,6 +3838,265 @@ describe("AcpAdapterV2", () => {
       );
       assert.equal(runtimeOrdinalSeen, 2);
       assert.lengthOf(runtimeInputs, 2);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("fails a prompt its agent leaves silent past the inactivity timeout", () =>
+    Effect.gen(function* () {
+      const harness = yield* makePromptInactivityHarness({
+        environment: (runtimeOrdinal) =>
+          runtimeOrdinal === 1 ? { T3_ACP_HANG_PROMPT_FOREVER: "1" } : {},
+      });
+      const thought = (sessionId: string) => ({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_thought_chunk" as const,
+          content: { type: "text" as const, text: "Still working." },
+        },
+      });
+      yield* harness.startTurn(1);
+      yield* TestClock.adjust("10 minutes");
+      yield* harness.emitUpdate(thought("mock-session-1"));
+      yield* TestClock.adjust("5 minutes");
+      yield* harness.emitUpdate(thought("foreign-session"));
+      yield* harness.emitUpdate({
+        sessionId: "mock-session-1",
+        update: { sessionUpdate: "available_commands_update", availableCommands: [] },
+      });
+      yield* TestClock.adjust(Duration.millis(10 * 60_000 - 1));
+      assert.isTrue(yield* harness.nextTurnRejected(2));
+
+      yield* TestClock.adjust("1 millis");
+      yield* harness.startTurn(2);
+      const [silent, next] = yield* harness.terminals(2);
+      assert.equal(silent?.status, "failed");
+      assert.include(silent?.failure?.message, "15 minutes");
+      assert.equal(next?.status, "completed");
+      assert.lengthOf(harness.natives, 2);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect(
+    "holds the inactivity timeout while a tool runs and restarts it when the tool ends",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makePromptInactivityHarness({
+          environment: (runtimeOrdinal) =>
+            runtimeOrdinal === 1 ? { T3_ACP_EMIT_TRACKED_TOOL_CALL_KIND_THEN_HANG: "execute" } : {},
+        });
+        yield* harness.startTurn(1);
+        yield* harness.runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.nativeItemRef?.nativeId === "tracked-tool-call",
+          ),
+          Stream.runHead,
+        );
+        yield* TestClock.adjust("1 hour");
+        assert.isTrue(yield* harness.nextTurnRejected(2));
+
+        yield* harness.emitUpdate({
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "tracked-tool-call",
+            status: "completed",
+          },
+        });
+        yield* TestClock.adjust(Duration.millis(15 * 60_000 - 1));
+        assert.isTrue(yield* harness.nextTurnRejected(2));
+        yield* TestClock.adjust("1 millis");
+        yield* harness.startTurn(2);
+        const [silent, next] = yield* harness.terminals(2);
+        assert.equal(silent?.status, "failed");
+        assert.equal(next?.status, "completed");
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("holds the inactivity timeout while the agent waits on an approval", () =>
+    Effect.gen(function* () {
+      const harness = yield* makePromptInactivityHarness({
+        environment: () => ({ T3_ACP_EMIT_TOOL_CALLS: "1" }),
+        runtimeMode: "approval-required",
+      });
+      yield* harness.startTurn(1);
+      const pending = Option.getOrThrow(
+        yield* harness.runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+          ),
+          Stream.runHead,
+        ),
+      );
+      if (pending.type !== "runtime_request.updated") {
+        return yield* Effect.die("Expected a pending approval");
+      }
+      yield* harness.emitUpdate({
+        sessionId: "mock-session-1",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "tool-call-1",
+          status: "completed",
+        },
+      });
+      yield* TestClock.adjust("1 hour");
+      assert.isTrue(yield* harness.nextTurnRejected(2));
+
+      yield* harness.runtime.respondToRuntimeRequest({
+        requestId: pending.runtimeRequest.id,
+        decision: "accept",
+      });
+      const [approved] = yield* harness.terminals(1);
+      assert.equal(approved?.status, "completed");
+      assert.lengthOf(harness.natives, 1);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("does not time out ACP providers that did not opt in", () =>
+    Effect.gen(function* () {
+      const harness = yield* makePromptInactivityHarness({
+        environment: () => ({ T3_ACP_HANG_PROMPT_FOREVER: "1" }),
+        watchdog: false,
+      });
+      yield* harness.startTurn(1);
+      yield* TestClock.adjust("1 hour");
+      assert.isTrue(yield* harness.nextTurnRejected(2));
+      assert.lengthOf(harness.natives, 1);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("holds the inactivity timeout while a subagent runs without an open tool", () =>
+    Effect.gen(function* () {
+      const harness = yield* makePromptInactivityHarness({
+        environment: () => ({ T3_ACP_EMIT_TRACKED_TOOL_CALL_KIND_THEN_HANG: "other" }),
+        extractSubagentUpdate: (toolCall) =>
+          toolCall.toolCallId === "tracked-tool-call"
+            ? {
+                nativeTaskId: "watchdog-child",
+                prompt: "child work",
+                title: "child work",
+                model: null,
+                childSessionId: "watchdog-child-session",
+                status: toolCall.title === "child finished" ? "completed" : "running",
+                result: null,
+              }
+            : undefined,
+      });
+      yield* harness.startTurn(1);
+      yield* harness.runtime.events.pipe(
+        Stream.filter(
+          (event) => event.type === "subagent.updated" && event.subagent.status === "running",
+        ),
+        Stream.runHead,
+      );
+      yield* harness.emitUpdate({
+        sessionId: "mock-session-1",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "tracked-tool-call",
+          status: "completed",
+        },
+      });
+      yield* TestClock.adjust("1 hour");
+      assert.isTrue(yield* harness.nextTurnRejected(2));
+      yield* harness.emitUpdate({
+        sessionId: "mock-session-1",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "tracked-tool-call",
+          title: "child finished",
+          status: "completed",
+        },
+      });
+      yield* TestClock.adjust("15 minutes");
+      const [terminal] = yield* harness.terminals(1);
+      assert.equal(terminal?.status, "failed");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("isolates retired runtime requests and progress callbacks from the next watchdog", () =>
+    Effect.gen(function* () {
+      const harness = yield* makePromptInactivityHarness({
+        environment: (ordinal) => (ordinal <= 2 ? { T3_ACP_HANG_PROMPT_FOREVER: "1" } : {}),
+      });
+      yield* harness.startTurn(1);
+      yield* TestClock.adjust("15 minutes");
+      yield* harness.startTurn(2);
+      yield* TestClock.adjust("10 minutes");
+      yield* harness.runtimeInputs[0]!.onIncomingRequest!("retired-request", "test/request", {});
+      yield* harness.sessionUpdateHandlers[0]!({
+        sessionId: "mock-session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "stale output" },
+        },
+      });
+      yield* harness.runtimeInputs[0]!.onOutgoingResponse!("retired-request");
+      yield* harness.runtimeInputs[0]!.onIncomingRequest!(
+        "left-open-retired-request",
+        "test/request",
+        {},
+      );
+      yield* TestClock.adjust("5 minutes");
+      yield* harness.startTurn(3);
+      const [first, second, third] = yield* harness.terminals(3);
+      assert.equal(first?.status, "failed");
+      assert.equal(second?.status, "failed");
+      assert.equal(third?.status, "completed");
+      assert.lengthOf(harness.natives, 3);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("fails a running prompt once when its agent process exits", () =>
+    Effect.gen(function* () {
+      const harness = yield* makePromptInactivityHarness({
+        environment: (runtimeOrdinal) =>
+          runtimeOrdinal === 1
+            ? { T3_ACP_EMIT_TOOL_CALLS: "1" }
+            : runtimeOrdinal === 2
+              ? { T3_ACP_HANG_PROMPT_FOREVER: "1" }
+              : {},
+        runtimeMode: "approval-required",
+      });
+      yield* harness.startTurn(1);
+      yield* harness.runtime.events.pipe(
+        Stream.filter(
+          (event) =>
+            event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+        ),
+        Stream.runHead,
+      );
+      yield* harness.natives[0]!.notify("_test/exit", {});
+      const [exited] = yield* harness.terminals(1);
+      assert.equal(exited?.status, "failed");
+
+      yield* harness.startTurn(2);
+      yield* TestClock.adjust("10 minutes");
+      yield* harness.runtimeInputs[0]!.onIncomingRequest!("retired-request", "test/request", {});
+      yield* harness.sessionUpdateHandlers[0]!({
+        sessionId: "mock-session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "stale output" },
+        },
+      });
+      yield* harness.runtimeInputs[0]!.onOutgoingResponse!("retired-request");
+      yield* harness.runtimeInputs[0]!.onTermination!(
+        new EffectAcpErrors.AcpTransportError({
+          detail: "Late retired termination",
+          cause: "test",
+        }),
+      );
+      assert.isTrue(yield* harness.nextTurnRejected(3));
+      yield* TestClock.adjust("5 minutes");
+      yield* harness.startTurn(3);
+      const [silent, next] = yield* harness.terminals(2);
+      assert.equal(silent?.status, "failed");
+      assert.notEqual(silent?.providerTurnId, exited?.providerTurnId);
+      assert.equal(next?.status, "completed");
+      assert.lengthOf(harness.natives, 3);
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 

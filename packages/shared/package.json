@@ -403,6 +403,10 @@
       "types": "./src/markdownListIndentation.ts",
       "import": "./src/markdownListIndentation.ts"
     },
+    "./markdownTaskList": {
+      "types": "./src/markdownTaskList.ts",
+      "import": "./src/markdownTaskList.ts"
+    },
     "./proposedPlanText": {
       "types": "./src/proposedPlanText.ts",
       "import": "./src/proposedPlanText.ts"

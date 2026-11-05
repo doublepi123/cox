@@ -1822,6 +1822,296 @@ it.layer(
       }),
     );
 
+    it.effect("ignores a probe from an instance that settings replaced mid-refresh", () =>
+      Effect.gen(function* () {
+        const scenario = Effect.fn(function* (
+          failureStage: "none" | "probe" | "maintenance" | "invalidation",
+          run: (
+            registry: ProviderRegistry.ProviderRegistry["Service"],
+          ) => Effect.Effect<ReadonlyArray<ServerProvider>>,
+        ) {
+          const driver = ProviderDriverKind.make("codex");
+          const instanceId = ProviderInstanceId.make("codex");
+          const provider = {
+            instanceId,
+            driver,
+            status: "ready",
+            enabled: true,
+            installed: true,
+            auth: { status: "authenticated" },
+            checkedAt: "2026-06-10T00:00:00.000Z",
+            version: "2.0.0",
+            models: [],
+            slashCommands: [],
+            skills: [],
+          } as const satisfies ServerProvider;
+          const retiredProbe = {
+            ...provider,
+            status: "error",
+            installed: false,
+            version: "1.0.0",
+            message: "Codex CLI is not installed.",
+          } as const satisfies ServerProvider;
+          const probeStarted = yield* Deferred.make<void>();
+          const releaseProbe = yield* Deferred.make<void>();
+          const delayedProbe = Deferred.succeed(probeStarted, undefined).pipe(
+            Effect.andThen(Deferred.await(releaseProbe)),
+            Effect.andThen(
+              failureStage === "none" ? Effect.void : Effect.die(new Error("probe failed")),
+            ),
+          );
+          const makeInstance = (snapshot: ServerProvider, refresh: Effect.Effect<void>) =>
+            ({
+              instanceId,
+              driverKind: driver,
+              continuationIdentity: { driverKind: driver, continuationKey: "codex:instance:codex" },
+              displayName: undefined,
+              enabled: true,
+              snapshot: {
+                resolveMaintenance: () =>
+                  (snapshot === retiredProbe && failureStage === "maintenance"
+                    ? delayedProbe
+                    : Effect.void
+                  ).pipe(
+                    Effect.as(
+                      makeManualOnlyProviderMaintenanceCapabilities({
+                        provider: driver,
+                        packageName: null,
+                      }),
+                    ),
+                  ),
+                getSnapshot: Effect.succeed(snapshot),
+                refresh: Effect.as(refresh, snapshot),
+                streamChanges: Stream.empty,
+                applyUsageLimits: () => Effect.void,
+              },
+              orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+              textGeneration: {} as ProviderInstance["textGeneration"],
+            }) satisfies ProviderInstance;
+          const retiredInstance = {
+            ...makeInstance(
+              retiredProbe,
+              failureStage === "none" || failureStage === "probe" ? delayedProbe : Effect.void,
+            ),
+            ...(failureStage === "invalidation" ? { invalidateCaches: delayedProbe } : {}),
+          } satisfies ProviderInstance;
+          const rebuiltInstance = makeInstance(provider, Effect.void);
+          const instances = yield* Ref.make<ReadonlyArray<ProviderInstance>>([retiredInstance]);
+          const changes = yield* PubSub.unbounded<void>();
+          const instanceRegistryLayer = Layer.succeed(
+            ProviderInstanceRegistry.ProviderInstanceRegistry,
+            {
+              getInstance: (requestedId) =>
+                Ref.get(instances).pipe(
+                  Effect.map((current) =>
+                    current.find((instance) => instance.instanceId === requestedId),
+                  ),
+                ),
+              listInstances: Ref.get(instances),
+              listUnavailable: Effect.succeed([]),
+              streamChanges: Stream.empty,
+              subscribeChanges: PubSub.subscribe(changes),
+            },
+          );
+          const scope = yield* Scope.make();
+          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+          const runtimeServices = yield* Layer.build(
+            ProviderRegistry.layer.pipe(
+              Layer.provide(layerUnusedMutator),
+              Layer.provideMerge(instanceRegistryLayer),
+              Layer.provideMerge(
+                ServerConfig.layerTest(process.cwd(), {
+                  prefix: "t3-provider-registry-retired-refresh-",
+                }),
+              ),
+              Layer.provideMerge(NodeServices.layer),
+            ),
+          ).pipe(Scope.provide(scope));
+
+          return yield* Effect.gen(function* () {
+            const registry = yield* ProviderRegistry.ProviderRegistry;
+            const rebuiltPublished = yield* Stream.toPull(
+              registry.streamChanges.pipe(
+                Stream.filter((providers) => providers[0]?.version === provider.version),
+              ),
+            );
+            const refresh = yield* run(registry).pipe(Effect.forkChild);
+            yield* Deferred.await(probeStarted);
+            yield* Ref.set(instances, [rebuiltInstance]);
+            yield* PubSub.publish(changes, undefined);
+            yield* rebuiltPublished;
+            yield* Deferred.succeed(releaseProbe, undefined);
+            return {
+              provider,
+              result: yield* Fiber.join(refresh),
+              providers: yield* registry.getProviders,
+            };
+          }).pipe(Effect.provide(runtimeServices));
+        });
+        const driver = ProviderDriverKind.make("codex");
+        const instanceId = ProviderInstanceId.make("codex");
+
+        const manual = yield* scenario("none", (registry) => registry.refresh());
+        expect(manual.result).toEqual([expect.objectContaining(manual.provider)]);
+        expect(manual.providers).toEqual([expect.objectContaining(manual.provider)]);
+
+        for (const failureStage of ["none", "probe", "maintenance", "invalidation"] as const) {
+          const afterUpdate = yield* scenario(failureStage, (registry) =>
+            registry.refreshAfterUpdate(driver, instanceId),
+          );
+          expect(afterUpdate.result).toEqual([]);
+          expect(afterUpdate.providers).toEqual([expect.objectContaining(afterUpdate.provider)]);
+        }
+      }),
+    );
+
+    it.effect("ignores buffered updates from a retired source after its PubSub shuts down", () =>
+      Effect.gen(function* () {
+        const driver = ProviderDriverKind.make("codex");
+        const instanceId = ProviderInstanceId.make("codex");
+        const provider = {
+          instanceId,
+          driver,
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-06-10T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const pending = { ...provider, status: "warning", message: "Slow cache write" } as const;
+        const retired = { ...provider, status: "error", message: "Retired source" } as const;
+        const rebuilt = { ...provider, version: "2.0.0" };
+        const sourceChanges = yield* PubSub.unbounded<ServerProvider>();
+        const streamDrained = yield* Deferred.make<void>();
+        const writeStarted = yield* Deferred.make<void>();
+        const releaseWrite = yield* Deferred.make<void>();
+        const makeInstance = (
+          snapshot: ServerProvider,
+          streamChanges: Stream.Stream<ServerProvider>,
+        ): ProviderInstance => ({
+          instanceId,
+          driverKind: driver,
+          continuationIdentity: { driverKind: driver, continuationKey: "codex:instance:codex" },
+          displayName: undefined,
+          enabled: true,
+          snapshot: {
+            resolveMaintenance: () =>
+              Effect.succeed(
+                makeManualOnlyProviderMaintenanceCapabilities({
+                  provider: driver,
+                  packageName: null,
+                }),
+              ),
+            getSnapshot: Effect.succeed(snapshot),
+            refresh: Effect.succeed(snapshot),
+            streamChanges,
+            applyUsageLimits: () => Effect.void,
+          },
+          orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+          textGeneration: {} as ProviderInstance["textGeneration"],
+        });
+        const instances = yield* Ref.make<ReadonlyArray<ProviderInstance>>([
+          makeInstance(
+            provider,
+            Stream.fromPubSub(sourceChanges).pipe(
+              Stream.ensuring(Deferred.succeed(streamDrained, undefined)),
+            ),
+          ),
+        ]);
+        const changes = yield* PubSub.unbounded<void>();
+        const instanceRegistryLayer = Layer.succeed(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          {
+            getInstance: (requestedId) =>
+              Ref.get(instances).pipe(
+                Effect.map((current) =>
+                  current.find((instance) => instance.instanceId === requestedId),
+                ),
+              ),
+            listInstances: Ref.get(instances),
+            listUnavailable: Effect.succeed([]),
+            streamChanges: Stream.empty,
+            subscribeChanges: PubSub.subscribe(changes),
+          },
+        );
+        const fs = yield* FileSystem.FileSystem;
+        const fileSystem = FileSystem.FileSystem.of({
+          ...fs,
+          writeFileString: (target, contents, options) =>
+            fs
+              .writeFileString(target, contents, options)
+              .pipe(
+                Effect.andThen(
+                  contents.includes(pending.message)
+                    ? Deferred.succeed(writeStarted, undefined).pipe(
+                        Effect.andThen(Deferred.await(releaseWrite)),
+                      )
+                    : Effect.void,
+                ),
+              ),
+        });
+        const scope = yield* Scope.make();
+        yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+        const runtimeServices = yield* Layer.build(
+          ProviderRegistry.layer.pipe(
+            Layer.provide(Layer.succeed(FileSystem.FileSystem, fileSystem)),
+            Layer.provide(layerUnusedMutator),
+            Layer.provideMerge(instanceRegistryLayer),
+            Layer.provideMerge(
+              ServerConfig.layerTest(process.cwd(), {
+                prefix: "t3-provider-registry-retired-stream-",
+              }),
+            ),
+            Layer.provideMerge(NodeServices.layer),
+          ),
+        ).pipe(Scope.provide(scope));
+
+        yield* Effect.gen(function* () {
+          const registry = yield* ProviderRegistry.ProviderRegistry;
+          const observed: Array<ReadonlyArray<ServerProvider>> = [];
+          const rebuiltPublished = yield* Deferred.make<void>();
+          yield* registry.streamChanges.pipe(
+            Stream.runForEach((providers) =>
+              Effect.sync(() => observed.push(providers)).pipe(
+                Effect.andThen(
+                  providers[0]?.version === rebuilt.version
+                    ? Deferred.succeed(rebuiltPublished, undefined)
+                    : Effect.void,
+                ),
+              ),
+            ),
+            Effect.forkScoped,
+          );
+          yield* Effect.yieldNow;
+          yield* PubSub.publishAll(sourceChanges, [pending, retired]);
+          yield* Deferred.await(writeStarted);
+          yield* Ref.set(instances, [makeInstance(rebuilt, Stream.empty)]);
+          yield* PubSub.publish(changes, undefined);
+          yield* PubSub.shutdown(sourceChanges);
+          yield* Deferred.succeed(releaseWrite, undefined);
+          yield* Deferred.await(rebuiltPublished);
+          yield* Deferred.await(streamDrained);
+          yield* Effect.yieldNow;
+          expect(yield* registry.getProviders).toEqual([expect.objectContaining(rebuilt)]);
+          const config = yield* ServerConfig.ServerConfig;
+          const cachePath = yield* resolveProviderStatusCachePath({
+            cacheDir: config.providerStatusCacheDir,
+            instanceId,
+          });
+          expect(yield* readProviderStatusCache(cachePath)).toEqual(
+            expect.objectContaining(rebuilt),
+          );
+          for (const providers of observed) {
+            expect(providers).toEqual([expect.objectContaining(rebuilt)]);
+          }
+        }).pipe(Effect.provide(runtimeServices));
+      }),
+    );
+
     it.effect("keeps an enriched snapshot that streams in before a manual refresh returns", () =>
       Effect.gen(function* () {
         const driver = ProviderDriverKind.make("acpRegistry");

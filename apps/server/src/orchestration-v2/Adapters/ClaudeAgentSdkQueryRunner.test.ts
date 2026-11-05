@@ -207,6 +207,110 @@ it.effect("reopens a stalled MCP registration before delivering the resumed prom
   ),
 );
 
+it.effect.each([
+  { case: "a readable rule list", errors: undefined, readable: true },
+  { case: "a settings file Claude skipped", errors: [{ file: "settings.json" }], readable: false },
+  { case: "a reply without a rule list", response: {}, readable: false },
+])("reads Claude's permission rules only when no settings file was skipped: $case", (testCase) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const rules = [{ behavior: "deny" as const, rule: "mcp__probe__redeploy" }];
+      const querySpy = vi.spyOn(ClaudeSdk, "query").mockImplementation(
+        () =>
+          ({
+            close: vi.fn(),
+            request: async () => ({
+              response:
+                "response" in testCase
+                  ? testCase.response
+                  : { state: { rules, errors: testCase.errors } },
+            }),
+          }) as unknown as ClaudeSdk.Query,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(() => querySpy.mockRestore()));
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const { mcpServers: _mcpServers, ...options } = resumedMcpQueryInput.options;
+      const session = yield* runner.open({ ...resumedMcpQueryInput, options });
+      yield* Effect.addFinalizer(() => session.close.pipe(Effect.orDie));
+      const exit = yield* Effect.exit(session.listPermissionRules);
+      if (testCase.readable) assert.deepEqual(exit, Exit.succeed(rules));
+      else assert.isTrue(Exit.isFailure(exit));
+    }).pipe(Effect.provide(realQueryRunner)),
+  ),
+);
+
+it.effect("sends app control requests through the live query without a model turn", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const result = { content: [{ type: "text", text: "refreshed" }], _meta: { app: true } };
+      const status = [
+        { name: "probe", status: "connected", tools: [] },
+      ] satisfies ReadonlyArray<ClaudeSdk.McpServerStatus>;
+      const resource = { contents: [{ uri: "ui://probe/app.html", text: "<html></html>" }] };
+      const request = vi.fn(async () => ({ response: result }));
+      const readMcpResource = vi.fn(async () => resource);
+      const querySpy = vi.spyOn(ClaudeSdk, "query").mockImplementation(
+        () =>
+          ({
+            close: vi.fn(),
+            request,
+            mcpServerStatus: async () => status,
+            readMcpResource,
+          }) as unknown as ClaudeSdk.Query,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(() => querySpy.mockRestore()));
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const { mcpServers: _mcpServers, ...options } = resumedMcpQueryInput.options;
+      const session = yield* runner.open({ ...resumedMcpQueryInput, options });
+      yield* Effect.addFinalizer(() => session.close.pipe(Effect.orDie));
+      assert.deepEqual(yield* session.mcpServerStatus, status);
+      assert.deepEqual(
+        yield* session.readMcpResource({ server: "probe", uri: "ui://probe/app.html" }),
+        resource,
+      );
+      assert.deepEqual(
+        yield* session.callMcpTool({ tool: "mcp__probe__refresh", arguments: { city: "Oslo" } }),
+        result,
+      );
+      assert.deepEqual(request.mock.calls, [
+        [
+          {
+            subtype: "mcp_call",
+            tool: "mcp__probe__refresh",
+            arguments: { city: "Oslo" },
+            result_not_for_model: true,
+          },
+        ],
+      ]);
+      assert.deepEqual(readMcpResource.mock.calls, [["probe", "ui://probe/app.html"]]);
+      assert.equal(querySpy.mock.calls.length, 1);
+    }).pipe(Effect.provide(realQueryRunner)),
+  ),
+);
+
+it.effect("reports unavailable legacy control methods without calling a provider", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const querySpy = vi
+        .spyOn(ClaudeSdk, "query")
+        .mockImplementation(() => ({ close: vi.fn() }) as unknown as ClaudeSdk.Query);
+      yield* Effect.addFinalizer(() => Effect.sync(() => querySpy.mockRestore()));
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const { mcpServers: _mcpServers, ...options } = resumedMcpQueryInput.options;
+      const session = yield* runner.open({ ...resumedMcpQueryInput, options });
+      yield* Effect.addFinalizer(() => session.close.pipe(Effect.orDie));
+      for (const operation of [
+        session.listPermissionRules,
+        session.callMcpTool({ tool: "mcp__probe__refresh", arguments: {} }),
+      ]) {
+        const exit = yield* Effect.exit(operation);
+        assert.isTrue(Exit.isFailure(exit));
+      }
+      assert.equal(querySpy.mock.calls.length, 1);
+    }).pipe(Effect.provide(realQueryRunner)),
+  ),
+);
+
 it.effect.each([true, false])("only retries after confirmed process exit: %s", (exits) =>
   Effect.scoped(
     Effect.gen(function* () {

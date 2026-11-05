@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+  CHATGPT_USAGE_LIMIT_CODE,
+  CHATGPT_WORKSPACE_USAGE_LIMIT_CODE,
+} from "@t3tools/shared/usageLimits";
 
 import {
+  ThreadErrorBanner,
   dismissThreadErrorBannerForSession,
   getThreadErrorBannerKey,
   getThreadErrorBannerMessage,
@@ -25,6 +31,24 @@ describe("getThreadErrorBannerMessage", () => {
 });
 
 describe("ThreadErrorBanner", () => {
+  it("shows the ChatGPT usage action without redundant personal-limit instructions", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadErrorBanner error="Usage limit" errorCode={CHATGPT_USAGE_LIMIT_CODE} />,
+    );
+    expect(markup).toContain("ChatGPT usage limit reached");
+    expect(markup).toContain("Manage usage");
+    expect(markup).not.toContain("Review your usage settings in ChatGPT.");
+  });
+
+  it("keeps workspace-admin guidance on legacy sharing errors", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadErrorBanner error="Usage limit" errorCode={CHATGPT_WORKSPACE_USAGE_LIMIT_CODE} />,
+    );
+    expect(markup).toContain("workspace admin");
+    expect(markup).toContain("Copy request for admin");
+    expect(markup).not.toContain("Manage usage");
+  });
+
   it("reappears for different diagnostics with the same headline on the same thread", () => {
     const firstError = JSON.stringify({ error: { message: "Turn failed", code: "first" } });
     const secondError = JSON.stringify({ error: { message: "Turn failed", code: "second" } });

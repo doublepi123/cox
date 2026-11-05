@@ -285,6 +285,55 @@ it.effect("keeps a close batch ordered and continues after a refused close", () 
   ),
 );
 
+it.effect("saves description bodies in order and continues after a failed checkbox save", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const calls: string[] = [];
+      const firstBody = "- [x] First\n- [ ] Second";
+      const lastBody = "- [x] First\n- [x] Second";
+      let body = "- [ ] First\n- [ ] Second";
+      const client = {
+        [WS_METHODS.pullRequestsUpdate]: (input: { body: string }) =>
+          Effect.gen(function* () {
+            calls.push(input.body);
+            if (input.body === firstBody) {
+              yield* Deferred.succeed(started, undefined);
+              yield* Deferred.await(release);
+              return yield* new PullRequestOperationError({
+                operation: "update",
+                detail: "The first save failed.",
+              });
+            }
+            body = input.body;
+          }),
+      } as unknown as WsRpcProtocolClient;
+      const { atoms, registry } = yield* makeTestRuntime(client);
+      const reference = {
+        projectId: ProjectId.make("project-1"),
+        repository: "acme/web",
+        number: 1,
+      };
+      const first = atoms.update.run(registry, {
+        environmentId: TARGET.environmentId,
+        input: { ...reference, body: firstBody },
+      });
+      yield* Deferred.await(started);
+      const last = atoms.update.run(registry, {
+        environmentId: TARGET.environmentId,
+        input: { ...reference, body: lastBody },
+      });
+      expect(calls).toEqual([firstBody]);
+      yield* Deferred.succeed(release, undefined);
+      const results = yield* Effect.promise(() => Promise.all([first, last]));
+      expect(results.map((result) => result._tag)).toEqual(["Failure", "Success"]);
+      expect(calls).toEqual([firstBody, lastBody]);
+      expect(body).toBe(lastBody);
+    }),
+  ),
+);
+
 it.effect("keeps hover previews fresh after edits and turns", () =>
   Effect.scoped(
     Effect.gen(function* () {

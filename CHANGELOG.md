@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.33 — 2026-11-05
+
+- Keep thread subscriptions recoverable after stream defects and preserve older pending
+  questions through bounded snapshots, cached state recovery and history pagination.
+- Preserve sibling task completion wakeups when interrupting a delivered completion, and
+  protect native background work during queued provider switches. Attribute automatic
+  usage-limit continuations to Cox without losing delegated follow-up tracking.
+- Isolate stale provider refresh results, recover Codex sharing-limit errors with the
+  existing controls, classify Cursor text-generation limits, and retire silent Antigravity
+  prompts with an opt-in inactivity watchdog that respects active tools and approvals.
+- Make styled Markdown markers editable without discarding the existing IME behavior,
+  save pull-request description task checkboxes, and render supported Claude MCP Apps
+  through the current session with conservative permissions and older-CLI fallback.
+- Validate terminal file links against filesystem metadata, show worktree setup status,
+  retain touch message navigation when space permits, and label Changes totals correctly.
+- Add optional ghq-style clone folders, GitHub Enterprise PR checkout URLs and standard
+  submodule patches regardless of user diff settings.
+- Stabilize blocked-repository scanner tests and PDF preview load synchronization while
+  keeping all changes local-only and retaining Cox model-service isolation.
+
 ## 0.1.32 — 2026-11-05
 
 - Port high-value upstream T3 Code fixes: retry unstarted runs after recovery, avoid

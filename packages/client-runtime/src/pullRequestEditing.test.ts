@@ -11,6 +11,10 @@ import {
   canEditPullRequestChangeRequest,
   canEditPullRequestComment,
   canResolvePullRequestThread,
+  descriptionDraftInForce,
+  settleDescriptionSave,
+  startDescriptionSave,
+  type DescriptionDraft,
 } from "./pullRequestEditing.ts";
 
 type Subject = Pick<PullRequestDetail, "author" | "capabilities" | "viewer" | "viewerPermissions">;
@@ -200,5 +204,135 @@ describe("canResolvePullRequestThread", () => {
         canResolve: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("description drafts", () => {
+  const url = "https://github.com/owner/repo/pull/1";
+  const unticked = "- [ ] Ship it";
+  const ticked = "- [x] Ship it";
+
+  it("hides readings taken during the saves and ends at the first one after them", () => {
+    let draft: DescriptionDraft | null = startDescriptionSave(
+      null,
+      { url, observedAt: 1 },
+      { id: 1, body: ticked },
+    );
+    draft = startDescriptionSave(draft, { url, observedAt: 1 }, { id: 2, body: unticked });
+    expect(descriptionDraftInForce(draft, url, 2)?.body).toBe(unticked);
+    draft = descriptionDraftInForce(draft, url, 2);
+    draft = settleDescriptionSave(draft, url, 1, true);
+    expect(descriptionDraftInForce(draft, url, 2)?.body).toBe(unticked);
+    draft = settleDescriptionSave(draft, url, 2, true);
+    expect(descriptionDraftInForce(draft, url, 2)?.body).toBe(unticked);
+    expect(descriptionDraftInForce(draft, url, 3)).toBeNull();
+  });
+
+  it("outlives failed saves until a reading after the last one, losing the body only with it", () => {
+    let draft: DescriptionDraft | null = startDescriptionSave(
+      null,
+      { url, observedAt: 1 },
+      { id: 1, body: ticked },
+    );
+    draft = startDescriptionSave(draft, { url, observedAt: 1 }, { id: 2, body: unticked });
+    draft = settleDescriptionSave(draft, url, 1, false);
+    expect(descriptionDraftInForce(draft, url, 2)).toMatchObject({ body: unticked, saves: 1 });
+    draft = descriptionDraftInForce(draft, url, 2);
+    draft = settleDescriptionSave(draft, url, 2, false);
+    expect(descriptionDraftInForce(draft, url, 2)).toMatchObject({ body: null, saves: 0 });
+    expect(settleDescriptionSave(draft, url, 2, true)).toBe(draft);
+    expect(descriptionDraftInForce(draft, url, 3)).toBeNull();
+  });
+
+  it("retains confirmed prose when a later checkbox save fails before refresh", () => {
+    const body = `Confirmed prose\n\n${unticked}`;
+    let draft: DescriptionDraft | null = startDescriptionSave(
+      null,
+      { url, observedAt: 1 },
+      { id: 1, body },
+    );
+    draft = settleDescriptionSave(draft, url, 1, true);
+    draft = startDescriptionSave(
+      draft,
+      { url, observedAt: 1 },
+      { id: 2, body: body.replace("[ ]", "[x]") },
+    );
+    draft = settleDescriptionSave(draft, url, 2, false);
+    expect(descriptionDraftInForce(draft, url, 1)?.body).toBe(body);
+    draft = startDescriptionSave(
+      draft,
+      { url, observedAt: 1 },
+      { id: 3, body: body.replace("[ ]", "[x]") },
+    );
+    draft = settleDescriptionSave(draft, url, 3, false);
+    expect(descriptionDraftInForce(draft, url, 1)?.body).toBe(body);
+  });
+
+  it.each([
+    [true, true, false],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+    [true, true, true],
+    [true, false, true],
+    [false, true, true],
+    [false, false, true],
+  ])(
+    "settles queued saves first=%s last=%s reverse completion=%s",
+    (firstSaved, lastSaved, reverse) => {
+      const first = "- [x] First\n- [ ] Second";
+      const last = "- [x] First\n- [x] Second";
+      let draft: DescriptionDraft | null = startDescriptionSave(
+        null,
+        { url, observedAt: 1 },
+        { id: 1, body: first },
+      );
+      draft = startDescriptionSave(draft, { url, observedAt: 1 }, { id: 2, body: last });
+      draft = settleDescriptionSave(draft, url, reverse ? 2 : 1, reverse ? lastSaved : firstSaved);
+      expect(draft?.body).toBe(reverse && !lastSaved ? first : last);
+      draft = settleDescriptionSave(draft, url, reverse ? 1 : 2, reverse ? firstSaved : lastSaved);
+      expect(draft).toMatchObject({ body: lastSaved ? last : firstSaved ? first : null, saves: 0 });
+      expect(descriptionDraftInForce(draft, url, 2)).toBeNull();
+    },
+  );
+
+  it("retains a confirmed empty body without timestamps until a timestamped reading arrives", () => {
+    let draft: DescriptionDraft | null = startDescriptionSave(null, { url }, { id: 1, body: "" });
+    draft = settleDescriptionSave(draft, url, 1, true);
+    draft = descriptionDraftInForce(draft, url, undefined);
+    draft = startDescriptionSave(draft, { url }, { id: 2, body: ticked });
+    draft = settleDescriptionSave(draft, url, 2, false);
+    expect(descriptionDraftInForce(draft, url, undefined)?.body).toBe("");
+    expect(descriptionDraftInForce(draft, url, 1)).toBeNull();
+  });
+
+  it("does not carry a confirmed baseline into a new host reading", () => {
+    let draft: DescriptionDraft | null = startDescriptionSave(
+      null,
+      { url, observedAt: 1 },
+      { id: 1, body: ticked },
+    );
+    draft = settleDescriptionSave(draft, url, 1, true);
+    draft = startDescriptionSave(draft, { url, observedAt: 2 }, { id: 2, body: unticked });
+    draft = settleDescriptionSave(draft, url, 2, false);
+    expect(draft?.body).toBeNull();
+  });
+
+  it("belongs to one change request and ignores obsolete completions after returning to it", () => {
+    const other = "https://github.com/owner/repo/pull/2";
+    let draft: DescriptionDraft | null = startDescriptionSave(
+      null,
+      { url, observedAt: 1 },
+      { id: 1, body: ticked },
+    );
+    expect(descriptionDraftInForce(draft, other, 1)).toBeNull();
+    expect(settleDescriptionSave(draft, other, 1, false)).toBe(draft);
+    draft = startDescriptionSave(draft, { url: other, observedAt: 5 }, { id: 2, body: unticked });
+    expect(draft.saves).toBe(1);
+    draft = startDescriptionSave(draft, { url, observedAt: 6 }, { id: 3, body: ticked });
+    expect(settleDescriptionSave(draft, url, 1, true)).toBe(draft);
+    expect(settleDescriptionSave(draft, other, 2, false)).toBe(draft);
+    draft = settleDescriptionSave(draft, url, 3, false);
+    expect(draft).toMatchObject({ body: null, saves: 0 });
   });
 });

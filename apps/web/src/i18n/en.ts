@@ -2695,6 +2695,12 @@ export const en = {
   "In-app notifications": "In-app notifications",
   "New projects": "New projects",
   "Add project base directory": "Add project base directory",
+  "Clone into host folders": "Clone into host folders",
+  "Clone repositories into host/owner/repository folders, like ghq.":
+    "Clone repositories into host/owner/repository folders, like ghq.",
+  "Setting up": "Setting up",
+  Uncommitted: "Uncommitted",
+  "vs {ref}": "vs {ref}",
   "Thread title instructions": "Thread title instructions",
   Thread: "Thread",
   Browser: "Browser",

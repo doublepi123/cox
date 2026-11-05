@@ -8,7 +8,7 @@ interface MarkdownPosition {
 interface MarkdownAstNode {
   readonly type: string;
   readonly value?: unknown;
-  readonly position?: MarkdownPosition;
+  position?: MarkdownPosition;
   children?: MarkdownAstNode[];
 }
 
@@ -88,6 +88,11 @@ function parseRecoveredMarkdown(value: string, parser: MarkdownParser): Recovere
   };
 }
 
+function clearRecoveredListItemPositions(node: MarkdownAstNode): void {
+  if (node.type === "listItem") delete node.position;
+  node.children?.forEach(clearRecoveredListItemPositions);
+}
+
 function blocksFromIndentedCode(node: MarkdownAstNode, parser: MarkdownParser): RecoveredMarkdown {
   const value = typeof node.value === "string" ? node.value.trim() : "";
   const recovered = parseRecoveredMarkdown(value, parser);
@@ -122,6 +127,7 @@ function attachListItemIndentationNormalizer(this: MarkdownParser) {
           const recovered = blocksFromIndentedCode(child, this);
           for (const block of recovered.blocks) {
             visit(block, recovered.source);
+            clearRecoveredListItemPositions(block);
           }
           return recovered.blocks;
         }

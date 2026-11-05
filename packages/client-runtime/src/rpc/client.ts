@@ -286,10 +286,12 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                 EnvironmentRpcStreamFailure<TTag>
               >;
               let expectedFailureRetries = 0;
+              let defectReported = false;
               const subscribeToSession = (): Stream.Stream<A, EnvironmentRpcStreamFailure<TTag>> =>
                 Stream.suspend(() =>
                   Stream.unwrap(
                     Effect.gen(function* () {
+                      defectReported = false;
                       const input = yield* makeInput(session);
                       const completeObservation = yield* observer.observe({
                         environmentId: supervisor.target.environmentId,
@@ -315,7 +317,13 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                             isRpcClientError(reason.error) &&
                             reason.error.reason._tag === "RpcClientDefect"),
                       )
-                        ? options.onDefect(cause)
+                        ? Effect.suspend(() => options.onDefect!(cause)).pipe(
+                            Effect.andThen(
+                              Effect.sync(() => {
+                                defectReported = true;
+                              }),
+                            ),
+                          )
                         : Effect.void,
                     ),
                     Stream.catchCause((cause) => {
@@ -367,6 +375,9 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                           ),
                           Stream.concat(subscribeToSession()),
                         );
+                      }
+                      if (defectReported && Cause.hasDies(cause)) {
+                        return Stream.empty;
                       }
                       return Stream.failCause(cause);
                     }),

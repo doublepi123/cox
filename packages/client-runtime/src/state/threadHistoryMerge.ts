@@ -91,7 +91,9 @@ export function mergeOlderHistoryIntoProjection(
       const currentItem = turnItemById.get(String(row.sourceItemId));
       if (currentItem !== undefined) {
         if (
-          currentItem.type !== "run_interrupt_request" ||
+          (currentItem.type !== "run_interrupt_request" &&
+            currentItem.type !== "approval_request" &&
+            currentItem.type !== "user_input_request") ||
           !isOrchestrationV2TurnItemVisible({
             item: currentItem,
             runs: projection.runs,

@@ -139,3 +139,29 @@ it("keeps an image on its own line under a label but leaves inline images inline
   expect(render("Built [![CI](/ci.svg)](/ci)\nand wrapped")).toBe("Built <img>\nand wrapped");
   expect(render("Hard-wrapped\nprose")).toBe("Hard-wrapped\nprose");
 });
+
+it("keeps original task positions but removes synthetic recovered list-item positions", () => {
+  const markdown =
+    "This PR updates local tool config\n\n- [ ] Earlier\n-       Prose\n\n        - [ ] Nested\n\n- [ ] Parent\n  - [x] Standard nested\n";
+  const processor = unified().use(remarkParse).use(CHAT_MARKDOWN_REMARK_PLUGINS);
+  const tree = processor.runSync(processor.parse(markdown), markdown);
+  type Node = {
+    type: string;
+    checked?: boolean | null;
+    position?: { start: { offset?: number } };
+    children?: Node[];
+  };
+  const tasks: Node[] = [];
+  const collect = (node: Node) => {
+    if (node.type === "listItem" && typeof node.checked === "boolean") tasks.push(node);
+    node.children?.forEach(collect);
+  };
+  collect(tree as Node);
+  expect(tasks).toHaveLength(4);
+  expect(tasks.map((task) => task.position?.start.offset)).toEqual([
+    markdown.indexOf("- [ ] Earlier"),
+    undefined,
+    markdown.indexOf("- [ ] Parent"),
+    markdown.indexOf("- [x] Standard nested"),
+  ]);
+});

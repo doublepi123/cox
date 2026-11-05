@@ -22,6 +22,7 @@ import {
   pdfPageScrollTop,
   pdfPageText,
   pdfPageWidth,
+  pdfRestoredScrollTop,
   PDF_MAX_ZOOM,
   PDF_MIN_ZOOM,
   stepPdfZoom,
@@ -236,10 +237,8 @@ export default function PdfViewer(props: {
   const restoreView = useEffectEvent(() => {
     const node = scroll.current;
     if (!pdf || !node) return;
-    const page = Math.min(initialPage, pdf.numPages - 1);
     node.scrollTo({
-      top:
-        offsets[page]! - 16 + Math.min(initialView.offset, Math.max(0, width * ratios[page]! - 1)),
+      top: pdfRestoredScrollTop(ratios, width, initialView),
       left: initialView.left,
     });
     saveView(node);

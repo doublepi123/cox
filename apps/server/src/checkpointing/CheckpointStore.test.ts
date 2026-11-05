@@ -155,6 +155,10 @@ it.layer(layerTest)("CheckpointStore.layer", (it) => {
         const tmp = yield* makeTmpDir();
         yield* initRepoWithCommit(tmp);
         yield* git(tmp, ["config", "diff.noprefix", "true"]);
+        yield* git(tmp, ["config", "diff.submodule", "log"]);
+        const sub = NodePath.join(tmp, "sub");
+        yield* git(tmp, ["init", "sub"]);
+        yield* initRepoWithCommit(sub);
         const checkpointStore = yield* CheckpointStore.CheckpointStore;
         const threadId = ThreadId.make("thread-checkpoint-store-noprefix");
         const fromCheckpointRef = checkpointRefForThreadTurn(threadId, 0);
@@ -165,6 +169,7 @@ it.layer(layerTest)("CheckpointStore.layer", (it) => {
           checkpointRef: fromCheckpointRef,
         });
         yield* writeTextFile(NodePath.join(tmp, "README.md"), "# changed\n");
+        yield* git(sub, ["commit", "--allow-empty", "-m", "moved"]);
         yield* checkpointStore.captureCheckpoint({
           cwd: tmp,
           checkpointRef: toCheckpointRef,
@@ -178,6 +183,8 @@ it.layer(layerTest)("CheckpointStore.layer", (it) => {
         });
 
         expect(diff).toContain("diff --git a/README.md b/README.md");
+        expect(diff).toContain("diff --git a/sub b/sub");
+        expect(diff).toContain("+Subproject commit ");
       }),
     );
 
