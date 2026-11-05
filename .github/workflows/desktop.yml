@@ -38,6 +38,7 @@ jobs:
             release/desktop/*.dmg
             release/desktop/*.zip
             release/desktop/*.exe
+            release/desktop/*.blockmap
             release/desktop/*.sha256
             release/desktop/BUILD-*.json
           if-no-files-found: error
