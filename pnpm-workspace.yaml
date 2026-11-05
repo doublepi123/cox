@@ -10,7 +10,6 @@ allowBuilds:
   bufferutil: false
   core-js: false
   esbuild: true
-  electron: true
   electron-winstaller: false
   msgpackr-extract: true
   msw: false

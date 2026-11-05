@@ -9,8 +9,9 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "pnpm build && node scripts/dev.ts",
-    "package": "node scripts/package.ts",
+    "dev": "pnpm build && pnpm electron:install && node scripts/dev.ts",
+    "electron:install": "install-electron",
+    "package": "pnpm electron:install && node scripts/package.ts",
     "smoke": "node scripts/smoke.ts",
     "smoke:app": "node scripts/smoke-app.ts",
     "typecheck": "tsc --noEmit"

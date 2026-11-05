@@ -5,6 +5,15 @@ import { describe, expect, it } from "vite-plus/test";
 const root = NodePath.resolve(import.meta.dirname, "..");
 
 describe("local-only distribution boundary", () => {
+  it("installs the Electron runtime explicitly before desktop startup and packaging", () => {
+    const manifest = JSON.parse(
+      NodeFS.readFileSync(NodePath.join(root, "apps/desktop/package.json"), "utf8"),
+    );
+    expect(manifest.scripts["electron:install"]).toBe("install-electron");
+    expect(manifest.scripts.dev).toContain("pnpm electron:install &&");
+    expect(manifest.scripts.package).toBe("pnpm electron:install && node scripts/package.ts");
+  });
+
   it("uses a single Cox SVG for the favicon, splash and in-app icon", () => {
     const html = NodeFS.readFileSync(NodePath.join(root, "apps/web/index.html"), "utf8");
     const component = NodeFS.readFileSync(

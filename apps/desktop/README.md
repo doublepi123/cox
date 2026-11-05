@@ -22,7 +22,7 @@ pnpm install
 pnpm desktop:dev
 ```
 
-开发启动器将当前独立 Node 路径传入 Electron，避免使用 Electron 内置 Node 运行后端和原生依赖。
+开发启动器将当前独立 Node 路径传入 Electron，避免使用 Electron 内置 Node 运行后端和原生依赖。开发和打包命令会显式执行 `pnpm electron:install`：当前 Electron 包不再通过依赖安装时的 postinstall 自动下载运行时，单独执行 `pnpm install` 不会下载 Electron 浏览器二进制。
 
 ```sh
 pnpm desktop:test
