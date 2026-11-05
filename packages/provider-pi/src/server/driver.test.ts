@@ -144,7 +144,7 @@ it.layer(layerTest)("PiDriver workspace discovery", (it) => {
       assert.isDefined(launch);
       assert.includeMembers(
         [...launch!.args],
-        ["--provider", "openai", "--model", "configured-model"],
+        ["--approve", "--provider", "openai", "--model", "configured-model"],
       );
       assert.equal(launch!.options.env?.OPENAI_API_KEY, "test-pi-key");
       assert.equal(launch!.options.env?.PI_CODING_AGENT_DIR, "/configured-pi");

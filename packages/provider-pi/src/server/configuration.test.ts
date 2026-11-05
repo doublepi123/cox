@@ -11,6 +11,24 @@ const settings = (patch: Partial<PiSettings> = {}): PiSettings => ({
 });
 
 describe("Pi configuration", () => {
+  it("trusts projects by default for new and existing empty launch settings", () => {
+    expect(configuredPiLaunchArgs(settings())).toEqual({ ok: true, args: ["--approve"] });
+    expect(configuredPiLaunchArgs(settings({ launchArgs: '--skill "extra skill"' }))).toEqual({
+      ok: true,
+      args: ["--approve", "--skill", "extra skill"],
+    });
+  });
+
+  it.each(["--approve", "-a", "--no-approve", "-na"])(
+    "preserves an explicit project trust choice %s",
+    (launchArgs) => {
+      expect(configuredPiLaunchArgs(settings({ launchArgs }))).toEqual({
+        ok: true,
+        args: [launchArgs],
+      });
+    },
+  );
+
   it("preserves native Pi credentials and arguments when setup fields are empty", () => {
     const config = settings({ launchArgs: '--approve --skill "extra skill"' });
     const env = {
@@ -47,7 +65,7 @@ describe("Pi configuration", () => {
       expect(env[variable]).toBe("old-test-key");
       expect(configuredPiLaunchArgs(config)).toEqual({
         ok: true,
-        args: ["--provider", provider, "--model", "model with spaces"],
+        args: ["--approve", "--provider", provider, "--model", "model with spaces"],
       });
     },
   );

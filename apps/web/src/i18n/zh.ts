@@ -553,8 +553,8 @@ export const zh = {
   "Server password": "服务器密码",
   "Stored separately on the host.": "单独保存在主机上。",
   "Path to the Pi coding agent binary.": "Pi 编程代理的可执行文件路径。",
-  "Additional CLI arguments passed to pi --mode rpc on session start.":
-    "会话启动时传递给 pi --mode rpc 的附加命令行参数。",
+  "Additional CLI arguments passed to pi --mode rpc on session start. Cox adds --approve by default to load project resources; use --no-approve to opt out.":
+    "会话启动时传递给 pi --mode rpc 的附加命令行参数。Cox 默认添加 --approve 以加载项目资源；可用 --no-approve 关闭。",
   Unreachable: "无法访问",
   "{name} model": "{name} 个模型",
   "{name} models": "{name} 个模型",

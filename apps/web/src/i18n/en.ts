@@ -587,8 +587,8 @@ export const en = {
   "Server password": "Server password",
   "Stored separately on the host.": "Stored separately on the host.",
   "Path to the Pi coding agent binary.": "Path to the Pi coding agent binary.",
-  "Additional CLI arguments passed to pi --mode rpc on session start.":
-    "Additional CLI arguments passed to pi --mode rpc on session start.",
+  "Additional CLI arguments passed to pi --mode rpc on session start. Cox adds --approve by default to load project resources; use --no-approve to opt out.":
+    "Additional CLI arguments passed to pi --mode rpc on session start. Cox adds --approve by default to load project resources; use --no-approve to opt out.",
   Unreachable: "Unreachable",
   "{name} model": "{name} model",
   "{name} models": "{name} models",

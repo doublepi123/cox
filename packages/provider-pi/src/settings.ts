@@ -58,7 +58,8 @@ export const PiSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
         title: "Launch arguments",
-        description: "Additional CLI arguments passed to pi --mode rpc on session start.",
+        description:
+          "Additional CLI arguments passed to pi --mode rpc on session start. Cox adds --approve by default to load project resources; use --no-approve to opt out.",
         providerSettingsForm: { clearWhenEmpty: "omit" },
       }),
     ),

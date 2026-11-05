@@ -47,6 +47,9 @@ export function configuredPiLaunchArgs(settings: PiSettings): PiLaunchArgsResolu
   return {
     ok: true,
     args: [
+      ...(resolved.args.some((arg) => ["--approve", "-a", "--no-approve", "-na"].includes(arg))
+        ? []
+        : ["--approve"]),
       ...resolved.args,
       ...(settings.model?.trim()
         ? [
