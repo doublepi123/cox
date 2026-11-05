@@ -14,6 +14,7 @@ import {
 import { ScrollArea } from "~/components/ui/scroll-area";
 
 const ControlledOpenContext = createContext<boolean | undefined>(undefined);
+const DialogSuppressionContext = createContext(false);
 
 function RetainedWhileClosed({ open, children }: { open: boolean; children: ReactNode }) {
   const controlledOpen = use(ControlledOpenContext);
@@ -34,9 +35,10 @@ function renderRetainedPopup(props: ComponentProps<"div">, state: { open: boolea
 }
 
 function Dialog<Payload>(props: DialogPrimitive.Root.Props<Payload>) {
+  const suppressed = use(DialogSuppressionContext);
   return (
-    <ControlledOpenContext value={props.open}>
-      <DialogPrimitive.Root {...props} />
+    <ControlledOpenContext value={suppressed ? false : props.open}>
+      <DialogPrimitive.Root {...props} {...(suppressed ? { open: false } : {})} />
     </ControlledOpenContext>
   );
 }
@@ -209,6 +211,7 @@ function DialogPanel({
 
 export {
   ControlledOpenContext,
+  DialogSuppressionContext,
   renderRetainedPopup,
   Dialog,
   DialogTrigger,

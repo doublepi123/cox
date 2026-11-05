@@ -2816,7 +2816,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
     });
 
     const rulesFor = Effect.fnUntraced(function* (
-      thread: Pick<ThreadState, "directory" | "agent" | "grants">,
+      thread: Pick<ThreadState, "directory" | "agent" | "grants" | "rules">,
       policy: RulesPolicy,
       appThreadId: string | null,
     ) {
@@ -2824,12 +2824,14 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       const paths =
         policy.runtimeMode === "full-access" && !plan
           ? []
-          : yield* pathsFor(
-              thread.directory,
-              (plan ? [thread.agent, "plan"] : [thread.agent]).filter(
-                (agent): agent is string => agent !== undefined,
-              ),
-            );
+          : thread.agent === undefined && !plan
+            ? agentPaths(thread.rules ?? [])
+            : yield* pathsFor(
+                thread.directory,
+                (plan ? [thread.agent, "plan"] : [thread.agent]).filter(
+                  (agent): agent is string => agent !== undefined,
+                ),
+              );
       return sessionRules(
         policy,
         paths,
@@ -3456,7 +3458,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           const directory = threadInput.runtimePolicy.cwd ?? host.paths.cwd;
           const policy = threadInput.runtimePolicy;
           const permissions = yield* rulesFor(
-            { directory, agent: "build", grants: [] },
+            { directory, agent: "build", grants: [], rules: undefined },
             policy,
             threadInput.threadId,
           );

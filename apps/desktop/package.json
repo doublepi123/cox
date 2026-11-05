@@ -1,6 +1,6 @@
 {
   "name": "@cox/desktop",
-  "version": "0.1.39",
+  "version": "0.1.40",
   "private": true,
   "description": "Cox desktop client with an embedded local backend",
   "license": "MIT",

@@ -168,7 +168,7 @@ const artifacts = await build({
     electronVersion: manifest.devDependencies.electron,
     directories: { app: application, output },
     files: ["dist/**", "!**/*.map", "package.json", "LICENSE", "THIRD_PARTY_NOTICES.json"],
-    compression: "maximum",
+    compression: process.platform === "darwin" ? "normal" : "maximum",
     asar: true,
     npmRebuild: false,
     publish: null,

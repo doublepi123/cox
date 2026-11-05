@@ -8,8 +8,9 @@ import { DesktopShell } from "./components/DesktopShell";
 export function AppRoot({ router }: { readonly router: AppRouter }) {
   return (
     <AppAtomRegistryProvider>
-      <RouterProvider router={router} />
-      <DesktopShell />
+      <DesktopShell>
+        <RouterProvider router={router} />
+      </DesktopShell>
     </AppAtomRegistryProvider>
   );
 }

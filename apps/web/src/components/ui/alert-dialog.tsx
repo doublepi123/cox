@@ -1,4 +1,5 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
+import { use } from "react";
 
 import { cn } from "~/lib/utils";
 import {
@@ -6,12 +7,17 @@ import {
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
 } from "~/components/ui/dialog-styles";
-import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/dialog";
+import {
+  ControlledOpenContext,
+  DialogSuppressionContext,
+  renderRetainedPopup,
+} from "~/components/ui/dialog";
 
 function AlertDialog<Payload>(props: AlertDialogPrimitive.Root.Props<Payload>) {
+  const suppressed = use(DialogSuppressionContext);
   return (
-    <ControlledOpenContext value={props.open}>
-      <AlertDialogPrimitive.Root {...props} />
+    <ControlledOpenContext value={suppressed ? false : props.open}>
+      <AlertDialogPrimitive.Root {...props} {...(suppressed ? { open: false } : {})} />
     </ControlledOpenContext>
   );
 }
@@ -29,11 +35,16 @@ function AlertDialogBackdrop({ className, ...props }: AlertDialogPrimitive.Backd
   );
 }
 
-function AlertDialogViewport({ className, ...props }: AlertDialogPrimitive.Viewport.Props) {
+function AlertDialogViewport({
+  className,
+  bottomStickOnMobile = false,
+  ...props
+}: AlertDialogPrimitive.Viewport.Props & { bottomStickOnMobile?: boolean }) {
   return (
     <AlertDialogPrimitive.Viewport
       className={cn(
         "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
+        bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
         className,
       )}
       data-slot="alert-dialog-viewport"
@@ -46,17 +57,20 @@ function AlertDialogPopup({
   className,
   bottomStickOnMobile = true,
   portalContainer,
+  layer = "default",
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   bottomStickOnMobile?: boolean;
   portalContainer?: AlertDialogPrimitive.Portal.Props["container"];
+  layer?: "default" | "application";
 }) {
   return (
-    <AlertDialogPortal container={portalContainer}>
+    <AlertDialogPrimitive.Portal
+      container={portalContainer}
+      className={layer === "application" ? "relative z-[150]" : undefined}
+    >
       <AlertDialogBackdrop />
-      <AlertDialogViewport
-        className={cn(bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12")}
-      >
+      <AlertDialogViewport bottomStickOnMobile={bottomStickOnMobile}>
         <AlertDialogPrimitive.Popup
           className={cn(
             DIALOG_POPUP_CLASS,
@@ -69,7 +83,7 @@ function AlertDialogPopup({
           {...props}
         />
       </AlertDialogViewport>
-    </AlertDialogPortal>
+    </AlertDialogPrimitive.Portal>
   );
 }
 

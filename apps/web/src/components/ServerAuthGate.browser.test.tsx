@@ -21,6 +21,28 @@ const auth = {
 } as const;
 
 describe("ServerAuthGate", () => {
+  it("keeps failed local sign-in gated and allows retry", async () => {
+    vi.mocked(submitServerAuthCredential).mockReset();
+    vi.mocked(resolveInitialServerAuthGateState)
+      .mockReset()
+      .mockResolvedValueOnce({
+        status: "requires-auth",
+        auth,
+        errorMessage: "Local sign-in unavailable",
+      })
+      .mockResolvedValueOnce({ status: "authenticated" });
+    const onAuthenticated = vi.fn(async () => {});
+    await using _screen = await render(
+      <ServerAuthGate auth={{ ...auth, loginMode: "local" }} onAuthenticated={onAuthenticated} />,
+    );
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect.element(page.getByRole("alert")).toHaveTextContent("Local sign-in unavailable");
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    expect(onAuthenticated).toHaveBeenCalledOnce();
+    expect(submitServerAuthCredential).not.toHaveBeenCalled();
+  });
+
   it("never asks local-mode users for a password", async () => {
     vi.mocked(submitServerAuthCredential).mockReset();
     vi.mocked(resolveInitialServerAuthGateState)

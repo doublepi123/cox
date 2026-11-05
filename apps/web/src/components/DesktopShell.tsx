@@ -1,5 +1,5 @@
 import type { DesktopShellBridge } from "@t3tools/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "../i18n";
 import { syncDocumentWindowControlsOverlayClass } from "../lib/windowControlsOverlay";
 import {
@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { DialogSuppressionContext } from "./ui/dialog";
 
 declare global {
   interface Window {
@@ -32,7 +33,7 @@ function windowColor(variable: string): string {
     .join("")}`;
 }
 
-export function DesktopShell() {
+export function DesktopShell({ children }: { readonly children?: ReactNode }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [quitting, setQuitting] = useState(false);
@@ -74,43 +75,47 @@ export function DesktopShell() {
       window.dispatchEvent(new Event("cox:window-controls-changed"));
     };
   }, []);
-  if (!window.coxDesktop || !["win32", "darwin"].includes(window.coxDesktop.platform)) return null;
+  if (!window.coxDesktop || !["win32", "darwin"].includes(window.coxDesktop.platform))
+    return children;
   return (
-    <AlertDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (quitting) return;
-        setOpen(next);
-        if (!next) window.coxDesktop?.answerQuit(false);
-      }}
-    >
-      <AlertDialogPopup initialFocus={cancelRef} bottomStickOnMobile={false}>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t("Quit Cox?")}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t(
-              "Quitting stops the local backend and interrupts running agent tasks and terminals.",
-            )}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter variant="bare">
-          <AlertDialogClose
-            render={<Button ref={cancelRef} variant="outline" disabled={quitting} />}
-          >
-            {t("Cancel")}
-          </AlertDialogClose>
-          <Button
-            variant="destructive"
-            disabled={quitting}
-            onClick={() => {
-              setQuitting(true);
-              window.coxDesktop?.answerQuit(true);
-            }}
-          >
-            {quitting ? t("Quitting…") : t("Quit Cox")}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogPopup>
-    </AlertDialog>
+    <>
+      <DialogSuppressionContext value={open}>{children}</DialogSuppressionContext>
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (quitting) return;
+          setOpen(next);
+          if (!next) window.coxDesktop?.answerQuit(false);
+        }}
+      >
+        <AlertDialogPopup initialFocus={cancelRef} bottomStickOnMobile={false} layer="application">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Quit Cox?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "Quitting stops the local backend and interrupts running agent tasks and terminals.",
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter variant="bare">
+            <AlertDialogClose
+              render={<Button ref={cancelRef} variant="outline" disabled={quitting} />}
+            >
+              {t("Cancel")}
+            </AlertDialogClose>
+            <Button
+              variant="destructive"
+              disabled={quitting}
+              onClick={() => {
+                setQuitting(true);
+                window.coxDesktop?.answerQuit(true);
+              }}
+            >
+              {quitting ? t("Quitting…") : t("Quit Cox")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+    </>
   );
 }

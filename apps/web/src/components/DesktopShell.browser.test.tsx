@@ -4,6 +4,7 @@ import { page } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { act, render } from "../../test/render";
 import { DesktopShell } from "./DesktopShell";
+import { Dialog, DialogPopup, DialogTitle } from "./ui/dialog";
 
 function installBridge(bridge: DesktopShellBridge | undefined) {
   const previous = Object.getOwnPropertyDescriptor(window, "coxDesktop");
@@ -103,4 +104,45 @@ describe("desktop shell", () => {
     expect(root.dataset.desktopFullscreen).toBeUndefined();
     expect(root.style.getPropertyValue("--desktop-window-zoom")).toBe("");
   });
+
+  it.each([false, true])(
+    "keeps quit clickable when another dialog opens late: %s",
+    async (late) => {
+      let requestQuit: (() => void) | undefined;
+      const bridge: DesktopShellBridge = {
+        platform: "win32",
+        ready: vi.fn(),
+        onQuitRequested: (listener) => {
+          requestQuit = listener;
+          return () => {};
+        },
+        answerQuit: vi.fn(),
+        setWindowColors: vi.fn(),
+        onWindowState: vi.fn(() => () => {}),
+        syncWindowControls: vi.fn(),
+      };
+      using _bridge = installBridge(bridge);
+      const content = (showDialog: boolean) => (
+        <DesktopShell>
+          {showDialog && (
+            <Dialog open>
+              <DialogPopup variant="media">
+                <DialogTitle>Setup dialog</DialogTitle>
+                <button type="button">Setup action</button>
+              </DialogPopup>
+            </Dialog>
+          )}
+        </DesktopShell>
+      );
+      await using screen = await render(content(!late));
+      await act(() => requestQuit?.());
+      if (late) await screen.rerender(content(true));
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      expect(bridge.answerQuit).toHaveBeenLastCalledWith(false);
+      await expect.element(page.getByRole("button", { name: "Setup action" })).toBeVisible();
+      await act(() => requestQuit?.());
+      await page.getByRole("button", { name: "Quit Cox", exact: true }).click();
+      expect(bridge.answerQuit).toHaveBeenLastCalledWith(true);
+    },
+  );
 });

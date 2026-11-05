@@ -2,7 +2,7 @@ import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
 
-const excluded = ["**/.cox/**", "**/node_modules/**", "**/dist/**", "**/.git/**"];
+const excluded = ["**/.cox/**", "**/node_modules/**", "**/dist/**", "**/.git/**", "**/release/**"];
 const packageProjects = ["apps/server", "apps/web", "packages/client-runtime"];
 const isRootRun = process.cwd() === import.meta.dirname;
 

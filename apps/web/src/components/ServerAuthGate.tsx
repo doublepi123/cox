@@ -35,7 +35,9 @@ export function ServerAuthGate({
       } else {
         const state = await resolveInitialServerAuthGateState();
         if (state.status !== "authenticated") {
-          throw new Error(state.errorMessage ?? t("Authentication failed."));
+          setError(state.errorMessage ?? t("Authentication failed."));
+          setSubmitting(false);
+          return;
         }
       }
       setCredential("");
