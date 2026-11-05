@@ -23,6 +23,7 @@ import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { openCodeUsageReader, type OpenCodeUsageReaderEnv } from "./usage.ts";
 import { readOpenCodeGoUsageLimits } from "./usageLimits.ts";
 import { loadOpenCode2Catalog } from "./openCode2Catalog.ts";
+import { loadOpenCode2Agents, withOpenCode2Agents } from "./openCode2Agents.ts";
 import { makeOpenCodeInstallation } from "./installation.ts";
 import {
   checkOpenCodeProviderStatus,
@@ -331,6 +332,16 @@ export const OpenCodeDriver: ProviderDriver<
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
       openCode2Server.withConnection(({ client }) => loadOpenCode2Catalog(client, host.paths.cwd)),
     );
+    const listOpenCode2Agents = (cwd: string) =>
+      openCode2Server
+        .withConnection(({ client }) => loadOpenCode2Agents(client, cwd))
+        .pipe(
+          Effect.catch(() =>
+            Effect.logWarning("Could not discover OpenCode agents.").pipe(
+              Effect.as({ agents: [] }),
+            ),
+          ),
+        );
     const listOpenCode2Workspace = (cwd: string) =>
       openCode2Server.withConnection(({ client, events }) =>
         Effect.gen(function* () {
@@ -387,6 +398,7 @@ export const OpenCodeDriver: ProviderDriver<
           host.paths.cwd,
           runtimeProbe.refresh,
           loadOpenCode2Models,
+          listOpenCode2Agents(host.paths.cwd),
         ).pipe(
           Effect.annotateLogs({ providerInstanceId: instanceId }),
           Effect.annotateSpans({ providerInstanceId: instanceId }),
@@ -527,6 +539,7 @@ export const OpenCodeDriver: ProviderDriver<
           : byOpenCodeRuntime(runtimeProbe.get, {
               v2: Effect.all([
                 snapshot.getSnapshot,
+                listOpenCode2Agents(cwd),
                 listOpenCode2Workspace(cwd).pipe(
                   Effect.timeout("20 seconds"),
                   Effect.mapError(
@@ -540,8 +553,12 @@ export const OpenCodeDriver: ProviderDriver<
                   ),
                 ),
               ]).pipe(
-                Effect.map(([machineSnapshot, { skills, commands }]) => ({
+                Effect.map(([machineSnapshot, agents, { skills, commands }]) => ({
                   ...machineSnapshot,
+                  models: machineSnapshot.models.map((model) => ({
+                    ...model,
+                    capabilities: withOpenCode2Agents(model.capabilities, agents),
+                  })),
                   skills: openCode2SkillsToServerProviderSkills(skills),
                   slashCommands: openCode2CommandsToServerProviderSlashCommands(commands),
                   // A finished scan lists at least the built-ins. None means it

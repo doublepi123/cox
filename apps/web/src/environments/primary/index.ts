@@ -1,11 +1,8 @@
 export {
-  peekPairingTokenFromUrl,
-  PrimaryEnvironmentPairingCredentialRejectedError,
+  PrimaryEnvironmentCredentialRejectedError,
   PrimaryEnvironmentRequestError,
   resolveInitialServerAuthGateState,
-  stripPairingTokenFromUrl,
   submitServerAuthCredential,
-  takePairingTokenFromUrl,
   __resetServerAuthBootstrapForTests,
 } from "./auth";
 

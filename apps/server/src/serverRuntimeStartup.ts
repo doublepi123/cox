@@ -46,13 +46,7 @@ import { forkParked, forkParkedFiber } from "./serverActivation.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { getServerOwners } from "./telemetry/Identify.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import {
-  formatHeadlessServeOutput,
-  formatHostForUrl,
-  isWildcardHost,
-  issueHeadlessServeAccessInfo,
-} from "./startupAccess.ts";
+import { formatHeadlessServeOutput, resolveHeadlessServeAccessInfo } from "./startupAccess.ts";
 
 export class ServerRuntimeStartupError extends Schema.TaggedError<ServerRuntimeStartupError>()(
   "ServerRuntimeStartupError",
@@ -330,25 +324,12 @@ const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
 
 const resolveStartupBrowserTarget = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-  const localUrl = `http://localhost:${serverConfig.port}`;
-  const bindUrl =
-    serverConfig.host && !isWildcardHost(serverConfig.host)
-      ? `http://${formatHostForUrl(serverConfig.host)}:${serverConfig.port}`
-      : localUrl;
-  const baseTarget = serverConfig.devUrl?.toString() ?? bindUrl;
-  return yield* serverAuth.issueStartupPairingUrl(baseTarget);
+  const accessInfo = yield* resolveHeadlessServeAccessInfo();
+  return serverConfig.devUrl?.toString() ?? accessInfo.connectionString;
 });
 
-/** Prints the one-time admin pairing URL to stdout only; logger records reach trace files and collectors. */
-export const announceStartupPairingUrl = (pairingUrl: string) =>
-  Effect.logInfo("Authentication required. Open Cox using the pairing URL.").pipe(
-    Effect.andThen(Console.log(`  pairingUrl: ${pairingUrl}`)),
-  );
-
-// Pairing tokens belong only in announceStartupPairingUrl's stdout output.
 export const logBrowserAutoOpenUnavailable = Effect.logInfo("browser auto-open unavailable", {
-  hint: "Open the pairing URL above in your browser.",
+  hint: "Open the Cox URL above in your browser.",
 });
 
 export const maybeOpenBrowser = Effect.fn("serverRuntimeStartup.maybeOpenBrowser")(function* (
@@ -361,8 +342,6 @@ export const maybeOpenBrowser = Effect.fn("serverRuntimeStartup.maybeOpenBrowser
   const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
 
   yield* externalLauncher.launchBrowser(target).pipe(
-    // The target carries the pairing token, and a failed launch records its
-    // command line on the span, so this call stays out of traces.
     Effect.withTracerEnabled(false),
     Effect.catch(() => logBrowserAutoOpenUnavailable),
   );
@@ -597,7 +576,7 @@ const make = Effect.fn("serverRuntimeStartup.make")(function* (options?: Startup
         );
         if (serverConfig.startupPresentation === "headless") {
           yield* Effect.logDebug("startup phase: headless access info");
-          const accessInfo = yield* issueHeadlessServeAccessInfo();
+          const accessInfo = yield* resolveHeadlessServeAccessInfo();
           yield* runStartupPhase(
             "headless.output",
             Console.log(formatHeadlessServeOutput(accessInfo)),
@@ -605,7 +584,9 @@ const make = Effect.fn("serverRuntimeStartup.make")(function* (options?: Startup
         } else {
           yield* Effect.logDebug("startup phase: browser open check");
           const startupBrowserTarget = yield* resolveStartupBrowserTarget;
-          yield* announceStartupPairingUrl(startupBrowserTarget);
+          yield* Console.log(
+            `Local URL: ${startupBrowserTarget}\nLogin mode: ${serverConfig.authPassword ? "password" : "local"}`,
+          );
           yield* runStartupPhase("browser.open", maybeOpenBrowser(startupBrowserTarget));
         }
       }),

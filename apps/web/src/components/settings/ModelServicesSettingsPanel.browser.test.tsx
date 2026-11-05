@@ -168,6 +168,28 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 }
 
 describe("model services settings", () => {
+  it.each([
+    ["Recovery budget (seconds)", "budgetMs", 600, "650", 650000],
+    ["Response headers timeout (seconds)", "responseHeadersTimeoutMs", 300, "350", 350000],
+    ["Maximum concurrent requests", "maxConcurrent", 5, "10", 10],
+  ] as const)(
+    "allows clearing and replacing %s without retaining zero",
+    async (label, key, initial, replacement, saved) => {
+      setup({ [id]: configured });
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await screen.getByText("Recovery limits and timing", { exact: true }).click();
+      const input = screen.getByLabelText(label, { exact: true });
+      await expect.element(input).toHaveValue(initial);
+      await input.fill("0");
+      await expect.element(input).toHaveValue(0);
+      await input.fill("");
+      await expect.element(input).toHaveValue(null);
+      await input.fill(replacement);
+      await screen.getByRole("button", { name: "Save service", exact: true }).click();
+      expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery[key]).toBe(saved);
+    },
+  );
+
   it("saves independent recovery switches, thresholds and shared limits", async () => {
     setup({ [id]: configured });
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
@@ -182,7 +204,9 @@ describe("model services settings", () => {
     await screen
       .getByRole("checkbox", { name: "Automatically retry temporary failures", exact: true })
       .click();
-    await screen.getByRole("checkbox", { name: "Respect 429 cooldown", exact: true }).click();
+    await expect
+      .element(screen.getByRole("checkbox", { name: "Respect 429 cooldown", exact: true }))
+      .not.toBeInTheDocument();
     for (const name of [
       "Retry all 429 responses, including quota limits",
       "Retry failed requests with upstream tools",
@@ -210,13 +234,12 @@ describe("model services settings", () => {
       retryOn429: true,
       retryToolRequests: true,
       hedgeEnabled: true,
-      respectRetryAfter: false,
       hedgeDelayMs: 2000,
       reasoningHedgeDelayMs: 5000,
       maxAttempts: 7,
       budgetMs: 60000,
       responseHeadersTimeoutMs: 30000,
-      maxConcurrent: 2,
+      maxConcurrent: 5,
     });
   });
   it.each([

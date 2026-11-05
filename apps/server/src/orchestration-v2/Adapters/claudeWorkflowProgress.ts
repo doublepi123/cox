@@ -56,6 +56,18 @@ function parseAgent(entry: unknown): OrchestrationV2WorkflowAgent | null {
   const state = Object.hasOwn(AGENT_STATES, reportedState)
     ? (AGENT_STATES[reportedState] ?? "running")
     : "running";
+  const cached = field(entry, "cached") === true;
+  const originalCompletedAt = timestamp(field(entry, "completedAt"));
+  const startedAt =
+    cached && originalCompletedAt === undefined ? undefined : timestamp(field(entry, "startedAt"));
+  const durationMs =
+    count(field(entry, "durationMs")) ??
+    (cached &&
+    startedAt !== undefined &&
+    originalCompletedAt !== undefined &&
+    originalCompletedAt >= startedAt
+      ? originalCompletedAt - startedAt
+      : undefined);
   return {
     index,
     label,
@@ -67,14 +79,20 @@ function parseAgent(entry: unknown): OrchestrationV2WorkflowAgent | null {
     ...optional("attempt", count(field(entry, "attempt"))),
     ...optional("totalTokens", count(field(entry, "tokens"))),
     ...optional("toolCalls", count(field(entry, "toolCalls"))),
-    ...optional("durationMs", count(field(entry, "durationMs"))),
+    ...optional("durationMs", durationMs),
+    ...optional("cached", typeof field(entry, "cached") === "boolean" ? cached : undefined),
+    ...optional(
+      "reusedAt",
+      cached
+        ? (timestamp(field(entry, "reusedAt")) ?? timestamp(field(entry, "lastProgressAt")))
+        : undefined,
+    ),
     ...optional("queuedAt", timestamp(field(entry, "queuedAt"))),
-    ...optional("startedAt", timestamp(field(entry, "startedAt"))),
-    // Execution duration excludes startup waits; terminal progress carries the end instant.
+    ...optional("startedAt", startedAt),
     ...optional(
       "completedAt",
       state === "completed" || state === "failed"
-        ? timestamp(field(entry, "lastProgressAt"))
+        ? (originalCompletedAt ?? (cached ? undefined : timestamp(field(entry, "lastProgressAt"))))
         : undefined,
     ),
     ...optional("prompt", preview(field(entry, "promptPreview"))),
@@ -144,7 +162,12 @@ export function mergeClaudeWorkflowProgress(input: {
     const prior = agentsByIndex.get(agent.index);
     const attempt = agent.attempt ?? prior?.attempt ?? 1;
     if (prior !== undefined && attempt < (prior.attempt ?? 1)) continue;
-    const restarted = prior !== undefined && attempt > (prior.attempt ?? 1);
+    const restarted =
+      prior !== undefined &&
+      (attempt > (prior.attempt ?? 1) ||
+        (agent.agentId !== undefined &&
+          prior.agentId !== undefined &&
+          agent.agentId !== prior.agentId));
     const regressed =
       !restarted &&
       (((prior?.state === "completed" || prior?.state === "failed") &&

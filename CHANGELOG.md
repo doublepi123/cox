@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.39 — 2026-11-05
+
+- Remove pairing codes, pairing links, bootstrap tokens and development auth
+  bypasses. Default to loopback with automatic local browser sessions; require a
+  password for explicitly configured numeric non-loopback listen addresses.
+  Preserve source-peer, origin and WebSocket checks. MCP authorization now uses
+  a server-owned browser sign-in and explicit consent flow with CSRF and PKCE.
+- Authentication migration invalidates existing browser and client sessions,
+  including MCP sessions. Sign in or approve clients again after upgrading.
+  Password changes also invalidate sessions. Back up the Cox data directory
+  before upgrading; downgrading requires its matching pre-upgrade backup.
+- Discover OpenCode 2 visible primary/all agents per project, including plugin
+  agents. Honor explicit selections and otherwise preserve the native session
+  default. Plan mode temporarily takes priority; returning to normal restores
+  the selected or original agent without changing the chosen model/provider.
+- Display workflow cache reuse separately from execution, preserving known
+  original durations across snapshots and showing an unknown original duration
+  for legacy caches instead of a misleading zero. The external Claude runtime's
+  native journal still omits execution timing; Cox cannot recover that missing
+  history, and native persistence requires an upstream runtime fix.
+- Make the retry-on-429 option ignore upstream cooldowns, removing the separate
+  cooldown toggle while retaining local backoff and retry limits. Default recovery
+  budgets to 600 seconds, response-header timeouts to 300 seconds and concurrent
+  requests to 5, with a maximum of 10. Preserve explicit saved custom settings.
+- Fix recovery numeric inputs so values can be cleared while editing, including
+  the last zero; invalid or empty values revert on blur.
+
 ## 0.1.38 — 2026-11-05
 
 - Report model-service recovery budget exhaustion as HTTP 504 with a distinct

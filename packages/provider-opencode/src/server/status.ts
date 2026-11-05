@@ -24,6 +24,7 @@ import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import type { ProbedOpenCode } from "./versionProbe.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
 import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
+import { withOpenCode2Agents, type OpenCode2Agents } from "./openCode2Agents.ts";
 
 const OPENCODE_PRESENTATION = {
   displayName: "OpenCode",
@@ -607,7 +608,9 @@ const checkOpenCode2 = Effect.fn("checkOpenCode2")(function* (
   version: string,
   checkedAt: string,
   loadModels: Effect.Effect<ReadonlyArray<OpenCode2Model>, OpenCodeRuntime.OpenCodeRuntimeError>,
+  loadAgents: Effect.Effect<OpenCode2Agents>,
 ) {
+  const agents = yield* loadAgents;
   const result = yield* Effect.exit(loadModels);
   const probe = (status: "ready" | "warning" | "error", message: string) => ({
     installed: true,
@@ -631,7 +634,10 @@ const checkOpenCode2 = Effect.fn("checkOpenCode2")(function* (
         [],
         settings.customModels,
         DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-      ),
+      ).map((model) => ({
+        ...model,
+        capabilities: withOpenCode2Agents(model.capabilities, agents),
+      })),
       slashCommands: [COMPACT_SLASH_COMMAND],
       probe: probe("error", "OpenCode could not load its model list."),
     });
@@ -661,7 +667,10 @@ const checkOpenCode2 = Effect.fn("checkOpenCode2")(function* (
     ).toSorted((left, right) => left.name.localeCompare(right.name)),
     settings.customModels,
     DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-  );
+  ).map((model) => ({
+    ...model,
+    capabilities: withOpenCode2Agents(model.capabilities, agents),
+  }));
   return buildServerProvider({
     presentation: OPENCODE_2_PRESENTATION,
     enabled: true,
@@ -686,6 +695,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     ReadonlyArray<OpenCode2Model>,
     OpenCodeRuntime.OpenCodeRuntimeError
   >,
+  loadOpenCode2Agents: Effect.Effect<OpenCode2Agents> = Effect.succeed({ agents: [] }),
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -758,7 +768,13 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
   }
   const probed = probedExit.value;
   if (probed.generation === "v2") {
-    return yield* checkOpenCode2(openCodeSettings, probed.version, checkedAt, loadOpenCode2Models);
+    return yield* checkOpenCode2(
+      openCodeSettings,
+      probed.version,
+      checkedAt,
+      loadOpenCode2Models,
+      loadOpenCode2Agents,
+    );
   }
   if (compareSemverVersions(probed.version, OpenCodeRuntime.MINIMUM_OPENCODE_VERSION) < 0) {
     return buildServerProvider({

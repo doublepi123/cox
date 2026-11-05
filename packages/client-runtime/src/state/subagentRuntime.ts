@@ -74,6 +74,9 @@ export interface RuntimeSubagent {
   readonly firstSeenAt: string;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
+  readonly cached?: boolean | undefined;
+  readonly durationMs?: number | undefined;
+  readonly reusedAt?: string | undefined;
   readonly updatedAt: string;
 }
 
@@ -143,10 +146,18 @@ function workflowMembersToRuntime(
       ? (isoFromEpochMillis(agent.completedAt) ??
         (agent.startedAt !== undefined && agent.durationMs !== undefined
           ? isoFromEpochMillis(agent.startedAt + agent.durationMs)
-          : coordinator.completedAt))
+          : agent.cached
+            ? null
+            : coordinator.completedAt))
       : null;
     return {
       ...coordinator,
+      cached: agent.cached,
+      durationMs: agent.durationMs,
+      reusedAt:
+        agent.reusedAt === undefined
+          ? undefined
+          : (isoFromEpochMillis(agent.reusedAt) ?? undefined),
       id: `${coordinator.id}:agent:${agent.index}`,
       kind: "workflow_agent" as const,
       title: agent.label,

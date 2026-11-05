@@ -28,20 +28,25 @@ describe("model service contracts", () => {
       retryOn429: false,
       retryToolRequests: false,
       hedgeEnabled: true,
-      respectRetryAfter: true,
       hedgeDelayMs: 30000,
       reasoningHedgeDelayMs: 60000,
       maxAttempts: 12,
-      budgetMs: 180000,
-      responseHeadersTimeoutMs: 120000,
-      maxConcurrent: 2,
+      budgetMs: 600000,
+      responseHeadersTimeoutMs: 300000,
+      maxConcurrent: 5,
     });
-    expect(
-      recovery({ retryEnabled: false, hedgeEnabled: true, respectRetryAfter: false }).retryEnabled,
-    ).toBe(false);
+    expect(recovery({ retryEnabled: false, hedgeEnabled: true }).retryEnabled).toBe(false);
+    expect(recovery({ maxConcurrent: 10 }).maxConcurrent).toBe(10);
+    for (const retryOn429 of [false, true]) {
+      for (const respectRetryAfter of [false, true]) {
+        const decoded = recovery({ retryOn429, respectRetryAfter });
+        expect(decoded.retryOn429).toBe(retryOn429);
+        expect(decoded).not.toHaveProperty("respectRetryAfter");
+      }
+    }
     for (const invalid of [
       { maxAttempts: 0 },
-      { maxConcurrent: 5 },
+      { maxConcurrent: 11 },
       { hedgeDelayMs: -1 },
       { reasoningHedgeDelayMs: 0 },
       { budgetMs: 0 },
@@ -59,7 +64,7 @@ describe("model service contracts", () => {
     expect(recovery({ hedgeDelayMs: 15000, reasoningHedgeDelayMs: 45000 })).toMatchObject({
       hedgeDelayMs: 15000,
       reasoningHedgeDelayMs: 45000,
-      responseHeadersTimeoutMs: 120000,
+      responseHeadersTimeoutMs: 300000,
     });
     expect(
       decodeService(
@@ -68,7 +73,6 @@ describe("model service contracts", () => {
           recovery: recovery({
             retryOn429: true,
             retryToolRequests: true,
-            respectRetryAfter: false,
             maxAttempts: 20,
           }),
         }),
@@ -76,7 +80,6 @@ describe("model service contracts", () => {
     ).toMatchObject({
       retryOn429: true,
       retryToolRequests: true,
-      respectRetryAfter: false,
       maxAttempts: 20,
     });
   });

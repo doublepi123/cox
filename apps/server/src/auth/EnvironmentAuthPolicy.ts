@@ -3,10 +3,20 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { isRemoteReachableHost, resolveSessionCookieName } from "./utils.ts";
+
+export class ServerAuthPolicyConfigurationError extends Schema.TaggedError<ServerAuthPolicyConfigurationError>()(
+  "ServerAuthPolicyConfigurationError",
+  {},
+) {
+  override get message(): string {
+    return "Non-loopback listening requires a configured sign-in password.";
+  }
+}
 
 export class EnvironmentAuthPolicy extends Context.Service<
   EnvironmentAuthPolicy,
@@ -22,11 +32,15 @@ export const make = Effect.gen(function* () {
   const isRemoteReachable = isRemoteReachableHost(config.host);
 
   const policy = isRemoteReachable ? "remote-reachable" : "loopback-browser";
-  const bootstrapMethods: ServerAuthDescriptor["bootstrapMethods"] = ["one-time-token"];
+  const passwordLogin =
+    config.authPassword !== undefined && Redacted.value(config.authPassword).length > 0;
+  if (isRemoteReachable && !passwordLogin) {
+    return yield* new ServerAuthPolicyConfigurationError({});
+  }
 
   const descriptor: ServerAuthDescriptor = {
     policy,
-    bootstrapMethods,
+    loginMode: passwordLogin ? "password" : "local",
     sessionMethods: ["browser-session-cookie", "bearer-access-token", "dpop-access-token"],
     serverUpdateScope: AuthEnvironmentMaintainScope,
     sessionCookieName: resolveSessionCookieName({

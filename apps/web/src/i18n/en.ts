@@ -140,16 +140,13 @@ export const en = {
   "Retry all 429 responses, including quota limits":
     "Retry all 429 responses, including quota limits",
   "Retry failed requests with upstream tools": "Retry failed requests with upstream tools",
-  "429 retries share the recovery budget. The cooldown setting still controls how long to wait.":
-    "429 retries share the recovery budget. The cooldown setting still controls how long to wait.",
+  "429 retries share the recovery budget and use the local retry interval instead of the service cooldown.":
+    "429 retries share the recovery budget and use the local retry interval instead of the service cooldown.",
   "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.":
     "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.",
   "Start backup requests when responses are slow": "Start backup requests when responses are slow",
-  "Respect 429 cooldown": "Respect 429 cooldown",
   "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.":
     "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.",
-  "429 responses use the local retry interval instead of the service cooldown.":
-    "429 responses use the local retry interval instead of the service cooldown.",
   "Recovery limits and timing": "Recovery limits and timing",
   "Backup delay (seconds)": "Backup delay (seconds)",
   "Reasoning backup delay (seconds)": "Reasoning backup delay (seconds)",
@@ -3536,6 +3533,9 @@ export const en = {
   "Model not reported": "Model not reported",
   "Open subagent {title}": "Open subagent {title}",
   "Elapsed: {duration}": "Elapsed: {duration}",
+  "Reused cached result": "Reused cached result",
+  "Original duration unknown": "Original duration unknown",
+  "Original duration {duration}": "Original duration {duration}",
   "{count}s": "{count}s",
   "yesterday at {time}": "yesterday at {time}",
   "Choose what to show": "Choose what to show",
@@ -3567,10 +3567,7 @@ export const en = {
   "change request templates": "change request templates",
   "review guide instructions": "review guide instructions",
   "source control writing style": "source control writing style",
-  "Enter the pairing token from the server terminal, or open its pairing URL.":
-    "Enter the pairing token from the server terminal, or open its pairing URL.",
-  "Password or pairing token": "Password or pairing token",
-  "Pairing token": "Pairing token",
+  "Enter your server password to continue.": "Enter your server password to continue.",
   "Authentication failed.": "Authentication failed.",
   "Signing in…": "Signing in…",
   "Open context transfer in this chat": "Open context transfer in this chat",

@@ -9,10 +9,73 @@ import {
   AuthStandardClientScopes,
   authScopeResponse,
   AuthSessionState,
+  AuthBrowserSessionRequest,
+  AuthMcpApprovalDecision,
+  AuthAccessSnapshot,
+  AuthAccessStreamEvent,
+  ServerAuthDescriptor,
   sessionGrantsScope,
 } from "./auth.ts";
+import { EnvironmentHttpApi } from "./environmentHttp.ts";
 
 describe("authorization grants", () => {
+  it("removes pairing and bootstrap-token routes while retaining MCP OAuth", () => {
+    expect(Object.keys(EnvironmentHttpApi.groups.auth.endpoints).sort()).toEqual([
+      "browserSession",
+      "revokeClient",
+      "revokeOtherClients",
+      "session",
+      "webSocketTicket",
+      "webSocketTicketFor",
+    ]);
+    expect(EnvironmentHttpApi.groups.mcpOAuth.endpoints.token.path).toBe("/oauth/mcp/token");
+  });
+
+  it("requires an explicit local or password login mode", () => {
+    const decode = Schema.decodeUnknownSync(ServerAuthDescriptor);
+    const descriptor = {
+      policy: "loopback-browser",
+      sessionMethods: ["browser-session-cookie"],
+      sessionCookieName: "cox_session",
+    };
+    expect(decode({ ...descriptor, loginMode: "local" }).loginMode).toBe("local");
+    expect(decode({ ...descriptor, loginMode: "password" }).loginMode).toBe("password");
+    expect(() => decode(descriptor)).toThrow();
+    expect(() => decode({ ...descriptor, loginMode: "pairing" })).toThrow();
+  });
+
+  it("accepts empty local session requests and trims supplied passwords", () => {
+    const decode = Schema.decodeUnknownSync(AuthBrowserSessionRequest);
+    expect(decode({})).toEqual({});
+    expect(decode({ credential: "  password  " })).toEqual({ credential: "password" });
+    expect(() => decode({ credential: "  " })).toThrow();
+    expect(() => decode({ credential: null })).toThrow();
+  });
+
+  it("restricts MCP approval to browser sessions or denial", () => {
+    const decode = Schema.decodeUnknownSync(AuthMcpApprovalDecision);
+    expect(decode({ _tag: "deny" })).toEqual({ _tag: "deny" });
+    expect(decode({ _tag: "browser-session", access: "read-only", csrfToken: "csrf" })).toEqual({
+      _tag: "browser-session",
+      access: "read-only",
+      csrfToken: "csrf",
+    });
+    expect(() => decode({ _tag: "pairing-code", access: "read-only", code: "secret" })).toThrow();
+  });
+
+  it("keeps access snapshots and events limited to clients", () => {
+    expect(Schema.decodeSync(AuthAccessSnapshot)({ clientSessions: [] })).toEqual({
+      clientSessions: [],
+    });
+    const decode = Schema.decodeUnknownSync(AuthAccessStreamEvent);
+    expect(
+      decode({ version: 1, revision: 0, type: "snapshot", payload: { clientSessions: [] } }).type,
+    ).toBe("snapshot");
+    for (const type of ["pairingLinkUpserted", "pairingLinkRemoved"]) {
+      expect(() => decode({ version: 1, revision: 0, type, payload: { id: "old" } })).toThrow();
+    }
+  });
+
   it("decodes legacy review credentials without offering them in new grants", () => {
     const decodeAuthEnvironmentScopes = Schema.decodeSync(AuthEnvironmentScopes);
 
@@ -62,7 +125,7 @@ describe("authorization grants", () => {
       authenticated: true,
       auth: {
         policy: "loopback-browser",
-        bootstrapMethods: [],
+        loginMode: "local",
         sessionMethods: [],
         sessionCookieName: "session",
       },

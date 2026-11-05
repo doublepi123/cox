@@ -27,6 +27,84 @@ const agent = (overrides: Record<string, unknown>) => ({
 });
 
 describe("mergeClaudeWorkflowProgress", () => {
+  it("keeps legacy cache reuse separate from unknown execution timing", () => {
+    const workflow = mergeClaudeWorkflowProgress({
+      previous: undefined,
+      message: snapshotFrame([
+        agent({
+          state: "done",
+          agentId: "cached-agent",
+          cached: true,
+          startedAt: 1793887167396,
+          lastProgressAt: 1793887167396,
+        }),
+      ]),
+    });
+    expect(workflow?.agents[0]).toMatchObject({
+      state: "completed",
+      cached: true,
+      reusedAt: 1793887167396,
+    });
+    expect(workflow?.agents[0]).not.toHaveProperty("startedAt");
+    expect(workflow?.agents[0]).not.toHaveProperty("completedAt");
+    expect(workflow?.agents[0]).not.toHaveProperty("durationMs");
+  });
+
+  it("preserves original cached execution times and a separate reuse instant", () => {
+    const workflow = mergeClaudeWorkflowProgress({
+      previous: undefined,
+      message: snapshotFrame([
+        agent({
+          state: "done",
+          cached: true,
+          durationMs: 1983254,
+          startedAt: 1000,
+          completedAt: 1984254,
+          reusedAt: 1793887167396,
+          lastProgressAt: 1793887167397,
+        }),
+      ]),
+    });
+    expect(workflow?.agents[0]).toMatchObject({
+      cached: true,
+      durationMs: 1983254,
+      startedAt: 1000,
+      completedAt: 1984254,
+      reusedAt: 1793887167396,
+    });
+  });
+
+  it("retains known timing only for the same cached execution", () => {
+    const previous = mergeClaudeWorkflowProgress({
+      previous: undefined,
+      message: snapshotFrame([
+        agent({
+          state: "done",
+          agentId: "original",
+          durationMs: 1983254,
+          startedAt: 1000,
+          lastProgressAt: 1984254,
+        }),
+      ]),
+    });
+    for (const agentId of ["original", "different"]) {
+      const workflow = mergeClaudeWorkflowProgress({
+        previous,
+        message: snapshotFrame([
+          agent({
+            state: "done",
+            agentId,
+            cached: true,
+            startedAt: 1793887167396,
+            lastProgressAt: 1793887167396,
+          }),
+        ]),
+      });
+      expect(workflow?.agents[0]?.durationMs).toBe(agentId === "original" ? 1983254 : undefined);
+      expect(workflow?.agents[0]?.cached).toBe(true);
+    }
+  });
+
   it("maps provider agent states and per-member metrics", () => {
     const workflow = mergeClaudeWorkflowProgress({
       previous: undefined,

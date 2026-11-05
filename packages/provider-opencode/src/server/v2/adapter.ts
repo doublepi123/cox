@@ -56,6 +56,7 @@ import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as OpenCode2Client from "./OpenCode2Client.ts";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
+import { loadOpenCode2Agents } from "../openCode2Agents.ts";
 import { readableProviderErrorMessage } from "../providerErrorMessage.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
@@ -282,7 +283,8 @@ interface ThreadState {
   /** A late first start belongs to the failed prompt; only a subsequent start proves a lost end. */
   unsettledStarted: boolean;
   directory: string;
-  agent: string;
+  agent: string | undefined;
+  defaultAgent: string | undefined;
   title: string | undefined;
   rules: ReadonlyArray<Rule> | undefined;
   policy: RulesPolicy;
@@ -613,7 +615,9 @@ const sameModel = (left: ModelRef, right: ModelRef | undefined) =>
   (left.variant ?? "default") === (right?.variant ?? "default");
 
 const agentFor = (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
-  input.runtimePolicy.interactionMode === "plan" ? "plan" : "build";
+  input.runtimePolicy.interactionMode === "plan"
+    ? "plan"
+    : getModelSelectionStringOptionValue(input.modelSelection, "agent");
 
 const commandOf = (text: string) => {
   const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
@@ -764,7 +768,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       unsettled: false,
       unsettledStarted: false,
       directory,
-      agent: "build",
+      agent: undefined,
+      defaultAgent: undefined,
       title: undefined,
       rules: undefined,
       policy: input.runtimePolicy,
@@ -2819,7 +2824,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       const paths =
         policy.runtimeMode === "full-access" && !plan
           ? []
-          : yield* pathsFor(thread.directory, plan ? [thread.agent, "plan"] : [thread.agent]);
+          : yield* pathsFor(
+              thread.directory,
+              (plan ? [thread.agent, "plan"] : [thread.agent]).filter(
+                (agent): agent is string => agent !== undefined,
+              ),
+            );
       return sessionRules(
         policy,
         paths,
@@ -2860,6 +2870,13 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       directory: string,
     ) => {
       providerThread = withReportedModel(providerThread, native.model);
+      const defaultAgent = providerThread.nativeMetadata?.openCodeDefaultAgent ?? native.agent;
+      if (defaultAgent !== undefined) {
+        providerThread = {
+          ...providerThread,
+          nativeMetadata: { ...providerThread.nativeMetadata, openCodeDefaultAgent: defaultAgent },
+        };
+      }
       const existing = threads.get(native.id);
       if (existing !== undefined) {
         existing.providerThread = providerThread;
@@ -2873,6 +2890,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       const state = newThreadState(native.id, providerThread, directory, undefined);
       state.model = native.model;
       state.agent = native.agent ?? state.agent;
+      state.defaultAgent = defaultAgent;
       state.title = native.title;
       state.rules = native.permissions;
       threads.set(native.id, state);
@@ -3609,14 +3627,29 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
                   }),
                 });
               }
-              // Switch to the plan agent before writing rules to retain its own path allows.
-              const agent = agentFor(turnInput);
-              if (agent !== state.agent) {
+              const agent = agentFor(turnInput) ?? state.defaultAgent;
+              if (agent !== undefined && agent !== state.agent) {
+                if (state.defaultAgent === undefined) {
+                  state.defaultAgent = yield* loadOpenCode2Agents(client, state.directory).pipe(
+                    Effect.map((inventory) => inventory.defaultAgent),
+                    Effect.orElseSucceed(() => undefined),
+                  );
+                  if (state.defaultAgent !== undefined) {
+                    state.providerThread = {
+                      ...state.providerThread,
+                      nativeMetadata: {
+                        ...state.providerThread.nativeMetadata,
+                        openCodeDefaultAgent: state.defaultAgent,
+                      },
+                    };
+                  }
+                }
                 yield* client.session.switchAgent({
                   sessionID: Session.ID.make(sessionId),
                   agent: Agent.ID.make(agent),
                 });
                 state.agent = agent;
+                state.model = undefined;
               }
               // Refresh stale mode rules; running subagent updates are best effort because they outlive this turn.
               yield* writeRules(state, turnInput.runtimePolicy);

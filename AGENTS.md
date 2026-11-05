@@ -6,7 +6,8 @@ Cox is a local-only Web UI for coding agents, derived from T3 Code.
 
 - Keep the browser UI, local Node server, agent providers, projects, threads, terminals, Git and checkpoints.
 - Do not add desktop or mobile apps, cloud accounts, T3 Connect, relay/tunnel infrastructure, remote environment linking or update services.
-- Bind the server to loopback by default. Preserve local authentication and WebSocket origin checks.
+- Bind the server to loopback by default. Nonloopback numeric listen addresses require COX_AUTH_PASSWORD; a password never broadens the bind automatically. Preserve local authentication and WebSocket origin checks.
+- Without a password, only local browsers may establish sessions automatically. Never expose local-no-password mode through a proxy; require a password and HTTPS for nonlocal access.
 - Cox state belongs in `~/.cox` or a checkout-local `.cox` directory, never `~/.t3`.
 - Do not change the original T3 Code checkout or the live T3 installation.
 

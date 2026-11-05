@@ -31,6 +31,9 @@ const child = spawn(process.execPath, [driver], {
   env: {
     ...process.env,
     HOME: root,
+    T3CODE_TRACE_FILE: join(root, "smoke-trace.ndjson"),
+    COX_AUTH_PASSWORD: "",
+    T3CODE_AUTH_PASSWORD: "",
     COX_SERVER_PORT: String(serverPort),
     COX_WEB_PORT: String(webPort),
     T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
@@ -39,7 +42,7 @@ const child = spawn(process.execPath, [driver], {
   stdio: ["ignore", "pipe", "pipe"],
 });
 let output = "";
-let pairing;
+let startupUrl;
 let viteReady = false;
 let resolveReady;
 const ready = new Promise((resolve) => {
@@ -49,10 +52,10 @@ for (const stream of [child.stdout, child.stderr])
   stream.on("data", (chunk) => {
     output += chunk;
     const text = output.replace(/\u001b\[[0-9;]*m/g, "");
-    const match = text.match(/pairingUrl:\s*(http\S+)/);
-    if (match) pairing = new URL(match[1]);
+    const match = text.match(/Local URL:\s*(http\S+)/);
+    if (match) startupUrl = new URL(match[1]);
     if (/ready in/i.test(text)) viteReady = true;
-    if (pairing && viteReady) resolveReady();
+    if (startupUrl && viteReady) resolveReady();
   });
 const exited = new Promise((resolve, reject) => {
   child.once("error", reject);
@@ -70,23 +73,22 @@ try {
       throw new Error(`Development launcher exited before ready: ${JSON.stringify(result)}`);
     }),
   ]);
-  assert.equal(pairing.origin, origin);
+  assert.equal(startupUrl.origin, origin);
   const indexResponse = await fetch(origin);
   assert.equal(indexResponse.status, 200);
   assert.match(await indexResponse.text(), /<title>Cox(?: \(Beta\))?<\/title>/);
   const descriptor = await fetch(`${origin}/.well-known/t3/environment`);
   assert.equal(descriptor.status, 200);
   assert.match(descriptor.headers.get("content-type"), /json/);
-  assert.equal(
-    (await fetch(`${origin}/api/auth/session`).then((response) => response.json())).authenticated,
-    false,
+  const sessionBefore = await fetch(`${origin}/api/auth/session`).then((response) =>
+    response.json(),
   );
-  const credential = new URLSearchParams(pairing.hash.slice(1)).get("token");
-  assert.ok(credential);
+  assert.equal(sessionBefore.authenticated, false);
+  assert.equal(sessionBefore.auth.loginMode, "local");
   const login = await fetch(`${origin}/api/auth/browser-session`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
-    body: JSON.stringify({ credential }),
+    body: "{}",
   });
   assert.equal(login.status, 200);
   const cookie = login.headers.get("set-cookie").split(";")[0];
@@ -126,12 +128,7 @@ try {
     "PASS: actual development launcher, Cox HTML, same-origin descriptor/auth/projects proxy, WebSocket proxy, isolated checkout state.",
   );
 } catch (error) {
-  console.error(
-    output
-      .replace(/pairingUrl:[^\n]*/g, "pairingUrl: [redacted]")
-      .replace(/token=[^\s&]+/g, "token=[redacted]")
-      .slice(-10000),
-  );
+  console.error(output.slice(-10000));
   throw error;
 } finally {
   clearTimeout(timeout);

@@ -2,6 +2,7 @@ import type { RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRunt
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { deriveSubagentElapsedMs } from "@t3tools/shared/orchestrationTiming";
 import { tickTextContent } from "~/lib/tickTextContent";
+import { useTranslation } from "../../i18n";
 
 function formatElapsedSeconds(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -29,10 +30,22 @@ export function AgentElapsed({
   agent,
   compact = false,
 }: {
-  agent: Pick<RuntimeSubagent, "status" | "startedAt" | "completedAt">;
+  agent: Pick<RuntimeSubagent, "status" | "startedAt" | "completedAt" | "cached" | "durationMs">;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const format = compact ? formatCompactElapsedSeconds : formatElapsedSeconds;
+  if (agent.cached) {
+    const elapsedMs = deriveSubagentElapsedMs(agent, 0);
+    return (
+      <span className="tabular-nums">
+        {t("Reused cached result")} ·{" "}
+        {elapsedMs === null
+          ? t("Original duration unknown")
+          : t("Original duration {duration}", { duration: format(elapsedMs / 1000) })}
+      </span>
+    );
+  }
   const live = isOrchestrationV2WorkActive(agent.status);
   const { status, startedAt, completedAt } = agent;
   if (deriveSubagentElapsedMs(agent, 0) === null) {

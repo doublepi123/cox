@@ -134,16 +134,13 @@ export const zh = {
   "Automatically retry temporary failures": "自动重试临时故障",
   "Retry all 429 responses, including quota limits": "忽略 429／额度限制错误，继续重试",
   "Retry failed requests with upstream tools": "允许含上游工具调用的失败请求重试",
-  "429 retries share the recovery budget. The cooldown setting still controls how long to wait.":
-    "429 重试沿用恢复预算，等待时间仍由冷却时间开关控制。",
+  "429 retries share the recovery budget and use the local retry interval instead of the service cooldown.":
+    "429 重试沿用恢复预算，按本地重试间隔继续尝试，不遵守服务要求的冷却时间。",
   "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.":
     "含网页搜索等工具的请求在输出开始前失败时串行重试，上游工具可能再次执行。",
   "Start backup requests when responses are slow": "响应缓慢时启动备用请求",
-  "Respect 429 cooldown": "遵守 429 冷却时间",
   "Retries and backups share one budget. Backup requests may incur additional usage even when cancelled.":
     "重试和备用请求共用预算。备用请求即使被取消，也可能产生额外用量。",
-  "429 responses use the local retry interval instead of the service cooldown.":
-    "收到 429 后按本地重试间隔继续尝试，忽略服务要求的冷却时间。",
   "Recovery limits and timing": "恢复上限与等待时间",
   "Backup delay (seconds)": "备用请求等待时间（秒）",
   "Reasoning backup delay (seconds)": "深度推理备用等待时间（秒）",
@@ -3418,6 +3415,9 @@ export const zh = {
   "Model not reported": "未报告模型",
   "Open subagent {title}": "打开子 Agent：{title}",
   "Elapsed: {duration}": "已用时：{duration}",
+  "Reused cached result": "已复用缓存",
+  "Original duration unknown": "原耗时未知",
+  "Original duration {duration}": "原耗时 {duration}",
   "{count}s": "{count}秒",
   "yesterday at {time}": "昨天 {time}",
   "Choose what to show": "选择显示内容",
@@ -3447,10 +3447,7 @@ export const zh = {
   "change request templates": "变更请求模板",
   "review guide instructions": "审查指南指令",
   "source control writing style": "源码管理写作风格",
-  "Enter the pairing token from the server terminal, or open its pairing URL.":
-    "请输入服务端终端显示的配对令牌，或打开其配对链接。",
-  "Password or pairing token": "密码或配对令牌",
-  "Pairing token": "配对令牌",
+  "Enter your server password to continue.": "输入服务器密码以继续。",
   "Authentication failed.": "认证失败。",
   "Signing in…": "正在登录…",
   "Open context transfer in this chat": "在此处打开上下文转移的对话",

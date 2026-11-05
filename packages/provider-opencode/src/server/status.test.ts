@@ -25,6 +25,7 @@ import {
   type OpenCode2Workspace,
 } from "./status.ts";
 import { readOpenCodeGoUsageLimits } from "./usageLimits.ts";
+import type { OpenCode2Agents } from "./openCode2Agents.ts";
 import { probeOpenCodeRuntime } from "./versionProbe.ts";
 import {
   OPENCODE_1_RESPONSES,
@@ -499,6 +500,7 @@ const checkProvider = Effect.fn("checkProvider")(function* (
     ReadonlyArray<OpenCode2Model>,
     OpenCodeRuntime.OpenCodeRuntimeError
   > = Effect.succeed([]),
+  agents: OpenCode2Agents = { agents: [] },
 ) {
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -512,14 +514,51 @@ const checkProvider = Effect.fn("checkProvider")(function* (
         Effect.provideService(HttpClient.HttpClient, server),
         Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, OpenCodeRuntimeTestDouble),
       );
-      return yield* checkOpenCodeProviderStatus(settings, cwd, probe, openCode2Models).pipe(
-        Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
-      );
+      return yield* checkOpenCodeProviderStatus(
+        settings,
+        cwd,
+        probe,
+        openCode2Models,
+        Effect.succeed(agents),
+      ).pipe(Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner));
     }),
   );
 });
 
 it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
+  it.effect("adds visible native agents to OpenCode 2 catalog and bound custom models", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.versionStdout = "opencode v2.2.5\n";
+      const snapshot = yield* checkProvider(
+        makeOpenCodeSettings({ customModels: ["cox/gpt-test"] }),
+        "/project",
+        undefined,
+        undefined,
+        Effect.succeed([{ id: "gpt-test", providerID: "cox", name: "Test", variants: [] }]),
+        {
+          agents: [
+            { id: "orchestrator", name: "Orchestrator", mode: "primary", hidden: false },
+            { id: "review", name: "Review", mode: "all", hidden: false },
+            { id: "hidden", name: "Hidden", mode: "primary", hidden: true },
+            { id: "worker", name: "Worker", mode: "subagent", hidden: false },
+          ],
+          defaultAgent: "orchestrator",
+        },
+      );
+      NodeAssert.equal(snapshot.status, "ready");
+      for (const model of snapshot.models) {
+        const descriptor = model.capabilities?.optionDescriptors?.find(
+          (option) => option.id === "agent",
+        );
+        NodeAssert.ok(descriptor?.type === "select");
+        NodeAssert.deepEqual(descriptor.options, [
+          { id: "orchestrator", label: "Orchestrator", isDefault: true },
+          { id: "review", label: "Review" },
+        ]);
+        NodeAssert.equal(descriptor.currentValue, "orchestrator");
+      }
+    }),
+  );
   it.effect.each(["version", "inventory", "models", "empty-v1", "empty-v2"] as const)(
     "records %s discovery failures in the existing trace and logger",
     (failure) =>

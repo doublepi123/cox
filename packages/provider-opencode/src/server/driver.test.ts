@@ -130,6 +130,94 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("discovers directory-specific agents for model-service custom models", () =>
+    Effect.gen(function* () {
+      const http = HttpClient.make((request, url) => {
+        const directory = url.searchParams.get("location[directory]") ?? "/work";
+        const agentId = directory === "/project-a" ? "orchestrator" : "reviewer";
+        const body =
+          url.pathname === "/api/info"
+            ? { version: "2.2.5", pid: 123, urls: [], paths: { tmp: "/tmp/opencode" } }
+            : url.pathname === "/api/config"
+              ? [{ type: "document", info: { default_agent: agentId } }]
+              : {
+                  location: { directory },
+                  data:
+                    url.pathname === "/api/agent"
+                      ? [
+                          {
+                            id: agentId,
+                            name: agentId,
+                            mode: "primary",
+                            hidden: false,
+                            request: { settings: {}, headers: {}, body: {} },
+                            permissions: [],
+                          },
+                        ]
+                      : url.pathname === "/api/model"
+                        ? [
+                            {
+                              id: "test",
+                              modelID: "test",
+                              providerID: "cox",
+                              name: "Test",
+                              package: "@opencode/ai/providers/openai-compatible",
+                              settings: {},
+                              compatibility: {},
+                              capabilities: { tools: true, input: ["text"], output: ["text"] },
+                              variants: [],
+                              time: { released: 1789516800000 },
+                              cost: [],
+                              status: "active",
+                              enabled: true,
+                              limit: { context: 64000, output: 4000 },
+                            },
+                          ]
+                        : url.pathname === "/api/command"
+                          ? [{ name: "init" }]
+                          : [],
+                };
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            url.pathname === "/api/event"
+              ? new Response(": heartbeat\n\n", {
+                  headers: { "content-type": "text/event-stream" },
+                })
+              : Response.json(body),
+          ),
+        );
+      });
+      const instance = yield* create(
+        { serverUrl: "http://127.0.0.1:4096", customModels: ["cox/test"] },
+        http,
+      );
+      yield* TestClock.adjust("5 seconds");
+      assert.strictEqual((yield* instance.snapshot.getSnapshot).status, "ready");
+      for (const [cwd, expected] of [
+        ["/project-a", "orchestrator"],
+        ["/project-b", "reviewer"],
+      ] as const) {
+        const snapshot = yield* instance.snapshotForCwd!(cwd);
+        assert.strictEqual(snapshot.status, "ready");
+        assert.isNotEmpty(snapshot.models);
+        for (const model of snapshot.models) {
+          const descriptor = model.capabilities?.optionDescriptors?.find(
+            (option) => option.id === "agent",
+          );
+          assert.deepEqual(descriptor, {
+            id: "agent",
+            label: "Agent",
+            type: "select",
+            options: [{ id: expected, label: expected, isDefault: true }],
+            currentValue: expected,
+          });
+          assert.strictEqual(model.slug, "cox/test");
+        }
+      }
+    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+  );
+
   it.effect("answers capability reads without waiting on an unreachable server", () =>
     Effect.gen(function* () {
       const hang = HttpClient.make(() => Effect.never);

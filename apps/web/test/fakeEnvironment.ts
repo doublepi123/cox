@@ -61,7 +61,7 @@ const descriptor = {
 };
 const auth = {
   policy: "loopback-browser",
-  bootstrapMethods: ["one-time-token"],
+  loginMode: "local",
   sessionMethods: ["browser-session-cookie"],
   sessionCookieName: "cox_session",
 };

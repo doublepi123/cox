@@ -361,6 +361,9 @@ describe("orchestration V2 contracts", () => {
               model: "claude-opus-5[1m]",
               effort: "xhigh",
               speed: "standard",
+              cached: true,
+              durationMs: 1983254,
+              reusedAt: 1793887167396,
               prompt: preview,
               result: preview,
             },
@@ -385,6 +388,9 @@ describe("orchestration V2 contracts", () => {
           model: "claude-opus-5[1m]",
           effort: "xhigh",
           speed: "standard",
+          cached: true,
+          durationMs: 1983254,
+          reusedAt: 1793887167396,
         });
         expect(decode(incoming).workflow?.agents[0]).toMatchObject({
           prompt: preview,
@@ -392,6 +398,9 @@ describe("orchestration V2 contracts", () => {
           model: "claude-opus-5[1m]",
           effort: "xhigh",
           speed: "standard",
+          cached: true,
+          durationMs: 1983254,
+          reusedAt: 1793887167396,
         });
       }
     },

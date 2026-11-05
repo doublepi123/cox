@@ -40,7 +40,7 @@ const grant = (allowed: boolean): AuthSessionState => ({
   authenticated: true,
   auth: {
     policy: "remote-reachable",
-    bootstrapMethods: [],
+    loginMode: "local",
     sessionMethods: [],
     sessionCookieName: "test",
   },

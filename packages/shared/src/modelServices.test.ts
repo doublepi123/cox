@@ -23,6 +23,27 @@ const service = Schema.decodeSync(ModelServiceConfig)({
 });
 
 describe("central model settings", () => {
+  it("retains OpenCode agent and variant descriptors when binding a model service", () => {
+    const descriptors = [
+      {
+        id: "agent",
+        label: "Agent",
+        type: "select" as const,
+        options: [{ id: "orchestrator", label: "Orchestrator", isDefault: true }],
+        currentValue: "orchestrator",
+      },
+      {
+        id: "variant",
+        label: "Reasoning",
+        type: "select" as const,
+        options: [{ id: "high", label: "High" }],
+      },
+    ];
+    expect(
+      modelServiceAgentCapabilities("opencode", { optionDescriptors: descriptors })
+        ?.optionDescriptors,
+    ).toEqual(descriptors);
+  });
   it("treats bound service models as an authoritative catalog, not user-added rows", () => {
     const models = modelServiceProviderModels(
       [

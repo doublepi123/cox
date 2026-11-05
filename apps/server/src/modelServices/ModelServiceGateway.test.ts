@@ -534,7 +534,10 @@ it.layer(layer)("model service gateway", (it) => {
         recovery: { retryEnabled: true, retryOn429 },
         respond: () =>
           ++calls === 1
-            ? Response.json({ error: { code: "insufficient_quota" } }, { status: 429 })
+            ? Response.json(
+                { error: { code: "insufficient_quota" } },
+                { status: 429, headers: { "retry-after": "3600" } },
+              )
             : Response.json({ choices: [{ message: { content: "quota recovered" } }] }),
       });
       const fiber = yield* h

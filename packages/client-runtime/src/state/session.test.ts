@@ -39,7 +39,7 @@ const SESSION = {
   authenticated: true,
   auth: {
     policy: "remote-reachable",
-    bootstrapMethods: [],
+    loginMode: "local",
     sessionMethods: [],
     sessionCookieName: "t3_session",
   },

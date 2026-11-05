@@ -205,7 +205,7 @@ export class McpOAuth extends Context.Service<
       readonly request: HttpServerRequest.HttpServerRequest;
       readonly authorization: AuthorizationRequest;
       readonly decision: ApprovalDecision;
-    }) => Effect.Effect<string, EnvironmentAuth.ServerAuthMcpApprovalCodeError | McpOAuthPageError>;
+    }) => Effect.Effect<string, McpOAuthPageError>;
     readonly deny: (authorization: AuthorizationRequest) => string;
     readonly exchangeCode: (input: {
       readonly request: HttpServerRequest.HttpServerRequest;
@@ -415,31 +415,17 @@ const make = Effect.gen(function* () {
 
   const approve: McpOAuth["Service"]["approve"] = Effect.fn("McpOAuth.approve")(function* (input) {
     const { decision } = input;
-    if (decision._tag === "pairing-code") {
-      yield* environmentAuth.consumeMcpApprovalCode(decision.code, decision.access).pipe(
-        Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (cause) =>
-          Effect.logError("MCP approval code check failed.", { cause }).pipe(
-            Effect.andThen(
-              Effect.fail(
-                new McpOAuthPageError({
-                  description: "The code could not be checked. Try again.",
-                }),
-              ),
-            ),
-          ),
-        ),
-      );
-    } else {
-      const session = yield* approvingBrowserSession(input.request, input.authorization);
-      if (
-        session === undefined ||
-        !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
-        !mcpClientScopes(decision.access).every((scope) => session.scopes.includes(scope))
-      ) {
-        return yield* new McpOAuthPageError({
-          description: "Your session cannot approve this request. Enter a pairing code instead.",
-        });
-      }
+    const session = yield* approvingBrowserSession(input.request, input.authorization);
+    if (
+      decision._tag !== "browser-session" ||
+      session === undefined ||
+      !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
+      !mcpClientScopes(decision.access).every((scope) => session.scopes.includes(scope))
+    ) {
+      return yield* new McpOAuthPageError({
+        description:
+          "Sign in to Cox and explicitly approve this request with an authorized browser session.",
+      });
     }
     const code = yield* mintCode(input.authorization, decision.access);
     yield* Effect.logInfo("Approved an MCP client sign-in.", {

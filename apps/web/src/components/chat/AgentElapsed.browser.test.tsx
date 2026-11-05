@@ -4,6 +4,7 @@ import { expect, it, vi } from "vite-plus/test";
 import { act, fakeTimers, render } from "../../../test/render";
 import { AgentElapsed } from "./AgentElapsed";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
+import { setLanguagePreference } from "../../i18n";
 
 type TimedStatus = ProviderSubagentStatus & {
   status: "running" | "waiting" | "completed";
@@ -28,6 +29,51 @@ function Timers({ status }: { status: TimedStatus }) {
     </>
   );
 }
+
+it.each([undefined, 1983254])(
+  "shows cached duration %s separately from a live timer",
+  async (durationMs) => {
+    using _timers = fakeTimers();
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    vi.setSystemTime(new Date("2026-11-05T14:00:05.000Z"));
+    const content = (
+      <>
+        <section aria-label="Cached timer">
+          <AgentElapsed
+            agent={{
+              status: "completed",
+              startedAt: "2026-11-05T13:59:27.396Z",
+              completedAt: "2026-11-05T13:59:27.396Z",
+              cached: true,
+              durationMs,
+            }}
+          />
+        </section>
+        <section aria-label="Live timer">
+          <AgentElapsed
+            agent={{ status: "running", startedAt: "2026-11-05T14:00:00.000Z", completedAt: null }}
+          />
+        </section>
+      </>
+    );
+    await using screen = await render(content);
+    const cached = screen.getByRole("region", { name: "Cached timer" });
+    const live = screen.getByRole("region", { name: "Live timer" });
+    const expected =
+      durationMs === undefined ? "已复用缓存 · 原耗时未知" : "已复用缓存 · 原耗时 33m 03s";
+    expect(cached.element().textContent).toBe(expected);
+    expect(live.element().textContent).toBe("5s");
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(cached.element().textContent).toBe(expected);
+    expect(live.element().textContent).toBe("7s");
+    await screen.unmount();
+    await using restored = await render(content);
+    expect(restored.getByRole("region", { name: "Cached timer" }).element().textContent).toBe(
+      expected,
+    );
+  },
+);
 
 it.each(["running", "waiting"] as const)(
   "updates both subagent timers each second while %s and stops after completion",

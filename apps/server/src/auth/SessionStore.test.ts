@@ -42,7 +42,7 @@ const layerSessionStore = (
   environmentId = EnvironmentId.make("test-environment"),
 ) =>
   SessionStore.layer.pipe(
-    Layer.provide(SqlitePersistence.layerMemory),
+    Layer.provideMerge(SqlitePersistence.layerMemory),
     Layer.provide(ServerSecretStore.layer),
     Layer.provide(layerServerEnvironment(environmentId)),
     Layer.provide(layerServerConfig(overrides)),
@@ -58,7 +58,8 @@ const relaySessionInput = {
 
 const makeDiskSessionStoreLayer = Effect.fn("makeDiskSessionStoreLayer")(function* (
   baseDir: string,
-  token?: string,
+  password?: string,
+  authPolicyReadOnly?: boolean,
 ) {
   const devUrl = new URL("http://127.0.0.1:5173");
   const paths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
@@ -76,13 +77,52 @@ const makeDiskSessionStoreLayer = Effect.fn("makeDiskSessionStoreLayer")(functio
         baseDir,
         mode: "web",
         devUrl,
-        ...(token === undefined ? {} : { devAuthToken: Redacted.make(token) }),
+        ...(authPolicyReadOnly === undefined ? {} : { authPolicyReadOnly }),
+        ...(password === undefined ? {} : { authPassword: Redacted.make(password) }),
       }),
     ),
   );
 });
 
 it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
+  it.effect("detects revocation written by a different local control-plane instance", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const sql = yield* SqlClient.SqlClient;
+      const issued = yield* sessions.issue();
+      const waiting = yield* sessions
+        .awaitInvalidation(issued.sessionId)
+        .pipe(Effect.forkScoped({ startImmediately: true }));
+      yield* sql`UPDATE auth_sessions SET revoked_at = '2026-11-05T00:00:00.000Z' WHERE session_id = ${issued.sessionId}`;
+      yield* TestClock.adjust(Duration.seconds(1));
+      yield* Fiber.join(waiting);
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(layerSessionStore(), TestClock.layer()))),
+  );
+
+  it.effect("lets local CLI sessions reuse server policy without inheriting its password", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-auth-cli-policy-" });
+      const initial = yield* makeDiskSessionStoreLayer(baseDir, "service-password");
+      const browser = yield* Effect.gen(function* () {
+        const sessions = yield* SessionStore.SessionStore;
+        return yield* sessions.issue({ method: "browser-session-cookie" });
+      }).pipe(Effect.provide(initial), Effect.scoped);
+      const cli = yield* makeDiskSessionStoreLayer(baseDir, undefined, true);
+      const bot = yield* Effect.gen(function* () {
+        const sessions = yield* SessionStore.SessionStore;
+        expect((yield* sessions.verify(browser.token)).sessionId).toBe(browser.sessionId);
+        return yield* sessions.issue({ method: "bearer-access-token" });
+      }).pipe(Effect.provide(cli), Effect.scoped);
+      const restarted = yield* makeDiskSessionStoreLayer(baseDir, "service-password");
+      yield* Effect.gen(function* () {
+        const sessions = yield* SessionStore.SessionStore;
+        expect((yield* sessions.verify(browser.token)).sessionId).toBe(browser.sessionId);
+        expect((yield* sessions.verify(bot.token)).sessionId).toBe(bot.sessionId);
+      }).pipe(Effect.provide(restarted), Effect.scoped);
+    }),
+  );
+
   it.effect.each(["revoke", "revokeAllExcept", "replace"] as const)(
     "invalidates every connection for a session on %s and leaves other sessions active",
     (operation) =>
@@ -250,97 +290,72 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
     }),
   );
 
-  it.effect("keeps reusable dev auth local across disk-backed stores and restarts", () =>
+  it.effect("keeps sessions isolated across stores and valid across same-policy restarts", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const token = "reusable-dev-auth-token-that-is-long-enough";
-      const baseA = yield* fs.makeTempDirectoryScoped({ prefix: "t3-dev-auth-a-" });
-      const baseB = yield* fs.makeTempDirectoryScoped({ prefix: "t3-dev-auth-b-" });
-      const layerA = yield* makeDiskSessionStoreLayer(baseA, token);
-      const fromA = yield* Effect.gen(function* () {
+      const baseA = yield* fs.makeTempDirectoryScoped({ prefix: "cox-auth-a-" });
+      const baseB = yield* fs.makeTempDirectoryScoped({ prefix: "cox-auth-b-" });
+      const layerA = yield* makeDiskSessionStoreLayer(baseA);
+      const issued = yield* Effect.gen(function* () {
         const sessions = yield* SessionStore.SessionStore;
-        const dev = yield* sessions.verify(token);
-        const local = yield* sessions.issue({ subject: "environment-a" });
+        const local = yield* sessions.issue({ subject: "local" });
         const ticket = yield* sessions.issueWebSocketToken(local.sessionId);
-        yield* sessions.revoke(dev.sessionId);
-        return { dev, local, ticket };
+        return { local, ticket };
       }).pipe(Effect.provide(layerA), Effect.scoped);
-
-      const layerB = yield* makeDiskSessionStoreLayer(baseB, token);
+      const layerB = yield* makeDiskSessionStoreLayer(baseB);
       yield* Effect.gen(function* () {
         const sessions = yield* SessionStore.SessionStore;
-        const dev = yield* sessions.verify(token);
-        expect(dev.sessionId).toBe(fromA.dev.sessionId);
-        expect((yield* Effect.flip(sessions.verify(fromA.local.token)))._tag).toBe(
+        expect((yield* Effect.flip(sessions.verify(issued.local.token)))._tag).toBe(
           "InvalidSessionTokenSignatureError",
         );
-        expect((yield* Effect.flip(sessions.verifyWebSocketToken(fromA.ticket.token)))._tag).toBe(
+        expect((yield* Effect.flip(sessions.verifyWebSocketToken(issued.ticket.token)))._tag).toBe(
           "InvalidWebSocketTokenSignatureError",
         );
       }).pipe(Effect.provide(layerB), Effect.scoped);
-
-      const layerReopenedB = yield* makeDiskSessionStoreLayer(baseB, token);
+      const reopened = yield* makeDiskSessionStoreLayer(baseA);
       yield* Effect.gen(function* () {
         const sessions = yield* SessionStore.SessionStore;
-        const dev = yield* sessions.verify(token);
-        expect(dev.sessionId).toBe(fromA.dev.sessionId);
-        const ticket = yield* sessions.issueWebSocketToken(dev.sessionId);
-        expect((yield* sessions.verifyWebSocketToken(ticket.token)).sessionId).toBe(dev.sessionId);
-      }).pipe(Effect.provide(layerReopenedB), Effect.scoped);
-
-      const layerReopenedA = yield* makeDiskSessionStoreLayer(baseA, token);
-      yield* Effect.gen(function* () {
-        const sessions = yield* SessionStore.SessionStore;
-        expect((yield* Effect.flip(sessions.verify(token)))._tag).toBe("SessionTokenRevokedError");
-      }).pipe(Effect.provide(layerReopenedA), Effect.scoped);
+        expect((yield* sessions.verify(issued.local.token)).sessionId).toBe(issued.local.sessionId);
+        expect((yield* sessions.verifyWebSocketToken(issued.ticket.token)).sessionId).toBe(
+          issued.local.sessionId,
+        );
+      }).pipe(Effect.provide(reopened), Effect.scoped);
     }),
   );
 
-  it.effect("invalidates old dev credentials and tickets after rotation or removal", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-dev-auth-rotation-" });
-      const oldToken = "old-reusable-dev-auth-token-that-is-long-enough";
-      const newToken = "new-reusable-dev-auth-token-that-is-long-enough";
-      const layerInitial = yield* makeDiskSessionStoreLayer(baseDir, oldToken);
-      const old = yield* Effect.gen(function* () {
-        const sessions = yield* SessionStore.SessionStore;
-        const dev = yield* sessions.verify(oldToken);
-        const ticket = yield* sessions.issueWebSocketToken(dev.sessionId);
-        return { dev, ticket };
-      }).pipe(Effect.provide(layerInitial), Effect.scoped);
-
-      const layerRotated = yield* makeDiskSessionStoreLayer(baseDir, newToken);
-      const rotated = yield* Effect.gen(function* () {
-        const sessions = yield* SessionStore.SessionStore;
-        expect((yield* Effect.flip(sessions.verify(oldToken)))._tag).toBe(
-          "MalformedSessionTokenError",
-        );
-        expect((yield* Effect.flip(sessions.verifyWebSocketToken(old.ticket.token)))._tag).toBe(
-          "UnknownWebSocketSessionError",
-        );
-        expect(
-          (yield* sessions.listActive()).some((row) => row.sessionId === old.dev.sessionId),
-        ).toBe(true);
-        const dev = yield* sessions.verify(newToken);
-        const ticket = yield* sessions.issueWebSocketToken(dev.sessionId);
-        return { dev, ticket };
-      }).pipe(Effect.provide(layerRotated), Effect.scoped);
-
-      const layerRemoved = yield* makeDiskSessionStoreLayer(baseDir);
-      yield* Effect.gen(function* () {
-        const sessions = yield* SessionStore.SessionStore;
-        expect((yield* Effect.flip(sessions.verify(newToken)))._tag).toBe(
-          "MalformedSessionTokenError",
-        );
-        expect((yield* Effect.flip(sessions.verifyWebSocketToken(rotated.ticket.token)))._tag).toBe(
-          "UnknownWebSocketSessionError",
-        );
-        expect(
-          (yield* sessions.listActive()).some((row) => row.sessionId === rotated.dev.sessionId),
-        ).toBe(true);
-      }).pipe(Effect.provide(layerRemoved), Effect.scoped);
-    }),
+  it.effect(
+    "invalidates sessions and tickets on policy changes without reviving older credentials",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-auth-policy-" });
+        const previous: Array<{ token: string; ticket: string }> = [];
+        for (const password of [
+          undefined,
+          "first-password",
+          "second-password",
+          undefined,
+          "first-password",
+        ]) {
+          const current = yield* makeDiskSessionStoreLayer(baseDir, password);
+          const issued = yield* Effect.gen(function* () {
+            const sessions = yield* SessionStore.SessionStore;
+            for (const old of previous) {
+              expect((yield* Effect.flip(sessions.verify(old.token)))._tag).toBe(
+                "InvalidSessionTokenSignatureError",
+              );
+              expect((yield* Effect.flip(sessions.verifyWebSocketToken(old.ticket)))._tag).toBe(
+                "InvalidWebSocketTokenSignatureError",
+              );
+            }
+            expect(yield* sessions.listActive()).toHaveLength(0);
+            const session = yield* sessions.issue();
+            const ticket = yield* sessions.issueWebSocketToken(session.sessionId);
+            return { token: session.token, ticket: ticket.token };
+          }).pipe(Effect.provide(current), Effect.scoped);
+          previous.push(issued);
+        }
+      }),
   );
 
   it.effect("carries a runtime-mode ceiling only on sessions issued with one", () =>
@@ -366,7 +381,12 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
       const [encodedPayload] = issued.token.split(".");
       const currentClaims = base64UrlDecodeUtf8(encodedPayload!);
       expect(currentClaims).toContain('"v":1');
-      const secret = yield* secrets.getOrCreateRandom("server-signing-key", 32);
+      const baseSecret = yield* secrets.getOrCreateRandom("server-signing-key", 32);
+      const sql = yield* SqlClient.SqlClient;
+      const [policy] = yield* sql<{
+        readonly generation: string;
+      }>`SELECT generation FROM auth_policy_state WHERE id = 1`;
+      const secret = new TextEncoder().encode(signPayload(policy!.generation, baseSecret));
       const resign = (claims: string) => {
         const payload = base64UrlEncode(claims);
         return `${payload}.${signPayload(payload, secret)}`;
@@ -383,7 +403,7 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
       Effect.provide(
         SessionStore.layer.pipe(
           Layer.provideMerge(ServerSecretStore.layer),
-          Layer.provide(SqlitePersistence.layerMemory),
+          Layer.provideMerge(SqlitePersistence.layerMemory),
           Layer.provide(layerServerEnvironment(EnvironmentId.make("test-environment"))),
           Layer.provide(layerServerConfig()),
         ),

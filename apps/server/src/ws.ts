@@ -243,7 +243,6 @@ import * as SourceControlProviderRegistry from "./sourceControl/SourceControlPro
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
-import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 import { isNetworkPath } from "@t3tools/shared/path";
@@ -571,25 +570,11 @@ const SHELL_RESUME_MAX_GAP = 1_000;
 const ORCHESTRATION_REPLAY_PAYLOAD_BUDGET_BYTES = 8 * 1024 * 1024;
 
 function toAuthAccessStreamEvent(
-  change: PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
+  change: SessionStore.SessionCredentialChange,
   revision: number,
   currentSessionId: AuthSessionId,
 ): AuthAccessStreamEvent {
   switch (change.type) {
-    case "pairingLinkUpserted":
-      return {
-        version: 1,
-        revision,
-        type: "pairingLinkUpserted",
-        payload: { ...change.pairingLink, ...authScopeResponse(change.pairingLink.scopes) },
-      };
-    case "pairingLinkRemoved":
-      return {
-        version: 1,
-        revision,
-        type: "pairingLinkRemoved",
-        payload: { id: change.id },
-      };
     case "clientUpserted":
       return {
         version: 1,
@@ -1363,7 +1348,6 @@ export const layerWsRpc = (
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const sourceControlSignIn = yield* SourceControlSignIn.SourceControlSignIn;
       const withPullRequestViewer = pullRequests.withRoutingCredential;
-      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const sessions = yield* SessionStore.SessionStore;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const triage = yield* TriageService.TriageService;
@@ -1699,7 +1683,6 @@ export const layerWsRpc = (
       });
       const loadAuthAccessSnapshot = () =>
         Effect.all({
-          pairingLinks: serverAuth.listPairingLinks(),
           clientSessions: serverAuth.listClientSessions(currentSessionId),
         }).pipe(
           Effect.mapError(
@@ -3131,9 +3114,8 @@ export const layerWsRpc = (
             Effect.gen(function* () {
               const initialSnapshot = yield* loadAuthAccessSnapshot();
               const revisionRef = yield* Ref.make(1);
-              const accessChanges: Stream.Stream<
-                PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange
-              > = Stream.merge(bootstrapCredentials.streamChanges, sessions.streamChanges);
+              const accessChanges: Stream.Stream<SessionStore.SessionCredentialChange> =
+                sessions.streamChanges;
 
               const liveEvents: Stream.Stream<AuthAccessStreamEvent> = accessChanges.pipe(
                 Stream.mapEffect((change) =>

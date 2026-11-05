@@ -20,16 +20,13 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
-import {
-  REUSABLE_DEV_SESSION_EXPIRES_AT,
-  REUSABLE_DEV_SESSION_PREFIX,
-  resolveReusableDevAuth,
-} from "./ReusableDevAuth.ts";
 import {
   base64UrlDecodeUtf8,
   base64UrlEncode,
@@ -491,7 +488,35 @@ const make = Effect.gen(function* () {
   const serverEnvironment = yield* ServerEnvironment.ServerEnvironmentIdentity;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const authSessions = yield* AuthSessions.AuthSessionRepository;
-  const signingSecret = yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32);
+  const baseSecret = yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32);
+  const sql = yield* SqlClient.SqlClient;
+  const password =
+    serverConfig.authPassword === undefined ? "" : Redacted.value(serverConfig.authPassword);
+  const fingerprint = signPayload(
+    `cox-auth-v2:${password.length > 0 ? "password" : "local"}:${password}`,
+    baseSecret,
+  );
+  const generation = yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const [current] = yield* sql<{ readonly fingerprint: string; readonly generation: string }>`
+      SELECT fingerprint, generation FROM auth_policy_state WHERE id = 1
+    `;
+      if (
+        current !== undefined &&
+        (serverConfig.authPolicyReadOnly || current.fingerprint === fingerprint)
+      )
+        return current.generation;
+      const next = base64UrlEncode(yield* crypto.randomBytes(32));
+      const now = DateTime.formatIso(yield* DateTime.now);
+      yield* sql`UPDATE auth_sessions SET revoked_at = ${now} WHERE revoked_at IS NULL`;
+      yield* sql`
+      INSERT INTO auth_policy_state (id, fingerprint, generation) VALUES (1, ${fingerprint}, ${next})
+      ON CONFLICT(id) DO UPDATE SET fingerprint = excluded.fingerprint, generation = excluded.generation
+    `;
+      return next;
+    }),
+  );
+  const signingSecret = new TextEncoder().encode(signPayload(generation, baseSecret));
   const connectedSessionsRef = yield* Ref.make(new Map<AuthSessionId, number>());
   const changesPubSub = yield* PubSub.unbounded<SessionCredentialChange>();
   // Newest session per DPoP key. A live socket moves to it at expiry, so a
@@ -507,32 +532,6 @@ const make = Effect.gen(function* () {
   } as const;
   const cookieName = resolveSessionCookieName(cookieInput);
   const legacyCookieName = resolveLegacySessionCookieName(cookieInput);
-  const devAuth = resolveReusableDevAuth(serverConfig);
-  if (devAuth) {
-    yield* authSessions
-      .createIfAbsent({
-        sessionId: devAuth.sessionId,
-        subject: "reusable-dev-token",
-        scopes: AuthStandardClientScopes,
-        method: "browser-session-cookie",
-        client: {
-          label: "Reusable dev token",
-          ipAddress: null,
-          userAgent: null,
-          deviceType: "unknown",
-          os: null,
-          browser: null,
-        },
-        issuedAt: yield* DateTime.now,
-        expiresAt: REUSABLE_DEV_SESSION_EXPIRES_AT,
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) => new SessionCredentialIssueError({ sessionId: devAuth.sessionId, cause }),
-        ),
-      );
-  }
-
   const emitUpsert = (clientSession: AuthClientSession) =>
     PubSub.publish(changesPubSub, {
       type: "clientUpserted",
@@ -744,42 +743,6 @@ const make = Effect.gen(function* () {
 
   const verify: SessionStore["Service"]["verify"] = Effect.fn("SessionStore.verify")(
     function* (token) {
-      if (devAuth?.matches(token)) {
-        const row = yield* authSessions
-          .getById({ sessionId: devAuth.sessionId })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new SessionCredentialVerificationError({ sessionId: devAuth.sessionId, cause }),
-            ),
-          );
-        if (Option.isNone(row)) {
-          return yield* new UnknownSessionTokenError({ sessionId: devAuth.sessionId });
-        }
-        if (row.value.revokedAt !== null) {
-          return yield* new SessionTokenRevokedError({
-            sessionId: devAuth.sessionId,
-            revokedAt: row.value.revokedAt,
-          });
-        }
-        const observedAt = yield* DateTime.now;
-        if (row.value.expiresAt.epochMilliseconds <= observedAt.epochMilliseconds) {
-          return yield* new SessionTokenExpiredError({
-            sessionId: devAuth.sessionId,
-            expiresAt: row.value.expiresAt,
-            observedAt,
-          });
-        }
-        return {
-          sessionId: row.value.sessionId,
-          token,
-          method: row.value.method,
-          client: toClientMetadata(row.value.client),
-          expiresAt: row.value.expiresAt,
-          subject: row.value.subject,
-          scopes: row.value.scopes,
-        } satisfies VerifiedSession;
-      }
       const [encodedPayload, signature] = token.split(".");
       if (!encodedPayload || !signature) {
         return yield* new MalformedSessionTokenError({});
@@ -895,9 +858,6 @@ const make = Effect.gen(function* () {
     const claims = yield* decodeWebSocketClaims(base64UrlDecodeUtf8(encodedPayload)).pipe(
       Effect.mapError((cause) => new InvalidWebSocketTokenPayloadError({ cause })),
     );
-    if (claims.sid.startsWith(REUSABLE_DEV_SESSION_PREFIX) && claims.sid !== devAuth?.sessionId) {
-      return yield* new UnknownWebSocketSessionError({ sessionId: claims.sid });
-    }
 
     const observedAt = yield* DateTime.now;
     const expiresAt = DateTime.make(claims.exp);
@@ -1068,7 +1028,10 @@ const make = Effect.gen(function* () {
           const now = yield* DateTime.now;
           const remaining = current.expiresAt.epochMilliseconds - now.epochMilliseconds;
           if (remaining > 0) {
-            yield* Effect.raceFirst(nextRemoval, Effect.sleep(Duration.millis(remaining)));
+            yield* Effect.raceFirst(
+              nextRemoval,
+              Effect.sleep(Duration.millis(Math.min(remaining, 1_000))),
+            );
             continue;
           }
           const successorId =

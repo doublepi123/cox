@@ -2,19 +2,41 @@ import { page } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { render } from "../../test/render";
-import { submitServerAuthCredential } from "../environments/primary";
+import {
+  resolveInitialServerAuthGateState,
+  submitServerAuthCredential,
+} from "../environments/primary";
 import { ServerAuthGate } from "./ServerAuthGate";
 
-vi.mock("../environments/primary", () => ({ submitServerAuthCredential: vi.fn() }));
+vi.mock("../environments/primary", () => ({
+  submitServerAuthCredential: vi.fn(),
+  resolveInitialServerAuthGateState: vi.fn(),
+}));
 
 const auth = {
   policy: "loopback-browser",
-  bootstrapMethods: ["one-time-token"],
+  loginMode: "password",
   sessionMethods: ["browser-session-cookie"],
   sessionCookieName: "cox_session",
 } as const;
 
 describe("ServerAuthGate", () => {
+  it("never asks local-mode users for a password", async () => {
+    vi.mocked(submitServerAuthCredential).mockReset();
+    vi.mocked(resolveInitialServerAuthGateState)
+      .mockReset()
+      .mockResolvedValue({ status: "authenticated" });
+    const onAuthenticated = vi.fn(async () => {});
+    await using _screen = await render(
+      <ServerAuthGate auth={{ ...auth, loginMode: "local" }} onAuthenticated={onAuthenticated} />,
+    );
+    await expect.element(page.getByLabelText("Password", { exact: true })).not.toBeInTheDocument();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    expect(resolveInitialServerAuthGateState).toHaveBeenCalledOnce();
+    expect(submitServerAuthCredential).not.toHaveBeenCalled();
+    expect(onAuthenticated).toHaveBeenCalledOnce();
+  });
+
   it("shows a usable login form and refreshes the current route after authentication", async () => {
     vi.mocked(submitServerAuthCredential).mockReset();
     const onAuthenticated = vi.fn(async () => {});
@@ -24,33 +46,33 @@ describe("ServerAuthGate", () => {
 
     await expect.element(page.getByRole("heading", { name: "Sign in to Cox" })).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Sign in", exact: true })).toBeDisabled();
-    await page.getByLabelText("Pairing token", { exact: true }).fill("test-pairing-token");
+    await page.getByLabelText("Password", { exact: true }).fill("test-password");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
-    expect(submitServerAuthCredential).toHaveBeenCalledWith("test-pairing-token");
+    expect(submitServerAuthCredential).toHaveBeenCalledWith("test-password");
     expect(onAuthenticated).toHaveBeenCalledOnce();
   });
 
   it("shows rejected credentials and allows a retry without opening the chat shell", async () => {
     vi.mocked(submitServerAuthCredential)
       .mockReset()
-      .mockRejectedValueOnce(new Error("Invalid pairing token"));
+      .mockRejectedValueOnce(new Error("Invalid password"));
     const onAuthenticated = vi.fn(async () => {});
     await using _screen = await render(
-      <ServerAuthGate auth={{ ...auth, passwordLogin: true }} onAuthenticated={onAuthenticated} />,
+      <ServerAuthGate auth={auth} onAuthenticated={onAuthenticated} />,
     );
 
-    await page.getByLabelText("Password or pairing token").fill("wrong-password");
+    await page.getByLabelText("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect.element(page.getByRole("alert")).toHaveTextContent("Invalid pairing token");
+    await expect.element(page.getByRole("alert")).toHaveTextContent("Invalid password");
     expect(onAuthenticated).not.toHaveBeenCalled();
 
-    await page.getByLabelText("Password or pairing token").fill("correct-password");
+    await page.getByLabelText("Password").fill("correct-password");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     expect(onAuthenticated).toHaveBeenCalledOnce();
   });
 
-  it("displays URL pairing failures and prevents duplicate submissions", async () => {
+  it("displays initial authentication failures and prevents duplicate submissions", async () => {
     let finish: (() => void) | undefined;
     vi.mocked(submitServerAuthCredential)
       .mockReset()
@@ -64,13 +86,13 @@ describe("ServerAuthGate", () => {
     await using _screen = await render(
       <ServerAuthGate
         auth={auth}
-        errorMessage="Expired pairing token"
+        errorMessage="Invalid password"
         onAuthenticated={onAuthenticated}
       />,
     );
 
-    await expect.element(page.getByRole("alert")).toHaveTextContent("Expired pairing token");
-    await page.getByLabelText("Pairing token", { exact: true }).fill("new-token");
+    await expect.element(page.getByRole("alert")).toHaveTextContent("Invalid password");
+    await page.getByLabelText("Password", { exact: true }).fill("new-password");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect.element(page.getByRole("button", { name: "Signing in…" })).toBeDisabled();
     expect(submitServerAuthCredential).toHaveBeenCalledOnce();

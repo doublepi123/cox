@@ -159,7 +159,7 @@ const session = (scopes: ReadonlyArray<AuthEnvironmentScope>): AuthSessionState 
   scopes,
   auth: {
     policy: "remote-reachable",
-    bootstrapMethods: ["one-time-token"],
+    loginMode: "local",
     sessionMethods: ["bearer-access-token"],
     sessionCookieName: "t3_session",
   },

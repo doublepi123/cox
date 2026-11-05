@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import * as NetService from "@t3tools/shared/Net";
 import {
   OtlpHeadersFromString,
@@ -30,7 +31,9 @@ const portFlag = Flag.Int("port").pipe(
   Flag.optional,
 );
 const hostFlag = Flag.String("host").pipe(
-  Flag.withDescription("Loopback host: 127.0.0.1, ::1, or localhost."),
+  Flag.withDescription(
+    "Listen address (default 127.0.0.1); nonloopback addresses require COX_AUTH_PASSWORD.",
+  ),
   Flag.optional,
 );
 export const baseDirFlag = Flag.String("base-dir").pipe(
@@ -127,26 +130,6 @@ const EnvServerConfig = Config.all({
     Config.map(Option.getOrUndefined),
   ),
 });
-
-const DevAuthTokenConfig = Config.Redacted("T3CODE_DEV_AUTH_TOKEN").pipe(
-  Config.map((token) => Redacted.make(Redacted.value(token).trim())),
-  Config.mapEffect((token) =>
-    Redacted.value(token).length === 0 || Redacted.value(token).length >= 32
-      ? Effect.succeed(token)
-      : Effect.fail(
-          new Config.ConfigError(
-            new Schema.SchemaError(
-              new SchemaIssue.InvalidValue({
-                message: "T3CODE_DEV_AUTH_TOKEN must contain at least 32 characters.",
-              }),
-            ),
-          ),
-        ),
-  ),
-  Config.option,
-  Config.map(Option.filter((token) => Redacted.value(token).length > 0)),
-  Config.map(Option.getOrUndefined),
-);
 
 const AuthPasswordConfig = Config.Redacted("COX_AUTH_PASSWORD").pipe(
   Config.orElse(() => Config.Redacted("T3CODE_AUTH_PASSWORD")),
@@ -255,7 +238,11 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     normalizedFlags.host,
     Option.fromUndefinedOr(env.host),
   );
-  const host = yield* validateLocalHost(Option.getOrElse(explicitHost, () => "127.0.0.1"));
+  const authPassword = yield* AuthPasswordConfig;
+  const host = yield* validateListenHost(
+    Option.getOrElse(explicitHost, () => "127.0.0.1"),
+    authPassword,
+  );
   const port = yield* Option.match(
     resolveOptionPrecedence(normalizedFlags.port, Option.fromUndefinedOr(env.port)),
     {
@@ -269,16 +256,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     resolveOptionPrecedence(normalizedFlags.devUrl, Option.fromUndefinedOr(env.devUrl)),
     () => undefined,
   );
-  if (devUrl !== undefined) {
-    if (!["http:", "https:"].includes(devUrl.protocol))
-      return yield* new CliError.UserError({
-        cause: "Cox dev URL must use HTTP on a loopback host.",
-      });
-    yield* validateLocalHost(devUrl.hostname.replace(/^\[|\]$/g, ""));
-  }
-  const devAuthToken =
-    mode === "web" && devUrl !== undefined ? yield* DevAuthTokenConfig : undefined;
-  const authPassword = yield* AuthPasswordConfig;
+  if (devUrl !== undefined) yield* validateDevUrl(devUrl);
   const explicitBaseDir = resolveOptionPrecedence(
     normalizedFlags.baseDir,
     Option.fromUndefinedOr(env.t3Home),
@@ -408,7 +386,6 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     host,
     staticDir,
     devUrl,
-    ...(devAuthToken === undefined ? {} : { devAuthToken }),
     ...(authPassword === undefined ? {} : { authPassword }),
     devAllowedOrigins: env.devAllowedOrigins,
     noBrowser,
@@ -439,7 +416,7 @@ export const resolveCliAuthConfig = (
       logWebSocketEvents: Option.none(),
     },
     cliLogLevel,
-  );
+  ).pipe(Effect.map((config) => ({ ...config, authPolicyReadOnly: true })));
   // Logs go to stdout, where --json and --token-only print, and resolving can
   // log, for example when it sweeps abandoned attachment uploads.
   return options?.quietLogs === true
@@ -517,4 +494,41 @@ export const validateLocalHost = Effect.fn("validateLocalHost")(function* (host:
     });
   }
   return host;
+});
+
+export const validateListenHost = Effect.fn("validateListenHost")(function* (
+  host: string,
+  password?: Redacted.Redacted<string>,
+) {
+  if (password && Redacted.value(password).trim().length < 8) {
+    return yield* new CliError.UserError({
+      cause: "COX_AUTH_PASSWORD must contain at least 8 characters.",
+    });
+  }
+  const normalized = host.toLowerCase();
+  if (normalized !== "localhost" && isIP(normalized) === 0) {
+    return yield* new CliError.UserError({
+      cause: "Cox listen host must be localhost or an explicit IPv4/IPv6 address.",
+    });
+  }
+  const loopback =
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    (isIP(normalized) === 4 && normalized.startsWith("127."));
+  if (!loopback && !password) {
+    return yield* new CliError.UserError({
+      cause: "Nonloopback listen addresses require COX_AUTH_PASSWORD with at least 8 characters.",
+    });
+  }
+  return normalized;
+});
+
+export const validateDevUrl = Effect.fn("validateDevUrl")(function* (devUrl: URL) {
+  if (!["http:", "https:"].includes(devUrl.protocol) || devUrl.username || devUrl.password) {
+    return yield* new CliError.UserError({
+      cause: "Cox dev URL must use HTTP(S) on a loopback host without credentials.",
+    });
+  }
+  yield* validateLocalHost(devUrl.hostname.replace(/^\[|\]$/g, ""));
+  return devUrl;
 });

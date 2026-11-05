@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import { TestClock } from "effect/testing";
 import {
@@ -150,15 +151,15 @@ it.effect("commits exactly one winner when both attempts become ready together",
 );
 
 it.effect.each([true, false])(
-  "respects the configurable Retry-After policy (%s)",
-  (respectRetryAfter) =>
+  "derives cooldown handling from forced 429 retries (%s)",
+  (retryOn429) =>
     Effect.gen(function* () {
-      const h = harness({ respectRetryAfter, hedgeEnabled: false });
+      const h = harness({ retryOn429, hedgeEnabled: false });
       const fiber = yield* h
         .run((id) => (id === 1 ? Effect.fail(failure(5000)) : Effect.succeed(id)))
         .pipe(Effect.forkChild);
       yield* TestClock.adjust("1 second");
-      expect(h.started).toHaveLength(respectRetryAfter ? 1 : 2);
+      expect(h.started).toHaveLength(retryOn429 ? 2 : 1);
       yield* TestClock.adjust("5 seconds");
       expect(yield* Fiber.join(fiber)).toBe(2);
     }),
@@ -208,30 +209,55 @@ it.effect.each([
   }),
 );
 
-it.effect.each([true, false])(
-  "applies the cooldown setting to forced quota retries (%s)",
-  (respectRetryAfter) =>
+it.effect("ignores quota cooldown without disabling local retry backoff", () =>
+  Effect.gen(function* () {
+    const h = harness({ retryOn429: true, hedgeEnabled: false, budgetMs: 10000 });
+    const fiber = yield* h
+      .run((attempt) =>
+        attempt === 1
+          ? Effect.fail(
+              new ModelServiceRequestFailure({
+                detail: "Quota exhausted",
+                status: 429,
+                retryable: false,
+                retryAfterMs: 60000,
+              }),
+            )
+          : Effect.succeed(attempt),
+      )
+      .pipe(Effect.forkChild);
+    yield* TestClock.adjust("100 millis");
+    expect(h.started).toHaveLength(1);
+    yield* TestClock.adjust("1 second");
+    expect(yield* Fiber.join(fiber)).toBe(2);
+    expect(h.load.cooldownUntil).toBe(0);
+  }),
+);
+
+it.effect.each([false, true])(
+  "applies the same policy to an existing shared cooldown (%s)",
+  (retryOn429) =>
     Effect.gen(function* () {
-      const h = harness({ retryOn429: true, respectRetryAfter, hedgeEnabled: false });
-      const fiber = yield* h
-        .run((id) =>
-          id === 1
-            ? Effect.fail(
-                new ModelServiceRequestFailure({
-                  detail: "Quota exhausted",
-                  status: 429,
-                  retryable: false,
-                  retryAfterMs: 5000,
-                }),
-              )
-            : Effect.succeed(id),
-        )
-        .pipe(Effect.forkChild);
+      const h = harness({ retryOn429, hedgeEnabled: false });
+      h.load.cooldownUntil = (yield* Clock.currentTimeMillis) + 5000;
+      const fiber = yield* h.run((attempt) => Effect.succeed(attempt)).pipe(Effect.forkChild);
       yield* TestClock.adjust("1 second");
-      expect(h.started).toHaveLength(respectRetryAfter ? 1 : 2);
+      expect(h.started).toHaveLength(retryOn429 ? 1 : 0);
       yield* TestClock.adjust("5 seconds");
-      expect(yield* Fiber.join(fiber)).toBe(2);
+      expect(yield* Fiber.join(fiber)).toBe(1);
     }),
+);
+
+it.effect.each([5, 10])("honors the configured concurrency limit of %s", (maxConcurrent) =>
+  Effect.gen(function* () {
+    const h = harness({ maxConcurrent, hedgeDelayMs: 100, budgetMs: 5000 });
+    const fiber = yield* h.run(() => Effect.never).pipe(Effect.forkChild);
+    for (let tick = 0; tick < 12; tick++) yield* TestClock.adjust("250 millis");
+    expect(h.started).toHaveLength(maxConcurrent);
+    expect(h.load.inFlight).toBe(maxConcurrent);
+    yield* Fiber.interrupt(fiber);
+    expect(h.load.inFlight).toBe(0);
+  }),
 );
 
 it.effect("stops forced 429 retries when the recovery time budget expires", () =>
@@ -268,7 +294,7 @@ it.effect("stops forced 429 retries when the recovery time budget expires", () =
 
 it.effect("cancels every stalled attempt when the recovery budget expires", () =>
   Effect.gen(function* () {
-    const h = harness({ budgetMs: 1000, hedgeDelayMs: 100 });
+    const h = harness({ budgetMs: 1000, hedgeDelayMs: 100, maxConcurrent: 2 });
     const fiber = yield* h.run(() => Effect.never).pipe(Effect.flip, Effect.forkChild);
     yield* TestClock.adjust("2 seconds");
     const error = yield* Fiber.join(fiber);
@@ -346,7 +372,7 @@ it.effect(
 
 it.effect("reports the budget as the terminal cause after four overlapping header waits", () =>
   Effect.gen(function* () {
-    const h = harness({ hedgeDelayMs: 45000, budgetMs: 180000 });
+    const h = harness({ hedgeDelayMs: 45000, budgetMs: 180000, maxConcurrent: 2 });
     const fiber = yield* h
       .run(() =>
         Effect.sleep("120 seconds").pipe(

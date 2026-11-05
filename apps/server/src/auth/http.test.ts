@@ -1,22 +1,17 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import {
-  AuthTokenExchangeGrantType,
-  AuthEnvironmentBootstrapTokenType,
-  AuthAccessTokenType,
-  EnvironmentHttpApi,
-} from "@t3tools/contracts";
+import { EnvironmentHttpApi } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Etag from "effect/http/Etag";
 import * as HttpPlatform from "effect/http/HttpPlatform";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -25,21 +20,9 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as AuthHttp from "./http.ts";
 
-const DEV_TOKEN = "reusable-dev-auth-token-that-is-long-enough";
 class AuthTestApi extends HttpApi.make("environment").add(EnvironmentHttpApi.groups.auth) {}
 
-const layerConfig = Layer.effect(
-  ServerConfig.ServerConfig,
-  Effect.gen(function* () {
-    const config = yield* ServerConfig.ServerConfig;
-    return {
-      ...config,
-      mode: "web",
-      devUrl: new URL("http://127.0.0.1:5173"),
-      devAuthToken: Redacted.make(DEV_TOKEN),
-    } satisfies ServerConfig.ServerConfig["Service"];
-  }),
-).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-http-test-" })));
+const layerConfig = ServerConfig.layerTest(process.cwd(), { prefix: "cox-auth-http-test-" });
 
 const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
   Layer.provide(SqlitePersistence.layerMemory),
@@ -65,93 +48,92 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const postJson = (path: string, body: unknown, headers?: Readonly<Record<string, string>>) =>
   new Request(`http://127.0.0.1${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: {
+      "content-type": "application/json",
+      host: "127.0.0.1",
+      origin: "http://127.0.0.1",
+      ...headers,
+    },
     body: encodeJson(body),
   });
 
-it.effect("sets the selected browser session cookies through the HTTP route", () =>
+it.effect("creates isolated local sessions, checks origin, and sets safe cookies", () =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
-    const unusedSecretStore = ServerSecretStore.ServerSecretStore.of({
-      get: () => Effect.succeedNone,
-      set: () => Effect.void,
-      create: () => Effect.void,
-      getOrCreateRandom: () => Effect.die("Not used by these routes."),
-      remove: () => Effect.void,
-    });
-    const requestContext = Context.make(Crypto.Crypto, crypto).pipe(
-      Context.add(ServerSecretStore.ServerSecretStore, unusedSecretStore),
-    );
+    const requestContext = Context.make(Crypto.Crypto, crypto);
     return yield* Effect.acquireUseRelease(
-      Effect.sync(
-        () =>
-          [
-            HttpRouter.toWebHandler(layerRoutes, { disableLogger: true }),
-            HttpRouter.toWebHandler(layerRoutes, { disableLogger: true }),
-          ] as const,
+      Effect.sync(() =>
+        HttpRouter.toWebHandler(layerRoutes, {
+          disableLogger: true,
+          middleware: (effect) =>
+            Effect.updateService(effect, HttpServerRequest.HttpServerRequest, (request) => {
+              Object.assign(request.source, { remoteAddress: "127.0.0.1" });
+              return request;
+            }),
+        }),
       ),
-      ([environmentA, environmentB]) =>
+      (web) =>
         Effect.tryPromise(async () => {
-          const devResponse = await environmentA.handler(
-            postJson("/api/auth/browser-session", { credential: DEV_TOKEN }),
+          const response = await web.handler(
+            postJson("/api/auth/browser-session", {}),
             requestContext,
           );
-          expect(devResponse.status).toBe(200);
-          const retiredScopeResponse = await environmentA.handler(
-            new Request("http://127.0.0.1/oauth/token", {
-              method: "POST",
-              body: new URLSearchParams({
-                grant_type: AuthTokenExchangeGrantType,
-                subject_token: DEV_TOKEN,
-                subject_token_type: AuthEnvironmentBootstrapTokenType,
-                requested_token_type: AuthAccessTokenType,
-                scope: "review:write",
-              }),
-            }),
-            requestContext,
-          );
-          expect(retiredScopeResponse.status).toBe(400);
-          expect(await retiredScopeResponse.json()).toMatchObject({ reason: "invalid_scope" });
-
-          const devCookies = devResponse.headers.getSetCookie();
-          const devCookie = devCookies.find((cookie) => cookie.startsWith("cox_dev_session_"));
-          expect(devCookie).toContain("HttpOnly");
-          expect(devCookie).toContain(`=${DEV_TOKEN};`);
-          expect(devCookies).toContainEqual(
-            expect.stringMatching(/^cox_session_[^=]*=;.*Max-Age=0/),
-          );
-          const devCookieHeader = devCookie?.split(";", 1)[0] ?? "";
-          const environmentBSession = await environmentB.handler(
+          expect(response.status).toBe(200);
+          const cookie = response.headers.getSetCookie()[0]!;
+          expect(cookie).toMatch(/^cox_session_/);
+          expect(cookie).toContain("HttpOnly");
+          expect(cookie).toContain("SameSite=Lax");
+          expect(cookie).toContain("Path=/");
+          expect(cookie).not.toContain("Secure");
+          const session = await web.handler(
             new Request("http://127.0.0.1/api/auth/session", {
-              headers: { cookie: devCookieHeader },
+              headers: { host: "127.0.0.1", cookie: cookie.split(";", 1)[0]! },
             }),
             requestContext,
           );
-          expect(environmentBSession.status).toBe(200);
-          expect(await environmentBSession.json()).toMatchObject({ authenticated: true });
-
-          const pairingResponse = await environmentA.handler(
+          expect(await session.json()).toMatchObject({ authenticated: true });
+          const forgedOrigin = await web.handler(
             postJson(
-              "/api/auth/pairing-token",
-              { scopes: ["orchestration:read"] },
-              { cookie: devCookieHeader },
+              "/api/auth/browser-session",
+              {},
+              {
+                origin: "https://evil.example",
+              },
             ),
             requestContext,
           );
-          expect(pairingResponse.status).toBe(200);
-          const pairing = (await pairingResponse.json()) as { credential: string };
-          const restrictedResponse = await environmentA.handler(
-            postJson("/api/auth/browser-session", { credential: pairing.credential }),
+          expect(forgedOrigin.status).not.toBe(200);
+          expect(forgedOrigin.headers.getSetCookie()).toEqual([]);
+          const forwarded = await web.handler(
+            postJson(
+              "/api/auth/browser-session",
+              {},
+              {
+                "x-forwarded-proto": "https",
+              },
+            ),
             requestContext,
           );
-          expect(restrictedResponse.status).toBe(200);
-          const restrictedCookies = restrictedResponse.headers.getSetCookie();
-          expect(restrictedCookies).toHaveLength(1);
-          expect(restrictedCookies[0]).toMatch(/^cox_session_/);
-          expect(restrictedCookies[0]).not.toContain("cox_dev_session_");
+          expect(forwarded.status).toBe(200);
+          expect(forwarded.headers.getSetCookie()[0]).not.toContain("Secure");
+          const secure = await web.handler(
+            new Request("https://127.0.0.1/api/auth/browser-session", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                host: "127.0.0.1",
+                origin: "https://127.0.0.1",
+              },
+              body: "{}",
+            }),
+            requestContext,
+          );
+          expect(secure.status).toBe(200);
+          expect(secure.headers.getSetCookie()[0]).toContain("Secure");
+          const retired = await web.handler(postJson("/oauth/token", {}), requestContext);
+          expect(retired.status).toBe(404);
         }),
-      ([environmentA, environmentB]) =>
-        Effect.promise(() => Promise.all([environmentA.dispose(), environmentB.dispose()])),
+      (web) => Effect.promise(() => web.dispose()),
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );

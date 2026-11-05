@@ -110,6 +110,43 @@ describe("deriveActiveSubagentInstances", () => {
 });
 
 describe("projectedSubagentsToRuntime workflow expansion", () => {
+  it.each([undefined, 1983254])(
+    "retains cache reuse and duration %s without token usage",
+    (durationMs) => {
+      const [, cached, live] = projectedSubagentsToRuntime([
+        subagent({
+          workflow: {
+            phases: [],
+            agents: [
+              member({
+                index: 1,
+                state: "completed",
+                cached: true,
+                reusedAt: 1793887167396,
+                ...(durationMs === undefined ? {} : { durationMs }),
+              }),
+              member({ index: 2, startedAt: Date.UTC(2026, 7, 1, 10) }),
+            ],
+          },
+        }),
+      ]);
+      expect(cached).toMatchObject({
+        cached: true,
+        durationMs,
+        reusedAt: "2026-11-05T13:59:27.396Z",
+        startedAt: null,
+        completedAt: null,
+        usage: null,
+      });
+      expect(live).toMatchObject({
+        status: "running",
+        startedAt: "2026-08-01T10:00:00.000Z",
+        completedAt: null,
+      });
+      expect(live?.cached).toBeUndefined();
+    },
+  );
+
   it("uses a settled member's wall-clock completion separately from its execution duration", () => {
     const [, settled] = projectedSubagentsToRuntime([
       subagent({

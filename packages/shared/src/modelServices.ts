@@ -144,9 +144,12 @@ export function modelServiceAgentCapabilities(
             ...(capabilities.optionDescriptors ?? []).filter(
               (option) =>
                 option !== descriptor &&
-                (((driver === "codex" || driver === "claudeAgent") &&
-                  option.id === "serviceTier" &&
+                ((driver === "opencode" &&
+                  (option.id === "agent" || option.id === "variant") &&
                   option.type === "select") ||
+                  ((driver === "codex" || driver === "claudeAgent") &&
+                    option.id === "serviceTier" &&
+                    option.type === "select") ||
                   (driver === "claudeAgent" &&
                     option.id === "fastMode" &&
                     option.type === "boolean")),

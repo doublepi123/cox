@@ -26,7 +26,6 @@ import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 
 import * as ServerConfig from "./config.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as EffectWorker from "./orchestration-v2/EffectWorker.ts";
@@ -201,7 +200,6 @@ it.effect.each([
         // No provider logins or Connect link, so startup records no owners.
         FileSystem.layerNoop({}),
         Layer.mock(ServerSecretStore.ServerSecretStore)({ get: () => Effect.succeedNone }),
-        Layer.mock(EnvironmentAuth.EnvironmentAuth)({}),
         Layer.mock(ExternalLauncher.ExternalLauncher)({}),
         Layer.mock(HttpServer.HttpServer)({
           address: NetAddress.inetAddressFromIpStringUnsafe("127.0.0.1", 4773),

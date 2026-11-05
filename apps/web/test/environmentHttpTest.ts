@@ -6,9 +6,7 @@ import {
   EnvironmentHttpApi,
   type AuthBrowserSessionRequest,
   type AuthBrowserSessionResult,
-  type AuthCreatePairingCredentialInput,
   type AuthEnvironmentScope,
-  type AuthPairingCredentialResult,
   type AuthSessionState,
   type ExecutionEnvironmentDescriptor,
   type EnvironmentAuthInvalidError,
@@ -32,16 +30,12 @@ interface EnvironmentHttpTestScenario {
   readonly descriptor?: () => Effect.Effect<ExecutionEnvironmentDescriptor>;
   readonly session?: () => Effect.Effect<AuthSessionState>;
   readonly browserSession?: BrowserSessionHandler;
-  readonly pairingCredential?: (
-    payload: AuthCreatePairingCredentialInput,
-  ) => Effect.Effect<AuthPairingCredentialResult>;
 }
 
 export interface EnvironmentHttpTestCalls {
   descriptor: number;
   session: number;
   browserSession: Array<AuthBrowserSessionRequest>;
-  pairingCredential: Array<AuthCreatePairingCredentialInput>;
 }
 
 const unexpectedEndpoint = (endpoint: string) =>
@@ -65,7 +59,6 @@ export async function installEnvironmentHttpTest(scenario: EnvironmentHttpTestSc
     descriptor: 0,
     session: 0,
     browserSession: [],
-    pairingCredential: [],
   };
 
   const client = await Effect.runPromise(
@@ -99,20 +92,8 @@ export async function installEnvironmentHttpTest(scenario: EnvironmentHttpTestSc
                 );
               }),
             )
-            .handle("token", () => unexpectedEndpoint("auth.token"))
             .handle("webSocketTicket", () => unexpectedEndpoint("auth.webSocketTicket"))
             .handle("webSocketTicketFor", () => unexpectedEndpoint("auth.webSocketTicketFor"))
-            .handle(
-              "pairingCredential",
-              Effect.fn("test.environment.auth.pairingCredential")(function* ({ payload }) {
-                calls.pairingCredential.push(payload);
-                return yield* (
-                  scenario.pairingCredential?.(payload) ??
-                    unexpectedEndpoint("auth.pairingCredential")
-                );
-              }),
-            )
-            .handle("revokePairingLink", () => unexpectedEndpoint("auth.revokePairingLink"))
             .handle("revokeClient", () => unexpectedEndpoint("auth.revokeClient"))
             .handle("revokeOtherClients", () => unexpectedEndpoint("auth.revokeOtherClients")),
         ),

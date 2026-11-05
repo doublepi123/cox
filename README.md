@@ -148,6 +148,20 @@ only. You can also add or edit model metadata manually when a service has no mod
 In **Settings → Providers**, bind a Codex, Claude Code, Pi or OpenCode instance to the service,
 select its models and a default. Unbinding restores that instance's independent settings.
 
+OpenCode 2 discovers visible primary agents from each project's directory, including plugin
+agents. In normal mode, an explicit Agent selection overrides the native session agent;
+without a selection, Cox preserves the native default chosen when the session is created.
+Plan mode temporarily selects `plan`, taking priority over the Agent selector. Returning to
+normal mode restores the explicit selection or the session's original native agent. Switching
+agents does not authorize switching away from the model and provider selected in Cox.
+
+Workflow cache hits display a cache-reuse label and the original execution duration when
+the provider supplies it. Legacy caches without execution timing display an unknown original
+duration; cache-return timestamps are never treated as execution or cache-read durations.
+Cox preserves cache metadata in stored snapshots, but cannot recover timings omitted by
+the external Claude runtime's native journal. Persisting those timings for new native cache
+entries requires a corrected upstream runtime, including its journal writer, reader and replay.
+
 Cox keeps upstream keys and private headers in its local secret store. Agents receive
 separate local gateway credentials. Native protocol requests pass through; other requests
 use the embedded MIT-licensed [CLIProxyAPI translator SDK](https://github.com/router-for-me/CLIProxyAPI)
@@ -205,19 +219,25 @@ pnpm start
 
 The local server serves the built Web app and its API from one origin. Use the local browser URL printed on startup. Production data defaults to `~/.cox`; `--home-dir` selects a different Cox data directory. Run `pnpm --filter cox start --help` for CLI options.
 
-Cox listens on loopback only and must not be exposed directly to an untrusted network. To reach it from another device, see [Password sign-in and remote access](#password-sign-in-and-remote-access). Local authentication and origin checks remain necessary because agent access includes filesystem and terminal operations.
+Cox listens on `127.0.0.1` by default and must not be exposed directly to an untrusted network. To reach it from another device, see [Password sign-in and remote access](#password-sign-in-and-remote-access). Local authentication and origin checks remain necessary because agent access includes filesystem and terminal operations.
 
 ## Password sign-in and remote access
 
-Cox always listens on loopback (`127.0.0.1`, `::1` or `localhost`). By default, a browser signs in with the one-time link printed in the terminal. To use Cox from another device, run a reverse proxy on the same computer that forwards to the loopback port, and set a sign-in password of at least 8 characters before starting Cox:
+Cox defaults to loopback (`127.0.0.1`). Without a password, the local browser automatically establishes a session; no token or pairing link is needed. Never expose this local-no-password mode through a reverse proxy, tunnel, or port forward.
+
+To require sign-in, set a password of at least 8 characters before starting Cox:
 
 ```sh
 COX_AUTH_PASSWORD='use-a-long-random-password' cox --no-browser
 ```
 
-The sign-in page then accepts this password as well as pairing tokens. A browser stays signed in for up to 30 days. After 10 failed attempts within 5 minutes, password sign-in pauses until that window passes. When a service manager runs Cox, keep the variable in an environment file that only you can read rather than on the command line. The previous name, `T3CODE_AUTH_PASSWORD`, is still accepted.
+The password protects localhost as well as external access. Configuring a password never changes the listen address automatically. A browser stays signed in for up to 30 days. After 10 failed attempts within 5 minutes, password sign-in pauses until that window passes. When a service manager runs Cox, keep the variable in an environment file that only you can read rather than on the command line. The previous name, `T3CODE_AUTH_PASSWORD`, is still accepted.
 
-Password sign-in is meant for personal use on a trusted internal network. Do not rely on it alone on the public internet: the password would be the only barrier in front of agents that run commands and edit files. For internet access, put an authenticating proxy in front of Cox, such as Cloudflare Access with Cloudflare Tunnel, or a similar identity-aware proxy or VPN, and keep the password as a second layer. The proxy must use HTTPS, support WebSockets, and forward the public host in `Host` or `X-Forwarded-Host`.
+To listen beyond loopback, explicitly pass `--host 0.0.0.0`, `--host ::`, or a numeric IPv4/IPv6 address together with `COX_AUTH_PASSWORD`; DNS hostnames other than `localhost` are rejected. Development Web URLs remain restricted to loopback. Use HTTPS for all nonlocal browser access, typically with a TLS reverse proxy forwarding to Cox. CLI `auth session issue/list/revoke` commands are a trusted local control plane: they reuse the persisted authentication policy without changing it, even when the shell does not inherit the service's password environment.
+
+Password sign-in is meant for personal use on a trusted internal network. Do not rely on it alone on the public internet: the password would be the only barrier in front of agents that run commands and edit files. For internet access, put an authenticating proxy in front of Cox, such as Cloudflare Access with Cloudflare Tunnel, or a similar identity-aware proxy or VPN, and keep the password as a second layer. The proxy must use HTTPS, support WebSockets, and preserve the public host in `Host`; untrusted forwarded headers do not authorize browser origins.
+
+Upgrading from pairing authentication invalidates existing browser and client sessions, including MCP clients; sign in or approve clients again. Projects, threads, messages, and provider credentials are preserved. Changing or removing the server password also invalidates existing sessions. Back up the Cox data directory before upgrading; downgrading across this authentication migration requires restoring the matching pre-upgrade backup.
 
 ## Checks
 

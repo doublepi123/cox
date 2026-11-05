@@ -1,4 +1,5 @@
 import type { ModelServiceRecovery } from "@t3tools/contracts";
+import { useState } from "react";
 import { useTranslation } from "../../i18n";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -18,7 +19,6 @@ export function ModelServiceRecoverySettings({
     ["retryOn429", "Retry all 429 responses, including quota limits"],
     ["retryToolRequests", "Retry failed requests with upstream tools"],
     ["hedgeEnabled", "Start backup requests when responses are slow"],
-    ["respectRetryAfter", "Respect 429 cooldown"],
   ] as const;
   const fields = [
     ["hedgeDelayMs", "Backup delay (seconds)", 1000, 0.1, 600],
@@ -26,8 +26,9 @@ export function ModelServiceRecoverySettings({
     ["maxAttempts", "Maximum attempts (including backups)", 1, 1, 100],
     ["budgetMs", "Recovery budget (seconds)", 1000, 0.1, 1800],
     ["responseHeadersTimeoutMs", "Response headers timeout (seconds)", 1000, 0.1, 1800],
-    ["maxConcurrent", "Maximum concurrent requests", 1, 1, 4],
+    ["maxConcurrent", "Maximum concurrent requests", 1, 1, 10],
   ] as const;
+  const [drafts, setDrafts] = useState<Partial<Record<(typeof fields)[number][0], string>>>({});
   return (
     <fieldset disabled={disabled} className="space-y-3 rounded-lg border border-border/60 p-3">
       <legend className="px-1 text-sm font-medium">{t("Request recovery")}</legend>
@@ -53,7 +54,7 @@ export function ModelServiceRecoverySettings({
       {value.retryOn429 ? (
         <p className="text-xs text-muted-foreground">
           {t(
-            "429 retries share the recovery budget. The cooldown setting still controls how long to wait.",
+            "429 retries share the recovery budget and use the local retry interval instead of the service cooldown.",
           )}
         </p>
       ) : null}
@@ -62,11 +63,6 @@ export function ModelServiceRecoverySettings({
           {t(
             "Failed requests with tools such as web search retry sequentially before output starts. Upstream tools may run again.",
           )}
-        </p>
-      ) : null}
-      {!value.respectRetryAfter ? (
-        <p className="text-xs text-muted-foreground">
-          {t("429 responses use the local retry interval instead of the service cooldown.")}
         </p>
       ) : null}
       <details>
@@ -83,10 +79,21 @@ export function ModelServiceRecoverySettings({
                 min={min}
                 max={max}
                 step={scale === 1 ? 1 : 0.1}
-                value={value[key] / scale}
-                onChange={(event) =>
-                  onChange({ ...value, [key]: Math.round(Number(event.target.value) * scale) })
-                }
+                value={drafts[key] ?? value[key] / scale}
+                onChange={(event) => {
+                  const draft = event.target.value;
+                  setDrafts((current) => ({ ...current, [key]: draft }));
+                  if (draft !== "" && event.target.validity.valid) {
+                    onChange({ ...value, [key]: Math.round(Number(draft) * scale) });
+                  }
+                }}
+                onBlur={() => {
+                  setDrafts((current) => {
+                    const next = { ...current };
+                    delete next[key];
+                    return next;
+                  });
+                }}
               />
             </label>
           ))}

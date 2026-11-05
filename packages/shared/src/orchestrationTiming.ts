@@ -5,9 +5,18 @@ export function deriveSubagentElapsedMs(
     readonly status: OrchestrationV2Subagent["status"];
     readonly startedAt: string | null;
     readonly completedAt: string | null;
+    readonly cached?: boolean | undefined;
+    readonly durationMs?: number | undefined;
   },
   nowMs: number,
 ): number | null {
+  if (agent.cached) {
+    return agent.durationMs !== undefined &&
+      Number.isFinite(agent.durationMs) &&
+      agent.durationMs >= 0
+      ? agent.durationMs
+      : null;
+  }
   if (agent.startedAt === null) return null;
   const end = isOrchestrationV2WorkActive(agent.status)
     ? nowMs

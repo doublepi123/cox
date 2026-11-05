@@ -705,7 +705,7 @@ const grantedSessions = Atom.family((_id: EnvironmentId) =>
       authenticated: true,
       auth: {
         policy: "remote-reachable",
-        bootstrapMethods: [],
+        loginMode: "local",
         sessionMethods: [],
         sessionCookieName: "test",
       },

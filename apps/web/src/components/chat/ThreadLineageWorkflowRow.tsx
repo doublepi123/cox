@@ -23,6 +23,7 @@ import {
 function phaseElapsed(phase: SubagentWorkflowGroup["phases"][number]) {
   const instants = (key: "startedAt" | "completedAt") =>
     phase.members
+      .filter((member) => !member.cached)
       .map((member) => member[key])
       .filter((value) => value !== null)
       .sort();
@@ -81,7 +82,7 @@ function WorkflowMemberRow({
           <ThreadRelationshipIcon driver={driver} provider={provider} status={member.status} />
           <span className="min-w-0 flex-1 truncate">{member.title}</span>
           <span className="sr-only">{member.status}</span>
-          {member.startedAt ? (
+          {member.startedAt || member.cached ? (
             <span className="shrink-0 text-2xs font-normal tabular-nums text-muted-foreground">
               <AgentElapsed agent={member} />
             </span>

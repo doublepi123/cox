@@ -1,5 +1,6 @@
 import { ScheduledTaskWebhookOrigin } from "./scheduledTasks/ScheduledTaskService.ts";
-import { validateLocalHost } from "./cli/config.ts";
+import { validateDevUrl, validateListenHost } from "./cli/config.ts";
+import { isRemoteReachableHost } from "./auth/utils.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
@@ -646,7 +647,13 @@ const layerMakeRoutes = Layer.mergeAll(
 const layerMakeServer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
-    yield* validateLocalHost(config.host ?? "127.0.0.1");
+    yield* validateListenHost(config.host ?? "127.0.0.1", config.authPassword);
+    if (config.devUrl !== undefined) yield* validateDevUrl(config.devUrl);
+    if (isRemoteReachableHost(config.host)) {
+      yield* Effect.logWarning(
+        "Cox is listening beyond loopback. Use HTTPS for nonlocal access; a password alone is not sufficient protection on an untrusted network.",
+      );
+    }
     // Before anything opens the database: one server per T3 home.
     const ownership = yield* ServerOwnership.acquireServerOwnership(config.serverRuntimeStatePath);
     const activation = yield* Deferred.make<void>();

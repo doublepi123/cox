@@ -60,13 +60,12 @@ export const ModelServiceRecovery = Schema.Struct({
   retryOn429: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   retryToolRequests: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   hedgeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  respectRetryAfter: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   hedgeDelayMs: boundedInteger(100, 600_000, 30_000),
   reasoningHedgeDelayMs: boundedInteger(100, 600_000, 60_000),
   maxAttempts: boundedInteger(1, 100, 12),
-  budgetMs: boundedInteger(100, 1_800_000, 180_000),
-  responseHeadersTimeoutMs: boundedInteger(100, 1_800_000, 120_000),
-  maxConcurrent: boundedInteger(1, 4, 2),
+  budgetMs: boundedInteger(100, 1_800_000, 600_000),
+  responseHeadersTimeoutMs: boundedInteger(100, 1_800_000, 300_000),
+  maxConcurrent: boundedInteger(1, 10, 5),
 });
 export type ModelServiceRecovery = typeof ModelServiceRecovery.Type;
 export const DEFAULT_MODEL_SERVICE_RECOVERY = Schema.decodeSync(ModelServiceRecovery)({});

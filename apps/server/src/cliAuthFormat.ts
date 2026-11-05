@@ -1,7 +1,7 @@
-import type { AuthClientMetadata, AuthClientSession, AuthPairingLink } from "@t3tools/contracts";
+import type { AuthClientMetadata, AuthClientSession } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import type { IssuedBearerSession, IssuedPairingLink } from "./auth/EnvironmentAuth.ts";
+import type { IssuedBearerSession } from "./auth/EnvironmentAuth.ts";
 
 const newline = "\n";
 
@@ -22,86 +22,6 @@ function formatClientMetadata(metadata: AuthClientMetadata): string {
 
 function toIsoString(value: DateTime.DateTime | DateTime.Utc): string {
   return DateTime.formatIso(DateTime.toUtc(value));
-}
-
-export function formatIssuedPairingCredential(
-  credential: IssuedPairingLink,
-  options?: {
-    readonly json?: boolean;
-    readonly baseUrl?: string;
-  },
-): string {
-  const pairUrl =
-    options?.baseUrl != null && options.baseUrl.length > 0
-      ? (() => {
-          const url = new URL("/pair", options.baseUrl);
-          url.searchParams.delete("token");
-          url.hash = new URLSearchParams([["token", credential.credential]]).toString();
-          return url.toString();
-        })()
-      : undefined;
-
-  if (options?.json) {
-    return `${JSON.stringify(
-      {
-        id: credential.id,
-        credential: credential.credential,
-        ...(credential.label ? { label: credential.label } : {}),
-        scopes: credential.scopes,
-        expiresAt: toIsoString(credential.expiresAt),
-        ...(pairUrl ? { pairUrl } : {}),
-      },
-      null,
-      2,
-    )}${newline}`;
-  }
-
-  return (
-    [
-      `Issued client pairing token ${credential.id}.`,
-      `Token: ${credential.credential}`,
-      ...(pairUrl ? [`Pair URL: ${pairUrl}`] : []),
-      `Expires at: ${toIsoString(credential.expiresAt)}`,
-    ].join(newline) + newline
-  );
-}
-
-export function formatPairingCredentialList(
-  credentials: ReadonlyArray<AuthPairingLink>,
-  options?: {
-    readonly json?: boolean;
-  },
-): string {
-  if (options?.json) {
-    return `${JSON.stringify(
-      credentials.map((credential) => ({
-        id: credential.id,
-        ...(credential.label ? { label: credential.label } : {}),
-        scopes: credential.permissions ?? credential.scopes,
-        createdAt: toIsoString(credential.createdAt),
-        expiresAt: toIsoString(credential.expiresAt),
-      })),
-      null,
-      2,
-    )}${newline}`;
-  }
-
-  if (credentials.length === 0) {
-    return `No active pairing credentials.${newline}`;
-  }
-
-  return (
-    credentials
-      .map((credential) =>
-        [
-          `${credential.id}${credential.label ? ` (${credential.label})` : ""}`,
-          `  scopes: ${(credential.permissions ?? credential.scopes).join(" ")}`,
-          `  created: ${toIsoString(credential.createdAt)}`,
-          `  expires: ${toIsoString(credential.expiresAt)}`,
-        ].join(newline),
-      )
-      .join(`${newline}${newline}`) + newline
-  );
 }
 
 export function formatIssuedSession(

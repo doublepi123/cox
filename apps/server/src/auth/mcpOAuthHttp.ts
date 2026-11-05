@@ -6,6 +6,7 @@ import {
   mcpClientScopes,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Crypto from "effect/Crypto";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -13,13 +14,10 @@ import * as HttpEffect from "effect/http/HttpEffect";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as McpOAuth from "./McpOAuth.ts";
-import { renderErrorPage } from "./mcpOAuthHtml.ts";
-
-const APPROVAL_PAGE_PATH = "/connect-agent";
+import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+import { consentScript, renderConsentPage, renderErrorPage } from "./mcpOAuthHtml.ts";
 
 const PAGE_HEADERS = {
-  "content-security-policy":
-    "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
   "x-frame-options": "DENY",
   "cache-control": "no-store",
   "referrer-policy": "no-referrer",
@@ -62,6 +60,15 @@ export const layer = HttpApiBuilder.group(
   "mcpOAuth",
   Effect.fnUntraced(function* (handlers) {
     const oauth = yield* McpOAuth.McpOAuth;
+    const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+    const crypto = yield* Crypto.Crypto;
+    const scriptDigest = yield* crypto
+      .digest("SHA-256", new TextEncoder().encode(consentScript))
+      .pipe(Effect.orDie);
+    const pageHeaders = {
+      ...PAGE_HEADERS,
+      "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${Buffer.from(scriptDigest).toString("base64")}'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+    };
     const protectedResource = () =>
       requestUrls.pipe(Effect.map(McpOAuth.protectedResourceMetadata));
 
@@ -96,14 +103,26 @@ export const layer = HttpApiBuilder.group(
             .pipe(Effect.result);
           const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
           if (Result.isSuccess(authorization)) {
-            return HttpServerResponse.redirect(`${APPROVAL_PAGE_PATH}${url.search}`, { headers });
+            const descriptor = yield* environmentAuth.getDescriptor();
+            return HttpServerResponse.text(
+              renderConsentPage({
+                authorizationQuery: url.searchParams.toString(),
+                clientName: authorization.success.client.name,
+                redirectHost: new URL(authorization.success.redirectUri).host,
+                loginMode: descriptor.loginMode,
+              }),
+              {
+                contentType: "text/html; charset=utf-8",
+                headers: pageHeaders,
+              },
+            );
           }
           const error = authorization.failure;
           return error._tag === "McpOAuthPageError"
             ? HttpServerResponse.text(renderErrorPage(error.description), {
                 status: 400,
                 contentType: "text/html; charset=utf-8",
-                headers: PAGE_HEADERS,
+                headers: pageHeaders,
               })
             : HttpServerResponse.redirect(McpOAuth.redirectForError(error, urls.issuer), {
                 headers,

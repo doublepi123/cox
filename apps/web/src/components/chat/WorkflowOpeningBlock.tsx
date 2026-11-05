@@ -165,7 +165,7 @@ function WorkflowMemberRow(props: {
               </span>
             ) : null}
           </span>
-          {member.startedAt ? (
+          {member.startedAt || member.cached ? (
             <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
               <AgentElapsed agent={member} />
             </span>

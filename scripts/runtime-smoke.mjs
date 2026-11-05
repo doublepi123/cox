@@ -13,6 +13,9 @@ await new Promise((resolve) => reservation.listen(0, "127.0.0.1", resolve));
 const port = reservation.address().port;
 await new Promise((resolve) => reservation.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
+const password = process.env.COX_SMOKE_PASSWORD === "1" ? "cox-smoke-password" : undefined;
+const listenHost = process.env.COX_SMOKE_EXTERNAL_BIND === "1" ? "0.0.0.0" : "127.0.0.1";
+if (listenHost === "0.0.0.0") assert.ok(password, "External smoke binding requires password mode");
 const websocketStatus = (browserOrigin, cookie = "") =>
   new Promise((resolve, reject) => {
     const socket = connect(port, "127.0.0.1", () => {
@@ -52,7 +55,7 @@ const child = spawn(
     "--home-dir",
     home,
     "--host",
-    "127.0.0.1",
+    listenHost,
     "--port",
     String(port),
     "--no-browser",
@@ -63,6 +66,10 @@ const child = spawn(
       ...process.env,
       HOME: home,
       COX_HOME: home,
+      T3CODE_TRACE_FILE: join(home, "smoke-trace.ndjson"),
+      COX_AUTH_PASSWORD: password ?? "",
+      T3CODE_AUTH_PASSWORD: "",
+      VITE_DEV_SERVER_URL: undefined,
       T3CODE_HOST: "127.0.0.1",
       COX_TELEMETRY_ENABLED: "false",
       T3CODE_TELEMETRY_ENABLED: "false",
@@ -80,7 +87,7 @@ const ready = new Promise((resolve) => {
 for (const stream of [child.stdout, child.stderr]) {
   stream.on("data", (chunk) => {
     output += chunk;
-    const match = output.match(/pairingUrl:\s*(http\S+)/);
+    const match = output.match(/Local URL:\s*(http\S+)/);
     if (match) readyResolve(new URL(match[1]));
   });
 }
@@ -93,7 +100,7 @@ const deadline = new Promise((_, reject) => {
   timeout = setTimeout(() => reject(new Error("Cox startup deadline exceeded")), 60000);
 });
 try {
-  const pairing = await Promise.race([
+  await Promise.race([
     ready,
     deadline,
     exited.then((result) => {
@@ -108,14 +115,21 @@ try {
     response.json(),
   );
   assert.equal(sessionBefore.authenticated, false);
+  assert.equal(sessionBefore.auth.loginMode, password ? "password" : "local");
   const protectedResponse = await fetch(`${origin}/api/projects`);
   assert.equal(protectedResponse.status, 401);
-  const credential = new URLSearchParams(pairing.hash.slice(1)).get("token");
-  assert.ok(credential);
+  if (password) {
+    const missingCredential = await fetch(`${origin}/api/auth/browser-session`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin },
+      body: "{}",
+    });
+    assert.equal(missingCredential.status, 401);
+  }
   const login = await fetch(`${origin}/api/auth/browser-session`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify(password ? { credential: password } : {}),
   });
   assert.equal(login.status, 200);
   const cookieHeader = login.headers.get("set-cookie");
@@ -148,10 +162,13 @@ try {
   const replay = await fetch(`${origin}/api/auth/browser-session`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify(password ? { credential: password } : {}),
   });
-  assert.equal(replay.status, 401);
+  assert.equal(replay.status, 200);
   for (const path of [
+    "/oauth/token",
+    "/api/auth/pairing-token",
+    "/api/auth/pairing-links/revoke",
     "/api/cloud",
     "/api/relay",
     "/api/peer-links",
@@ -179,12 +196,10 @@ try {
     }
   }
   console.log(
-    "PASS: isolated built-server startup, local descriptor, auth required, one-use bootstrap, HttpOnly cookie, authenticated projects API, HTTP/WS foreign-origin rejection, authenticated WebSocket upgrade, separate agent gateway authentication, removed endpoint probes.",
+    "PASS: isolated built-server startup, local descriptor, auth required, local/password browser sessions, HttpOnly cookie, authenticated projects API, HTTP/WS foreign-origin rejection, authenticated WebSocket upgrade, separate agent gateway authentication, removed endpoint probes.",
   );
 } catch (error) {
-  const sanitized = output
-    .replace(/pairingUrl:[^\n]*/g, "pairingUrl: [redacted]")
-    .replace(/token=[^\s&]+/g, "token=[redacted]");
+  const sanitized = output;
   console.error(sanitized.slice(-10000));
   throw error;
 } finally {

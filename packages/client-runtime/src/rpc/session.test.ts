@@ -132,7 +132,7 @@ const SERVER_CONFIG: ServerConfigType = {
   },
   auth: {
     policy: "loopback-browser",
-    bootstrapMethods: ["one-time-token"],
+    loginMode: "local",
     sessionMethods: ["browser-session-cookie", "bearer-access-token"],
     sessionCookieName: "t3_session",
   },

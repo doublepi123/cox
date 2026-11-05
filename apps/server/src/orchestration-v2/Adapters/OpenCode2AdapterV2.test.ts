@@ -97,6 +97,7 @@ const t3Rules = [{ action: "*", resource: "*", effect: "allow" }, ...mcpRules];
 const TITLE = "Prime check";
 const sessionInfo = (overrides: Record<string, unknown> = {}) => ({
   id: SESSION,
+  agent: "build",
   title: TITLE,
   permissions: t3Rules,
   projectID: "global",
@@ -321,6 +322,8 @@ const resumed = (
     readonly resolveExtractedTextPath?: (path: string) => Effect.Effect<string | undefined>;
     readonly fileSystem?: FileSystem.FileSystem;
     readonly onPrompt?: (input: unknown) => void;
+    readonly nativeAgent?: string;
+    readonly nativeDefaultAgent?: string;
   },
 ) =>
   Effect.gen(function* () {
@@ -328,7 +331,10 @@ const resumed = (
       withInstructions([
         ...opening,
         out("session.get", { sessionID: SESSION }),
-        replyData("session.get", sessionInfo()),
+        replyData(
+          "session.get",
+          sessionInfo(options?.nativeAgent === undefined ? {} : { agent: options.nativeAgent }),
+        ),
         ...noOpenRequests,
         ...(options?.supervised === true
           ? [
@@ -354,7 +360,12 @@ const resumed = (
       },
     );
     const thread = yield* runtime.resumeThread({
-      providerThread: providerThread(yield* DateTime.now),
+      providerThread: {
+        ...providerThread(yield* DateTime.now),
+        ...(options?.nativeDefaultAgent === undefined
+          ? {}
+          : { nativeMetadata: { openCodeDefaultAgent: options.nativeDefaultAgent } }),
+      },
       threadId,
       modelSelection: bigPickle,
       runtimePolicy: policy(options?.supervised === true ? "approval-required" : "full-access"),
@@ -422,6 +433,97 @@ const history = {
 };
 
 it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
+  it.effect.each([undefined, "reviewer"] as const)(
+    "restores the normal agent %s after resuming a native Plan session",
+    (selected) =>
+      Effect.gen(function* () {
+        const { runtime, thread } = yield* resumed(
+          [
+            out("session.switchAgent", { sessionID: SESSION, agent: selected ?? "orchestrator" }),
+            reply("session.switchAgent", null),
+            event("session.model.selected", {
+              sessionID: SESSION,
+              model: { providerID: "unselected-provider", id: "agent-default-model" },
+            }),
+            out("session.switchModel", {
+              sessionID: SESSION,
+              model: { providerID: "opencode", id: "big-pickle" },
+            }),
+            reply("session.switchModel", null),
+            out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+            promptAccepted,
+            event("session.execution.succeeded", { sessionID: SESSION }),
+          ],
+          { nativeAgent: "plan", nativeDefaultAgent: "orchestrator" },
+        );
+        assert.strictEqual(thread.nativeMetadata?.openCodeDefaultAgent, "orchestrator");
+        const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+        yield* runtime.startTurn(
+          turnInput(thread, {
+            ...bigPickle,
+            ...(selected === undefined ? {} : { options: [{ id: "agent", value: selected }] }),
+          }),
+        );
+        assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+      }).pipe(Effect.scoped),
+  );
+  it.effect.each([
+    [undefined, "default", undefined],
+    ["orchestrator", "default", undefined],
+    ["reviewer", "default", "reviewer"],
+    [undefined, "plan", "plan"],
+    ["reviewer", "plan", "plan"],
+  ] as const)(
+    "uses agent %s in %s mode without changing the selected model",
+    ([selected, mode, switched]) =>
+      Effect.gen(function* () {
+        const { runtime, thread } = yield* resumed(
+          [
+            ...(switched === undefined
+              ? []
+              : [
+                  out("session.switchAgent", { sessionID: SESSION, agent: switched }),
+                  reply("session.switchAgent", null),
+                  ...(mode === "plan"
+                    ? [
+                        out("agent.list", "<any>"),
+                        reply("agent.list", agentList),
+                        out("session.update", {
+                          sessionID: SESSION,
+                          permissions: [
+                            { action: "*", resource: "*", effect: "allow" },
+                            { action: "edit", resource: "*", effect: "deny" },
+                            ...mcpRules,
+                          ],
+                        }),
+                        reply("session.update", null),
+                      ]
+                    : []),
+                  out("session.switchModel", {
+                    sessionID: SESSION,
+                    model: { providerID: "opencode", id: "big-pickle" },
+                  }),
+                  reply("session.switchModel", null),
+                ]),
+            out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+            promptAccepted,
+            event("session.execution.succeeded", { sessionID: SESSION }),
+          ],
+          { nativeAgent: "orchestrator" },
+        );
+        const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+        const input = turnInput(thread, {
+          ...bigPickle,
+          ...(selected === undefined ? {} : { options: [{ id: "agent", value: selected }] }),
+        });
+        yield* runtime.startTurn({
+          ...input,
+          runtimePolicy: { ...input.runtimePolicy, interactionMode: mode },
+        });
+        assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("switches the session's model and variant before a turn that changed them", () =>
     Effect.gen(function* () {
       const { runtime, thread } = yield* resumed([

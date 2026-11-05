@@ -127,6 +127,7 @@ const planRules = (name: string) => [
 const sessionInfo = (directory: string, permissions: ReadonlyArray<unknown>, title: string) => ({
   data: {
     id: SESSION,
+    agent: "build",
     title,
     projectID: "global",
     model: { id: "big-pickle", providerID: "opencode", variant: "default" },
@@ -413,14 +414,26 @@ describe("OpenCode 2 through the orchestrator", () => {
 
           out("session.switchAgent", { sessionID: SESSION, agent: "plan" }),
           reply("session.switchAgent", null),
+          out("session.switchModel", {
+            sessionID: SESSION,
+            model: { providerID: "opencode", id: "big-pickle" },
+          }),
+          reply("session.switchModel", null),
           ...instructionsWritten,
           ...answeredPrompt("PLANNED"),
           out("session.get", { sessionID: SESSION }),
-          reply("session.get", sessionInfo(cwd, planRules(name), name)),
+          reply("session.get", {
+            data: { ...sessionInfo(cwd, planRules(name), name).data, agent: "plan" },
+          }),
           out("session.update", { sessionID: SESSION, permissions: t3Rules(name) }),
           reply("session.update", null),
           out("session.switchAgent", { sessionID: SESSION, agent: "build" }),
           reply("session.switchAgent", null),
+          out("session.switchModel", {
+            sessionID: SESSION,
+            model: { providerID: "opencode", id: "big-pickle" },
+          }),
+          reply("session.switchModel", null),
           ...answeredPrompt("BUILT"),
         ],
         commands: [

@@ -1,15 +1,18 @@
 import { expect, it } from "vite-plus/test";
-import {
-  getPairingTokenFromUrl,
-  setPairingTokenOnUrl,
-  stripPairingTokenFromUrl,
-} from "./remote.ts";
-it("reads and strips local bootstrap tokens without changing the source URL", () => {
-  const source = new URL("http://127.0.0.1:4773/pair?token=search#token=fragment&other=value");
-  expect(getPairingTokenFromUrl(source)).toBe("fragment");
-  expect(stripPairingTokenFromUrl(source).toString()).toBe(
-    "http://127.0.0.1:4773/pair#other=value",
+import { stripSensitiveUrlToken } from "./remote.ts";
+
+it("strips sensitive legacy URL tokens without reading credentials or changing the source", () => {
+  const source = new URL(
+    "http://127.0.0.1:4773/?token=search&other=query#token=fragment&other=value",
   );
-  expect(getPairingTokenFromUrl(source)).toBe("fragment");
-  expect(getPairingTokenFromUrl(setPairingTokenOnUrl(source, "new-token"))).toBe("new-token");
+  expect(stripSensitiveUrlToken(source).toString()).toBe(
+    "http://127.0.0.1:4773/?other=query#other=value",
+  );
+  expect(source.searchParams.get("token")).toBe("search");
+  expect(source.hash).toBe("#token=fragment&other=value");
+});
+
+it("preserves unrelated paths, query parameters and route hashes", () => {
+  const source = new URL("http://localhost/project?theme=dark#/thread/123");
+  expect(stripSensitiveUrlToken(source).toString()).toBe(source.toString());
 });

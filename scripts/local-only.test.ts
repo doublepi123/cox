@@ -61,6 +61,23 @@ describe("local-only distribution boundary", () => {
     expect(patch).toContain("didChangeIndex");
   });
 
+  it("keeps startup and CLI authentication free of pairing", () => {
+    for (const relative of [
+      "apps/server/src/cli/auth.ts",
+      "apps/server/src/cliAuthFormat.ts",
+      "apps/server/src/startupAccess.ts",
+      "apps/server/src/serverRuntimeStartup.ts",
+    ]) {
+      const source = NodeFS.readFileSync(NodePath.join(root, relative), "utf8");
+      expect(source, relative).not.toMatch(/pairing|buildPairingUrl|issueStartupPairing/i);
+    }
+    const config = NodeFS.readFileSync(
+      NodePath.join(root, "apps/server/src/cli/config.ts"),
+      "utf8",
+    );
+    expect(config).not.toContain("DevAuthTokenConfig");
+  });
+
   it("does not ship removed application or infrastructure surfaces", () => {
     for (const directory of [
       "apps/desktop",

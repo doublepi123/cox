@@ -816,6 +816,8 @@ export const OrchestrationV2WorkflowAgent = Schema.Struct({
   totalTokens: Schema.optional(NonNegativeInt),
   toolCalls: Schema.optional(NonNegativeInt),
   durationMs: Schema.optional(NonNegativeInt),
+  cached: Schema.optional(Schema.Boolean),
+  reusedAt: Schema.optional(NonNegativeInt),
   queuedAt: Schema.optional(NonNegativeInt),
   startedAt: Schema.optional(NonNegativeInt),
   completedAt: Schema.optional(NonNegativeInt),
@@ -1034,6 +1036,7 @@ export type OrchestrationV2PendingBackgroundTask = typeof OrchestrationV2Pending
 
 export const OrchestrationV2ProviderThreadNativeMetadata = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
+  openCodeDefaultAgent: Schema.optional(TrimmedNonEmptyString),
   title: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   updatedAt: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   itemIdentityVersion: Schema.optional(Schema.Literal(2)),

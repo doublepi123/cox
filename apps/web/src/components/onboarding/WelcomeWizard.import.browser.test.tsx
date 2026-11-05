@@ -133,7 +133,7 @@ function session(scopes: ReadonlyArray<AuthEnvironmentScope>): AuthSessionState 
     scopes: [AuthOrchestrationReadScope, ...scopes],
     auth: {
       policy: "remote-reachable",
-      bootstrapMethods: ["one-time-token"],
+      loginMode: "local",
       sessionMethods: ["bearer-access-token"],
       sessionCookieName: "t3_session",
     },

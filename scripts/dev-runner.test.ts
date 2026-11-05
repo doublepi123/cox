@@ -22,9 +22,11 @@ describe("local development configuration", () => {
         VITE_CLERK_PUBLISHABLE_KEY: "unused",
         T3CODE_DEV_AUTH_TOKEN: "inherited-token",
         COX_TELEMETRY_ENABLED: "true",
+        COX_AUTH_PASSWORD: "dev-password",
       },
       "/tmp/cox-checkout",
     );
+    expect(config.env.COX_AUTH_PASSWORD).toBe("dev-password");
     expect(config.env.COX_HOME).toBe("/tmp/cox-checkout/.cox");
     expect(config.env.T3CODE_HOME).toBe("/tmp/cox-checkout/.cox");
     expect(config.env.HOST).toBe("127.0.0.1");

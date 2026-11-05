@@ -14,7 +14,6 @@ import * as Path from "effect/Path";
 import * as Tracer from "effect/Tracer";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import * as TestConsole from "effect/testing/TestConsole";
 
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
@@ -22,11 +21,7 @@ import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import * as ServerConfig from "./config.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ServerLogger from "./serverLogger.ts";
-import {
-  announceStartupPairingUrl,
-  logBrowserAutoOpenUnavailable,
-  maybeOpenBrowser,
-} from "./serverRuntimeStartup.ts";
+import { logBrowserAutoOpenUnavailable, maybeOpenBrowser } from "./serverRuntimeStartup.ts";
 
 interface ExportedRequest {
   readonly url: string;
@@ -223,45 +218,11 @@ describe("ServerLoggerLive", () => {
     }),
   );
 
-  describe("startup pairing URL", () => {
-    const pairingToken = "PAIRTOKEN7Q4K9";
-    const pairingUrl = `http://localhost:4773/pair#token=${pairingToken}`;
-    const announce = announceStartupPairingUrl(pairingUrl).pipe(
-      Effect.andThen(logBrowserAutoOpenUnavailable),
-    );
-
-    it.effect("prints the full URL but keeps its token out of exported log records", () =>
+  describe("startup browser URL", () => {
+    const browserUrl = "http://localhost:4773";
+    it.effect("reports browser launch failures without exporting command details", () =>
       Effect.gen(function* () {
-        const { requests } = yield* logInSpanThrough(
-          { otlpLogsUrl: "https://collector.example.com/v1/logs" },
-          announce,
-        );
-
-        const body = requests.map((request) => request.body).join("\n");
-        assert.include(body, "Authentication required");
-        assert.notInclude(body, pairingToken);
-        const printed = (yield* TestConsole.logLines).map((line) =>
-          Array.isArray(line) ? line.join(" ") : String(line),
-        );
-        assert.isTrue(printed.some((line) => line.includes(`pairingUrl: ${pairingUrl}`)));
-      }).pipe(Effect.provide(TestConsole.layer)),
-    );
-
-    it.effect("keeps the token off the span events the trace file records", () =>
-      Effect.gen(function* () {
-        const { spans } = yield* logInSpanThrough({}, announce);
-
-        const events = JSON.stringify(
-          spans.flatMap((span) => span.events.map(([name, , attributes]) => [name, attributes])),
-        );
-        assert.include(events, "Authentication required");
-        assert.notInclude(events, pairingToken);
-      }).pipe(Effect.provide(TestConsole.layer)),
-    );
-
-    it.effect("keeps the token out of traces when the browser fails to open", () =>
-      Effect.gen(function* () {
-        const failingLaunch = maybeOpenBrowser(pairingUrl).pipe(
+        const failingLaunch = maybeOpenBrowser(browserUrl).pipe(
           Effect.provide(
             Layer.mergeAll(
               layerConfig({ noBrowser: false }),
@@ -292,7 +253,7 @@ describe("ServerLoggerLive", () => {
           })),
         );
         assert.include(recorded, "browser auto-open unavailable");
-        assert.notInclude(recorded, pairingToken);
+        assert.notInclude(recorded, "xdg-open");
       }),
     );
   });

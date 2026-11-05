@@ -28,13 +28,38 @@ const layerEnvironmentAuthPolicy = (overrides?: Partial<ServerConfig.ServerConfi
   );
 
 it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
+  it.effect("rejects non-loopback policies without a password even outside the CLI", () =>
+    Effect.asVoid(EnvironmentAuthPolicy.EnvironmentAuthPolicy).pipe(
+      Effect.provide(layerEnvironmentAuthPolicy({ host: "0.0.0.0" })),
+      Effect.flip,
+      Effect.map((error) => expect(error._tag).toBe("ServerAuthPolicyConfigurationError")),
+    ),
+  );
+
+  it.effect("supports explicit non-loopback policies protected by a password", () =>
+    Effect.gen(function* () {
+      const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
+      expect(yield* policy.getDescriptor()).toMatchObject({
+        policy: "remote-reachable",
+        loginMode: "password",
+      });
+    }).pipe(
+      Effect.provide(
+        layerEnvironmentAuthPolicy({
+          host: "0.0.0.0",
+          authPassword: Redacted.make("test-password"),
+        }),
+      ),
+    ),
+  );
+
   it.effect("uses loopback-browser policy for loopback web hosts", () =>
     Effect.gen(function* () {
       const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("loopback-browser");
-      expect(descriptor.bootstrapMethods).toEqual(["one-time-token"]);
+      expect(descriptor.loginMode).toBe("local");
       expect(descriptor.serverUpdateScope).toBe("environment:maintain");
       expect(descriptor.sessionCookieName).toMatch(/^cox_session_4773_[a-f0-9]{12}$/);
     }).pipe(

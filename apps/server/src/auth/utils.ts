@@ -6,6 +6,7 @@ import type {
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no createHmac or timingSafeEqual.
 import * as NodeCrypto from "node:crypto";
+import * as NodeNet from "node:net";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Result from "effect/Result";
 
@@ -47,18 +48,18 @@ export function resolveLegacySessionCookieName(input: {
 }
 
 export function isRemoteReachableHost(host: string | undefined): boolean {
-  if (host === "0.0.0.0" || host === "::" || host === "[::]") {
-    return true;
-  }
-  if (!host || host.length === 0) {
-    return false;
-  }
-  return !(
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    host.startsWith("127.")
+  return host !== undefined && host.length > 0 && !isLoopbackAddress(host);
+}
+
+export function isLoopbackAddress(address: string): boolean {
+  const normalized = address
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/^::ffff:/, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    (NodeNet.isIPv4(normalized) && normalized.startsWith("127."))
   );
 }
 

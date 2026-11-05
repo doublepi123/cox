@@ -19,7 +19,6 @@ function summarizeSchemaIssue(issue: SchemaIssue.Issue): string {
 export const PersistenceErrorCorrelation = Schema.Union([
   Schema.Struct({ sessionId: Schema.String }),
   Schema.Struct({ currentSessionId: Schema.String }),
-  Schema.Struct({ pairingLinkId: Schema.String }),
   Schema.Struct({ threadId: Schema.String }),
 ]);
 export type PersistenceErrorCorrelation = typeof PersistenceErrorCorrelation.Type;
@@ -112,7 +111,6 @@ export type OrchestrationCommandReceiptRepositoryError =
   | PersistenceDecodeError;
 
 export type ProviderSessionRuntimeRepositoryError = PersistenceSqlError | PersistenceDecodeError;
-export type AuthPairingLinkRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type AuthSessionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type PullRequestFilesViewedRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type PullRequestReviewGuideRepositoryError = PersistenceSqlError | PersistenceDecodeError;

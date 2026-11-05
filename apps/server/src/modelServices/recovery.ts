@@ -122,6 +122,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   readonly diagnostic?: (event: RecoveryDiagnostic) => Effect.Effect<void>;
 }) {
   const { policy, load } = options;
+  const respectRetryAfter = !policy.retryOn429;
   const scope = yield* Scope.Scope;
   const started = yield* Clock.currentTimeMillis;
   const deadline = started + policy.budgetMs;
@@ -232,7 +233,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     }
     if (now >= deadline) break;
     const queued = yield* Queue.poll(events);
-    const cooled = !policy.respectRetryAfter || now >= load.cooldownUntil;
+    const cooled = !respectRetryAfter || now >= load.cooldownUntil;
     if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt) {
       const reason = permanentFailure
         ? "permanent_attempt_failure"
@@ -242,7 +243,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
             ? "attempt_limit"
             : active.size >= policy.maxConcurrent
               ? "concurrency_limit"
-              : load.hedges >= 4 || load.inFlight >= 16
+              : load.hedges >= 9 || load.inFlight >= 16
                 ? "service_load_limit"
                 : undefined;
       if (reason && !waits.has(reason)) {
@@ -257,12 +258,12 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       attempts < policy.maxAttempts &&
       cooled &&
       active.size < policy.maxConcurrent &&
-      (active.size === 0 || (load.hedges < 4 && load.inFlight < 16))
+      (active.size === 0 || (load.hedges < 9 && load.inFlight < 16))
     ) {
       if (policy.retryEnabled && now >= retryAt) {
         retryAt = Infinity;
         yield* launch(active.size > 0);
-      } else if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt && load.hedges < 4) {
+      } else if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt && load.hedges < 9) {
         yield* launch(true);
       }
     }
@@ -328,14 +329,14 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       continue;
     }
     const failedAt = yield* Clock.currentTimeMillis;
-    if (policy.respectRetryAfter && lastFailure.retryAfterMs) {
+    if (respectRetryAfter && lastFailure.retryAfterMs) {
       load.cooldownUntil = Math.max(load.cooldownUntil, failedAt + lastFailure.retryAfterMs);
     }
     if (!permanentFailure && policy.retryEnabled && attempts < policy.maxAttempts) {
       const ladder = [250, 500, 1000, 2000, 3000, 5000];
       const jitter = 0.75 + (yield* Random.next) * 0.5;
       const wait = Math.round(ladder[Math.min(attempts - 1, ladder.length - 1)]! * jitter);
-      retryAt = Math.max(failedAt + wait, policy.respectRetryAfter ? load.cooldownUntil : 0);
+      retryAt = Math.max(failedAt + wait, respectRetryAfter ? load.cooldownUntil : 0);
       yield* report("retrying", retryAt - failedAt);
     }
   }

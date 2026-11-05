@@ -53,7 +53,7 @@ export const resolvePasswordAuth = Effect.fn("PasswordAuth.resolve")(function* (
     recordFailure: Effect.gen(function* () {
       const now = DateTime.toEpochMillis(yield* DateTime.now);
       yield* Ref.update(failures, (recorded) => [
-        ...recorded.filter((at) => now - at < FAILURE_WINDOW_MS),
+        ...recorded.filter((at) => now - at < FAILURE_WINDOW_MS).slice(-(MAX_FAILED_ATTEMPTS - 1)),
         now,
       ]);
     }),

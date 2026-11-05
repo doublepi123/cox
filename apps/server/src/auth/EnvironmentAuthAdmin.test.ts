@@ -38,30 +38,6 @@ const layerEnvironmentAuth = (overrides?: Partial<ServerConfig.ServerConfig["Ser
   );
 
 it.layer(NodeServices.layer)("EnvironmentAuth administrative operations", (it) => {
-  it.effect("creates, lists, and revokes client pairing links", () =>
-    Effect.gen(function* () {
-      const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
-
-      const created = yield* environmentAuth.createPairingLink({
-        scopes: ["orchestration:read"],
-        subject: "one-time-token",
-        label: "CI phone",
-      });
-      const listedBeforeRevoke = yield* environmentAuth.listPairingLinks();
-      const revoked = yield* environmentAuth.revokePairingLink(created.id);
-      const listedAfterRevoke = yield* environmentAuth.listPairingLinks();
-
-      expect(created.scopes).toEqual(["orchestration:read"]);
-      expect(created.credential.length).toBeGreaterThan(0);
-      expect(listedBeforeRevoke).toHaveLength(1);
-      expect(listedBeforeRevoke[0]?.id).toBe(created.id);
-      expect(listedBeforeRevoke[0]?.label).toBe("CI phone");
-      expect(listedBeforeRevoke[0]).not.toHaveProperty("credential");
-      expect(revoked).toBe(true);
-      expect(listedAfterRevoke).toHaveLength(0);
-    }).pipe(Effect.provide(layerEnvironmentAuth())),
-  );
-
   it.effect("issues bearer access token sessions without exposing raw tokens", () =>
     Effect.gen(function* () {
       const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
