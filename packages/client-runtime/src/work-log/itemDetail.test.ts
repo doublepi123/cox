@@ -62,7 +62,10 @@ describe("tool image output parsing", () => {
         { content: [{ type: "text", text: "Sunny" }], temp: 21 },
       ]) {
         const item = toolItem({ structuredContent, content });
-        expect(turnItemOutputText(item)).toBe(JSON.stringify(structuredContent, null, 2));
+        expect(turnItemOutputText(item)).toBe(
+          (shape === "image-only" ? "" : shape === "summary" ? "Sunny\n" : '{"temp":21}\n') +
+            JSON.stringify(structuredContent, null, 2),
+        );
         expect(turnItemOutputImages(item)).toHaveLength(1);
       }
       for (const structuredContent of [null, {}, [], ""]) {
@@ -79,6 +82,16 @@ describe("tool image output parsing", () => {
       ).toBe("File contents");
     },
   );
+  it("keeps readable image summaries instead of rendering mirrored image bytes", () => {
+    const image = { type: "image", mimeType: "image/png", data: "AAAA" };
+    const item = toolItem({
+      content: [{ type: "text", text: "Read image file [image/png]" }, image],
+      structuredContent: { ...image, note: "Read image file [image/png]", width: 1200 },
+    });
+    expect(turnItemOutputText(item)).toBe("Read image file [image/png]");
+    expect(turnItemOutputImages(item)).toHaveLength(1);
+  });
+
   it.each(["array", "content", "structured"] as const)(
     "keeps markers for images beyond the served positions in %s output",
     (shape) => {
@@ -107,8 +120,8 @@ describe("tool image output parsing", () => {
       );
       expect(turnItemOutputImages(overflow)).toHaveLength(8);
       expect(turnItemOutputText(overflow)).toBe(
-        (shape === "structured" ? '{\n  "temp": 21\n}' : "Two additional screenshots:") +
-          "\n[image]\n[image]",
+        "Two additional screenshots:\n[image]\n[image]" +
+          (shape === "structured" ? '\n{\n  "temp": 21\n}' : ""),
       );
     },
   );

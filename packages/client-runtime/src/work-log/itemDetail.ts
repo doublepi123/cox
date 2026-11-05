@@ -42,10 +42,19 @@ function textFromBlocks(
     const images = Array.isArray(value.content)
       ? value.content.filter((block) => isRecord(block) && block.type === "image")
       : [];
+    if (
+      text?.trim() &&
+      isRecord(value.structuredContent) &&
+      value.structuredContent.type === "image"
+    ) {
+      return text;
+    }
     const structured = formatJsonValue(value.structuredContent);
     if (structured !== null && (images.length > 0 || !text?.trim())) {
       const markers = textFromBlocks(images, depth + 1, imageBlocks);
-      return [structured, markers].filter(Boolean).join("\n");
+      return [text?.trim() ? text : null, structured, !text?.trim() ? markers : null]
+        .filter(Boolean)
+        .join("\n");
     }
     return text?.trim() ? text : null;
   }

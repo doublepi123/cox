@@ -16,6 +16,8 @@
   selected files expand on the first click, and comparison errors remain recoverable.
 - Keep Claude model-service catalogs exclusive, resolve reported context windows against
   the instance catalog, and exclude restored session history from new-turn usage totals.
+- Preserve readable tool-image summaries beside structured metadata without rendering
+  mirrored image bytes, and align restart-continuation test doubles with recovery reads.
 
 ## 0.1.31 — 2026-11-04
 
