@@ -143,6 +143,7 @@ try {
       timeout: 30_000,
       args: ["--offline", ...(process.platform === "linux" ? ["--no-sandbox"] : [])],
     });
+    const offlineProcess = offline.process();
     try {
       const offlinePage = await offline.firstWindow();
       await offlinePage.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
@@ -164,7 +165,7 @@ try {
         return (await bridge.getBackendUpdate()).currentVersion;
       });
       assert.equal(version, installed.active.version);
-      const exited = once(offline.process(), "exit", { signal: AbortSignal.timeout(30_000) });
+      const exited = once(offlineProcess, "exit", { signal: AbortSignal.timeout(30_000) });
       await offline.evaluate(({ app, dialog }) => {
         dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
         app.quit();
@@ -174,10 +175,9 @@ try {
       assert.equal((await exited)[0], 0);
       console.log("PASS: client-only first installation and cached offline second launch.");
     } finally {
-      const child = offline.process();
-      if (child.exitCode === null && child.signalCode === null) {
-        const exited = once(child, "exit");
-        child.kill("SIGKILL");
+      if (offlineProcess.exitCode === null && offlineProcess.signalCode === null) {
+        const exited = once(offlineProcess, "exit");
+        offlineProcess.kill("SIGKILL");
         await exited;
       }
     }
