@@ -35,6 +35,7 @@ const environment = {
   XDG_CACHE_HOME: join(userHome, "cache"),
 };
 let previous: ElectronApplication | undefined;
+let previousProcess: ReturnType<ElectronApplication["process"]> | undefined;
 let restartedPid: number | undefined;
 const updater = new MacAppUpdate({
   home,
@@ -66,6 +67,7 @@ try {
     args: flavor === "client-only" ? [] : ["--offline"],
     timeout: 30_000,
   });
+  previousProcess = previous.process();
   const page = await previous.firstWindow();
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 600_000 });
   await page.waitForFunction(
@@ -87,9 +89,9 @@ try {
   ) as MacUpdateTransaction;
   await writeFile(
     join(paths.directory, "transaction.json"),
-    JSON.stringify({ ...transaction, oldPid: previous.process().pid }),
+    JSON.stringify({ ...transaction, oldPid: previousProcess.pid }),
   );
-  const exited = once(previous.process(), "exit", { signal: AbortSignal.timeout(30_000) });
+  const exited = once(previousProcess, "exit", { signal: AbortSignal.timeout(30_000) });
   await previous.evaluate(({ app }) => app.quit());
   await page.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
   assert.equal((await exited)[0], 0);
@@ -120,14 +122,14 @@ try {
     "PASS: DMG verification, automatic application replacement, detached helper, relaunch, backend/UI health acknowledgment and preserved desktop data.",
   );
 } finally {
-  if (previous && previous.process().exitCode === null && previous.process().signalCode === null)
-    await stopOwnedProcess(previous.process().pid!);
+  if (previousProcess && previousProcess.exitCode === null && previousProcess.signalCode === null)
+    await stopOwnedProcess(previousProcess.pid!);
   if (restartedPid) await stopOwnedProcess(restartedPid);
   let owner: { pid?: number; parentPid?: number } = {};
   try {
     owner = JSON.parse(await readFile(join(home, "backend-owner.json"), "utf8"));
   } catch {}
-  if (owner.parentPid && owner.parentPid !== previous?.process().pid)
+  if (owner.parentPid && owner.parentPid !== previousProcess?.pid)
     await stopOwnedProcess(owner.parentPid);
   if (owner.pid) await stopOwnedProcess(owner.pid);
   await updater.close();

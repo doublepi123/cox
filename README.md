@@ -249,8 +249,8 @@ versions and `v<VERSION>` tags; desktop releases use `apps/desktop/package.json`
 `desktop-v<VERSION>` tags.
 
 - Combined installers include both versions in their filenames: for example,
-  `cox-desktop-0.2.6-cox-0.1.45-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
-- Client-only installers, such as `cox-desktop-0.2.6-client-only-win-x64.exe`, include the browser shell,
+  `cox-desktop-0.2.7-cox-0.1.45-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
+- Client-only installers, such as `cox-desktop-0.2.7-client-only-win-x64.exe`, include the browser shell,
   standalone Node and npm, but **no Cox backend**. Their first launch needs internet access
   to install the latest stable `@doublepi123/cox`. No global Node/npm/Cox installation is needed.
   A failed initial download offers Retry/Quit; subsequent launches use the verified local
