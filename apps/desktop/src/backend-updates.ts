@@ -428,6 +428,7 @@ export class BackendUpdates {
   }
 
   async stage(): Promise<DesktopBackendUpdateState> {
+    if (this.operation) await this.operation;
     if (this.closed || this.operation || this.disk.pending) return this.getState();
     const release = this.release;
     if (!release || this.state.status !== "available") return this.getState();

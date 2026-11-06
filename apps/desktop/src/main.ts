@@ -17,6 +17,15 @@ import { BackendUpdates } from "./backend-updates.ts";
 import { STARTUP_PAGE } from "./startup-page.ts";
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 import { backendEnvironment, isBackendNavigation, isExternalNavigation } from "./config.ts";
+import { desktopText, desktopUpdateNotice } from "./native-text.ts";
+
+function systemLocale() {
+  return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
+}
+
+function text(key: Parameters<typeof desktopText>[1], values?: Readonly<Record<string, string>>) {
+  return desktopText(systemLocale(), key, values);
+}
 
 const root = resolve(import.meta.dirname, "../../..");
 const home = app.isPackaged
@@ -56,12 +65,11 @@ async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = fal
       lastPromptedVersion = state.latestVersion;
       const answer = await dialog.showMessageBox({
         type: "question",
-        title: "Cox update / Cox 更新",
-        message:
-          "Cox " +
-          state.latestVersion +
-          " is available. Download now and activate on the next launch?\n发现新版 Cox，是否下载并在下次启动时启用？",
-        buttons: ["Later / 稍后", "Download / 下载"],
+        title: text("Cox update"),
+        message: text("Cox {version} is available. Download now and activate on the next launch?", {
+          version: state.latestVersion ?? "",
+        }),
+        buttons: [text("Later"), text("Download")],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
@@ -71,12 +79,8 @@ async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = fal
     } else if (!manual) return;
     if (!quitPending)
       await dialog.showMessageBox({
-        type: state.status === "error" ? "warning" : "info",
-        title: "Cox update / Cox 更新",
-        message:
-          state.status === "ready"
-            ? "Update downloaded. It will activate the next time you open Cox.\n更新已下载，下次启动 Cox 时生效，不会中断当前任务。"
-            : (state.message ?? "Cox is up to date. / Cox 已是最新版本。"),
+        title: text("Cox update"),
+        ...desktopUpdateNotice(systemLocale(), state),
       });
   } finally {
     nativeUpdatePrompt = false;
@@ -116,10 +120,11 @@ async function requestQuit() {
   }
   const result = await dialog.showMessageBox({
     type: "warning",
-    title: "Quit Cox / 退出 Cox",
-    message:
-      "Quitting stops the local backend and interrupts running agent turns and terminals.\n退出会停止本地后端，并中断正在运行的 Agent 任务和终端。",
-    buttons: ["Cancel / 取消", "Quit Cox / 退出"],
+    title: text("Quit Cox"),
+    message: text(
+      "Quitting stops the local backend and interrupts running agent turns and terminals.",
+    ),
+    buttons: [text("Cancel"), text("Quit Cox")],
     defaultId: 0,
     cancelId: 0,
     noLink: true,
@@ -155,7 +160,7 @@ async function openExternal(target: string) {
   try {
     await shell.openExternal(target);
   } catch {
-    dialog.showErrorBox("Cox", "Could not open this link in your default browser.");
+    dialog.showErrorBox("Cox", text("Could not open this link in your default browser."));
   }
 }
 
@@ -341,12 +346,12 @@ async function start() {
       void dialog
         .showMessageBox({
           type: "question",
-          title: "Cox permission / 权限",
+          title: text("Cox permission"),
           message:
             permission === "clipboard-read"
-              ? "Allow Cox to read your clipboard? / 允许 Cox 读取剪贴板？"
-              : "Allow Cox notifications? / 允许 Cox 发送通知？",
-          buttons: ["Deny / 拒绝", "Allow / 允许"],
+              ? text("Allow Cox to read your clipboard?")
+              : text("Allow Cox notifications?"),
+          buttons: [text("Deny"), text("Allow")],
           defaultId: 0,
           cancelId: 0,
         })
@@ -374,11 +379,11 @@ async function start() {
         ]
       : []),
     {
-      label: "File",
+      label: text("File"),
       submenu: [
-        { label: "Open Cox", click: showWindow },
+        { label: text("Open Cox"), click: showWindow },
         {
-          label: "Check for Cox Updates / 检查 Cox 更新",
+          label: text("Check for Cox Updates"),
           click: () => {
             void updates
               ?.check(true)
@@ -387,7 +392,7 @@ async function start() {
           },
         },
         {
-          label: "Open Logs",
+          label: text("Open Logs"),
           click: () => {
             void shell.openPath(dirname(logPath));
           },
@@ -398,7 +403,7 @@ async function start() {
     },
     { role: "editMenu" },
     {
-      label: "View",
+      label: text("View"),
       submenu: [
         { role: "reload" },
         { role: "toggleDevTools" },
@@ -503,8 +508,8 @@ async function start() {
         if (startingBackend) return;
         log.write(`${message}\n`);
         dialog.showErrorBox(
-          "Cox backend stopped / 后端已停止",
-          `${message}\nReopen Cox to restart. / 请重新打开 Cox。\nLogs: ${logPath}`,
+          text("Cox backend stopped"),
+          `${message}\n${text("Reopen Cox to restart.")}\n${text("Logs")}: ${logPath}`,
         );
         approvedQuit = true;
         app.quit();
@@ -522,11 +527,14 @@ async function start() {
       log.write(String(error) + "\n");
       const answer = await dialog.showMessageBox({
         type: "error",
-        title: "Cox startup / Cox 启动",
+        title: text("Cox startup"),
         message:
-          "Cox could not start or finish its first installation. Check your connection and retry.\nCox 无法启动或完成首次安装，请检查网络后重试。\n\n" +
+          text(
+            "Cox could not start or finish its first installation. Check your connection and retry.",
+          ) +
+          "\n\n" +
           String(error),
-        buttons: ["Quit / 退出", "Retry / 重试"],
+        buttons: [text("Quit"), text("Retry")],
         defaultId: 1,
         cancelId: 0,
         noLink: true,
@@ -564,8 +572,8 @@ if (!app.requestSingleInstanceLock()) {
     .catch(async (error: unknown) => {
       if (!approvedQuit)
         dialog.showErrorBox(
-          "Cox could not start / 启动失败",
-          `${String(error)}\nLogs / 日志: ${join(home, "logs")}`,
+          text("Cox could not start"),
+          `${String(error)}\n${text("Logs")}: ${join(home, "logs")}`,
         );
       try {
         await backend?.stop();

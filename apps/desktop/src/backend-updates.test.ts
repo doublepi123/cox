@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { BackendUpdates } from "./backend-updates.ts";
+import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 import type { installBackendRelease } from "./backend-install.ts";
 
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -43,7 +44,7 @@ async function fixture(bundledVersion: string | null = "0.1.1") {
     return server;
   });
   const validate = vi.fn(async () => {});
-  const onState = vi.fn();
+  const onState = vi.fn<(state: DesktopBackendUpdateState) => void>();
   const options = {
     home,
     desktopVersion: "0.2.0",
@@ -94,6 +95,7 @@ async function fixture(bundledVersion: string | null = "0.1.1") {
     install,
     validate,
     data,
+    onState,
     disk,
     stateFile,
   };
@@ -131,6 +133,32 @@ describe("managed desktop Cox backend", () => {
     expect(test.start).toHaveBeenCalledOnce();
     expect(test.stop).not.toHaveBeenCalled();
     expect((await test.disk()).active?.version).toBe("0.1.1");
+    expect((await test.disk()).pending?.version).toBe("0.1.2");
+  });
+
+  it("waits for an ongoing update check before downloading", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    const checking = test.manager.check();
+    const staging = test.manager.stage();
+    await checking;
+    expect((await staging).status).toBe("ready");
+    expect(test.install).toHaveBeenCalledOnce();
+    expect(test.stop).not.toHaveBeenCalled();
+  });
+
+  it("downloads when an available-state listener accepts before the check finishes", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    let staging: Promise<unknown> | undefined;
+    test.onState.mockImplementation((state) => {
+      if (state.status === "available") staging = test.manager.stage();
+    });
+    await test.manager.check();
+    expect(staging).toBeDefined();
+    await staging;
+    expect(test.manager.getState().status).toBe("ready");
+    expect(test.install).toHaveBeenCalledOnce();
     expect((await test.disk()).pending?.version).toBe("0.1.2");
   });
 
@@ -323,9 +351,10 @@ describe("managed desktop Cox backend", () => {
     });
     const staging = test.manager.stage();
     await entered.promise;
-    expect((await test.manager.stage()).status).toBe("installing");
+    const concurrent = test.manager.stage();
     await test.manager.close();
     expect((await staging).status).toBe("error");
+    expect((await concurrent).status).toBe("error");
     expect(test.install).toHaveBeenCalledOnce();
     expect(test.stop).not.toHaveBeenCalled();
     expect(await readdir(join(test.home, "backend-updates", "versions"))).toHaveLength(1);
