@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -21,7 +30,7 @@ afterEach(async () => {
   );
 });
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "cox-mac-update-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "cox-mac-update-")));
   directories.push(root);
   const home = join(root, ".cox", "desktop");
   const target = join(root, "Applications", "Cox.app");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -20,7 +20,7 @@ const output = join(root, "release/desktop", flavor);
 const build = JSON.parse(
   await readFile(join(output, `BUILD-${flavor}-darwin-${process.arch}.json`), "utf8"),
 ) as { version: string; coxVersion: string | null; artifactBaseName: string };
-const temporary = await mkdtemp(join(tmpdir(), "cox-mac-update-smoke-"));
+const temporary = await realpath(await mkdtemp(join(tmpdir(), "cox-mac-update-smoke-")));
 const userHome = join(temporary, "用户 home");
 const home = join(userHome, ".cox/desktop");
 const application = join(userHome, "Applications/Cox.app");
