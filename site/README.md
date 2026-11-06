@@ -18,6 +18,10 @@ With pnpm installed, the equivalent commands are `pnpm pages:test` and `pnpm pag
 Only the allowlisted public files are copied to `site/dist/`. No application build or
 workspace dependency installation is needed. All asset paths are relative, so the same
 output works under a project path such as `/cox/` or at a custom domain's root.
+The build adds content-derived version queries to stylesheet and script URLs, including
+the translation module import. Publish the build output rather than the source files so
+returning visitors do not mix new markup with cached styles or translations. Missing
+translation keys preserve the readable HTML fallback instead of clearing the text.
 
 With workspace dependencies and Playwright's Chromium installed, `pnpm pages:test:browser`
 also checks the real page at a `/cox/` subpath: responsive layouts without horizontal
@@ -76,7 +80,8 @@ domain. No custom domain is configured.
 - `styles.css`: dark design tokens, responsive layout, container queries for the illustrated
   workspace, system fonts, and reduced-motion support.
 - `content.js`: matching Chinese/English text, per-language links and language selection.
-- `main.js`: persisted language preference, agent illustration, clipboard feedback.
+- `main.js`: persisted language preference, agent illustration, keyboard-accessible workflow
+  tabs, and clipboard feedback.
 - `assets/cox.svg`: Cox's existing logo, shared visually with the application.
 - `assets/social.svg` / `social.png`: editable source and 1200×630 social sharing card.
   Render the PNG from the SVG with a headless browser after editing it.

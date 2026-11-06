@@ -5,6 +5,8 @@ const agentNames = { codex: "Codex", claude: "Claude", cursor: "Cursor" };
 const demo = document.querySelector("[data-demo]");
 const toggle = document.querySelector("[data-language-toggle]");
 const toast = document.querySelector("[data-toast]");
+const workflowTabs = [...document.querySelectorAll("[data-workflow]")];
+const workflowPanel = document.querySelector("[data-workflow-panel]");
 const copiedTimeouts = new WeakMap();
 let preference;
 try {
@@ -28,6 +30,24 @@ function updateAgent() {
   }
 }
 
+function selectWorkflow(name, focus = false) {
+  const tab = workflowTabs.find((button) => button.dataset.workflow === name);
+  if (!tab) return;
+  for (const button of workflowTabs) {
+    const selected = button === tab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+  for (const view of document.querySelectorAll("[data-workflow-view]")) {
+    view.hidden = view.dataset.workflowView !== name;
+  }
+  workflowPanel.dataset.workflowPanel = name;
+  workflowPanel.setAttribute("aria-labelledby", tab.id);
+  document.querySelector("[data-workflow-status]").textContent =
+    messages[language][`workflow.status${name[0].toUpperCase()}${name.slice(1)}`];
+  if (focus) tab.focus();
+}
+
 function applyLanguage() {
   const copy = messages[language];
   document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
@@ -36,18 +56,22 @@ function applyLanguage() {
   document.querySelector('meta[property="og:title"]').content = copy["page.title"];
   document.querySelector('meta[property="og:description"]').content = copy["page.description"];
   for (const element of document.querySelectorAll("[data-i18n]")) {
-    element.textContent = copy[element.dataset.i18n];
+    const text = copy[element.dataset.i18n];
+    if (typeof text === "string" && text.trim()) element.textContent = text;
   }
   for (const element of document.querySelectorAll("[data-i18n-aria]")) {
-    element.setAttribute("aria-label", copy[element.dataset.i18nAria]);
+    const label = copy[element.dataset.i18nAria];
+    if (typeof label === "string" && label.trim()) element.setAttribute("aria-label", label);
   }
   for (const element of document.querySelectorAll("[data-i18n-href]")) {
-    element.href = copy[element.dataset.i18nHref];
+    const href = copy[element.dataset.i18nHref];
+    if (typeof href === "string" && href.trim()) element.href = href;
   }
   toggle.querySelector("[data-language-label]").textContent = language === "zh" ? "EN" : "中文";
   toggle.lang = language === "zh" ? "en" : "zh-CN";
   toggle.setAttribute("aria-label", language === "zh" ? "Switch to English" : "切换为简体中文");
   updateAgent();
+  selectWorkflow(workflowPanel.dataset.workflowPanel);
 }
 
 function showToast(text) {
@@ -72,6 +96,27 @@ for (const button of document.querySelectorAll("[data-provider]")) {
     if (!Object.hasOwn(agentNames, button.dataset.provider)) return;
     selectedAgent = button.dataset.provider;
     updateAgent();
+  });
+}
+
+for (const button of workflowTabs) {
+  button.addEventListener("click", () => selectWorkflow(button.dataset.workflow));
+  button.addEventListener("keydown", (event) => {
+    const current = workflowTabs.indexOf(button);
+    let next;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      next = (current + 1) % workflowTabs.length;
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      next = (current - 1 + workflowTabs.length) % workflowTabs.length;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = workflowTabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    selectWorkflow(workflowTabs[next].dataset.workflow, true);
   });
 }
 

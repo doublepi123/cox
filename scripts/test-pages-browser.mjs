@@ -67,6 +67,14 @@ test("website works under a project subpath on desktop and phones without contac
     assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
     const guide = page.locator("[data-i18n-href]");
     assert.match(await guide.getAttribute("href"), /\/README\.zh-CN\.md#/);
+    assert.equal(
+      await page.locator("#desktop .desktop-downloads a").getAttribute("href"),
+      "https://github.com/doublepi123/cox/releases",
+    );
+    assert.equal(
+      await page.locator("#desktop .mobile-link").getAttribute("href"),
+      "https://cocode.doublepi.dev/",
+    );
     await page.getByRole("button", { name: "Claude", exact: true }).click();
     assert.equal(
       await page.getByRole("button", { name: "Claude", exact: true }).getAttribute("aria-pressed"),
@@ -74,6 +82,18 @@ test("website works under a project subpath on desktop and phones without contac
     );
     assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "claude");
     assert.match(await page.locator("[data-agent-message]").textContent(), /拆分开/);
+    await page.getByRole("tab", { name: /不必等待/ }).click();
+    assert.equal(await page.locator("[data-workflow-view='queue']").isVisible(), true);
+    assert.equal(await page.locator("[data-workflow-view='providers']").isVisible(), false);
+    await page.getByRole("tab", { name: /不必等待/ }).press("ArrowDown");
+    assert.equal(
+      await page.getByRole("tab", { name: /每处变更/ }).getAttribute("aria-selected"),
+      "true",
+    );
+    assert.equal(await page.locator("[data-workflow-view='review']").isVisible(), true);
+    await page.getByRole("tab", { name: /终端与 Git/ }).click();
+    assert.equal(await page.locator("[data-workflow-view='terminal']").isVisible(), true);
+    await page.getByRole("tab", { name: /你的智能体/ }).click();
     await page.locator("[data-copy]").first().click();
     assert.equal(await page.evaluate(() => window.copiedCommand), "npx @doublepi123/cox@latest");
     assert.match(await page.getByRole("status").textContent(), /已复制/);
@@ -151,13 +171,35 @@ test("website works under a project subpath on desktop and phones without contac
     assert.match(page.url(), /#start$/);
     assert.deepEqual(errors, []);
     await context.close();
+    const staleContent = await browser.newContext({ locale: "en-US" });
+    await staleContent.route("**/content.js*", async (route) => {
+      const content = await readFile(join(destination, "content.js"), "utf8");
+      await route.fulfill({
+        contentType: "text/javascript",
+        body: `${content}\nfor (const copy of Object.values(messages)) {\n  for (const key of Object.keys(copy)) {\n    if (key.startsWith("desktop.") || key === "nav.desktop") delete copy[key];\n  }\n}`,
+      });
+    });
+    const stalePage = await staleContent.newPage();
+    await stalePage.goto(`${origin}/cox/`);
+    assert.match(await stalePage.locator("h1").textContent(), /Your agents/);
+    assert.match(await stalePage.locator("#desktop-title").textContent(), /不开终端/);
+    assert.match(
+      await stalePage.locator('[data-i18n="desktop.download"]').textContent(),
+      /下载桌面版/,
+    );
+    await stalePage.locator("[data-language-toggle]").click();
+    assert.match(await stalePage.locator("#desktop-title").textContent(), /不开终端/);
+    await staleContent.close();
     const noScript = await browser.newContext({ javaScriptEnabled: false });
     const staticPage = await noScript.newPage();
     await staticPage.goto(`${origin}/cox/`);
     assert.match(await staticPage.locator("h1").textContent(), /你的智能体/);
     assert.equal(
-      await staticPage.getByRole("link", { name: "立即开始", exact: true }).getAttribute("href"),
-      "#start",
+      await staticPage
+        .getByRole("link", { name: "下载桌面版", exact: true })
+        .first()
+        .getAttribute("href"),
+      "#desktop",
     );
     await staticPage.goto(`${origin}/cox/cox/index.html`);
     await staticPage.waitForURL(`${origin}/cox/`);

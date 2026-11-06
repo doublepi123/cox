@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,11 +19,26 @@ test("builds only the explicit public website files and removes stale artifacts"
     );
     assert.equal(await readFile(join(destination, ".nojekyll"), "utf8"), "");
     for (const file of publicFiles) {
+      if (file === "index.html" || file === "main.js") continue;
       assert.deepEqual(
         await readFile(join(destination, file)),
         await readFile(new URL(`../site/${file}`, import.meta.url)),
       );
     }
+    const versionedPath = async (file) => {
+      const content = await readFile(join(destination, file));
+      return `${file}?v=${createHash("sha256").update(content).digest("hex").slice(0, 16)}`;
+    };
+    const main = await readFile(new URL("../site/main.js", import.meta.url), "utf8");
+    assert.equal(
+      await readFile(join(destination, "main.js"), "utf8"),
+      main.replace('"./content.js"', `"./${await versionedPath("content.js")}"`),
+    );
+    let html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
+    for (const file of ["styles.css", "main.js"]) {
+      html = html.replace(`"${file}"`, `"${await versionedPath(file)}"`);
+    }
+    assert.equal(await readFile(join(destination, "index.html"), "utf8"), html);
   } finally {
     await rm(destination, { recursive: true, force: true });
   }
