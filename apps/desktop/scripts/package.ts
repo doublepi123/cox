@@ -210,7 +210,7 @@ await writeFile(backendMetadata, JSON.stringify(buildMetadata));
 await mkdir(output, { recursive: true });
 const artifacts = await build({
   targets: targetPlatform.createTarget(
-    unpacked ? ["dir"] : process.platform === "darwin" ? ["dmg", "zip"] : ["nsis"],
+    unpacked ? ["dir"] : process.platform === "darwin" ? ["dmg"] : ["nsis"],
     architecture,
   ),
   projectDir: directory,

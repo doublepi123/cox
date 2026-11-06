@@ -81,14 +81,17 @@ jobs:
       - run: pnpm --filter @cox/desktop smoke:app
       - uses: actions/upload-artifact@v4
         with:
-          name: cox-client-${{ needs.resolve.outputs.client_version }}-cox-${{ needs.resolve.outputs.cox_version }}-${{ matrix.flavor }}-${{ matrix.os }}
+          name: cox-desktop-${{ needs.resolve.outputs.client_version }}-cox-${{ needs.resolve.outputs.cox_version }}-${{ matrix.flavor }}-${{ matrix.os }}
           compression-level: 0
           path: |
             release/desktop/${{ matrix.flavor }}/*.dmg
-            release/desktop/${{ matrix.flavor }}/*.zip
+            release/desktop/${{ matrix.flavor }}/*.dmg.sha256
+            release/desktop/${{ matrix.flavor }}/*.dmg.blockmap
+            release/desktop/${{ matrix.flavor }}/*.dmg.blockmap.sha256
             release/desktop/${{ matrix.flavor }}/*.exe
-            release/desktop/${{ matrix.flavor }}/*.sha256
-            release/desktop/${{ matrix.flavor }}/*.blockmap
+            release/desktop/${{ matrix.flavor }}/*.exe.sha256
+            release/desktop/${{ matrix.flavor }}/*.exe.blockmap
+            release/desktop/${{ matrix.flavor }}/*.exe.blockmap.sha256
             release/desktop/${{ matrix.flavor }}/BUILD-*.json
           if-no-files-found: error
   publish:
@@ -104,7 +107,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: cox-client-*
+          pattern: cox-desktop-*
           path: downloads
           merge-multiple: true
       - name: Verify and publish both version identities

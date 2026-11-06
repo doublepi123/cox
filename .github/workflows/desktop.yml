@@ -59,15 +59,3 @@ jobs:
             release/desktop/${{ matrix.flavor }}/*.exe.blockmap.sha256
             release/desktop/${{ matrix.flavor }}/BUILD-*.json
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        if: runner.os == 'macOS'
-        with:
-          name: cox-desktop-${{ matrix.os }}-zip-${{ matrix.flavor }}
-          compression-level: 0
-          path: |
-            release/desktop/${{ matrix.flavor }}/*.zip
-            release/desktop/${{ matrix.flavor }}/*.zip.sha256
-            release/desktop/${{ matrix.flavor }}/*.zip.blockmap
-            release/desktop/${{ matrix.flavor }}/*.zip.blockmap.sha256
-            release/desktop/${{ matrix.flavor }}/BUILD-*.json
-          if-no-files-found: error

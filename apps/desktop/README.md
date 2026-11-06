@@ -38,7 +38,7 @@ pnpm --filter @cox/desktop typecheck
 pnpm desktop:build
 ```
 
-- macOS arm64 / x64：生成 `.dmg` 和 `.zip`，分别使用 Apple Silicon / Intel 构建机。
+- macOS arm64 / x64：仅生成 `.dmg`，分别使用 Apple Silicon / Intel 构建机。
 - Windows x64：生成当前用户安装的 NSIS `.exe`，可选择目录并创建桌面快捷方式。
 - 输出在根目录 `release/desktop`，附 SHA-256 和构建版本信息。
 - 安装包使用最大压缩；只保留当前系统与架构的协议桥和终端预编译文件，移除调试 source map、Node 开发头文件和 man 手册，保留 npm、运行依赖、完整 UI 功能与许可证。以后通过 npm 安装需要编译的扩展时，构建工具可能需要联网下载 Node 头文件。
@@ -61,7 +61,7 @@ pnpm --filter @cox/desktop smoke:app
 
 GitHub Actions 的 `Cox desktop packages` 工作流支持手动触发，在 macOS arm64 / Intel 和 Windows x64 上构建、运行上述 smoke 并上传安装包，不自动发布 Release。
 
-macOS 的 DMG 与 ZIP 分开上传：默认 `cox-desktop-macos-*` 附件只含 DMG，便携 ZIP 在对应 `-zip` 附件中，无需同时下载两份相同的应用。
+macOS 的 CI 附件与正式发布均只含 DMG 安装包及其校验文件，不再生成或上传重复的 ZIP 应用包。
 
 仅调整 Windows 客户端时，可在手动触发工作流时勾选 `windows_only`，避免重复构建两个 macOS 安装包；默认仍验证全部三个目标。
 

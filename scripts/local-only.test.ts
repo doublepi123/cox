@@ -35,9 +35,30 @@ describe("local-only distribution boundary", () => {
       "utf8",
     );
     expect(verification).toContain('"--deep", "--strict"');
-    expect(verification).toContain("`${basename}.zip`");
+    expect(verification).not.toContain("`${basename}.zip`");
     expect(verification).toContain("`${basename}.dmg`");
     expect(verification).toContain('"detach", mounted');
+  });
+
+  it("ships only DMG installers for macOS in CI and releases", () => {
+    const packaging = NodeFS.readFileSync(
+      NodePath.join(root, "apps/desktop/scripts/package.ts"),
+      "utf8",
+    );
+    expect(packaging).toContain('process.platform === "darwin" ? ["dmg"] : ["nsis"]');
+    for (const filename of ["desktop.yml", "desktop-release.yml"]) {
+      const workflow = NodeFS.readFileSync(
+        NodePath.join(root, ".github/workflows", filename),
+        "utf8",
+      );
+      expect(workflow).toContain("/*.dmg");
+      expect(workflow).toContain("/*.dmg.sha256");
+      expect(workflow).toContain("/*.exe");
+      expect(workflow).not.toContain("/*.zip");
+      expect(workflow).not.toContain("cox-client-");
+      expect(workflow).not.toContain("/*.sha256");
+      expect(workflow).not.toContain("/*.blockmap");
+    }
   });
 
   it("installs the Electron runtime explicitly before desktop startup and packaging", () => {

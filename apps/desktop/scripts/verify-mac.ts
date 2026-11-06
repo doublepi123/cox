@@ -30,12 +30,6 @@ const verify = (application: string) => {
 
 try {
   verify(join(output, process.arch === "arm64" ? "mac-arm64" : "mac", "Cox.app"));
-  const extracted = join(temporary, "zip");
-  await mkdir(extracted);
-  execFileSync("ditto", ["-x", "-k", join(output, `${basename}.zip`), extracted], {
-    stdio: "inherit",
-  });
-  verify(join(extracted, "Cox.app"));
   const mounted = join(temporary, "dmg");
   await mkdir(mounted);
   execFileSync(
@@ -49,7 +43,7 @@ try {
   } finally {
     execFileSync("hdiutil", ["detach", mounted], { stdio: "inherit" });
   }
-  console.log("PASS: unpacked, ZIP and DMG application signatures and bundled Node signatures.");
+  console.log("PASS: unpacked and DMG application signatures and bundled Node signatures.");
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }
