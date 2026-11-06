@@ -144,7 +144,7 @@ jobs:
           find . -maxdepth 1 -type f ! -name "$checksum" -printf '%f\0' | sort -z | xargs -0 sha256sum > "$checksum"
           created=false
           title="$RELEASE_TAG"
-          if [[ "$CLIENT_RELEASE" == true ]]; then title="Cox Client $CLIENT_VERSION"; fi
+          if [[ "$CLIENT_RELEASE" == true ]]; then title="Cox Desktop $CLIENT_VERSION"; fi
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --latest=false \
               --title "$title" --notes "Desktop client $CLIENT_VERSION combined with Cox $COX_VERSION. Client-only packages install Cox from the official npm registry on first launch."

@@ -97,7 +97,9 @@ The resolver selects desktop releases by semantic version, not GitHub's global L
 which may refer to a Cox release. It pins both identities once before starting the build matrix.
 Stable releases are the automatic update channel; prereleases are not installed automatically.
 
-Combination names include both versions; client-only names include only the client version.
+Desktop installer filenames use the `cox-desktop` prefix. Combination names include both
+versions (`cox-desktop-<CLIENT>-cox-<COX>-<OS>-<ARCH>`); client-only names include only the
+client version (`cox-desktop-<CLIENT>-client-only-<OS>-<ARCH>`).
 Each flavor has separate build metadata and SHA-256 files. An additional
 `DESKTOP-SHA256SUMS-client-<CLIENT>-cox-<COX>.txt` is published without overwriting a source
 release's checksums. Existing desktop release assets are not removed when Cox releases advance.

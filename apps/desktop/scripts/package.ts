@@ -187,8 +187,8 @@ const architecture = process.arch === "arm64" ? Arch.arm64 : Arch.x64;
 const flavor = clientOnly ? "client-only" : "bundled";
 const output = join(root, "release", "desktop", flavor);
 const artifactBaseName = clientOnly
-  ? "Cox-Client-" + manifest.version
-  : "Cox-" + coxVersion + "-Client-" + manifest.version;
+  ? "cox-desktop-" + manifest.version + "-client-only"
+  : "cox-desktop-" + manifest.version + "-cox-" + coxVersion;
 const backendMetadata = join(stage, "backend.json");
 const buildMetadata = {
   version: manifest.version,
