@@ -18,6 +18,7 @@ if (!["darwin", "win32"].includes(process.platform) && !unpacked) {
 if (!["x64", "arm64"].includes(process.arch)) throw new Error("Unsupported desktop architecture.");
 const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8")) as {
   version: string;
+  dependencies: Record<string, string>;
   devDependencies: { electron: string };
   engines: { node: string };
 };
@@ -172,10 +173,29 @@ await writeFile(
       license: "MIT",
       type: "module",
       main: "dist/main.js",
+      dependencies: manifest.dependencies,
     },
     null,
     2,
   ),
+);
+execFileSync(node, [npm, "install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
+  cwd: application,
+  env: environment,
+  stdio: "inherit",
+});
+execFileSync(
+  node,
+  [
+    "--input-type=module",
+    "-e",
+    "import { createRequire } from 'node:module'; const require = createRequire(process.cwd() + '/package.json'); require.resolve('electron-updater'); require.resolve('electron-updater/out/providers/Provider.js');",
+  ],
+  {
+    cwd: application,
+    env: environment,
+    stdio: "inherit",
+  },
 );
 const targetPlatform =
   process.platform === "darwin"
@@ -185,6 +205,20 @@ const targetPlatform =
       : Platform.LINUX;
 const architecture = process.arch === "arm64" ? Arch.arm64 : Arch.x64;
 const flavor = clientOnly ? "client-only" : "bundled";
+const clientAutomaticUpdates =
+  process.platform === "darwin" || process.env.COX_DESKTOP_SIGNED_UPDATES === "true";
+const clientPublisherName =
+  clientAutomaticUpdates && process.platform === "win32"
+    ? process.env.COX_DESKTOP_PUBLISHER_NAME
+    : undefined;
+if (
+  clientAutomaticUpdates &&
+  process.platform !== "darwin" &&
+  (process.platform !== "win32" || !clientPublisherName || !process.env.CSC_LINK)
+)
+  throw new Error(
+    "Automatic Windows client updates require a signing certificate and COX_DESKTOP_PUBLISHER_NAME.",
+  );
 const output = join(root, "release", "desktop", flavor);
 const artifactBaseName = clientOnly
   ? "cox-desktop-" + manifest.version + "-client-only"
@@ -205,6 +239,9 @@ const buildMetadata = {
   architecture: process.arch,
   nodeVersion,
   electron: manifest.devDependencies.electron,
+  clientAutomaticUpdates,
+  clientPublisherName: clientPublisherName ?? null,
+  ...(process.platform === "darwin" ? { macUpdateProtocol: 1 } : {}),
 };
 await writeFile(backendMetadata, JSON.stringify(buildMetadata));
 await mkdir(output, { recursive: true });
@@ -219,11 +256,23 @@ const artifacts = await build({
     productName: "Cox",
     electronVersion: manifest.devDependencies.electron,
     directories: { app: application, output },
-    files: ["dist/**", "!**/*.map", "package.json", "LICENSE", "THIRD_PARTY_NOTICES.json"],
+    files: [
+      "dist/**",
+      "node_modules/**",
+      "!**/*.map",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.json",
+    ],
     compression: process.platform === "darwin" ? "normal" : "maximum",
     asar: true,
     npmRebuild: false,
-    publish: null,
+    publish: clientAutomaticUpdates
+      ? {
+          provider: "generic",
+          url: `https://github.com/doublepi123/cox/releases/download/desktop-v${manifest.version}/`,
+        }
+      : null,
     artifactName: artifactBaseName + "-${os}-${arch}.${ext}",
     extraResources: [
       { from: join(directory, "dist", "backend-parent.js"), to: "backend-parent.mjs" },
@@ -258,7 +307,12 @@ const artifacts = await build({
       entitlementsInherit: join(directory, "entitlements.mac.plist"),
       binaries: ["Contents/Resources/runtime/bin/node"],
     },
-    win: { icon: join(root, "apps/web/public/icon-512.png") },
+    win: {
+      icon: join(root, "apps/web/public/icon-512.png"),
+      ...(clientPublisherName
+        ? { publisherName: clientPublisherName, verifyUpdateCodeSignature: true }
+        : {}),
+    },
     nsis: {
       oneClick: false,
       perMachine: false,
@@ -269,11 +323,58 @@ const artifacts = await build({
     linux: { icon: join(root, "apps/web/public/icon-512.png") },
   },
 });
+const installers: { filename: string; size: number; sha256: string; sha512: string }[] = [];
 for (const artifact of artifacts) {
   const contents = await readFile(artifact);
+  if (/\.(?:dmg|exe)$/.test(artifact)) {
+    if (clientAutomaticUpdates && process.platform === "win32") {
+      const signature = execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$signature = Get-AuthenticodeSignature -LiteralPath $env:COX_INSTALLER_VERIFY_PATH; if ($signature.Status -ne 'Valid') { throw 'Installer code signature is invalid' }; $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)",
+        ],
+        { env: { ...process.env, COX_INSTALLER_VERIFY_PATH: artifact }, encoding: "utf8" },
+      );
+      if (signature.trim() !== clientPublisherName)
+        throw new Error("The installer publisher does not match the signed update configuration.");
+    }
+    installers.push({
+      filename: artifact.split(/[\\/]/).at(-1)!,
+      size: contents.length,
+      sha256: createHash("sha256").update(contents).digest("hex"),
+      sha512: createHash("sha512").update(contents).digest("base64"),
+    });
+  }
   await writeFile(
     `${artifact}.sha256`,
     `${createHash("sha256").update(contents).digest("hex")}  ${artifact.split(/[\\/]/).at(-1)}\n`,
+  );
+}
+if (!unpacked) {
+  if (installers.length !== 1)
+    throw new Error("Each desktop target must produce exactly one installer.");
+  await writeFile(
+    join(output, `UPDATE-${flavor}-${process.platform}-${process.arch}.json`),
+    JSON.stringify(
+      {
+        schema: 1,
+        version: manifest.version,
+        platform: process.platform,
+        architecture: process.arch,
+        flavor,
+        backendVersion: coxVersion,
+        installMode: clientAutomaticUpdates ? "automatic" : "manual",
+        ...(process.platform === "darwin" ? { macUpdateProtocol: 1 } : {}),
+        clientCommit: buildMetadata.clientCommit,
+        sourceDirty: buildMetadata.sourceDirty,
+        ...installers[0],
+      },
+      null,
+      2,
+    ) + "\n",
   );
 }
 await writeFile(

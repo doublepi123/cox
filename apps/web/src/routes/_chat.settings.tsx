@@ -1,8 +1,15 @@
 import { useTranslation } from "../i18n";
+import { closeDesktopSettings } from "../lib/closeDesktopSettings";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
-import { Outlet, createFileRoute, redirect, useLocation, useNavigate } from "@tanstack/react-router";
+import {
+  Outlet,
+  createFileRoute,
+  redirect,
+  useLocation,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeftIcon, RotateCcwIcon } from "lucide-react";
+import { ArrowLeftIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
@@ -31,6 +38,39 @@ import {
   SETTINGS_SECTION_LABELS,
   type SettingsPath,
 } from "../components/settings/settingsSearch";
+
+function SettingsFrame({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    if (window.coxDesktop?.windowKind !== "settings") return;
+    const close = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        document.querySelector('[role="dialog"], [role="alertdialog"], [data-popup-open]')
+      )
+        return;
+      event.preventDefault();
+      void closeDesktopSettings();
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, []);
+  if (window.coxDesktop?.windowKind !== "settings")
+    return <AppRouteModal label={t("Settings")}>{children}</AppRouteModal>;
+  return (
+    <main className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
+      <header
+        data-workspace-titlebar
+        className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center border-b ps-[var(--workspace-controls-left)] pe-[var(--workspace-controls-right)]"
+      >
+        <span className="text-sm font-medium">{t("Settings")}</span>
+      </header>
+      {children}
+    </main>
+  );
+}
 
 function isSettingsIndexPath(pathname: string): boolean {
   return pathname.replace(/\/+$/, "") === "/settings";
@@ -154,7 +194,7 @@ function SettingsContentLayout() {
   }, [isPhoneLayout, isSettingsIndex, navigate]);
 
   return (
-    <AppRouteModal label={t("Settings")}>
+    <SettingsFrame>
       <div className="relative flex min-h-0 flex-1">
         {isPhoneLayout ? null : <SettingsSidebarNav pathname={location.pathname} />}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -194,7 +234,18 @@ function SettingsContentLayout() {
                   onRestored={() => setRestoreSignal((value) => value + 1)}
                 />
               ) : null}
-              <AppRouteModalClose size={isPhoneLayout ? "icon-xl" : "icon-sm"} />
+              {window.coxDesktop?.windowKind === "settings" ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={t("Close")}
+                  onClick={() => void closeDesktopSettings()}
+                >
+                  <XIcon />
+                </Button>
+              ) : (
+                <AppRouteModalClose size={isPhoneLayout ? "icon-xl" : "icon-sm"} />
+              )}
             </div>
           </header>
           {isPhoneLayout && isSettingsIndex ? (
@@ -211,7 +262,7 @@ function SettingsContentLayout() {
           )}
         </div>
       </div>
-    </AppRouteModal>
+    </SettingsFrame>
   );
 }
 

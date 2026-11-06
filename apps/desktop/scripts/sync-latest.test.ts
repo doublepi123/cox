@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { desktopLatestNotes, desktopLatestTag, syncDesktopLatest } from "./sync-latest.ts";
+import { parseClientUpdateFeed } from "../src/client-updates.ts";
 
 const commit = "1234567890abcdef1234567890abcdef12345678";
 const release = (version = "0.2.3", backend = "0.1.42", clientOnly = true) => {
-  const names = [`DESKTOP-SHA256SUMS-client-${version}-cox-${backend}.txt`];
+  const names = [
+    `DESKTOP-SHA256SUMS-client-${version}-cox-${backend}.txt`,
+    `desktop-update-${version}.json`,
+  ];
   for (const suffix of ["mac-arm64.dmg", "mac-x64.dmg", "win-x64.exe"]) {
     for (const flavor of clientOnly ? [`cox-${backend}`, "client-only"] : [`cox-${backend}`]) {
       const installer = `cox-desktop-${version}-${flavor}-${suffix}`;
@@ -17,6 +21,31 @@ const release = (version = "0.2.3", backend = "0.1.42", clientOnly = true) => {
     assets: names.map((name) => ({ name, size: 100 })),
   };
 };
+
+function feed(source = release()) {
+  const version = source.tag_name.slice(9);
+  return parseClientUpdateFeed({
+    schema: 1,
+    version,
+    tag: source.tag_name,
+    artifacts: source.assets
+      .filter(({ name }) => /\.(?:dmg|exe)$/.test(name))
+      .map(({ name, size }) => ({
+        filename: name,
+        url: `https://github.com/doublepi123/cox/releases/download/${source.tag_name}/${name}`,
+        platform: name.endsWith(".dmg") ? "darwin" : "win32",
+        architecture: name.includes("-arm64.") ? "arm64" : "x64",
+        flavor: name.includes("-client-only-") ? "client-only" : "bundled",
+        backendVersion: name.includes("-client-only-")
+          ? null
+          : name.match(/-cox-([0-9]+\.[0-9]+\.[0-9]+)-/)![1],
+        size,
+        sha256: "a".repeat(64),
+        sha512: Buffer.alloc(64).toString("base64"),
+        installMode: "manual",
+      })),
+  });
+}
 
 function fixture(existing = false) {
   const source = release();
@@ -40,13 +69,29 @@ function fixture(existing = false) {
       throw new Error("Unexpected request: " + path);
     },
   );
-  return { api, source };
+  const options = { readFeed: vi.fn(async () => feed(source)), publishFeed: vi.fn(async () => {}) };
+  return { api, source, options };
 }
 
 describe("rolling desktop download release", () => {
+  it("retains immutable client update targets when the same client gains a newer bundled Cox", async () => {
+    const { api, source, options } = fixture(true);
+    const original = feed(source);
+    options.readFeed.mockResolvedValue(original);
+    const additional = release("0.2.3", "0.1.99", false).assets.filter(
+      (asset) => !source.assets.some((existing) => existing.name === asset.name),
+    );
+    source.assets.push(...additional);
+    await expect(syncDesktopLatest(api, options)).resolves.toBe("desktop-v0.2.3");
+    expect(options.publishFeed).toHaveBeenCalledWith(original);
+    expect(api.mock.calls.find(([path]) => path === "releases/99")?.[2]?.body).toContain("0.1.99");
+  });
   it("creates only the rolling tag and release without changing server latest or copying assets", async () => {
-    const { api } = fixture();
-    expect(await syncDesktopLatest(api)).toBe("desktop-v0.2.3");
+    const { api, options } = fixture();
+    expect(await syncDesktopLatest(api, options)).toBe("desktop-v0.2.3");
+    expect(options.publishFeed).toHaveBeenCalledWith(
+      expect.objectContaining({ version: "0.2.3", artifacts: expect.any(Array) }),
+    );
     expect(api).toHaveBeenCalledWith("git/refs", "POST", {
       ref: "refs/tags/cox-desktop-latest",
       sha: commit,
@@ -67,8 +112,8 @@ describe("rolling desktop download release", () => {
   });
 
   it("updates an existing alias and always resolves the newest stable client instead of event order", async () => {
-    const { api } = fixture(true);
-    await syncDesktopLatest(api);
+    const { api, options } = fixture(true);
+    await syncDesktopLatest(api, options);
     expect(api).toHaveBeenCalledWith(`git/refs/tags/${desktopLatestTag}`, "PATCH", {
       sha: commit,
       force: true,
@@ -81,11 +126,11 @@ describe("rolling desktop download release", () => {
   });
 
   it("follows pagination rather than assuming the newest desktop release is on the first page", async () => {
-    const { api } = fixture();
+    const { api, options } = fixture();
     api.mockImplementationOnce(async () =>
       Array.from({ length: 100 }, () => ({ tag_name: "v1.0.0" })),
     );
-    await syncDesktopLatest(api);
+    await syncDesktopLatest(api, options);
     expect(api).toHaveBeenCalledWith("releases?per_page=100&page=2");
   });
 
@@ -113,9 +158,10 @@ describe("rolling desktop download release", () => {
   });
 
   it("rejects incomplete downloads before mutating the alias", async () => {
-    const { api, source } = fixture();
+    const { api, source, options } = fixture();
     source.assets = source.assets.filter(({ name }) => !name.endsWith("win-x64.exe.sha256"));
-    await expect(syncDesktopLatest(api)).rejects.toThrow("Missing desktop release asset");
+    await expect(syncDesktopLatest(api, options)).rejects.toThrow("Missing desktop release asset");
+    expect(options.publishFeed).not.toHaveBeenCalled();
     expect(api.mock.calls.every(([, method]) => !method || method === "GET")).toBe(true);
   });
 
@@ -132,11 +178,61 @@ describe("rolling desktop download release", () => {
   });
 
   it("rejects a missing source commit before any mutation", async () => {
-    const { api } = fixture();
+    const { api, options } = fixture();
     api.mockImplementationOnce(async () => [release()]);
     api.mockImplementationOnce(async () => release());
     api.mockImplementationOnce(async () => ({ sha: "not-a-commit" }));
-    await expect(syncDesktopLatest(api)).rejects.toThrow("Invalid desktop source commit");
+    await expect(syncDesktopLatest(api, options)).rejects.toThrow("Invalid desktop source commit");
     expect(api.mock.calls.every(([, method]) => !method || method === "GET")).toBe(true);
+  });
+
+  it("rejects a release without update metadata before mutating the alias", async () => {
+    const { api, source, options } = fixture();
+    source.assets = source.assets.filter(({ name }) => !name.startsWith("desktop-update-"));
+    await expect(syncDesktopLatest(api, options)).rejects.toThrow(
+      "missing its complete update feed",
+    );
+    expect(api.mock.calls.every(([, method]) => !method || method === "GET")).toBe(true);
+  });
+
+  it("rejects update metadata that disagrees with GitHub sizes and digests", async () => {
+    const { api, source, options } = fixture();
+    const manifest = feed(source);
+    options.readFeed.mockResolvedValue(manifest);
+    source.assets.find(({ name }) => name.endsWith(".exe"))!.size = 99;
+    await expect(syncDesktopLatest(api, options)).rejects.toThrow("published target set");
+    expect(options.publishFeed).not.toHaveBeenCalled();
+  });
+
+  it("never rolls back an existing newer rolling release when source releases disappear", async () => {
+    const { api, options } = fixture(true);
+    const original = api.getMockImplementation()!;
+    api.mockImplementation(async (path, method, body) =>
+      path === `releases/tags/${desktopLatestTag}`
+        ? { id: 99, body: "https://github.com/doublepi123/cox/releases/tag/desktop-v0.9.0" }
+        : original(path, method, body),
+    );
+    await expect(syncDesktopLatest(api, options)).rejects.toThrow(
+      "roll the desktop update feed back",
+    );
+    expect(api.mock.calls.every(([, method]) => !method || method === "GET")).toBe(true);
+    expect(options.publishFeed).not.toHaveBeenCalled();
+  });
+
+  it("also uses the existing machine-readable feed as a version floor", async () => {
+    const { api, options } = fixture(true);
+    const original = api.getMockImplementation()!;
+    api.mockImplementation(async (path, method, body) =>
+      path === `releases/tags/${desktopLatestTag}`
+        ? { id: 99, assets: [{ name: "desktop-update.json" }] }
+        : original(path, method, body),
+    );
+    options.readFeed.mockImplementation(async (url?: string) =>
+      feed(release(url?.includes("cox-desktop-latest") ? "0.9.0" : "0.2.3")),
+    );
+    await expect(syncDesktopLatest(api, options)).rejects.toThrow(
+      "roll the desktop update feed back",
+    );
+    expect(options.publishFeed).not.toHaveBeenCalled();
   });
 });

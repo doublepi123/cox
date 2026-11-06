@@ -1,4 +1,65 @@
 export const en = {
+  "Test all models": "Test all models",
+  "Stop remaining tests": "Stop remaining tests",
+  "Ignore failed models ({count})": "Ignore failed models ({count})",
+  "Restore model": "Restore model",
+  Ignored: "Ignored",
+  "Testing…": "Testing…",
+  "Test passed ({duration} ms)": "Test passed ({duration} ms)",
+  "Tested {completed}/{total}: {passed} passed, {failed} failed.":
+    "Tested {completed}/{total}: {passed} passed, {failed} failed.",
+  "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.":
+    "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.",
+  "The model test could not finish. Check the connection and saved settings, then retry.":
+    "The model test could not finish. Check the connection and saved settings, then retry.",
+  "The model test timed out or could not reach the service.":
+    "The model test timed out or could not reach the service.",
+  "The model returned an invalid test response.": "The model returned an invalid test response.",
+  "No compatible protocol is configured for this model.":
+    "No compatible protocol is configured for this model.",
+  "Model test failed.": "Model test failed.",
+  "Model test failed (HTTP {status}).": "Model test failed (HTTP {status}).",
+  "The macOS client update failed. The previous application and data were restored.":
+    "The macOS client update failed. The previous application and data were restored.",
+  "Move Cox to Applications before using automatic updates.":
+    "Move Cox to Applications before using automatic updates.",
+  "Downloading…": "Downloading…",
+  "Verifying download…": "Verifying download…",
+  "Installing dependencies…": "Installing dependencies…",
+  "Verifying installation…": "Verifying installation…",
+  "Starting Cox…": "Starting Cox…",
+  "About {seconds}s remaining": "About {seconds}s remaining",
+  "Client updates": "Client updates",
+  "Automatic client update checks": "Automatic client update checks",
+  "Desktop update checks are unavailable offline.":
+    "Desktop update checks are unavailable offline.",
+  "No desktop update is available for this platform and package flavor.":
+    "No desktop update is available for this platform and package flavor.",
+  "The client update is ready. Restart when your tasks are finished.":
+    "The client update is ready. Restart when your tasks are finished.",
+  "The installer is ready. Open it to finish updating the client.":
+    "The installer is ready. Open it to finish updating the client.",
+  "Cox Desktop {version} is available.": "Cox Desktop {version} is available.",
+  "Downloading client update…": "Downloading client update…",
+  "Checking for client updates…": "Checking for client updates…",
+  "Could not update the client.": "Could not update the client.",
+  "Automatic client update checks are disabled. You can still check manually.":
+    "Automatic client update checks are disabled. You can still check manually.",
+  "Client {version} is ignored. Newer versions will still be offered.":
+    "Client {version} is ignored. Newer versions will still be offered.",
+  "The client is up to date.": "The client is up to date.",
+  "The client checks for new desktop versions automatically.":
+    "The client checks for new desktop versions automatically.",
+  "Check for client updates": "Check for client updates",
+  "Download client update": "Download client update",
+  "Restart and update": "Restart and update",
+  "Open installer": "Open installer",
+  "Restore automatic client update checks": "Restore automatic client update checks",
+  "Client update ready": "Client update ready",
+  "Client update available": "Client update available",
+  "Install client update?": "Install client update?",
+  "Updating the client quits Cox and interrupts running agent tasks and terminals.":
+    "Updating the client quits Cox and interrupts running agent tasks and terminals.",
   "Retry non-transient upstream errors (e.g. HTTP 400)":
     "Retry non-transient upstream errors (e.g. HTTP 400)",
   "Requires automatic retries. Retries upstream 4xx/5xx errors before output starts, including invalid requests and authentication failures. 429 uses its separate switch. Attempts and recovery budget still apply; persistent errors may waste usage.":
@@ -3071,6 +3132,26 @@ export const en = {
   "No matching settings.": "No matching settings.",
   "No matching threads.": "No matching threads.",
   "Copy response": "Copy response",
+  "Export response as image": "Export response as image",
+  "Only this response is included. The image is generated locally; nothing is uploaded.":
+    "Only this response is included. The image is generated locally; nothing is uploaded.",
+  "Response image preview": "Response image preview",
+  "Generating image…": "Generating image…",
+  "Regenerate image": "Regenerate image",
+  "Save PNG": "Save PNG",
+  "Copy image": "Copy image",
+  "Image copied": "Image copied",
+  "Share image": "Share image",
+  "Shared from Cox": "Shared from Cox",
+  "This response is too long to export as one image.":
+    "This response is too long to export as one image.",
+  "The response is still loading. Please try again.":
+    "The response is still loading. Please try again.",
+  "Could not generate the response image.": "Could not generate the response image.",
+  "Image copying is unavailable. Save the PNG instead.":
+    "Image copying is unavailable. Save the PNG instead.",
+  "Could not share or copy the image. Save the PNG instead.":
+    "Could not share or copy the image. Save the PNG instead.",
   "Copy message text": "Copy message text",
   "Add a provider": "Add a provider",
   "Add Provider": "Add Provider",

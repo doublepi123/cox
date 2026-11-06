@@ -67,4 +67,6 @@ export type {
   DesktopShellBridge,
   DesktopWindowState,
   DesktopBackendUpdateState,
+  DesktopClientUpdateState,
+  DesktopUpdateProgress,
 } from "./desktopShell.ts";

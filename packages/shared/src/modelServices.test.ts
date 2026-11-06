@@ -23,6 +23,18 @@ const service = Schema.decodeSync(ModelServiceConfig)({
 });
 
 describe("central model settings", () => {
+  it("keeps ignored models out of agent bindings while preserving their configuration", () => {
+    const config = {
+      ...service,
+      models: [...service.models, { id: "ignored", ignored: true, capabilities: null }],
+    };
+    expect(
+      boundModelServiceModels(config, { serviceId: id, modelIds: [] }).some(
+        (model) => model.id === "ignored",
+      ),
+    ).toBe(false);
+    expect(config.models.some((model) => model.id === "ignored")).toBe(true);
+  });
   it("retains OpenCode agent and variant descriptors when binding a model service", () => {
     const descriptors = [
       {

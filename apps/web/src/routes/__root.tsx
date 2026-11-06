@@ -43,9 +43,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { primaryServerConfigAtom, primaryServerWelcomeAtom } from "../state/server";
 import { readProject } from "../state/entities";
 import { ServerAuthGate } from "../components/ServerAuthGate";
+import { SidebarProvider } from "../components/ui/sidebar";
 
 export const Route = createRootRoute({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async () => {
     const authGateState = await resolveInitialServerAuthGateState();
     if (authGateState.status === "authenticated") {
       // Idempotent, so every navigation can ask for it.
@@ -106,6 +107,16 @@ function RootRouteBranch() {
         {...(authGateState.errorMessage ? { errorMessage: authGateState.errorMessage } : {})}
         onAuthenticated={() => router.invalidate()}
       />
+    );
+  }
+  if (window.coxDesktop?.windowKind === "settings") {
+    return (
+      <SidebarProvider>
+        <ConfirmDialogHost />
+        <CustomSnoozeDialogHost />
+        <ThemeEditorHost />
+        <Outlet />
+      </SidebarProvider>
     );
   }
   if (pathname === "/welcome") {

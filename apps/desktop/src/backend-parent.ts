@@ -14,7 +14,10 @@ if (desktopParent !== undefined) {
     mkdirSync(home, { recursive: true, mode: 0o700 });
     const owner = join(home, "backend-owner.json");
     const temporary = join(home, "backend-owner-" + randomUUID() + ".json");
-    writeFileSync(temporary, JSON.stringify({ pid: process.pid }), { mode: 0o600, flag: "wx" });
+    writeFileSync(temporary, JSON.stringify({ pid: process.pid, parentPid: process.ppid }), {
+      mode: 0o600,
+      flag: "wx",
+    });
     renameSync(temporary, owner);
     process.once("exit", () => {
       try {

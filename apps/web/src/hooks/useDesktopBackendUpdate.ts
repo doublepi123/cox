@@ -1,37 +1,40 @@
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import { createDesktopUpdateStore } from "@t3tools/client-runtime/state/desktop-updates";
+import { useSyncExternalStore } from "react";
+
+const store = createDesktopUpdateStore<DesktopBackendUpdateState>((receive) => {
+  const bridge = window.coxDesktop;
+  if (!bridge?.getBackendUpdate || !bridge.onBackendUpdate) return;
+  let active = true;
+  let received = false;
+  const unsubscribe = bridge.onBackendUpdate((state) => {
+    received = true;
+    receive(state);
+  });
+  void bridge.getBackendUpdate().then(
+    (state) => {
+      if (active && !received) receive(state);
+    },
+    () => {},
+  );
+  return () => {
+    active = false;
+    unsubscribe();
+  };
+});
 
 export function useDesktopBackendUpdate() {
-  const [state, setState] = useState<DesktopBackendUpdateState | null>(null);
-  useEffect(() => {
-    const bridge = window.coxDesktop;
-    if (!bridge?.getBackendUpdate || !bridge.onBackendUpdate) return;
-    let mounted = true;
-    let received = false;
-    const receive = (next: DesktopBackendUpdateState) => {
-      received = true;
-      if (mounted) setState(next);
-    };
-    const unsubscribe = bridge.onBackendUpdate(receive);
-    void bridge.getBackendUpdate().then(
-      (next) => {
-        if (mounted && !received) setState(next);
-      },
-      () => {},
-    );
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, []);
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
   const execute = async (action: (() => Promise<DesktopBackendUpdateState>) | undefined) => {
     if (!action) return;
+    const previous = store.getSnapshot();
     try {
-      setState(await action());
+      const next = await action();
+      if (store.getSnapshot() === previous) store.receive(next);
     } catch (error) {
-      setState((current) =>
-        current ? { ...current, status: "error", message: String(error) } : current,
-      );
+      const current = store.getSnapshot();
+      if (current)
+        store.receive({ ...current, status: "error", progress: null, message: String(error) });
     }
   };
   return {

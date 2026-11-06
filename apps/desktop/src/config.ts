@@ -24,6 +24,18 @@ export function isExternalNavigation(target: string): boolean {
   }
 }
 
+export function settingsWindowUrl(path: unknown, origin: string): string {
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//"))
+    throw new Error("Invalid settings window path.");
+  const url = new URL(path, origin);
+  if (
+    !isBackendNavigation(url.href, origin) ||
+    (url.pathname !== "/settings" && !url.pathname.startsWith("/settings/"))
+  )
+    throw new Error("Invalid settings window path.");
+  return url.href;
+}
+
 export function backendEnvironment(input: {
   readonly inherited: NodeJS.ProcessEnv;
   readonly runtimeDirectory: string;

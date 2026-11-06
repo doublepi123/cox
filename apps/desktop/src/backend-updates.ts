@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import type { DesktopBackendUpdateState } from "@t3tools/contracts";
+import type { DesktopBackendUpdateState, DesktopUpdateProgress } from "@t3tools/contracts";
 import {
   backendInstallationId,
   compareBackendVersions,
@@ -116,6 +116,16 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+function progress(phase: DesktopUpdateProgress["phase"]): DesktopUpdateProgress {
+  return {
+    phase,
+    transferredBytes: 0,
+    totalBytes: null,
+    bytesPerSecond: null,
+    remainingSeconds: null,
+  };
+}
+
 interface BackendUpdatesOptions {
   readonly development?: boolean;
   readonly home: string;
@@ -155,6 +165,7 @@ export class BackendUpdates {
       latestVersion: null,
       status: "idle",
       message: null,
+      progress: null,
       ...this.preferences,
     };
   }
@@ -200,7 +211,11 @@ export class BackendUpdates {
   }
 
   private publish(change: Partial<DesktopBackendUpdateState>) {
-    this.state = { ...this.state, ...change };
+    this.state = {
+      ...this.state,
+      ...(change.status && change.status !== "installing" ? { progress: null } : {}),
+      ...change,
+    };
     this.options.onState(this.getState());
   }
 
@@ -323,13 +338,14 @@ export class BackendUpdates {
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(120_000)]);
     this.operation = (async () => {
       try {
-        this.publish({ status: "installing", message: null });
+        this.publish({ status: "installing", message: null, progress: progress("installing") });
         await cp(this.options.bundledDirectory, server, {
           recursive: true,
           verbatimSymlinks: true,
           mode: constants.COPYFILE_FICLONE,
         });
         signal.throwIfAborted();
+        this.publish({ progress: progress("validating") });
         await this.options.validate(server, signal);
         if (this.closed) throw new Error("Cox startup was cancelled.");
         await writeFile(
@@ -363,6 +379,18 @@ export class BackendUpdates {
     start: (directory: string) => Promise<string>,
     stop: () => Promise<void>,
   ): Promise<string> {
+    try {
+      return await this.launchBackend(start, stop);
+    } catch (error) {
+      this.publish({ status: "error", message: String(error) });
+      throw error;
+    }
+  }
+
+  private async launchBackend(
+    start: (directory: string) => Promise<string>,
+    stop: () => Promise<void>,
+  ): Promise<string> {
     await mkdir(join(this.directory, "versions"), { recursive: true, mode: 0o700 });
     if (await exists(join(this.directory, "state.json")))
       this.disk = diskState(JSON.parse(await readFile(join(this.directory, "state.json"), "utf8")));
@@ -383,6 +411,7 @@ export class BackendUpdates {
     if (this.disk.transition) await this.restore(this.disk.transition);
     this.publish({
       currentVersion: this.disk.active?.version ?? this.options.bundledVersion,
+      progress: null,
       ...this.preferences,
     });
     await this.cacheBundledBackend();
@@ -398,10 +427,17 @@ export class BackendUpdates {
           this.state.message ?? "Cox could not be downloaded. Reopen the client to retry.",
         );
     }
-    if (!this.disk.pending) return start(await this.server(this.disk.active));
+    if (!this.disk.pending) {
+      const { status, message } = this.state;
+      this.publish({ status: "installing", message: null, progress: progress("starting") });
+      const origin = await start(await this.server(this.disk.active));
+      this.publish({ status, message, progress: null });
+      return origin;
+    }
     const target = this.disk.pending;
     let transition: Transition | undefined;
     try {
+      this.publish({ status: "installing", message: null, progress: progress("starting") });
       const server = await this.server(target);
       transition = await this.snapshot(target);
       const origin = await start(server);
@@ -430,7 +466,11 @@ export class BackendUpdates {
         this.publish({ status: "error", message: String(error) });
       }
       if (!this.disk.active) throw error;
-      return start(await this.server(this.disk.active));
+      const { status, message } = this.state;
+      this.publish({ status: "installing", message: null, progress: progress("starting") });
+      const origin = await start(await this.server(this.disk.active));
+      this.publish({ status, message, progress: null });
+      return origin;
     }
   }
 
@@ -502,7 +542,7 @@ export class BackendUpdates {
     if (!release || this.state.status !== "available") return this.getState();
     this.controller = new AbortController();
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(480_000)]);
-    this.publish({ status: "installing", message: null });
+    this.publish({ status: "installing", message: null, progress: progress("downloading") });
     this.operation = (async () => {
       const id = backendInstallationId(release.version);
       const temporary = join(this.directory, ".install-" + id);
@@ -515,7 +555,12 @@ export class BackendUpdates {
           environment: this.options.environment,
           signal,
           fetcher: this.options.fetcher,
+          onProgress: (progress) => {
+            if (!this.closed && !signal.aborted) this.publish({ progress });
+          },
         });
+        signal.throwIfAborted();
+        this.publish({ progress: progress("validating") });
         await this.options.validate(directory, signal);
         signal.throwIfAborted();
         await rename(temporary, join(this.directory, "versions", id));

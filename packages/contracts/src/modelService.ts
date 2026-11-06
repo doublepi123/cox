@@ -35,6 +35,7 @@ export const ModelServiceBaseUrl = TrimmedNonEmptyString.check(
 export const ModelServiceModel = Schema.Struct({
   id: TrimmedNonEmptyString,
   available: Schema.optionalKey(Schema.Boolean),
+  ignored: Schema.optionalKey(Schema.Boolean),
   name: Schema.optionalKey(TrimmedNonEmptyString),
   protocols: Schema.optionalKey(Schema.Array(ModelServiceProtocol)),
   capabilities: Schema.NullOr(ModelCapabilities).pipe(
@@ -102,6 +103,22 @@ export const ModelServiceDiscoveryResult = Schema.Struct({
   discoveredAt: Schema.String,
 });
 export type ModelServiceDiscoveryResult = typeof ModelServiceDiscoveryResult.Type;
+
+export const ModelServiceTestInput = Schema.Struct({
+  serviceId: ModelServiceId,
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  modelId: TrimmedNonEmptyString,
+});
+export type ModelServiceTestInput = typeof ModelServiceTestInput.Type;
+export const ModelServiceTestResult = Schema.Struct({
+  modelId: TrimmedNonEmptyString,
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  ok: Schema.Boolean,
+  protocol: Schema.NullOr(ModelServiceProtocol),
+  durationMs: Schema.Number,
+  message: Schema.NullOr(Schema.String),
+});
+export type ModelServiceTestResult = typeof ModelServiceTestResult.Type;
 export class ModelServiceError extends Schema.TaggedError<ModelServiceError>()(
   "ModelServiceError",
   {

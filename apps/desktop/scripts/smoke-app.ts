@@ -40,7 +40,10 @@ const application = await _electron.launch({
   executablePath: executable,
   env: environment,
   timeout: 30_000,
-  args: process.platform === "linux" ? ["--no-sandbox"] : [],
+  args: [
+    ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+    ...(clientOnly ? [] : ["--offline"]),
+  ],
 });
 const applicationProcess = application.process();
 try {
@@ -81,6 +84,56 @@ try {
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
     1,
   );
+  await page.waitForFunction(() =>
+    Boolean(document.querySelector('[data-slot="sidebar-wrapper"]')),
+  );
+  if (process.platform === "linux")
+    await page.evaluate(() => {
+      const bridge = Reflect.get(window, "coxDesktop");
+      bridge.onQuitRequested(() => bridge.answerQuit(true));
+      bridge.ready({ settingsWindow: true });
+    });
+  const mainUrl = page.url();
+  const openedSettings = application.waitForEvent("window");
+  await page.evaluate(async () => {
+    const bridge = Reflect.get(window, "coxDesktop") as {
+      openSettings(path: string): Promise<void>;
+    };
+    await bridge.openSettings("/settings/about");
+  });
+  const settings = await openedSettings;
+  settings.on("pageerror", (error) => console.error("Settings renderer error:", error));
+  await settings.waitForURL(/\/settings\/about$/, { timeout: 30_000 });
+  await settings.getByRole("heading", { name: /^(Desktop client|桌面客户端)$/ }).waitFor();
+  assert.equal(
+    await settings.evaluate(() => Reflect.get(window, "coxDesktop").windowKind),
+    "settings",
+  );
+  assert.equal(page.url(), mainUrl);
+  assert.equal(await settings.locator("[data-app-modal]").count(), 0);
+  assert.equal(
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
+    2,
+  );
+  await page.evaluate(async () => Reflect.get(window, "coxDesktop").openSettings("/settings"));
+  assert.equal(settings.url().endsWith("/settings/about"), true);
+  assert.equal(
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
+    2,
+  );
+  await settings.evaluate(() => {
+    const key = "cox:client-settings:v1";
+    const stored = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...stored, glassOpacity: 85 }));
+  });
+  await page.waitForFunction(
+    () => document.documentElement.style.getPropertyValue("--glass-opacity") === "85%",
+  );
+  const settingsClosed = settings.waitForEvent("close");
+  await settings.evaluate(() => Reflect.get(window, "coxDesktop").closeSettings());
+  await settingsClosed;
+  assert.equal(await readFile(runtimePath, "utf8"), before);
+  assert.equal(page.url(), mainUrl);
   if (process.platform === "win32" || process.platform === "darwin") {
     if (process.platform === "win32") {
       assert.equal(
@@ -183,7 +236,7 @@ try {
     }
   }
   console.log(
-    "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation and graceful quit.",
+    "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation, independent settings window reuse, shared preferences and graceful quit.",
   );
 } catch (error) {
   console.error("Packaged window smoke failed:", error);

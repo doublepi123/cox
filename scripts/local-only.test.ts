@@ -40,7 +40,7 @@ describe("local-only distribution boundary", () => {
     expect(verification).toContain('"detach", mounted');
   });
 
-  it("ships only DMG installers for macOS in CI and releases", () => {
+  it("ships DMG installers and complete updater metadata without unsigned macOS ZIP updates", () => {
     const packaging = NodeFS.readFileSync(
       NodePath.join(root, "apps/desktop/scripts/package.ts"),
       "utf8",
@@ -54,11 +54,35 @@ describe("local-only distribution boundary", () => {
       expect(workflow).toContain("/*.dmg");
       expect(workflow).toContain("/*.dmg.sha256");
       expect(workflow).toContain("/*.exe");
+      expect(workflow).toContain("/UPDATE-*.json");
       expect(workflow).not.toContain("/*.zip");
       expect(workflow).not.toContain("cox-client-");
       expect(workflow).not.toContain("/*.sha256");
       expect(workflow).not.toContain("/*.blockmap");
     }
+  });
+
+  it("stages the desktop updater runtime and keeps automatic installation explicitly gated", () => {
+    const packaging = NodeFS.readFileSync(
+      NodePath.join(root, "apps/desktop/scripts/package.ts"),
+      "utf8",
+    );
+    expect(packaging).toContain("dependencies: manifest.dependencies");
+    expect(packaging).toContain('"--omit=dev", "--ignore-scripts"');
+    expect(packaging).toContain('"node_modules/**"');
+    expect(packaging).toContain('process.env.COX_DESKTOP_SIGNED_UPDATES === "true"');
+    const updater = NodeFS.readFileSync(
+      NodePath.join(root, "apps/desktop/src/client-updates.ts"),
+      "utf8",
+    );
+    expect(updater).toContain("updater.autoDownload = false");
+    expect(updater).toContain("updater.autoInstallOnAppQuit = false");
+    const publication = NodeFS.readFileSync(
+      NodePath.join(root, ".github/workflows/desktop-release.yml"),
+      "utf8",
+    );
+    expect(publication).toContain("scripts/client-update-release.ts");
+    expect(publication).not.toContain("--clobber ./*");
   });
 
   it("installs the Electron runtime explicitly before desktop startup and packaging", () => {

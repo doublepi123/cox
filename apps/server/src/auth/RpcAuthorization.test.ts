@@ -34,6 +34,7 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.modelServiceDiscover)).toBe(
       AuthProvidersManageScope,
     );
+    expect(requiredScopeForRpcMethod(WS_METHODS.modelServiceTest)).toBe(AuthProvidersManageScope);
   });
 
   it("keeps webhook delivery logs, which hold request bodies, behind operate scope", () => {

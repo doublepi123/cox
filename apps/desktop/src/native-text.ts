@@ -1,6 +1,17 @@
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 
 const chinese = {
+  Settings: "设置",
+  "Install client update": "安装客户端更新",
+  "Updating the client quits Cox and interrupts running agent turns and terminals.":
+    "更新客户端会退出 Cox，并中断正在运行的 Agent 任务和终端。",
+  Continue: "继续",
+  "Check for Client Updates": "检查客户端更新",
+  "Cox Desktop {version} is available.": "发现 Cox 客户端 {version} 新版本。",
+  "Client update downloaded. Choose Install client update from the File menu when your tasks are finished.":
+    "客户端更新已下载，请在任务结束后，从文件菜单选择“安装客户端更新”。",
+  "Could not update the client.": "无法更新客户端。",
+  "The client is up to date.": "客户端已是最新版本。",
   "Cox update": "Cox 更新",
   "Cox {version} is available. Download now and activate on the next launch?":
     "发现新版 Cox {version}，是否下载并在下次启动时启用？",

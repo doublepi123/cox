@@ -60,6 +60,11 @@ import {
 } from "~/state/session";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import {
+  CLIENT_SETTINGS_STORAGE_KEY,
+  CLIENT_SETTINGS_CHANGE_EVENT,
+  readBrowserClientSettings,
+} from "~/clientPersistenceStorage";
 
 const CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE = "[CLIENT_SETTINGS]";
 
@@ -74,6 +79,35 @@ let clientSettingsHydrationPromise: Promise<void> | null = null;
 let clientSettingsHydrationGeneration = 0;
 let clientSettingsPersistenceQueue: Promise<void> = Promise.resolve();
 let deferredClientSettingsPatchCount = 0;
+
+export function flushClientSettingsPersistence(): Promise<void> {
+  return clientSettingsPersistenceQueue;
+}
+
+export function startClientSettingsSynchronization(): () => void {
+  const synchronize = (event: Event) => {
+    if (
+      event instanceof StorageEvent &&
+      event.key !== CLIENT_SETTINGS_STORAGE_KEY &&
+      event.key !== null
+    )
+      return;
+    void enqueueClientSettingsPersistence(async () => {
+      const persisted = readBrowserClientSettings();
+      if (persisted) replaceClientSettingsSnapshot({ ...DEFAULT_CLIENT_SETTINGS, ...persisted });
+    }).catch((error) => {
+      console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} synchronize failed`, {
+        ...safeErrorLogAttributes(error),
+      });
+    });
+  };
+  window.addEventListener("storage", synchronize);
+  window.addEventListener(CLIENT_SETTINGS_CHANGE_EVENT, synchronize);
+  return () => {
+    window.removeEventListener("storage", synchronize);
+    window.removeEventListener(CLIENT_SETTINGS_CHANGE_EVENT, synchronize);
+  };
+}
 
 function emitClientSettingsChange() {
   for (const listener of clientSettingsListeners) {

@@ -171,6 +171,7 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import { discoverModelService } from "./modelServices/discovery.ts";
+import { testModelService } from "./modelServices/testing.ts";
 import * as ModelServiceFetchClient from "effect/http/FetchHttpClient";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -2441,6 +2442,8 @@ export const layerWsRpc = (
         [WS_METHODS.providerInstallStart]: (input) => providerInstallation.start(input),
         [WS_METHODS.modelServiceDiscover]: (input) =>
           discoverModelService(input).pipe(Effect.provide(ModelServiceFetchClient.layer)),
+        [WS_METHODS.modelServiceTest]: (input) =>
+          testModelService(input).pipe(Effect.provide(ModelServiceFetchClient.layer)),
         [WS_METHODS.providerInstallCancel]: (input) => providerInstallation.cancel(input),
         [WS_METHODS.providerInstallSubscribe]: (input) => providerInstallation.subscribe(input),
         [WS_METHODS.providerInstallRemove]: (input) => providerInstallation.remove(input),

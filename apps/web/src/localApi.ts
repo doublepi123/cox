@@ -33,7 +33,7 @@ export function createLocalApi(): LocalApi {
     persistence: {
       getClientSettings: async () => readBrowserClientSettings(),
       setClientSettings: async (settings) => {
-        writeBrowserClientSettings(settings);
+        await writeBrowserClientSettings(settings);
       },
     },
   };

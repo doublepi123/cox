@@ -814,6 +814,39 @@ describe("MessagesTimeline agent messages", () => {
   });
 });
 
+describe("MessagesTimeline response image export", () => {
+  it("offers image export only for completed nonempty assistant responses", async () => {
+    setup();
+    const props = baseProps();
+    await using screen = await renderElement(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={[
+          message("Private question", {}, "question"),
+          message("Share this answer", { role: "assistant" }, "answer"),
+        ]}
+      />,
+    );
+    expect(screen.buttons("Export response as image")).toHaveLength(1);
+    await screen.rerender(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={[
+          message("Still writing", { role: "assistant", streaming: true }, "answer"),
+        ]}
+      />,
+    );
+    expect(screen.buttons("Export response as image")).toHaveLength(0);
+    await screen.rerender(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={[message("  ", { role: "assistant" }, "answer")]}
+      />,
+    );
+    expect(screen.buttons("Export response as image")).toHaveLength(0);
+  });
+});
+
 describe("MessagesTimeline attachments", () => {
   it.each(["image", "file"] as const)(
     "copies only matching context records for a wordless %s attachment",

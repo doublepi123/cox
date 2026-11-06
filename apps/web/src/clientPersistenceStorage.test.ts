@@ -23,9 +23,9 @@ function createLocalStorageStub(): Storage {
 
 function getTestWindow(): Window & typeof globalThis {
   const localStorage = createLocalStorageStub();
-  const testWindow = {
+  const testWindow = Object.assign(new EventTarget(), {
     localStorage,
-  } as Window & typeof globalThis;
+  }) as Window & typeof globalThis;
   vi.stubGlobal("window", testWindow);
   vi.stubGlobal("localStorage", localStorage);
   return testWindow;
@@ -38,6 +38,37 @@ afterEach(() => {
 });
 
 describe("clientPersistenceStorage", () => {
+  it("merges a local edit with another window's latest saved settings", async () => {
+    const testWindow = getTestWindow();
+    const key = "cox:client-settings:v1";
+    testWindow.localStorage.setItem(key, JSON.stringify(DEFAULT_CLIENT_SETTINGS));
+    const { readBrowserClientSettings, writeBrowserClientSettings } =
+      await import("./clientPersistenceStorage");
+    readBrowserClientSettings();
+    testWindow.localStorage.setItem(
+      key,
+      JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, wordWrap: false }),
+    );
+    await writeBrowserClientSettings({ ...DEFAULT_CLIENT_SETTINGS, timestampFormat: "12-hour" });
+    expect(readBrowserClientSettings()).toMatchObject({
+      wordWrap: false,
+      timestampFormat: "12-hour",
+    });
+  });
+
+  it("does not overwrite corrupt settings while merging a window's edit", async () => {
+    const testWindow = getTestWindow();
+    const key = "cox:client-settings:v1";
+    testWindow.localStorage.setItem(key, JSON.stringify(DEFAULT_CLIENT_SETTINGS));
+    const { readBrowserClientSettings, writeBrowserClientSettings } =
+      await import("./clientPersistenceStorage");
+    readBrowserClientSettings();
+    testWindow.localStorage.setItem(key, "broken");
+    await expect(
+      writeBrowserClientSettings({ ...DEFAULT_CLIENT_SETTINGS, wordWrap: false }),
+    ).rejects.toThrow();
+    expect(testWindow.localStorage.getItem(key)).toBe("broken");
+  });
   it.each(["not-json", '{"wordWrap":"invalid"}'])(
     "does not treat invalid saved settings as absent: %s",
     async (value) => {

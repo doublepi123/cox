@@ -24,6 +24,33 @@ function installBridge(bridge: DesktopShellBridge | undefined) {
 }
 
 describe("desktop shell", () => {
+  it("keeps installing a client update behind the themed quit confirmation", async () => {
+    let requestQuit: ((reason?: "quit" | "update") => void) | undefined;
+    const bridge: DesktopShellBridge = {
+      platform: "win32",
+      ready: vi.fn(),
+      onQuitRequested: (listener) => {
+        requestQuit = listener;
+        return () => {};
+      },
+      answerQuit: vi.fn(),
+      setWindowColors: vi.fn(),
+      onWindowState: () => () => {},
+      syncWindowControls: vi.fn(),
+    };
+    using _bridge = installBridge(bridge);
+    await using _screen = await render(<DesktopShell />);
+    await act(() => requestQuit?.("update"));
+    await expect
+      .element(page.getByRole("heading", { name: "Install client update?" }))
+      .toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(bridge.answerQuit).toHaveBeenLastCalledWith(false);
+    await act(() => requestQuit?.("update"));
+    await page.getByRole("button", { name: "Open installer", exact: true }).click();
+    expect(bridge.answerQuit).toHaveBeenLastCalledWith(true);
+  });
   it.each([
     ["ignore-version", "忽略本版本", "Ignore this version"],
     ["never", "永久忽略更新", "Ignore all updates"],

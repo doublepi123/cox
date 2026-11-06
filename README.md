@@ -2,13 +2,16 @@
 
 English | [简体中文](README.zh-CN.md)
 
+[Website](https://doublepi.dev/) · [CoCode for Android](https://doublepi.dev/cocode/)
+
 Cox is a local Web interface for coding agents, derived from [T3 Code](https://github.com/pingdotgg/t3code), starting at `0102f07afb` in the `doublepi123/t3code` fork.
 
 Run the server on your computer and control your locally installed coding agents from a browser. Your projects, conversation history, credentials and checkpoints stay in your local Cox data directory.
 
 ## Project website
 
-The product homepage is [doublepi123.github.io](https://doublepi123.github.io/).
+The product homepage is [doublepi.dev](https://doublepi.dev/), with the
+[CoCode Android page](https://doublepi.dev/cocode/) under the same GitHub Pages site.
 The bilingual website source lives in [`site/`](site/README.md), with a responsive
 feature showcase, an illustrative workspace, and copyable installation commands.
 It is separate from the local Cox application and does not host agents or user data.
@@ -246,8 +249,8 @@ versions and `v<VERSION>` tags; desktop releases use `apps/desktop/package.json`
 `desktop-v<VERSION>` tags.
 
 - Combined installers include both versions in their filenames: for example,
-  `cox-desktop-0.2.4-cox-0.1.43-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
-- Client-only installers, such as `cox-desktop-0.2.4-client-only-win-x64.exe`, include the browser shell,
+  `cox-desktop-0.2.5-cox-0.1.45-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
+- Client-only installers, such as `cox-desktop-0.2.5-client-only-win-x64.exe`, include the browser shell,
   standalone Node and npm, but **no Cox backend**. Their first launch needs internet access
   to install the latest stable `@doublepi123/cox`. No global Node/npm/Cox installation is needed.
   A failed initial download offers Retry/Quit; subsequent launches use the verified local

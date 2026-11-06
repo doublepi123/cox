@@ -19,6 +19,7 @@ on:
       - package.json
       - .github/workflows/desktop.yml
       - .github/workflows/desktop-release.yml
+      - .github/workflows/desktop-latest.yml
 permissions:
   contents: read
 jobs:
@@ -44,6 +45,8 @@ jobs:
         if: runner.os == 'macOS'
       - run: pnpm --filter @cox/desktop smoke
       - run: pnpm --filter @cox/desktop smoke:app
+      - run: pnpm --filter @cox/desktop smoke:mac-update
+        if: runner.os == 'macOS'
       - uses: actions/upload-artifact@v4
         with:
           name: cox-desktop-${{ matrix.os }}-${{ matrix.flavor }}
@@ -58,4 +61,5 @@ jobs:
             release/desktop/${{ matrix.flavor }}/*.exe.blockmap
             release/desktop/${{ matrix.flavor }}/*.exe.blockmap.sha256
             release/desktop/${{ matrix.flavor }}/BUILD-*.json
+            release/desktop/${{ matrix.flavor }}/UPDATE-*.json
           if-no-files-found: error

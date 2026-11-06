@@ -31,6 +31,7 @@ import { readLocalStorageValue, subscribeLocalStorageKey } from "./hooks/useLoca
 import {
   getClientSettings,
   startModelPreferencesMigration,
+  startClientSettingsSynchronization,
   subscribeClientSettings,
 } from "./hooks/useSettings";
 import { syncBrowserChromeTheme } from "./hooks/useTheme";
@@ -46,6 +47,7 @@ import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommand
 import { registerOpenFavoriteEditorCommand } from "./components/chat/OpenInPickerShortcut";
 import { environmentThreadShells } from "./state/threads";
 import { resolveThreadRouteTarget } from "./threadRoutes";
+import { startDesktopSettingsNavigation } from "./lib/desktopSettingsNavigation";
 /** Writes appearance settings onto the document, touching only the groups that changed. */
 function startClientAppearance(): void {
   const root = document.documentElement;
@@ -153,12 +155,23 @@ function startThreadOverlayRetention(router: AppRouter): void {
 export function startAppServices(): AppRouter {
   // Ahead of the history: the provider auth code must leave the address before anything reads it.
   startProviderAuthDelivery();
+  startClientSettingsSynchronization();
   const router = getRouter(createBrowserHistory());
   startClientAppearance();
   startDocumentTitle();
   startEnvironmentThemeRepaint();
   startBrowserChromeThemeSync(router);
   startDefaultThemeAdoption();
+  startDesktopSettingsNavigation(router.history, window.coxDesktop, (error) => {
+    console.error("Could not open desktop window.", error);
+  });
+  window.coxDesktop?.onNavigate?.((href) => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    void router.navigate({ href });
+  });
+  if (window.coxDesktop?.windowKind === "settings") {
+    return router;
+  }
   startModelPreferencesMigration();
   startAgentOpenedPreviews();
   startPreviewTitleRecording();

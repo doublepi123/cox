@@ -1,5 +1,14 @@
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { compareBackendVersions, isBackendVersion, record } from "../src/backend-install.ts";
+import {
+  fetchClientUpdateFeed,
+  parseClientUpdateFeed,
+  type ClientUpdateFeed,
+} from "../src/client-updates.ts";
 import { latestDesktopTag } from "./release-plan.ts";
 
 export const desktopLatestTag = "cox-desktop-latest";
@@ -74,7 +83,15 @@ export function desktopLatestNotes(value: unknown): string {
   return lines.join("\n") + "\n";
 }
 
-export async function syncDesktopLatest(api: GitHubApi): Promise<string> {
+export interface SyncDesktopLatestOptions {
+  readonly readFeed: (url: string) => Promise<unknown>;
+  readonly publishFeed: (feed: ClientUpdateFeed) => Promise<void>;
+}
+
+export async function syncDesktopLatest(
+  api: GitHubApi,
+  options: SyncDesktopLatestOptions,
+): Promise<string> {
   const releases: unknown[] = [];
   for (let page = 1; ; page++) {
     const result = await api(`releases?per_page=100&page=${page}`);
@@ -85,16 +102,55 @@ export async function syncDesktopLatest(api: GitHubApi): Promise<string> {
   const tag = latestDesktopTag(releases);
   const source = await api(`releases/tags/${tag}`);
   const body = desktopLatestNotes(source);
+  const version = tag.slice(9);
+  const assets = record(source).assets as unknown[];
+  const feedName = `desktop-update-${version}.json`;
+  if (!assets.some((asset) => record(asset).name === feedName))
+    throw new Error("The desktop release is missing its complete update feed.");
+  const feed = parseClientUpdateFeed(
+    await options.readFeed(`https://github.com/${repository}/releases/download/${tag}/${feedName}`),
+  );
+  if (feed.tag !== tag) throw new Error("The desktop update feed belongs to a different release.");
+  for (const artifact of feed.artifacts) {
+    const asset = assets.find((value) => record(value).name === artifact.filename);
+    if (
+      !asset ||
+      record(asset).size !== artifact.size ||
+      (record(asset).digest != null && record(asset).digest !== "sha256:" + artifact.sha256)
+    )
+      throw new Error("The desktop update feed does not match the published target set.");
+  }
   const commit = record(await api(`commits/${tag}`)).sha;
   if (typeof commit !== "string" || !/^[a-f0-9]{40}$/.test(commit))
     throw new Error("Invalid desktop source commit.");
+  const existing = await api(`releases/tags/${desktopLatestTag}`);
+  if (existing !== null) {
+    const previous = record(existing);
+    const previousVersion =
+      typeof previous.body === "string"
+        ? previous.body.match(/releases\/tag\/desktop-v([0-9]+\.[0-9]+\.[0-9]+)/)?.[1]
+        : undefined;
+    if (previousVersion && compareBackendVersions(version, previousVersion) < 0)
+      throw new Error("Refusing to roll the desktop update feed back to an older version.");
+    if (
+      Array.isArray(previous.assets) &&
+      previous.assets.some((asset) => record(asset).name === "desktop-update.json")
+    ) {
+      const previousFeed = parseClientUpdateFeed(
+        await options.readFeed(
+          `https://github.com/${repository}/releases/download/${desktopLatestTag}/desktop-update.json`,
+        ),
+      );
+      if (compareBackendVersions(version, previousFeed.version) < 0)
+        throw new Error("Refusing to roll the desktop update feed back to an older version.");
+    }
+  }
   const reference = await api(`git/ref/tags/${desktopLatestTag}`);
   if (reference === null) {
     await api("git/refs", "POST", { ref: `refs/tags/${desktopLatestTag}`, sha: commit });
   } else {
     await api(`git/refs/tags/${desktopLatestTag}`, "PATCH", { sha: commit, force: true });
   }
-  const existing = await api(`releases/tags/${desktopLatestTag}`);
   const release = {
     tag_name: desktopLatestTag,
     target_commitish: commit,
@@ -112,28 +168,48 @@ export async function syncDesktopLatest(api: GitHubApi): Promise<string> {
       throw new Error("Invalid rolling desktop release ID.");
     await api(`releases/${id}`, "PATCH", release);
   }
+  await options.publishFeed(feed);
   return tag;
 }
 
 async function main() {
   const token = process.env.GH_TOKEN;
   if (!token) throw new Error("GitHub authentication is required to sync desktop releases.");
-  const tag = await syncDesktopLatest(async (path, method = "GET", body) => {
-    const response = await fetch(`https://api.github.com/repos/${repository}/${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
+  const tag = await syncDesktopLatest(
+    async (path, method = "GET", body) => {
+      const response = await fetch(`https://api.github.com/repos/${repository}/${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (response.status === 404 && method === "GET" && !path.includes("?")) return null;
+      if (!response.ok) throw new Error(`GitHub ${method} ${path} failed: HTTP ${response.status}`);
+      return response.json() as Promise<unknown>;
+    },
+    {
+      readFeed: (url) => fetchClientUpdateFeed(url, AbortSignal.timeout(30_000)),
+      publishFeed: async (feed) => {
+        const temporary = await mkdtemp(join(tmpdir(), "cox-desktop-feed-"));
+        try {
+          const path = join(temporary, "desktop-update.json");
+          await writeFile(path, JSON.stringify(feed, null, 2) + "\n");
+          execFileSync(
+            "gh",
+            ["release", "upload", desktopLatestTag, "--repo", repository, "--clobber", path],
+            { stdio: "inherit" },
+          );
+        } finally {
+          await rm(temporary, { recursive: true, force: true });
+        }
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (response.status === 404 && method === "GET" && !path.includes("?")) return null;
-    if (!response.ok) throw new Error(`GitHub ${method} ${path} failed: HTTP ${response.status}`);
-    return response.json() as Promise<unknown>;
-  });
+    },
+  );
   console.log(`${desktopLatestTag} -> ${tag}`);
 }
 

@@ -113,7 +113,11 @@ the same staging and symlink-preservation path as releases. It tests client-only
 in an isolated home, then a second launch
 with `--offline`; it also covers the local API/native terminal, authenticated browser session,
 WebSocket origin rejection, renderer isolation, single-instance behavior and graceful exit.
-macOS checks unpacked/DMG/ZIP signatures. Ad-hoc signatures do not confer Developer ID trust
+macOS checks unpacked/DMG signatures and exercises application replacement and relaunch through
+`smoke:mac-update`. DMG installers are the only macOS distribution assets; no duplicate ZIP is
+published. Every first client release requires bundled and client-only installers for all three
+platform targets and a complete verified update feed before `cox-desktop-latest` moves forward.
+Ad-hoc signatures do not confer Developer ID trust
 or notarization; release signing credentials remain separate.
 
 The npm package declares `coxDesktop.protocol` and its required Node version. The client

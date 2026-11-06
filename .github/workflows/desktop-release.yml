@@ -79,6 +79,8 @@ jobs:
         if: runner.os == 'macOS'
       - run: pnpm --filter @cox/desktop smoke
       - run: pnpm --filter @cox/desktop smoke:app
+      - run: pnpm --filter @cox/desktop smoke:mac-update
+        if: runner.os == 'macOS'
       - uses: actions/upload-artifact@v4
         with:
           name: cox-desktop-${{ needs.resolve.outputs.client_version }}-cox-${{ needs.resolve.outputs.cox_version }}-${{ matrix.flavor }}-${{ matrix.os }}
@@ -93,6 +95,7 @@ jobs:
             release/desktop/${{ matrix.flavor }}/*.exe.blockmap
             release/desktop/${{ matrix.flavor }}/*.exe.blockmap.sha256
             release/desktop/${{ matrix.flavor }}/BUILD-*.json
+            release/desktop/${{ matrix.flavor }}/UPDATE-*.json
           if-no-files-found: error
   publish:
     needs: [resolve, build]
@@ -105,6 +108,10 @@ jobs:
       group: desktop-assets-${{ needs.resolve.outputs.release_tag }}
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
       - uses: actions/download-artifact@v4
         with:
           pattern: cox-desktop-*
@@ -143,6 +150,11 @@ jobs:
           assert.equal(expected.size, 0);
           JS
           for checksum in *.sha256; do sha256sum -c "$checksum"; done
+          feed_exists="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets | any(.name == \"desktop-update-$CLIENT_VERSION.json\")" 2>/dev/null || true)"
+          if [[ "$CLIENT_RELEASE" == true && "$feed_exists" != true ]]; then
+            node ../apps/desktop/scripts/client-update-release.ts .
+          fi
+          node ../apps/desktop/scripts/client-update-release.ts --version-metadata .
           checksum="DESKTOP-SHA256SUMS-client-$CLIENT_VERSION-cox-$COX_VERSION.txt"
           find . -maxdepth 1 -type f ! -name "$checksum" -printf '%f\0' | sort -z | xargs -0 sha256sum > "$checksum"
           created=false
@@ -153,7 +165,7 @@ jobs:
               --title "$title" --notes "Desktop client $CLIENT_VERSION combined with Cox $COX_VERSION. Client-only packages install Cox from the official npm registry on first launch."
             created=true
           fi
-          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber ./*
+          node ../apps/desktop/scripts/client-update-release.ts --upload .
           if [[ "$created" == true ]]; then
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
           else

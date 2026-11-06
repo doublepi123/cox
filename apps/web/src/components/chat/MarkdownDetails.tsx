@@ -10,6 +10,7 @@ import {
 
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { findRevealRef, MarkdownFindContext } from "./markdownFindContext";
+import { AnswerImageContext } from "./answerImageContext";
 
 export function MarkdownDetails({
   children,
@@ -17,7 +18,7 @@ export function MarkdownDetails({
 }: Pick<ComponentProps<"details">, "children" | "open">) {
   const [isOpen, setIsOpen] = useState(open);
   const searching = use(MarkdownFindContext);
-  const expanded = isOpen;
+  const expanded = use(AnswerImageContext) || isOpen;
   const revealForFind = () => setIsOpen(true);
   // Base UI only listens for `beforematch` on a panel mounted at its first
   // render; a closed panel mounts later, when find starts, so listen here.

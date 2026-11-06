@@ -18,6 +18,11 @@ function threadRouteTargetKey(target: ThreadRouteTarget | null) {
 }
 
 function ChatRouteLayout() {
+  if (window.coxDesktop?.windowKind === "settings") return <Outlet />;
+  return <MainChatRouteLayout />;
+}
+
+function MainChatRouteLayout() {
   useServerPreviewSessions(usePrimaryEnvironmentId());
   // Render both routes here so draft promotion keeps the same ChatView mounted.
   const threadTarget = useThreadRouteTarget();
@@ -39,7 +44,9 @@ function ChatRouteLayout() {
       {shownTarget ? (
         <ThreadRouteView target={shownTarget} background={modalOpen} />
       ) : modalOpen ? (
-        <SidebarInset className="h-dvh" />
+        <div className="flex h-dvh flex-1">
+          <SidebarInset />
+        </div>
       ) : (
         <Outlet />
       )}
@@ -49,7 +56,7 @@ function ChatRouteLayout() {
 }
 
 export const Route = createFileRoute("/_chat")({
-  beforeLoad: async ({ context, location }) => {
+  beforeLoad: async ({ location }) => {
     return { appModalPage: isAppModalPage(location.pathname) };
   },
   component: ChatRouteLayout,

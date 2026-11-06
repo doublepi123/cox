@@ -26,6 +26,37 @@ const config = (patch: Partial<ModelServiceConfig> = {}): ModelServiceConfig =>
   });
 
 describe("model service discovery", () => {
+  it.effect("retains explicit ignored models when the upstream advertises them again", () =>
+    Effect.gen(function* () {
+      const http = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json(
+              request.url === "https://models.dev/api.json" ? {} : { data: [{ id: "ignored" }] },
+            ),
+          ),
+        ),
+      );
+      const result = yield* discoverModelService({ serviceId: id }).pipe(
+        Effect.provideService(HttpClient.HttpClient, http),
+      );
+      expect(result.models.find((model) => model.id === "ignored")).toMatchObject({
+        ignored: true,
+        available: true,
+      });
+    }).pipe(
+      Effect.provide(
+        ServerSettingsService.layerTest({
+          modelServices: {
+            [id]: config({
+              models: [{ id: "ignored", ignored: true, source: "discovered", capabilities: null }],
+            }),
+          },
+        }),
+      ),
+    ),
+  );
   it.effect.each([
     { metadataOnly: false, cleared: false },
     { metadataOnly: true, cleared: false },

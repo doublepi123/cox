@@ -14,6 +14,10 @@ import {
 import { Button } from "./ui/button";
 import { DialogSuppressionContext } from "./ui/dialog";
 import { useDesktopBackendUpdate } from "../hooks/useDesktopBackendUpdate";
+import { useDesktopClientUpdate } from "../hooks/useDesktopClientUpdate";
+import { DesktopUpdateProgress } from "./DesktopUpdateProgress";
+import { toastManager } from "./ui/toast";
+import { closeDesktopSettings } from "../lib/closeDesktopSettings";
 
 declare global {
   interface Window {
@@ -38,7 +42,34 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [quitting, setQuitting] = useState(false);
+  const [quitReason, setQuitReason] = useState<"quit" | "update">("quit");
   const updates = useDesktopBackendUpdate();
+  const clientUpdates = useDesktopClientUpdate();
+  const clientNotice = useRef<string | null>(null);
+  const clientStatus = clientUpdates.state?.status;
+  const clientVersion = clientUpdates.state?.latestVersion;
+  useEffect(() => {
+    if (
+      window.coxDesktop?.windowKind === "settings" ||
+      !clientVersion ||
+      (clientStatus !== "available" && clientStatus !== "ready")
+    )
+      return;
+    const key = `${clientStatus}:${clientVersion}`;
+    if (clientNotice.current === key) return;
+    clientNotice.current = key;
+    toastManager.add({
+      type: "info",
+      title: t(clientStatus === "ready" ? "Client update ready" : "Client update available"),
+      description: t("Cox Desktop {version} is available.", { version: clientVersion }),
+      actionProps: {
+        children: t("View"),
+        onClick: () => {
+          void window.coxDesktop?.openSettings?.("/settings/about");
+        },
+      },
+    });
+  }, [clientStatus, clientVersion, t]);
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
   const updateState = updates.state;
   const updateKey =
@@ -49,7 +80,10 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
           updateState.latestVersion !== updateState.currentVersion
         ? "update:" + updateState.latestVersion
         : null;
-  const updateOpen = updateKey !== null && updateKey !== dismissedUpdate;
+  const updateOpen =
+    window.coxDesktop?.windowKind !== "settings" &&
+    updateKey !== null &&
+    updateKey !== dismissedUpdate;
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const bridge = window.coxDesktop;
@@ -63,9 +97,13 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
       window.dispatchEvent(new Event("cox:window-controls-changed"));
     });
     window.addEventListener("resize", bridge.syncWindowControls);
-    const unsubscribe = bridge.onQuitRequested(() => {
+    const unsubscribe = bridge.onQuitRequested((reason) => {
       setQuitting(false);
+      setQuitReason(reason ?? "quit");
       setOpen(true);
+    });
+    const unsubscribeClose = bridge.onSettingsCloseRequested?.(() => {
+      void closeDesktopSettings();
     });
     const updateColors = () =>
       bridge.setWindowColors(windowColor("--background"), windowColor("--foreground"));
@@ -75,9 +113,10 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
       attributeFilter: ["class", "style", "data-theme-id"],
     });
     updateColors();
-    bridge.ready();
+    bridge.ready({ settingsWindow: true });
     return () => {
       unsubscribe();
+      unsubscribeClose?.();
       observer.disconnect();
       stopWindowState();
       window.removeEventListener("resize", bridge.syncWindowControls);
@@ -119,6 +158,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
                           version: updateState?.latestVersion ?? "",
                         })}
             </AlertDialogDescription>
+            <DesktopUpdateProgress progress={updateState?.progress} />
           </AlertDialogHeader>
           <AlertDialogFooter variant="bare">
             <AlertDialogClose render={<Button variant="outline" />}>
@@ -142,6 +182,11 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
             {updateState?.status === "available" && (
               <Button onClick={() => void updates.install()}>{t("Download Cox update")}</Button>
             )}
+            {updateState?.status === "incompatible" && window.coxDesktop.openSettings && (
+              <Button onClick={() => void window.coxDesktop?.openSettings?.("/settings/about")}>
+                {t("Check for client updates")}
+              </Button>
+            )}
           </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
@@ -155,10 +200,14 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
       >
         <AlertDialogPopup initialFocus={cancelRef} bottomStickOnMobile={false} layer="application">
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("Quit Cox?")}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t(quitReason === "update" ? "Install client update?" : "Quit Cox?")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                "Quitting stops the local backend and interrupts running agent tasks and terminals.",
+                quitReason === "update"
+                  ? "Updating the client quits Cox and interrupts running agent tasks and terminals."
+                  : "Quitting stops the local backend and interrupts running agent tasks and terminals.",
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -176,7 +225,15 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
                 window.coxDesktop?.answerQuit(true);
               }}
             >
-              {quitting ? t("Quitting…") : t("Quit Cox")}
+              {t(
+                quitting
+                  ? "Quitting…"
+                  : quitReason === "update"
+                    ? clientUpdates.state?.installMode === "automatic"
+                      ? "Restart and update"
+                      : "Open installer"
+                    : "Quit Cox",
+              )}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

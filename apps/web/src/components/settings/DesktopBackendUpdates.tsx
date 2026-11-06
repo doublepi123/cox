@@ -2,6 +2,8 @@ import { useDesktopBackendUpdate } from "../../hooks/useDesktopBackendUpdate";
 import { useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { DesktopUpdateProgress } from "../DesktopUpdateProgress";
+import { DesktopClientUpdates } from "./DesktopClientUpdates";
 
 export function DesktopBackendUpdates() {
   const { t } = useTranslation();
@@ -11,6 +13,7 @@ export function DesktopBackendUpdates() {
   return (
     <SettingsSection title={t("Desktop client")}>
       <SettingsRow title={t("Client version")} control={<code>{state.desktopVersion}</code>} />
+      <DesktopClientUpdates />
       <SettingsRow
         title={t("Installed Cox version")}
         control={<code>{state.currentVersion ?? "—"}</code>}
@@ -56,9 +59,10 @@ export function DesktopBackendUpdates() {
             >
               {t("Check for Cox updates")}
             </Button>
-            {state.status === "available" && (
+            {(state.status === "available" ||
+              (state.status === "error" && state.latestVersion)) && (
               <Button size="sm" onClick={() => void install()}>
-                {t("Download Cox update")}
+                {t(state.status === "error" ? "Retry" : "Download Cox update")}
               </Button>
             )}
             {window.coxDesktop?.setBackendUpdatePolicy &&
@@ -74,7 +78,9 @@ export function DesktopBackendUpdates() {
               )}
           </div>
         }
-      />
+      >
+        {state.progress && <DesktopUpdateProgress progress={state.progress} />}
+      </SettingsRow>
     </SettingsSection>
   );
 }

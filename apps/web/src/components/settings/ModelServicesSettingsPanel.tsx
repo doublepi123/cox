@@ -7,7 +7,8 @@ import {
   type ModelServiceProtocol,
   type ServerSettings,
 } from "@t3tools/contracts";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createModelServiceTestRunner } from "@t3tools/client-runtime/state/model-service-tests";
 import { modelServiceDisplayName } from "@t3tools/shared/modelServices";
 import * as Schema from "effect/Schema";
 import {
@@ -38,6 +39,11 @@ export const MODEL_SERVICE_PROTOCOL_LABELS: Record<ModelServiceProtocol, string>
 };
 const protocols = Object.keys(MODEL_SERVICE_PROTOCOL_LABELS) as ModelServiceProtocol[];
 const decodeService = Schema.decodeUnknownSync(ModelServiceConfig);
+
+function modelTestMessage(message: string, t: ReturnType<typeof useTranslation>["t"]) {
+  const status = /^Model test failed \(HTTP ([0-9]{3})\)\.$/.exec(message)?.[1];
+  return status ? t("Model test failed (HTTP {status}).", { status }) : t(message);
+}
 
 function commandError(result: AtomCommandResult<unknown, unknown>): string | null {
   if (result._tag !== "Failure") return null;
@@ -164,6 +170,14 @@ function ModelServiceEditor({
   const { t } = useTranslation();
   const update = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
   const discover = useAtomCommand(serverEnvironment.discoverModelService, { reportFailure: false });
+  const testModel = useAtomCommand(serverEnvironment.testModelService, { reportFailure: false });
+  const [tester] = useState(createModelServiceTestRunner);
+  const tests = useSyncExternalStore(tester.subscribe, tester.getSnapshot, tester.getSnapshot);
+  const testConfiguration = service ? `${service.revision}:${service.baseUrl}` : null;
+  useEffect(() => {
+    if (testConfiguration !== null) tester.clear();
+    return tester.cancel;
+  }, [tester, testConfiguration]);
   const [name, setName] = useState(service?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(service?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -176,7 +190,8 @@ function ModelServiceEditor({
   const [enabled, setEnabled] = useState(service?.enabled ?? true);
   const [recovery, setRecovery] = useState(service?.recovery ?? DEFAULT_MODEL_SERVICE_RECOVERY);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [saving, setBusy] = useState(false);
+  const busy = saving || tests.running;
   const running = useRef(false);
   const [modelEditor, setModelEditor] = useState<null | "new" | ModelServiceModel>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -184,8 +199,23 @@ function ModelServiceEditor({
     (instance) => instance.modelService?.serviceId === id,
   ).length;
   const models = service?.models ?? [];
+  const failed = new Set(
+    [...tests.results]
+      .filter(([, result]) => !result.ok && result.revision === service?.revision)
+      .map(([modelId]) => modelId),
+  );
+  const changed = Boolean(
+    service &&
+    (name !== service.name ||
+      baseUrl !== service.baseUrl ||
+      apiKey ||
+      clearKey ||
+      enabled !== service.enabled ||
+      headers !== JSON.stringify(service.headers, null, 2) ||
+      JSON.stringify(selectedProtocols) !== JSON.stringify(service.protocols)),
+  );
   async function run(action: () => Promise<string | null>) {
-    if (running.current) return;
+    if (running.current || tests.running) return;
     running.current = true;
     setBusy(true);
     setError(null);
@@ -405,6 +435,70 @@ function ModelServiceEditor({
         </h3>
         {service && !readOnly ? (
           <div className="flex flex-wrap gap-2">
+            {tests.running ? (
+              <Button size="sm" variant="outline" onClick={tester.cancel}>
+                {t("Stop remaining tests")}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  busy ||
+                  !enabled ||
+                  changed ||
+                  !models.some((model) => !model.ignored && model.available !== false)
+                }
+                onClick={() => {
+                  void tester.run(
+                    models
+                      .filter((model) => !model.ignored && model.available !== false)
+                      .map((model) => model.id),
+                    service.revision,
+                    async (modelId) => {
+                      const result = await testModel({
+                        environmentId,
+                        input: { serviceId: id, revision: service.revision, modelId },
+                      });
+                      if (result._tag !== "Success") throw new Error("Model test interrupted");
+                      return result.value;
+                    },
+                  );
+                }}
+              >
+                {t("Test all models")}
+              </Button>
+            )}
+            {failed.size > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () =>
+                    commandError(
+                      await update({
+                        environmentId,
+                        input: {
+                          patch: {
+                            modelServices: {
+                              [id]: {
+                                ...service,
+                                models: models.map((model) =>
+                                  failed.has(model.id) ? { ...model, ignored: true } : model,
+                                ),
+                              },
+                            },
+                          },
+                        },
+                      }),
+                    ),
+                  )
+                }
+              >
+                {t("Ignore failed models ({count})", { count: failed.size })}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -437,6 +531,26 @@ function ModelServiceEditor({
       <div className="space-y-4 bg-muted/10 px-4 pb-4 sm:px-5 sm:pb-5 lg:px-6 lg:pb-6">
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t(
+            "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.",
+          )}
+        </p>
+        {tests.total > 0 && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {t("Tested {completed}/{total}: {passed} passed, {failed} failed.", {
+              completed: tests.results.size,
+              total: tests.total,
+              passed: [...tests.results.values()].filter((result) => result.ok).length,
+              failed: failed.size,
+            })}
+          </p>
+        )}
+        {tests.error && (
+          <p role="alert" className="text-xs text-destructive">
+            {t(tests.error)}
+          </p>
+        )}
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t(
             "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
           )}
         </p>
@@ -458,6 +572,28 @@ function ModelServiceEditor({
                       {t("No longer advertised by the service")}
                     </p>
                   ) : null}
+                  {model.ignored && <p className="text-xs text-muted-foreground">{t("Ignored")}</p>}
+                  {tests.active.has(model.id) && (
+                    <p className="text-xs text-muted-foreground">{t("Testing…")}</p>
+                  )}
+                  {tests.results.get(model.id) && (
+                    <p
+                      className={
+                        tests.results.get(model.id)!.ok
+                          ? "text-xs text-muted-foreground"
+                          : "text-xs text-destructive"
+                      }
+                    >
+                      {tests.results.get(model.id)!.ok
+                        ? t("Test passed ({duration} ms)", {
+                            duration: Math.round(tests.results.get(model.id)!.durationMs),
+                          })
+                        : modelTestMessage(
+                            tests.results.get(model.id)!.message ?? "Model test failed.",
+                            t,
+                          )}
+                    </p>
+                  )}
                   <p className="break-all font-mono text-xs text-muted-foreground">{model.id}</p>
                   <p className="text-xs text-muted-foreground">
                     {t("Context")}:{" "}
@@ -497,14 +633,48 @@ function ModelServiceEditor({
                   ) : null}
                 </div>
                 {!readOnly ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => setModelEditor(model)}
-                  >
-                    {t("Edit")}
-                  </Button>
+                  <div className="flex gap-2">
+                    {model.ignored && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () =>
+                            commandError(
+                              await update({
+                                environmentId,
+                                input: {
+                                  patch: {
+                                    modelServices: {
+                                      [id]: {
+                                        ...service!,
+                                        models: models.map((entry) =>
+                                          entry.id === model.id
+                                            ? { ...entry, ignored: false }
+                                            : entry,
+                                        ),
+                                      },
+                                    },
+                                  },
+                                },
+                              }),
+                            ),
+                          )
+                        }
+                      >
+                        {t("Restore model")}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => setModelEditor(model)}
+                    >
+                      {t("Edit")}
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             ))}
@@ -691,6 +861,7 @@ function ModelEditor({
           });
         }
         onSave({
+          ...(model?.ignored !== undefined ? { ignored: model.ignored } : {}),
           ...(model?.id === id.trim() && model.inputModalities
             ? { inputModalities: model.inputModalities }
             : {}),

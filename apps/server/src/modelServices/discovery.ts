@@ -220,6 +220,8 @@ export const discoverModelService = Effect.fn("discoverModelService")(
     for (const model of service.models) {
       if (model.source === "manual") models.set(model.id, model);
       else if (!models.has(model.id)) models.set(model.id, { ...model, available: false });
+      else if (model.ignored !== undefined)
+        models.set(model.id, { ...models.get(model.id)!, ignored: model.ignored });
     }
     const catalog = yield* input.metadataOnly
       ? fetchModelsDevCatalog

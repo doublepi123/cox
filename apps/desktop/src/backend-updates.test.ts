@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { BackendUpdates } from "./backend-updates.ts";
-import type { DesktopBackendUpdateState } from "@t3tools/contracts";
+import type { DesktopBackendUpdateState, DesktopUpdateProgress } from "@t3tools/contracts";
 import type { installBackendRelease } from "./backend-install.ts";
 
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -23,6 +23,14 @@ const metadata = (
   },
 });
 
+const phaseProgress = (phase: DesktopUpdateProgress["phase"]): DesktopUpdateProgress => ({
+  phase,
+  transferredBytes: 0,
+  totalBytes: null,
+  bytesPerSecond: null,
+  remainingSeconds: null,
+});
+
 async function fixture(bundledVersion: string | null = "0.1.1") {
   const home = await mkdtemp(join(tmpdir(), "cox-updates-"));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
@@ -31,6 +39,15 @@ async function fixture(bundledVersion: string | null = "0.1.1") {
   await writeFile(join(bundle, "bundled.txt"), "bundled Cox");
   const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(metadata())));
   const install = vi.fn<typeof installBackendRelease>(async (input) => {
+    input.onProgress?.({
+      phase: "downloading",
+      transferredBytes: 10,
+      totalBytes: 20,
+      bytesPerSecond: 5,
+      remainingSeconds: 2,
+    });
+    input.onProgress?.(phaseProgress("verifying"));
+    input.onProgress?.(phaseProgress("installing"));
     const server = join(input.directory, "server");
     await mkdir(server, { recursive: true });
     await writeFile(
@@ -102,6 +119,143 @@ async function fixture(bundledVersion: string | null = "0.1.1") {
 }
 
 describe("managed desktop Cox backend", () => {
+  it("publishes first-install progress before starting the web backend and clears it on success", async () => {
+    const test = await fixture(null);
+    expect(test.manager.getState().progress).toBeNull();
+    test.validate.mockImplementation(async () => {
+      expect(test.manager.getState().progress).toEqual(phaseProgress("validating"));
+      expect(test.start).not.toHaveBeenCalled();
+    });
+    test.start.mockImplementation(async () => {
+      expect(test.manager.getState().progress).toEqual(phaseProgress("starting"));
+      return "http://127.0.0.1:12345";
+    });
+    await test.manager.launch(test.start, test.stop);
+    const phases = test.onState.mock.calls.flatMap(([state]) =>
+      state.progress ? [state.progress.phase] : [],
+    );
+    expect(phases).toEqual([
+      "downloading",
+      "downloading",
+      "verifying",
+      "installing",
+      "validating",
+      "starting",
+    ]);
+    expect(
+      test.onState.mock.calls.find(([state]) => state.progress?.transferredBytes === 10)?.[0],
+    ).toMatchObject({
+      status: "installing",
+      progress: { totalBytes: 20, bytesPerSecond: 5, remainingSeconds: 2 },
+    });
+    expect(test.manager.getState()).toMatchObject({
+      status: "idle",
+      currentVersion: "0.1.2",
+      progress: null,
+    });
+  });
+
+  it("reports bundled copy, validation and startup as indeterminate phases without downloading", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    expect(
+      test.onState.mock.calls.flatMap(([state]) => (state.progress ? [state.progress] : [])),
+    ).toEqual([
+      phaseProgress("installing"),
+      phaseProgress("validating"),
+      phaseProgress("starting"),
+    ]);
+    expect(test.manager.getState().progress).toBeNull();
+    expect(test.fetcher).not.toHaveBeenCalled();
+  });
+
+  it("clears staged progress and does not leak it into a later metadata check", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.check();
+    expect(await test.manager.stage()).toMatchObject({ status: "ready", progress: null });
+    const next = test.make();
+    await next.launch(test.start, test.stop);
+    test.onState.mockClear();
+    await next.check();
+    expect(test.onState.mock.calls[0]?.[0]).toMatchObject({
+      status: "checking",
+      progress: null,
+    });
+    expect(test.onState.mock.calls.every(([state]) => state.progress === null)).toBe(true);
+  });
+
+  it.each(["download", "verification", "installation", "validation"])(
+    "clears progress after a first-install %s failure and retries on the same manager",
+    async (failure) => {
+      const test = await fixture(null);
+      if (failure === "validation")
+        test.validate.mockRejectedValueOnce(new Error("validation failed"));
+      else
+        test.install.mockImplementationOnce(async (input) => {
+          input.onProgress?.(
+            phaseProgress(
+              failure === "download"
+                ? "downloading"
+                : failure === "verification"
+                  ? "verifying"
+                  : "installing",
+            ),
+          );
+          throw new Error(failure + " failed");
+        });
+      await expect(test.manager.launch(test.start, test.stop)).rejects.toThrow(failure + " failed");
+      expect(test.manager.getState()).toMatchObject({
+        status: "error",
+        currentVersion: null,
+        progress: null,
+      });
+      expect(test.start).not.toHaveBeenCalled();
+      await test.manager.launch(test.start, test.stop);
+      expect(test.manager.getState()).toMatchObject({
+        status: "idle",
+        currentVersion: "0.1.2",
+        progress: null,
+      });
+      expect(test.install).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("clears first-start progress after failure and can install again", async () => {
+    const test = await fixture(null);
+    test.start.mockRejectedValueOnce(new Error("startup failed"));
+    await expect(test.manager.launch(test.start, test.stop)).rejects.toThrow("startup failed");
+    expect(test.manager.getState()).toMatchObject({
+      status: "error",
+      currentVersion: null,
+      progress: null,
+    });
+    await test.manager.launch(test.start, test.stop);
+    expect(test.manager.getState()).toMatchObject({
+      status: "idle",
+      currentVersion: "0.1.2",
+      progress: null,
+    });
+  });
+
+  it("reports a failed bundled validation and clears progress before retrying", async () => {
+    const test = await fixture();
+    test.validate.mockRejectedValueOnce(new Error("invalid bundle"));
+    await expect(test.manager.launch(test.start, test.stop)).rejects.toThrow("invalid bundle");
+    expect(test.manager.getState()).toMatchObject({ status: "error", progress: null });
+    await test.manager.launch(test.start, test.stop);
+    expect(test.manager.getState()).toMatchObject({ status: "idle", progress: null });
+  });
+
+  it("clears startup progress when an existing backend fails to start", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    const next = test.make();
+    test.start.mockRejectedValueOnce(new Error("existing backend failed"));
+    await expect(next.launch(test.start, test.stop)).rejects.toThrow("existing backend failed");
+    expect(next.getState()).toMatchObject({ status: "error", progress: null });
+  });
+
   it("persists an ignored version while still offering newer releases", async () => {
     const test = await fixture();
     await test.manager.launch(test.start, test.stop);
@@ -355,7 +509,11 @@ describe("managed desktop Cox backend", () => {
     }, test.stop);
     expect(test.stop).toHaveBeenCalledOnce();
     expect((await test.disk()).failedVersion).toBe("0.1.2");
-    expect(next.getState()).toMatchObject({ currentVersion: "0.1.1", status: "error" });
+    expect(next.getState()).toMatchObject({
+      currentVersion: "0.1.1",
+      status: "error",
+      progress: null,
+    });
     expect((await next.check()).status).toBe("error");
     expect((await next.check(true)).status).toBe("available");
   });
@@ -447,7 +605,7 @@ describe("managed desktop Cox backend", () => {
     await test.manager.launch(test.start, test.stop);
     test.validate.mockRejectedValueOnce(new Error("bad native module"));
     await test.manager.check();
-    expect((await test.manager.stage()).status).toBe("error");
+    expect(await test.manager.stage()).toMatchObject({ status: "error", progress: null });
     expect(await readdir(join(test.home, "backend-updates", "versions"))).toHaveLength(1);
     expect(test.stop).not.toHaveBeenCalled();
   });
@@ -503,8 +661,8 @@ describe("managed desktop Cox backend", () => {
     await entered.promise;
     const concurrent = test.manager.stage();
     await test.manager.close();
-    expect((await staging).status).toBe("error");
-    expect((await concurrent).status).toBe("error");
+    expect(await staging).toMatchObject({ status: "error", progress: null });
+    expect(await concurrent).toMatchObject({ status: "error", progress: null });
     expect(test.install).toHaveBeenCalledOnce();
     expect(test.stop).not.toHaveBeenCalled();
     expect(await readdir(join(test.home, "backend-updates", "versions"))).toHaveLength(1);

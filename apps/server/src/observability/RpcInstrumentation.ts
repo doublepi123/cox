@@ -47,6 +47,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.providerAuthSubscribe]: "provider",
   [WS_METHODS.providerInstallStart]: "provider",
   [WS_METHODS.modelServiceDiscover]: "modelService",
+  [WS_METHODS.modelServiceTest]: "modelService",
   [WS_METHODS.providerInstallCancel]: "provider",
   [WS_METHODS.providerInstallSubscribe]: "provider",
   [WS_METHODS.providerInstallRemove]: "provider",

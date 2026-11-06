@@ -52,6 +52,7 @@ export function boundModelServiceModels(
   return service.models
     .filter(
       (model) =>
+        model.ignored !== true &&
         (binding.modelIds.length === 0 || binding.modelIds.includes(model.id)) &&
         model.supportsTools !== false &&
         (model.protocols === undefined ||

@@ -176,7 +176,8 @@ export const make = Effect.gen(function* () {
           };
           continue;
         }
-        const selected = binding.defaultModel ?? models[0]!.id;
+        const selected =
+          models.find((model) => model.id === binding.defaultModel)?.id ?? models[0]!.id;
         const prior = bindings.get(id);
         const token =
           prior?.binding.serviceId === binding.serviceId

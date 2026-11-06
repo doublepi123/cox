@@ -2,6 +2,7 @@ import { spawn, execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, stat, rename, rm } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
+import type { DesktopUpdateProgress } from "@t3tools/contracts";
 import { pruneBackendPayload } from "./package-payload.ts";
 
 const PACKAGE = "@doublepi123/cox";
@@ -85,7 +86,33 @@ async function download(
   maximum: number,
   signal: AbortSignal,
   fetcher: typeof fetch,
+  onProgress?: ((progress: DesktopUpdateProgress) => void) | undefined,
 ): Promise<Buffer> {
+  signal.throwIfAborted();
+  const started = performance.now();
+  let lastUpdate = -Infinity;
+  let size = 0;
+  let totalBytes: number | null = null;
+  const report = (force = false) => {
+    if (!onProgress) return;
+    const now = performance.now();
+    if (!force && now - lastUpdate < 100) return;
+    lastUpdate = now;
+    const elapsed = (now - started) / 1000;
+    const speed = elapsed > 0 && size > 0 ? size / elapsed : null;
+    const bytesPerSecond = speed !== null && Number.isFinite(speed) ? speed : null;
+    onProgress({
+      phase: "downloading",
+      transferredBytes: size,
+      totalBytes,
+      bytesPerSecond,
+      remainingSeconds:
+        totalBytes !== null && bytesPerSecond !== null
+          ? Math.ceil(Math.max(0, totalBytes - size) / bytesPerSecond)
+          : null,
+    });
+  };
+  report(true);
   const response = await fetcher(url, {
     signal,
     redirect: "error",
@@ -93,22 +120,44 @@ async function download(
   });
   if (!response.ok || !response.body)
     throw new Error("Cox update download failed: HTTP " + response.status);
+  signal.throwIfAborted();
+  const length = response.headers.get("content-length");
+  const declared = length !== null && /^[0-9]+$/.test(length) ? Number(length) : NaN;
+  const encoding = response.headers.get("content-encoding");
+  if (
+    Number.isSafeInteger(declared) &&
+    declared > 0 &&
+    declared <= maximum &&
+    (!encoding || encoding.toLowerCase() === "identity")
+  )
+    totalBytes = declared;
+  if (totalBytes !== null) report(true);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
-  let size = 0;
+  const cancel = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal.addEventListener("abort", cancel, { once: true });
   try {
     while (true) {
+      signal.throwIfAborted();
       const result = await reader.read();
+      signal.throwIfAborted();
       if (result.done) break;
       size += result.value.byteLength;
+      if (totalBytes !== null && size > totalBytes) totalBytes = null;
       if (size > maximum) throw new Error("The Cox update download exceeds its size limit.");
       chunks.push(result.value);
+      report();
     }
+    if (totalBytes !== size) totalBytes = null;
   } catch (error) {
     await reader.cancel().catch(() => {});
     throw error;
   } finally {
+    signal.removeEventListener("abort", cancel);
     reader.releaseLock();
+    report(true);
   }
   return Buffer.concat(chunks);
 }
@@ -134,13 +183,22 @@ export async function downloadBackendRelease(
   release: BackendRelease,
   signal: AbortSignal,
   fetcher: typeof fetch = fetch,
+  onProgress?: ((progress: DesktopUpdateProgress) => void) | undefined,
 ): Promise<Buffer> {
   if (
     !isBackendVersion(release.version) ||
     release.url !== REGISTRY + "/@doublepi123/cox/-/cox-" + release.version + ".tgz"
   )
     throw new Error("The Cox update download must come from the official registry.");
-  const bytes = await download(release.url, 256 * 1024 * 1024, signal, fetcher);
+  const bytes = await download(release.url, 256 * 1024 * 1024, signal, fetcher, onProgress);
+  signal.throwIfAborted();
+  onProgress?.({
+    phase: "verifying",
+    transferredBytes: 0,
+    totalBytes: null,
+    bytesPerSecond: null,
+    remainingSeconds: null,
+  });
   if ("sha512-" + createHash("sha512").update(bytes).digest("base64") !== release.integrity)
     throw new Error("The Cox update SHA-512 checksum does not match.");
   return bytes;
@@ -215,6 +273,7 @@ export async function installBackendRelease(input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly signal: AbortSignal;
   readonly fetcher?: typeof fetch | undefined;
+  readonly onProgress?: ((progress: DesktopUpdateProgress) => void) | undefined;
 }): Promise<string> {
   if (!input.release.compatible)
     throw new Error("This Cox version requires a newer desktop client.");
@@ -222,7 +281,16 @@ export async function installBackendRelease(input: {
     input.release,
     AbortSignal.any([input.signal, AbortSignal.timeout(120_000)]),
     input.fetcher,
+    input.onProgress,
   );
+  input.signal.throwIfAborted();
+  input.onProgress?.({
+    phase: "installing",
+    transferredBytes: 0,
+    totalBytes: null,
+    bytesPerSecond: null,
+    remainingSeconds: null,
+  });
   await mkdir(input.directory, { recursive: true, mode: 0o700 });
   const archive = join(input.directory, "cox.tgz");
   await writeFile(archive, bytes, { mode: 0o600 });

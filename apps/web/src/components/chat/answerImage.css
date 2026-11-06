@@ -1,0 +1,86 @@
+.answer-image-staging {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  pointer-events: none;
+}
+
+.answer-image-card {
+  box-sizing: border-box;
+  padding: 32px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.answer-image-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.answer-image-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.answer-image-card *,
+.answer-image-card *::before,
+.answer-image-card *::after {
+  animation: none !important;
+  transition: none !important;
+  caret-color: transparent !important;
+  content-visibility: visible !important;
+}
+
+.answer-image-card :is([role="toolbar"], [data-slot="scroll-area-scrollbar"], .sr-only),
+.answer-image-card .chat-markdown-table-container > .select-none,
+.answer-image-card .chat-markdown-mermaid + pre,
+.answer-image-card [data-slot="button"] {
+  display: none !important;
+}
+
+.answer-image-card [data-markdown-details-summary] {
+  cursor: default;
+}
+
+.answer-image-card [data-slot="collapsible-panel"] {
+  height: auto !important;
+}
+
+.answer-image-card :is(pre, pre code) {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+}
+
+.answer-image-card :is([data-slot="scroll-area-viewport"], .chat-markdown-mermaid) {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  mask-image: none !important;
+}
+
+.answer-image-card table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.answer-image-card :is(th, td) {
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.answer-image-card [data-slot="context-chip-label"] {
+  white-space: normal;
+  overflow: visible;
+}

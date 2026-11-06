@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./state/model-service-tests": {
+      "types": "./src/state/modelServiceTests.ts",
+      "default": "./src/state/modelServiceTests.ts"
+    },
+    "./state/desktop-updates": {
+      "types": "./src/state/desktopUpdates.ts",
+      "default": "./src/state/desktopUpdates.ts"
+    },
     "./assembly-highlighting": {
       "types": "./src/assemblyHighlighting.ts",
       "default": "./src/assemblyHighlighting.ts"

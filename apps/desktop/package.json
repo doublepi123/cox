@@ -1,6 +1,6 @@
 {
   "name": "@cox/desktop",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "Cox desktop client with an embedded local backend",
   "license": "MIT",
@@ -14,8 +14,12 @@
     "package": "pnpm electron:install && node scripts/package.ts",
     "smoke": "node scripts/smoke.ts",
     "smoke:app": "node scripts/smoke-app.ts",
+    "smoke:mac-update": "node scripts/smoke-mac-update.ts",
     "verify:mac": "node scripts/verify-mac.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
   },
   "devDependencies": {
     "@t3tools/contracts": "workspace:*",

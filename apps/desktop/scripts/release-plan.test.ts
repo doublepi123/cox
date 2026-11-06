@@ -125,4 +125,20 @@ describe("independent desktop release matrix", () => {
       }),
     ).rejects.toThrow("existing desktop-v");
   });
+  it("allows adding a backend combination without rebuilding an existing client-only package", async () => {
+    await expect(
+      resolveDesktopRelease({
+        eventName: "workflow_dispatch",
+        refName: "main",
+        event: { inputs: { client_ref: "desktop-v0.2.0", publish: "true", client_only: "false" } },
+        api: clientApi,
+        latest: async () => ({ version: "0.1.99", integrity: "verified-fixture" }),
+      }),
+    ).resolves.toMatchObject({
+      publish: "true",
+      client_release: "true",
+      flavors: '["bundled"]',
+      cox_version: "0.1.99",
+    });
+  });
 });

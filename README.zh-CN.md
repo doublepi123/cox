@@ -2,13 +2,15 @@
 
 [English](README.md) | 简体中文
 
+[项目官网](https://doublepi.dev/) · [CoCode 安卓版](https://doublepi.dev/cocode/)
+
 Cox 是一个面向编码智能体的本地 Web 界面，派生自 [T3 Code](https://github.com/pingdotgg/t3code)，起点是 `doublepi123/t3code` 复刻中的提交 `0102f07afb`。
 
 在你的电脑上运行服务端，就能在浏览器中操控本机安装的编码智能体。你的项目、对话历史、凭据和检查点都保存在本地的 Cox 数据目录中。
 
 ## 项目主页
 
-产品主页是 [doublepi123.github.io](https://doublepi123.github.io/)。中英双语网站的源码位于 [`site/`](site/README.md)，包含响应式的功能展示、示意性的工作台界面和可复制的安装命令。网站独立于本地 Cox 应用，不托管智能体，也不存放用户数据。运行 `pnpm pages:test` 和 `pnpm pages:build` 可以校验并构建网站。账号主页及可选项目 Pages 的部署方法见[网站部署指南](site/README.md#account-homepage)（英文）。
+产品主页是 [doublepi.dev](https://doublepi.dev/)，[CoCode 安卓版介绍页](https://doublepi.dev/cocode/)也位于同一个 GitHub Pages 站点。中英双语网站的源码位于 [`site/`](site/README.md)，包含响应式的功能展示、示意性的工作台界面和可复制的安装命令。网站独立于本地 Cox 应用，不托管智能体，也不存放用户数据。运行 `pnpm pages:test` 和 `pnpm pages:build` 可以校验并构建网站。账号主页及可选项目 Pages 的部署方法见[网站部署指南](site/README.md#account-homepage)（英文）。
 
 ## 通过 npm 快速开始
 

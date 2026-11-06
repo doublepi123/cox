@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   manage: true,
   save: vi.fn(),
   discover: vi.fn(),
+  testModel: vi.fn(),
   listeners: new Set<() => void>(),
 }));
 vi.mock(import("../../hooks/useSettings"), async (original) => {
@@ -54,6 +55,7 @@ vi.mock(import("../../state/server"), async (original) => {
       ...actual.serverEnvironment,
       updateSettings: state.save as never,
       discoverModelService: state.discover as never,
+      testModelService: state.testModel as never,
     },
   };
 });
@@ -124,6 +126,19 @@ const notify = () => {
 function setup(services: UnifiedSettings["modelServices"] = {}) {
   state.settings = { ...DEFAULT_UNIFIED_SETTINGS, modelServices: services };
   state.manage = true;
+  state.testModel
+    .mockReset()
+    .mockImplementation(async ({ input }: { input: { modelId: string; revision: number } }) => ({
+      _tag: "Success",
+      value: {
+        modelId: input.modelId,
+        revision: input.revision,
+        ok: !input.modelId.includes("bad"),
+        protocol: "openai-chat",
+        durationMs: 10,
+        message: input.modelId.includes("bad") ? "Model test failed (HTTP 404)." : null,
+      },
+    }));
   state.save
     .mockReset()
     .mockImplementation(async ({ input }: { input: { patch: ServerSettingsPatch } }) => {
@@ -168,6 +183,43 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 }
 
 describe("model services settings", () => {
+  it("tests the current models, ignores failures without deleting them and allows restoring one", async () => {
+    setup({
+      [id]: {
+        ...configured,
+        models: [
+          { id: "good", capabilities: null },
+          { id: "bad", capabilities: null },
+        ],
+      },
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Test all models", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Ignore failed models (1)" }))
+      .toBeEnabled();
+    expect(state.testModel).toHaveBeenCalledTimes(2);
+    await screen.getByRole("button", { name: "Ignore failed models (1)" }).click();
+    await expect.element(screen.getByRole("button", { name: "Restore model" })).toBeVisible();
+    expect(state.settings.modelServices[id]?.models).toMatchObject([
+      { id: "good" },
+      { id: "bad", ignored: true },
+    ]);
+    await screen.getByRole("button", { name: "Restore model" }).click();
+    expect(
+      state.settings.modelServices[id]?.models.find((model) => model.id === "bad")?.ignored,
+    ).toBe(false);
+  });
+
+  it("does not offer tests with unsaved credentials or without management permission", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByLabelText("API key", { exact: true }).fill("unsaved-key");
+    await expect
+      .element(screen.getByRole("button", { name: "Test all models", exact: true }))
+      .toBeDisabled();
+    expect(state.testModel).not.toHaveBeenCalled();
+  });
   it.each([
     ["Recovery budget (seconds)", "budgetMs", 600, "650", 650000],
     ["Response headers timeout (seconds)", "responseHeadersTimeoutMs", 300, "350", 350000],

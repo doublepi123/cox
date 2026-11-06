@@ -4,9 +4,26 @@ import {
   backendOriginFromOutput,
   isBackendNavigation,
   isExternalNavigation,
+  settingsWindowUrl,
 } from "./config.ts";
 
 describe("desktop local-only policy", () => {
+  it("keeps settings navigation within the owned settings routes and retains its context", () => {
+    const origin = "http://127.0.0.1:3773";
+    expect(
+      settingsWindowUrl("/settings/providers?machine=local&instanceId=codex#models", origin),
+    ).toBe(`${origin}/settings/providers?machine=local&instanceId=codex#models`);
+    for (const path of [
+      "//evil.test/settings",
+      "/\\evil.test/settings",
+      "https://evil.test/settings",
+      "/settings/../../api",
+      "/settings-other",
+      "/api/auth/session",
+      null,
+    ])
+      expect(() => settingsWindowUrl(path, origin)).toThrow("Invalid settings window path.");
+  });
   it("accepts only an explicit loopback startup URL", () => {
     expect(
       backendOriginFromOutput("[info] Local URL: http://127.0.0.1:3773\nLogin mode: local"),
