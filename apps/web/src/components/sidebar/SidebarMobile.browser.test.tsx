@@ -75,6 +75,13 @@ describe("mobile sidebar", () => {
       const dialog = page.getByRole("dialog", { name: "Main sidebar", exact: true });
       await expect.element(dialog).toBeVisible();
       const panel = dialog.element();
+      await expect
+        .poll(
+          () =>
+            !panel.hasAttribute("data-starting-style") &&
+            panel.getAnimations().every((animation) => animation.playState !== "running"),
+        )
+        .toBe(true);
       const bounds = panel.getBoundingClientRect();
       expect(bounds.width).toBeCloseTo(Math.min(384, width - 16), 0);
       expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
