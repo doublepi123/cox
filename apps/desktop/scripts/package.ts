@@ -98,7 +98,7 @@ if (!clientOnly) {
       environment: process.env,
       signal: AbortSignal.timeout(600_000),
     });
-    await cp(installed, server, { recursive: true });
+    await cp(installed, server, { recursive: true, verbatimSymlinks: true });
     coxVersion = release.version;
     backendIntegrity = release.integrity;
   } else {

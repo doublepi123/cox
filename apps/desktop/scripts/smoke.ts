@@ -201,5 +201,5 @@ terminal.onExit(({ exitCode }) => {
 } finally {
   await updates.close();
   await backend?.stop();
-  await rm(temporary, { recursive: true, force: true });
+  await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }

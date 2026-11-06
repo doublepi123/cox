@@ -238,6 +238,6 @@ export async function validateBackendInstallation(input: {
   } finally {
     input.signal.removeEventListener("abort", stop);
     await backend.stop();
-    await rm(home, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }

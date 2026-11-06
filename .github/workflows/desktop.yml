@@ -32,12 +32,14 @@ jobs:
     timeout-minutes: 60
     env:
       COX_DESKTOP_CLIENT_ONLY: ${{ matrix.flavor == 'client-only' && 'true' || 'false' }}
+      COX_DESKTOP_BACKEND_VERSION: latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: pnpm desktop:test
       - run: pnpm --filter @cox/desktop typecheck
-      - run: pnpm desktop:build
+      - run: pnpm --filter @cox/desktop build
+      - run: pnpm --filter @cox/desktop package
       - run: pnpm --filter @cox/desktop verify:mac
         if: runner.os == 'macOS'
       - run: pnpm --filter @cox/desktop smoke

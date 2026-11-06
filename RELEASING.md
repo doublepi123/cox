@@ -91,7 +91,7 @@ The `Release desktop combinations` workflow implements:
   test builds cannot silently become releases.
 
 Commit/push the workflow to the default branch, then publish the first independent client
-tag (the initial independent version is `desktop-v0.2.0`) before relying on Cox-triggered
+tag (the initial independent version is `desktop-v0.2.1`) before relying on Cox-triggered
 builds. Published desktop tags must contain the independent packaging/bootstrap scripts.
 The resolver selects desktop releases by semantic version, not GitHub's global Latest flag,
 which may refer to a Cox release. It pins both identities once before starting the build matrix.
@@ -108,7 +108,9 @@ maintainer-created draft; it only publishes newly created or Actions-owned draft
 uploading all assets. Newly created combination/desktop releases do not replace the global
 Latest flag; a maintainer can promote the complete Cox source release separately.
 
-Native CI tests client-only first installation in an isolated home, then a second launch
+Native CI builds combination installers from the published stable Cox npm package, exercising
+the same staging and symlink-preservation path as releases. It tests client-only first installation
+in an isolated home, then a second launch
 with `--offline`; it also covers the local API/native terminal, authenticated browser session,
 WebSocket origin rejection, renderer isolation, single-instance behavior and graceful exit.
 macOS checks unpacked/DMG/ZIP signatures. Ad-hoc signatures do not confer Developer ID trust
