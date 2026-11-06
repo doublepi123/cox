@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.41 — 2026-11-06
+
+- Preserve recent thread history when stored interrupt requests and large checkpoint
+  lists compete for a bounded snapshot's byte budget.
+- Always treat stored provider-secret references as sensitive, including older entries
+  missing the flag, and preserve that classification when saving them again.
+- Synchronize thread branch metadata after worktree branch changes, including shared
+  and archived threads. Ignore detached HEADs, stale branch events and moved threads.
+- Refresh turn-end pull-request divergence even when background Git polling is paused.
+- Avoid reopening an unreadable credential vault on unrelated settings saves. Retry
+  when its configuration changes or secrets are explicitly refreshed, while preserving
+  model-service materialization and working provider sessions.
+- Include Pi sessions stored through an absolute `--session-dir` launch argument in
+  usage reports without losing configured history directories or environment overrides.
+- Allow snoozing existing unanswered questions without resolving or discarding them.
+  Keep approvals visible, wake for new questions and answers, and preserve Cox's
+  distinction between asynchronous questions and blocking user input.
+- Retain the existing supervised first-turn policy for side chats. No mobile-only
+  features, low-priority sidebar changes or broad Effect refactors are included.
+
 ## 0.1.39 — 2026-11-05
 
 - Remove pairing codes, pairing links, bootstrap tokens and development auth

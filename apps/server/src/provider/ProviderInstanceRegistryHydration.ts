@@ -17,6 +17,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
+import * as NodeUtil from "node:util";
 
 import * as Settings from "../serverSettings.ts";
 import * as SecretResolver from "../secrets/SecretResolver.ts";
@@ -136,20 +137,33 @@ export const materializeInstances = Effect.fn("materializeModelServiceInstances"
   return yield* gateway.value.materialize(settings, instances);
 });
 
-const layerSettingsWatcher = (settingsChanges: Stream.Stream<ServerSettings>) =>
+const vaultConfigs = (settings: ServerSettings) =>
+  Object.entries(settings.secretProviders).map(([id, { kind, config }]) => [id, kind, config]);
+
+export const layerSettingsWatcher = (
+  settingsChanges: Stream.Stream<ServerSettings>,
+  initialSettings: ServerSettings | undefined,
+) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const mutator = yield* ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator;
       const serverSettings = yield* Settings.ServerSettingsService;
+      let secretProviders = initialSettings && vaultConfigs(initialSettings);
       yield* settingsChanges.pipe(
         Stream.runForEach(() =>
           // The subscription predates the seed read, so a queued change can be
           // older than the seed. A failed current read must leave the registry intact.
           serverSettings.getSettings.pipe(
             Effect.flatMap((current) =>
-              materializeInstances(current).pipe(
-                Effect.flatMap((entries) => mutator.reconcile(entries)),
-              ),
+              Effect.gen(function* () {
+                const entries = yield* materializeInstances(current);
+                yield* mutator.reconcile(entries);
+                const next = vaultConfigs(current);
+                if (!NodeUtil.isDeepStrictEqual(secretProviders, next)) {
+                  yield* mutator.reloadSecrets();
+                  secretProviders = next;
+                }
+              }),
             ),
             Effect.catchCause((cause) =>
               Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
@@ -192,7 +206,9 @@ export const layer: Layer.Layer<
       Layer.provide(SecretResolver.layer),
     );
 
-    return layerSettingsWatcher(settingsChanges).pipe(Layer.provideMerge(layerMutable));
+    return layerSettingsWatcher(settingsChanges, initialSettings).pipe(
+      Layer.provideMerge(layerMutable),
+    );
   }),
 ) as Layer.Layer<
   | ProviderInstanceRegistry.ProviderInstanceRegistry

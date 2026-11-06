@@ -3,12 +3,16 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  SecretProviderId,
+  SecretProviderKind,
   type ServerSettings,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 
 import * as ServerConfig from "../config.ts";
@@ -16,9 +20,11 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import {
   DEV_REPLAY_INSTANCE_ID,
   deriveProviderInstanceConfigMap,
+  layerSettingsWatcher,
   seedDevReplayInstance,
   materializeInstances,
 } from "./ProviderInstanceRegistryHydration.ts";
+import { ProviderInstanceRegistryMutator } from "./ProviderInstanceRegistryMutator.ts";
 import { ModelServiceGateway } from "../modelServices/ModelServiceGateway.ts";
 import { HttpServerResponse } from "effect/http";
 
@@ -159,5 +165,94 @@ describe("seedDevReplayInstance", () => {
         });
       }),
     ),
+  );
+});
+
+describe("layerSettingsWatcher", () => {
+  const provider = (label: string) => ({
+    [SecretProviderId.make("personal")]: {
+      kind: SecretProviderKind.make("one_password"),
+      label,
+      config: { account: "my" },
+    },
+  });
+
+  const watch = (initial: ServerSettings | undefined) =>
+    Effect.gen(function* () {
+      const changes = yield* Queue.unbounded<ServerSettings>();
+      const reconciled = yield* Queue.unbounded<void>();
+      let reloads = 0;
+      let materializations = 0;
+      const mutator = Layer.succeed(ProviderInstanceRegistryMutator, {
+        reconcile: () => Queue.offer(reconciled, undefined),
+        reloadSecrets: () => Effect.sync(() => void reloads++),
+      });
+      yield* Layer.build(
+        layerSettingsWatcher(Stream.fromQueue(changes), initial).pipe(
+          Layer.provide(mutator),
+          Layer.provide(
+            Layer.succeed(ModelServiceGateway, {
+              materialize: (_settings, instances) =>
+                Effect.sync(() => {
+                  materializations++;
+                  return instances;
+                }),
+              handle: Effect.succeed(HttpServerResponse.empty()),
+            }),
+          ),
+        ),
+      );
+      return {
+        reloads: () => reloads,
+        materializations: () => materializations,
+        change: (settings: ServerSettings) =>
+          Queue.offerAll(changes, [settings, settings]).pipe(
+            Effect.andThen(Queue.take(reconciled)),
+            Effect.andThen(Queue.take(reconciled)),
+          ),
+      };
+    });
+
+  effectIt.effect(
+    "retries unreadable secrets when a secret provider changes, not when it is renamed",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        const { reloads, change, materializations } = yield* watch(yield* settings.getSettings);
+
+        yield* change(yield* settings.updateSettings({ secretProviders: provider("Personal") }));
+        expect(reloads()).toBe(1);
+
+        yield* change(yield* settings.updateSettings({ secretProviders: provider("Renamed") }));
+        expect(reloads()).toBe(1);
+
+        yield* change(
+          yield* settings.updateSettings({
+            secretProviders: {
+              [SecretProviderId.make("personal")]: {
+                ...provider("Renamed")[SecretProviderId.make("personal")]!,
+                config: { account: "corrected" },
+              },
+            },
+          }),
+        );
+        expect(reloads()).toBe(2);
+        expect(materializations()).toBe(6);
+      }).pipe(Effect.scoped, Effect.provide(ServerSettingsService.layerTest())),
+  );
+
+  effectIt.effect(
+    "compares a change queued during startup with the settings the registry started from",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        const started = yield* settings.getSettings;
+        const saved = yield* settings.updateSettings({ secretProviders: provider("Personal") });
+        const { reloads, change } = yield* watch(started);
+
+        yield* change(saved);
+
+        expect(reloads()).toBe(1);
+      }).pipe(Effect.scoped, Effect.provide(ServerSettingsService.layerTest())),
   );
 });

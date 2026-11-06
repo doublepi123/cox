@@ -901,7 +901,7 @@ describe("ProviderInstanceRegistry secret environment", () => {
       yield* PubSub.take(changes);
       return built;
     });
-    return { vault, reads, invalidated, created, configs, make, makeGated, gate };
+    return { vault, reads, invalidated, created, configs, configMap, make, makeGated, gate };
   }
 
   it.effect("starts an instance with the secret its environment points at", () => {
@@ -922,13 +922,18 @@ describe("ProviderInstanceRegistry secret environment", () => {
   it.effect("marks an instance unavailable and names the variable it could not read", () => {
     const fixture = setup({});
     return Effect.gen(function* () {
-      const { registry } = yield* fixture.make;
+      const { registry, mutator } = yield* fixture.make;
+      const readsAtStartup = fixture.reads.length;
 
       expect(yield* registry.getInstance(instanceId)).toBeUndefined();
       expect(fixture.created).toEqual([]);
       const [unavailable] = yield* registry.listUnavailable;
       expect(unavailable?.instanceId).toBe(instanceId);
       expect(unavailable?.unavailableReason).toContain("OPENAI_API_KEY");
+
+      yield* mutator.reconcile({ ...fixture.configMap });
+      expect(fixture.reads).toHaveLength(readsAtStartup);
+      expect(yield* registry.listUnavailable).toHaveLength(1);
     }).pipe(Effect.scoped);
   });
 
@@ -941,6 +946,26 @@ describe("ProviderInstanceRegistry secret environment", () => {
       expect(fixture.reads).toEqual([]);
       expect(fixture.invalidated).toEqual([]);
       expect(fixture.created).toHaveLength(1);
+    }).pipe(Effect.scoped);
+  });
+
+  it.effect("retries a parked instance when its secret reference changes", () => {
+    const fixture = setup({});
+    return Effect.gen(function* () {
+      const { registry, mutator } = yield* fixture.make;
+      const replacement = { ...secret, reference: "op://Private/Updated/credential" };
+      fixture.vault.set(replacement.reference, "updated-key");
+      yield* mutator.reconcile({
+        [instanceId]: {
+          ...fixture.configMap[instanceId]!,
+          environment: [{ name: "OPENAI_API_KEY", value: replacement, sensitive: true }],
+        },
+      });
+      expect(yield* registry.getInstance(instanceId)).toBeDefined();
+      expect(yield* registry.listUnavailable).toEqual([]);
+      expect(fixture.created).toEqual([
+        [{ name: "OPENAI_API_KEY", value: "updated-key", sensitive: true }],
+      ]);
     }).pipe(Effect.scoped);
   });
 
