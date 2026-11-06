@@ -2,6 +2,7 @@ import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { backendOriginFromOutput } from "./config.ts";
 import { backendInstallerEnvironment } from "./backend-install.ts";
 
@@ -63,6 +64,7 @@ export class BackendProcess {
       child.once("error", () => resolve());
     });
     return new Promise((resolve, reject) => {
+      const validation = new AbortController();
       const timeout = setTimeout(
         () => fail(new Error("The local backend did not become ready within 90 seconds.")),
         this.options.startupTimeoutMs ?? 90_000,
@@ -74,6 +76,7 @@ export class BackendProcess {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        validation.abort(error);
         reject(error);
       };
       child.once("error", fail);
@@ -90,7 +93,7 @@ export class BackendProcess {
         const origin = backendOriginFromOutput(output);
         if (!origin) return;
         validating = true;
-        void this.validateOrigin(origin, child).then(() => {
+        void this.validateOrigin(origin, child, validation.signal).then(() => {
           if (settled) return;
           if (this.stopping || child.exitCode !== null || child.signalCode !== null) {
             fail(new Error("The local backend stopped during startup."));
@@ -107,10 +110,28 @@ export class BackendProcess {
     });
   }
 
-  private async validateOrigin(origin: string, child: ChildProcess): Promise<void> {
-    const state: unknown = JSON.parse(
-      await readFile(join(this.options.homeDirectory, "userdata", "server-runtime.json"), "utf8"),
-    );
+  private async validateOrigin(
+    origin: string,
+    child: ChildProcess,
+    signal: AbortSignal,
+  ): Promise<void> {
+    let contents: string;
+    while (true) {
+      signal.throwIfAborted();
+      if (this.stopping || child.exitCode !== null || child.signalCode !== null)
+        throw new Error("The local backend stopped during startup.");
+      try {
+        contents = await readFile(
+          join(this.options.homeDirectory, "userdata", "server-runtime.json"),
+          { encoding: "utf8", signal },
+        );
+        break;
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+        await delay(25, undefined, { signal });
+      }
+    }
+    const state: unknown = JSON.parse(contents);
     if (
       typeof state !== "object" ||
       state === null ||
@@ -122,7 +143,7 @@ export class BackendProcess {
       throw new Error("The local backend did not publish its own loopback address.");
     }
     const response = await fetch(`${origin}/api/auth/session`, {
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
       redirect: "error",
     });
     if (!response.ok)

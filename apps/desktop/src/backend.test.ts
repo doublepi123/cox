@@ -28,10 +28,12 @@ process.on('SIGINT', () => {
 server.listen(0, '127.0.0.1', () => {
   const origin = 'http://127.0.0.1:' + server.address().port;
   mkdirSync(join(home, 'userdata'), { recursive: true });
-  writeFileSync(join(home, 'userdata', 'server-runtime.json'), JSON.stringify({ pid: mode === 'wrong-owner' ? 1 : process.pid, origin }));
+  const publish = () => writeFileSync(join(home, 'userdata', 'server-runtime.json'), mode === 'malformed-state' ? '{' : JSON.stringify({ pid: ['wrong-owner', 'late-wrong-owner'].includes(mode) ? 1 : process.pid, origin }));
+  if (!['late-state', 'late-wrong-owner', 'missing-state'].includes(mode)) publish();
   if (mode === 'timeout') { console.log('FIXTURE_WAITING'); return; }
   process.stdout.write('Local UR');
   process.stdout.write('L: ' + origin + '\\n');
+  if (['late-state', 'late-wrong-owner'].includes(mode)) setTimeout(publish, 100);
 });
 `;
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -90,6 +92,43 @@ describe("desktop backend supervisor", () => {
   it("rejects a runtime descriptor owned by another process", async () => {
     const { backend } = await createBackend("wrong-owner");
     await expect(backend.start()).rejects.toThrow("did not publish its own loopback address");
+  });
+
+  it("waits for its runtime descriptor after the address is logged", async () => {
+    const { backend, home } = await createBackend("late-state");
+    const origin = await backend.start();
+    const state = JSON.parse(
+      await readFile(join(home, "userdata", "server-runtime.json"), "utf8"),
+    ) as { origin: string };
+    expect(state.origin).toBe(origin);
+    expect((await fetch(`${origin}/api/auth/session`)).status).toBe(200);
+  });
+
+  it("still rejects another owner after waiting for publication", async () => {
+    const { backend } = await createBackend("late-wrong-owner");
+    await expect(backend.start()).rejects.toThrow("did not publish its own loopback address");
+  });
+
+  it("does not retry a malformed runtime descriptor", async () => {
+    const { backend } = await createBackend("malformed-state");
+    await expect(backend.start()).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  it("bounds and cancels waiting for a missing runtime descriptor", async () => {
+    const { backend, onLog } = await createBackend("missing-state");
+    const waiting = Promise.withResolvers<void>();
+    let output = "";
+    onLog.mockImplementation((message: string) => {
+      output += message;
+      if (output.includes("Local URL:")) waiting.resolve();
+    });
+    vi.useFakeTimers();
+    const startup = backend.start();
+    const failure = expect(startup).rejects.toThrow("did not become ready");
+    await waiting.promise;
+    await vi.advanceTimersByTimeAsync(90_000);
+    await failure;
+    vi.useRealTimers();
   });
 
   it("bounds startup waiting and cleans up the started process", async () => {
