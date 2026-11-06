@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { BackendProcess } from "../src/backend.ts";
+import { BackendProcess, validateBackendInstallation } from "../src/backend.ts";
+import { BackendUpdates } from "../src/backend-updates.ts";
 import { backendEnvironment } from "../src/config.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
-const output = join(root, "release", "desktop");
+const output = join(
+  root,
+  "release",
+  "desktop",
+  process.env.COX_DESKTOP_CLIENT_ONLY === "true" ? "client-only" : "bundled",
+);
 const candidates =
   process.platform === "darwin"
     ? [
@@ -28,12 +34,16 @@ const candidates =
           "resources",
         ),
       ];
-const resources = candidates.find((candidate) =>
-  existsSync(join(candidate, "server", "dist", "bin.mjs")),
-);
+const resources = candidates.find((candidate) => existsSync(join(candidate, "backend.json")));
 assert.ok(resources, "Build the desktop package before running its smoke test.");
 const temporary = await mkdtemp(join(tmpdir(), "cox-desktop-smoke-"));
 const home = join(temporary, "data");
+const metadata = JSON.parse(await readFile(join(resources, "backend.json"), "utf8")) as {
+  desktopVersion: string;
+  coxVersion: string | null;
+  nodeVersion: string;
+};
+assert.equal(existsSync(join(resources, "server")), metadata.coxVersion !== null);
 const node = join(
   resources,
   "runtime",
@@ -47,19 +57,51 @@ const environment = backendEnvironment({
   platform: process.platform,
 });
 let logs = "";
-const backend = new BackendProcess({
-  nodePath: node,
-  entryPath: join(resources, "server", "dist", "bin.mjs"),
-  preloadPath: join(resources, "backend-parent.mjs"),
-  homeDirectory: home,
-  cwd: temporary,
+let backend: BackendProcess | undefined;
+let serverDirectory = join(resources, "server");
+const startBackend = async (directory: string) => {
+  serverDirectory = directory;
+  backend = new BackendProcess({
+    nodePath: node,
+    entryPath: join(directory, "dist", "bin.mjs"),
+    preloadPath: join(resources, "backend-parent.mjs"),
+    homeDirectory: home,
+    cwd: temporary,
+    environment,
+    onLog: (message) => {
+      logs = (logs + message).slice(-16_384);
+    },
+    onUnexpectedExit: (message) => {
+      throw new Error(message);
+    },
+  });
+  return backend.start();
+};
+const updates = new BackendUpdates({
+  home,
+  desktopVersion: metadata.desktopVersion,
+  bundledVersion: metadata.coxVersion,
+  bundledDirectory: serverDirectory,
+  nodeVersion: metadata.nodeVersion,
+  node,
+  npm: join(
+    resources,
+    "runtime",
+    ...(process.platform === "win32" ? ["node_modules"] : ["lib", "node_modules"]),
+    "npm",
+    "bin",
+    "npm-cli.js",
+  ),
   environment,
-  onLog: (message) => {
-    logs = (logs + message).slice(-16_384);
-  },
-  onUnexpectedExit: (message) => {
-    throw new Error(message);
-  },
+  onState: () => {},
+  validate: (directory, signal) =>
+    validateBackendInstallation({
+      directory,
+      node,
+      preload: join(resources, "backend-parent.mjs"),
+      environment,
+      signal,
+    }),
 });
 
 function websocketStatus(origin: string, browserOrigin: string, cookie: string): Promise<number> {
@@ -103,7 +145,7 @@ try {
     existsSync(join(dirname(node), process.platform === "win32" ? "npm.cmd" : "npm")),
     "The packaged npm launcher must not contain a broken staging symlink.",
   );
-  const origin = await backend.start();
+  const origin = await updates.launch(startBackend, () => backend?.stop() ?? Promise.resolve());
   assert.equal((await fetch(`${origin}/api/projects`)).status, 401);
   const session = await fetch(`${origin}/api/auth/browser-session`, {
     method: "POST",
@@ -139,12 +181,12 @@ terminal.onExit(({ exitCode }) => {
 });
 `;
   execFileSync(node, ["--input-type=module", "-e", ptyProbe], {
-    cwd: join(resources, "server"),
+    cwd: serverDirectory,
     env: environment,
     timeout: 15_000,
     stdio: "inherit",
   });
-  await backend.stop();
+  await backend?.stop();
   assert.equal(
     existsSync(join(home, "userdata", "server-runtime.json")),
     false,
@@ -157,6 +199,7 @@ terminal.onExit(({ exitCode }) => {
   console.error(logs);
   throw error;
 } finally {
-  await backend.stop();
+  await updates.close();
+  await backend?.stop();
   await rm(temporary, { recursive: true, force: true });
 }

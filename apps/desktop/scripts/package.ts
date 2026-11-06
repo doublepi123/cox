@@ -4,10 +4,12 @@ import { chmod, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/prom
 import { delimiter, dirname, join, resolve } from "node:path";
 import { build, Platform, Arch } from "electron-builder";
 import { pruneDesktopPayload } from "../src/package-payload.ts";
+import { fetchBackendRelease, installBackendRelease } from "../src/backend-install.ts";
 
 const directory = resolve(import.meta.dirname, "..");
 const root = resolve(directory, "../..");
 const unpacked = process.argv.includes("--dir");
+const clientOnly = process.env.COX_DESKTOP_CLIENT_ONLY === "true";
 if (!["darwin", "win32"].includes(process.platform) && !unpacked) {
   throw new Error(
     "Build macOS installers on macOS and Windows installers on Windows. --dir is available for local validation.",
@@ -17,14 +19,15 @@ if (!["x64", "arm64"].includes(process.arch)) throw new Error("Unsupported deskt
 const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8")) as {
   version: string;
   devDependencies: { electron: string };
+  engines: { node: string };
 };
 const workspace = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
   version: string;
   engines: { node: string };
 };
-if (manifest.version !== workspace.version)
-  throw new Error("Desktop and workspace versions must match.");
-const nodeVersion = workspace.engines.node;
+const nodeVersion = manifest.engines.node;
+let coxVersion: string | null = null;
+let backendIntegrity: string | null = null;
 if (!/^\d+\.\d+\.\d+$/.test(nodeVersion))
   throw new Error("The desktop runtime must use an exact Node version.");
 const platform = process.platform === "win32" ? "win" : process.platform;
@@ -72,51 +75,76 @@ const npm =
     ? join(runtime, "node_modules", "npm", "bin", "npm-cli.js")
     : join(runtime, "lib", "node_modules", "npm", "bin", "npm-cli.js");
 await chmod(node, 0o755);
-execFileSync(node, [join(root, "scripts/package-npm.ts"), "--no-pack"], {
-  cwd: root,
-  stdio: "inherit",
-});
 const server = join(stage, "server");
-await cp(join(root, "release/npm"), server, { recursive: true });
-const serverManifestPath = join(server, "package.json");
-const serverManifest = JSON.parse(await readFile(serverManifestPath, "utf8")) as {
-  dependencies: Record<string, string>;
-};
-await writeFile(
-  serverManifestPath,
-  JSON.stringify(
-    {
-      ...serverManifest,
-      allowScripts: { [`node-pty@${serverManifest.dependencies["node-pty"]}`]: true },
-    },
-    null,
-    2,
-  ),
-);
 const environment = {
   ...process.env,
   PATH: `${dirname(node)}${delimiter}${process.env.PATH ?? ""}`,
 };
-execFileSync(node, [npm, "install", "--omit=dev", "--no-audit", "--no-fund"], {
-  cwd: server,
-  env: environment,
-  stdio: "inherit",
-});
-await pruneDesktopPayload({
-  runtime,
-  server,
-  platform: process.platform,
-  architecture: process.arch,
-});
-execFileSync(
-  node,
-  [
-    "--input-type=module",
-    "-e",
-    "import { createRequire } from 'node:module'; const require = createRequire(process.cwd() + '/package.json'); require('node-pty'); require('@napi-rs/keyring');",
-  ],
-  { cwd: server, env: environment, stdio: "inherit" },
-);
+await rm(join(runtime, "include"), { recursive: true, force: true });
+await rm(join(runtime, "share", "man"), { recursive: true, force: true });
+if (!clientOnly) {
+  if (process.env.COX_DESKTOP_BACKEND_VERSION) {
+    const release = await fetchBackendRelease(
+      nodeVersion,
+      AbortSignal.timeout(120_000),
+      fetch,
+      process.env.COX_DESKTOP_BACKEND_VERSION,
+    );
+    const installed = await installBackendRelease({
+      release,
+      directory: join(stage, "backend-install"),
+      node,
+      npm,
+      environment: process.env,
+      signal: AbortSignal.timeout(600_000),
+    });
+    await cp(installed, server, { recursive: true });
+    coxVersion = release.version;
+    backendIntegrity = release.integrity;
+  } else {
+    execFileSync(node, [join(root, "scripts/package-npm.ts"), "--no-pack"], {
+      cwd: root,
+      stdio: "inherit",
+    });
+    await cp(join(root, "release/npm"), server, { recursive: true });
+    const serverManifestPath = join(server, "package.json");
+    const serverManifest = JSON.parse(await readFile(serverManifestPath, "utf8")) as {
+      dependencies: Record<string, string>;
+    };
+    await writeFile(
+      serverManifestPath,
+      JSON.stringify(
+        {
+          ...serverManifest,
+          allowScripts: { [`node-pty@${serverManifest.dependencies["node-pty"]}`]: true },
+        },
+        null,
+        2,
+      ),
+    );
+    execFileSync(node, [npm, "install", "--omit=dev", "--no-audit", "--no-fund"], {
+      cwd: server,
+      env: environment,
+      stdio: "inherit",
+    });
+    coxVersion = workspace.version;
+  }
+  await pruneDesktopPayload({
+    runtime,
+    server,
+    platform: process.platform,
+    architecture: process.arch,
+  });
+  execFileSync(
+    node,
+    [
+      "--input-type=module",
+      "-e",
+      "import { createRequire } from 'node:module'; const require = createRequire(process.cwd() + '/package.json'); require('node-pty'); require('@napi-rs/keyring');",
+    ],
+    { cwd: server, env: environment, stdio: "inherit" },
+  );
+}
 const application = join(stage, "app");
 const licenses = join(stage, "licenses");
 await mkdir(licenses);
@@ -129,7 +157,8 @@ for (const filename of ["LICENSE", "LICENSES.chromium.html"]) {
 await mkdir(application);
 await cp(join(directory, "dist"), join(application, "dist"), { recursive: true });
 await cp(join(root, "LICENSE"), join(application, "LICENSE"));
-await cp(join(server, "THIRD_PARTY_NOTICES.json"), join(application, "THIRD_PARTY_NOTICES.json"));
+if (!clientOnly)
+  await cp(join(server, "THIRD_PARTY_NOTICES.json"), join(application, "THIRD_PARTY_NOTICES.json"));
 await writeFile(
   join(application, "package.json"),
   JSON.stringify(
@@ -137,6 +166,7 @@ await writeFile(
       name: "cox-desktop",
       productName: "Cox",
       version: manifest.version,
+      bundledCoxVersion: coxVersion,
       description: "Local-only coding agent workspace",
       author: "Cox contributors",
       license: "MIT",
@@ -154,7 +184,29 @@ const targetPlatform =
       ? Platform.WINDOWS
       : Platform.LINUX;
 const architecture = process.arch === "arm64" ? Arch.arm64 : Arch.x64;
-const output = join(root, "release", "desktop");
+const flavor = clientOnly ? "client-only" : "bundled";
+const output = join(root, "release", "desktop", flavor);
+const artifactBaseName = clientOnly
+  ? "Cox-Client-" + manifest.version
+  : "Cox-" + coxVersion + "-Client-" + manifest.version;
+const backendMetadata = join(stage, "backend.json");
+const buildMetadata = {
+  version: manifest.version,
+  desktopVersion: manifest.version,
+  coxVersion,
+  flavor,
+  artifactBaseName,
+  backendIntegrity,
+  clientCommit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+  sourceDirty:
+    execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim().length >
+    0,
+  platform: process.platform,
+  architecture: process.arch,
+  nodeVersion,
+  electron: manifest.devDependencies.electron,
+};
+await writeFile(backendMetadata, JSON.stringify(buildMetadata));
 await mkdir(output, { recursive: true });
 const artifacts = await build({
   targets: targetPlatform.createTarget(
@@ -172,16 +224,21 @@ const artifacts = await build({
     asar: true,
     npmRebuild: false,
     publish: null,
-    artifactName: "Cox-${version}-${os}-${arch}.${ext}",
+    artifactName: artifactBaseName + "-${os}-${arch}.${ext}",
     extraResources: [
       { from: join(directory, "dist", "backend-parent.js"), to: "backend-parent.mjs" },
       { from: licenses, to: "licenses" },
       { from: runtime, to: "runtime" },
+      { from: backendMetadata, to: "backend.json" },
       ...(process.platform === "win32"
         ? [{ from: join(runtime, "node_modules"), to: "runtime/node_modules" }]
         : []),
-      { from: server, to: "server", filter: ["**/*", "!**/*.map", "!**/package-lock.json"] },
-      { from: join(server, "node_modules"), to: "server/node_modules" },
+      ...(!clientOnly
+        ? [
+            { from: server, to: "server", filter: ["**/*", "!**/*.map", "!**/package-lock.json"] },
+            { from: join(server, "node_modules"), to: "server/node_modules" },
+          ]
+        : []),
       { from: join(root, "apps/web/public/icon-512.png"), to: "icon.png" },
     ],
     mac: {
@@ -216,8 +273,8 @@ for (const artifact of artifacts) {
   );
 }
 await writeFile(
-  join(output, `BUILD-${process.platform}-${process.arch}.json`),
-  `${JSON.stringify({ version: manifest.version, platform: process.platform, architecture: process.arch, node: nodeVersion, electron: manifest.devDependencies.electron, unpacked, artifacts }, null, 2)}\n`,
+  join(output, `BUILD-${flavor}-${process.platform}-${process.arch}.json`),
+  `${JSON.stringify({ ...buildMetadata, unpacked, artifacts }, null, 2)}\n`,
 );
 console.log(`Desktop output: ${output}`);
 console.log(`Output entries: ${(await readdir(output)).join(", ")}`);

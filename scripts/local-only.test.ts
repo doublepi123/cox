@@ -6,10 +6,15 @@ const root = NodePath.resolve(import.meta.dirname, "..");
 
 describe("local-only distribution boundary", () => {
   it("keeps the desktop startup page free of backend status copy", () => {
-    const main = NodeFS.readFileSync(NodePath.join(root, "apps/desktop/src/main.ts"), "utf8");
+    const main = NodeFS.readFileSync(
+      NodePath.join(root, "apps/desktop/src/startup-page.ts"),
+      "utf8",
+    );
     expect(main).toContain("<h1>Cox</h1>");
     expect(main).not.toContain("Starting local backend");
     expect(main).not.toContain("正在启动本地后端");
+    expect(main).toContain("prefers-reduced-motion");
+    expect(main).toContain("cox-pulse");
   });
 
   it("signs macOS test packages and verifies the distributable signatures before smoke", () => {

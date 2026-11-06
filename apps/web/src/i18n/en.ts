@@ -1,4 +1,25 @@
 export const en = {
+  "Desktop client": "Desktop client",
+  "Client version": "Client version",
+  "Installed Cox version": "Installed Cox version",
+  "Bundled Cox version": "Bundled Cox version",
+  "Not bundled": "Not bundled",
+  "Cox backend updates": "Cox backend updates",
+  "Cox is downloaded. It will activate on the next launch without interrupting current tasks.":
+    "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
+  "Downloading and verifying Cox…": "Downloading and verifying Cox…",
+  "This Cox update requires a newer desktop client.":
+    "This Cox update requires a newer desktop client.",
+  "Cox {version} is available.": "Cox {version} is available.",
+  "Could not update Cox.": "Could not update Cox.",
+  "Checking for Cox updates…": "Checking for Cox updates…",
+  "The client checks for Cox updates automatically.":
+    "The client checks for Cox updates automatically.",
+  "Check for Cox updates": "Check for Cox updates",
+  "Download Cox update": "Download Cox update",
+  "Cox update ready": "Cox update ready",
+  "Cox backend update": "Cox backend update",
+  Later: "Later",
   "Quit Cox?": "Quit Cox?",
   "Quit Cox": "Quit Cox",
   "Quitting…": "Quitting…",

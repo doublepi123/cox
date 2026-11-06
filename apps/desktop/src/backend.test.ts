@@ -13,6 +13,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home-dir') + 1];
 const mode = process.env.FIXTURE_MODE;
+writeFileSync(join(home, 'parent-flag'), String(process.env.COX_DESKTOP_PARENT_PID));
 if (mode === 'exit') process.exit(7);
 const server = createServer((request, response) => {
   if (request.url === '/crash') { response.end('stopping'); setImmediate(() => process.exit(9)); return; }
@@ -67,11 +68,16 @@ describe("desktop backend supervisor", () => {
   it("waits for its own backend, checks auth and stops gracefully", async () => {
     const { backend, home, onUnexpectedExit } = await createBackend();
     const origin = await backend.start();
+    expect(await readFile(join(home, "parent-flag"), "utf8")).toBe("undefined");
+    expect(JSON.parse(await readFile(join(home, "backend-owner.json"), "utf8")).pid).toBeTypeOf(
+      "number",
+    );
     expect(origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect((await fetch(`${origin}/api/auth/session`)).status).toBe(200);
     await backend.stop();
     await backend.stop();
     expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
+    await expect(readFile(join(home, "backend-owner.json"), "utf8")).rejects.toThrow();
     expect(onUnexpectedExit).not.toHaveBeenCalled();
   });
 
@@ -137,7 +143,32 @@ describe("desktop backend supervisor", () => {
       process.execPath,
       ["--import", pathToFileURL(preload).href, entry, "--home-dir", home],
       {
-        env: process.env,
+        env: { ...process.env, COX_DESKTOP_PARENT_PID: String(process.pid) },
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
+      },
+    );
+    const exited = once(child, "exit");
+    child.on("message", (message: unknown) => {
+      if (message === "cox:backend-ready-to-start") child.send("cox:backend-start");
+    });
+    cleanups.unshift(async () => {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await exited;
+    });
+    await once(child.stdout!, "data");
+    child.disconnect();
+    await exited;
+    expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
+  });
+
+  it("never loads backend code if the desktop disconnected before preload completed", async () => {
+    const { home, entry } = await createBackend();
+    const child = spawn(
+      process.execPath,
+      ["--import", pathToFileURL(preload).href, entry, "--home-dir", home],
+      {
+        env: { ...process.env, COX_DESKTOP_PARENT_PID: String(process.pid) },
         detached: process.platform !== "win32",
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       },
@@ -147,9 +178,8 @@ describe("desktop backend supervisor", () => {
       if (child.exitCode === null && child.signalCode === null) child.kill();
       await exited;
     });
-    await once(child.stdout!, "data");
     child.disconnect();
-    await exited;
-    expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
+    expect((await exited)[0]).toBe(0);
+    await expect(readFile(join(home, "userdata", "server-runtime.json"))).rejects.toThrow();
   });
 });

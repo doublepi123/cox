@@ -8,7 +8,8 @@ import { join, resolve } from "node:path";
 import { _electron } from "playwright-core";
 
 const root = resolve(import.meta.dirname, "../../..");
-const output = join(root, "release", "desktop");
+const clientOnly = process.env.COX_DESKTOP_CLIENT_ONLY === "true";
+const output = join(root, "release", "desktop", clientOnly ? "client-only" : "bundled");
 const executable =
   process.platform === "darwin"
     ? join(
@@ -48,7 +49,7 @@ try {
   page.on("console", (message) => {
     if (message.type() === "error") console.error("Renderer console:", message.text());
   });
-  await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
+  await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: clientOnly ? 600_000 : 90_000 });
   await page.waitForFunction(
     async () => {
       const response = await fetch("/api/auth/session");
@@ -130,6 +131,46 @@ try {
     await application.close();
   }
   assert.equal(existsSync(runtimePath), false);
+  if (clientOnly) {
+    const statePath = join(temporary, ".cox", "desktop", "backend-updates", "state.json");
+    const installed = JSON.parse(await readFile(statePath, "utf8")) as {
+      active: { version: string };
+    };
+    assert.ok(installed.active.version);
+    const offline = await _electron.launch({
+      executablePath: executable,
+      env: environment,
+      timeout: 30_000,
+      args: ["--offline", ...(process.platform === "linux" ? ["--no-sandbox"] : [])],
+    });
+    try {
+      const offlinePage = await offline.firstWindow();
+      await offlinePage.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
+      const version = await offlinePage.evaluate(async () => {
+        const bridge = Reflect.get(window, "coxDesktop") as {
+          getBackendUpdate(): Promise<{ currentVersion: string }>;
+        };
+        return (await bridge.getBackendUpdate()).currentVersion;
+      });
+      assert.equal(version, installed.active.version);
+      const exited = once(offline.process(), "exit", { signal: AbortSignal.timeout(30_000) });
+      await offline.evaluate(({ app, dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+        app.quit();
+      });
+      if (process.platform === "darwin" || process.platform === "win32")
+        await offlinePage.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
+      assert.equal((await exited)[0], 0);
+      console.log("PASS: client-only first installation and cached offline second launch.");
+    } finally {
+      const child = offline.process();
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, "exit");
+        child.kill("SIGKILL");
+        await exited;
+      }
+    }
+  }
   console.log(
     "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation and graceful quit.",
   );

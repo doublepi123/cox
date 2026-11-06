@@ -232,6 +232,40 @@ The local server serves the built Web app and its API from one origin. Use the l
 
 Cox listens on `127.0.0.1` by default and must not be exposed directly to an untrusted network. To reach it from another device, see [Password sign-in and remote access](#password-sign-in-and-remote-access). Local authentication and origin checks remain necessary because agent access includes filesystem and terminal operations.
 
+## Desktop clients
+
+The desktop shell and Cox backend have independent versions. Cox releases use root/server
+versions and `v<VERSION>` tags; desktop releases use `apps/desktop/package.json` and
+`desktop-v<VERSION>` tags.
+
+- Combined installers include both versions in their filenames: for example,
+  `Cox-0.1.42-Client-0.2.0-mac-arm64.dmg`.
+- Client-only installers, such as `Cox-Client-0.2.0-win-x64.exe`, include the browser shell,
+  standalone Node and npm, but **no Cox backend**. Their first launch needs internet access
+  to install the latest stable `@doublepi123/cox`. No global Node/npm/Cox installation is needed.
+  A failed initial download offers Retry/Quit; subsequent launches use the verified local
+  installation and can run offline (`--offline` disables update checks).
+- The client checks for Cox updates at startup and every six hours. Settings → About shows
+  the client, installed Cox and bundled Cox versions separately and allows manual checks.
+  Older Cox browser builds retain the native menu's update-check fallback.
+- Updates verify the official npm package name, fixed HTTPS registry URL, SHA-512 and
+  desktop/Node compatibility, then smoke-test an isolated installation. Downloading does not
+  stop running tasks. A staged update activates on the **next normal launch**.
+- Backend binaries live in `~/.cox/desktop/backend-updates`, never inside the signed `.app`.
+  Bundled backends are cached there too: a newer combination installer activates its newer
+  Cox, while an older bundle cannot replace a newer managed installation. Switching to a
+  client-only installer retains an already cached backend even when offline.
+  Before activation, with no previous backend alive, the client snapshots desktop userdata.
+  Failed/interrupted activation restores the old backend **and its matching data snapshot**;
+  it never starts older code against a partially migrated database. The current and previous
+  managed binaries and latest recovery backup are retained.
+
+Each stable Cox npm publication automatically builds a latest-Cox/latest-released-client
+combination. Each desktop release builds that combination **and** client-only installers for
+macOS ARM/Intel and Windows. Packages are published only after all native checks pass.
+The first independent desktop release must be published before Cox-triggered combination
+builds can select it. See [RELEASING.md](RELEASING.md#desktop-release-matrix).
+
 ## Password sign-in and remote access
 
 Cox defaults to loopback (`127.0.0.1`). Without a password, the local browser automatically establishes a session; no token or pairing link is needed. Never expose this local-no-password mode through a reverse proxy, tunnel, or port forward.

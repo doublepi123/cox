@@ -18,6 +18,7 @@ on:
       - pnpm-workspace.yaml
       - package.json
       - .github/workflows/desktop.yml
+      - .github/workflows/desktop-release.yml
 permissions:
   contents: read
 jobs:
@@ -25,9 +26,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        flavor: [bundled, client-only]
         os: ${{ fromJSON(inputs.windows_only && '["windows-2025"]' || '["macos-15","macos-15-intel","windows-2025"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      COX_DESKTOP_CLIENT_ONLY: ${{ matrix.flavor == 'client-only' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -40,28 +44,28 @@ jobs:
       - run: pnpm --filter @cox/desktop smoke:app
       - uses: actions/upload-artifact@v4
         with:
-          name: cox-desktop-${{ matrix.os }}
+          name: cox-desktop-${{ matrix.os }}-${{ matrix.flavor }}
           compression-level: 0
           path: |
-            release/desktop/*.dmg
-            release/desktop/*.dmg.sha256
-            release/desktop/*.dmg.blockmap
-            release/desktop/*.dmg.blockmap.sha256
-            release/desktop/*.exe
-            release/desktop/*.exe.sha256
-            release/desktop/*.exe.blockmap
-            release/desktop/*.exe.blockmap.sha256
-            release/desktop/BUILD-*.json
+            release/desktop/${{ matrix.flavor }}/*.dmg
+            release/desktop/${{ matrix.flavor }}/*.dmg.sha256
+            release/desktop/${{ matrix.flavor }}/*.dmg.blockmap
+            release/desktop/${{ matrix.flavor }}/*.dmg.blockmap.sha256
+            release/desktop/${{ matrix.flavor }}/*.exe
+            release/desktop/${{ matrix.flavor }}/*.exe.sha256
+            release/desktop/${{ matrix.flavor }}/*.exe.blockmap
+            release/desktop/${{ matrix.flavor }}/*.exe.blockmap.sha256
+            release/desktop/${{ matrix.flavor }}/BUILD-*.json
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS'
         with:
-          name: cox-desktop-${{ matrix.os }}-zip
+          name: cox-desktop-${{ matrix.os }}-zip-${{ matrix.flavor }}
           compression-level: 0
           path: |
-            release/desktop/*.zip
-            release/desktop/*.zip.sha256
-            release/desktop/*.zip.blockmap
-            release/desktop/*.zip.blockmap.sha256
-            release/desktop/BUILD-*.json
+            release/desktop/${{ matrix.flavor }}/*.zip
+            release/desktop/${{ matrix.flavor }}/*.zip.sha256
+            release/desktop/${{ matrix.flavor }}/*.zip.blockmap
+            release/desktop/${{ matrix.flavor }}/*.zip.blockmap.sha256
+            release/desktop/${{ matrix.flavor }}/BUILD-*.json
           if-no-files-found: error

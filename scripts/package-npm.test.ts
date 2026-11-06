@@ -18,7 +18,7 @@ async function fixture() {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, contents);
   };
-  await write("package.json", '{"type":"module","version":"0.1.0"}');
+  await write("package.json", '{"type":"module","version":"0.1.0","engines":{"node":"26.12.1"}}');
   await write(
     "apps/server/package.json",
     JSON.stringify({
@@ -114,6 +114,7 @@ describe("npm distribution", () => {
     expect(manifest.bin).toEqual({ cox: "./dist/bin.mjs" });
     expect(manifest.dependencies).toEqual({ "playwright-core": "1.2.3", diff: "1.2.3" });
     expect(manifest.engines).toEqual({ node: ">=24.10" });
+    expect(manifest.coxDesktop).toEqual({ protocol: 1, nodeVersion: "26.12.1" });
     expect(manifest.scripts).toEqual({ postinstall: "node postinstall.mjs" });
     expect(manifest.publishConfig.access).toBe("public");
   });

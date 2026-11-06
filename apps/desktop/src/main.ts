@@ -12,7 +12,10 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import type { Event, IpcMainEvent, MenuItemConstructorOptions } from "electron";
-import { BackendProcess } from "./backend.ts";
+import { BackendProcess, validateBackendInstallation } from "./backend.ts";
+import { BackendUpdates } from "./backend-updates.ts";
+import { STARTUP_PAGE } from "./startup-page.ts";
+import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 import { backendEnvironment, isBackendNavigation, isExternalNavigation } from "./config.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
@@ -31,6 +34,61 @@ let quitPending = false;
 let desktopReady = false;
 let stoppingBackend = false;
 let origin: string | undefined;
+let updates: BackendUpdates | undefined;
+let startingBackend = true;
+let rendererUpdatesReady = false;
+let autoCheckStarted = false;
+let lastPromptedVersion: string | null = null;
+let nativeUpdatePrompt = false;
+
+async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = false) {
+  if (approvedQuit || quitPending || !desktopReady || nativeUpdatePrompt) return;
+  if (
+    !manual &&
+    (rendererUpdatesReady ||
+      state.status !== "available" ||
+      state.latestVersion === lastPromptedVersion)
+  )
+    return;
+  nativeUpdatePrompt = true;
+  try {
+    if (state.status === "available") {
+      lastPromptedVersion = state.latestVersion;
+      const answer = await dialog.showMessageBox({
+        type: "question",
+        title: "Cox update / Cox 更新",
+        message:
+          "Cox " +
+          state.latestVersion +
+          " is available. Download now and activate on the next launch?\n发现新版 Cox，是否下载并在下次启动时启用？",
+        buttons: ["Later / 稍后", "Download / 下载"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (answer.response !== 1 || quitPending) return;
+      state = await updates!.stage();
+    } else if (!manual) return;
+    if (!quitPending)
+      await dialog.showMessageBox({
+        type: state.status === "error" ? "warning" : "info",
+        title: "Cox update / Cox 更新",
+        message:
+          state.status === "ready"
+            ? "Update downloaded. It will activate the next time you open Cox.\n更新已下载，下次启动 Cox 时生效，不会中断当前任务。"
+            : (state.message ?? "Cox is up to date. / Cox 已是最新版本。"),
+      });
+  } finally {
+    nativeUpdatePrompt = false;
+  }
+}
+
+function publishBackendUpdate(state: DesktopBackendUpdateState) {
+  if (desktopReady && window && !window.isDestroyed()) {
+    window?.webContents.send("cox:backend-update", state);
+    void offerBackendUpdate(state).catch(() => {});
+  }
+}
 
 function syncWindowControls() {
   if (!window || window.isDestroyed()) return;
@@ -77,6 +135,7 @@ async function finishQuit() {
   if (stoppingBackend) return;
   stoppingBackend = true;
   try {
+    await updates?.close();
     await backend?.stop();
     approvedQuit = true;
     app.quit();
@@ -154,7 +213,7 @@ async function start() {
       partition: "persist:cox-desktop",
     },
   });
-  const isTrustedSender = (event: IpcMainEvent) =>
+  const isTrustedSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
     Boolean(
       window &&
       origin &&
@@ -166,11 +225,35 @@ async function start() {
     if (!isTrustedSender(event)) return;
     desktopReady = true;
     syncWindowControls();
+    if (updates) publishBackendUpdate(updates.getState());
+    if (!autoCheckStarted && updates) {
+      autoCheckStarted = true;
+      void updates.check();
+      setInterval(
+        () => {
+          if (desktopReady && !quitPending) void updates?.check();
+        },
+        6 * 60 * 60 * 1000,
+      ).unref();
+    }
     if (quitPending && !stoppingBackend) window?.webContents.send("cox:quit-requested");
   });
   ipcMain.on("cox:sync-window-controls", (event) => {
     if (isTrustedSender(event)) syncWindowControls();
   });
+  ipcMain.on("cox:backend-update-listening", (event) => {
+    if (isTrustedSender(event)) rendererUpdatesReady = true;
+  });
+  for (const [channel, action] of [
+    ["cox:backend-update-state", () => updates?.getState()],
+    ["cox:backend-update-check", () => updates?.check(true)],
+    ["cox:backend-update-install", () => updates?.stage()],
+  ] as const) {
+    ipcMain.handle(channel, (event) => {
+      if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+      return action();
+    });
+  }
   window.on("enter-full-screen", syncWindowControls);
   window.on("leave-full-screen", syncWindowControls);
   window.webContents.on("did-finish-load", syncWindowControls);
@@ -193,7 +276,10 @@ async function start() {
     window?.setTitleBarOverlay({ color: background, symbolColor: foreground, height: 52 });
   });
   window.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
-    if (isMainFrame && !inPlace) desktopReady = false;
+    if (isMainFrame && !inPlace) {
+      desktopReady = false;
+      rendererUpdatesReady = false;
+    }
   });
   window.on("close", (event) => {
     if (approvedQuit) return;
@@ -292,6 +378,15 @@ async function start() {
       submenu: [
         { label: "Open Cox", click: showWindow },
         {
+          label: "Check for Cox Updates / 检查 Cox 更新",
+          click: () => {
+            void updates
+              ?.check(true)
+              .then((state) => offerBackendUpdate(state, true))
+              .catch(() => {});
+          },
+        },
+        {
           label: "Open Logs",
           click: () => {
             void shell.openPath(dirname(logPath));
@@ -317,9 +412,7 @@ async function start() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   if (process.platform === "win32") window.setMenuBarVisibility(false);
-  await window.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><title>Cox</title><body style="background:#151518;color:#eee;font:18px system-ui;display:grid;place-content:center;height:90vh;text-align:center"><h1>Cox</h1>')}`,
-  );
+  await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(STARTUP_PAGE));
   const nodePath = app.isPackaged
     ? join(
         process.resourcesPath,
@@ -342,36 +435,113 @@ async function start() {
       loginPath = result.split("\0")[1];
     } catch {}
   }
-  backend = new BackendProcess({
-    nodePath,
-    entryPath: app.isPackaged
-      ? join(process.resourcesPath, "server", "dist", "bin.mjs")
-      : join(root, "apps/server/dist/bin.mjs"),
-    preloadPath: app.isPackaged
-      ? join(process.resourcesPath, "backend-parent.mjs")
-      : join(import.meta.dirname, "backend-parent.js"),
+  const preloadPath = app.isPackaged
+    ? join(process.resourcesPath, "backend-parent.mjs")
+    : join(import.meta.dirname, "backend-parent.js");
+  const environment = backendEnvironment({
+    inherited: process.env,
+    runtimeDirectory: dirname(nodePath),
     homeDirectory: home,
-    cwd: homedir(),
-    environment: backendEnvironment({
-      inherited: process.env,
-      runtimeDirectory: dirname(nodePath),
-      homeDirectory: home,
-      userHome: homedir(),
-      platform: process.platform,
-      ...(loginPath ? { loginPath } : {}),
-    }),
-    onLog: (message) => log.write(message),
-    onUnexpectedExit: (message) => {
-      log.write(`${message}\n`);
-      dialog.showErrorBox(
-        "Cox backend stopped / 后端已停止",
-        `${message}\nReopen Cox to restart. / 请重新打开 Cox。\nLogs: ${logPath}`,
-      );
-      approvedQuit = true;
-      app.quit();
-    },
+    userHome: homedir(),
+    platform: process.platform,
+    ...(loginPath ? { loginPath } : {}),
   });
-  origin = await backend.start();
+  const metadata = app.isPackaged
+    ? (JSON.parse(readFileSync(join(process.resourcesPath, "backend.json"), "utf8")) as {
+        coxVersion: string | null;
+      })
+    : {
+        coxVersion: (
+          JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version: string }
+        ).version,
+      };
+  updates = new BackendUpdates({
+    development: !app.isPackaged,
+    home,
+    desktopVersion: app.getVersion(),
+    bundledVersion: metadata.coxVersion,
+    bundledDirectory: app.isPackaged
+      ? join(process.resourcesPath, "server")
+      : join(root, "apps/server"),
+    nodeVersion: execFileSync(nodePath, ["--version"], { encoding: "utf8", timeout: 5_000 })
+      .trim()
+      .replace(/^v/, ""),
+    node: nodePath,
+    npm: app.isPackaged
+      ? join(
+          process.resourcesPath,
+          "runtime",
+          ...(process.platform === "win32" ? ["node_modules"] : ["lib", "node_modules"]),
+          "npm",
+          "bin",
+          "npm-cli.js",
+        )
+      : join(dirname(nodePath), "../lib/node_modules/npm/bin/npm-cli.js"),
+    environment,
+    offline: !app.isPackaged || app.commandLine.hasSwitch("offline"),
+    onState: publishBackendUpdate,
+    validate: (directory, signal) =>
+      validateBackendInstallation({
+        directory,
+        node: nodePath,
+        preload: preloadPath,
+        environment,
+        signal,
+      }),
+  });
+  const startBackend = async (directory: string) => {
+    if (quitPending || approvedQuit) throw new Error("Cox startup was cancelled.");
+    backend = new BackendProcess({
+      nodePath,
+      entryPath: join(directory, "dist", "bin.mjs"),
+      preloadPath,
+      homeDirectory: home,
+      cwd: homedir(),
+      environment,
+      onLog: (message) => log.write(message),
+      onUnexpectedExit: (message) => {
+        if (startingBackend) return;
+        log.write(`${message}\n`);
+        dialog.showErrorBox(
+          "Cox backend stopped / 后端已停止",
+          `${message}\nReopen Cox to restart. / 请重新打开 Cox。\nLogs: ${logPath}`,
+        );
+        approvedQuit = true;
+        app.quit();
+      },
+    });
+    return backend.start();
+  };
+  while (true) {
+    if (approvedQuit || quitPending) return;
+    try {
+      origin = await updates.launch(startBackend, () => backend?.stop() ?? Promise.resolve());
+      break;
+    } catch (error) {
+      if (approvedQuit || quitPending) return;
+      log.write(String(error) + "\n");
+      const answer = await dialog.showMessageBox({
+        type: "error",
+        title: "Cox startup / Cox 启动",
+        message:
+          "Cox could not start or finish its first installation. Check your connection and retry.\nCox 无法启动或完成首次安装，请检查网络后重试。\n\n" +
+          String(error),
+        buttons: ["Quit / 退出", "Retry / 重试"],
+        defaultId: 1,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (answer.response !== 1) {
+        await updates.close();
+        await backend?.stop();
+        approvedQuit = true;
+        app.quit();
+        return;
+      }
+    }
+  }
+  startingBackend = false;
+  if (!origin) return;
   if (!approvedQuit) await window.loadURL(origin);
 }
 
@@ -381,7 +551,10 @@ if (!app.requestSingleInstanceLock()) {
   app.on("second-instance", showWindow);
   app.on("activate", showWindow);
   app.on("before-quit", (event) => {
-    if (approvedQuit) return;
+    if (approvedQuit) {
+      void updates?.close();
+      return;
+    }
     event.preventDefault();
     void requestQuit();
   });

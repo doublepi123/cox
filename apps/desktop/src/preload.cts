@@ -1,4 +1,8 @@
-import type { DesktopShellBridge, DesktopWindowState } from "@t3tools/contracts";
+import type {
+  DesktopShellBridge,
+  DesktopWindowState,
+  DesktopBackendUpdateState,
+} from "@t3tools/contracts";
 
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 const bridge: DesktopShellBridge = {
@@ -19,5 +23,15 @@ const bridge: DesktopShellBridge = {
     return () => ipcRenderer.removeListener("cox:window-state", handler);
   },
   syncWindowControls: () => ipcRenderer.send("cox:sync-window-controls"),
+  getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
+  checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
+  installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),
+  onBackendUpdate: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: DesktopBackendUpdateState) =>
+      listener(state);
+    ipcRenderer.on("cox:backend-update", handler);
+    ipcRenderer.send("cox:backend-update-listening");
+    return () => ipcRenderer.removeListener("cox:backend-update", handler);
+  },
 };
 contextBridge.exposeInMainWorld("coxDesktop", bridge);

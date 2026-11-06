@@ -13,6 +13,7 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { DialogSuppressionContext } from "./ui/dialog";
+import { useDesktopBackendUpdate } from "../hooks/useDesktopBackendUpdate";
 
 declare global {
   interface Window {
@@ -37,6 +38,18 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [quitting, setQuitting] = useState(false);
+  const updates = useDesktopBackendUpdate();
+  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
+  const updateState = updates.state;
+  const updateKey =
+    updateState?.status === "ready"
+      ? "ready:" + updateState.latestVersion
+      : updateState?.latestVersion &&
+          ["available", "installing", "error", "incompatible"].includes(updateState.status) &&
+          updateState.latestVersion !== updateState.currentVersion
+        ? "update:" + updateState.latestVersion
+        : null;
+  const updateOpen = updateKey !== null && updateKey !== dismissedUpdate;
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const bridge = window.coxDesktop;
@@ -79,7 +92,44 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
     return children;
   return (
     <>
-      <DialogSuppressionContext value={open}>{children}</DialogSuppressionContext>
+      <DialogSuppressionContext value={open || updateOpen}>{children}</DialogSuppressionContext>
+      <AlertDialog
+        open={updateOpen && !open}
+        onOpenChange={(next) => {
+          if (!next) setDismissedUpdate(updateKey);
+        }}
+      >
+        <AlertDialogPopup bottomStickOnMobile={false} layer="application">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t(updateState?.status === "ready" ? "Cox update ready" : "Cox backend update")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {updateState?.status === "ready"
+                ? t(
+                    "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
+                  )
+                : updateState?.status === "installing"
+                  ? t("Downloading and verifying Cox…")
+                  : updateState?.status === "error"
+                    ? updateState.message
+                    : updateState?.status === "incompatible"
+                      ? t("This Cox update requires a newer desktop client.")
+                      : t("Cox {version} is available.", {
+                          version: updateState?.latestVersion ?? "",
+                        })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter variant="bare">
+            <AlertDialogClose render={<Button variant="outline" />}>
+              {t(updateState?.status === "ready" ? "Done" : "Later")}
+            </AlertDialogClose>
+            {updateState?.status === "available" && (
+              <Button onClick={() => void updates.install()}>{t("Download Cox update")}</Button>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
       <AlertDialog
         open={open}
         onOpenChange={(next) => {

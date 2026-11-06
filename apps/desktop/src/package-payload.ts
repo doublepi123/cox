@@ -15,11 +15,19 @@ export async function pruneDesktopPayload(options: {
   platform: string;
   architecture: string;
 }): Promise<void> {
+  await pruneBackendPayload(options);
+  await rm(join(options.runtime, "include"), { recursive: true, force: true });
+  await rm(join(options.runtime, "share", "man"), { recursive: true, force: true });
+}
+
+export async function pruneBackendPayload(options: {
+  server: string;
+  platform: string;
+  architecture: string;
+}): Promise<void> {
   const target = `${options.platform}-${options.architecture}`;
   if (!/^(?:darwin|linux|win32)-(?:arm64|x64)$/.test(target))
     throw new Error(`Unsupported desktop target: ${target}`);
-  await rm(join(options.runtime, "include"), { recursive: true, force: true });
-  await rm(join(options.runtime, "share", "man"), { recursive: true, force: true });
   const bridge = `cox-protocol-bridge-${target}${options.platform === "win32" ? ".exe" : ""}`;
   for (const filename of await readdir(join(options.server, "dist"))) {
     if (
@@ -29,7 +37,11 @@ export async function pruneDesktopPayload(options: {
       await rm(join(options.server, "dist", filename));
   }
   const prebuilds = join(options.server, "node_modules", "node-pty", "prebuilds");
-  for (const filename of await readdir(prebuilds)) {
+  const entries = await readdir(prebuilds).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+    throw error;
+  });
+  for (const filename of entries) {
     if (/^(?:darwin|linux|win32)-(?:arm64|x64)$/.test(filename) && filename !== target)
       await rm(join(prebuilds, filename), { recursive: true });
   }

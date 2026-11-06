@@ -8,7 +8,10 @@ import { generateThirdPartyLicenseManifest } from "./lib/third-party-licenses.ts
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8")) as unknown;
-const manifest = (await readJson(join(root, "package.json"))) as { version: string };
+const manifest = (await readJson(join(root, "package.json"))) as {
+  version: string;
+  engines: { node: string };
+};
 const server = (await readJson(join(root, "apps/server/package.json"))) as {
   version: string;
   dependencies: Record<string, string>;
@@ -87,6 +90,7 @@ await writeFile(
     {
       name: "@doublepi123/cox",
       version: manifest.version,
+      coxDesktop: { protocol: 1, nodeVersion: manifest.engines.node },
       description: "Local-only web workspace for coding agents",
       license: "MIT",
       type: "module",

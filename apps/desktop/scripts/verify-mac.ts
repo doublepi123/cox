@@ -5,11 +5,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 assert.equal(process.platform, "darwin", "macOS signature verification requires macOS.");
-const output = resolve(import.meta.dirname, "../../../release/desktop");
-const manifest = JSON.parse(
-  await readFile(resolve(import.meta.dirname, "../package.json"), "utf8"),
-) as { version: string };
-const basename = `Cox-${manifest.version}-mac-${process.arch}`;
+const flavor = process.env.COX_DESKTOP_CLIENT_ONLY === "true" ? "client-only" : "bundled";
+const output = resolve(import.meta.dirname, "../../../release/desktop", flavor);
+const metadata = JSON.parse(
+  await readFile(join(output, "BUILD-" + flavor + "-darwin-" + process.arch + ".json"), "utf8"),
+) as { artifactBaseName: string };
+const basename = metadata.artifactBaseName + "-mac-" + process.arch;
 const temporary = await mkdtemp(join(tmpdir(), "cox-desktop-signatures-"));
 const verify = (application: string) => {
   execFileSync("codesign", ["--verify", "--deep", "--strict", "--verbose=2", application], {

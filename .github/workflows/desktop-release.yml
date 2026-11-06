@@ -1,0 +1,162 @@
+name: Release desktop combinations
+on:
+  push:
+    tags: ["desktop-v*", "!desktop-v*-*"]
+  workflow_run:
+    workflows: ["Publish npm package"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      client_ref:
+        description: Desktop source tag or branch (publishing requires desktop-v*)
+        default: main
+        type: string
+      cox_version:
+        description: Official npm Cox version, or latest
+        default: latest
+        type: string
+      client_only:
+        description: Also build the client-only first-install package
+        default: true
+        type: boolean
+      publish:
+        description: Publish to an existing desktop-v tag after all native tests pass
+        default: false
+        type: boolean
+permissions:
+  actions: read
+  contents: read
+jobs:
+  resolve:
+    if: github.repository == 'doublepi123/cox' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      client_ref: ${{ steps.plan.outputs.client_ref }}
+      client_commit: ${{ steps.plan.outputs.client_commit }}
+      client_version: ${{ steps.plan.outputs.client_version }}
+      cox_version: ${{ steps.plan.outputs.cox_version }}
+      cox_integrity: ${{ steps.plan.outputs.cox_integrity }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      flavors: ${{ steps.plan.outputs.flavors }}
+      publish: ${{ steps.plan.outputs.publish }}
+      client_release: ${{ steps.plan.outputs.client_release }}
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node apps/desktop/scripts/release-plan.ts
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, windows-2025]
+        flavor: ${{ fromJSON(needs.resolve.outputs.flavors) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      COX_DESKTOP_BACKEND_VERSION: ${{ needs.resolve.outputs.cox_version }}
+      COX_DESKTOP_CLIENT_ONLY: ${{ matrix.flavor == 'client-only' && 'true' || 'false' }}
+      EXPECTED_CLIENT_VERSION: ${{ needs.resolve.outputs.client_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.client_commit }}
+      - uses: ./.github/actions/setup
+      - run: node --input-type=module -e "import fs from 'node:fs'; import assert from 'node:assert/strict'; assert.equal(JSON.parse(fs.readFileSync('apps/desktop/package.json')).version, process.env.EXPECTED_CLIENT_VERSION)"
+      - run: pnpm desktop:test
+      - run: pnpm --filter @cox/desktop typecheck
+      - run: pnpm --filter @cox/desktop build
+      - run: pnpm --filter @cox/desktop package
+      - run: pnpm --filter @cox/desktop verify:mac
+        if: runner.os == 'macOS'
+      - run: pnpm --filter @cox/desktop smoke
+      - run: pnpm --filter @cox/desktop smoke:app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-client-${{ needs.resolve.outputs.client_version }}-cox-${{ needs.resolve.outputs.cox_version }}-${{ matrix.flavor }}-${{ matrix.os }}
+          compression-level: 0
+          path: |
+            release/desktop/${{ matrix.flavor }}/*.dmg
+            release/desktop/${{ matrix.flavor }}/*.zip
+            release/desktop/${{ matrix.flavor }}/*.exe
+            release/desktop/${{ matrix.flavor }}/*.sha256
+            release/desktop/${{ matrix.flavor }}/*.blockmap
+            release/desktop/${{ matrix.flavor }}/BUILD-*.json
+          if-no-files-found: error
+  publish:
+    needs: [resolve, build]
+    if: needs.resolve.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: desktop-assets-${{ needs.resolve.outputs.release_tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cox-client-*
+          path: downloads
+          merge-multiple: true
+      - name: Verify and publish both version identities
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+          CLIENT_VERSION: ${{ needs.resolve.outputs.client_version }}
+          CLIENT_COMMIT: ${{ needs.resolve.outputs.client_commit }}
+          CLIENT_RELEASE: ${{ needs.resolve.outputs.client_release }}
+          EXPECTED_FLAVORS: ${{ needs.resolve.outputs.flavors }}
+          COX_VERSION: ${{ needs.resolve.outputs.cox_version }}
+          COX_INTEGRITY: ${{ needs.resolve.outputs.cox_integrity }}
+        run: |
+          set -euo pipefail
+          cd downloads
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          import fs from "node:fs";
+          const flavors = JSON.parse(process.env.EXPECTED_FLAVORS);
+          const files = fs.readdirSync(".").filter(name => name.startsWith("BUILD-") && name.endsWith(".json"));
+          assert.equal(files.length, flavors.length * 3);
+          const expected = new Set(flavors.flatMap(flavor => ["darwin-arm64", "darwin-x64", "win32-x64"].map(target => flavor + "-" + target)));
+          for (const file of files) {
+            const build = JSON.parse(fs.readFileSync(file, "utf8"));
+            assert.equal(build.version, process.env.CLIENT_VERSION);
+            assert.equal(build.clientCommit, process.env.CLIENT_COMMIT);
+            assert.equal(build.sourceDirty, false);
+            assert.equal(build.coxVersion, build.flavor === "bundled" ? process.env.COX_VERSION : null);
+            assert.equal(build.backendIntegrity, build.flavor === "bundled" ? process.env.COX_INTEGRITY : null);
+            assert.equal(expected.delete(build.flavor + "-" + build.platform + "-" + build.architecture), true);
+          }
+          assert.equal(expected.size, 0);
+          JS
+          for checksum in *.sha256; do sha256sum -c "$checksum"; done
+          checksum="DESKTOP-SHA256SUMS-client-$CLIENT_VERSION-cox-$COX_VERSION.txt"
+          find . -maxdepth 1 -type f ! -name "$checksum" -printf '%f\0' | sort -z | xargs -0 sha256sum > "$checksum"
+          created=false
+          title="$RELEASE_TAG"
+          if [[ "$CLIENT_RELEASE" == true ]]; then title="Cox Client $CLIENT_VERSION"; fi
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --latest=false \
+              --title "$title" --notes "Desktop client $CLIENT_VERSION combined with Cox $COX_VERSION. Client-only packages install Cox from the official npm registry on first launch."
+            created=true
+          fi
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber ./*
+          if [[ "$created" == true ]]; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+          else
+            draft="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')"
+            author="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.author.login')"
+            if [[ "$draft" == true && "$author" == 'github-actions[bot]' ]]; then
+              gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+            fi
+          fi

@@ -1,9 +1,14 @@
-import type { DesktopShellBridge, DesktopWindowState } from "@t3tools/contracts";
+import type {
+  DesktopShellBridge,
+  DesktopWindowState,
+  DesktopBackendUpdateState,
+} from "@t3tools/contracts";
 import "../index.css";
 import { page } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { act, render } from "../../test/render";
 import { DesktopShell } from "./DesktopShell";
+import { DesktopBackendUpdates } from "./settings/DesktopBackendUpdates";
 import { Dialog, DialogPopup, DialogTitle } from "./ui/dialog";
 
 function installBridge(bridge: DesktopShellBridge | undefined) {
@@ -18,6 +23,59 @@ function installBridge(bridge: DesktopShellBridge | undefined) {
 }
 
 describe("desktop shell", () => {
+  it("shows independent versions and stages updates without quitting or restarting tasks", async () => {
+    const initial: DesktopBackendUpdateState = {
+      desktopVersion: "0.2.0",
+      bundledVersion: null,
+      currentVersion: "0.1.41",
+      latestVersion: null,
+      status: "idle",
+      message: null,
+    };
+    let update: ((state: DesktopBackendUpdateState) => void) | undefined;
+    const available = { ...initial, latestVersion: "0.1.42", status: "available" as const };
+    const ready = { ...available, status: "ready" as const };
+    const bridge: DesktopShellBridge = {
+      platform: "win32",
+      ready: vi.fn(),
+      onQuitRequested: vi.fn(() => () => {}),
+      answerQuit: vi.fn(),
+      setWindowColors: vi.fn(),
+      onWindowState: vi.fn(() => () => {}),
+      syncWindowControls: vi.fn(),
+      getBackendUpdate: vi.fn(async () => initial),
+      checkBackendUpdate: vi.fn(async () => available),
+      installBackendUpdate: vi.fn(async () => ready),
+      onBackendUpdate: (listener) => {
+        update = listener;
+        return () => {};
+      },
+    };
+    using _bridge = installBridge(bridge);
+    await using screen = await render(
+      <DesktopShell>
+        <span>Running tasks</span>
+      </DesktopShell>,
+    );
+    await act(() => update?.(available));
+    await expect.element(page.getByText("Cox 0.1.42 is available.")).toBeVisible();
+    expect(bridge.installBackendUpdate).not.toHaveBeenCalled();
+    await page.getByRole("button", { name: "Download Cox update", exact: true }).click();
+    await expect
+      .element(
+        page.getByText(
+          "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
+        ),
+      )
+      .toBeVisible();
+    expect(bridge.answerQuit).not.toHaveBeenCalled();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await screen.rerender(<DesktopBackendUpdates />);
+    await expect.element(page.getByText("0.2.0", { exact: true })).toBeVisible();
+    await expect.element(page.getByText("0.1.41", { exact: true })).toBeVisible();
+    await expect.element(page.getByText("Not bundled", { exact: true })).toBeVisible();
+  });
+
   it("does not add desktop chrome to the browser", async () => {
     using _bridge = installBridge(undefined);
     await using _screen = await render(<DesktopShell />);

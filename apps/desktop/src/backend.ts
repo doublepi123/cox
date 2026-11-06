@@ -1,8 +1,9 @@
 import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { backendOriginFromOutput } from "./config.ts";
+import { backendInstallerEnvironment } from "./backend-install.ts";
 
 export interface BackendOptions {
   readonly nodePath: string;
@@ -46,12 +47,16 @@ export class BackendProcess {
       ],
       {
         cwd: this.options.cwd,
-        env: this.options.environment,
+        env: { ...this.options.environment, COX_DESKTOP_PARENT_PID: String(process.pid) },
         detached: process.platform !== "win32",
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       },
     );
+    child.on("message", (message: unknown) => {
+      if (message === "cox:backend-ready-to-start" && child.connected && !this.stopping)
+        child.send("cox:backend-start", () => {});
+    });
     this.child = child;
     this.exited = new Promise((resolve) => {
       child.once("exit", () => resolve());
@@ -162,5 +167,59 @@ export class BackendProcess {
       }
     }
     await this.exited;
+  }
+}
+
+export async function validateBackendInstallation(input: {
+  readonly directory: string;
+  readonly node: string;
+  readonly preload: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const home = await mkdtemp(join(dirname(input.directory), "health-"));
+  let failure: string | undefined;
+  const backend = new BackendProcess({
+    nodePath: input.node,
+    entryPath: join(input.directory, "dist", "bin.mjs"),
+    preloadPath: input.preload,
+    homeDirectory: home,
+    cwd: home,
+    environment: {
+      ...backendInstallerEnvironment(input.environment),
+      HOME: home,
+      USERPROFILE: home,
+      XDG_CONFIG_HOME: join(home, "config"),
+      XDG_CACHE_HOME: join(home, "cache"),
+      APPDATA: join(home, "config"),
+      LOCALAPPDATA: join(home, "cache"),
+      COX_HOME: home,
+      T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
+      COX_TELEMETRY_ENABLED: "false",
+      T3CODE_TELEMETRY_ENABLED: "false",
+    },
+    onLog: () => {},
+    onUnexpectedExit: (message) => {
+      failure = message;
+    },
+  });
+  const stop = () => {
+    void backend.stop().catch(() => {});
+  };
+  input.signal.addEventListener("abort", stop, { once: true });
+  try {
+    input.signal.throwIfAborted();
+    const origin = await backend.start();
+    const page = await fetch(origin, { redirect: "error", signal: input.signal });
+    const html = await page.text();
+    const asset = /(?:src|href)="(\/assets\/[^"]+)"/.exec(html)?.[1];
+    if (!page.ok || !asset) throw new Error("The downloaded Cox browser UI is incomplete.");
+    const response = await fetch(origin + asset, { redirect: "error", signal: input.signal });
+    if (!response.ok || failure)
+      throw new Error(failure ?? "The downloaded Cox browser asset is unavailable.");
+  } finally {
+    input.signal.removeEventListener("abort", stop);
+    await backend.stop();
+    await rm(home, { recursive: true, force: true });
   }
 }

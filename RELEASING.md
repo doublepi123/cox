@@ -71,6 +71,59 @@ Creating a local workflow does not configure npm account permissions, push a tag
 version. Commit and push the reviewed workflow before triggering a release. npm ownership and
 trusted-publisher configuration remain explicit maintainer actions.
 
+## Desktop release matrix
+
+Desktop versioning is independent: bump `apps/desktop/package.json` (including its independently
+pinned Node engine when necessary) for a shell release, not the root/server versions. Cox
+updates change root and `apps/server/package.json`, not the desktop version.
+
+The `Release desktop combinations` workflow implements:
+
+- `v<cox-version>` → npm publication via the existing OIDC workflow → wait for public registry
+  propagation → pin the latest stable Cox and the highest published non-draft `desktop-v*`
+  release → build combination installers for macOS ARM64/Intel and Windows x64. Attach these
+  to the triggering Cox release without replacing the source archive or its `SHA256SUMS`.
+- `desktop-v<client-version>` → pin the latest stable Cox → build both combination installers
+  and client-only installers on all three platforms. Publish under the desktop tag. This
+  does not trigger npm publishing or change the Cox version.
+- Manual runs may select a client ref and Cox version for testing; publishing defaults off.
+  Manual publishing requires an existing version-matched `desktop-v*` tag. Untagged branch
+  test builds cannot silently become releases.
+
+Commit/push the workflow to the default branch, then publish the first independent client
+tag (the initial independent version is `desktop-v0.2.0`) before relying on Cox-triggered
+builds. Published desktop tags must contain the independent packaging/bootstrap scripts.
+The resolver selects desktop releases by semantic version, not GitHub's global Latest flag,
+which may refer to a Cox release. It pins both identities once before starting the build matrix.
+Stable releases are the automatic update channel; prereleases are not installed automatically.
+
+Combination names include both versions; client-only names include only the client version.
+Each flavor has separate build metadata and SHA-256 files. An additional
+`DESKTOP-SHA256SUMS-client-<CLIENT>-cox-<COX>.txt` is published without overwriting a source
+release's checksums. Existing desktop release assets are not removed when Cox releases advance.
+Existing release notes and published Latest flags are preserved. The job does not publish a
+maintainer-created draft; it only publishes newly created or Actions-owned drafts after
+uploading all assets. Newly created combination/desktop releases do not replace the global
+Latest flag; a maintainer can promote the complete Cox source release separately.
+
+Native CI tests client-only first installation in an isolated home, then a second launch
+with `--offline`; it also covers the local API/native terminal, authenticated browser session,
+WebSocket origin rejection, renderer isolation, single-instance behavior and graceful exit.
+macOS checks unpacked/DMG/ZIP signatures. Ad-hoc signatures do not confer Developer ID trust
+or notarization; release signing credentials remain separate.
+
+The npm package declares `coxDesktop.protocol` and its required Node version. The client
+rejects incompatible/unknown future protocols and Node runtime changes before installation.
+The known pre-manifest desktop-era Cox versions 0.1.40/0.1.41 remain supported on Node 26
+to bootstrap the first independently released client. New backend releases must retain the
+compatibility metadata; do not remove it to bypass an incompatible-client check.
+
+On initial client-only startup, internet access is required. Installed backends are kept
+outside the app bundle; updates are downloaded/staged without interrupting the active backend.
+Only the next app launch snapshots userdata and activates a candidate. An interrupted/failed
+migration restores the matching snapshot before any previous backend starts. Never implement
+binary-only rollback against data that a new backend may already have migrated.
+
 ## Maintainer checklist
 
 1. Keep the root and `apps/server` package versions aligned.
