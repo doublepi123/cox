@@ -112,15 +112,37 @@ describe("desktop backend supervisor", () => {
     const independentOrigin = await independent.backend.start();
     const { backend, home, onUnexpectedExit } = await createBackend("stubborn");
     await backend.start();
-    vi.useFakeTimers();
-    const stopping = backend.stop();
-    await vi.advanceTimersByTimeAsync(100);
-    vi.useRealTimers();
-    await stopping;
+    await backend.stop();
     await expect(readFile(join(home, "stopped"))).rejects.toThrow();
     expect(onUnexpectedExit).not.toHaveBeenCalled();
     expect((await fetch(`${independentOrigin}/api/auth/session`)).status).toBe(200);
   });
+
+  it.runIf(process.platform === "darwin")(
+    "waits for a reaped owned group after a macOS EPERM race",
+    async () => {
+      const { backend, home, onUnexpectedExit } = await createBackend("stubborn");
+      await backend.start();
+      const owner = JSON.parse(await readFile(join(home, "backend-owner.json"), "utf8")) as {
+        pid: number;
+      };
+      const killProcess = process.kill.bind(process);
+      const kill = vi.spyOn(process, "kill").mockImplementation((target, signal) => {
+        if (target === -owner.pid && signal === "SIGKILL") {
+          killProcess(target, signal);
+          throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+        }
+        return killProcess(target, signal);
+      });
+      try {
+        await backend.stop();
+        expect(() => killProcess(-owner.pid, 0)).toThrow();
+        expect(onUnexpectedExit).not.toHaveBeenCalled();
+      } finally {
+        kill.mockRestore();
+      }
+    },
+  );
 
   it("reports a backend crash after startup", async () => {
     const { backend, onUnexpectedExit } = await createBackend();

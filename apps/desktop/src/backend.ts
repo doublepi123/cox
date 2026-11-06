@@ -163,7 +163,25 @@ export class BackendProcess {
       try {
         process.kill(-child.pid, "SIGKILL");
       } catch (error) {
-        if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") throw error;
+        const code = error instanceof Error && "code" in error ? error.code : undefined;
+        if (process.platform === "darwin" && code === "EPERM") {
+          let reaped = false;
+          for (let attempt = 0; attempt < 40; attempt++) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 25));
+            try {
+              process.kill(-child.pid, 0);
+            } catch (probeError) {
+              const probeCode =
+                probeError instanceof Error && "code" in probeError ? probeError.code : undefined;
+              if (probeCode === "ESRCH") {
+                reaped = true;
+                break;
+              }
+              if (probeCode !== "EPERM") throw probeError;
+            }
+          }
+          if (!reaped) throw error;
+        } else if (code !== "ESRCH") throw error;
       }
     }
     await this.exited;
