@@ -61,6 +61,12 @@ pnpm --filter @cox/desktop smoke:app
 
 GitHub Actions 的 `Cox desktop packages` 工作流支持手动触发，在 macOS arm64 / Intel 和 Windows x64 上构建、运行上述 smoke 并上传安装包，不自动发布 Release。
 
+桌面版固定下载入口为 `https://github.com/doublepi123/cox/releases/tag/cox-desktop-latest`。
+`Update desktop latest release` 工作流在 `Release desktop combinations` 成功完成、桌面 Release 发布或编辑后自动同步，也支持手动触发。
+它按语义版本选择最新的已公开稳定 `desktop-v*`，将 `cox-desktop-latest` 滚动标签指向该版本提交，并更新独立 Release 的三平台下载链接和 SHA256 清单。
+同一客户端有多组内置后端时，选择最新稳定后端；安装包缺失时拒绝更新。草稿、预发布和服务端版本不参与选择，旧任务完成也不会回退到旧客户端。
+版本标签和安装包保持不变，滚动页链接版本 Release 的原始附件，不重复上传，也不占用服务端的 GitHub Latest 标记。
+
 macOS 的 CI 附件与正式发布均只含 DMG 安装包及其校验文件，不再生成或上传重复的 ZIP 应用包。
 
 原生菜单及更新、权限、退出、启动失败等弹窗跟随系统首选语言：中文系统只显示中文，其他语言回退英文，不同时显示中英文。浏览器界面继续使用已有的语言设置。

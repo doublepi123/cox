@@ -69,7 +69,7 @@ test("website works under a project subpath on desktop and phones without contac
     assert.match(await guide.getAttribute("href"), /\/README\.zh-CN\.md#/);
     assert.equal(
       await page.locator("#desktop .desktop-downloads a").getAttribute("href"),
-      "https://github.com/doublepi123/cox/releases",
+      "https://github.com/doublepi123/cox/releases/tag/cox-desktop-latest",
     );
     assert.equal(
       await page.locator("#desktop .mobile-link").getAttribute("href"),

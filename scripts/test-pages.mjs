@@ -65,6 +65,14 @@ test("has complete bilingual content for every interface label", async () => {
   }
 });
 
+test("links desktop downloads to the rolling desktop release, not the server latest", async () => {
+  const html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
+  assert.match(
+    html,
+    /class="desktop-downloads">\s*<a[^>]+href="https:\/\/github.com\/doublepi123\/cox\/releases\/tag\/cox-desktop-latest"/,
+  );
+});
+
 test("works at a project Pages subpath without root-relative assets or a hosted backend", async () => {
   const html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
   assert.equal(/(?:href|src)="\/(?!\/)/.test(html), false);

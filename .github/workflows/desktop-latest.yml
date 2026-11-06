@@ -1,0 +1,31 @@
+name: Update desktop latest release
+on:
+  workflow_run:
+    workflows: ["Release desktop combinations"]
+    types: [completed]
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cox-desktop-latest
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'doublepi123/cox' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)) && (github.event_name != 'release' || startsWith(github.event.release.tag_name, 'desktop-v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - name: Update rolling desktop tag and download page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node apps/desktop/scripts/sync-latest.ts
