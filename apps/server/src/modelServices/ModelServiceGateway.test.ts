@@ -830,41 +830,151 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect("does not spend a new upstream budget when an SDK repeats an exhausted request", () =>
-    Effect.gen(function* () {
-      const h = yield* harness({
-        recovery: { retryEnabled: true, maxAttempts: 2 },
-        respond: () => Response.json({ error: { code: "server_error" } }, { status: 503 }),
-      });
-      const session = ProviderSessionId.make("tracked-session");
-      yield* h.gateway.lifecycle.begin(
-        session,
-        {
-          threadId: ThreadId.make("tracked-thread"),
-          runId: RunId.make("tracked-run"),
-          rootNodeId: NodeId.make("tracked-node"),
-          providerThread: {
-            id: ProviderThreadId.make("tracked-provider-thread"),
-            driver: ProviderDriverKind.make("codex"),
+  it.effect.each([400, 429, 503])(
+    "gives repeated requests independent recovery budgets for HTTP %s",
+    (status) =>
+      Effect.gen(function* () {
+        const test = yield* harness({
+          recovery: {
+            retryEnabled: true,
+            retryNonTransientErrors: true,
+            retryOn429: true,
+            maxAttempts: 2,
           },
-        },
-        () => Effect.void,
-      );
-      const body = { model: "Vendor/Exact", messages: [] };
-      const headers = { authorization: `Bearer ${h.token}.${session}` };
-      const first = yield* h.invoke("/v1/chat/completions", body, headers).pipe(Effect.forkChild);
-      yield* TestClock.adjust("2 seconds");
-      expect((yield* Fiber.join(first)).status).toBe(503);
-      expect((yield* h.invoke("/v1/chat/completions", body, headers)).status).toBe(503);
-      expect(h.calls).toHaveLength(2);
-    }).pipe(Effect.scoped),
+          respond: () =>
+            Response.json(
+              { error: { code: status === 429 ? "insufficient_quota" : "invalid_request_error" } },
+              { status },
+            ),
+        });
+        const session = ProviderSessionId.make("tracked-session");
+        yield* test.gateway.lifecycle.begin(session, recoveryInput("tracked"), () => Effect.void);
+        const body = { model: "Vendor/Exact", messages: [] };
+        const headers = { authorization: `Bearer ${test.token}.${session}` };
+        for (const attempts of [2, 4]) {
+          const fiber = yield* test
+            .invoke("/v1/chat/completions", body, headers)
+            .pipe(Effect.forkChild);
+          yield* TestClock.adjust("2 seconds");
+          const response = yield* Fiber.join(fiber);
+          expect(response.status).toBe(status);
+          expect(JSON.parse(response.text)).toMatchObject({
+            error: { attempts: 2, terminationReason: "recovery_attempts_exhausted" },
+          });
+          expect(test.calls).toHaveLength(attempts);
+        }
+      }).pipe(Effect.scoped),
   );
 
   it.effect(
-    "keeps a budget exhaustion cached across native reconnects with the original cause",
+    "recovers an identical Pi request after twenty failures with a fresh request ID",
+    () => {
+      const messages: Record<string, unknown>[] = [];
+      const logger = Logger.make(({ message }) => {
+        if (Array.isArray(message))
+          for (const entry of message)
+            if (typeof entry === "object" && entry !== null) messages.push(record(entry));
+      });
+      return Effect.gen(function* () {
+        let calls = 0;
+        const test = yield* harness({
+          driver: "pi",
+          protocol: "openai-responses",
+          recovery: {
+            retryEnabled: true,
+            retryNonTransientErrors: true,
+            retryOn429: true,
+            retryToolRequests: true,
+            maxAttempts: 20,
+            maxConcurrent: 5,
+          },
+          respond: () =>
+            ++calls <= 23
+              ? Response.json({ error: { code: "invalid_request_error" } }, { status: 400 })
+              : Response.json({
+                  status: "completed",
+                  output: [
+                    {
+                      type: "message",
+                      content: [{ type: "output_text", text: "recovered identical payload" }],
+                    },
+                  ],
+                }),
+        });
+        const session = ProviderSessionId.make("pi-retry-session");
+        const input = recoveryInput("pi-retry");
+        yield* test.gateway.lifecycle.begin(
+          session,
+          {
+            ...input,
+            providerThread: { ...input.providerThread, driver: ProviderDriverKind.make("pi") },
+          },
+          () => Effect.void,
+        );
+        const body = {
+          model: "Vendor/Exact",
+          input: "same synthetic request",
+          tools: [{ type: "web_search" }],
+        };
+        const headers = { authorization: `Bearer ${test.token}.${session}` };
+        const first = yield* test.invoke("/v1/responses", body, headers).pipe(Effect.forkChild);
+        yield* TestClock.adjust("2 minutes");
+        const failure = yield* Fiber.join(first);
+        expect(failure.status).toBe(400);
+        expect(JSON.parse(failure.text)).toMatchObject({
+          error: { attempts: 20, terminationReason: "recovery_attempts_exhausted" },
+        });
+        expect(test.calls).toHaveLength(20);
+        const second = yield* test.invoke("/v1/responses", body, headers).pipe(Effect.forkChild);
+        yield* TestClock.adjust("10 seconds");
+        expect(yield* Fiber.join(second)).toMatchObject({
+          status: 200,
+          text: expect.stringContaining("recovered identical payload"),
+        });
+        expect(test.calls).toHaveLength(24);
+        const policies = messages.filter((message) => message.event === "policy");
+        expect(policies).toHaveLength(2);
+        const requestIds = policies.map((message) => message.requestId);
+        expect(new Set(requestIds).size).toBe(2);
+        for (const requestId of requestIds) {
+          expect(requestId).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/));
+          const attempts = messages.filter(
+            (message) => message.event === "attempt_started" && message.requestId === requestId,
+          );
+          expect(attempts[0]?.attempt).toBe(1);
+          expect(policies.find((message) => message.requestId === requestId)?.runId).toBe(
+            input.runId,
+          );
+        }
+        expect(JSON.stringify(messages)).not.toContain("cached_failure");
+      }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+    },
+  );
+
+  it.effect.each([400, 422])(
+    "does not cache non-retryable HTTP %s failures between requests",
+    (status) =>
+      Effect.gen(function* () {
+        const test = yield* harness({
+          recovery: { retryEnabled: true },
+          respond: () => Response.json({ error: { code: "invalid_request_error" } }, { status }),
+        });
+        const session = ProviderSessionId.make("invalid-session");
+        yield* test.gateway.lifecycle.begin(session, recoveryInput("invalid"), () => Effect.void);
+        const body = { model: "Vendor/Exact", messages: [] };
+        const headers = { authorization: `Bearer ${test.token}.${session}` };
+        for (const attempts of [1, 2]) {
+          expect((yield* test.invoke("/v1/chat/completions", body, headers)).status).toBe(status);
+          expect(test.calls).toHaveLength(attempts);
+        }
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "renews recovery budgets across native reconnects and preserves each failure cause",
     () =>
       Effect.gen(function* () {
-        const h = yield* harness({
+        const test = yield* harness({
           recovery: {
             retryEnabled: true,
             hedgeEnabled: true,
@@ -875,10 +985,12 @@ it.layer(layer)("model service gateway", (it) => {
           headersDelayMs: 10000,
         });
         const session = ProviderSessionId.make("budget-session");
-        yield* h.gateway.lifecycle.begin(session, recoveryInput("budget"), () => Effect.void);
+        yield* test.gateway.lifecycle.begin(session, recoveryInput("budget"), () => Effect.void);
         const body = { model: "Vendor/Exact", messages: [] };
-        const headers = { authorization: `Bearer ${h.token}.${session}` };
-        const fiber = yield* h.invoke("/v1/chat/completions", body, headers).pipe(Effect.forkChild);
+        const headers = { authorization: `Bearer ${test.token}.${session}` };
+        const fiber = yield* test
+          .invoke("/v1/chat/completions", body, headers)
+          .pipe(Effect.forkChild);
         yield* TestClock.adjust("2 seconds");
         const first = yield* Fiber.join(fiber);
         expect(first.status).toBe(504);
@@ -894,11 +1006,27 @@ it.layer(layer)("model service gateway", (it) => {
             },
           },
         });
-        const count = h.calls.length;
-        const repeated = yield* h.invoke("/v1/chat/completions", body, headers);
-        expect(repeated.text).toBe(first.text);
+        const count = test.calls.length;
+        const second = yield* test
+          .invoke("/v1/chat/completions", body, headers)
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        const repeated = yield* Fiber.join(second);
+        expect(repeated.status).toBe(504);
+        expect(JSON.parse(repeated.text)).toMatchObject({
+          error: {
+            code: "recovery_budget_exhausted",
+            source: "gateway",
+            budgetMs: 1000,
+            lastAttemptFailure: {
+              code: "upstream_response_headers_timeout",
+              timeoutMs: 300,
+              source: "gateway",
+            },
+          },
+        });
         expect(repeated.headers["x-should-retry"]).toBe("false");
-        expect(h.calls).toHaveLength(count);
+        expect(test.calls.length).toBeGreaterThan(count);
       }).pipe(Effect.scoped),
   );
 

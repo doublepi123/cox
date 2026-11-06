@@ -454,27 +454,11 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
-    const requestDigest = yield* crypto.digest(
-      "SHA-256",
-      new TextEncoder().encode(url.pathname + (yield* encode(body))),
-    );
+    const requestId = yield* crypto.randomUUIDv4();
     const tracking = lifecycle.request(
       sessionId ? ProviderSessionId.make(sessionId) : undefined,
-      Buffer.from(requestDigest).toString("hex"),
+      requestId,
     );
-    if (tracking.failure) {
-      yield* Effect.logInfo("Model gateway recovery", {
-        event: "cached_failure",
-        requestId: yield* crypto.randomUUIDv4(),
-        sessionId,
-        ...tracking.context,
-        incoming,
-        terminationReason: tracking.failure.terminationReason,
-        attempts: tracking.failure.attempts,
-        budgetMs: tracking.failure.budgetMs,
-      });
-      return recoveryFailureResponse(tracking.failure);
-    }
     const googleId =
       incoming === "gemini"
         ? decodeURIComponent(
@@ -539,7 +523,6 @@ export const make = Effect.gen(function* () {
       ),
       Effect.orElseSucceed(() => false),
     );
-    const requestId = yield* crypto.randomUUIDv4();
     const diagnostic = (event: Readonly<Record<string, unknown>>) =>
       Effect.logInfo("Model gateway recovery", {
         requestId,
@@ -917,8 +900,7 @@ export const make = Effect.gen(function* () {
               { status: 499, headers: { "x-should-retry": "false" } },
             ),
           ),
-        ModelServiceRequestFailure: (error) =>
-          tracking.failed(error).pipe(Effect.as(recoveryFailureResponse(error))),
+        ModelServiceRequestFailure: (error) => Effect.succeed(recoveryFailureResponse(error)),
       }),
     );
   }).pipe(

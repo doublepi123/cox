@@ -7,7 +7,6 @@ import { makeProviderRetryTurnItem } from "@t3tools/provider-core/server/failure
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import type { RecoveryProgress } from "./recovery.ts";
-import type { ModelServiceRequestFailure } from "./recovery.ts";
 
 type RecoveryTurn = Pick<ProviderAdapterV2TurnInput, "threadId" | "runId" | "rootNodeId"> & {
   readonly providerThread: Pick<ProviderAdapterV2TurnInput["providerThread"], "id" | "driver">;
@@ -21,7 +20,6 @@ interface RecoveryEntry {
   active: boolean;
   latest: RecoveryProgress | undefined;
   started: DateTime.Utc | undefined;
-  readonly failures: Map<string, ModelServiceRequestFailure>;
   readonly requests: Map<string, RecoveryProgress>;
 }
 
@@ -119,7 +117,6 @@ export function makeRecoveryTracker() {
           active: true,
           latest: undefined,
           started: undefined,
-          failures: new Map(),
           requests: new Map(),
         };
       }),
@@ -165,7 +162,7 @@ export function makeRecoveryTracker() {
         }
         sessions.delete(sessionId);
       }),
-    request: (sessionId: ProviderSessionId | undefined, key: string) => {
+    request: (sessionId: ProviderSessionId | undefined, requestId: string) => {
       const session = sessionId ? sessionFor(sessionId) : undefined;
       const entry = session?.entry;
       return {
@@ -177,15 +174,10 @@ export function makeRecoveryTracker() {
             }
           : undefined,
         cancelled: Effect.sync(() => session?.cancelled === true),
-        failure: session?.cancelled ? undefined : entry?.failures.get(key),
-        failed: (error: ModelServiceRequestFailure) =>
-          Effect.sync(() => {
-            entry?.failures.set(key, error);
-          }),
         progress: (progress: RecoveryProgress) =>
           entry?.active
             ? Effect.suspend(() => {
-                entry.requests.set(key, progress);
+                entry.requests.set(requestId, progress);
                 entry.latest =
                   [...entry.requests.values()].find(
                     (value) => value.phase === "retrying" || value.phase === "hedging",

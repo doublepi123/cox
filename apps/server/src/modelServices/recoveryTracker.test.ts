@@ -12,7 +12,6 @@ import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/Provi
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { makeRecoveryTracker } from "./recoveryTracker.ts";
-import { ModelServiceRequestFailure } from "./recovery.ts";
 
 const input = (id: string) => ({
   threadId: ThreadId.make(id),
@@ -124,24 +123,17 @@ it.effect("routes gateway progress to the correct turn and updates one stable it
   }),
 );
 
-it.effect("shares exhausted request results with SDK retries and resets them for a new turn", () =>
+it.effect("tracks request cancellation across turns without exposing failure cache state", () =>
   Effect.gen(function* () {
     const tracker = makeRecoveryTracker();
     const session = ProviderSessionId.make("session");
     yield* tracker.begin(session, input("a"), () => Effect.void);
-    const request = tracker.request(session, "same-body");
-    const error = new ModelServiceRequestFailure({
-      detail: "Exhausted",
-      status: 503,
-      retryable: false,
-    });
-    yield* request.failed(error);
-    expect(tracker.request(session, "same-body").failure).toBe(error);
-    expect(tracker.request(session, "different-body").failure).toBeUndefined();
+    const request = tracker.request(session, "first-request");
+    expect(request).not.toHaveProperty("failure");
+    expect(request).not.toHaveProperty("failed");
     yield* tracker.begin(session, input("b"), () => Effect.void);
     expect(yield* request.cancelled).toBe(false);
-    expect(tracker.request(session, "same-body").failure).toBeUndefined();
-    const next = tracker.request(session, "same-body");
+    const next = tracker.request(session, "second-request");
     yield* tracker.cancel(session);
     expect(yield* next.cancelled).toBe(true);
     expect(yield* request.cancelled).toBe(true);
@@ -223,12 +215,12 @@ it.effect(
     }),
 );
 
-it.effect("keeps old request progress and failures out of a new turn", () =>
+it.effect("keeps old request progress out of a new turn", () =>
   Effect.gen(function* () {
     const tracker = makeRecoveryTracker();
     const session = ProviderSessionId.make("session");
     yield* tracker.begin(session, input("a"), () => Effect.void);
-    const old = tracker.request(session, "same-body");
+    const old = tracker.request(session, "old-request");
     const events: ProviderAdapterV2Event[] = [];
     yield* tracker.begin(session, input("b"), (event) =>
       Effect.sync(() => {
@@ -237,11 +229,10 @@ it.effect("keeps old request progress and failures out of a new turn", () =>
     );
     yield* tracker.observe(session, turn("b"));
     yield* old.progress(progress);
-    yield* old.failed(
-      new ModelServiceRequestFailure({ detail: "Old failure", status: 503, retryable: false }),
-    );
     expect(events).toHaveLength(0);
-    expect(tracker.request(session, "same-body").failure).toBeUndefined();
+    yield* tracker.request(session, "new-request").progress(progress);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ turnItem: { runId: input("b").runId } });
     expect(yield* old.cancelled).toBe(false);
     yield* tracker.cancel(session);
     yield* tracker.begin(session, input("c"), () => Effect.void);
