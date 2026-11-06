@@ -38,5 +38,9 @@ export function useDesktopBackendUpdate() {
     state,
     check: () => execute(window.coxDesktop?.checkBackendUpdate),
     install: () => execute(window.coxDesktop?.installBackendUpdate),
+    setPolicy: (policy: "automatic" | "ignore-version" | "never", version?: string) => {
+      const setPolicy = window.coxDesktop?.setBackendUpdatePolicy;
+      return execute(setPolicy ? () => setPolicy(policy, version) : undefined);
+    },
   };
 }

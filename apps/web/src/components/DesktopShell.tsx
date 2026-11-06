@@ -112,7 +112,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
                 : updateState?.status === "installing"
                   ? t("Downloading and verifying Cox…")
                   : updateState?.status === "error"
-                    ? updateState.message
+                    ? t(updateState.message ?? "Could not update Cox.")
                     : updateState?.status === "incompatible"
                       ? t("This Cox update requires a newer desktop client.")
                       : t("Cox {version} is available.", {
@@ -124,6 +124,21 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
             <AlertDialogClose render={<Button variant="outline" />}>
               {t(updateState?.status === "ready" ? "Done" : "Later")}
             </AlertDialogClose>
+            {updateState?.status === "available" && window.coxDesktop.setBackendUpdatePolicy && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    void updates.setPolicy("ignore-version", updateState.latestVersion ?? undefined)
+                  }
+                >
+                  {t("Ignore this version")}
+                </Button>
+                <Button variant="outline" onClick={() => void updates.setPolicy("never")}>
+                  {t("Ignore all updates")}
+                </Button>
+              </>
+            )}
             {updateState?.status === "available" && (
               <Button onClick={() => void updates.install()}>{t("Download Cox update")}</Button>
             )}

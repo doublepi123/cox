@@ -13,6 +13,22 @@ const metadata = JSON.parse(
 const basename = metadata.artifactBaseName + "-mac-" + process.arch;
 const temporary = await mkdtemp(join(tmpdir(), "cox-desktop-signatures-"));
 const verify = (application: string) => {
+  const localizations = JSON.parse(
+    execFileSync(
+      "plutil",
+      [
+        "-extract",
+        "CFBundleLocalizations",
+        "json",
+        "-o",
+        "-",
+        join(application, "Contents/Info.plist"),
+      ],
+      { encoding: "utf8" },
+    ),
+  ) as string[];
+  for (const locale of ["en", "zh-Hans", "zh-Hant"])
+    assert.ok(localizations.includes(locale), "Application must declare localization " + locale);
   execFileSync("codesign", ["--verify", "--deep", "--strict", "--verbose=2", application], {
     stdio: "inherit",
   });

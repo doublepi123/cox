@@ -26,6 +26,10 @@ theme tools, placeholders and accessible names use the same resources. Built-in 
 is localized at the rendering boundary; stored values and option IDs are never translated.
 External provider errors, raw diagnostic output and provider-supplied model descriptions remain
 unchanged. New interface strings need entries in both resources.
+Composite titles and select-value render functions must translate their own labels; the settings
+row only translates plain string props. Translate interface-owned interpolation arguments before
+inserting them, but preserve user/provider values. Keep sentence keys free of trailing spaces and
+add spacing outside the translation call when composing descriptions.
 
 Run the unit and real Chromium integration tests with the web package test command. The browser
 coverage exercises actual settings/navigation/project components and the Markdown renderer,

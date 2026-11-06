@@ -102,6 +102,156 @@ async function fixture(bundledVersion: string | null = "0.1.1") {
 }
 
 describe("managed desktop Cox backend", () => {
+  it("persists an ignored version while still offering newer releases", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.check();
+    expect(await test.manager.setPolicy("ignore-version", "0.1.2")).toMatchObject({
+      status: "idle",
+      latestVersion: null,
+      automaticChecks: true,
+      ignoredVersion: "0.1.2",
+    });
+    const restarted = test.make();
+    await restarted.launch(test.start, test.stop);
+    expect((await restarted.check()).status).toBe("idle");
+    expect(restarted.getState().latestVersion).toBeNull();
+    expect((await restarted.check(true)).status).toBe("available");
+    test.fetcher.mockImplementation(async () => new Response(JSON.stringify(metadata("0.1.3"))));
+    expect(await restarted.check()).toMatchObject({ status: "available", latestVersion: "0.1.3" });
+    expect(test.install).not.toHaveBeenCalled();
+    expect(test.stop).not.toHaveBeenCalled();
+  });
+
+  it("permanently disables automatic checks across restarts but allows explicit checks", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.setPolicy("never");
+    const restarted = test.make();
+    await restarted.launch(test.start, test.stop);
+    expect(await restarted.check()).toMatchObject({ automaticChecks: false, status: "idle" });
+    expect(test.fetcher).not.toHaveBeenCalled();
+    expect(await restarted.check(true)).toMatchObject({
+      automaticChecks: false,
+      status: "available",
+    });
+    expect(test.fetcher).toHaveBeenCalledOnce();
+    expect(test.stop).not.toHaveBeenCalled();
+  });
+
+  it("restores automatic checks and clears an ignored version", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.setPolicy("ignore-version", "0.1.2");
+    await test.manager.setPolicy("automatic");
+    const restarted = test.make();
+    await restarted.launch(test.start, test.stop);
+    expect(await restarted.check()).toMatchObject({
+      automaticChecks: true,
+      ignoredVersion: null,
+      status: "available",
+    });
+    await restarted.setPolicy("never");
+    await restarted.setPolicy("automatic");
+    expect((await restarted.check()).status).toBe("available");
+  });
+
+  it("does not dismiss a newer release when ignoring the version shown by an older dialog", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.check();
+    expect(await test.manager.setPolicy("ignore-version", "0.1.0")).toMatchObject({
+      status: "available",
+      latestVersion: "0.1.2",
+      ignoredVersion: "0.1.0",
+    });
+  });
+
+  it("suppresses a check already in flight when automatic checks are disabled", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    const response = Promise.withResolvers<Response>();
+    test.fetcher.mockImplementation(() => response.promise);
+    const checking = test.manager.check();
+    await test.manager.setPolicy("never");
+    response.resolve(new Response(JSON.stringify(metadata())));
+    expect(await checking).toMatchObject({
+      status: "idle",
+      latestVersion: null,
+      automaticChecks: false,
+    });
+    expect(test.onState.mock.calls.some(([state]) => state.status === "available")).toBe(false);
+  });
+
+  it("flushes accepted preference changes before closing", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    const change = test.manager.setPolicy("never");
+    await test.manager.close();
+    await change;
+    expect(
+      JSON.parse(await readFile(join(test.home, "backend-updates/preferences.json"), "utf8")),
+    ).toEqual({ automaticChecks: false, ignoredVersion: null });
+  });
+
+  it("does not let ignored updates block required client-only first installation", async () => {
+    const test = await fixture(null);
+    const directory = join(test.home, "backend-updates");
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, "preferences.json"),
+      JSON.stringify({ automaticChecks: false, ignoredVersion: null }),
+    );
+    await test.manager.launch(test.start, test.stop);
+    expect(test.manager.getState()).toMatchObject({
+      automaticChecks: false,
+      currentVersion: "0.1.2",
+    });
+    expect(test.install).toHaveBeenCalledOnce();
+  });
+
+  it("rejects invalid ignored versions before writing preferences", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await expect(test.manager.setPolicy("ignore-version", "../../0.1.2")).rejects.toThrow(
+      "valid version",
+    );
+    await expect(
+      readFile(join(test.home, "backend-updates/preferences.json"), "utf8"),
+    ).rejects.toThrow();
+  });
+
+  it("rejects malformed saved update preferences", async () => {
+    const test = await fixture();
+    const directory = join(test.home, "backend-updates");
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, "preferences.json"),
+      JSON.stringify({ automaticChecks: "false", ignoredVersion: null }),
+    );
+    await expect(test.manager.launch(test.start, test.stop)).rejects.toThrow(
+      "Invalid Cox update preferences.",
+    );
+    expect(test.start).not.toHaveBeenCalled();
+  });
+
+  it("preserves staged updates and running data when disabling automatic checks", async () => {
+    const test = await fixture();
+    await mkdir(test.data);
+    await writeFile(join(test.data, "database"), "unchanged");
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.check();
+    await test.manager.stage();
+    expect(await test.manager.setPolicy("never")).toMatchObject({
+      status: "ready",
+      automaticChecks: false,
+    });
+    expect((await test.disk()).pending?.version).toBe("0.1.2");
+    expect(await readFile(join(test.data, "database"), "utf8")).toBe("unchanged");
+    expect(test.start).toHaveBeenCalledOnce();
+    expect(test.stop).not.toHaveBeenCalled();
+  });
+
   it("keeps development workspace symlinks in place instead of copying them into a runtime cache", async () => {
     const test = await fixture();
     const development = test.make(true, "0.1.1", true);

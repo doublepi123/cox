@@ -26,6 +26,7 @@ describe("model service contracts", () => {
     expect(DEFAULT_MODEL_SERVICE_RECOVERY).toEqual({
       retryEnabled: true,
       retryOn429: false,
+      retryNonTransientErrors: false,
       retryToolRequests: false,
       hedgeEnabled: true,
       hedgeDelayMs: 30000,
@@ -72,6 +73,7 @@ describe("model service contracts", () => {
           ...service,
           recovery: recovery({
             retryOn429: true,
+            retryNonTransientErrors: true,
             retryToolRequests: true,
             maxAttempts: 20,
           }),
@@ -79,6 +81,7 @@ describe("model service contracts", () => {
       ).recovery,
     ).toMatchObject({
       retryOn429: true,
+      retryNonTransientErrors: true,
       retryToolRequests: true,
       maxAttempts: 20,
     });

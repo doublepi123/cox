@@ -17,6 +17,8 @@ export interface DesktopBackendUpdateState {
     | "ready"
     | "error";
   readonly message: string | null;
+  readonly automaticChecks?: boolean;
+  readonly ignoredVersion?: string | null;
 }
 
 export interface DesktopShellBridge {
@@ -30,5 +32,9 @@ export interface DesktopShellBridge {
   getBackendUpdate?(): Promise<DesktopBackendUpdateState>;
   checkBackendUpdate?(): Promise<DesktopBackendUpdateState>;
   installBackendUpdate?(): Promise<DesktopBackendUpdateState>;
+  setBackendUpdatePolicy?(
+    policy: "automatic" | "ignore-version" | "never",
+    version?: string,
+  ): Promise<DesktopBackendUpdateState>;
   onBackendUpdate?(listener: (state: DesktopBackendUpdateState) => void): () => void;
 }

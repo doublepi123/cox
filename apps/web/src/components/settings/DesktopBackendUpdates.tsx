@@ -5,7 +5,7 @@ import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 export function DesktopBackendUpdates() {
   const { t } = useTranslation();
-  const { state, check, install } = useDesktopBackendUpdate();
+  const { state, check, install, setPolicy } = useDesktopBackendUpdate();
   if (!state) return null;
   const busy = state.status === "checking" || state.status === "installing";
   return (
@@ -33,10 +33,18 @@ export function DesktopBackendUpdates() {
                 : state.status === "available"
                   ? t("Cox {version} is available.", { version: state.latestVersion ?? "" })
                   : state.status === "error"
-                    ? (state.message ?? t("Could not update Cox."))
+                    ? t(state.message ?? "Could not update Cox.")
                     : state.status === "checking"
                       ? t("Checking for Cox updates…")
-                      : t("The client checks for Cox updates automatically.")
+                      : state.automaticChecks === false
+                        ? t(
+                            "Automatic Cox update checks are disabled. You can still check manually.",
+                          )
+                        : state.ignoredVersion
+                          ? t("Cox {version} is ignored. Newer versions will still be offered.", {
+                              version: state.ignoredVersion,
+                            })
+                          : t("The client checks for Cox updates automatically.")
         }
         control={
           <div className="flex flex-wrap gap-2">
@@ -53,6 +61,17 @@ export function DesktopBackendUpdates() {
                 {t("Download Cox update")}
               </Button>
             )}
+            {window.coxDesktop?.setBackendUpdatePolicy &&
+              (state.automaticChecks === false || state.ignoredVersion) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void setPolicy("automatic")}
+                >
+                  {t("Restore automatic Cox update checks")}
+                </Button>
+              )}
           </div>
         }
       />

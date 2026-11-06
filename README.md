@@ -159,6 +159,13 @@ only. You can also add or edit model metadata manually when a service has no mod
 In **Settings → Providers**, bind a Codex, Claude Code, Pi or OpenCode instance to the service,
 select its models and a default. Unbinding restores that instance's independent settings.
 
+Each service's **Request recovery** settings include an opt-in **Retry non-transient upstream
+errors (e.g. HTTP 400)** switch, disabled by default for existing and new services. With
+automatic retries enabled, it also retries upstream 4xx/5xx failures (including invalid
+requests and authentication errors) before output starts. The separate 429 and upstream-tool
+switches still apply, as do attempt/time budgets, cancellation and stateful-request limits.
+Local gateway validation failures are not overridden; permanent upstream errors may waste usage.
+
 OpenCode 2 discovers visible primary agents from each project's directory, including plugin
 agents. In normal mode, an explicit Agent selection overrides the native session agent;
 without a selection, Cox preserves the native default chosen when the session is created.
@@ -239,8 +246,8 @@ versions and `v<VERSION>` tags; desktop releases use `apps/desktop/package.json`
 `desktop-v<VERSION>` tags.
 
 - Combined installers include both versions in their filenames: for example,
-  `cox-desktop-0.2.3-cox-0.1.42-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
-- Client-only installers, such as `cox-desktop-0.2.3-client-only-win-x64.exe`, include the browser shell,
+  `cox-desktop-0.2.4-cox-0.1.43-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
+- Client-only installers, such as `cox-desktop-0.2.4-client-only-win-x64.exe`, include the browser shell,
   standalone Node and npm, but **no Cox backend**. Their first launch needs internet access
   to install the latest stable `@doublepi123/cox`. No global Node/npm/Cox installation is needed.
   A failed initial download offers Retry/Quit; subsequent launches use the verified local

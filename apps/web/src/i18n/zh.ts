@@ -1,4 +1,18 @@
 export const zh = {
+  "Retry non-transient upstream errors (e.g. HTTP 400)": "重试非常规上游错误（如 HTTP 400）",
+  "Requires automatic retries. Retries upstream 4xx/5xx errors before output starts, including invalid requests and authentication failures. 429 uses its separate switch. Attempts and recovery budget still apply; persistent errors may waste usage.":
+    "需开启自动重试。在开始输出前，也重试上游 4xx/5xx 错误，包括请求无效和认证失败；429 由独立开关控制。仍受尝试次数和恢复时间预算限制，持续错误可能浪费用量。",
+  "Ignore this version": "忽略本版本",
+  "Ignore all updates": "永久忽略更新",
+  "Automatic Cox update checks are disabled. You can still check manually.":
+    "已关闭 Cox 自动更新检查，仍可手动检查更新。",
+  "Cox {version} is ignored. Newer versions will still be offered.":
+    "已忽略 Cox {version}，仍会提醒更新的版本。",
+  "Restore automatic Cox update checks": "恢复 Cox 自动更新检查",
+  "Update checks are disabled in offline mode.": "离线模式下无法检查更新。",
+  "This Cox version failed to start previously. Wait for a newer release.":
+    "此 Cox 版本此前启动失败，请等待更新的版本。",
+  "This Cox version requires a newer desktop client.": "此 Cox 版本需要更新的桌面客户端。",
   "Desktop client": "桌面客户端",
   "Client version": "客户端版本",
   "Installed Cox version": "当前 Cox 版本",
@@ -1608,7 +1622,7 @@ export const zh = {
   "rich text composer": "富文本输入框",
   "send shortcut": "发送快捷键",
   "skills in slash menu": "斜杠菜单中的技能",
-  "Queue follow-ups while the agent runs or steer the current run. ":
+  "Queue follow-ups while the agent runs or steer the current run.":
     "代理运行时将后续消息排队，或立即引导当前运行。",
   "follow-up behavior": "后续消息行为",
   "diff colors": "差异颜色",
@@ -3490,4 +3504,15 @@ export const zh = {
   "Provider process is gone. Interrupt or restart the child thread to respond.":
     "提供商进程已退出。请中断或重启该子对话以进行响应。",
   "Failed to submit approval decision.": "提交批准决定失败。",
+  "Model Picker: Next Provider": "模型选择器：下一个提供商",
+  "Model Picker: Previous Provider": "模型选择器：上一个提供商",
+  "Thread: Undo": "对话：撤销",
+  "Usage: Period: 30 days": "用量：时段：30 天",
+  "Usage: Period: 7 days": "用量：时段：7 天",
+  "Usage: Period: 90 days": "用量：时段：90 天",
+  "Usage: Period: Past 24h": "用量：时段：过去 24 小时",
+  "GitHub accounts and token": "GitHub 账户和令牌",
+  "GitCafe credentials": "GitCafe 凭据",
+  "Bitbucket credentials": "Bitbucket 凭据",
+  "Add secret provider": "添加密钥提供商",
 } as const;

@@ -180,7 +180,7 @@ function BackgroundActivityAdvancedDialog({
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
                 <div className="text-sm font-medium">
-                  {searchableSetting("git-fetch-interval").title}
+                  {t(searchableSetting("git-fetch-interval").title)}
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   {t("Refresh remote branch status in the background.")}
@@ -390,8 +390,8 @@ export function BackgroundActivitySettingsRow() {
   const backgroundActivityDescription =
     backgroundActivityProfileOption === "advanced"
       ? translateUi("{description} Shared policy: {policy}.", {
-          description: ADVANCED_BACKGROUND_ACTIVITY_DESCRIPTION,
-          policy: BACKGROUND_ACTIVITY_PROFILE_LABELS[activeBackgroundActivityProfile],
+          description: translateUi(ADVANCED_BACKGROUND_ACTIVITY_DESCRIPTION),
+          policy: translateUi(BACKGROUND_ACTIVITY_PROFILE_LABELS[activeBackgroundActivityProfile]),
         })
       : translateUi(BACKGROUND_ACTIVITY_PROFILE_DESCRIPTIONS[resolvedBackgroundActivity.profile]);
   const canResetBackgroundActivity = !Equal.equals(
@@ -406,7 +406,7 @@ export function BackgroundActivitySettingsRow() {
       id={searchableSetting("background-activity").id}
       title={
         <span className="inline-flex items-center gap-1.5">
-          {searchableSetting("background-activity").title}
+          {translateUi(searchableSetting("background-activity").title)}
           <PolicyTooltip>
             {translateUi(
               "This shared policy gates background work such as Git refreshes and provider health probes after their individual intervals elapse.",
@@ -445,7 +445,7 @@ export function BackgroundActivitySettingsRow() {
               <SelectValue>
                 {(value: BackgroundActivityProfileOption | null) =>
                   value === null
-                    ? "Mixed"
+                    ? translateUi("Mixed")
                     : translateUi(BACKGROUND_ACTIVITY_PROFILE_OPTION_LABELS[value])
                 }
               </SelectValue>
@@ -464,7 +464,7 @@ export function BackgroundActivitySettingsRow() {
                 {isEnvironmentScope
                   ? translateUi(BACKGROUND_ACTIVITY_PROFILE_OPTION_LABELS.advanced)
                   : translateUi("{name} (one environment)", {
-                      name: BACKGROUND_ACTIVITY_PROFILE_OPTION_LABELS.advanced,
+                      name: translateUi(BACKGROUND_ACTIVITY_PROFILE_OPTION_LABELS.advanced),
                     })}
               </SelectItem>
             </SelectPopup>

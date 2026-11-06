@@ -527,6 +527,102 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect.each(
+    [400, 401, 403, 404, 422, 501].flatMap((status) =>
+      [false, true].map((enabled) => ({ status, enabled })),
+    ),
+  )("configures retries for non-transient upstream errors (%j)", ({ status, enabled }) =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const h = yield* harness({
+        recovery: { retryEnabled: true, retryNonTransientErrors: enabled },
+        respond: () =>
+          ++calls === 1
+            ? Response.json({ error: { code: "invalid_request_error" } }, { status })
+            : Response.json({ choices: [{ message: { content: "recovered" } }] }),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(enabled ? 200 : status);
+      expect(h.calls).toHaveLength(enabled ? 2 : 1);
+      if (enabled) expect(result.text).toContain("recovered");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([false, true])(
+    "keeps upstream-tool HTTP 400 retries opt-in (%s)",
+    (retryToolRequests) =>
+      Effect.gen(function* () {
+        let calls = 0;
+        const h = yield* harness({
+          protocol: "openai-responses",
+          recovery: { retryEnabled: true, retryNonTransientErrors: true, retryToolRequests },
+          respond: () =>
+            ++calls === 1
+              ? Response.json({ error: { code: "invalid_request_error" } }, { status: 400 })
+              : Response.json({
+                  status: "completed",
+                  output: [{ type: "message", content: [{ type: "output_text", text: "found" }] }],
+                }),
+        });
+        const fiber = yield* h
+          .invoke("/v1/responses", {
+            model: "Vendor/Exact",
+            input: "search",
+            tools: [{ type: "web_search" }],
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        expect((yield* Fiber.join(fiber)).status).toBe(retryToolRequests ? 200 : 400);
+        expect(h.calls).toHaveLength(retryToolRequests ? 2 : 1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not replay non-transient stream errors after output starts", () =>
+    Effect.gen(function* () {
+      const encoder = new TextEncoder();
+      let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+      const h = yield* harness({
+        recovery: { retryEnabled: true, retryNonTransientErrors: true },
+        respond: () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(output) {
+                controller = output;
+                output.enqueue(
+                  encoder.encode(
+                    'data: {"choices":[{"delta":{"content":"already delivered"}}]}\n\n',
+                  ),
+                );
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+          stream: true,
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      controller!.enqueue(
+        encoder.encode('data: {"error":{"status":400,"code":"invalid_request_error"}}\n\n'),
+      );
+      controller!.close();
+      const result = yield* Fiber.join(fiber);
+      expect(result.text).toContain("already delivered");
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect.each([false, true])("makes quota 429 retries configurable (%s)", (retryOn429) =>
     Effect.gen(function* () {
       let calls = 0;
@@ -703,26 +799,35 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect.each([
-    { background: true },
-    { previous_response_id: "prior-response" },
-    { conversation: "prior-conversation" },
-  ])("preserves stateful request limits when retry overrides are enabled (%j)", (state) =>
-    Effect.gen(function* () {
-      const h = yield* harness({
-        protocol: "openai-responses",
-        recovery: { retryEnabled: true, retryOn429: true, retryToolRequests: true },
-        respond: () => Response.json({ error: { code: "insufficient_quota" } }, { status: 429 }),
-      });
-      const result = yield* h.invoke("/v1/responses", {
-        model: "Vendor/Exact",
-        input: "search",
-        tools: [{ type: "web_search" }],
-        ...state,
-      });
-      expect(result.status).toBe(429);
-      expect(h.calls).toHaveLength(1);
-    }).pipe(Effect.scoped),
+  it.effect.each(
+    [
+      { background: true },
+      { previous_response_id: "prior-response" },
+      { conversation: "prior-conversation" },
+    ].flatMap((state) => [400, 429].map((status) => ({ state, status }))),
+  )(
+    "preserves stateful request limits when retry overrides are enabled (%j)",
+    ({ state, status }) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol: "openai-responses",
+          recovery: {
+            retryEnabled: true,
+            retryOn429: true,
+            retryNonTransientErrors: true,
+            retryToolRequests: true,
+          },
+          respond: () => Response.json({ error: { code: "invalid_request_error" } }, { status }),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "search",
+          tools: [{ type: "web_search" }],
+          ...state,
+        });
+        expect(result.status).toBe(status);
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("does not spend a new upstream budget when an SDK repeats an exhausted request", () =>

@@ -3,6 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { en } from "./en";
 import { zh } from "./zh";
 import {
+  SETTINGS_SEARCH_ITEMS,
+  SETTINGS_SECTION_LABELS,
+} from "../components/settings/settingsSearch";
+import {
   detectDeviceLanguage,
   parseLanguagePreference,
   resolveLanguage,
@@ -48,6 +52,22 @@ describe("translation resources", () => {
     expect(translate("en", "Add project")).toBe("Add project");
     expect(translate("zh", "const message = 'Settings';")).toBe("const message = 'Settings';");
     expect(translate("zh", "toString")).toBe("toString");
+  });
+
+  it("covers settings catalog titles and navigation labels in both resources", () => {
+    const titles = [
+      ...SETTINGS_SEARCH_ITEMS.map((item) => item.title),
+      ...Object.values(SETTINGS_SECTION_LABELS),
+    ];
+    expect(titles.filter((title) => !Object.hasOwn(en, title))).toEqual([]);
+    expect(titles.filter((title) => !Object.hasOwn(zh, title))).toEqual([]);
+  });
+
+  it("uses a whitespace-free follow-up sentence key without normalizing raw content", () => {
+    const sentence = "Queue follow-ups while the agent runs or steer the current run.";
+    expect(translate("zh", sentence)).toBe("代理运行时将后续消息排队，或立即引导当前运行。");
+    expect(Object.hasOwn(en, `${sentence} `)).toBe(false);
+    expect(translate("zh", ` ${sentence} `)).toBe(` ${sentence} `);
   });
 
   it("preserves interpolation placeholders in every translation", () => {

@@ -42,6 +42,10 @@ interface UpdateDiskState {
   readonly backup: string | null;
   readonly failedVersion: string | null;
 }
+interface UpdatePreferences {
+  readonly automaticChecks: boolean;
+  readonly ignoredVersion: string | null;
+}
 const EMPTY_STATE: UpdateDiskState = {
   schema: 1,
   active: null,
@@ -133,6 +137,8 @@ export class BackendUpdates {
   private disk: UpdateDiskState = EMPTY_STATE;
   private release: BackendRelease | undefined;
   private operation: Promise<void> | undefined;
+  private preferenceOperation: Promise<void> = Promise.resolve();
+  private preferences: UpdatePreferences = { automaticChecks: true, ignoredVersion: null };
   private controller: AbortController | undefined;
   private closed = false;
   private state: DesktopBackendUpdateState;
@@ -149,11 +155,48 @@ export class BackendUpdates {
       latestVersion: null,
       status: "idle",
       message: null,
+      ...this.preferences,
     };
   }
 
   getState(): DesktopBackendUpdateState {
     return { ...this.state };
+  }
+
+  async setPolicy(
+    policy: "automatic" | "ignore-version" | "never",
+    version?: string,
+  ): Promise<DesktopBackendUpdateState> {
+    if (!["automatic", "ignore-version", "never"].includes(policy))
+      throw new Error("Invalid Cox update policy.");
+    if (policy === "ignore-version" && !isBackendVersion(version))
+      throw new Error("Ignoring a Cox update requires a valid version.");
+    if (this.closed) return this.getState();
+    const operation = this.preferenceOperation.then(async () => {
+      const preferences: UpdatePreferences = {
+        automaticChecks: policy !== "never",
+        ignoredVersion: policy === "ignore-version" ? version! : null,
+      };
+      const temporary = join(this.directory, "preferences-" + randomUUID() + ".json");
+      try {
+        await writeFile(temporary, JSON.stringify(preferences), { mode: 0o600, flag: "wx" });
+        await rename(temporary, join(this.directory, "preferences.json"));
+      } finally {
+        await rm(temporary, { force: true });
+      }
+      this.preferences = preferences;
+      const dismissed =
+        policy !== "automatic" &&
+        (policy === "never" || version === this.state.latestVersion) &&
+        ["available", "incompatible", "error"].includes(this.state.status);
+      this.publish({
+        ...preferences,
+        ...(dismissed ? { status: "idle", latestVersion: null, message: null } : {}),
+      });
+    });
+    this.preferenceOperation = operation.catch(() => {});
+    await operation;
+    return this.getState();
   }
 
   private publish(change: Partial<DesktopBackendUpdateState>) {
@@ -323,16 +366,32 @@ export class BackendUpdates {
     await mkdir(join(this.directory, "versions"), { recursive: true, mode: 0o700 });
     if (await exists(join(this.directory, "state.json")))
       this.disk = diskState(JSON.parse(await readFile(join(this.directory, "state.json"), "utf8")));
+    const preferencesPath = join(this.directory, "preferences.json");
+    if (await exists(preferencesPath)) {
+      const preferences = record(JSON.parse(await readFile(preferencesPath, "utf8")));
+      if (
+        typeof preferences.automaticChecks !== "boolean" ||
+        (preferences.ignoredVersion !== null && !isBackendVersion(preferences.ignoredVersion))
+      )
+        throw new Error("Invalid Cox update preferences.");
+      this.preferences = {
+        automaticChecks: preferences.automaticChecks,
+        ignoredVersion: preferences.ignoredVersion as string | null,
+      };
+    }
     await this.ensureStopped();
     if (this.disk.transition) await this.restore(this.disk.transition);
-    this.publish({ currentVersion: this.disk.active?.version ?? this.options.bundledVersion });
+    this.publish({
+      currentVersion: this.disk.active?.version ?? this.options.bundledVersion,
+      ...this.preferences,
+    });
     await this.cacheBundledBackend();
     if (!this.disk.active && !this.options.bundledVersion && !this.disk.pending) {
       if (this.options.offline)
         throw new Error(
           "The client-only package needs internet access to install Cox on its first launch.",
         );
-      await this.check();
+      await this.check(true);
       await this.stage();
       if (!this.disk.pending)
         throw new Error(
@@ -375,8 +434,9 @@ export class BackendUpdates {
     }
   }
 
-  async check(retryFailed = false): Promise<DesktopBackendUpdateState> {
+  async check(manual = false): Promise<DesktopBackendUpdateState> {
     if (this.closed || this.operation || this.disk.pending) return this.getState();
+    if (!manual && !this.preferences.automaticChecks) return this.getState();
     if (this.options.offline) {
       this.publish({ status: "error", message: "Update checks are disabled in offline mode." });
       return this.getState();
@@ -391,28 +451,36 @@ export class BackendUpdates {
           signal,
           this.options.fetcher,
         );
+        await this.preferenceOperation;
         this.release = release;
         const newer =
           !this.state.currentVersion ||
           compareBackendVersions(release.version, this.state.currentVersion) > 0;
-        if (retryFailed && release.compatible && this.disk.failedVersion === release.version)
+        if (manual && release.compatible && this.disk.failedVersion === release.version)
           await this.save({ ...this.disk, failedVersion: null });
         const failed =
           this.state.currentVersion !== null && this.disk.failedVersion === release.version;
+        const ignored =
+          !manual &&
+          (!this.preferences.automaticChecks ||
+            this.preferences.ignoredVersion === release.version);
         this.publish({
-          latestVersion: release.version,
-          status: !newer
-            ? "idle"
+          latestVersion: ignored ? null : release.version,
+          status:
+            ignored || !newer
+              ? "idle"
+              : failed
+                ? "error"
+                : release.compatible
+                  ? "available"
+                  : "incompatible",
+          message: ignored
+            ? null
             : failed
-              ? "error"
-              : release.compatible
-                ? "available"
-                : "incompatible",
-          message: failed
-            ? "This Cox version failed to start previously. Wait for a newer release."
-            : newer && !release.compatible
-              ? "This Cox version requires a newer desktop client."
-              : null,
+              ? "This Cox version failed to start previously. Wait for a newer release."
+              : newer && !release.compatible
+                ? "This Cox version requires a newer desktop client."
+                : null,
         });
       } catch (error) {
         this.publish({ status: "error", message: String(error) });
@@ -497,5 +565,6 @@ export class BackendUpdates {
     this.closed = true;
     this.controller?.abort();
     await this.operation?.catch(() => {});
+    await this.preferenceOperation;
   }
 }

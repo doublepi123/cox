@@ -209,6 +209,7 @@ describe("model services settings", () => {
       .not.toBeInTheDocument();
     for (const name of [
       "Retry all 429 responses, including quota limits",
+      "Retry non-transient upstream errors (e.g. HTTP 400)",
       "Retry failed requests with upstream tools",
     ]) {
       await expect.element(screen.getByRole("checkbox", { name, exact: true })).not.toBeChecked();
@@ -232,6 +233,7 @@ describe("model services settings", () => {
     expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery).toEqual({
       retryEnabled: false,
       retryOn429: true,
+      retryNonTransientErrors: true,
       retryToolRequests: true,
       hedgeEnabled: true,
       hedgeDelayMs: 2000,
@@ -241,6 +243,41 @@ describe("model services settings", () => {
       responseHeadersTimeoutMs: 30000,
       maxConcurrent: 5,
     });
+  });
+  it("localizes the non-transient retry switch and warning with live language changes", async () => {
+    setup({ [id]: configured });
+    const originalLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    setLanguagePreference("zh");
+    try {
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      const toggle = screen.getByRole("checkbox", {
+        name: "重试非常规上游错误（如 HTTP 400）",
+        exact: true,
+      });
+      await expect.element(toggle).not.toBeChecked();
+      await toggle.click();
+      await expect.element(screen.getByText(/需开启自动重试。在开始输出前/)).toBeVisible();
+      await expect
+        .element(screen.getByText(/Requires automatic retries\./))
+        .not.toBeInTheDocument();
+      await act(() => setLanguagePreference("en"));
+      await expect
+        .element(
+          screen.getByRole("checkbox", {
+            name: "Retry non-transient upstream errors (e.g. HTTP 400)",
+            exact: true,
+          }),
+        )
+        .toBeChecked();
+      await expect.element(screen.getByText(/Requires automatic retries\./)).toBeVisible();
+      await screen.getByRole("button", { name: "Save service", exact: true }).click();
+      expect(
+        state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery.retryNonTransientErrors,
+      ).toBe(true);
+    } finally {
+      setLanguagePreference(parseLanguagePreference(originalLanguage));
+      if (originalLanguage === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    }
   });
   it.each([
     { width: 320, language: "zh" as const, desktop: false },

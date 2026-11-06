@@ -17,6 +17,7 @@ export function ModelServiceRecoverySettings({
   const toggles = [
     ["retryEnabled", "Automatically retry temporary failures"],
     ["retryOn429", "Retry all 429 responses, including quota limits"],
+    ["retryNonTransientErrors", "Retry non-transient upstream errors (e.g. HTTP 400)"],
     ["retryToolRequests", "Retry failed requests with upstream tools"],
     ["hedgeEnabled", "Start backup requests when responses are slow"],
   ] as const;
@@ -55,6 +56,13 @@ export function ModelServiceRecoverySettings({
         <p className="text-xs text-muted-foreground">
           {t(
             "429 retries share the recovery budget and use the local retry interval instead of the service cooldown.",
+          )}
+        </p>
+      ) : null}
+      {value.retryNonTransientErrors ? (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Requires automatic retries. Retries upstream 4xx/5xx errors before output starts, including invalid requests and authentication failures. 429 uses its separate switch. Attempts and recovery budget still apply; persistent errors may waste usage.",
           )}
         </p>
       ) : null}

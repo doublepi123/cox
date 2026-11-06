@@ -179,6 +179,42 @@ it.effect("counts retries and backups against the same attempt limit", () =>
 );
 
 it.effect.each([
+  { status: 400, enabled: false, automatic: true, source: "upstream" as const, attempts: 1 },
+  { status: 400, enabled: true, automatic: true, source: "upstream" as const, attempts: 2 },
+  { status: 401, enabled: true, automatic: true, source: "upstream" as const, attempts: 2 },
+  { status: 422, enabled: true, automatic: true, source: "upstream" as const, attempts: 2 },
+  { status: 501, enabled: true, automatic: true, source: "upstream" as const, attempts: 2 },
+  { status: 400, enabled: true, automatic: false, source: "upstream" as const, attempts: 1 },
+  { status: 429, enabled: true, automatic: true, source: "upstream" as const, attempts: 1 },
+  { status: 502, enabled: true, automatic: true, source: "gateway" as const, attempts: 1 },
+  { status: 200, enabled: true, automatic: true, source: "upstream" as const, attempts: 1 },
+])("bounds optional non-transient retries without changing local failures (%j)", (scenario) =>
+  Effect.gen(function* () {
+    const h = harness({
+      retryNonTransientErrors: scenario.enabled,
+      retryEnabled: scenario.automatic,
+      maxAttempts: 2,
+    });
+    const fiber = yield* h
+      .run(() =>
+        Effect.fail(
+          new ModelServiceRequestFailure({
+            detail: "Non-transient test failure",
+            status: scenario.status,
+            source: scenario.source,
+            retryable: false,
+          }),
+        ),
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    expect(yield* Fiber.join(fiber)).toMatchObject({ status: scenario.status });
+    expect(h.started).toHaveLength(scenario.attempts);
+    expect(h.load.inFlight).toBe(0);
+  }),
+);
+
+it.effect.each([
   { retryOn429: false, retryEnabled: true, status: 429, attempts: 1 },
   { retryOn429: true, retryEnabled: true, status: 429, attempts: 2 },
   { retryOn429: true, retryEnabled: false, status: 429, attempts: 1 },

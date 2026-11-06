@@ -18,6 +18,7 @@ import { STARTUP_PAGE } from "./startup-page.ts";
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 import { backendEnvironment, isBackendNavigation, isExternalNavigation } from "./config.ts";
 import { desktopText, desktopUpdateNotice } from "./native-text.ts";
+import { localizeDesktopMenu } from "./native-menu.ts";
 
 function systemLocale() {
   return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
@@ -69,11 +70,23 @@ async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = fal
         message: text("Cox {version} is available. Download now and activate on the next launch?", {
           version: state.latestVersion ?? "",
         }),
-        buttons: [text("Later"), text("Download")],
+        buttons: [
+          text("Later"),
+          text("Download"),
+          text("Ignore this version"),
+          text("Ignore all updates"),
+        ],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
       });
+      if (!quitPending && (answer.response === 2 || answer.response === 3)) {
+        await updates!.setPolicy(
+          answer.response === 2 ? "ignore-version" : "never",
+          state.latestVersion ?? undefined,
+        );
+        return;
+      }
       if (answer.response !== 1 || quitPending) return;
       state = await updates!.stage();
     } else if (!manual) return;
@@ -82,12 +95,24 @@ async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = fal
         title: text("Cox update"),
         ...desktopUpdateNotice(systemLocale(), state),
       });
+  } catch (error) {
+    if (!quitPending)
+      await dialog.showMessageBox({
+        title: text("Cox update"),
+        ...desktopUpdateNotice(systemLocale(), {
+          ...state,
+          status: "error",
+          message: String(error),
+        }),
+      });
   } finally {
     nativeUpdatePrompt = false;
   }
 }
 
 function publishBackendUpdate(state: DesktopBackendUpdateState) {
+  const automatic = Menu.getApplicationMenu()?.getMenuItemById("cox-automatic-updates");
+  if (automatic) automatic.checked = state.automaticChecks !== false;
   if (desktopReady && window && !window.isDestroyed()) {
     window?.webContents.send("cox:backend-update", state);
     void offerBackendUpdate(state).catch(() => {});
@@ -259,6 +284,15 @@ async function start() {
       return action();
     });
   }
+  ipcMain.handle("cox:backend-update-policy", (event, policy: unknown, version: unknown) => {
+    if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+    if (
+      (policy !== "automatic" && policy !== "ignore-version" && policy !== "never") ||
+      (version !== undefined && typeof version !== "string")
+    )
+      throw new Error("Invalid Cox update policy request.");
+    return updates?.setPolicy(policy, version);
+  });
   window.on("enter-full-screen", syncWindowControls);
   window.on("leave-full-screen", syncWindowControls);
   window.webContents.on("did-finish-load", syncWindowControls);
@@ -392,6 +426,28 @@ async function start() {
           },
         },
         {
+          id: "cox-automatic-updates",
+          label: text("Check for Cox Updates Automatically"),
+          type: "checkbox",
+          checked: true,
+          click: (item) => {
+            void updates
+              ?.setPolicy(item.checked ? "automatic" : "never")
+              .then(async () => {
+                if (item.checked && updates)
+                  await offerBackendUpdate(await updates.check(true), true);
+              })
+              .catch(async (error: unknown) => {
+                if (!updates) return;
+                item.checked = updates.getState().automaticChecks !== false;
+                await offerBackendUpdate(
+                  { ...updates.getState(), status: "error", message: String(error) },
+                  true,
+                );
+              });
+          },
+        },
+        {
           label: text("Open Logs"),
           click: () => {
             void shell.openPath(dirname(logPath));
@@ -415,7 +471,9 @@ async function start() {
     },
     { role: "windowMenu" },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(localizeDesktopMenu(menu, systemLocale(), process.platform)),
+  );
   if (process.platform === "win32") window.setMenuBarVisibility(false);
   await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(STARTUP_PAGE));
   const nodePath = app.isPackaged

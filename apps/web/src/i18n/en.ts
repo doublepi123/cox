@@ -1,4 +1,20 @@
 export const en = {
+  "Retry non-transient upstream errors (e.g. HTTP 400)":
+    "Retry non-transient upstream errors (e.g. HTTP 400)",
+  "Requires automatic retries. Retries upstream 4xx/5xx errors before output starts, including invalid requests and authentication failures. 429 uses its separate switch. Attempts and recovery budget still apply; persistent errors may waste usage.":
+    "Requires automatic retries. Retries upstream 4xx/5xx errors before output starts, including invalid requests and authentication failures. 429 uses its separate switch. Attempts and recovery budget still apply; persistent errors may waste usage.",
+  "Ignore this version": "Ignore this version",
+  "Ignore all updates": "Ignore all updates",
+  "Automatic Cox update checks are disabled. You can still check manually.":
+    "Automatic Cox update checks are disabled. You can still check manually.",
+  "Cox {version} is ignored. Newer versions will still be offered.":
+    "Cox {version} is ignored. Newer versions will still be offered.",
+  "Restore automatic Cox update checks": "Restore automatic Cox update checks",
+  "Update checks are disabled in offline mode.": "Update checks are disabled in offline mode.",
+  "This Cox version failed to start previously. Wait for a newer release.":
+    "This Cox version failed to start previously. Wait for a newer release.",
+  "This Cox version requires a newer desktop client.":
+    "This Cox version requires a newer desktop client.",
   "Desktop client": "Desktop client",
   "Client version": "Client version",
   "Installed Cox version": "Installed Cox version",
@@ -1671,8 +1687,8 @@ export const en = {
   "rich text composer": "rich text composer",
   "send shortcut": "send shortcut",
   "skills in slash menu": "skills in slash menu",
-  "Queue follow-ups while the agent runs or steer the current run. ":
-    "Queue follow-ups while the agent runs or steer the current run. ",
+  "Queue follow-ups while the agent runs or steer the current run.":
+    "Queue follow-ups while the agent runs or steer the current run.",
   "follow-up behavior": "follow-up behavior",
   "diff colors": "diff colors",
   "diff layout": "diff layout",
@@ -3612,4 +3628,15 @@ export const en = {
   "Provider process is gone. Interrupt or restart the child thread to respond.":
     "Provider process is gone. Interrupt or restart the child thread to respond.",
   "Failed to submit approval decision.": "Failed to submit approval decision.",
+  "Model Picker: Next Provider": "Model Picker: Next Provider",
+  "Model Picker: Previous Provider": "Model Picker: Previous Provider",
+  "Thread: Undo": "Thread: Undo",
+  "Usage: Period: 30 days": "Usage: Period: 30 days",
+  "Usage: Period: 7 days": "Usage: Period: 7 days",
+  "Usage: Period: 90 days": "Usage: Period: 90 days",
+  "Usage: Period: Past 24h": "Usage: Period: Past 24h",
+  "GitHub accounts and token": "GitHub accounts and token",
+  "GitCafe credentials": "GitCafe credentials",
+  "Bitbucket credentials": "Bitbucket credentials",
+  "Add secret provider": "Add secret provider",
 } as const;

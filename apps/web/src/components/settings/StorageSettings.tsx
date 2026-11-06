@@ -558,12 +558,12 @@ export function WorktreeCleanupSection() {
                 <SelectTrigger size="sm" aria-label={t("Automatic worktree cleanup")}>
                   <SelectValue>
                     {mixedModes
-                      ? "Mixed"
+                      ? t("Mixed")
                       : mode === "inherit"
-                        ? "Inherit"
+                        ? t("Inherit")
                         : mode === "off"
                           ? t("Off")
-                          : "Custom"}
+                          : t("Custom")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -703,7 +703,7 @@ export function WorktreeCleanupSection() {
                       <SelectTrigger size="sm" aria-label={t("Keep worktrees with local changes")}>
                         <SelectValue>
                           {ruleStatus("worktreeKeepWhen")
-                            ? "Mixed"
+                            ? t("Mixed")
                             : t(KEEP_WHEN_LABELS[settings.worktreeKeepWhen])}
                         </SelectValue>
                       </SelectTrigger>

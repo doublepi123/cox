@@ -10,6 +10,7 @@ import { act, render } from "../../test/render";
 import { DesktopShell } from "./DesktopShell";
 import { DesktopBackendUpdates } from "./settings/DesktopBackendUpdates";
 import { Dialog, DialogPopup, DialogTitle } from "./ui/dialog";
+import { setLanguagePreference } from "../i18n";
 
 function installBridge(bridge: DesktopShellBridge | undefined) {
   const previous = Object.getOwnPropertyDescriptor(window, "coxDesktop");
@@ -23,6 +24,87 @@ function installBridge(bridge: DesktopShellBridge | undefined) {
 }
 
 describe("desktop shell", () => {
+  it.each([
+    ["ignore-version", "忽略本版本", "Ignore this version"],
+    ["never", "永久忽略更新", "Ignore all updates"],
+  ] as const)(
+    "persists %s through the bridge and allows recovery",
+    async (policy, chinese, english) => {
+      const initial: DesktopBackendUpdateState = {
+        desktopVersion: "0.2.3",
+        bundledVersion: null,
+        currentVersion: "0.1.41",
+        latestVersion: "0.1.42",
+        status: "available",
+        message: null,
+        automaticChecks: true,
+        ignoredVersion: null,
+      };
+      let current = initial;
+      const bridge: DesktopShellBridge = {
+        platform: "win32",
+        ready: vi.fn(),
+        onQuitRequested: vi.fn(() => () => {}),
+        answerQuit: vi.fn(),
+        setWindowColors: vi.fn(),
+        onWindowState: vi.fn(() => () => {}),
+        syncWindowControls: vi.fn(),
+        getBackendUpdate: vi.fn(async () => current),
+        onBackendUpdate: vi.fn(() => () => {}),
+        checkBackendUpdate: vi.fn(async () => current),
+        installBackendUpdate: vi.fn(async () => initial),
+        setBackendUpdatePolicy: vi.fn(async (next, version) => {
+          current = {
+            ...initial,
+            latestVersion: null,
+            status: "idle",
+            automaticChecks: next !== "never",
+            ignoredVersion: next === "ignore-version" ? (version ?? null) : null,
+          };
+          return current;
+        }),
+      };
+      using _bridge = installBridge(bridge);
+      setLanguagePreference("zh");
+      try {
+        await using screen = await render(<DesktopShell />);
+        await expect
+          .element(page.getByRole("button", { name: chinese, exact: true }))
+          .toBeVisible();
+        await expect
+          .element(page.getByRole("button", { name: english, exact: true }))
+          .not.toBeInTheDocument();
+        await act(() => setLanguagePreference("en"));
+        await page.getByRole("button", { name: english, exact: true }).click();
+        expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith(
+          policy,
+          policy === "ignore-version" ? "0.1.42" : undefined,
+        );
+        await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+        expect(bridge.installBackendUpdate).not.toHaveBeenCalled();
+        expect(bridge.answerQuit).not.toHaveBeenCalled();
+        await screen.rerender(<DesktopBackendUpdates />);
+        await act(() => setLanguagePreference("zh"));
+        await expect
+          .element(
+            page.getByText(
+              policy === "never"
+                ? "已关闭 Cox 自动更新检查，仍可手动检查更新。"
+                : "已忽略 Cox 0.1.42，仍会提醒更新的版本。",
+              { exact: true },
+            ),
+          )
+          .toBeVisible();
+        await page.getByRole("button", { name: "检查 Cox 更新", exact: true }).click();
+        expect(bridge.checkBackendUpdate).toHaveBeenCalledOnce();
+        await page.getByRole("button", { name: "恢复 Cox 自动更新检查", exact: true }).click();
+        expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith("automatic", undefined);
+      } finally {
+        setLanguagePreference("en");
+      }
+    },
+  );
+
   it("shows independent versions and stages updates without quitting or restarting tasks", async () => {
     const initial: DesktopBackendUpdateState = {
       desktopVersion: "0.2.0",
@@ -59,6 +141,12 @@ describe("desktop shell", () => {
     );
     await act(() => update?.(available));
     await expect.element(page.getByText("Cox 0.1.42 is available.")).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Ignore this version", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Ignore all updates", exact: true }))
+      .not.toBeInTheDocument();
     expect(bridge.installBackendUpdate).not.toHaveBeenCalled();
     await page.getByRole("button", { name: "Download Cox update", exact: true }).click();
     await expect

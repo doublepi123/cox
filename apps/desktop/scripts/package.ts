@@ -242,6 +242,10 @@ const artifacts = await build({
       { from: join(root, "apps/web/public/icon-512.png"), to: "icon.png" },
     ],
     mac: {
+      extendInfo: {
+        CFBundleDevelopmentRegion: "en",
+        CFBundleLocalizations: ["en", "zh-Hans", "zh-Hant"],
+      },
       ...(process.env.CSC_NAME
         ? { identity: process.env.CSC_NAME }
         : process.env.CSC_LINK

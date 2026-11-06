@@ -323,7 +323,14 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       code: lastFailure.code,
       source: lastFailure.source,
     });
-    if (!lastFailure.retryable && !(policy.retryOn429 && lastFailure.status === 429)) {
+    const forceRetry =
+      lastFailure.status === 429
+        ? policy.retryOn429
+        : policy.retryNonTransientErrors &&
+          lastFailure.source === "upstream" &&
+          lastFailure.status >= 400 &&
+          lastFailure.status < 600;
+    if (!lastFailure.retryable && !forceRetry) {
       permanentFailure ??= lastFailure;
       retryAt = Infinity;
       continue;
