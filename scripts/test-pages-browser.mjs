@@ -15,6 +15,7 @@ const contentTypes = {
   css: "text/css",
   js: "text/javascript",
   svg: "image/svg+xml",
+  png: "image/png",
 };
 
 test("website works under a project subpath on desktop and phones without contacting an agent", async () => {
@@ -22,7 +23,8 @@ test("website works under a project subpath on desktop and phones without contac
   const server = createServer(async (request, response) => {
     try {
       const path = new URL(request.url, "http://localhost").pathname;
-      const file = path === "/cox/" ? "index.html" : path.slice("/cox/".length);
+      const relative = path.slice("/cox/".length);
+      const file = path.endsWith("/") ? relative + "index.html" : relative;
       if (!path.startsWith("/cox/") || !publicFiles.includes(file)) {
         response.writeHead(404).end();
         return;
@@ -71,10 +73,7 @@ test("website works under a project subpath on desktop and phones without contac
       await page.locator("#desktop .desktop-downloads a").getAttribute("href"),
       "https://github.com/doublepi123/cox/releases/tag/cox-desktop-latest",
     );
-    assert.equal(
-      await page.locator("#desktop .mobile-link").getAttribute("href"),
-      "https://cocode.doublepi.dev/",
-    );
+    assert.equal(await page.locator("#desktop .mobile-link").getAttribute("href"), "cocode/");
     await page.getByRole("button", { name: "Claude", exact: true }).click();
     assert.equal(
       await page.getByRole("button", { name: "Claude", exact: true }).getAttribute("aria-pressed"),
@@ -169,6 +168,48 @@ test("website works under a project subpath on desktop and phones without contac
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole("link", { name: "快速开始", exact: true }).click();
     assert.match(page.url(), /#start$/);
+    await page.locator("#desktop .mobile-link").click();
+    assert.equal(page.url(), `${origin}/cox/cocode/`);
+    assert.match(await page.locator("h1").textContent(), /装进口袋/);
+    assert.equal(
+      await page
+        .locator(".brand img")
+        .first()
+        .evaluate((image) => image.naturalWidth > 0),
+      true,
+    );
+    assert.equal(
+      await page.locator(".hero .button-primary").getAttribute("href"),
+      "https://github.com/doublepi123/co_code/releases",
+    );
+    for (const language of ["en", "zh"]) {
+      await page.locator("[data-language-toggle]").click();
+      assert.equal(
+        await page.locator("html").getAttribute("lang"),
+        language === "zh" ? "zh-CN" : "en",
+      );
+      for (const width of [320, 390, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.ok(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+          `CoCode overflow: ${language} ${width}`,
+        );
+        assert.deepEqual(
+          await page
+            .locator("[data-i18n]")
+            .evaluateAll((elements) =>
+              elements
+                .filter((element) => !element.textContent.trim())
+                .map((element) => element.dataset.i18n),
+            ),
+          [],
+        );
+      }
+    }
+    await page.reload();
+    assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
+    await page.locator(".hero .button-secondary").click();
+    assert.equal(page.url(), `${origin}/cox/#desktop`);
     assert.deepEqual(errors, []);
     await context.close();
     const staleContent = await browser.newContext({ locale: "en-US" });
@@ -204,6 +245,8 @@ test("website works under a project subpath on desktop and phones without contac
     await staticPage.goto(`${origin}/cox/cox/index.html`);
     await staticPage.waitForURL(`${origin}/cox/`);
     assert.match(await staticPage.locator("h1").textContent(), /你的智能体/);
+    await staticPage.goto(`${origin}/cox/cocode/`);
+    assert.match(await staticPage.locator("h1").textContent(), /装进口袋/);
     await noScript.close();
   } finally {
     await browser?.close();

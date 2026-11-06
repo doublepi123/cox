@@ -15,18 +15,18 @@ test("builds only the explicit public website files and removes stale artifacts"
     await buildPages(destination);
     assert.deepEqual(
       (await readdir(destination, { recursive: true })).sort(),
-      [".nojekyll", "assets", "cox", ...publicFiles].sort(),
+      [".nojekyll", "assets", "cox", "cocode", ...publicFiles].sort(),
     );
     assert.equal(await readFile(join(destination, ".nojekyll"), "utf8"), "");
     for (const file of publicFiles) {
-      if (file === "index.html" || file === "main.js") continue;
+      if (file === "index.html" || file === "cocode/index.html" || file === "main.js") continue;
       assert.deepEqual(
         await readFile(join(destination, file)),
         await readFile(new URL(`../site/${file}`, import.meta.url)),
       );
     }
-    const versionedPath = async (file) => {
-      const content = await readFile(join(destination, file));
+    const versionedPath = async (file, directory = "") => {
+      const content = await readFile(join(destination, directory, file));
       return `${file}?v=${createHash("sha256").update(content).digest("hex").slice(0, 16)}`;
     };
     const main = await readFile(new URL("../site/main.js", import.meta.url), "utf8");
@@ -34,11 +34,13 @@ test("builds only the explicit public website files and removes stale artifacts"
       await readFile(join(destination, "main.js"), "utf8"),
       main.replace('"./content.js"', `"./${await versionedPath("content.js")}"`),
     );
-    let html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
-    for (const file of ["styles.css", "main.js"]) {
-      html = html.replace(`"${file}"`, `"${await versionedPath(file)}"`);
+    for (const directory of ["", "cocode"]) {
+      let html = await readFile(join("site", directory, "index.html"), "utf8");
+      for (const file of ["styles.css", "main.js"]) {
+        html = html.replace(`"${file}"`, `"${await versionedPath(file, directory)}"`);
+      }
+      assert.equal(await readFile(join(destination, directory, "index.html"), "utf8"), html);
     }
-    assert.equal(await readFile(join(destination, "index.html"), "utf8"), html);
   } finally {
     await rm(destination, { recursive: true, force: true });
   }
@@ -120,11 +122,36 @@ test("links the full guide to an existing README section in each language", asyn
 
 test("uses the account homepage and preserves the previously shared project address", async () => {
   const html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
-  assert.ok(html.includes('rel="canonical" href="https://doublepi123.github.io/"'));
-  assert.ok(
-    html.includes('property="og:image" content="https://doublepi123.github.io/assets/social.png"'),
-  );
+  assert.ok(html.includes('rel="canonical" href="https://doublepi.dev/"'));
+  assert.ok(html.includes('property="og:image" content="https://doublepi.dev/assets/social.png"'));
   const redirect = await readFile(new URL("../site/cox/index.html", import.meta.url), "utf8");
   assert.ok(redirect.includes('http-equiv="refresh" content="0;url=../"'));
   assert.ok(redirect.includes('href="../"'));
+});
+
+test("ships CoCode under the same domain with relative assets and preserved attribution", async () => {
+  const html = await readFile(new URL("../site/cocode/index.html", import.meta.url), "utf8");
+  const homepage = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
+  assert.ok(homepage.includes('class="mobile-link" href="cocode/"'));
+  assert.ok(html.includes('rel="canonical" href="https://doublepi.dev/cocode/"'));
+  assert.ok(html.includes('property="og:url" content="https://doublepi.dev/cocode/"'));
+  assert.ok(html.includes('property="og:image" content="https://doublepi.dev/cocode/icon.png"'));
+  assert.ok(html.includes('href="../#desktop"'));
+  assert.ok(html.includes('href="https://github.com/doublepi123/co_code/releases"'));
+  assert.equal(/(?:href|src)="\/(?!\/)/.test(html), false);
+  assert.equal(html.includes("cocode.doublepi.dev"), false);
+  for (const [, asset] of html.matchAll(/(?:src|href)="([^"#:]+\.(?:png|css|js))"/g)) {
+    assert.ok(publicFiles.includes(`cocode/${asset}`), `Unpublished CoCode asset: ${asset}`);
+  }
+  const license = await readFile(new URL("../site/cocode/LICENSE", import.meta.url), "utf8");
+  const notice = await readFile(new URL("../site/cocode/NOTICE", import.meta.url), "utf8");
+  assert.match(license, /MIT License/);
+  assert.match(notice, /AndChamber/);
+  assert.match(notice, /AndCode/);
+  const redirect = await readFile(
+    new URL("../site/redirects/cocode.html", import.meta.url),
+    "utf8",
+  );
+  assert.ok(redirect.includes('content="0;url=https://doublepi.dev/cocode/"'));
+  assert.ok(redirect.includes('href="https://doublepi.dev/cocode/"'));
 });

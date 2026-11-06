@@ -36,7 +36,7 @@ supported preview method because the language resources use JavaScript modules.
 
 ## Account homepage
 
-The primary website is `https://doublepi123.github.io/`, published from the root of
+The primary website is `https://doublepi.dev/`, published from the root of
 `doublepi123/doublepi123.github.io` on its `master` branch. It replaces the previous
 personal homepage; the previous commit remains available in Git history for rollback.
 Only the public build output, a website README, and the project's MIT license belong
@@ -51,6 +51,18 @@ Do not clear Git history, force-push, or delete the homepage repository to updat
 The build includes `cox/index.html`, which redirects the previously shared `/cox/`
 address to the homepage even when JavaScript is disabled. Canonical and social-image
 metadata point to the account homepage, not the old project address.
+
+CoCode is published at `https://doublepi.dev/cocode/` from the same build and homepage
+repository. Its source lives in `site/cocode/`, including its official icon, MIT license
+and upstream notice. Keep its assets and links relative so both pages work under a
+project subpath as well as the custom domain. The build versions each page's scripts
+and styles independently. Publish the entire allowlist, including the `cocode/` directory,
+on every homepage update; do not replace it with a root-only file copy.
+
+The former `doublepi123/cocode.doublepi.dev` repository only serves the compatibility
+redirect in `site/redirects/cocode.html`. Preserve its existing CNAME and history when
+updating that redirect. The new site needs no separate subdomain DNS or certificate;
+the old URL can redirect only if its own DNS and HTTPS are reachable.
 
 ## Checks and optional project Pages
 
@@ -71,7 +83,7 @@ Pages is not enabled for this repository: a project site would serve
 
 If the repository or owner changes, update the GitHub/npm links and this documentation.
 Also update the absolute `og:image` URL in `index.html` for a different owner or custom
-domain. No custom domain is configured.
+domain. The account homepage uses the custom domain `doublepi.dev`.
 
 ## Editing
 
@@ -86,6 +98,8 @@ domain. No custom domain is configured.
 - `assets/social.svg` / `social.png`: editable source and 1200×630 social sharing card.
   Render the PNG from the SVG with a headless browser after editing it.
 - `cox/index.html`: compatibility redirect for the old project website address.
+- `cocode/`: bilingual Android product page and its own license and attribution.
+- `redirects/cocode.html`: legacy subdomain redirect, deployed only to the old repository.
 
 Draw icons with the SVG sprite (`<svg class="icon"><use href="#i-name" /></svg>`), not
 Unicode symbols: arrows, dingbats, and other symbol glyphs fall back to inconsistent fonts
@@ -94,7 +108,7 @@ negative letter spacing for Chinese text. The illustrated workspace adapts to it
 (sidebar from 720px, side panel from 1060px) instead of shrinking its text.
 
 The site follows a supported browser language on first visit, falling back to English.
-The language switch stores only `cox.site.language` in the browser. Keep launch commands,
+The language switch stores `cox.site.language` or `cocode.site.language` in the browser. Keep launch commands,
 paths, provider names, and code samples unchanged when translating.
 Do not add real account details, local screenshots with private content, or claims that
 local control means offline model inference. Keep the MIT license and T3 Code attribution.

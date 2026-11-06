@@ -12,6 +12,12 @@ export const publicFiles = [
   "assets/cox.svg",
   "assets/social.png",
   "cox/index.html",
+  "cocode/index.html",
+  "cocode/styles.css",
+  "cocode/main.js",
+  "cocode/icon.png",
+  "cocode/LICENSE",
+  "cocode/NOTICE",
 ];
 
 export async function buildPages(destination = join(root, "site/dist")) {
@@ -21,8 +27,8 @@ export async function buildPages(destination = join(root, "site/dist")) {
     await mkdir(dirname(target), { recursive: true });
     await copyFile(join(root, "site", file), target);
   }
-  const versionedPath = async (file) => {
-    const content = await readFile(join(destination, file));
+  const versionedPath = async (file, directory = "") => {
+    const content = await readFile(join(destination, directory, file));
     const version = createHash("sha256").update(content).digest("hex").slice(0, 16);
     return `${file}?v=${version}`;
   };
@@ -32,12 +38,14 @@ export async function buildPages(destination = join(root, "site/dist")) {
     mainPath,
     main.replace('"./content.js"', `"./${await versionedPath("content.js")}"`),
   );
-  const indexPath = join(destination, "index.html");
-  let html = await readFile(indexPath, "utf8");
-  for (const file of ["styles.css", "main.js"]) {
-    html = html.replace(`"${file}"`, `"${await versionedPath(file)}"`);
+  for (const directory of ["", "cocode"]) {
+    const indexPath = join(destination, directory, "index.html");
+    let html = await readFile(indexPath, "utf8");
+    for (const file of ["styles.css", "main.js"]) {
+      html = html.replace(`"${file}"`, `"${await versionedPath(file, directory)}"`);
+    }
+    await writeFile(indexPath, html);
   }
-  await writeFile(indexPath, html);
   await writeFile(join(destination, ".nojekyll"), "");
   console.log(`Cox website built: ${destination}`);
 }
