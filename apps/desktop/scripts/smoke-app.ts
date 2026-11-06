@@ -146,6 +146,17 @@ try {
     try {
       const offlinePage = await offline.firstWindow();
       await offlinePage.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
+      await offlinePage.waitForFunction(
+        async () => {
+          const response = await fetch("/api/auth/session");
+          const session = (await response.json()) as { authenticated?: boolean };
+          return session.authenticated === true;
+        },
+        undefined,
+        { timeout: 30_000 },
+      );
+      if (process.platform === "darwin" || process.platform === "win32")
+        await offlinePage.waitForFunction(() => document.documentElement.classList.contains("wco"));
       const version = await offlinePage.evaluate(async () => {
         const bridge = Reflect.get(window, "coxDesktop") as {
           getBackendUpdate(): Promise<{ currentVersion: string }>;
