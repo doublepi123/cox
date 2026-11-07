@@ -169,8 +169,8 @@ jobs:
           if [[ "$created" == true ]]; then
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
           else
-            draft="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')"
-            author="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.author.login')"
+            draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+            author="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json author --jq '.author.login')"
             if [[ "$draft" == true && "$author" == 'github-actions[bot]' ]]; then
               gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
             fi

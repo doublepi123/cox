@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   createDesktopUpdateFeed,
   planDesktopAssetUploads,
+  uploadDesktopAssets,
   versionDesktopMetadata,
 } from "./client-update-release.ts";
+
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 
 const commit = "a".repeat(40);
 const directories: string[] = [];
@@ -61,12 +65,43 @@ async function fixture() {
 }
 
 afterEach(async () => {
+  vi.mocked(execFileSync).mockReset();
   await Promise.all(
     directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
 describe("complete desktop update publication", () => {
+  it("reads draft release assets before uploading by tag", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cox-release-upload-"));
+    directories.push(directory);
+    const filename = "cox-desktop-0.2.7-client-only-win-x64.exe";
+    await writeFile(join(directory, filename), "installer");
+    vi.mocked(execFileSync).mockReturnValue(JSON.stringify({ assets: [] }));
+
+    await uploadDesktopAssets(directory, "desktop-v0.2.7", "doublepi123/cox");
+
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      1,
+      "gh",
+      ["release", "view", "desktop-v0.2.7", "--repo", "doublepi123/cox", "--json", "assets"],
+      { encoding: "utf8" },
+    );
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      2,
+      "gh",
+      [
+        "release",
+        "upload",
+        "desktop-v0.2.7",
+        "--repo",
+        "doublepi123/cox",
+        join(directory, filename),
+      ],
+      { stdio: "inherit" },
+    );
+  });
+
   it("publishes macOS automatic replacement only when both metadata records declare its protocol", async () => {
     const input = await fixture();
     for (const target of ["darwin-arm64", "darwin-x64"])

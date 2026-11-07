@@ -59,10 +59,12 @@ async function assetDigest(path: string) {
   return "sha256:" + hash.digest("hex");
 }
 
-async function uploadDesktopAssets(directory: string, tag: string, repository: string) {
+export async function uploadDesktopAssets(directory: string, tag: string, repository: string) {
   const release = record(
     JSON.parse(
-      execFileSync("gh", ["api", `repos/${repository}/releases/tags/${tag}`], { encoding: "utf8" }),
+      execFileSync("gh", ["release", "view", tag, "--repo", repository, "--json", "assets"], {
+        encoding: "utf8",
+      }),
     ),
   );
   if (!Array.isArray(release.assets)) throw new Error("Invalid desktop release inventory.");
