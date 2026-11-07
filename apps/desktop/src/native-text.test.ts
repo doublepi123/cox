@@ -86,7 +86,10 @@ describe("native desktop language and update messages", () => {
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
     expect(main).not.toMatch(/[\u3400-\u9fff]/);
     expect(main).toContain("app.getPreferredSystemLanguages()[0]");
-    expect(main).toContain('text("Quit Cox")');
+    expect(main).not.toContain(
+      '"Quitting stops the local backend and interrupts running agent turns and terminals."',
+    );
+    expect(main).toContain('text("Install client update")');
     expect(main).toContain('text("Cox permission")');
     expect(main).toContain('text("Cox startup")');
     expect(main).toContain('text("Check for Cox Updates")');

@@ -267,20 +267,22 @@ function showWindow() {
 async function requestQuit() {
   if (quitPending) return;
   quitPending = true;
+  if (!updateAfterQuit) {
+    await finishQuit();
+    return;
+  }
   if (desktopReady && window && !window.webContents.isCrashed()) {
     showWindow();
-    window.webContents.send("cox:quit-requested", updateAfterQuit ? "update" : "quit");
+    window.webContents.send("cox:quit-requested", "update");
     return;
   }
   const result = await dialog.showMessageBox({
     type: "warning",
-    title: updateAfterQuit ? text("Install client update") : text("Quit Cox"),
+    title: text("Install client update"),
     message: text(
-      updateAfterQuit
-        ? "Updating the client quits Cox and interrupts running agent turns and terminals."
-        : "Quitting stops the local backend and interrupts running agent turns and terminals.",
+      "Updating the client quits Cox and interrupts running agent turns and terminals.",
     ),
-    buttons: [text("Cancel"), text(updateAfterQuit ? "Continue" : "Quit Cox")],
+    buttons: [text("Cancel"), text("Continue")],
     defaultId: 0,
     cancelId: 0,
     noLink: true,
@@ -321,10 +323,6 @@ async function finishQuit() {
       }
       dialog.showErrorBox(text("Install client update"), String(error));
       return;
-    }
-    if (desktopReady) {
-      quitPending = true;
-      window?.webContents.send("cox:quit-requested");
     }
     dialog.showErrorBox("Cox could not stop its backend", String(error));
   }

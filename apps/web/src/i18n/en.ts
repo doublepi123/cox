@@ -29,6 +29,20 @@ export const en = {
   "Verifying installation…": "Verifying installation…",
   "Starting Cox…": "Starting Cox…",
   "About {seconds}s remaining": "About {seconds}s remaining",
+  "Software updates": "Software updates",
+  "Automatic update checks": "Automatic update checks",
+  "Check for updates": "Check for updates",
+  "Checking for updates…": "Checking for updates…",
+  "Download updates": "Download updates",
+  "Update actions": "Update actions",
+  "Ignore this client version": "Ignore this client version",
+  "Ignore this Cox version": "Ignore this Cox version",
+  "Restore automatic update checks": "Restore automatic update checks",
+  "Automatic update checks are disabled. You can still check manually.":
+    "Automatic update checks are disabled. You can still check manually.",
+  "The client and Cox are up to date.": "The client and Cox are up to date.",
+  "The client checks for desktop and Cox updates automatically.":
+    "The client checks for desktop and Cox updates automatically.",
   "Client updates": "Client updates",
   "Automatic client update checks": "Automatic client update checks",
   "Desktop update checks are unavailable offline.":

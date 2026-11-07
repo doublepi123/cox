@@ -42,7 +42,6 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [quitting, setQuitting] = useState(false);
-  const [quitReason, setQuitReason] = useState<"quit" | "update">("quit");
   const updates = useDesktopBackendUpdate();
   const clientUpdates = useDesktopClientUpdate();
   const clientNotice = useRef<string | null>(null);
@@ -98,8 +97,11 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
     });
     window.addEventListener("resize", bridge.syncWindowControls);
     const unsubscribe = bridge.onQuitRequested((reason) => {
+      if (reason !== "update") {
+        bridge.answerQuit(true);
+        return;
+      }
       setQuitting(false);
-      setQuitReason(reason ?? "quit");
       setOpen(true);
     });
     const unsubscribeClose = bridge.onSettingsCloseRequested?.(() => {
@@ -164,21 +166,6 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
             <AlertDialogClose render={<Button variant="outline" />}>
               {t(updateState?.status === "ready" ? "Done" : "Later")}
             </AlertDialogClose>
-            {updateState?.status === "available" && window.coxDesktop.setBackendUpdatePolicy && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    void updates.setPolicy("ignore-version", updateState.latestVersion ?? undefined)
-                  }
-                >
-                  {t("Ignore this version")}
-                </Button>
-                <Button variant="outline" onClick={() => void updates.setPolicy("never")}>
-                  {t("Ignore all updates")}
-                </Button>
-              </>
-            )}
             {updateState?.status === "available" && (
               <Button onClick={() => void updates.install()}>{t("Download Cox update")}</Button>
             )}
@@ -200,15 +187,9 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
       >
         <AlertDialogPopup initialFocus={cancelRef} bottomStickOnMobile={false} layer="application">
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t(quitReason === "update" ? "Install client update?" : "Quit Cox?")}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t("Install client update?")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t(
-                quitReason === "update"
-                  ? "Updating the client quits Cox and interrupts running agent tasks and terminals."
-                  : "Quitting stops the local backend and interrupts running agent tasks and terminals.",
-              )}
+              {t("Updating the client quits Cox and interrupts running agent tasks and terminals.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter variant="bare">
@@ -228,11 +209,9 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
               {t(
                 quitting
                   ? "Quitting…"
-                  : quitReason === "update"
-                    ? clientUpdates.state?.installMode === "automatic"
-                      ? "Restart and update"
-                      : "Open installer"
-                    : "Quit Cox",
+                  : clientUpdates.state?.installMode === "automatic"
+                    ? "Restart and update"
+                    : "Open installer",
               )}
             </Button>
           </AlertDialogFooter>

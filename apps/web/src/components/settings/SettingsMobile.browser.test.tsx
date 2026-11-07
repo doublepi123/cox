@@ -3,7 +3,7 @@ import { page } from "vite-plus/test/browser";
 import { useLocation } from "@tanstack/react-router";
 
 import "~/index.css";
-import { render } from "../../../test/render";
+import { render, stubGlobal } from "../../../test/render";
 import { LANGUAGE_STORAGE_KEY, setLanguagePreference } from "../../i18n";
 import { parseLanguagePreference } from "../../i18n/language";
 import { AppAtomRegistryProvider } from "../../rpc/atomRegistry";
@@ -16,6 +16,7 @@ import { SettingsSidebarNav } from "./SettingsSidebarNav";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 import { GeneralSettingsPanel } from "./SettingsPanels";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { SettingsFrame } from "../../routes/_chat.settings";
 
 function MobileSettingsIndex() {
   return (
@@ -167,5 +168,30 @@ describe("mobile settings", () => {
     await page.viewport(1280, 800);
     expect(input.element().getBoundingClientRect().height).toBeLessThan(44);
     expect(update.element().getBoundingClientRect().height).toBeLessThan(44);
+  });
+});
+
+describe("desktop settings window", () => {
+  it("fills the available width instead of shrinking beside the window backdrop", async () => {
+    await using _settings = await setupMobileSettings(1440, 900, "zh");
+    using _bridge = stubGlobal("coxDesktop", { windowKind: "settings" });
+    await using screen = await render(
+      <SidebarProvider>
+        <SettingsFrame>
+          <div className="flex min-h-0 flex-1">
+            <nav className="w-60 shrink-0">设置</nav>
+            <section data-settings-content className="min-w-0 flex-1">
+              常规
+            </section>
+          </div>
+        </SettingsFrame>
+      </SidebarProvider>,
+    );
+    const frame = screen.container.querySelector("main")!.getBoundingClientRect();
+    const content = screen.container
+      .querySelector("[data-settings-content]")!
+      .getBoundingClientRect();
+    expect(frame.width).toBe(1440);
+    expect(content.right).toBe(1440);
   });
 });

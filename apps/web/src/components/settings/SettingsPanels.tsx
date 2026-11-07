@@ -26,7 +26,7 @@ import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { APP_VERSION } from "../../branding";
 import { AboutVersionTitle } from "./AboutVersionTitle";
-import { DesktopBackendUpdates } from "./DesktopBackendUpdates";
+import { DesktopUpdates } from "./DesktopUpdates";
 
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
@@ -1756,7 +1756,7 @@ export function AboutSettingsPanel() {
         />
       </SettingsSection>
 
-      <DesktopBackendUpdates />
+      <DesktopUpdates />
       <SettingsSection id="legal" title={translateUi("Legal")}>
         <SettingsRow
           {...searchableSetting("privacy-policy")}

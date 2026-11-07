@@ -39,7 +39,7 @@ import {
   type SettingsPath,
 } from "../components/settings/settingsSearch";
 
-function SettingsFrame({ children }: { children: ReactNode }) {
+export function SettingsFrame({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   useEffect(() => {
     if (window.coxDesktop?.windowKind !== "settings") return;
@@ -60,7 +60,7 @@ function SettingsFrame({ children }: { children: ReactNode }) {
   if (window.coxDesktop?.windowKind !== "settings")
     return <AppRouteModal label={t("Settings")}>{children}</AppRouteModal>;
   return (
-    <main className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
+    <main className="flex h-dvh min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
       <header
         data-workspace-titlebar
         className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center border-b ps-[var(--workspace-controls-left)] pe-[var(--workspace-controls-right)]"

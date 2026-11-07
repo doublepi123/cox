@@ -8,7 +8,7 @@ import { page } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { act, render } from "../../test/render";
 import { DesktopShell } from "./DesktopShell";
-import { DesktopBackendUpdates } from "./settings/DesktopBackendUpdates";
+import { DesktopUpdates } from "./settings/DesktopUpdates";
 import { Dialog, DialogPopup, DialogTitle } from "./ui/dialog";
 import { setLanguagePreference } from "../i18n";
 
@@ -51,87 +51,67 @@ describe("desktop shell", () => {
     await page.getByRole("button", { name: "Open installer", exact: true }).click();
     expect(bridge.answerQuit).toHaveBeenLastCalledWith(true);
   });
-  it.each([
-    ["ignore-version", "忽略本版本", "Ignore this version"],
-    ["never", "永久忽略更新", "Ignore all updates"],
-  ] as const)(
-    "persists %s through the bridge and allows recovery",
-    async (policy, chinese, english) => {
-      const initial: DesktopBackendUpdateState = {
-        desktopVersion: "0.2.3",
-        bundledVersion: null,
-        currentVersion: "0.1.41",
-        latestVersion: "0.1.42",
-        status: "available",
-        message: null,
-        automaticChecks: true,
-        ignoredVersion: null,
-      };
-      let current = initial;
-      const bridge: DesktopShellBridge = {
-        platform: "win32",
-        ready: vi.fn(),
-        onQuitRequested: vi.fn(() => () => {}),
-        answerQuit: vi.fn(),
-        setWindowColors: vi.fn(),
-        onWindowState: vi.fn(() => () => {}),
-        syncWindowControls: vi.fn(),
-        getBackendUpdate: vi.fn(async () => current),
-        onBackendUpdate: vi.fn(() => () => {}),
-        checkBackendUpdate: vi.fn(async () => current),
-        installBackendUpdate: vi.fn(async () => initial),
-        setBackendUpdatePolicy: vi.fn(async (next, version) => {
-          current = {
-            ...initial,
-            latestVersion: null,
-            status: "idle",
-            automaticChecks: next !== "never",
-            ignoredVersion: next === "ignore-version" ? (version ?? null) : null,
-          };
-          return current;
-        }),
-      };
-      using _bridge = installBridge(bridge);
-      setLanguagePreference("zh");
-      try {
-        await using screen = await render(<DesktopShell />);
-        await expect
-          .element(page.getByRole("button", { name: chinese, exact: true }))
-          .toBeVisible();
-        await expect
-          .element(page.getByRole("button", { name: english, exact: true }))
-          .not.toBeInTheDocument();
-        await act(() => setLanguagePreference("en"));
-        await page.getByRole("button", { name: english, exact: true }).click();
-        expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith(
-          policy,
-          policy === "ignore-version" ? "0.1.42" : undefined,
-        );
-        await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
-        expect(bridge.installBackendUpdate).not.toHaveBeenCalled();
-        expect(bridge.answerQuit).not.toHaveBeenCalled();
-        await screen.rerender(<DesktopBackendUpdates />);
-        await act(() => setLanguagePreference("zh"));
-        await expect
-          .element(
-            page.getByText(
-              policy === "never"
-                ? "已关闭 Cox 自动更新检查，仍可手动检查更新。"
-                : "已忽略 Cox 0.1.42，仍会提醒更新的版本。",
-              { exact: true },
-            ),
-          )
-          .toBeVisible();
-        await page.getByRole("button", { name: "检查 Cox 更新", exact: true }).click();
-        expect(bridge.checkBackendUpdate).toHaveBeenCalledOnce();
-        await page.getByRole("button", { name: "Cox 更新操作", exact: true }).click();
-        await page.getByRole("menuitem", { name: "恢复 Cox 自动更新检查", exact: true }).click();
-        expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith("automatic", undefined);
-      } finally {
-        setLanguagePreference("en");
-      }
-    },
-  );
+  it("persists ignored Cox versions through the shared update menu and allows recovery", async () => {
+    const initial: DesktopBackendUpdateState = {
+      desktopVersion: "0.2.3",
+      bundledVersion: null,
+      currentVersion: "0.1.41",
+      latestVersion: "0.1.42",
+      status: "available",
+      message: null,
+      automaticChecks: true,
+      ignoredVersion: null,
+    };
+    let current = initial;
+    const bridge: DesktopShellBridge = {
+      platform: "win32",
+      ready: vi.fn(),
+      onQuitRequested: vi.fn(() => () => {}),
+      answerQuit: vi.fn(),
+      setWindowColors: vi.fn(),
+      onWindowState: vi.fn(() => () => {}),
+      syncWindowControls: vi.fn(),
+      getBackendUpdate: vi.fn(async () => current),
+      onBackendUpdate: vi.fn(() => () => {}),
+      checkBackendUpdate: vi.fn(async () => current),
+      installBackendUpdate: vi.fn(async () => initial),
+      setBackendUpdatePolicy: vi.fn(async (next, version) => {
+        current = {
+          ...initial,
+          latestVersion: null,
+          status: "idle",
+          automaticChecks: next !== "never",
+          ignoredVersion: next === "ignore-version" ? (version ?? null) : null,
+        };
+        return current;
+      }),
+    };
+    using _bridge = installBridge(bridge);
+    setLanguagePreference("zh");
+    try {
+      await using _screen = await render(<DesktopUpdates />);
+      await expect
+        .element(page.getByRole("button", { name: "下载 Cox 更新", exact: true }))
+        .toBeVisible();
+      await act(() => setLanguagePreference("en"));
+      await page.getByRole("button", { name: "Update actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Ignore this Cox version", exact: true }).click();
+      expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith("ignore-version", "0.1.42");
+      expect(bridge.installBackendUpdate).not.toHaveBeenCalled();
+      expect(bridge.answerQuit).not.toHaveBeenCalled();
+      await act(() => setLanguagePreference("zh"));
+      await expect
+        .element(page.getByText("已忽略 Cox 0.1.42，仍会提醒更新的版本。", { exact: true }))
+        .toBeVisible();
+      await page.getByRole("button", { name: "检查更新", exact: true }).click();
+      expect(bridge.checkBackendUpdate).toHaveBeenCalledOnce();
+      await page.getByRole("button", { name: "更新操作", exact: true }).click();
+      await page.getByRole("menuitem", { name: "恢复自动检查更新", exact: true }).click();
+      expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith("automatic", undefined);
+    } finally {
+      setLanguagePreference("en");
+    }
+  });
 
   it("shows independent versions and stages updates without quitting or restarting tasks", async () => {
     const initial: DesktopBackendUpdateState = {
@@ -169,6 +149,7 @@ describe("desktop shell", () => {
     );
     await act(() => update?.(available));
     await expect.element(page.getByText("Cox 0.1.42 is available.")).toBeVisible();
+    expect(page.getByRole("alertdialog").element().querySelectorAll("button")).toHaveLength(2);
     await expect
       .element(page.getByRole("button", { name: "Ignore this version", exact: true }))
       .not.toBeInTheDocument();
@@ -186,7 +167,7 @@ describe("desktop shell", () => {
       .toBeVisible();
     expect(bridge.answerQuit).not.toHaveBeenCalled();
     await page.getByRole("button", { name: "Done", exact: true }).click();
-    await screen.rerender(<DesktopBackendUpdates />);
+    await screen.rerender(<DesktopUpdates />);
     await expect.element(page.getByText("0.2.0", { exact: true })).toBeVisible();
     await expect.element(page.getByText("0.1.41", { exact: true })).toBeVisible();
     await expect.element(page.getByText("Not bundled", { exact: true })).toBeVisible();
@@ -199,8 +180,8 @@ describe("desktop shell", () => {
     await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("uses the themed quit dialog, focuses cancel and keeps stopping explicit", async () => {
-    let requestQuit: (() => void) | undefined;
+  it("answers ordinary quit requests directly without showing a confirmation", async () => {
+    let requestQuit: ((reason?: "quit" | "update") => void) | undefined;
     const unsubscribe = vi.fn();
     const bridge: DesktopShellBridge = {
       platform: "win32",
@@ -222,18 +203,9 @@ describe("desktop shell", () => {
       expect.stringMatching(/^#[a-f0-9]{6}$/),
     );
     expect(document.documentElement.dataset.coxDesktop).toBe("windows");
-    await act(() => requestQuit?.());
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    const cancel = page.getByRole("button", { name: "Cancel", exact: true });
-    await expect.element(cancel).toHaveFocus();
-    await cancel.click();
-    expect(bridge.answerQuit).toHaveBeenLastCalledWith(false);
-    await act(() => requestQuit?.());
-    await page.getByRole("button", { name: "Quit Cox", exact: true }).click();
+    await act(() => requestQuit?.("quit"));
     expect(bridge.answerQuit).toHaveBeenLastCalledWith(true);
-    await expect
-      .element(page.getByRole("button", { name: "Quitting…", exact: true }))
-      .toBeDisabled();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
     await screen.unmount();
     expect(unsubscribe).toHaveBeenCalledOnce();
     expect(document.documentElement.dataset.coxDesktop).toBeUndefined();
@@ -280,9 +252,9 @@ describe("desktop shell", () => {
   });
 
   it.each([false, true])(
-    "keeps quit clickable when another dialog opens late: %s",
+    "keeps update confirmation clickable when another dialog opens late: %s",
     async (late) => {
-      let requestQuit: (() => void) | undefined;
+      let requestQuit: ((reason?: "quit" | "update") => void) | undefined;
       const bridge: DesktopShellBridge = {
         platform: "win32",
         ready: vi.fn(),
@@ -309,13 +281,13 @@ describe("desktop shell", () => {
         </DesktopShell>
       );
       await using screen = await render(content(!late));
-      await act(() => requestQuit?.());
+      await act(() => requestQuit?.("update"));
       if (late) await screen.rerender(content(true));
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
       expect(bridge.answerQuit).toHaveBeenLastCalledWith(false);
       await expect.element(page.getByRole("button", { name: "Setup action" })).toBeVisible();
-      await act(() => requestQuit?.());
-      await page.getByRole("button", { name: "Quit Cox", exact: true }).click();
+      await act(() => requestQuit?.("update"));
+      await page.getByRole("button", { name: "Open installer", exact: true }).click();
       expect(bridge.answerQuit).toHaveBeenLastCalledWith(true);
     },
   );
