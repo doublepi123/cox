@@ -108,6 +108,7 @@ export function describeComposerEffort(
     detail: display.label,
     suffix: (
       <span
+        data-composer-effort-suffix
         className={cn(
           "flex shrink-0 items-center gap-1.5 text-muted-foreground group-hover/model-trigger:text-foreground group-data-pressed/model-trigger:text-foreground group-data-popup-open/model-trigger:text-foreground",
           // A word space after the model name: the regular trigger's gap is wider than one.

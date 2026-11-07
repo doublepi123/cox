@@ -50,7 +50,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader() {
       )}
     >
       {backdropVariant ? <SidebarStageBackdrop variant={backdropVariant} /> : null}
-      <div className="relative order-last z-10 ml-auto flex shrink-0 items-center md:hidden">
+      <div className="relative order-last z-10 ml-auto flex shrink-0 items-center [&_button]:relative [&_button]:top-auto [&_button]:translate-y-0 md:hidden">
         <SidebarTrigger
           variant={backdropVariant ? "media-navigation" : "ghost"}
           aria-label={t("Toggle main sidebar")}

@@ -124,7 +124,8 @@ describe("desktop shell", () => {
           .toBeVisible();
         await page.getByRole("button", { name: "检查 Cox 更新", exact: true }).click();
         expect(bridge.checkBackendUpdate).toHaveBeenCalledOnce();
-        await page.getByRole("button", { name: "恢复 Cox 自动更新检查", exact: true }).click();
+        await page.getByRole("button", { name: "Cox 更新操作", exact: true }).click();
+        await page.getByRole("menuitem", { name: "恢复 Cox 自动更新检查", exact: true }).click();
         expect(bridge.setBackendUpdatePolicy).toHaveBeenLastCalledWith("automatic", undefined);
       } finally {
         setLanguagePreference("en");

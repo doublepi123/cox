@@ -51,7 +51,6 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
 }: PanelLayoutControlsProps) {
   const threadPanelToggle = (
     <Toggle
-      className="relative shrink-0 [-webkit-app-region:no-drag]"
       pressed={threadPanelOpen}
       onPressedChange={threadPanelPresentation === "popover" ? undefined : onToggleThreadPanel}
       aria-label="Toggle thread details panel"
@@ -79,7 +78,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
 
   return (
     <div
-      className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"
+      className="flex h-full shrink-0 items-center gap-0 max-sm:[&_button]:h-11 max-sm:[&_button]:min-w-11 sm:gap-1 [-webkit-app-region:no-drag]"
       data-panel-layout-controls
     >
       {showThreadPanelControl ? threadPanelControl : null}
@@ -87,7 +86,6 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
         <Tooltip>
           <TooltipTrigger render={<span className="flex shrink-0" />}>
             <Toggle
-              className="shrink-0 [-webkit-app-region:no-drag]"
               pressed={terminalOpen}
               onPressedChange={onToggleTerminal}
               aria-label="Toggle terminal drawer"
@@ -109,7 +107,6 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
         <Tooltip>
           <TooltipTrigger render={<span className="flex shrink-0" />}>
             <Toggle
-              className="shrink-0 [-webkit-app-region:no-drag]"
               pressed={rightPanelOpen}
               onPressedChange={onToggleRightPanel}
               aria-label="Toggle right panel"
@@ -142,10 +139,9 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
   const label = maximized ? "Restore panel size" : "Maximize panel";
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
+      <TooltipTrigger render={<span className="flex shrink-0 [-webkit-app-region:no-drag]" />}>
+        {
           <Toggle
-            className="shrink-0 [-webkit-app-region:no-drag]"
             pressed={maximized}
             onPressedChange={onToggle}
             aria-label={label}
@@ -155,7 +151,7 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
             <MorphIcon className="size-4" icon={maximized ? Minimize2 : Maximize2} />
           </Toggle>
         }
-      />
+      </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>
     </Tooltip>
   );

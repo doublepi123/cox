@@ -156,6 +156,7 @@ function BrowserMiniPlayer({
 }: Props & {
   readonly tabId: string;
 }) {
+  const { t } = useTranslation();
   const httpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const { serverEpoch, snapshot, serverTab, sourceSize } = useBrowserMiniPlayerSource(
     threadRef,
@@ -206,7 +207,7 @@ function BrowserMiniPlayer({
       threadRef={threadRef}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
-      label="Floating browser preview"
+      label={t("Floating browser preview")}
       recording={false}
       onOpenInPanel={openInPanel}
       pillActions={
@@ -218,7 +219,9 @@ function BrowserMiniPlayer({
                   variant={poppedOut ? "secondary" : "ghost"}
                   size="icon-xs"
                   aria-label={
-                    poppedOut ? "Close popped-out preview" : "Pop preview into separate window"
+                    poppedOut
+                      ? t("Close popped-out preview")
+                      : t("Pop preview into separate window")
                   }
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={toggleNativePictureInPicture}
@@ -228,7 +231,7 @@ function BrowserMiniPlayer({
               <PictureInPicture2 />
             </TooltipTrigger>
             <TooltipPopup side="top">
-              {poppedOut ? "Close separate window" : "Pop into separate window"}
+              {poppedOut ? t("Close separate window") : t("Pop into separate window")}
             </TooltipPopup>
           </Tooltip>
         ) : null
@@ -417,7 +420,11 @@ function MiniPlayerShell({
                 )}
               />
             </div>
-            <div className="pointer-events-none absolute right-0 top-0 flex h-8 cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 opacity-0 shadow-lg/20 backdrop-blur-xl transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-data-pill-open:pointer-events-auto group-data-pill-open:opacity-100 active:cursor-grabbing pointer-coarse:right-2.5 pointer-coarse:top-2.5">
+            <div
+              role="group"
+              aria-label={t("Browser preview actions")}
+              className="pointer-events-none absolute right-0 top-0 flex h-8 cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 opacity-0 shadow-lg/20 backdrop-blur-xl transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-data-pill-open:pointer-events-auto group-data-pill-open:opacity-100 active:cursor-grabbing max-sm:pointer-events-auto max-sm:h-12 max-sm:opacity-100 max-sm:[&_button]:size-11 pointer-coarse:right-2.5 pointer-coarse:top-2.5"
+            >
               {recording ? (
                 <span aria-hidden className="flex size-6 shrink-0 items-center justify-center">
                   <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
@@ -429,7 +436,7 @@ function MiniPlayerShell({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      aria-label="Open preview in right panel"
+                      aria-label={t("Open preview in panel")}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={onOpenInPanel}
                     />
@@ -437,7 +444,7 @@ function MiniPlayerShell({
                 >
                   <PanelRightIcon />
                 </TooltipTrigger>
-                <TooltipPopup side="top">Open in right panel</TooltipPopup>
+                <TooltipPopup side="top">{t("Open in panel")}</TooltipPopup>
               </Tooltip>
               {pillActions}
               <Tooltip>
@@ -467,7 +474,10 @@ function MiniPlayerShell({
               key={direction}
               role="presentation"
               data-preview-mini-player-resize={direction}
-              className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
+              className={cn(
+                "pointer-events-auto absolute z-[49] touch-none max-sm:hidden",
+                className,
+              )}
               onPointerDown={(event) => beginGesture(event, direction)}
               onPointerMove={handlePointerMove}
               onPointerUp={endGesture}

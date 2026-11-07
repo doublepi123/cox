@@ -150,9 +150,13 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
   };
   const openFileSurfaceStable = useStableCallback(openFileSurface);
-  const closePreviewPanel = () => {
+  const closePreviewPanel = (floatPreview = true) => {
     if (activeThreadRef) {
-      if (activeRightPanelSurface?.kind === "preview" && activeRightPanelSurface.resourceId) {
+      if (
+        floatPreview &&
+        activeRightPanelSurface?.kind === "preview" &&
+        activeRightPanelSurface.resourceId
+      ) {
         usePreviewMiniPlayerStore
           .getState()
           .open(activeThreadRef, browserMiniPlayerSource(activeRightPanelSurface.resourceId));
@@ -162,6 +166,10 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     }
   };
   const closePreviewPanelStable = useStableCallback(closePreviewPanel);
+  const closePreviewPanelWithoutFloating = () => closePreviewPanel(false);
+  const closePreviewPanelWithoutFloatingStable = useStableCallback(
+    closePreviewPanelWithoutFloating,
+  );
   const togglePreviewPanel = () => {
     if (!activeThreadRef || !browserAvailable) return;
     if (previewPanelOpen) {
@@ -326,6 +334,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
     closePreviewPanelStable,
+    closePreviewPanelWithoutFloatingStable,
     copyRightPanelFilePathStable,
     createBrowserSurface,
     createBrowserSurfaceStable,

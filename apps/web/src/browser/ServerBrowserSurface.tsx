@@ -750,23 +750,26 @@ export function ServerBrowserSurface(props: {
     >
       <div
         className={cn(
-          "visible relative z-20 flex shrink-0 items-center justify-between gap-2 border-border bg-background px-2 py-1",
+          "visible relative z-20 flex shrink-0 items-center justify-between gap-2 border-border bg-background px-2 py-1 max-sm:min-h-12 max-sm:[&_button]:min-h-11 max-sm:[&_button]:px-3",
           controlPosition === "bottom" ? "order-last border-t" : "border-b",
         )}
+        data-browser-controller={control?.controller ?? "connecting"}
       >
-        <span role="status" className="text-xs text-muted-foreground">
-          {previewStreamControlLabel(control)}
+        <span role="status" className="min-w-0 truncate text-xs text-muted-foreground">
+          {t(previewStreamControlLabel(control))}
         </span>
         {control?.canOperate ? (
           <Button
-            variant="outline"
+            variant={control.controller === "you" ? "outline" : "default"}
             size="xs"
             disabled={control.controller === "another-viewer"}
             onClick={() =>
               send({ type: control.controller === "you" ? "releaseControl" : "takeControl" })
             }
           >
-            {control.controller === "you" ? "Release control" : "Take control"}
+            {control.controller === "you"
+              ? t(controlPosition === "bottom" ? "Release" : "Release control")
+              : t("Take control")}
           </Button>
         ) : null}
       </div>
@@ -894,7 +897,7 @@ export function ServerBrowserSurface(props: {
                 </div>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">Take control to respond.</p>
+              <p className="text-xs text-muted-foreground">{t("Take control to respond.")}</p>
             )}
           </div>
         ) : null}

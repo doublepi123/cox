@@ -1,4 +1,7 @@
+import { XIcon } from "lucide-react";
 import { usePreviewPanelInlineSize } from "../../hooks/usePreviewPanelInlineSize";
+import { useTranslation } from "../../i18n";
+import { Button } from "../ui/button";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { RightPanelTabs, type RightPanelTabsProps } from "../RightPanelTabs";
 
@@ -17,6 +20,7 @@ type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "ma
  * lives here rather than in ChatView.
  */
 export function ChatRightPanel(props: ChatRightPanelProps) {
+  const { t } = useTranslation();
   const {
     sheet,
     workspaceLayoutElement,
@@ -31,6 +35,11 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     container: workspaceLayoutElement,
     widthStorageKey,
   });
+  const sheetControls = (
+    <Button variant="ghost" size="icon-xl" aria-label={t("Close panel")} onClick={onCloseSheet}>
+      <XIcon />
+    </Button>
+  );
   if (!sheet) {
     return <RightPanelTabs {...tabs} mode="inline" maximized={maximized} inlineSize={inlineSize} />;
   }
@@ -44,7 +53,7 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
         {...tabs}
         mode="sheet"
         inlineSize={inlineSize}
-        layoutControls={layoutControls}
+        layoutControls={sheetControls}
       />
     </RightPanelSheet>
   );
