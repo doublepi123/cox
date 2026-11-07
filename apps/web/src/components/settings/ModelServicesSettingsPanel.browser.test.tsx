@@ -183,6 +183,35 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 }
 
 describe("model services settings", () => {
+  it("shows the selected service clearly and switches editors from the service picker", async () => {
+    const backupId = ModelServiceId.make("backup");
+    setup({
+      [id]: configured,
+      [backupId]: {
+        ...configured,
+        name: "Backup API",
+        baseUrl: "https://backup.test/v1",
+        models: [],
+      },
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("group", { name: "Configured model services" }))
+      .toBeVisible();
+    const primary = screen.getByRole("button", { name: /Shared API/ });
+    const backup = screen.getByRole("button", { name: /Backup API/ });
+    await expect.element(primary).toHaveAttribute("aria-pressed", "true");
+    await expect.element(backup).toHaveAttribute("aria-pressed", "false");
+    expect(primary.element().textContent).toContain("1 model");
+    expect(backup.element().textContent).toContain("0 models");
+    await backup.click();
+    await expect.element(backup).toHaveAttribute("aria-pressed", "true");
+    await expect.element(primary).toHaveAttribute("aria-pressed", "false");
+    await expect
+      .element(screen.getByLabelText("API URL", { exact: true }))
+      .toHaveValue("https://backup.test/v1");
+  });
+
   it("tests the current models, ignores failures without deleting them and allows restoring one", async () => {
     setup({
       [id]: {
@@ -350,6 +379,16 @@ describe("model services settings", () => {
         const element = screen.getByText(label, { exact: true }).element();
         expect(Number.parseFloat(getComputedStyle(element).fontSize)).toBeGreaterThanOrEqual(12);
       }
+      const picker = screen.getByRole("group", {
+        name: language === "zh" ? "已配置的模型服务" : "Configured model services",
+      });
+      expect(picker.element().scrollWidth).toBeLessThanOrEqual(picker.element().clientWidth);
+      expect(
+        screen
+          .getByRole("button", { name: /newapi/ })
+          .element()
+          .getBoundingClientRect().height,
+      ).toBeGreaterThanOrEqual(44);
       const fetchButton = screen
         .getByRole("button", {
           name: language === "zh" ? "保存并获取模型" : "Save and fetch models",

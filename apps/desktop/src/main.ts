@@ -118,23 +118,11 @@ async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = fal
         message: text("Cox {version} is available. Download now and activate on the next launch?", {
           version: state.latestVersion ?? "",
         }),
-        buttons: [
-          text("Later"),
-          text("Download"),
-          text("Ignore this version"),
-          text("Ignore all updates"),
-        ],
+        buttons: [text("Later"), text("Download")],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
       });
-      if (!quitPending && (answer.response === 2 || answer.response === 3)) {
-        await updates!.setPolicy(
-          answer.response === 2 ? "ignore-version" : "never",
-          state.latestVersion ?? undefined,
-        );
-        return;
-      }
       if (answer.response !== 1 || quitPending) return;
       state = await updates!.stage();
     } else if (!manual) return;

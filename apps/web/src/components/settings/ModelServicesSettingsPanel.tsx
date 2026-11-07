@@ -21,8 +21,8 @@ import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { randomUUID } from "../../lib/utils";
-import { PlusIcon, RefreshCwIcon } from "lucide-react";
+import { cn, randomUUID } from "../../lib/utils";
+import { CheckIcon, Layers3Icon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -118,18 +118,52 @@ export function EnvironmentModelServices({
         </p>
       ) : null}
       {entries.length ? (
-        <div className="flex flex-wrap gap-2 px-3 sm:px-4">
-          {entries.map(([id, service]) => (
-            <Button
-              key={id}
-              size="sm"
-              variant={selected === id ? "secondary" : "ghost-muted"}
-              aria-pressed={selected === id}
-              onClick={() => setEditing(id)}
-            >
-              {service.name}
-            </Button>
-          ))}
+        <div className="px-3 sm:px-4">
+          <div
+            role="group"
+            aria-label={t("Configured model services")}
+            className="flex flex-wrap gap-1.5 rounded-xl border border-border/60 bg-muted/25 p-1.5"
+          >
+            {entries.map(([id, service]) => {
+              const active = selected === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setEditing(id)}
+                  className={cn(
+                    "group flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left outline-hidden transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:w-auto sm:min-w-60",
+                    active
+                      ? "bg-background text-foreground shadow-xs/10 ring-1 ring-border/70"
+                      : "text-muted-foreground hover:bg-background/65 hover:text-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                      active
+                        ? "bg-primary/10 text-primary"
+                        : "bg-background/60 text-muted-foreground group-hover:bg-background",
+                    )}
+                  >
+                    <Layers3Icon className="size-4" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{service.name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t(service.models.length === 1 ? "{name} model" : "{name} models", {
+                        name: service.models.length,
+                      })}
+                    </span>
+                  </span>
+                  {active ? (
+                    <CheckIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : !selected ? (
         <SettingsRow

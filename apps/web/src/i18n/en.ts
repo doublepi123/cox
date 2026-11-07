@@ -229,7 +229,10 @@ export const en = {
   "Could not fetch model metadata from models.dev. Try again later.":
     "Could not fetch model metadata from models.dev. Try again later.",
   "Model services": "Model services",
+  "Configured model services": "Configured model services",
   "Model service": "Model service",
+  "This agent uses its native account and model configuration instead of a centrally managed model service.":
+    "This agent uses its native account and model configuration instead of a centrally managed model service.",
   "Add model service": "Add model service",
   "Configure an API once, discover its models, and share it with compatible coding agents.":
     "Configure an API once, discover its models, and share it with compatible coding agents.",

@@ -1,4 +1,9 @@
-import { EnvironmentId, ProviderDriverKind, type AcpRegistrySearchAgent } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ModelServiceId,
+  ProviderDriverKind,
+  type AcpRegistrySearchAgent,
+} from "@t3tools/contracts";
 import { userEvent } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -9,8 +14,12 @@ const actions = vi.hoisted(() => ({
   onOpenChange: vi.fn(),
   canManageProviders: true,
 }));
+type DialogSettings = {
+  providerInstances: Record<string, unknown>;
+  modelServices?: Record<string, unknown>;
+};
 const settingsHooks = vi.hoisted(() => ({
-  read: vi.fn(() => ({ providerInstances: {} })),
+  read: vi.fn<() => DialogSettings>(() => ({ providerInstances: {} })),
   mutate: vi.fn(),
   useMutation: vi.fn(),
 }));
@@ -89,6 +98,14 @@ vi.mock(import("./ProviderWizardAuthenticationStep"), async (original) => ({
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 
 const remoteEnvironmentId = EnvironmentId.make("remote-device");
+const sharedServiceId = ModelServiceId.make("shared");
+const sharedModelService = {
+  name: "Agentbox",
+  baseUrl: "https://models.test/v1",
+  enabled: true,
+  protocols: ["openai-responses", "openai-chat", "anthropic-messages", "gemini"],
+  models: [{ id: "Vendor/Exact", name: "Exact model", capabilities: null }],
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -126,6 +143,14 @@ const input = (selector: string) => {
 async function type(selector: string, value: string) {
   await userEvent.fill(input(selector), value);
   await act(async () => input(selector).blur());
+}
+async function chooseSharedModelService() {
+  const connection = document.querySelector<HTMLSelectElement>('select[id$="-connection"]');
+  expect(connection).not.toBeNull();
+  await act(async () => {
+    connection!.value = sharedServiceId;
+    connection!.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 }
 const signInStep = () => document.querySelector('[aria-label="Sign-in step"]');
 
@@ -202,12 +227,81 @@ describe("AddProviderInstanceDialog environment routing", () => {
     await act(async () => radio("fx")!.click());
     await click("Next");
     await click("Next");
+    expect(document.body.textContent).toContain(
+      "This agent uses its native account and model configuration",
+    );
+    expect(document.querySelector('select[id$="-connection"]')).toBeNull();
     await click("Add instance");
     expect(settingsHooks.mutate).toHaveBeenCalledWith({
       operation: "create",
       instanceId: "fx",
       instance: { driver: "fx", enabled: true, displayName: "fx" },
     });
+  });
+
+  it.each([
+    ["codex", "Codex", "codex_2", { setupMode: "existing" }],
+    ["claudeAgent", "Claude", "claudeAgent_2", undefined],
+    ["pi", "Pi", "pi", undefined],
+    ["opencode", "OpenCode", "opencode", undefined],
+  ] as const)(
+    "binds a new %s instance directly to a model service",
+    async (driver, label, id, config) => {
+      setup();
+      settingsHooks.read.mockReturnValue({
+        providerInstances: {},
+        modelServices: { [sharedServiceId]: sharedModelService },
+      });
+      await using _screen = await render(dialog());
+      if (driver === "codex") await click("Configure manually");
+      else {
+        await act(async () => radio(label)!.click());
+        await click("Next");
+      }
+      await click("Next");
+      if (driver === "codex") {
+        await type("#add-provider-codex-baseUrl", "https://stale.test/v1");
+        await type("#add-provider-codex-apiKey", "stale-secret");
+      }
+      await chooseSharedModelService();
+      if (driver === "codex") {
+        expect(document.querySelector("#add-provider-codex-baseUrl")).toBeNull();
+        expect(document.querySelector("#add-provider-codex-apiKey")).toBeNull();
+        expect(document.querySelector("#add-provider-codex-binaryPath")).not.toBeNull();
+      }
+      await click("Add instance");
+      expect(settingsHooks.mutate).toHaveBeenCalledWith({
+        operation: "create",
+        instanceId: id,
+        instance: {
+          driver: ProviderDriverKind.make(driver),
+          enabled: true,
+          displayName: label,
+          ...(config ? { config } : {}),
+          modelService: {
+            serviceId: sharedServiceId,
+            modelIds: [],
+            defaultModel: "Vendor/Exact",
+          },
+        },
+      });
+      expect(JSON.stringify(settingsHooks.mutate.mock.calls[0])).not.toContain("stale-secret");
+      expect(JSON.stringify(settingsHooks.mutate.mock.calls[0])).not.toContain("stale.test");
+    },
+  );
+
+  it("blocks creation when the selected service has no compatible models", async () => {
+    setup();
+    settingsHooks.read.mockReturnValue({
+      providerInstances: {},
+      modelServices: { [sharedServiceId]: { ...sharedModelService, models: [] } },
+    });
+    await using _screen = await render(dialog());
+    await click("Configure manually");
+    await click("Next");
+    await chooseSharedModelService();
+    expect(button("Add instance").disabled).toBe(true);
+    expect(settingsHooks.mutate).not.toHaveBeenCalled();
   });
 
   it("awaits an atomic create before closing and retains prepared ACP metadata", async () => {

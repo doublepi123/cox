@@ -9,7 +9,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeftIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, RotateCcwIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
@@ -234,18 +234,9 @@ function SettingsContentLayout() {
                   onRestored={() => setRestoreSignal((value) => value + 1)}
                 />
               ) : null}
-              {window.coxDesktop?.windowKind === "settings" ? (
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={t("Close")}
-                  onClick={() => void closeDesktopSettings()}
-                >
-                  <XIcon />
-                </Button>
-              ) : (
+              {window.coxDesktop?.windowKind !== "settings" ? (
                 <AppRouteModalClose size={isPhoneLayout ? "icon-xl" : "icon-sm"} />
-              )}
+              ) : null}
             </div>
           </header>
           {isPhoneLayout && isSettingsIndex ? (

@@ -216,7 +216,10 @@ export const zh = {
   "Could not fetch model metadata from models.dev. Try again later.":
     "无法从 models.dev 获取模型参数，请稍后重试。",
   "Model services": "模型服务中心",
+  "Configured model services": "已配置的模型服务",
   "Model service": "模型服务",
+  "This agent uses its native account and model configuration instead of a centrally managed model service.":
+    "此 Agent 使用原生账号和模型配置，暂不支持集中管理的模型服务。",
   "Add model service": "添加模型服务",
   "Configure an API once, discover its models, and share it with compatible coding agents.":
     "配置一次 API、获取模型，即可供兼容的编程助手共享使用。",

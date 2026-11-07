@@ -105,6 +105,7 @@ try {
   settings.on("pageerror", (error) => console.error("Settings renderer error:", error));
   await settings.waitForURL(/\/settings\/about$/, { timeout: 30_000 });
   await settings.getByRole("heading", { name: /^(Desktop client|桌面客户端)$/ }).waitFor();
+  assert.equal(await settings.getByRole("button", { name: /^(Close|关闭)$/ }).count(), 0);
   assert.equal(
     await settings.evaluate(() => Reflect.get(window, "coxDesktop").windowKind),
     "settings",

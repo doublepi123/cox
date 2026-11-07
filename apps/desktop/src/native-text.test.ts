@@ -93,5 +93,7 @@ describe("native desktop language and update messages", () => {
     expect(main).toContain('text("Cox permission")');
     expect(main).toContain('text("Cox startup")');
     expect(main).toContain('text("Check for Cox Updates")');
+    expect(main).not.toContain('text("Ignore this version")');
+    expect(main).not.toContain('text("Ignore all updates")');
   });
 });

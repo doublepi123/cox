@@ -12,9 +12,14 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
   type EnvironmentId,
+  type ModelServiceBinding,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
 } from "@t3tools/contracts";
+import {
+  boundModelServiceModels,
+  MODEL_SERVICE_AGENT_DRIVERS,
+} from "@t3tools/shared/modelServices";
 
 import {
   useEnvironmentSettings,
@@ -52,6 +57,7 @@ import {
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";
 import { AcpRegistrySearchStep, useAcpRegistrySearch } from "./AcpRegistrySearchStep";
 import { ProviderWizardAuthenticationStep } from "./ProviderWizardAuthenticationStep";
+import { ModelServiceBindingFields } from "./ModelServiceBindingFields";
 import { resolveOfficialAcpRegistryIconUrl } from "./AcpRegistryIcon";
 import { AddManagedCodexAccountDialog } from "./CodexSetupSection";
 import { MultipleAccountsNote } from "./MultipleAccountsNote";
@@ -83,6 +89,12 @@ const DRIVER_OPTIONS = providerClients.definitions.filter(
 const FEATURED_DRIVER_OPTIONS = DRIVER_OPTIONS.filter((option) => option.featured !== false);
 const MORE_DRIVER_OPTIONS = DRIVER_OPTIONS.filter((option) => option.featured === false);
 const EMPTY_CONFIG_DRAFT: Record<string, unknown> = {};
+const MODEL_SERVICE_MANAGED_CONFIG_FIELDS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  codex: ["baseUrl", "apiKey"],
+  claudeAgent: ["baseUrl", "apiKey"],
+  pi: ["provider", "model", "apiKey", "agentDir"],
+  opencode: ["serverUrl", "serverPassword"],
+};
 function validateInstanceId(id: string, existing: ReadonlySet<string>): string | null {
   if (id.length === 0) return translateCurrent("Instance ID is required.");
   if (id.length > 64) return translateCurrent("Instance ID must be 64 characters or fewer.");
@@ -183,6 +195,9 @@ export function AddProviderInstanceDialog({
   const [isManualAcpConfiguration, setIsManualAcpConfiguration] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
   const [configByDriver, setConfigByDriver] = useState<Record<string, Record<string, unknown>>>({});
+  const [modelServiceByDriver, setModelServiceByDriver] = useState<
+    Record<string, ModelServiceBinding | undefined>
+  >({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [createdInstanceId, setCreatedInstanceId] = useState<ProviderInstanceId | null>(null);
@@ -224,6 +239,24 @@ export function AddProviderInstanceDialog({
       existingIds,
     );
   const driverSettingsFields = deriveProviderSettingsFields(driverOption);
+  const supportsModelService = (MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(
+    driver,
+  );
+  const modelServices = settings.modelServices ?? {};
+  const modelService = supportsModelService ? modelServiceByDriver[driver] : undefined;
+  const boundService = modelService ? modelServices[modelService.serviceId] : undefined;
+  const modelServiceError = modelService
+    ? boundService &&
+      boundModelServiceModels(boundService, modelService).some((model) => model.available !== false)
+      ? null
+      : t("Add or discover compatible models before binding an agent.")
+    : null;
+  const managedConfigFields = modelService
+    ? (MODEL_SERVICE_MANAGED_CONFIG_FIELDS[driver] ?? [])
+    : [];
+  const visibleDriverSettingsFields = driverSettingsFields.filter(
+    (field) => !managedConfigFields.includes(field.key),
+  );
   const instanceIdError = validateInstanceId(instanceId, existingIds);
   const showInstanceIdError = hasAttemptedSubmit && instanceIdError !== null;
   const identityStep = 1;
@@ -370,12 +403,20 @@ export function AddProviderInstanceDialog({
     if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     if (isSaving || createdInstanceId) return;
     setHasAttemptedSubmit(true);
-    if (instanceIdError !== null || (isAcpRegistry && acpSelectionError !== null)) return;
+    if (
+      instanceIdError !== null ||
+      modelServiceError !== null ||
+      (isAcpRegistry && acpSelectionError !== null)
+    )
+      return;
 
-    const config =
+    const rawConfig =
       driver === "codex"
         ? { ...configByDriver[driver], setupMode: "existing" }
         : (configByDriver[driver] ?? {});
+    const config = Object.fromEntries(
+      Object.entries(rawConfig).filter(([key]) => !managedConfigFields.includes(key)),
+    );
     const hasConfig = Object.keys(config).length > 0;
     const normalizedAccentColor = normalizeProviderAccentColor(accentColor);
 
@@ -385,6 +426,7 @@ export function AddProviderInstanceDialog({
       ...(label.trim().length > 0 ? { displayName: label.trim() } : {}),
       ...(normalizedAccentColor ? { accentColor: normalizedAccentColor } : {}),
       ...(hasConfig ? { config } : {}),
+      ...(modelService ? { modelService } : {}),
       ...(isLocalAcp && localEnvironment.length > 0 ? { environment: localEnvironment } : {}),
     };
     const brandedId = ProviderInstanceId.make(instanceId);
@@ -700,23 +742,52 @@ export function AddProviderInstanceDialog({
                 />
               </SettingsGroup>
 
-              {!isAcpRegistry && driverSettingsFields.length > 0 ? (
+              {!isAcpRegistry ? (
                 <SettingsGroup variant="plain" className={cn(wizardStep !== 2 && "hidden")}>
-                  <ProviderSettingsForm
-                    definition={driverOption}
-                    value={configDraft}
-                    idPrefix={`add-provider-${driver}`}
-                    variant="settings"
-                    onChange={setConfigDraft}
-                    environmentId={environmentId}
-                  />
+                  <SettingsRow
+                    title={t("Model service")}
+                    description={
+                      supportsModelService
+                        ? t(
+                            "Share a centrally managed API connection and model catalog with this agent.",
+                          )
+                        : t(
+                            "This agent uses its native account and model configuration instead of a centrally managed model service.",
+                          )
+                    }
+                  >
+                    {supportsModelService ? (
+                      <ModelServiceBindingFields
+                        driver={driver}
+                        services={modelServices}
+                        binding={modelService}
+                        onChange={(binding) =>
+                          setModelServiceByDriver((existing) => ({
+                            ...existing,
+                            [driver]: binding,
+                          }))
+                        }
+                      />
+                    ) : null}
+                  </SettingsRow>
+                  {visibleDriverSettingsFields.length > 0 ? (
+                    <ProviderSettingsForm
+                      definition={driverOption}
+                      fieldKeys={visibleDriverSettingsFields.map((field) => field.key)}
+                      value={configDraft}
+                      idPrefix={`add-provider-${driver}`}
+                      variant="settings"
+                      onChange={setConfigDraft}
+                      environmentId={environmentId}
+                    />
+                  ) : driverSettingsFields.length === 0 ? (
+                    <p className="px-3 text-sm text-muted-foreground sm:px-4">
+                      {t(
+                        "This driver has no required configuration. You can add the instance now.",
+                      )}
+                    </p>
+                  ) : null}
                 </SettingsGroup>
-              ) : !isAcpRegistry && wizardStep === 2 ? (
-                <div className="grid gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {t("This driver has no required configuration. You can add the instance now.")}
-                  </p>
-                </div>
               ) : null}
             </WizardPanel>
 
@@ -756,7 +827,7 @@ export function AddProviderInstanceDialog({
               ) : (
                 <Button
                   size="sm"
-                  disabled={isSaving || !canManageProviders}
+                  disabled={isSaving || !canManageProviders || modelServiceError !== null}
                   onClick={() => void handleSave()}
                 >
                   {isSaving
