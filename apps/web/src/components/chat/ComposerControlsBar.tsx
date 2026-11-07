@@ -221,7 +221,7 @@ export function ComposerControlsBar(props: {
         MODEL_TRIGGER_STATES,
         composerControlsCollapsed
           ? "min-w-13 shrink text-xs!"
-          : "min-w-13 max-[359px]:px-1.5 max-[359px]:[&_[data-composer-effort-suffix]]:hidden",
+          : "min-w-13 max-[359px]:px-1 max-sm:[&_[data-composer-effort-suffix]]:hidden",
       )}
       triggerSuffix={effort.suffix}
       triggerDetail={effort.detail}

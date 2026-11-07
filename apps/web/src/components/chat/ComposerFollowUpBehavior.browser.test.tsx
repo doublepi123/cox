@@ -330,11 +330,14 @@ describe("composer follow-up preference", () => {
         const label = model.querySelector<HTMLElement>("[data-chat-provider-model-picker-label]")!;
         expect(label.getBoundingClientRect().width).toBeGreaterThanOrEqual(40);
       }
+      if (width < 640 && !collapsed) {
+        const label = model.querySelector<HTMLElement>("[data-chat-provider-model-picker-label]")!;
+        const effort = model.querySelector<HTMLElement>("[data-composer-effort-suffix]")!;
+        expect(effort.checkVisibility()).toBe(false);
+      }
       if (width === 320 && !collapsed) {
         const label = model.querySelector<HTMLElement>("[data-chat-provider-model-picker-label]")!;
         expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth + 1);
-        const effort = model.querySelector<HTMLElement>("[data-composer-effort-suffix]")!;
-        expect(effort.checkVisibility()).toBe(false);
       }
       const controlHost = screen.getByTestId("controls").element() as HTMLElement;
       const measurement = measureRestingComposerControls(controlHost)!;
