@@ -238,16 +238,23 @@ function ModelServiceEditor({
       .filter(([, result]) => !result.ok && result.revision === service?.revision)
       .map(([modelId]) => modelId),
   );
+  const connectionChanged = Boolean(
+    !service ||
+    baseUrl !== service.baseUrl ||
+    apiKey ||
+    clearKey ||
+    headers !== JSON.stringify(service.headers, null, 2) ||
+    modelsPath !== (service.modelsPath ?? "") ||
+    JSON.stringify(selectedProtocols) !== JSON.stringify(service.protocols),
+  );
   const changed = Boolean(
     service &&
-    (name !== service.name ||
-      baseUrl !== service.baseUrl ||
-      apiKey ||
-      clearKey ||
+    (connectionChanged ||
+      name !== service.name ||
       enabled !== service.enabled ||
-      headers !== JSON.stringify(service.headers, null, 2) ||
-      JSON.stringify(selectedProtocols) !== JSON.stringify(service.protocols)),
+      JSON.stringify(recovery) !== JSON.stringify(service.recovery)),
   );
+  const fetchOnSave = !service || connectionChanged;
   async function run(action: () => Promise<string | null>) {
     if (running.current || tests.running) return;
     running.current = true;
@@ -311,7 +318,7 @@ function ModelServiceEditor({
         className="grid lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]"
         onSubmit={(event) => {
           event.preventDefault();
-          void run(() => save(false));
+          void run(() => save(fetchOnSave));
         }}
       >
         <div className="space-y-5 p-4 sm:p-5 lg:p-6">
@@ -441,18 +448,17 @@ function ModelServiceEditor({
         </div>
         {!readOnly ? (
           <div className="grid gap-2 lg:col-span-2 lg:border-t lg:border-border/60 lg:p-5 lg:pt-5">
-            <div className="grid gap-2 sm:flex sm:justify-end lg:col-start-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+                {t(
+                  fetchOnSave
+                    ? "The connection changed. Saving will also refresh the model catalog."
+                    : "Only settings are saved. The model catalog is unchanged.",
+                )}
+              </p>
               <Button type="submit" disabled={busy}>
-                {t("Save service")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy || !enabled}
-                onClick={() => void run(() => save(true))}
-              >
-                <RefreshCwIcon className={busy ? "animate-spin" : undefined} />
-                {t(busy ? "Working…" : "Save and fetch models")}
+                <RefreshCwIcon className={busy && fetchOnSave ? "animate-spin" : undefined} />
+                {t(busy ? "Working…" : fetchOnSave ? "Save and fetch models" : "Save changes")}
               </Button>
             </div>
           </div>
@@ -469,6 +475,20 @@ function ModelServiceEditor({
         </h3>
         {service && !readOnly ? (
           <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !enabled || changed}
+              title={changed ? t("Save changes before refreshing models") : undefined}
+              onClick={() =>
+                void run(async () =>
+                  commandError(await discover({ environmentId, input: { serviceId: id } })),
+                )
+              }
+            >
+              <RefreshCwIcon />
+              {t("Refresh models")}
+            </Button>
             {tests.running ? (
               <Button size="sm" variant="outline" onClick={tester.cancel}>
                 {t("Stop remaining tests")}

@@ -274,6 +274,11 @@ export const zh = {
   "Model service recovery was stopped.": "模型服务恢复已停止。",
   "The model service is temporarily unavailable; retrying.": "模型服务暂时不可用，正在重试。",
   "Save service": "保存服务",
+  "Refresh models": "刷新模型",
+  "Save changes before refreshing models": "先保存更改，再刷新模型",
+  "The connection changed. Saving will also refresh the model catalog.":
+    "连接配置已更改，保存后将自动刷新模型。",
+  "Only settings are saved. The model catalog is unchanged.": "仅保存设置，不会重新获取模型。",
   "Working…": "正在处理…",
   "Save and fetch models": "保存并获取模型",
   "Add model": "添加模型",

@@ -293,6 +293,12 @@ export const en = {
   "The model service is temporarily unavailable; retrying.":
     "The model service is temporarily unavailable; retrying.",
   "Save service": "Save service",
+  "Refresh models": "Refresh models",
+  "Save changes before refreshing models": "Save changes before refreshing models",
+  "The connection changed. Saving will also refresh the model catalog.":
+    "The connection changed. Saving will also refresh the model catalog.",
+  "Only settings are saved. The model catalog is unchanged.":
+    "Only settings are saved. The model catalog is unchanged.",
   "Working…": "Working…",
   "Save and fetch models": "Save and fetch models",
   "Add model": "Add model",

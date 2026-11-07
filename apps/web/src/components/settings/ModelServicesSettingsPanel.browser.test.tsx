@@ -183,6 +183,31 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
 }
 
 describe("model services settings", () => {
+  it("uses one save action and only fetches models when the connection changes", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("button", { name: "Save changes", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Save and fetch models", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Refresh models", exact: true }))
+      .toBeEnabled();
+    await screen.getByLabelText("Service name", { exact: true }).fill("Renamed API");
+    await screen.getByRole("button", { name: "Save changes", exact: true }).click();
+    expect(state.save).toHaveBeenCalledOnce();
+    expect(state.discover).not.toHaveBeenCalled();
+    await screen.getByLabelText("API key", { exact: true }).fill("replacement-key");
+    await expect
+      .element(screen.getByRole("button", { name: "Save and fetch models", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("button", { name: "Save and fetch models", exact: true }).click();
+    expect(state.save).toHaveBeenCalledTimes(2);
+    expect(state.discover).toHaveBeenCalledOnce();
+  });
+
   it("shows the selected service clearly and switches editors from the service picker", async () => {
     const backupId = ModelServiceId.make("backup");
     setup({
@@ -266,7 +291,7 @@ describe("model services settings", () => {
       await input.fill("");
       await expect.element(input).toHaveValue(null);
       await input.fill(replacement);
-      await screen.getByRole("button", { name: "Save service", exact: true }).click();
+      await screen.getByRole("button", { name: "Save changes", exact: true }).click();
       expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery[key]).toBe(saved);
     },
   );
@@ -310,7 +335,7 @@ describe("model services settings", () => {
     await screen.getByLabelText("Maximum attempts (including backups)", { exact: true }).fill("7");
     await screen.getByLabelText("Recovery budget (seconds)", { exact: true }).fill("60");
     await screen.getByLabelText("Response headers timeout (seconds)", { exact: true }).fill("30");
-    await screen.getByRole("button", { name: "Save service", exact: true }).click();
+    await screen.getByRole("button", { name: "Save changes", exact: true }).click();
     expect(state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery).toEqual({
       retryEnabled: false,
       retryOn429: true,
@@ -351,7 +376,7 @@ describe("model services settings", () => {
         )
         .toBeChecked();
       await expect.element(screen.getByText(/Requires automatic retries\./)).toBeVisible();
-      await screen.getByRole("button", { name: "Save service", exact: true }).click();
+      await screen.getByRole("button", { name: "Save changes", exact: true }).click();
       expect(
         state.save.mock.calls[0]![0].input.patch.modelServices[id].recovery.retryNonTransientErrors,
       ).toBe(true);
@@ -391,7 +416,7 @@ describe("model services settings", () => {
       ).toBeGreaterThanOrEqual(44);
       const fetchButton = screen
         .getByRole("button", {
-          name: language === "zh" ? "保存并获取模型" : "Save and fetch models",
+          name: language === "zh" ? "保存更改" : "Save changes",
           exact: true,
         })
         .element()
@@ -661,12 +686,12 @@ describe("model services settings", () => {
     setup({ [id]: configured });
     state.discover.mockRejectedValueOnce(new Error("test failure"));
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
-    await screen.getByRole("button", { name: "Save and fetch models", exact: true }).click();
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
     await expect
       .element(screen.getByRole("alert"))
       .toHaveTextContent("The model service operation failed.");
     await expect.element(screen.getByText("Exact model", { exact: true })).toBeVisible();
-    await screen.getByRole("button", { name: "Save and fetch models", exact: true }).click();
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
     expect(state.discover).toHaveBeenCalledTimes(2);
     await expect.element(screen.getByText("Discovered model", { exact: true })).toBeVisible();
   });
@@ -689,7 +714,7 @@ describe("model services settings", () => {
     state.manage = false;
     await screen.rerender(<EnvironmentModelServices environmentId={environmentId} />);
     await expect
-      .element(screen.getByRole("button", { name: "Save service", exact: true }))
+      .element(screen.getByRole("button", { name: "Save changes", exact: true }))
       .not.toBeInTheDocument();
     await expect.element(screen.getByLabelText("API URL", { exact: true })).toBeDisabled();
     expect(state.save).not.toHaveBeenCalled();
