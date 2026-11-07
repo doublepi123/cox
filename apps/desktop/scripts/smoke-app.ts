@@ -165,16 +165,8 @@ try {
       assert.equal(existsSync(runtimePath), true);
       await application.evaluate(({ app }) => app.emit("activate"));
     }
-    await application.evaluate(({ app, dialog }) => {
-      dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
-      app.quit();
-    });
-    await page.getByRole("alertdialog").waitFor();
-    await page.getByRole("button", { name: /^(Cancel|取消)$/ }).click();
-    assert.equal(existsSync(runtimePath), true);
-    await application.evaluate(({ app }) => app.quit());
     const exit = once(applicationProcess, "exit", { signal: AbortSignal.timeout(20_000) });
-    await page.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
+    await application.evaluate(({ app }) => app.quit());
     const [exitCode] = await exit;
     assert.equal(exitCode, 0);
   } else {
@@ -219,12 +211,7 @@ try {
       });
       assert.equal(version, installed.active.version);
       const exited = once(offlineProcess, "exit", { signal: AbortSignal.timeout(30_000) });
-      await offline.evaluate(({ app, dialog }) => {
-        dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
-        app.quit();
-      });
-      if (process.platform === "darwin" || process.platform === "win32")
-        await offlinePage.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
+      await offline.evaluate(({ app }) => app.quit());
       assert.equal((await exited)[0], 0);
       console.log("PASS: client-only first installation and cached offline second launch.");
     } finally {

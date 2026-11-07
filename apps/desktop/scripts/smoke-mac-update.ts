@@ -93,7 +93,6 @@ try {
   );
   const exited = once(previousProcess, "exit", { signal: AbortSignal.timeout(30_000) });
   await previous.evaluate(({ app }) => app.quit());
-  await page.getByRole("button", { name: /^(Quit Cox|退出 Cox)$/ }).click();
   assert.equal((await exited)[0], 0);
   await updater.apply();
   const deadline = performance.now() + 180_000;
