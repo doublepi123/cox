@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { _electron } from "playwright-core";
 
 const root = resolve(import.meta.dirname, "../../..");
@@ -81,7 +82,10 @@ try {
   assert.equal(code, 0);
   assert.equal(await readFile(runtimePath, "utf8"), before);
   assert.equal(
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
+    await application.evaluate(
+      ({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().filter((candidate) => candidate.isVisible()).length,
+    ),
     1,
   );
   await page.waitForFunction(() =>
@@ -94,14 +98,33 @@ try {
       bridge.ready({ settingsWindow: true });
     });
   const mainUrl = page.url();
-  const openedSettings = application.waitForEvent("window");
+  let settings = application
+    .windows()
+    .find((candidate) => candidate.url().includes("/settings/general"));
+  for (let attempt = 0; !settings && attempt < 600; attempt++) {
+    await delay(50);
+    settings = application
+      .windows()
+      .find((candidate) => candidate.url().includes("/settings/general"));
+  }
+  assert.ok(settings, "The main window should prewarm a hidden settings window.");
+  await settings.waitForFunction(() =>
+    Boolean(document.querySelector('[data-slot="sidebar-wrapper"]')),
+  );
+  assert.equal(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((candidate) => candidate.webContents.getURL().includes("/settings/general"))
+        ?.isVisible(),
+    ),
+    false,
+  );
   await page.evaluate(async () => {
     const bridge = Reflect.get(window, "coxDesktop") as {
       openSettings(path: string): Promise<void>;
     };
     await bridge.openSettings("/settings/about");
   });
-  const settings = await openedSettings;
   settings.on("pageerror", (error) => console.error("Settings renderer error:", error));
   await settings.waitForURL(/\/settings\/about$/, { timeout: 30_000 });
   await settings.getByRole("heading", { name: /^(Desktop client|桌面客户端)$/ }).waitFor();
@@ -130,11 +153,30 @@ try {
   await page.waitForFunction(
     () => document.documentElement.style.getPropertyValue("--glass-opacity") === "85%",
   );
-  const settingsClosed = settings.waitForEvent("close");
-  await settings.evaluate(() => Reflect.get(window, "coxDesktop").closeSettings());
-  await settingsClosed;
+  await settings.evaluate(() => Reflect.set(window, "__coxSettingsSmokeMarker", "retained"));
+  await application.evaluate(({ BrowserWindow }) => {
+    const target = BrowserWindow.getAllWindows().find((candidate) =>
+      candidate.webContents.getURL().includes("/settings/about"),
+    );
+    target?.close();
+  });
+  await settings.waitForFunction(() => document.visibilityState === "hidden");
+  assert.equal(
+    await application.evaluate(
+      ({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().filter((candidate) => candidate.isVisible()).length,
+    ),
+    1,
+  );
   assert.equal(await readFile(runtimePath, "utf8"), before);
   assert.equal(page.url(), mainUrl);
+  await page.evaluate(() => Reflect.get(window, "coxDesktop").openSettings("/settings/general"));
+  await settings.waitForURL(/\/settings\/general$/, { timeout: 30_000 });
+  await settings.waitForFunction(() => document.visibilityState === "visible");
+  assert.equal(
+    await settings.evaluate(() => Reflect.get(window, "__coxSettingsSmokeMarker")),
+    "retained",
+  );
   if (process.platform === "win32" || process.platform === "darwin") {
     if (process.platform === "win32") {
       assert.equal(

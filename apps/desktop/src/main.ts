@@ -49,7 +49,6 @@ app.setName("Cox");
 let window: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
 let settingsNavigation: string | undefined;
-let closingSettings = false;
 const readyWindows = new Set<number>();
 let backend: BackendProcess | undefined;
 let approvedQuit = false;
@@ -213,10 +212,16 @@ function syncWindowControls(target = window) {
     target.webContents.send("cox:window-state", { fullscreen, zoomFactor });
 }
 
-function createDesktopWindow(kind: "main" | "settings", width: number, height: number) {
+function createDesktopWindow(
+  kind: "main" | "settings",
+  width: number,
+  height: number,
+  show = true,
+) {
   return new BrowserWindow({
     width,
     height,
+    show,
     minWidth: 400,
     minHeight: 360,
     title: kind === "main" ? "Cox" : text("Settings"),
@@ -389,6 +394,7 @@ async function start() {
         "settingsWindow" in capabilities &&
         capabilities.settingsWindow === true,
       );
+      prewarmSettings();
     }
     syncWindowControls(target);
     if (target === settingsWindow && settingsNavigation) {
@@ -532,7 +538,7 @@ async function start() {
   window.webContents.on("will-navigate", guardNavigation);
   window.webContents.on("will-redirect", guardNavigation);
   window.webContents.on("will-attach-webview", (event) => event.preventDefault());
-  const openSettings = async (path?: unknown) => {
+  const openSettings = async (path?: unknown, visible = true) => {
     if (!origin || quitPending) return;
     const destination = settingsWindowUrl(path ?? "/settings/general", origin);
     if (!supportsSettingsWindow) {
@@ -542,16 +548,16 @@ async function start() {
     }
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       if (settingsWindow.isMinimized()) settingsWindow.restore();
-      if (path === undefined || path === "/settings") {
+      if (visible) {
         settingsWindow.show();
         settingsWindow.focus();
+      }
+      if (path === undefined || path === "/settings") {
         return;
       }
       if (readyWindows.has(settingsWindow.webContents.id))
         settingsWindow.webContents.send("cox:navigate", destination.slice(origin.length));
       else settingsNavigation = destination.slice(origin.length);
-      settingsWindow.show();
-      settingsWindow.focus();
       return;
     }
     const boundsFile = join(home, "settings-window.json");
@@ -592,10 +598,9 @@ async function start() {
         }
       }
     } catch {}
-    const target = createDesktopWindow("settings", bounds.width, bounds.height);
+    const target = createDesktopWindow("settings", bounds.width, bounds.height, visible);
     const targetId = target.webContents.id;
     settingsWindow = target;
-    closingSettings = false;
     if (bounds.x !== undefined && bounds.y !== undefined) target.setPosition(bounds.x, bounds.y);
     target.webContents.setWindowOpenHandler(({ url }) => {
       void openExternal(url);
@@ -633,13 +638,7 @@ async function start() {
     target.on("resize", remember);
     target.on("move", remember);
     target.on("close", (event) => {
-      if (
-        approvedQuit ||
-        closingSettings ||
-        !readyWindows.has(targetId) ||
-        target.webContents.isCrashed()
-      )
-        return;
+      if (approvedQuit || !readyWindows.has(targetId) || target.webContents.isCrashed()) return;
       event.preventDefault();
       target.webContents.send("cox:settings-close-requested");
     });
@@ -662,8 +661,7 @@ async function start() {
   });
   ipcMain.on("cox:settings-close", (event) => {
     if (senderWindow(event) === settingsWindow) {
-      closingSettings = true;
-      settingsWindow?.close();
+      settingsWindow?.hide();
     }
   });
   ipcMain.handle("cox:main-open", (event, path: unknown) => {
@@ -675,6 +673,16 @@ async function start() {
     window?.webContents.send("cox:navigate", target.href.slice(origin.length));
     showWindow();
   });
+  let prewarmSettingsTimer: ReturnType<typeof setTimeout> | undefined;
+  function prewarmSettings() {
+    if (prewarmSettingsTimer || settingsWindow || !supportsSettingsWindow) return;
+    prewarmSettingsTimer = setTimeout(() => {
+      prewarmSettingsTimer = undefined;
+      if (settingsWindow || !origin || quitPending || approvedQuit) return;
+      void openSettings("/settings/general", false).catch(() => {});
+    }, 250);
+    prewarmSettingsTimer.unref();
+  }
   const permissions = new Set<string>(["clipboard-sanitized-write", "fullscreen"]);
   window.webContents.session.setPermissionCheckHandler(
     (contents, permission, requestingOrigin, details) =>
