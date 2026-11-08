@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { localizeDesktopMenu } from "./native-menu.ts";
+import { createDesktopMenuTemplate, localizeDesktopMenu } from "./native-menu.ts";
 
 const template: MenuItemConstructorOptions[] = [
   {
@@ -29,6 +29,101 @@ function flatten(items: readonly MenuItemConstructorOptions[]): MenuItemConstruc
     ...(Array.isArray(item.submenu) ? flatten(item.submenu) : []),
   ]);
 }
+
+function menuActions() {
+  return {
+    openMain: vi.fn(),
+    openSettings: vi.fn(),
+    checkClientUpdates: vi.fn(),
+    installClientUpdate: vi.fn(),
+    checkBackendUpdates: vi.fn(),
+    toggleAutomaticUpdates: vi.fn(),
+    openLogs: vi.fn(),
+  };
+}
+
+function submenu(item: MenuItemConstructorOptions | undefined): MenuItemConstructorOptions[] {
+  expect(Array.isArray(item?.submenu)).toBe(true);
+  return item!.submenu as MenuItemConstructorOptions[];
+}
+
+describe("native application menu placement", () => {
+  it.each([
+    ["en-US", "File", "Window", "Help"],
+    ["zh-CN", "文件", "窗口", "帮助"],
+  ])("uses the macOS application menu for updates in %s", (locale, file, window, help) => {
+    const actions = menuActions();
+    const menu = createDesktopMenuTemplate("darwin", locale, actions);
+    const application = menu.find((item) => item.role === "appMenu");
+    const applicationItems = submenu(application);
+    const helpItems = submenu(menu.find((item) => item.role === "help"));
+    const windowItems = submenu(menu.find((item) => item.role === "windowMenu"));
+
+    expect(application?.label).toBe("Cox");
+    expect(menu.some((item) => item.label === file)).toBe(false);
+    expect(menu.at(-1)?.label).toBe(help);
+    expect(menu.find((item) => item.role === "windowMenu")?.label).toBe(window);
+    expect(applicationItems.map((item) => item.click)).toEqual(
+      expect.arrayContaining([
+        actions.openSettings,
+        actions.checkClientUpdates,
+        actions.installClientUpdate,
+        actions.checkBackendUpdates,
+        actions.toggleAutomaticUpdates,
+      ]),
+    );
+    expect(helpItems).toHaveLength(1);
+    expect(helpItems[0]?.click).toBe(actions.openLogs);
+    expect(windowItems[0]?.click).toBe(actions.openMain);
+    expect(flatten(menu).filter((item) => item.role === "quit")).toHaveLength(1);
+  });
+
+  it.each([
+    ["win32", "en-US", "File", "Help"],
+    ["win32", "zh-CN", "文件", "帮助"],
+    ["linux", "en-US", "File", "Help"],
+  ])("puts updates and diagnostics under Help on %s in %s", (platform, locale, file, help) => {
+    const actions = menuActions();
+    const menu = createDesktopMenuTemplate(platform, locale, actions);
+    const fileItems = submenu(menu.find((item) => item.label === file));
+    const helpMenu = menu.find((item) => item.role === "help");
+    const helpItems = submenu(helpMenu);
+
+    expect(menu.some((item) => item.role === "appMenu")).toBe(false);
+    expect(helpMenu?.label).toBe(help);
+    expect(fileItems.map((item) => item.click).filter(Boolean)).toEqual([actions.openSettings]);
+    expect(helpItems.map((item) => item.click).filter(Boolean)).toEqual([
+      actions.checkClientUpdates,
+      actions.installClientUpdate,
+      actions.checkBackendUpdates,
+      actions.toggleAutomaticUpdates,
+      actions.openLogs,
+    ]);
+    expect(flatten(menu).filter((item) => item.role === "quit")).toHaveLength(1);
+  });
+
+  it.each(["darwin", "win32", "linux"])(
+    "retains update state hooks and shortcuts on %s",
+    (platform) => {
+      const actions = menuActions();
+      const items = flatten(createDesktopMenuTemplate(platform, "en-US", actions));
+      const install = items.filter((item) => item.id === "cox-client-update-install");
+      const automatic = items.filter((item) => item.id === "cox-automatic-updates");
+
+      expect(install).toHaveLength(1);
+      expect(install[0]).toMatchObject({ enabled: false, click: actions.installClientUpdate });
+      expect(automatic).toHaveLength(1);
+      expect(automatic[0]).toMatchObject({
+        type: "checkbox",
+        checked: true,
+        click: actions.toggleAutomaticUpdates,
+      });
+      expect(items.find((item) => item.click === actions.openSettings)?.accelerator).toBe(
+        "CmdOrCtrl+,",
+      );
+    },
+  );
+});
 
 describe("localized native menus", () => {
   it("translates default macOS roles, nested speech and substitutions without losing actions", () => {

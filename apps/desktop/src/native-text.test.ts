@@ -87,6 +87,23 @@ describe("native desktop language and update messages", () => {
     ).toEqual({ type: "warning", message: "Cox 更新失败。\n\nError: ECONNRESET" });
   });
 
+  it.each([
+    ["en-US", "Cox", "from the Cox menu"],
+    ["zh-CN", "Cox", "从“Cox”菜单"],
+    ["en-US", "Help", "from the Help menu"],
+    ["zh-CN", "帮助", "从“帮助”菜单"],
+  ])("points downloaded client updates to the right menu in %s (%s)", (locale, menu, expected) => {
+    const message = desktopText(
+      locale,
+      "Client update downloaded. Choose Install client update from the {menu} menu when your tasks are finished.",
+      { menu },
+    );
+    expect(message).toContain(expected);
+    expect(message).not.toContain("{menu}");
+    expect(message).not.toContain("File menu");
+    expect(message).not.toContain("文件菜单");
+  });
+
   it("keeps bilingual literals out of native dialogs and selects the OS language", () => {
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
     expect(main).not.toMatch(/[\u3400-\u9fff]/);
@@ -97,7 +114,7 @@ describe("native desktop language and update messages", () => {
     expect(main).toContain('text("Install client update")');
     expect(main).toContain('text("Cox permission")');
     expect(main).toContain('text("Cox startup")');
-    expect(main).toContain('text("Check for Cox Updates")');
+    expect(main).toContain("createDesktopMenuTemplate(process.platform, systemLocale()");
     expect(main).not.toContain('text("Ignore this version")');
     expect(main).not.toContain('text("Ignore all updates")');
   });

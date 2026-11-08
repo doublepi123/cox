@@ -11,7 +11,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from "electron";
-import type { Event, IpcMainEvent, MenuItemConstructorOptions } from "electron";
+import type { Event, IpcMainEvent } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";
 import { ClientUpdates } from "./client-updates.ts";
@@ -27,7 +27,7 @@ import {
   settingsWindowUrl,
 } from "./config.ts";
 import { desktopText, desktopUpdateNotice } from "./native-text.ts";
-import { localizeDesktopMenu } from "./native-menu.ts";
+import { createDesktopMenuTemplate } from "./native-menu.ts";
 
 function systemLocale() {
   return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
@@ -198,7 +198,8 @@ async function checkClientUpdates() {
     message:
       state.status === "ready"
         ? text(
-            "Client update downloaded. Choose Install client update from the File menu when your tasks are finished.",
+            "Client update downloaded. Choose Install client update from the {menu} menu when your tasks are finished.",
+            { menu: process.platform === "darwin" ? "Cox" : text("Help") },
           )
         : state.status === "error"
           ? text("Could not update the client.") + "\n\n" + state.message
@@ -775,119 +776,47 @@ async function start() {
         );
     },
   );
-  const menu: MenuItemConstructorOptions[] = [
-    ...(process.platform === "darwin"
-      ? [
-          {
-            label: "Cox",
-            submenu: [
-              { role: "about" as const },
-              { type: "separator" as const },
-              {
-                label: text("Settings"),
-                accelerator: "CmdOrCtrl+,",
-                click: () => {
-                  void openSettings().catch(() => {});
-                },
-              },
-              { type: "separator" as const },
-              { role: "hide" as const },
-              { role: "quit" as const },
-            ],
-          },
-        ]
-      : []),
-    {
-      label: text("File"),
-      submenu: [
-        { label: text("Open Cox"), click: showWindow },
-        ...(process.platform === "darwin"
-          ? []
-          : [
-              {
-                label: text("Settings"),
-                accelerator: "CmdOrCtrl+,",
-                click: () => {
-                  void openSettings().catch(() => {});
-                },
-              },
-            ]),
-        {
-          label: text("Check for Client Updates"),
-          click: () => {
-            void (supportsSettingsWindow ? openSettings("/settings/about") : Promise.resolve())
-              .then(() => checkClientUpdates())
-              .catch(() => {});
-          },
-        },
-        {
-          id: "cox-client-update-install",
-          label: text("Install client update"),
-          enabled: false,
-          click: () => {
-            if (clientUpdates?.getState().status !== "ready" || quitPending) return;
-            updateAfterQuit = true;
-            void requestQuit();
-          },
-        },
-        {
-          label: text("Check for Cox Updates"),
-          click: () => {
-            void updates
-              ?.check(true)
-              .then((state) => offerBackendUpdate(state, true))
-              .catch(() => {});
-          },
-        },
-        {
-          id: "cox-automatic-updates",
-          label: text("Check for Cox Updates Automatically"),
-          type: "checkbox",
-          checked: true,
-          click: (item) => {
-            void updates
-              ?.setPolicy(item.checked ? "automatic" : "never")
-              .then(async () => {
-                if (item.checked && updates)
-                  await offerBackendUpdate(await updates.check(true), true);
-              })
-              .catch(async (error: unknown) => {
-                if (!updates) return;
-                item.checked = updates.getState().automaticChecks !== false;
-                await offerBackendUpdate(
-                  { ...updates.getState(), status: "error", message: String(error) },
-                  true,
-                );
-              });
-          },
-        },
-        {
-          label: text("Open Logs"),
-          click: () => {
-            void shell.openPath(dirname(logPath));
-          },
-        },
-        { type: "separator" },
-        { role: "quit" },
-      ],
+  const menu = createDesktopMenuTemplate(process.platform, systemLocale(), {
+    openMain: showWindow,
+    openSettings: () => {
+      void openSettings().catch(() => {});
     },
-    { role: "editMenu" },
-    {
-      label: text("View"),
-      submenu: [
-        { role: "reload" },
-        { role: "toggleDevTools" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
-        { role: "togglefullscreen" },
-      ],
+    checkClientUpdates: () => {
+      void (supportsSettingsWindow ? openSettings("/settings/about") : Promise.resolve())
+        .then(() => checkClientUpdates())
+        .catch(() => {});
     },
-    { role: "windowMenu" },
-  ];
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(localizeDesktopMenu(menu, systemLocale(), process.platform)),
-  );
+    installClientUpdate: () => {
+      if (clientUpdates?.getState().status !== "ready" || quitPending) return;
+      updateAfterQuit = true;
+      void requestQuit();
+    },
+    checkBackendUpdates: () => {
+      void updates
+        ?.check(true)
+        .then((state) => offerBackendUpdate(state, true))
+        .catch(() => {});
+    },
+    toggleAutomaticUpdates: (item) => {
+      void updates
+        ?.setPolicy(item.checked ? "automatic" : "never")
+        .then(async () => {
+          if (item.checked && updates) await offerBackendUpdate(await updates.check(true), true);
+        })
+        .catch(async (error: unknown) => {
+          if (!updates) return;
+          item.checked = updates.getState().automaticChecks !== false;
+          await offerBackendUpdate(
+            { ...updates.getState(), status: "error", message: String(error) },
+            true,
+          );
+        });
+    },
+    openLogs: () => {
+      void shell.openPath(dirname(logPath));
+    },
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   if (process.platform === "win32") window.setMenuBarVisibility(false);
   let startupColors: { background: string; foreground: string } | undefined;
   try {

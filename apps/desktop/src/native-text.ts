@@ -8,8 +8,8 @@ const chinese = {
   Continue: "继续",
   "Check for Client Updates": "检查客户端更新",
   "Cox Desktop {version} is available.": "发现 Cox 客户端 {version} 新版本。",
-  "Client update downloaded. Choose Install client update from the File menu when your tasks are finished.":
-    "客户端更新已下载，请在任务结束后，从文件菜单选择“安装客户端更新”。",
+  "Client update downloaded. Choose Install client update from the {menu} menu when your tasks are finished.":
+    "客户端更新已下载，请在任务结束后，从“{menu}”菜单选择“安装客户端更新”。",
   "Could not update the client.": "无法更新客户端。",
   "The client is up to date.": "客户端已是最新版本。",
   "Cox update": "Cox 更新",
@@ -47,6 +47,7 @@ const chinese = {
   Deny: "拒绝",
   Allow: "允许",
   File: "文件",
+  Help: "帮助",
   "Open Cox": "打开 Cox",
   "Check for Cox Updates": "检查 Cox 更新",
   "Open Logs": "打开日志",
