@@ -20,6 +20,10 @@ export const zh = {
   "Stop remaining tests": "停止后续测试",
   "Ignore failed models ({count})": "忽略失败模型（{count}）",
   "Restore model": "恢复模型",
+  "Ignore model": "忽略模型",
+  "Ignore model {model}": "忽略模型 {model}",
+  "Restore model {model}": "恢复模型 {model}",
+  "Model actions for {model}": "模型 {model} 的更多操作",
   Ignored: "已忽略",
   "Testing…": "正在测试…",
   "Test passed ({duration} ms)": "测试通过（{duration} 毫秒）",
@@ -302,6 +306,13 @@ export const zh = {
   "Working…": "正在处理…",
   "Save and fetch models": "保存并获取模型",
   "Add model": "添加模型",
+  "Delete model {model}": "删除模型 {model}",
+  "Delete model": "删除模型",
+  'Delete model "{model}"?': "删除模型“{model}”？",
+  "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.":
+    "将从本地模型目录移除此模型。若上游服务仍提供该模型，刷新模型时可能重新添加。",
+  "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.":
+    "以下 Agent 已选择或仍依赖此模型：{agents}。请先调整它们的模型绑定，再删除。",
   "Fetching models does not send a generation request. Unknown capabilities remain unknown.":
     "获取模型不会发起生成请求；未提供的模型能力会保留为未知。",
   "Fetch models or add them manually before binding an agent.":

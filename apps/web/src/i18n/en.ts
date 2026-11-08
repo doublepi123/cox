@@ -20,6 +20,10 @@ export const en = {
   "Stop remaining tests": "Stop remaining tests",
   "Ignore failed models ({count})": "Ignore failed models ({count})",
   "Restore model": "Restore model",
+  "Ignore model": "Ignore model",
+  "Ignore model {model}": "Ignore model {model}",
+  "Restore model {model}": "Restore model {model}",
+  "Model actions for {model}": "Model actions for {model}",
   Ignored: "Ignored",
   "Testing…": "Testing…",
   "Test passed ({duration} ms)": "Test passed ({duration} ms)",
@@ -322,6 +326,13 @@ export const en = {
   "Working…": "Working…",
   "Save and fetch models": "Save and fetch models",
   "Add model": "Add model",
+  "Delete model {model}": "Delete model {model}",
+  "Delete model": "Delete model",
+  'Delete model "{model}"?': 'Delete model "{model}"?',
+  "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.":
+    "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.",
+  "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.":
+    "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.",
   "Fetching models does not send a generation request. Unknown capabilities remain unknown.":
     "Fetching models does not send a generation request. Unknown capabilities remain unknown.",
   "Fetch models or add them manually before binding an agent.":

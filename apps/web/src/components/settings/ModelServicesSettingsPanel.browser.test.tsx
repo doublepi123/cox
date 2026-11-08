@@ -182,7 +182,240 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
     });
 }
 
+async function openModelActions(
+  screen: Awaited<ReturnType<typeof render>>,
+  model: string,
+  language: "en" | "zh" = "en",
+) {
+  await screen
+    .getByRole("button", {
+      name: language === "zh" ? `模型 ${model} 的更多操作` : `Model actions for ${model}`,
+      exact: true,
+    })
+    .click();
+}
+
+async function requestModelDeletion(
+  screen: Awaited<ReturnType<typeof render>>,
+  model = "Exact model",
+  language: "en" | "zh" = "en",
+) {
+  await openModelActions(screen, model, language);
+  await page
+    .getByRole("menuitem", {
+      name: language === "zh" ? `删除模型 ${model}` : `Delete model ${model}`,
+      exact: true,
+    })
+    .click();
+}
+
 describe("model services settings", () => {
+  it("ignores one model without testing or removing it and can restore its full configuration", async () => {
+    const otherService = ModelServiceId.make("other");
+    const keep = { id: "Vendor/Keep", name: "Keep model", capabilities: null };
+    setup({
+      [id]: { ...configured, models: [...configured.models, keep] },
+      [otherService]: { ...configured, name: "Other service" },
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    const ignore = screen.getByRole("button", { name: "Ignore model Exact model", exact: true });
+    await expect.element(ignore).toHaveTextContent("Ignore model");
+    expect(ignore.element().parentElement?.querySelectorAll("button")).toHaveLength(2);
+    await ignore.click();
+    await expect
+      .element(screen.getByRole("button", { name: "Restore model Exact model", exact: true }))
+      .toBeVisible();
+    await expect.element(screen.getByText("Ignored", { exact: true })).toBeVisible();
+    expect(state.settings.modelServices[id]?.models).toEqual([
+      { ...configured.models[0]!, ignored: true },
+      keep,
+    ]);
+    expect(state.settings.modelServices[otherService]).toEqual({
+      ...configured,
+      name: "Other service",
+    });
+    expect(state.save).toHaveBeenCalledOnce();
+    expect(state.discover).not.toHaveBeenCalled();
+    expect(state.testModel).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Test all models", exact: true }).click();
+    expect(state.testModel).toHaveBeenCalledOnce();
+    expect(state.testModel.mock.calls[0]![0].input.modelId).toBe(keep.id);
+    await screen.getByRole("button", { name: "Restore model Exact model", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Ignore model Exact model", exact: true }))
+      .toBeVisible();
+    expect(state.settings.modelServices[id]?.models).toEqual([
+      { ...configured.models[0]!, ignored: false },
+      keep,
+    ]);
+  });
+
+  it("retains a model's previous state when ignoring fails and allows retry", async () => {
+    setup({ [id]: configured });
+    state.save.mockRejectedValueOnce(new Error("controlled ignore failure"));
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Ignore model Exact model", exact: true }).click();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("The model service operation failed.");
+    expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
+    await screen.getByRole("button", { name: "Ignore model Exact model", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Restore model Exact model", exact: true }))
+      .toBeVisible();
+    expect(state.settings.modelServices[id]?.models[0]?.ignored).toBe(true);
+  });
+
+  it("confirms model removal with cancel focused and keeps cancellation side-effect free", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await requestModelDeletion(screen);
+    await expect.element(page.getByRole("alertdialog")).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+    await expect.element(page.getByText(/Refreshing models may add it again/)).toBeVisible();
+    expect(state.save).not.toHaveBeenCalled();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it.each(["manual", "discovered"] as const)(
+    "deletes a %s model without changing the service or other models",
+    async (source) => {
+      const otherService = ModelServiceId.make("other");
+      const removed = { ...configured.models[0]!, source };
+      const retained = {
+        id: "Vendor/Keep",
+        name: "Keep model",
+        capabilities: { contextWindow: 32000 },
+      };
+      setup({
+        [id]: { ...configured, models: [removed, retained] },
+        [otherService]: { ...configured, name: "Other service" },
+      });
+      state.settings = {
+        ...state.settings,
+        providerInstances: {
+          [ProviderInstanceId.make("work")]: {
+            driver: ProviderDriverKind.make("codex"),
+            modelService: { serviceId: id, modelIds: [], defaultModel: retained.id },
+          },
+        },
+      };
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await requestModelDeletion(screen);
+      await page.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+      await expect
+        .element(screen.getByText("Exact model", { exact: true }))
+        .not.toBeInTheDocument();
+      await expect.element(screen.getByText("Keep model", { exact: true })).toBeVisible();
+      expect(state.save).toHaveBeenCalledOnce();
+      expect(state.save.mock.calls[0]![0]).toEqual({
+        environmentId,
+        input: { patch: { modelServices: { [id]: { ...configured, models: [retained] } } } },
+      });
+      expect(state.settings.modelServices[otherService]).toEqual({
+        ...configured,
+        name: "Other service",
+      });
+      expect(
+        state.settings.providerInstances[ProviderInstanceId.make("work")]?.modelService
+          ?.defaultModel,
+      ).toBe(retained.id);
+      expect(state.discover).not.toHaveBeenCalled();
+      expect(state.testModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows removing the last model from an unbound service", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await requestModelDeletion(screen);
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    expect(state.settings.modelServices[id]?.models).toEqual([]);
+    await expect
+      .element(screen.getByText("Fetch models or add them manually before binding an agent."))
+      .toBeVisible();
+  });
+
+  it.each([
+    { modelIds: ["Vendor/Exact", "Vendor/Keep"] },
+    { modelIds: [], defaultModel: "Vendor/Exact" },
+  ])("blocks removal while a model is explicitly bound: %j", async (binding) => {
+    setup({
+      [id]: {
+        ...configured,
+        models: [...configured.models, { id: "Vendor/Keep", capabilities: null }],
+      },
+    });
+    state.settings = {
+      ...state.settings,
+      providerInstances: {
+        [ProviderInstanceId.make("work")]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          displayName: "Work Claude",
+          modelService: { serviceId: id, ...binding },
+        },
+      },
+    };
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await requestModelDeletion(screen);
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent(
+        "This model is selected or required by these agents: Work Claude. Change their model bindings before deleting it.",
+      );
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("rechecks bindings and access while the deletion confirmation is open", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await requestModelDeletion(screen);
+    await act(() => {
+      state.settings = {
+        ...state.settings,
+        providerInstances: {
+          [ProviderInstanceId.make("work")]: {
+            driver: ProviderDriverKind.make("pi"),
+            modelService: { serviceId: id, modelIds: [] },
+          },
+        },
+      };
+      notify();
+    });
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    await act(() => {
+      state.settings = { ...state.settings, providerInstances: {} };
+      notify();
+    });
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+    state.manage = false;
+    await screen.rerender(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("keeps the model and confirmation after a failed save and permits retry", async () => {
+    setup({ [id]: configured });
+    state.save.mockRejectedValueOnce(new Error("controlled deletion failure"));
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await requestModelDeletion(screen);
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("The model service operation failed.");
+    expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
+    await expect.element(screen.getByText("Exact model", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    expect(state.settings.modelServices[id]?.models).toEqual([]);
+  });
+
   it("uses one save action and only fetches models when the connection changes", async () => {
     setup({ [id]: configured });
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
@@ -254,12 +487,14 @@ describe("model services settings", () => {
       .toBeEnabled();
     expect(state.testModel).toHaveBeenCalledTimes(2);
     await screen.getByRole("button", { name: "Ignore failed models (1)" }).click();
-    await expect.element(screen.getByRole("button", { name: "Restore model" })).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Restore model bad", exact: true }))
+      .toBeVisible();
     expect(state.settings.modelServices[id]?.models).toMatchObject([
       { id: "good" },
       { id: "bad", ignored: true },
     ]);
-    await screen.getByRole("button", { name: "Restore model" }).click();
+    await screen.getByRole("button", { name: "Restore model bad", exact: true }).click();
     expect(
       state.settings.modelServices[id]?.models.find((model) => model.id === "bad")?.ignored,
     ).toBe(false);
@@ -432,6 +667,27 @@ describe("model services settings", () => {
       }
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
       expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
+      await screen
+        .getByRole("button", {
+          name: language === "zh" ? "忽略模型 Exact model" : "Ignore model Exact model",
+          exact: true,
+        })
+        .click();
+      await expect
+        .element(
+          screen.getByRole("button", {
+            name: language === "zh" ? "恢复模型 Exact model" : "Restore model Exact model",
+            exact: true,
+          }),
+        )
+        .toBeVisible();
+      await requestModelDeletion(screen, "Exact model", language);
+      const confirmation = page.getByRole("alertdialog").element();
+      expect(confirmation.scrollWidth).toBeLessThanOrEqual(confirmation.clientWidth);
+      expect(confirmation.getBoundingClientRect().right).toBeLessThanOrEqual(width);
+      await page
+        .getByRole("button", { name: language === "zh" ? "取消" : "Cancel", exact: true })
+        .click();
     } finally {
       setLanguagePreference(parseLanguagePreference(originalLanguage));
       if (originalLanguage === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
@@ -524,8 +780,9 @@ describe("model services settings", () => {
     setLanguagePreference(language);
     try {
       await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
-      await screen
-        .getByRole("button", { name: language === "zh" ? "编辑" : "Edit", exact: true })
+      await openModelActions(screen, "Exact model", language);
+      await page
+        .getByRole("menuitem", { name: language === "zh" ? "编辑" : "Edit", exact: true })
         .click();
       const field = screen.getByLabelText(language === "zh" ? "服务优先级档位" : "Service tiers", {
         exact: true,
@@ -597,8 +854,9 @@ describe("model services settings", () => {
         await using screen = await render(
           <EnvironmentModelServices environmentId={environmentId} />,
         );
-        await screen
-          .getByRole("button", { name: language === "zh" ? "编辑" : "Edit", exact: true })
+        await openModelActions(screen, "Exact model", language);
+        await page
+          .getByRole("menuitem", { name: language === "zh" ? "编辑" : "Edit", exact: true })
           .click();
         const input = screen.getByLabelText(
           language === "zh" ? "思考强度档位" : "Reasoning levels",
@@ -663,7 +921,8 @@ describe("model services settings", () => {
         },
       });
       await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
-      await screen.getByRole("button", { name: "Edit", exact: true }).click();
+      await openModelActions(screen, "Exact model");
+      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
       await screen.getByLabelText("Reasoning levels", { exact: true }).fill(levels);
       await screen.getByRole("button", { name: "Save model", exact: true }).click();
       const next = state.save.mock.calls[0]![0].input.patch.modelServices[id];
@@ -717,6 +976,15 @@ describe("model services settings", () => {
       .element(screen.getByRole("button", { name: "Save changes", exact: true }))
       .not.toBeInTheDocument();
     await expect.element(screen.getByLabelText("API URL", { exact: true })).toBeDisabled();
+    await expect
+      .element(screen.getByRole("button", { name: /^Delete model / }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: /^Ignore model / }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: /^Model actions for / }))
+      .not.toBeInTheDocument();
     expect(state.save).not.toHaveBeenCalled();
   });
 });

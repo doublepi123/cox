@@ -307,6 +307,9 @@ export const make = Effect.gen(function* () {
                 baseUrl: baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
                 api: API_NAMES[protocol],
                 apiKey: "$COX_MODEL_SERVICE_KEY",
+                ...(protocol === "openai-responses"
+                  ? { compat: { supportsStrictMode: true } }
+                  : {}),
                 models: activeModels.map((model) => {
                   const thinking = modelServiceAgentCapabilities("pi", model.capabilities)
                     ?.optionDescriptors?.[0];

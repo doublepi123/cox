@@ -22,14 +22,32 @@ import { useEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { cn, randomUUID } from "../../lib/utils";
-import { CheckIcon, Layers3Icon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import {
+  CheckIcon,
+  Layers3Icon,
+  MoreHorizontalIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { Button } from "../ui/button";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ModelServiceRecoverySettings } from "./ModelServiceRecoverySettings";
+import { modelRemovalBlockingAgents } from "./ModelServicesSettingsPanel.logic";
 
 export const MODEL_SERVICE_PROTOCOL_LABELS: Record<ModelServiceProtocol, string> = {
   "openai-responses": "OpenAI Responses",
@@ -228,11 +246,22 @@ function ModelServiceEditor({
   const busy = saving || tests.running;
   const running = useRef(false);
   const [modelEditor, setModelEditor] = useState<null | "new" | ModelServiceModel>(null);
+  const [removingModel, setRemovingModel] = useState<ModelServiceModel | null>(null);
+  const cancelModelRemoval = useRef<HTMLButtonElement>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const bound = Object.values(settings.providerInstances).filter(
     (instance) => instance.modelService?.serviceId === id,
   ).length;
   const models = service?.models ?? [];
+  const removalBlockers =
+    service && removingModel
+      ? modelRemovalBlockingAgents(id, service, removingModel.id, settings.providerInstances)
+      : [];
+  const canRemoveModel =
+    !readOnly &&
+    removingModel !== null &&
+    models.some((model) => model.id === removingModel.id) &&
+    removalBlockers.length === 0;
   const failed = new Set(
     [...tests.results]
       .filter(([, result]) => !result.ok && result.revision === service?.revision)
@@ -464,7 +493,7 @@ function ModelServiceEditor({
           </div>
         ) : null}
       </form>
-      {error ? (
+      {error && !removingModel ? (
         <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
           {error}
         </p>
@@ -688,46 +717,82 @@ function ModelServiceEditor({
                 </div>
                 {!readOnly ? (
                   <div className="flex gap-2">
-                    {model.ignored && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () =>
-                            commandError(
-                              await update({
-                                environmentId,
-                                input: {
-                                  patch: {
-                                    modelServices: {
-                                      [id]: {
-                                        ...service!,
-                                        models: models.map((entry) =>
-                                          entry.id === model.id
-                                            ? { ...entry, ignored: false }
-                                            : entry,
-                                        ),
-                                      },
-                                    },
-                                  },
-                                },
-                              }),
-                            ),
-                          )
-                        }
-                      >
-                        {t("Restore model")}
-                      </Button>
-                    )}
                     <Button
                       size="sm"
                       variant="ghost"
                       disabled={busy}
-                      onClick={() => setModelEditor(model)}
+                      aria-label={t(
+                        model.ignored ? "Restore model {model}" : "Ignore model {model}",
+                        {
+                          model: model.name ?? model.id,
+                        },
+                      )}
+                      onClick={() => {
+                        if (readOnly || !service) return;
+                        void run(async () =>
+                          commandError(
+                            await update({
+                              environmentId,
+                              input: {
+                                patch: {
+                                  modelServices: {
+                                    [id]: {
+                                      ...service!,
+                                      models: models.map((entry) =>
+                                        entry.id === model.id
+                                          ? { ...entry, ignored: model.ignored !== true }
+                                          : entry,
+                                      ),
+                                    },
+                                  },
+                                },
+                              },
+                            }),
+                          ),
+                        );
+                      }}
                     >
-                      {t("Edit")}
+                      {t(model.ignored ? "Restore model" : "Ignore model")}
                     </Button>
+                    <Menu>
+                      <MenuTrigger
+                        render={
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={busy}
+                            aria-label={t("Model actions for {model}", {
+                              model: model.name ?? model.id,
+                            })}
+                          />
+                        }
+                      >
+                        <MoreHorizontalIcon />
+                      </MenuTrigger>
+                      <MenuPopup align="end">
+                        <MenuItem
+                          disabled={busy}
+                          onClick={() => {
+                            if (!readOnly) setModelEditor(model);
+                          }}
+                        >
+                          {t("Edit")}
+                        </MenuItem>
+                        <MenuItem
+                          variant="destructive"
+                          disabled={busy}
+                          aria-label={t("Delete model {model}", { model: model.name ?? model.id })}
+                          onClick={() => {
+                            if (readOnly) return;
+                            setError(null);
+                            setRemovingModel(model);
+                          }}
+                        >
+                          <Trash2Icon />
+                          {t("Delete model")}
+                        </MenuItem>
+                      </MenuPopup>
+                    </Menu>
                   </div>
                 ) : null}
               </div>
@@ -774,6 +839,79 @@ function ModelServiceEditor({
           />
         ) : null}
       </div>
+      <AlertDialog
+        open={removingModel !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setRemovingModel(null);
+        }}
+      >
+        <AlertDialogPopup initialFocus={cancelModelRemoval} bottomStickOnMobile={false}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('Delete model "{model}"?', {
+                model: removingModel?.name ?? removingModel?.id ?? "",
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.",
+              )}
+            </AlertDialogDescription>
+            {removalBlockers.length > 0 ? (
+              <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+                {t(
+                  "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.",
+                  { agents: removalBlockers.join(", ") },
+                )}
+              </p>
+            ) : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+                {error}
+              </p>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose
+              render={<Button ref={cancelModelRemoval} variant="outline" disabled={busy} />}
+            >
+              {t("Cancel")}
+            </AlertDialogClose>
+            <Button
+              variant="destructive"
+              disabled={busy || !canRemoveModel}
+              onClick={() => {
+                if (!service || !removingModel || !canRemoveModel) return;
+                void run(async () => {
+                  const problem = commandError(
+                    await update({
+                      environmentId,
+                      input: {
+                        patch: {
+                          modelServices: {
+                            [id]: {
+                              ...service,
+                              models: models.filter((model) => model.id !== removingModel.id),
+                            },
+                          },
+                        },
+                      },
+                    }),
+                  );
+                  if (!problem) {
+                    if (modelEditor && modelEditor !== "new" && modelEditor.id === removingModel.id)
+                      setModelEditor(null);
+                    setRemovingModel(null);
+                  }
+                  return problem;
+                });
+              }}
+            >
+              {t(busy ? "Working…" : "Delete")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
       {service && !readOnly ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-4 py-3 sm:px-5 lg:px-6">
           <p className="text-xs text-muted-foreground">

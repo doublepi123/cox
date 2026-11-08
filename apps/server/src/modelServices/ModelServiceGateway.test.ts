@@ -2279,4 +2279,96 @@ it.layer(layer)("model service gateway", (it) => {
       expect(JSON.stringify(config)).not.toContain("private-upstream-key");
     }).pipe(Effect.scoped),
   );
+
+  it.effect.each([
+    ["openai-responses", "openai-responses"],
+    ["openai-chat", "openai-completions"],
+    ["anthropic-messages", "anthropic-messages"],
+    ["gemini", "google-generative-ai"],
+  ] as const)(
+    "only declares explicit strict-field support for Pi Responses (%s)",
+    ([protocol, api]) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "pi", protocol });
+        const fs = yield* FileSystem.FileSystem;
+        const generated = JSON.parse(
+          yield* fs.readFileString(String(h.config.agentDir) + "/models.json"),
+        );
+        const provider = generated.providers.cox;
+        expect(provider.api).toBe(api);
+        expect(provider.apiKey).toBe("$COX_MODEL_SERVICE_KEY");
+        expect(provider.models[0]).toMatchObject({
+          id: "Vendor/Exact",
+          name: "Exact",
+          contextWindow: 64000,
+          maxTokens: 4000,
+        });
+        if (protocol === "openai-responses") {
+          expect(provider.compat).toEqual({ supportsStrictMode: true });
+        } else {
+          expect(Object.hasOwn(provider, "compat")).toBe(false);
+        }
+        expect(record(h.instances[instanceId]!.config)).toEqual({ launchArgs: "", retained: true });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("removes Pi Responses compatibility when the service switches protocols", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "pi", protocol: "openai-responses" });
+      const fs = yield* FileSystem.FileSystem;
+      const file = String(h.config.agentDir) + "/models.json";
+      expect(JSON.parse(yield* fs.readFileString(file)).providers.cox.compat).toEqual({
+        supportsStrictMode: true,
+      });
+      const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+      yield* h.settings.updateSettings({
+        modelServices: { [serviceId]: { ...current, protocols: ["openai-chat"] } },
+      });
+      yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+      const generated = JSON.parse(yield* fs.readFileString(file));
+      expect(generated.providers.cox.api).toBe("openai-completions");
+      expect(Object.hasOwn(generated.providers.cox, "compat")).toBe(false);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("preserves Pi Responses strict flags and optional tool arguments on the wire", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        driver: "pi",
+        protocol: "openai-responses",
+        respond: () => Response.json({ id: "offline", status: "completed", output: [] }),
+      });
+      const parameters = {
+        type: "object",
+        properties: { environmentId: { type: "string" }, search: { type: "string" } },
+        required: [],
+        additionalProperties: false,
+      };
+      const body = {
+        model: "Vendor/Exact",
+        input: "Read the current environment without specifying optional arguments.",
+        tools: [
+          { type: "function", name: "t3_environment_read", parameters, strict: false },
+          {
+            type: "function",
+            name: "strict_tool",
+            parameters: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+              additionalProperties: false,
+            },
+            strict: true,
+          },
+        ],
+      };
+      expect((yield* h.invoke("/v1/responses", body)).status).toBe(200);
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]?.url).toBe("https://upstream.test/v1/responses");
+      const outgoing = h.calls[0]!.body;
+      if (outgoing._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+      expect(JSON.parse(new TextDecoder().decode(outgoing.body))).toEqual(body);
+      expect(parameters.required).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
 });
