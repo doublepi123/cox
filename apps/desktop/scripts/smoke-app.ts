@@ -47,6 +47,19 @@ const application = await _electron.launch({
   ],
 });
 const applicationProcess = application.process();
+async function waitForSettingsVisibility(visible: boolean) {
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const current = await application.evaluate(
+      ({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .find((candidate) => candidate.webContents.getURL().includes("/settings/"))
+          ?.isVisible() ?? false,
+    );
+    if (current === visible) return;
+    await delay(50);
+  }
+  throw new Error(`Settings window did not become ${visible ? "visible" : "hidden"}.`);
+}
 try {
   const page = await application.firstWindow();
   page.on("pageerror", (error) => console.error("Renderer error:", error));
@@ -160,7 +173,7 @@ try {
     );
     target?.close();
   });
-  await settings.waitForFunction(() => document.visibilityState === "hidden");
+  await waitForSettingsVisibility(false);
   assert.equal(
     await application.evaluate(
       ({ BrowserWindow }) =>
@@ -172,7 +185,7 @@ try {
   assert.equal(page.url(), mainUrl);
   await page.evaluate(() => Reflect.get(window, "coxDesktop").openSettings("/settings/general"));
   await settings.waitForURL(/\/settings\/general$/, { timeout: 30_000 });
-  await settings.waitForFunction(() => document.visibilityState === "visible");
+  await waitForSettingsVisibility(true);
   assert.equal(
     await settings.evaluate(() => Reflect.get(window, "__coxSettingsSmokeMarker")),
     "retained",
