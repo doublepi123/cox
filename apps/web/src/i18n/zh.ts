@@ -3069,6 +3069,10 @@ export const zh = {
   "This response is too long to export as one image.": "这次回答过长，无法导出为一张图片。",
   "The response is still loading. Please try again.": "回答内容仍在加载，请重试。",
   "Could not generate the response image.": "无法生成回答图片。",
+  "Some response resources could not be loaded. Check your connection and try again.":
+    "部分回答资源无法加载，请检查网络连接后重试。",
+  "An image in this response could not be loaded. Check image access and try again.":
+    "回答中的图片无法加载，请确认图片可访问后重试。",
   "Image copying is unavailable. Save the PNG instead.": "当前环境不支持复制图片，请保存 PNG。",
   "Could not share or copy the image. Save the PNG instead.": "无法分享或复制图片，请保存 PNG。",
   "Copy message text": "复制消息文本",

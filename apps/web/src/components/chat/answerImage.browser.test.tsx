@@ -1,13 +1,36 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { commands, page } from "vite-plus/test/browser";
 
 import "~/index.css";
 import { fakeTimers, render } from "../../../test/render";
 import ChatMarkdown from "../ChatMarkdown";
 import { __setClientSettingsForTests, getClientSettings } from "../../hooks/useSettings";
-import { ANSWER_IMAGE_WIDTH, renderAnswerImage, saveAnswerImage } from "./answerImage";
+import {
+  ANSWER_IMAGE_WIDTH,
+  answerImageErrorMessage,
+  renderAnswerImage,
+  saveAnswerImage,
+} from "./answerImage";
+import { AnswerImageButton } from "./AnswerImageButton";
 import { AnswerImageContext } from "./answerImageContext";
 import { HostImageUrlContext } from "./hostImageUrl";
 import "./answerImage.css";
+
+declare module "vite-plus/test/browser" {
+  interface BrowserCommands {
+    startAnswerImageResources: (image: string) => Promise<string>;
+    setAnswerImageResourceState: (
+      origin: string,
+      state: "ready" | "cors-blocked" | "unavailable",
+    ) => Promise<void>;
+    stopAnswerImageResources: (origin: string) => Promise<void>;
+  }
+}
+
+async function imageResources() {
+  const origin = await commands.startAnswerImageResources(redImage());
+  return { origin, [Symbol.asyncDispose]: () => commands.stopAnswerImageResources(origin) };
+}
 
 function redImage(): string {
   const canvas = document.createElement("canvas");
@@ -20,6 +43,118 @@ function redImage(): string {
 }
 
 describe("local response image rendering", () => {
+  it("exports and regenerates links whose displayed Google favicon cannot be read across origins", async () => {
+    await using resources = await imageResources();
+    const text = "A short answer with an [example link](https://example.com).";
+    await using screen = await render(
+      <>
+        <ChatMarkdown text={text} cwd={undefined} />
+        <AnswerImageButton
+          messageId="cross-origin-link"
+          text={text}
+          timestamp="November 8, 2026"
+          cwd={undefined}
+        />
+      </>,
+    );
+    const favicon = screen.container.querySelector<HTMLImageElement>("a img")!;
+    expect(favicon.src).toContain("https://www.google.com/s2/favicons?");
+    favicon.loading = "eager";
+    await vi.waitFor(() => expect(favicon.naturalWidth).toBe(32));
+    expect(favicon.complete).toBe(true);
+    expect(resources.origin).not.toBe(location.origin);
+    await expect(fetch(`${resources.origin}/favicon.png`)).rejects.toThrow();
+
+    using fetches = vi.spyOn(window, "fetch");
+    await screen.getByRole("button", { name: "Export response as image" }).click();
+    await expect.element(page.getByRole("img", { name: "Response image preview" })).toBeVisible();
+    const card = document.querySelector(".answer-image-card")!;
+    expect(card.querySelector("a img")).toBeNull();
+    expect(card.querySelector("a svg")).not.toBeNull();
+    expect(card.querySelector("a")?.getAttribute("href")).toBe("https://example.com");
+    expect(card.textContent).toContain("example link");
+    const firstUrl = page
+      .getByRole("img", { name: "Response image preview" })
+      .element()
+      .getAttribute("src");
+    await page.getByRole("button", { name: "Regenerate image" }).click();
+    await expect.element(page.getByRole("img", { name: "Response image preview" })).toBeVisible();
+    expect(
+      page.getByRole("img", { name: "Response image preview" }).element().getAttribute("src"),
+    ).not.toBe(firstUrl);
+    expect(fetches.mock.calls.some(([url]) => String(url).includes("favicon"))).toBe(false);
+    await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["cors-blocked", "unavailable"] as const)(
+    "reports a %s body image and regenerates it after recovery without reloading modules",
+    async (state) => {
+      await using resources = await imageResources();
+      await commands.setAnswerImageResourceState(resources.origin, state);
+      const imageUrl = `${resources.origin}/redirect.png?token=private-test-value`;
+      const text = `A response with ![Body image](${imageUrl}).`;
+      await using screen = await render(
+        <AnswerImageButton
+          messageId="cross-origin-image"
+          text={text}
+          timestamp="November 8, 2026"
+          cwd={undefined}
+        />,
+      );
+      await screen.getByRole("button", { name: "Export response as image" }).click();
+      const image = document.querySelector<HTMLImageElement>(".answer-image-card img")!;
+      image.loading = "eager";
+      await vi.waitFor(() => expect(image.naturalWidth).toBe(32));
+      await expect
+        .element(
+          page.getByText(
+            "An image in this response could not be loaded. Check image access and try again.",
+            { exact: true },
+          ),
+        )
+        .toBeVisible();
+      expect(page.getByRole("alert").element().textContent).not.toContain("private-test-value");
+      await expect
+        .element(page.getByRole("img", { name: "Response image preview" }))
+        .not.toBeInTheDocument();
+
+      await commands.setAnswerImageResourceState(resources.origin, "ready");
+      await page.getByRole("button", { name: "Regenerate image" }).click();
+      await expect.element(page.getByRole("img", { name: "Response image preview" })).toBeVisible();
+      const preview = page
+        .getByRole("img", { name: "Response image preview" })
+        .element() as HTMLImageElement;
+      await preview.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = preview.naturalWidth;
+      canvas.height = preview.naturalHeight;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(preview, 0, 0);
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      let redPixels = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        if (data[index]! > 220 && data[index + 1]! < 40 && data[index + 2]! < 40) redPixels++;
+      }
+      expect(redPixels).toBeGreaterThan(500);
+      await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
+  it("rejects a broken body image with a readable error", async () => {
+    await using screen = await render(
+      <article className="answer-image-card" style={{ width: ANSWER_IMAGE_WIDTH }}>
+        <img src="data:image/png;base64,broken" alt="Unavailable body image" />
+      </article>,
+    );
+    const card = screen.container.querySelector<HTMLElement>("article")!;
+    const error = await renderAnswerImage(card, new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+    expect(answerImageErrorMessage(error)).toBe(
+      "An image in this response could not be loaded. Check image access and try again.",
+    );
+  });
+
   it("produces a real, nonempty PNG containing Markdown, code, tables, math, images and folded text", async () => {
     const previousSettings = getClientSettings();
     __setClientSettingsForTests({ ...previousSettings, mathRenderingEnabled: true });

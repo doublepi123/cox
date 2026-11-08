@@ -129,6 +129,7 @@ packageExtensions:
     dependencies:
       vite-plus: "catalog:"
 patchedDependencies:
+  html-to-image@1.11.13: patches/html-to-image@1.11.13.patch
   "@legendapp/list@3.3.5": patches/@legendapp__list@3.3.5.patch
   mdast-util-math@3.0.0: patches/mdast-util-math@3.0.0.patch
   micromark-extension-llm-math@3.1.0: patches/micromark-extension-llm-math@3.1.0.patch

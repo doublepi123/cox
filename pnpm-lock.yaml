@@ -286,6 +286,7 @@ patchedDependencies:
   '@legendapp/list@3.3.5': 892caa00d83adda6135574b04ea63752bcedf1d9103f013eef1fe9289a5e02a6
   '@muse-code/sdk@1.4.6': 7b495b607fc5d76b444c7c4d58821e839726a30e6f3c53564f0d59f2d5b42101
   '@pierre/diffs@1.6.1': 4645364ddf113e48e8827f3b4966b3b1ff745317011e5a3d904e2d8672dee7dc
+  html-to-image@1.11.13: ce4fdfcdc7b06b80ddfe5aa98b9b9584871c224625cc46272d0120d9f811fc0b
   mdast-util-math@3.0.0: afe6b2c89e1eaddfd3c90cf2723f12c9a17d513e65beff51653781486013251c
   mdast-util-to-hast@13.2.1: 57ea46c73aea3c876ab8d351fe0482ddd081dcb4a0610576e399dbe5eb59d2b1
   micromark-extension-gfm-table@2.1.1: 9ad23a530e45d9f83cba1da8654fe16d5af8b59d5c73d5c7a7c91fd25b9be1d8
@@ -652,7 +653,7 @@ importers:
         version: 1.6.7
       html-to-image:
         specifier: 1.11.13
-        version: 1.11.13
+        version: 1.11.13(patch_hash=ce4fdfcdc7b06b80ddfe5aa98b9b9584871c224625cc46272d0120d9f811fc0b)
       html-url-attributes:
         specifier: ^3.0.1
         version: 3.0.1
@@ -9178,7 +9179,7 @@ snapshots:
     dependencies:
       lru-cache: 6.0.0
 
-  html-to-image@1.11.13: {}
+  html-to-image@1.11.13(patch_hash=ce4fdfcdc7b06b80ddfe5aa98b9b9584871c224625cc46272d0120d9f811fc0b): {}
 
   html-url-attributes@3.0.1: {}
 

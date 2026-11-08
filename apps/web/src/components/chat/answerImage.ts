@@ -4,6 +4,24 @@ export const ANSWER_IMAGE_WIDTH = 720;
 const MAX_CANVAS_EDGE = 16_000;
 const MAX_CANVAS_PIXELS = 24_000_000;
 
+class AnswerImageError extends Error {}
+
+export function answerImageErrorMessage(error: unknown): string {
+  return error instanceof AnswerImageError
+    ? error.message
+    : translateCurrent(
+        "Some response resources could not be loaded. Check your connection and try again.",
+      );
+}
+
+function answerImageResourceError(): AnswerImageError {
+  return new AnswerImageError(
+    translateCurrent(
+      "An image in this response could not be loaded. Check image access and try again.",
+    ),
+  );
+}
+
 export function answerImageSize(width: number, height: number) {
   if (
     !Number.isFinite(width) ||
@@ -14,7 +32,9 @@ export function answerImageSize(width: number, height: number) {
     height > MAX_CANVAS_EDGE ||
     width * height > MAX_CANVAS_PIXELS
   ) {
-    throw new Error(translateCurrent("This response is too long to export as one image."));
+    throw new AnswerImageError(
+      translateCurrent("This response is too long to export as one image."),
+    );
   }
   return {
     width: Math.ceil(width),
@@ -60,7 +80,11 @@ async function waitForAnswerImage(node: HTMLElement, signal: AbortSignal) {
         [...node.querySelectorAll("img")].some((image) => !image.complete);
       if (!pending && performance.now() - changedAt >= 250) finish();
       else if (performance.now() - started > 12_000) {
-        finish(new Error(translateCurrent("The response is still loading. Please try again.")));
+        finish(
+          new AnswerImageError(
+            translateCurrent("The response is still loading. Please try again."),
+          ),
+        );
       }
     }, 100);
     observer.observe(node, {
@@ -77,6 +101,9 @@ async function waitForAnswerImage(node: HTMLElement, signal: AbortSignal) {
 export async function renderAnswerImage(node: HTMLElement, signal: AbortSignal): Promise<Blob> {
   const { toBlob } = await import("html-to-image");
   await waitForAnswerImage(node, signal);
+  for (const image of node.querySelectorAll("img")) {
+    if (image.naturalWidth === 0 || image.naturalHeight === 0) throw answerImageResourceError();
+  }
   for (const math of node.querySelectorAll("[data-markdown-math]")) {
     const viewport = math.firstElementChild;
     const content = viewport?.firstElementChild;
@@ -92,6 +119,9 @@ export async function renderAnswerImage(node: HTMLElement, signal: AbortSignal):
     preferredFontFormat: "woff2",
     includeQueryParams: true,
     fetchRequestInit: { credentials: "same-origin", signal },
+    onImageErrorHandler: () => {
+      throw answerImageResourceError();
+    },
     filter: (element) => {
       signal.throwIfAborted();
       return (
@@ -102,7 +132,7 @@ export async function renderAnswerImage(node: HTMLElement, signal: AbortSignal):
   });
   signal.throwIfAborted();
   if (!blob || blob.size === 0) {
-    throw new Error(translateCurrent("Could not generate the response image."));
+    throw new AnswerImageError(translateCurrent("Could not generate the response image."));
   }
   return blob;
 }

@@ -18,6 +18,7 @@ import {
 import { Spinner } from "../ui/spinner";
 import {
   ANSWER_IMAGE_WIDTH,
+  answerImageErrorMessage,
   answerImageFileName,
   canCopyAnswerImage,
   canShareAnswerImage,
@@ -67,7 +68,7 @@ function AnswerImagePreview({ source }: { readonly source: AnswerImageSource }) 
           if (!controller.signal.aborted) {
             setImage({
               status: "error",
-              message: error instanceof Error ? error.message : String(error),
+              message: answerImageErrorMessage(error),
             });
           }
         },

@@ -1,11 +1,12 @@
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
 import { GlobeIcon } from "lucide-react";
-import { Children, memo, useState, type ReactNode } from "react";
+import { Children, memo, use, useState, type ReactNode } from "react";
 
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
 import { cn } from "../../lib/utils";
 import { sourceControlIcon } from "../../sourceControlPresentation";
+import { AnswerImageContext } from "./answerImageContext";
 
 const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
 
@@ -19,6 +20,7 @@ function sourceControlHostIcon(host: string): ReactNode {
 }
 
 const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: string }) {
+  const answerImage = use(AnswerImageContext);
   const [failedHost, setFailedHost] = useState<string | null>(null);
   const brandIcon = sourceControlHostIcon(host);
   const faviconUrl = brandIcon ? null : faviconUrlForOrigin(`https://${host}`);
@@ -29,7 +31,10 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
     >
       {brandIcon ? (
         brandIcon
-      ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
+      ) : answerImage ||
+        faviconUrl === null ||
+        failedHost === host ||
+        failedFaviconHosts.has(host) ? (
         <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : (
         <img

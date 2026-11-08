@@ -1,0 +1,61 @@
+diff --git a/es/dataurl.js b/es/dataurl.js
+--- a/es/dataurl.js
++++ b/es/dataurl.js
+@@ -13,3 +13,3 @@ export async function fetchAsDataURL(url, init, process) {
+-    if (res.status === 404) {
+-        throw new Error(`Resource "${res.url}" not found`);
++    if (!res.ok) {
++        throw new Error(`Resource could not be fetched (${res.status})`);
+     }
+@@ -60,4 +60,5 @@ export async function resourceToDataURL(resourceUrl, contentType, options) {
+         });
+         dataURL = makeDataUrl(content, contentType);
++        cache[cacheKey] = dataURL;
+     }
+     catch (error) {
+@@ -71,5 +72,4 @@ export async function resourceToDataURL(resourceUrl, contentType, options) {
+         }
+     }
+-    cache[cacheKey] = dataURL;
+     return dataURL;
+ }
+diff --git a/lib/dataurl.js b/lib/dataurl.js
+--- a/lib/dataurl.js
++++ b/lib/dataurl.js
+@@ -59,3 +59,3 @@ function fetchAsDataURL(url, init, process) {
+-                    if (res.status === 404) {
+-                        throw new Error("Resource \"".concat(res.url, "\" not found"));
++                    if (!res.ok) {
++                        throw new Error("Resource could not be fetched (".concat(res.status, ")"));
+                     }
+@@ -122,4 +122,5 @@ function resourceToDataURL(resourceUrl, contentType, options) {
+                     content = _a.sent();
+                     dataURL = makeDataUrl(content, contentType);
++                    cache[cacheKey] = dataURL;
+                     return [3 /*break*/, 4];
+                 case 3:
+@@ -135,5 +136,4 @@ function resourceToDataURL(resourceUrl, contentType, options) {
+                     return [3 /*break*/, 4];
+                 case 4:
+-                    cache[cacheKey] = dataURL;
+                     return [2 /*return*/, dataURL];
+             }
+diff --git a/src/dataurl.ts b/src/dataurl.ts
+--- a/src/dataurl.ts
++++ b/src/dataurl.ts
+@@ -22,3 +22,3 @@ export async function fetchAsDataURL<T>(
+-  if (res.status === 404) {
+-    throw new Error(`Resource "${res.url}" not found`)
++  if (!res.ok) {
++    throw new Error(`Resource could not be fetched (${res.status})`)
+   }
+@@ -94,4 +94,5 @@ export async function resourceToDataURL(
+     )
+     dataURL = makeDataUrl(content, contentType!)
++    cache[cacheKey] = dataURL
+   } catch (error) {
+     dataURL = options.imagePlaceholder || ''
+@@ -109,3 +110,2 @@ export async function resourceToDataURL(
+-  cache[cacheKey] = dataURL
+   return dataURL
+ }

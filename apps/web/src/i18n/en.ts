@@ -3183,6 +3183,10 @@ export const en = {
   "The response is still loading. Please try again.":
     "The response is still loading. Please try again.",
   "Could not generate the response image.": "Could not generate the response image.",
+  "Some response resources could not be loaded. Check your connection and try again.":
+    "Some response resources could not be loaded. Check your connection and try again.",
+  "An image in this response could not be loaded. Check image access and try again.":
+    "An image in this response could not be loaded. Check image access and try again.",
   "Image copying is unavailable. Save the PNG instead.":
     "Image copying is unavailable. Save the PNG instead.",
   "Could not share or copy the image. Save the PNG instead.":

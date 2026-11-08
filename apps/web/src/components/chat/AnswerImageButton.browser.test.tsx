@@ -74,7 +74,7 @@ describe("response image actions", () => {
   it("offers retry after generation fails and keeps saving available after clipboard denial", async () => {
     using generate = vi
       .spyOn(imageExport, "renderAnswerImage")
-      .mockRejectedValueOnce(new Error("A resource could not load"))
+      .mockRejectedValueOnce(new Event("error"))
       .mockResolvedValue(await png());
     using _write = vi
       .spyOn(navigator.clipboard, "write")
@@ -82,7 +82,9 @@ describe("response image actions", () => {
     await using screen = await render(<AnswerImageButton {...source} />);
     await screen.getByRole("button", { name: "Export response as image" }).click();
     await vi.waitFor(() =>
-      expect(page.getByRole("alert").element().textContent).toContain("A resource could not load"),
+      expect(page.getByRole("alert").element().textContent).toContain(
+        "Check your connection and try again.",
+      ),
     );
     await page.getByRole("button", { name: "Regenerate image" }).click();
     await expect.element(page.getByRole("img", { name: "Response image preview" })).toBeVisible();
@@ -114,6 +116,20 @@ describe("response image actions", () => {
     expect(canShare).toHaveBeenCalled();
     await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
     await expect.element(page.getByRole("button", { name: "Save PNG" })).toBeEnabled();
+  });
+
+  it("shows a translated, sanitized message for native resource events", async () => {
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    using _render = vi
+      .spyOn(imageExport, "renderAnswerImage")
+      .mockRejectedValue(new Event("error"));
+    await using screen = await render(<AnswerImageButton {...source} />);
+    await screen.getByRole("button", { name: "导出回答为图片" }).click();
+    await expect
+      .element(page.getByText("部分回答资源无法加载，请检查网络连接后重试。", { exact: true }))
+      .toBeVisible();
+    expect(page.getByRole("alert").element().textContent).not.toContain("[object Event]");
   });
 
   it("cancels in-flight generation when closed and translates only interface labels", async () => {

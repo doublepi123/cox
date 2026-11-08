@@ -19,6 +19,11 @@ import {
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
+import {
+  setAnswerImageResourceState,
+  startAnswerImageResources,
+  stopAnswerImageResources,
+} from "./scripts/answerImageResources";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
 
@@ -103,6 +108,21 @@ const browserTestProject = {
       instances: [{ browser: "chromium" }],
       screenshotFailures: false,
       commands: {
+        startAnswerImageResources: async ({ page }, image: string) => {
+          const origin = await startAnswerImageResources(image);
+          await page.route("https://www.google.com/s2/favicons?**", async (route) => {
+            await route.fulfill({ status: 302, headers: { location: `${origin}/favicon.png` } });
+          });
+          return origin;
+        },
+        setAnswerImageResourceState: async (
+          _context,
+          ...args: Parameters<typeof setAnswerImageResourceState>
+        ) => setAnswerImageResourceState(...args),
+        stopAnswerImageResources: async ({ page }, origin: string) => {
+          await page.unroute("https://www.google.com/s2/favicons?**");
+          await stopAnswerImageResources(origin);
+        },
         // Playwright's mouse outlives each test, so whatever mounts under its last
         // position starts hovered. test/browserSetup.ts parks it off the page before each test.
         resetPointer: async ({ page }) => {
