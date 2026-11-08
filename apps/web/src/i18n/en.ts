@@ -3544,8 +3544,8 @@ export const en = {
   "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.":
     "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.",
   "Follow-ups": "Follow-ups",
-  "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.":
-    "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.",
+  "For example, cox or cox/ produces cox/add-search. Leave empty for no prefix.":
+    "For example, cox or cox/ produces cox/add-search. Leave empty for no prefix.",
   Foundation: "Foundation",
   "Git fetch interval": "Git fetch interval",
   "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.":

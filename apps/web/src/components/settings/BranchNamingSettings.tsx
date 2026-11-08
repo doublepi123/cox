@@ -86,7 +86,7 @@ export function BranchNamingSettings() {
           settingKeys={["branchNamePrefix"]}
           title={t("Branch prefix")}
           description={t(
-            "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.",
+            "For example, cox or cox/ produces cox/add-search. Leave empty for no prefix.",
           )}
           resetAction={
             prefixMixed ||

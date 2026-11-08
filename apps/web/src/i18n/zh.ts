@@ -3416,8 +3416,8 @@ export const zh = {
   "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.":
     "将运行中和监控中的对话折叠到运行中分区。需要你处理时，它们会返回收件箱顶部。实验室的极简侧栏不显示运行中分区。",
   "Follow-ups": "后续操作",
-  "For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix.":
-    "例如，t3 或 t3/ 会生成 t3/add-search。留空则不添加前缀。",
+  "For example, cox or cox/ produces cox/add-search. Leave empty for no prefix.":
+    "例如，cox 或 cox/ 会生成 cox/add-search。留空则不添加前缀。",
   Foundation: "基础设置",
   "Git fetch interval": "Git 获取间隔",
   "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.":
