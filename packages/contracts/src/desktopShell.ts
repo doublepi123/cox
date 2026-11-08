@@ -58,6 +58,7 @@ export interface DesktopShellBridge {
   getBackendUpdate?(): Promise<DesktopBackendUpdateState>;
   checkBackendUpdate?(): Promise<DesktopBackendUpdateState>;
   installBackendUpdate?(): Promise<DesktopBackendUpdateState>;
+  applyBackendUpdate?(): Promise<void>;
   setBackendUpdatePolicy?(
     policy: "automatic" | "ignore-version" | "never",
     version?: string,

@@ -147,9 +147,14 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {updateState?.status === "ready"
-                ? t(
-                    "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
-                  )
+                ? window.coxDesktop.applyBackendUpdate
+                  ? t(
+                      "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.",
+                      { version: updateState.latestVersion ?? "" },
+                    )
+                  : t(
+                      "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
+                    )
                 : updateState?.status === "installing"
                   ? t("Downloading and verifying Cox…")
                   : updateState?.status === "error"
@@ -164,8 +169,15 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
           </AlertDialogHeader>
           <AlertDialogFooter variant="bare">
             <AlertDialogClose render={<Button variant="outline" />}>
-              {t(updateState?.status === "ready" ? "Done" : "Later")}
+              {t(
+                updateState?.status === "ready" && !window.coxDesktop.applyBackendUpdate
+                  ? "Done"
+                  : "Later",
+              )}
             </AlertDialogClose>
+            {updateState?.status === "ready" && window.coxDesktop.applyBackendUpdate && (
+              <Button onClick={() => void updates.apply()}>{t("Update now")}</Button>
+            )}
             {updateState?.status === "available" && (
               <Button onClick={() => void updates.install()}>{t("Download Cox update")}</Button>
             )}

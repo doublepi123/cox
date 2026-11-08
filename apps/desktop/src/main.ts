@@ -60,6 +60,8 @@ let origin: string | undefined;
 let updates: BackendUpdates | undefined;
 let clientUpdates: ClientUpdates | undefined;
 let updateAfterQuit = false;
+let restartAfterQuit = false;
+let backendRestartPrompt = false;
 let recoverBackend: (() => Promise<void>) | undefined;
 let macUpdateLaunch: Awaited<ReturnType<typeof loadMacUpdateLaunch>> | undefined;
 let checkingMacLaunch = false;
@@ -125,11 +127,13 @@ async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = fal
       if (answer.response !== 1 || quitPending) return;
       state = await updates!.stage();
     } else if (!manual) return;
-    if (!quitPending)
-      await dialog.showMessageBox({
+    if (!quitPending) {
+      const answer = await dialog.showMessageBox({
         title: text("Cox update"),
         ...desktopUpdateNotice(systemLocale(), state),
       });
+      if (state.status === "ready" && answer.response === 1) await applyBackendUpdate();
+    }
   } catch (error) {
     if (!quitPending)
       await dialog.showMessageBox({
@@ -288,6 +292,32 @@ async function requestQuit() {
   await finishQuit();
 }
 
+async function applyBackendUpdate() {
+  if (updates?.getState().status !== "ready") throw new Error(text("The Cox update is not ready."));
+  if (approvedQuit || quitPending || backendRestartPrompt) return;
+  backendRestartPrompt = true;
+  try {
+    const answer = await dialog.showMessageBox({
+      type: "warning",
+      title: text("Restart and update Cox?"),
+      message: text(
+        "Updating Cox restarts the app and interrupts running agent tasks and terminals.",
+      ),
+      buttons: [text("Cancel"), text("Restart and update")],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (answer.response !== 1 || approvedQuit || quitPending) return;
+    if (updates?.getState().status !== "ready")
+      throw new Error(text("The Cox update is not ready."));
+    restartAfterQuit = true;
+    await requestQuit();
+  } finally {
+    backendRestartPrompt = false;
+  }
+}
+
 async function finishQuit() {
   if (stoppingBackend) return;
   stoppingBackend = true;
@@ -302,9 +332,16 @@ async function finishQuit() {
       await updates?.close();
       await clientUpdates?.close();
     }
+    if (restartAfterQuit)
+      app.relaunch({
+        args: process.argv
+          .slice(1)
+          .filter((argument) => !argument.startsWith("--cox-update-transaction=")),
+      });
     approvedQuit = true;
     app.quit();
   } catch (error) {
+    restartAfterQuit = false;
     quitPending = false;
     stoppingBackend = false;
     if (updateAfterQuit) {
@@ -437,6 +474,10 @@ async function start() {
       return action();
     });
   }
+  ipcMain.handle("cox:backend-update-apply", (event) => {
+    if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+    return applyBackendUpdate();
+  });
   ipcMain.handle("cox:backend-update-policy", (event, policy: unknown, version: unknown) => {
     if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
     if (

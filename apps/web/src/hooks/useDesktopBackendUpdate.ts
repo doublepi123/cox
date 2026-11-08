@@ -25,12 +25,12 @@ const store = createDesktopUpdateStore<DesktopBackendUpdateState>((receive) => {
 
 export function useDesktopBackendUpdate() {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
-  const execute = async (action: (() => Promise<DesktopBackendUpdateState>) | undefined) => {
+  const execute = async (action: (() => Promise<DesktopBackendUpdateState | void>) | undefined) => {
     if (!action) return;
     const previous = store.getSnapshot();
     try {
       const next = await action();
-      if (store.getSnapshot() === previous) store.receive(next);
+      if (next && store.getSnapshot() === previous) store.receive(next);
     } catch (error) {
       const current = store.getSnapshot();
       if (current)
@@ -41,6 +41,7 @@ export function useDesktopBackendUpdate() {
     state,
     check: () => execute(window.coxDesktop?.checkBackendUpdate),
     install: () => execute(window.coxDesktop?.installBackendUpdate),
+    apply: () => execute(window.coxDesktop?.applyBackendUpdate),
     setPolicy: (policy: "automatic" | "ignore-version" | "never", version?: string) => {
       const setPolicy = window.coxDesktop?.setBackendUpdatePolicy;
       return execute(setPolicy ? () => setPolicy(policy, version) : undefined);

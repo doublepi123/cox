@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   setClientPolicy: vi.fn(async () => undefined),
   checkBackend: vi.fn(async () => undefined),
   installBackend: vi.fn(async () => undefined),
+  applyBackend: vi.fn(async () => undefined),
   setBackendPolicy: vi.fn(async () => undefined),
 }));
 
@@ -35,6 +36,7 @@ vi.mock(import("../../hooks/useDesktopBackendUpdate"), () => ({
     state: mocks.backendState,
     check: mocks.checkBackend,
     install: mocks.installBackend,
+    apply: mocks.applyBackend,
     setPolicy: mocks.setBackendPolicy,
   }),
 }));
@@ -77,6 +79,29 @@ function updateRow(screen: Awaited<ReturnType<typeof render>>) {
 }
 
 describe("desktop update actions", () => {
+  it("offers immediate application of a staged Cox update without downloading it again", async () => {
+    setup({}, { status: "ready", latestVersion: "0.2.0" });
+    using _bridge = stubGlobal("coxDesktop", { applyBackendUpdate: vi.fn() });
+    await using screen = await render(<DesktopUpdates />);
+    await screen.getByRole("button", { name: "Update now", exact: true }).click();
+    expect(mocks.applyBackend).toHaveBeenCalledOnce();
+    expect(mocks.installBackend).not.toHaveBeenCalled();
+    expect(mocks.applyClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps downloaded Cox updates usable with clients that cannot restart from the page", async () => {
+    setup({}, { status: "ready", latestVersion: "0.2.0" });
+    using _bridge = stubGlobal("coxDesktop", {});
+    await using screen = await render(<DesktopUpdates />);
+    await expect
+      .element(screen.getByRole("button", { name: "Update now", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Check for updates", exact: true }))
+      .toBeEnabled();
+    expect(mocks.applyBackend).not.toHaveBeenCalled();
+  });
+
   it.each(["available", "checking", "downloading", "ready", "error"] as const)(
     "keeps the target client version visible while %s even when Cox is ready",
     async (status) => {

@@ -42,6 +42,7 @@ const bridge: DesktopShellBridge = {
   getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
   checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
   installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),
+  applyBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-apply"),
   setBackendUpdatePolicy: (policy, version) =>
     ipcRenderer.invoke("cox:backend-update-policy", policy, version),
   onBackendUpdate: (listener) => {

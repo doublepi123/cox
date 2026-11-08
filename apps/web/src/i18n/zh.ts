@@ -99,6 +99,8 @@ export const zh = {
   "Desktop client": "桌面客户端",
   "Client version": "客户端版本",
   "Client update version": "待更新客户端版本",
+  "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.":
+    "Cox {version} 已下载。立即更新会重启 Cox，也可以稍后在下次启动时启用。",
   "Installed Cox version": "当前 Cox 版本",
   "Bundled Cox version": "随包 Cox 版本",
   "Not bundled": "未内置，首次启动时安装",

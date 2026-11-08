@@ -39,6 +39,7 @@ export function DesktopUpdates() {
   const showCheckInMenu = clientNeedsDownload || backendNeedsDownload;
   const canIgnoreBackend = window.coxDesktop?.setBackendUpdatePolicy !== undefined;
   const showMenu = showCheckInMenu || showRestore;
+  const canApplyBackendUpdate = window.coxDesktop?.applyBackendUpdate !== undefined;
   const clientUpdateVersion =
     clientState?.latestVersion &&
     clientState.latestVersion !== clientState.currentVersion &&
@@ -53,9 +54,14 @@ export function DesktopUpdates() {
             : "The installer is ready. Open it to finish updating the client.",
         )
       : backendState.status === "ready"
-        ? t(
-            "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
-          )
+        ? canApplyBackendUpdate
+          ? t(
+              "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.",
+              { version: backendState.latestVersion ?? "" },
+            )
+          : t(
+              "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
+            )
         : clientState?.status === "available"
           ? t("Cox Desktop {version} is available.", {
               version: clientState?.latestVersion ?? "",
@@ -109,6 +115,17 @@ export function DesktopUpdates() {
         }}
       >
         {t(clientState?.installMode === "automatic" ? "Restart and update" : "Open installer")}
+      </Button>
+    ) : backendState.status === "ready" && canApplyBackendUpdate && !clientNeedsDownload ? (
+      <Button
+        size="sm"
+        disabled={busy}
+        onClick={() => {
+          setApplying(true);
+          void backend.apply().finally(() => setApplying(false));
+        }}
+      >
+        {t("Update now")}
       </Button>
     ) : clientNeedsDownload || backendNeedsDownload ? (
       <Button

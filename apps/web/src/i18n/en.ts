@@ -105,6 +105,8 @@ export const en = {
   "Desktop client": "Desktop client",
   "Client version": "Client version",
   "Client update version": "Client update version",
+  "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.":
+    "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.",
   "Installed Cox version": "Installed Cox version",
   "Bundled Cox version": "Bundled Cox version",
   "Not bundled": "Not bundled",

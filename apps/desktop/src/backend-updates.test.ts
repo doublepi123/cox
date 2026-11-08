@@ -473,6 +473,7 @@ describe("managed desktop Cox backend", () => {
     await test.manager.launch(test.start, test.stop);
     await test.manager.check();
     await test.manager.stage();
+    await test.manager.close();
     const next = test.make();
     await next.launch(async () => {
       await writeFile(join(test.data, "database"), "migrated");

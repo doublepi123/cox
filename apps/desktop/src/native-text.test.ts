@@ -47,12 +47,17 @@ describe("native desktop language and update messages", () => {
     },
   );
 
-  it("confirms that a completed download waits for the next launch", () => {
+  it("offers a downloaded update immediately while keeping later as the safe default", () => {
     const english = desktopUpdateNotice("en-US", { ...state, status: "ready" });
     const chinese = desktopUpdateNotice("zh-CN", { ...state, status: "ready" });
-    expect(english.message).toContain("next time you open Cox");
+    expect(english.message).toContain("Update now to restart Cox");
+    expect(english.message).toContain("next launch");
+    expect(english.message).toContain("0.1.42");
+    expect(english).toMatchObject({ buttons: ["Later", "Update now"], defaultId: 0, cancelId: 0 });
     expect(english.message).not.toMatch(/[\u3400-\u9fff]/);
-    expect(chinese.message).toContain("下次启动 Cox 时生效");
+    expect(chinese.message).toContain("立即更新会重启 Cox");
+    expect(chinese.message).toContain("下次启动时启用");
+    expect(chinese).toMatchObject({ buttons: ["稍后", "立即更新"], defaultId: 0, cancelId: 0 });
     expect(chinese.message).not.toContain("Update downloaded");
   });
 

@@ -124,6 +124,12 @@ try {
   await settings.waitForFunction(() =>
     Boolean(document.querySelector('[data-slot="sidebar-wrapper"]')),
   );
+  if (process.platform === "linux")
+    await settings.evaluate(() => {
+      const bridge = Reflect.get(window, "coxDesktop");
+      bridge.onSettingsCloseRequested(() => bridge.closeSettings());
+      bridge.ready({ settingsWindow: true });
+    });
   assert.equal(
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
@@ -190,6 +196,86 @@ try {
     await settings.evaluate(() => Reflect.get(window, "__coxSettingsSmokeMarker")),
     "retained",
   );
+  const relaunchMarker = join(temporary, "backend-relaunch.json");
+  await application.evaluate(
+    ({ app, dialog }, paths) => {
+      const { join } = process.getBuiltinModule("path");
+      const { existsSync, writeFileSync } = process.getBuiltinModule("fs");
+      const require = process
+        .getBuiltinModule("module")
+        .createRequire(join(app.getAppPath(), "package.json"));
+      const { BackendUpdates } =
+        require("./dist/backend-updates.js") as typeof import("../src/backend-updates.ts");
+      const { BackendProcess } = require("./dist/backend.js") as typeof import("../src/backend.ts");
+      const state = { ready: false, response: 0, confirmations: 0, errors: 0, stopFailures: 0 };
+      Reflect.set(globalThis, "__coxBackendRestartSmoke", state);
+      const getState = BackendUpdates.prototype.getState;
+      BackendUpdates.prototype.getState = function () {
+        const current = getState.call(this);
+        return state.ready ? { ...current, status: "ready", latestVersion: "99.0.0" } : current;
+      };
+      const stop = BackendProcess.prototype.stop;
+      BackendProcess.prototype.stop = async function () {
+        if (state.stopFailures > 0) {
+          state.stopFailures--;
+          throw new Error("Controlled backend stop failure");
+        }
+        await stop.call(this);
+      };
+      dialog.showMessageBox = async () => {
+        state.confirmations++;
+        return { response: state.response, checkboxChecked: false };
+      };
+      dialog.showErrorBox = () => {
+        state.errors++;
+      };
+      process.argv.push("--cox-update-transaction=completed-smoke-transaction");
+      app.relaunch = (options) => {
+        writeFileSync(
+          paths.marker,
+          JSON.stringify({
+            backendStopped: !existsSync(paths.runtime),
+            confirmations: state.confirmations,
+            args: options?.args,
+          }),
+        );
+      };
+    },
+    { runtime: runtimePath, marker: relaunchMarker },
+  );
+  const notReady = await page.evaluate(async () => {
+    try {
+      await Reflect.get(window, "coxDesktop").applyBackendUpdate();
+      return "accepted";
+    } catch (error) {
+      return String(error);
+    }
+  });
+  assert.match(notReady, /not ready|尚未就绪/);
+  assert.equal(
+    await application.evaluate(
+      () => Reflect.get(globalThis, "__coxBackendRestartSmoke").confirmations,
+    ),
+    0,
+  );
+  await application.evaluate(() => {
+    Reflect.get(globalThis, "__coxBackendRestartSmoke").ready = true;
+  });
+  await page.evaluate(() => Reflect.get(window, "coxDesktop").applyBackendUpdate());
+  assert.equal(await readFile(runtimePath, "utf8"), before);
+  assert.equal(existsSync(relaunchMarker), false);
+  await application.evaluate(() => {
+    const state = Reflect.get(globalThis, "__coxBackendRestartSmoke");
+    state.response = 1;
+    state.stopFailures = 1;
+  });
+  await page.evaluate(() => Reflect.get(window, "coxDesktop").applyBackendUpdate());
+  assert.equal(
+    await application.evaluate(() => Reflect.get(globalThis, "__coxBackendRestartSmoke").errors),
+    1,
+  );
+  assert.equal(await readFile(runtimePath, "utf8"), before);
+  assert.equal(existsSync(relaunchMarker), false);
   if (process.platform === "win32" || process.platform === "darwin") {
     if (process.platform === "win32") {
       assert.equal(
@@ -222,16 +308,31 @@ try {
       await application.evaluate(({ app }) => app.emit("activate"));
     }
     const exit = once(applicationProcess, "exit", { signal: AbortSignal.timeout(20_000) });
-    await application.evaluate(({ app }) => app.quit());
+    await page.evaluate(() => {
+      void Reflect.get(window, "coxDesktop").applyBackendUpdate();
+    });
     const [exitCode] = await exit;
     assert.equal(exitCode, 0);
   } else {
-    await application.evaluate(({ dialog }) => {
-      dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    const exit = once(applicationProcess, "exit", { signal: AbortSignal.timeout(20_000) });
+    await page.evaluate(() => {
+      void Reflect.get(window, "coxDesktop").applyBackendUpdate();
     });
-    await application.close();
+    assert.equal((await exit)[0], 0);
   }
   assert.equal(existsSync(runtimePath), false);
+  const relaunched = JSON.parse(await readFile(relaunchMarker, "utf8")) as {
+    backendStopped: boolean;
+    confirmations: number;
+    args: string[];
+  };
+  assert.equal(relaunched.backendStopped, true);
+  assert.equal(relaunched.confirmations, 3);
+  assert.equal(
+    relaunched.args.some((argument) => argument.startsWith("--cox-update-transaction=")),
+    false,
+  );
+  if (!clientOnly) assert.equal(relaunched.args.includes("--offline"), true);
   if (clientOnly) {
     const statePath = join(temporary, ".cox", "desktop", "backend-updates", "state.json");
     const installed = JSON.parse(await readFile(statePath, "utf8")) as {
@@ -279,7 +380,7 @@ try {
     }
   }
   console.log(
-    "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation, independent settings window reuse, shared preferences and graceful quit.",
+    "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation, independent settings window reuse, shared preferences, backend update consent, cancellation, stop failure recovery and shutdown before relaunch.",
   );
 } catch (error) {
   console.error("Packaged window smoke failed:", error);

@@ -24,6 +24,51 @@ function installBridge(bridge: DesktopShellBridge | undefined) {
 }
 
 describe("desktop shell", () => {
+  it.each(["en", "zh"] as const)(
+    "offers immediate and deferred application of a ready backend update in %s",
+    async (language) => {
+      setLanguagePreference(language);
+      using _language = { [Symbol.dispose]: () => setLanguagePreference("en") };
+      const ready: DesktopBackendUpdateState = {
+        desktopVersion: "0.2.13",
+        bundledVersion: "0.1.50",
+        currentVersion: "0.1.50",
+        latestVersion: "0.1.52",
+        status: "ready",
+        message: null,
+      };
+      let publish: ((state: DesktopBackendUpdateState) => void) | undefined;
+      const bridge: DesktopShellBridge = {
+        platform: "darwin",
+        ready: vi.fn(),
+        onQuitRequested: vi.fn(() => () => {}),
+        answerQuit: vi.fn(),
+        setWindowColors: vi.fn(),
+        onWindowState: vi.fn(() => () => {}),
+        syncWindowControls: vi.fn(),
+        getBackendUpdate: vi.fn(async () => ready),
+        applyBackendUpdate: vi.fn(async () => {}),
+        onBackendUpdate: (listener) => {
+          publish = listener;
+          return () => {};
+        },
+      };
+      using _bridge = installBridge(bridge);
+      await using _screen = await render(<DesktopShell />);
+      const now = language === "zh" ? "立即更新" : "Update now";
+      const later = language === "zh" ? "稍后" : "Later";
+      await expect.element(page.getByRole("button", { name: now, exact: true })).toBeVisible();
+      expect(page.getByRole("alertdialog").element().textContent).toContain("0.1.52");
+      await page.getByRole("button", { name: later, exact: true }).click();
+      expect(bridge.applyBackendUpdate).not.toHaveBeenCalled();
+      expect(bridge.answerQuit).not.toHaveBeenCalled();
+      await act(() => publish?.({ ...ready, latestVersion: "0.1.53" }));
+      await page.getByRole("button", { name: now, exact: true }).click();
+      await vi.waitFor(() => expect(bridge.applyBackendUpdate).toHaveBeenCalledOnce());
+      expect(bridge.answerQuit).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps installing a client update behind the themed quit confirmation", async () => {
     let requestQuit: ((reason?: "quit" | "update") => void) | undefined;
     const bridge: DesktopShellBridge = {

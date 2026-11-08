@@ -17,8 +17,14 @@ const chinese = {
     "发现新版 Cox {version}，是否下载并在下次启动时启用？",
   Later: "稍后",
   Download: "下载",
-  "Update downloaded. It will activate the next time you open Cox without interrupting current tasks.":
-    "更新已下载，下次启动 Cox 时生效，不会中断当前任务。",
+  "Update now": "立即更新",
+  "Restart and update": "重启并更新",
+  "Restart and update Cox?": "立即重启并更新 Cox？",
+  "Updating Cox restarts the app and interrupts running agent tasks and terminals.":
+    "更新 Cox 会重启应用，并中断正在运行的 Agent 任务和终端。",
+  "The Cox update is not ready.": "Cox 更新尚未就绪。",
+  "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.":
+    "Cox {version} 已下载。立即更新会重启 Cox，也可以稍后在下次启动时启用。",
   "Downloading and verifying Cox. Current tasks will not be interrupted.":
     "正在下载并校验 Cox，不会中断当前任务。",
   "Checking for Cox updates…": "正在检查 Cox 更新…",
@@ -104,10 +110,18 @@ export function desktopUpdateNotice(locale: string, state: DesktopBackendUpdateS
   let message: string;
   switch (state.status) {
     case "ready":
-      message = text(
-        "Update downloaded. It will activate the next time you open Cox without interrupting current tasks.",
-      );
-      break;
+      return {
+        type: "info" as const,
+        message: desktopText(
+          locale,
+          "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.",
+          { version: state.latestVersion ?? "" },
+        ),
+        buttons: [text("Later"), text("Update now")],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      };
     case "installing":
       message = text("Downloading and verifying Cox. Current tasks will not be interrupted.");
       break;
