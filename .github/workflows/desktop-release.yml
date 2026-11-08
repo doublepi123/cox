@@ -74,6 +74,71 @@ jobs:
       - run: pnpm desktop:test
       - run: pnpm --filter @cox/desktop typecheck
       - run: pnpm --filter @cox/desktop build
+      - name: Cache verified official Electron assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          import { execFileSync } from "node:child_process";
+          import { createHash } from "node:crypto";
+          import { closeSync, openSync } from "node:fs";
+          import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+          import { createRequire } from "node:module";
+          import { tmpdir } from "node:os";
+          import { dirname, join, resolve } from "node:path";
+          import { setTimeout } from "node:timers/promises";
+          import { pathToFileURL } from "node:url";
+          const require = createRequire(resolve("apps/desktop/package.json"));
+          const electronRequire = createRequire(require.resolve("electron/package.json"));
+          const { version } = electronRequire("./package.json");
+          const checksums = electronRequire("./checksums.json");
+          assert.match(version, /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/);
+          const fileName = "electron-v" + version + "-" + process.platform + "-" + process.arch + ".zip";
+          const release = JSON.parse(execFileSync("gh", ["api", "repos/electron/electron/releases/tags/v" + version], { encoding: "utf8", timeout: 30000 }));
+          assert.equal(release.tag_name, "v" + version);
+          const { Cache } = await import(pathToFileURL(join(dirname(electronRequire.resolve("@electron/get")), "Cache.js")).href);
+          const cache = new Cache();
+          const temporary = await mkdtemp(join(tmpdir(), "cox-electron-"));
+          const download = async (name) => {
+            const asset = release.assets.find(asset => asset.name === name);
+            assert.ok(asset);
+            assert.ok(Number.isSafeInteger(asset.id) && asset.id > 0);
+            assert.match(asset.digest, /^sha256:[a-f0-9]{64}$/);
+            assert.equal(asset.browser_download_url, "https://github.com/electron/electron/releases/download/v" + version + "/" + name);
+            const target = join(temporary, name);
+            for (let attempt = 0; attempt < 3; attempt++) {
+              const descriptor = openSync(target, "w", 0o600);
+              try {
+                execFileSync("gh", ["api", "-H", "Accept: application/octet-stream", "repos/electron/electron/releases/assets/" + asset.id], { stdio: ["ignore", descriptor, "pipe"], timeout: 180000 });
+                const bytes = await readFile(target);
+                assert.equal(bytes.length, asset.size);
+                assert.equal("sha256:" + createHash("sha256").update(bytes).digest("hex"), asset.digest);
+                return { asset, target, bytes };
+              } catch {
+                if (attempt === 2) throw new Error("Official Electron asset download failed: " + name);
+              } finally {
+                closeSync(descriptor);
+              }
+              await setTimeout(1000);
+            }
+            throw new Error("Official Electron asset download did not finish: " + name);
+          };
+          try {
+            const [archive, checksum] = await Promise.all([download(fileName), download("SHASUMS256.txt")]);
+            const expected = checksum.bytes.toString().split("\n").map(line => line.trim().split(/\s+\*?/)).find(parts => parts[1] === fileName)?.[0];
+            const actual = createHash("sha256").update(archive.bytes).digest("hex");
+            assert.equal(actual, expected);
+            assert.equal(actual, checksums[fileName]);
+            const cacheRoot = dirname(dirname(cache.getCachePath(archive.asset.browser_download_url, fileName)));
+            await cache.putFileInCache(archive.asset.browser_download_url, archive.target, fileName);
+            await writeFile(join(cacheRoot, "SHASUMS256.txt-" + version), checksum.bytes);
+            console.log("Cached verified official Electron " + version + " for " + process.platform + "/" + process.arch);
+          } finally {
+            await rm(temporary, { recursive: true, force: true });
+          }
+          JS
       - run: pnpm --filter @cox/desktop package
       - run: pnpm --filter @cox/desktop verify:mac
         if: runner.os == 'macOS'
