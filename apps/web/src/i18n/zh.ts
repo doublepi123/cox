@@ -1,4 +1,9 @@
 export const zh = {
+  "Destination thread": "目标对话",
+  "Started by the first run": "首次运行时创建",
+  "Search all threads...": "搜索全部对话…",
+  "No threads found.": "未找到对话。",
+  "Untitled thread": "未命名对话",
   "Fast and Ultrafast are unavailable with this ChatGPT connection. Use an existing Codex CLI login for speed options your account supports.":
     "此 ChatGPT 连接不支持 Fast 和 Ultrafast。请使用现有 Codex CLI 登录以启用账户支持的速度选项。",
   "Tool calls in chat": "聊天中的工具调用",

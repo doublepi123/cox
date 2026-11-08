@@ -1,4 +1,9 @@
 export const en = {
+  "Destination thread": "Destination thread",
+  "Started by the first run": "Started by the first run",
+  "Search all threads...": "Search all threads...",
+  "No threads found.": "No threads found.",
+  "Untitled thread": "Untitled thread",
   "Fast and Ultrafast are unavailable with this ChatGPT connection. Use an existing Codex CLI login for speed options your account supports.":
     "Fast and Ultrafast are unavailable with this ChatGPT connection. Use an existing Codex CLI login for speed options your account supports.",
   "Tool calls in chat": "Tool calls in chat",

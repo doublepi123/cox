@@ -220,8 +220,11 @@ const handlers = {
     invokeTargeted<PreviewAutomationSetColorSchemeResult>("setColorScheme", input),
   ),
   preview_snapshot: McpToolAccess.readsAsCaller((input) => {
-    const { includeImage: _includeImage, save: _save, ...operationInput } = input ?? {};
-    return invokeTargeted<PreviewAutomationSnapshot>("snapshot", operationInput);
+    const { includeImage: _includeImage, save, ...operationInput } = input ?? {};
+    return invokeTargeted<PreviewAutomationSnapshot>("snapshot", {
+      ...operationInput,
+      ...(save === true ? { fullScreenshot: true } : {}),
+    });
   }),
   preview_act: McpToolAccess.actsAsCaller(({ action, ...input }) =>
     decodeActInput[action](input).pipe(

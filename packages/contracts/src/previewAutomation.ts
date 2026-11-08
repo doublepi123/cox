@@ -551,8 +551,16 @@ export const PreviewAutomationSnapshot = Schema.Struct({
     width: Schema.Int,
     height: Schema.Int,
   }),
+  fullScreenshot: Schema.optional(
+    Schema.Struct({ data: Schema.String, width: Schema.Int, height: Schema.Int }),
+  ),
 });
 export type PreviewAutomationSnapshot = typeof PreviewAutomationSnapshot.Type;
+
+export const PreviewAutomationSnapshotInput = Schema.Struct({
+  fullScreenshot: Schema.optional(Schema.Boolean),
+});
+export type PreviewAutomationSnapshotInput = typeof PreviewAutomationSnapshotInput.Type;
 
 export const PreviewAutomationRecordingStatus = Schema.Struct({
   tabId: PreviewTabId,

@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   ScheduledTaskId,
   type ScheduledTask,
+  ThreadId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -16,12 +17,17 @@ import type {
 import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope";
 
 import { deriveProviderInstanceEntries } from "../../providerInstances";
+import { makeThreadFixture } from "../../test-fixtures";
 import {
   scheduledTaskDefaultModel,
   defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
   scheduleFromDraft,
   taskToDraft,
+  changeDraftProject,
+  moveDraftToThread,
+  scheduledTaskDestinationThreads,
+  unbindDraftFromThread,
 } from "./scheduledTasksSettings.logic";
 
 const laptopId = EnvironmentId.make("laptop");
@@ -336,6 +342,78 @@ describe("scheduled task model defaults", () => {
         },
       }),
     ).toEqual(environmentSelection);
+  });
+});
+
+describe("scheduled task destination", () => {
+  it("lists only matching, unarchived main threads in this environment and project", () => {
+    const projectId = ProjectId.make("project");
+    const thread = (id: string, title: string) =>
+      makeThreadFixture({ id: ThreadId.make(id), environmentId: laptopId, projectId, title });
+    const older = {
+      ...thread("older", "Review old issues"),
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const newer = {
+      ...thread("newer", "Review recent issues"),
+      updatedAt: "2026-02-01T00:00:00.000Z",
+    };
+    const target = {
+      environmentId: laptopId,
+      projectId,
+      currentThreadId: ThreadId.make("current"),
+      query: "  REVIEW  ",
+    };
+    const candidates = [
+      older,
+      newer,
+      thread("current", "Review current"),
+      { ...thread("archived", "Review archived"), archivedAt: "2026-01-01T00:00:00.000Z" },
+      { ...thread("other-project", "Review other project"), projectId: ProjectId.make("other") },
+      { ...thread("other-environment", "Review other environment"), environmentId: serverId },
+      { ...thread("side-chat", "Review side chat"), lineage: { ...newer.lineage, sideChat: true } },
+      thread("unmatched", "Check progress"),
+    ];
+    expect(scheduledTaskDestinationThreads(candidates, target).map((row) => row.id)).toEqual([
+      newer.id,
+      older.id,
+    ]);
+  });
+  it("unbinds a root-bound task into a worktree without losing schedule or model settings", () => {
+    const original = taskToDraft({
+      ...legacyTask,
+      threadId: ThreadId.make("thread:bound"),
+      workspaceStrategy: { type: "root" },
+    });
+    expect(unbindDraftFromThread(original)).toEqual({
+      ...original,
+      threadId: "",
+      workspaceMode: "worktree",
+      startFromOrigin: true,
+    });
+    expect(unbindDraftFromThread({ ...original, threadId: "" })).toEqual({
+      ...original,
+      threadId: "",
+    });
+  });
+
+  it("moves to another thread while keeping fresh-session mode and clears binding on project changes", () => {
+    const original = { ...taskToDraft(legacyTask), threadMode: "fresh_session" as const };
+    const target = {
+      id: ThreadId.make("thread:destination"),
+      projectId: ProjectId.make("project:destination"),
+    };
+    const moved = moveDraftToThread(original, target);
+    expect(moved).toEqual({ ...original, threadId: target.id, projectId: target.projectId });
+    expect(moveDraftToThread({ ...original, threadMode: "new_thread" }, target).threadMode).toBe(
+      "continue",
+    );
+    expect(changeDraftProject(moved, target.projectId)).toBe(moved);
+    expect(changeDraftProject(moved, "other-project")).toMatchObject({
+      threadId: "",
+      projectId: "other-project",
+      threadMode: "fresh_session",
+    });
   });
 });
 

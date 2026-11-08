@@ -242,6 +242,8 @@ it("bounds public command rejections and redacts internal dispatch causes", () =
   });
 });
 
+const fullAccessThreadId = ThreadId.make("mcp-core-full-access-thread");
+
 it.effect("returns an HTML render reference that Codex and Claude tool rows both carry", () =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
@@ -262,6 +264,41 @@ it.effect("returns an HTML render reference that Codex and Claude tool rows both
     expect(
       htmlRenderFromToolItem({ toolName: "mcp__t3-code__html_render", output: result.content }),
     ).toEqual(reference);
+    const byPath = (name: string, caller: McpInvocationContext.McpInvocationScope) =>
+      server
+        .callTool({
+          name,
+          arguments: { path: "/t3-missing-dir/revenue.html", title: "Revenue", height: 240 },
+        })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, caller),
+          Effect.provideService(McpSchema.McpServerClient, client),
+          Effect.map((result) => (result.isError ? JSON.stringify(result.content) : undefined)),
+        );
+    const fullAccess = { ...scope, thread: { ...scope.thread!, threadId: fullAccessThreadId } };
+    for (const name of ["html_preview", "html_render"]) {
+      expect(yield* byPath(name, scope), name).toContain("only full-access threads");
+      expect(yield* byPath(name, fullAccess), name).toContain("not a readable HTML document");
+      for (const source of [{}, { html: "<p>Revenue</p>", path: "/missing.html" }]) {
+        const invalid = yield* server
+          .callTool({ name, arguments: { ...source, title: "Revenue", height: 240 } })
+          .pipe(
+            Effect.provideService(McpInvocationContext.McpInvocationContext, fullAccess),
+            Effect.provideService(McpSchema.McpServerClient, client),
+          );
+        expect(invalid.isError, name).toBe(true);
+        if (name === "html_preview") {
+          expect(invalid.content).toEqual([
+            { type: "text", text: "Pass exactly one of html or path." },
+          ]);
+        } else {
+          expect(declaredFailure(invalid)).toMatchObject({
+            code: "invalid_request",
+            message: "Pass exactly one of html or path.",
+          });
+        }
+      }
+    }
   }).pipe(
     Effect.provide(
       McpHttpServer.layerHtmlToolkit.pipe(
@@ -273,13 +310,15 @@ it.effect("returns an HTML render reference that Codex and Claude tool rows both
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(
           Layer.mock(ThreadManagement.ThreadManagementService)({
-            getThreadShell: () =>
+            getThreadShell: (id) =>
               Effect.succeed({
-                id: threadId,
+                id,
                 deletedAt: null,
                 archivedAt: null,
                 activeRunId: RunId.make("mcp-core-run"),
                 providerInstanceId: ProviderInstanceId.make("codex"),
+                runtimeMode: id === fullAccessThreadId ? "full-access" : "approval-required",
+                interactionMode: "default",
               } as OrchestrationV2ThreadShell),
           }),
         ),

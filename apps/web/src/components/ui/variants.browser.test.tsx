@@ -6,6 +6,8 @@ import { act, render } from "../../../test/render";
 import { Button, InlineButton } from "./button";
 import { Combobox, ComboboxInput, ComboboxItem, ComboboxList, ComboboxPopup } from "./combobox";
 import { Command, CommandInput, CommandItem, CommandList, CommandPanel } from "./command";
+import { CollapsibleSectionHeader } from "./collapsible-section-header";
+import ChatMarkdown from "../ChatMarkdown";
 import { Dialog, DialogClose, DialogPopup, DialogTitle, DialogTrigger } from "./dialog";
 import { Input } from "./input";
 import { Label } from "./label";
@@ -41,6 +43,25 @@ function ModelCombobox({ inputRef }: { inputRef: Ref<HTMLInputElement> }) {
 }
 
 describe("semantic control variants", () => {
+  it("keeps long phase headers within their card and renders Markdown strong at bold weight", async () => {
+    const title = "A very long phase title ".repeat(12);
+    await using screen = await render(
+      <div style={{ width: 220 }}>
+        <CollapsibleSectionHeader expanded accessory={<span>12</span>}>
+          {title}
+        </CollapsibleSectionHeader>
+        <ChatMarkdown text="Plain **bold text**" cwd={undefined} />
+      </div>,
+    );
+    const button = screen.getByRole("button", { name: `${title.trim()} 12` }).element();
+    const label = button.querySelector("span")!;
+    expect(label.scrollWidth).toBeGreaterThan(label.clientWidth);
+    expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth);
+    expect(getComputedStyle(label).textOverflow).toBe("ellipsis");
+    expect(
+      getComputedStyle(screen.getByText("bold text", { exact: true }).element()).fontWeight,
+    ).toBe("700");
+  });
   it.each([390, 1280])(
     "preserves fixed selection and responsive media navigation placement at %spx",
     async (width) => {

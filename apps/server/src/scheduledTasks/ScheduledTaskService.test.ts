@@ -8,6 +8,9 @@ import {
   ProviderInstanceId,
   ScheduledTaskError,
   ScheduledTaskId,
+  type OrchestrationV2ThreadShell,
+  type ScheduledTaskUpsertInput,
+  SecretRef,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -29,8 +32,117 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
+import { liveThreadShell } from "../mcp/McpToolAccess.testkit.ts";
 
 const isScheduledTaskError = Schema.is(ScheduledTaskError);
+
+it.effect("checks a task's destination thread only when the destination changes", () =>
+  Effect.gen(function* () {
+    const project = ProjectId.make("project:test");
+    const otherProject = ProjectId.make("project:other");
+    const destination = ThreadId.make("thread:destination");
+    const archivedAt = "2026-11-05T00:00:00.000Z";
+    const shells = yield* Ref.make<ReadonlyMap<ThreadId, OrchestrationV2ThreadShell>>(
+      new Map([
+        [destination, threadShell(project)],
+        [ThreadId.make("thread:archived"), threadShell(project, { archivedAt })],
+        [ThreadId.make("thread:deleted"), threadShell(project, { deletedAt: archivedAt })],
+        [ThreadId.make("thread:other-project"), threadShell(otherProject)],
+      ]),
+    );
+    const consumed = yield* Ref.make(0);
+    const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadShell: (threadId) =>
+              Ref.get(shells).pipe(Effect.map((all) => all.get(threadId) ?? null)),
+          }),
+          Layer.mock(SecretRequests.SecretRequests)({
+            consume: () => Ref.update(consumed, (count) => count + 1).pipe(Effect.as("secret")),
+          }),
+          Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+            namedProjectsRoot: "/projects",
+            isScratchProject: () => Effect.succeed(false),
+          }),
+          NodeCrypto.layer,
+          Scheduler.layer,
+        ),
+      ),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ScheduledTaskService.ScheduledTaskService;
+      const id = ScheduledTaskId.make("task:destination");
+      const save = (
+        threadId: ThreadId,
+        schedule: ScheduledTaskUpsertInput["schedule"] = { type: "interval", everyMs: 60_000 },
+      ) =>
+        service.upsert({
+          id,
+          title: "Follow up",
+          prompt: "Check progress",
+          enabled: true,
+          schedule,
+          projectId: project,
+          threadId,
+          workspaceStrategy: { type: "root" },
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        });
+
+      for (const [threadId, message] of [
+        ["thread:missing", "That thread no longer exists."],
+        ["thread:deleted", "That thread no longer exists."],
+        ["thread:archived", "That thread is archived. Unarchive it or pick another destination."],
+        ["thread:other-project", "That thread belongs to a different project."],
+      ] as const) {
+        const refused = yield* save(ThreadId.make(threadId)).pipe(Effect.flip);
+        assert.equal(refused.message, message);
+      }
+      assert.lengthOf((yield* service.list()).tasks, 0);
+
+      yield* save(ThreadId.make("thread:missing"), {
+        type: "webhook",
+        signature: {
+          header: "x-signature",
+          encoding: "hex",
+          prefix: "",
+          secretRef: SecretRef.make("secret-ref:00000000000000000000000000000001"),
+        },
+      }).pipe(Effect.flip);
+      assert.equal(yield* Ref.get(consumed), 0);
+
+      yield* save(destination);
+      const movedDestination = ThreadId.make("thread:moved-destination");
+      yield* Ref.update(shells, (all) => new Map(all).set(movedDestination, threadShell(project)));
+      const moved = (yield* save(movedDestination)).task;
+      assert.equal(moved.threadId, movedDestination);
+      assert.equal(moved.threadMode, "continue");
+      assert.equal(moved.runCount, 0);
+      assert.deepEqual(moved.schedule, { type: "interval", everyMs: 60_000 });
+      const unbound = yield* service.upsert({ ...moved, threadId: null, threadMode: "new_thread" });
+      assert.isNull(unbound.task.threadId);
+      assert.equal(unbound.task.threadMode, "new_thread");
+      yield* save(destination);
+      yield* Ref.update(shells, (all) =>
+        new Map(all).set(destination, threadShell(project, { archivedAt })),
+      );
+      assert.equal((yield* save(destination)).task.threadId, destination);
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+const threadShell = (
+  projectId: ProjectId,
+  state: { archivedAt?: string | null; deletedAt?: string | null } = {},
+): OrchestrationV2ThreadShell => ({
+  ...liveThreadShell(ThreadId.make("thread:fixture")),
+  projectId,
+  archivedAt: state.archivedAt == null ? null : DateTime.makeUnsafe(state.archivedAt),
+  deletedAt: state.deletedAt == null ? null : DateTime.makeUnsafe(state.deletedAt),
+});
 
 const insertRow = (
   sql: SqlClient.SqlClient,
@@ -353,6 +465,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
                 Effect.andThen(Deferred.await(release)),
                 Effect.andThen(Effect.die("test dispatch failure")),
               ),
+            getThreadShell: () => Effect.succeed(threadShell(ProjectId.make("project:test"))),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
@@ -408,8 +521,7 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
     const scratch = ProjectId.make("project:scratch");
     const promoted = ProjectId.make("project:promoted");
     const sends = yield* Ref.make<Array<{ projectId: ProjectId; commandId: string }>>([]);
-    // Rebind lands first, then the promotion commits between the shell read and the retry.
-    const shellProjects = yield* Ref.make([scratch, promoted]);
+    const shellProjects = yield* Ref.make([promoted, scratch, promoted]);
     const layer = ScheduledTaskService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -432,10 +544,7 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
                 ),
               ),
             getThreadShell: () =>
-              Ref.modify(shellProjects, ([next, ...rest]) => [
-                { projectId: next ?? promoted } as never,
-                rest,
-              ]),
+              Ref.modify(shellProjects, ([next, ...rest]) => [threadShell(next ?? promoted), rest]),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({

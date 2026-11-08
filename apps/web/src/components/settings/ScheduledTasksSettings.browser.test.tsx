@@ -1,13 +1,16 @@
-import { RegistryContext } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import {
   DEFAULT_UNIFIED_SETTINGS,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
   ScheduledTaskId,
   ThreadId,
   type ScheduledTask,
+  type ScheduledTaskUpsertInput,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -15,6 +18,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 import "~/index.css";
 import { act, render } from "../../../test/render";
 import { ScheduledTasksSettings } from "./ScheduledTasksSettings";
+import { makeThreadFixture } from "../../test-fixtures";
 
 const environmentId = EnvironmentId.make("laptop");
 const projectId = ProjectId.make("project");
@@ -47,14 +51,72 @@ const threadFamilyRead = {
   threads: [{ id: task.threadId, title: "Fix login bug" }],
 };
 
-const state = vi.hoisted(() => ({ connected: true, tasksLoaded: true, secondary: false }));
+const state = vi.hoisted(() => ({
+  connected: true,
+  tasksLoaded: true,
+  secondary: false,
+  threadModes: false,
+}));
+const destinationId = ThreadId.make("destination");
+const destinationThreads = [
+  makeThreadFixture({
+    id: destinationId,
+    environmentId,
+    projectId,
+    title: "Investigate queue recovery",
+  }),
+  makeThreadFixture({
+    id: ThreadId.make("archived"),
+    environmentId,
+    projectId,
+    title: "Archived recovery",
+    archivedAt: "2026-01-01T00:00:00.000Z",
+  }),
+  makeThreadFixture({
+    id: ThreadId.make("foreign"),
+    environmentId,
+    projectId: ProjectId.make("other"),
+    title: "Other project recovery",
+  }),
+];
 const secondaryId = EnvironmentId.make("secondary");
 const permissions = new Map<string, Atom.Writable<boolean>>();
+const connectionOverride = Atom.make<boolean | null>(null);
+const savedTasks = vi.hoisted(() =>
+  vi
+    .fn<
+      (input: {
+        environmentId: EnvironmentId;
+        input: ScheduledTaskUpsertInput;
+      }) => Promise<{ _tag: "Success" }>
+    >()
+    .mockResolvedValue({ _tag: "Success" }),
+);
+const providers: ReadonlyArray<ServerProvider> = [
+  {
+    instanceId: ProviderInstanceId.make("codex"),
+    driver: ProviderDriverKind.make("codex"),
+    enabled: true,
+    installed: true,
+    version: "0.166.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-01-01T00:00:00.000Z",
+    models: [
+      { slug: "gpt-5.4", name: "GPT-5.4", isDefault: true, isCustom: false, capabilities: null },
+    ],
+    slashCommands: [],
+    skills: [],
+  },
+];
+const providerList = Atom.make<ReadonlyArray<ServerProvider> | null>(providers);
 
 function setup() {
   state.connected = true;
   state.tasksLoaded = true;
   state.secondary = false;
+  state.threadModes = false;
+  savedTasks.mockClear();
   permissions.clear();
   permissions.set(environmentId, Atom.make(true));
   permissions.set(secondaryId, Atom.make(true));
@@ -65,12 +127,19 @@ function secondaryEnvironment() {
   return { ...environment(), environmentId: secondaryId, label: "Secondary" };
 }
 
-function environment() {
+function environment(connected = state.connected) {
   return {
     environmentId,
     label: "Laptop",
-    connection: { phase: state.connected ? "connected" : "disconnected" },
-    serverConfig: state.connected ? { environment: { platform: "linux" } } : null,
+    connection: { phase: connected ? "connected" : "disconnected" },
+    serverConfig: connected
+      ? {
+          environment: {
+            platform: "linux",
+            capabilities: { scheduledTaskThreadModes: state.threadModes },
+          },
+        }
+      : null,
   };
 }
 
@@ -102,6 +171,7 @@ vi.mock(import("../../state/server"), async (original) => {
     ...actual,
     serverEnvironment: {
       ...actual.serverEnvironment,
+      providersValueAtom: () => providerList,
       upsertScheduledTask: {
         ...actual.serverEnvironment.upsertScheduledTask,
         permissionAtom: (id: string | null) => permissions.get(id ?? "")!,
@@ -129,14 +199,34 @@ vi.mock(import("../../state/query"), async (original) => ({
     refresh: vi.fn(),
   })) as never,
 }));
+vi.mock(import("../../state/use-atom-command"), async (original) => ({
+  ...(await original()),
+  useAtomCommand: (command: unknown) =>
+    command === serverEnvironment.upsertScheduledTask
+      ? savedTasks
+      : vi.fn().mockResolvedValue({ _tag: "Success" }),
+}));
+vi.mock(import("../../state/session"), async (original) => ({
+  ...(await original()),
+  readEnvironmentScope: () => true,
+}));
+import { serverEnvironment } from "../../state/server";
 vi.mock(import("../../state/environments"), async (original) => ({
   ...(await original()),
-  useEnvironment: ((id: EnvironmentId) =>
-    id === secondaryId ? secondaryEnvironment() : environment()) as never,
+  useEnvironment: ((id: EnvironmentId) => {
+    const connected = useAtomValue(connectionOverride);
+    return id === secondaryId ? secondaryEnvironment() : environment(connected ?? state.connected);
+  }) as never,
 }));
 vi.mock(import("../../state/entities"), async (original) => ({
   ...(await original()),
   useProjects: (() => [{ id: projectId, environmentId, title: "Project" }]) as never,
+  useThreadShells: (enabled = true) => (enabled ? destinationThreads : []),
+  useThreadShell: (ref) => (ref?.threadId === destinationId ? destinationThreads[0]! : null),
+}));
+vi.mock(import("../../state/queries"), async (original) => ({
+  ...(await original()),
+  useThreadSearch: vi.fn(),
 }));
 vi.mock(import("../../hooks/useSettings"), async (original) => ({
   ...(await original()),
@@ -144,6 +234,69 @@ vi.mock(import("../../hooks/useSettings"), async (original) => ({
 }));
 
 describe("ScheduledTasksSettings", () => {
+  it.each([390, 1280])(
+    "moves an existing task to a matching thread at %spx without changing its prompt",
+    async (width) => {
+      setup();
+      await page.viewport(width, 850);
+      const registry = AtomRegistry.make();
+      using _registry = { [Symbol.dispose]: () => registry.dispose() };
+      registry.set(connectionOverride, true);
+      await using _screen = await render(
+        <RegistryContext.Provider value={registry}>
+          <ScheduledTasksSettings taskId={task.id} />
+        </RegistryContext.Provider>,
+      );
+      const destination = page.getByLabelText("Destination", { exact: true });
+      await expect.element(destination).toHaveTextContent("Fix login bug");
+      await destination.click();
+      await expect
+        .element(page.getByRole("option", { name: "New thread each run", exact: true }))
+        .not.toBeInTheDocument();
+      await page.getByRole("combobox", { name: "Search threads" }).fill("recovery");
+      await expect
+        .element(page.getByRole("option", { name: "Investigate queue recovery", exact: true }))
+        .toBeVisible();
+      await expect
+        .element(page.getByRole("option", { name: "Archived recovery", exact: true }))
+        .not.toBeInTheDocument();
+      await expect
+        .element(page.getByRole("option", { name: "Other project recovery", exact: true }))
+        .not.toBeInTheDocument();
+      await page.getByRole("option", { name: "Investigate queue recovery", exact: true }).click();
+      await expect.element(destination).toHaveTextContent("Investigate queue recovery");
+      await expect
+        .element(page.getByRole("textbox", { name: "Prompt", exact: true }))
+        .toHaveValue(task.prompt);
+      expect(destination.element().getBoundingClientRect().right).toBeLessThanOrEqual(width);
+      await act(() => registry.set(connectionOverride, false));
+      await expect.element(destination).toBeDisabled();
+      await act(() => registry.set(connectionOverride, true));
+      await expect.element(destination).toBeEnabled();
+      await page.getByRole("button", { name: "Save task", exact: true }).click();
+      expect(savedTasks).toHaveBeenCalledOnce();
+      expect(savedTasks.mock.calls[0]?.[0]).toMatchObject({
+        environmentId,
+        input: { id: task.id, projectId, threadId: destinationId, prompt: task.prompt },
+      });
+    },
+  );
+
+  it("can leave a bound thread for new-thread mode while preserving the task draft", async () => {
+    setup();
+    state.threadModes = true;
+    await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+    const destination = page.getByRole("combobox", { name: "Destination thread" });
+    await destination.click();
+    await page.getByRole("option", { name: "New thread each run", exact: true }).click();
+    await expect.element(destination).not.toBeInTheDocument();
+    await expect
+      .element(page.getByLabelText("Destination", { exact: true }))
+      .toHaveTextContent("New thread each run");
+    await expect
+      .element(page.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue(task.prompt);
+  });
   it("creates on a permitted secondary and reacts to permission changes", async () => {
     setup();
     state.secondary = true;

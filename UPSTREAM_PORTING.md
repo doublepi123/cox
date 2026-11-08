@@ -1,5 +1,12 @@
 # Upstream port status
 
+Latest follow-up: Cox baseline `69e6586c85`, upstream
+`25bf84ab07..8e6a732305` (21 reviewed commits). The 10 recommended Cox-applicable
+updates are adapted; details and current validation are recorded in
+[the November 8 follow-up](UPSTREAM_PORTING_20261108.md).
+
+## Initial November 7 batch
+
 Cox baseline: `402cfc6bcdbdd17ad00e438ceb9d74d571182b88` (2026-11-07).
 Fixed upstream review range: `b18434e647..25bf84ab07f53f141c20239c63e383823a9d5ea0`
 (263 commits). This is a selective local adaptation, not a merge of the
@@ -13,9 +20,10 @@ means the Cox-applicable behavior, not every upstream file or permission default
 The keyed source-control secret support prerequisite (`84537c4dd9`, before this
 range) was also adapted. No upstream checkout or live application data was changed.
 
-The follow-up lint-cleanup request authorizes source commits and a push to `main`.
-No tag, publication, version bump or live deployment is part of this work. Cox
-server remains `0.1.50`; desktop remains `0.2.11` until a separate release.
+The initial lint-cleanup request authorized source commits and a push to `main`.
+That batch did not include a tag, publication, version bump or live deployment;
+its completion versions were server `0.1.50` and desktop `0.2.11`. Later releases
+and the November 8 follow-up are separate work.
 
 ## Delivered behavior
 

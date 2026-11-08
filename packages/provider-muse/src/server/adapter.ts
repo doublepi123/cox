@@ -1366,7 +1366,11 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               });
           }
         }
-        if (wake && active?.nativeId !== wake.nativeId) {
+        if (
+          wake &&
+          active?.nativeId !== wake.nativeId &&
+          !(active?.compact && itemEvent?.kind === "compaction")
+        ) {
           const turnId = typeof params.turnId === "string" ? params.turnId : itemEvent?.turnId;
           if (turnId === wake.nativeId) {
             wake.events.push([method, data]);
@@ -2036,8 +2040,8 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             lastRunOrdinal: turnInput.runOrdinal,
           });
           yield* updateSession("running");
-          const held = wake;
-          wake = undefined;
+          const held = compact ? undefined : wake;
+          if (held) wake = undefined;
           if (continuation && !held) return yield* finish(turn, "completed");
           if (held && !continuation) turn.joined.add(held.nativeId);
           for (const [method, data] of held?.events ?? [])
@@ -2046,17 +2050,19 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
         if (continuation) return;
         yield* Effect.gen(function* () {
           if (compact) {
-            const result = yield* request("session/compact", {}, true, nativeId).pipe(
+            const declined = yield* request("session/compact", {}, true, nativeId).pipe(
               Effect.flatMap((value) => decode(MuseCompactResult, value)),
+              Effect.map((result) =>
+                result.status === "accepted"
+                  ? undefined
+                  : result.status === "noop"
+                    ? (result.reason ?? "Muse has no context to compact.")
+                    : `Muse returned an unsupported compaction status: ${result.status}`,
+              ),
+              Effect.catch((error) => (broken ? Effect.fail(error) : Effect.succeed(error.detail))),
             );
-            if (result.status === "noop")
-              yield* eventPermit.withPermits(1)(
-                finish(turn, "failed", result.reason ?? "Muse has no context to compact."),
-              );
-            else if (result.status !== "accepted")
-              return yield* protocolError(
-                `Muse returned an unsupported compaction status: ${result.status}`,
-              );
+            if (declined !== undefined)
+              yield* eventPermit.withPermits(1)(finish(turn, "failed", declined));
           } else {
             const result = yield* request(
               "turn/start",
@@ -2237,6 +2243,13 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
           function* (args) {
             const turn = active;
             if (
+              !turn &&
+              args.requestRuntimeRestart === true &&
+              observedChildren.size === 0 &&
+              wake === undefined
+            )
+              return;
+            if (
               !turn ||
               turn.providerTurn.id !== args.providerTurnId ||
               !validateThread(args.providerThread)
@@ -2253,6 +2266,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                     Effect.onError(failHost),
                   );
                   broken = true;
+                  wake = undefined;
                   yield* finish(turn, "interrupted", undefined, "broken");
                   yield* settleObservedChildren("interrupted");
                   yield* updateSession("stopped");

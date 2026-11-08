@@ -193,6 +193,27 @@ describe("handoff budget", () => {
     }
   });
 
+  it("skips huge text before reading the rest of its historical envelope", () => {
+    let envelopeReads = 0;
+    const huge = {
+      ...messages[0]!,
+      text: "界🧪".repeat(100_000),
+      get itemId() {
+        envelopeReads += 1;
+        return TurnItemId.make("huge");
+      },
+    };
+    const selected = selectHistory({
+      messages: [huge, ...messages],
+      coverage: "Recover omitted history",
+      budget: 3_000,
+    });
+    assert.deepEqual(selected.messages, messages);
+    assert.equal(selected.omittedItems, 1);
+    assert.isAtMost(historyCost(selected.messages, selected.context), 3_000);
+    assert.equal(envelopeReads, 1);
+  });
+
   it("fits the final envelope at intermediate selected/omitted digit boundaries", () => {
     const candidates = Array.from({ length: 20 }, (_, index) =>
       message(`boundary:${index}`, "user", "Short request"),
