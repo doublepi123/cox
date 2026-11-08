@@ -98,6 +98,7 @@ export const zh = {
   "This Cox version requires a newer desktop client.": "此 Cox 版本需要更新的桌面客户端。",
   "Desktop client": "桌面客户端",
   "Client version": "客户端版本",
+  "Client update version": "待更新客户端版本",
   "Installed Cox version": "当前 Cox 版本",
   "Bundled Cox version": "随包 Cox 版本",
   "Not bundled": "未内置，首次启动时安装",

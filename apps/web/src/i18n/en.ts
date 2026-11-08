@@ -104,6 +104,7 @@ export const en = {
     "This Cox version requires a newer desktop client.",
   "Desktop client": "Desktop client",
   "Client version": "Client version",
+  "Client update version": "Client update version",
   "Installed Cox version": "Installed Cox version",
   "Bundled Cox version": "Bundled Cox version",
   "Not bundled": "Not bundled",

@@ -39,6 +39,12 @@ export function DesktopUpdates() {
   const showCheckInMenu = clientNeedsDownload || backendNeedsDownload;
   const canIgnoreBackend = window.coxDesktop?.setBackendUpdatePolicy !== undefined;
   const showMenu = showCheckInMenu || showRestore;
+  const clientUpdateVersion =
+    clientState?.latestVersion &&
+    clientState.latestVersion !== clientState.currentVersion &&
+    clientState.status !== "idle"
+      ? clientState.latestVersion
+      : null;
   const description =
     clientState?.status === "ready"
       ? t(
@@ -139,6 +145,12 @@ export function DesktopUpdates() {
         title={t("Client version")}
         control={<code>{backendState.desktopVersion}</code>}
       />
+      {clientUpdateVersion ? (
+        <SettingsRow
+          title={t("Client update version")}
+          control={<code>{clientUpdateVersion}</code>}
+        />
+      ) : null}
       <SettingsRow
         title={t("Installed Cox version")}
         control={<code>{backendState.currentVersion ?? "—"}</code>}

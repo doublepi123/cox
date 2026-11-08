@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import "~/index.css";
 
 import { render, stubGlobal } from "../../../test/render";
+import { setLanguagePreference } from "../../i18n";
 import { DesktopUpdates } from "./DesktopUpdates";
 
 const mocks = vi.hoisted(() => ({
@@ -76,6 +77,56 @@ function updateRow(screen: Awaited<ReturnType<typeof render>>) {
 }
 
 describe("desktop update actions", () => {
+  it.each(["available", "checking", "downloading", "ready", "error"] as const)(
+    "keeps the target client version visible while %s even when Cox is ready",
+    async (status) => {
+      setup({ status, latestVersion: "0.3.0" }, { status: "ready", latestVersion: "0.2.0" });
+      await using screen = await render(<DesktopUpdates />);
+      const current = screen
+        .getByText("Client version", { exact: true })
+        .element()
+        .closest("[data-slot=settings-row]")!;
+      const target = screen
+        .getByText("Client update version", { exact: true })
+        .element()
+        .closest("[data-slot=settings-row]")!;
+      expect(current.querySelector("code")?.textContent).toBe("0.2.0");
+      expect(target.querySelector("code")?.textContent).toBe("0.3.0");
+    },
+  );
+
+  it.each([null, "0.2.0"])(
+    "does not invent a target version when the latest version is %s",
+    async (latestVersion) => {
+      setup({ status: "checking", latestVersion });
+      await using screen = await render(<DesktopUpdates />);
+      await expect
+        .element(screen.getByText("Client update version", { exact: true }))
+        .not.toBeInTheDocument();
+    },
+  );
+
+  it("does not present an ignored client version as a pending update", async () => {
+    setup({ latestVersion: "0.3.0", ignoredVersion: "0.3.0" });
+    await using screen = await render(<DesktopUpdates />);
+    await expect
+      .element(screen.getByText("Client update version", { exact: true }))
+      .not.toBeInTheDocument();
+  });
+
+  it("labels a prepared manual client update in Chinese", async () => {
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    setup({ status: "ready", latestVersion: "0.3.0", installMode: "manual" });
+    await using screen = await render(<DesktopUpdates />);
+    const target = screen
+      .getByText("待更新客户端版本", { exact: true })
+      .element()
+      .closest("[data-slot=settings-row]")!;
+    expect(target.querySelector("code")?.textContent).toBe("0.3.0");
+    await expect.element(screen.getByRole("button", { name: "打开安装包" })).toBeVisible();
+  });
+
   it("shows one check action for the client and backend in the default state", async () => {
     setup();
     await using screen = await render(<DesktopUpdates />);
