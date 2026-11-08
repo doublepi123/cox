@@ -451,10 +451,10 @@ function LinkPage({
   readonly children?: ReactNode;
 }) {
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+    <SidebarInset viewport="dynamic">
       {null}
-      <Empty className="flex-1">
-        <EmptyHeader className="max-w-md">
+      <Empty>
+        <EmptyHeader width="md">
           <EmptyTitle>{title}</EmptyTitle>
           {description ? <EmptyDescription>{description}</EmptyDescription> : null}
           {children ? <div className="mt-5 flex justify-center gap-2">{children}</div> : null}

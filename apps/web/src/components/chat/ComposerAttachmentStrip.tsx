@@ -199,26 +199,27 @@ export function ComposerAttachmentMediaRow({
             )}
             {ready && upload?.status === "failed" && (
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="overlay"
-                      size="icon-xs"
-                      className="absolute bottom-1 left-1"
-                      onClick={() =>
-                        retryAttachmentUpload({
-                          environmentId,
-                          image: ready,
-                          draftTarget: attachmentDraftTarget,
-                        })
-                      }
-                      disabled={!canOperateThread}
-                      aria-label={`Retry upload for ${image.name}`}
-                    />
-                  }
-                >
-                  <RefreshIcon />
-                </TooltipTrigger>
+                <span className="inline-flex min-w-0 absolute bottom-1 left-1">
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="overlay"
+                        size="icon-xs"
+                        onClick={() =>
+                          retryAttachmentUpload({
+                            environmentId,
+                            image: ready,
+                            draftTarget: attachmentDraftTarget,
+                          })
+                        }
+                        disabled={!canOperateThread}
+                        aria-label={`Retry upload for ${image.name}`}
+                      />
+                    }
+                  >
+                    <RefreshIcon />
+                  </TooltipTrigger>
+                </span>
                 <TooltipPopup side="top">{upload.reason}</TooltipPopup>
               </Tooltip>
             )}
@@ -281,38 +282,40 @@ export function ComposerAttachmentMediaRow({
             )}
             {upload?.status === "failed" && (
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="overlay"
-                      size="icon-xs"
-                      className="absolute bottom-1 left-1"
-                      onClick={() =>
-                        retryAttachmentUpload({
-                          environmentId,
-                          image: file,
-                          draftTarget: attachmentDraftTarget,
-                        })
-                      }
-                      disabled={!canOperateThread}
-                      aria-label={`Retry upload for ${file.name}`}
-                    />
-                  }
-                >
-                  <RefreshIcon />
-                </TooltipTrigger>
+                <span className="inline-flex min-w-0 absolute bottom-1 left-1">
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="overlay"
+                        size="icon-xs"
+                        onClick={() =>
+                          retryAttachmentUpload({
+                            environmentId,
+                            image: file,
+                            draftTarget: attachmentDraftTarget,
+                          })
+                        }
+                        disabled={!canOperateThread}
+                        aria-label={`Retry upload for ${file.name}`}
+                      />
+                    }
+                  >
+                    <RefreshIcon />
+                  </TooltipTrigger>
+                </span>
                 <TooltipPopup side="top">{upload.reason}</TooltipPopup>
               </Tooltip>
             )}
-            <Button
-              variant="media-close"
-              size="icon-xs"
-              className="absolute right-1 top-1"
-              onClick={() => onRemoveFile(file.id)}
-              aria-label={`Remove ${file.name}`}
-            >
-              <XIcon />
-            </Button>
+            <span className="inline-flex min-w-0 absolute right-1 top-1">
+              <Button
+                variant="media-close"
+                size="icon-xs"
+                onClick={() => onRemoveFile(file.id)}
+                aria-label={`Remove ${file.name}`}
+              >
+                <XIcon />
+              </Button>
+            </span>
           </div>
         );
       })}
@@ -436,10 +439,11 @@ export function ComposerFilePreviewDialog({
     >
       <DialogPopup
         {...composerFloatingLayerProps}
-        className="h-[min(85vh,52rem)] max-w-4xl overflow-hidden"
+        width="4xl"
+        surface="attachment"
         showCloseButton={false}
       >
-        <DialogTitle className="sr-only">{file.name}</DialogTitle>
+        <DialogTitle visuallyHidden>{file.name}</DialogTitle>
         <AttachmentFilePreview
           key={file.id}
           name={file.name}
@@ -570,15 +574,16 @@ export function ComposerQueuedAttachmentRow({
               {attachment.name}
             </div>
           )}
-          <Button
-            variant="media-close"
-            size="icon-xs"
-            className="absolute right-1 top-1"
-            onClick={() => onRemove(attachment.id)}
-            aria-label={`Remove ${attachment.name}`}
-          >
-            <XIcon />
-          </Button>
+          <span className="inline-flex min-w-0 absolute right-1 top-1">
+            <Button
+              variant="media-close"
+              size="icon-xs"
+              onClick={() => onRemove(attachment.id)}
+              aria-label={`Remove ${attachment.name}`}
+            >
+              <XIcon />
+            </Button>
+          </span>
         </div>
       ))}
     </div>

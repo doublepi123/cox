@@ -34,15 +34,16 @@ export function ExpandableText({
         {expanded ? text : collapsedText}
       </div>
       {canExpand ? (
-        <InlineButton
-          aria-expanded={expanded}
-          aria-controls={textId}
-          tone="muted"
-          className="mt-1"
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {expanded ? t("Show less") : expandLabel}
-        </InlineButton>
+        <div className="mt-1">
+          <InlineButton
+            aria-expanded={expanded}
+            aria-controls={textId}
+            tone="muted"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? t("Show less") : expandLabel}
+          </InlineButton>
+        </div>
       ) : null}
     </div>
   );

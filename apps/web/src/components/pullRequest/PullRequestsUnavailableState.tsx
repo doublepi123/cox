@@ -21,7 +21,7 @@ export function PullRequestsUnavailableState({
 }) {
   const { t } = useTranslation();
   return (
-    <Empty className="scrollbar-gutter-both min-h-0 justify-center-safe overflow-y-auto [&>*]:shrink-0">
+    <Empty layout="scroll">
       <EmptyMedia variant="icon">
         <PullRequestGlyph.pullRequest />
       </EmptyMedia>

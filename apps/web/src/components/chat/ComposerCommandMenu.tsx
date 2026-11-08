@@ -131,7 +131,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
           <CommandList
             id={props.listId}
             aria-label={props.triggerKind ? LISTBOX_LABEL_BY_TRIGGER[props.triggerKind] : undefined}
-            className="max-h-72 min-h-0 scroll-pb-6"
+            spacing="composer"
           >
             <CommandGroup>
               {props.items.map((item) => (
@@ -286,10 +286,12 @@ const SKILL_SOURCE_LABEL_BY_KIND: Record<ProviderSkillSourceKind, string> = {
 function SkillSourceBadge(props: { kind: ProviderSkillSourceKind; showSkillSuffix: boolean }) {
   const Icon = SKILL_SOURCE_ICON_BY_KIND[props.kind];
   return (
-    <Badge className="ms-auto" variant="secondary">
-      <Icon aria-hidden="true" className="text-current" />
-      {SKILL_SOURCE_LABEL_BY_KIND[props.kind]}
-      {props.showSkillSuffix ? " Skill" : null}
-    </Badge>
+    <span className="inline-flex min-w-0 ms-auto">
+      <Badge variant="secondary">
+        <Icon aria-hidden="true" className="text-current" />
+        {SKILL_SOURCE_LABEL_BY_KIND[props.kind]}
+        {props.showSkillSuffix ? " Skill" : null}
+      </Badge>
+    </span>
   );
 }

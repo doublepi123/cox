@@ -7,8 +7,10 @@ import {
   Persistence,
 } from "@t3tools/client-runtime/platform";
 import { ConnectionTransientError } from "@t3tools/client-runtime/connection";
+import { EnvironmentQueryStore } from "@t3tools/client-runtime/state/query-persistence";
 import { EnvironmentId, ServerConfig, ThreadId, VcsListRefsResult } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -19,11 +21,19 @@ import * as Semaphore from "effect/Semaphore";
 import { projectFaviconCache } from "../assets/projectFaviconCache";
 
 const DATABASE_NAME = "cox:connection-runtime";
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 const SHELL_STORE_NAME = "shell";
 const THREAD_STORE_NAME = "thread";
 const SERVER_CONFIG_STORE_NAME = "server-config";
 const VCS_REFS_STORE_NAME = "vcs-refs";
+const QUERY_STORE_NAME = "query";
+const QUERY_UPDATED_INDEX_NAME = "environment-updated";
+const QUERY_MAX_ROWS = 256;
+const QUERY_MAX_BYTES = 32 * 1024 * 1024;
+const QUERY_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024;
+const QUERY_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const QUERY_PRUNE_BATCH_ROWS = 32;
+const QUERY_PRUNE_BATCH_BYTES = 1024 * 1024;
 const StoredShellSnapshot = StoredOrchestrationShellSnapshot;
 const StoredShellSnapshotJson = Schema.fromJsonString(StoredShellSnapshot);
 const StoredThreadSnapshot = StoredOrchestrationThreadSnapshot;
@@ -41,6 +51,10 @@ const StoredVcsRefs = Schema.Struct({
   refs: VcsListRefsResult,
 });
 const StoredVcsRefsJson = Schema.fromJsonString(StoredVcsRefs);
+const isStoredQuery = Schema.is(
+  Schema.Struct({ environmentId: Schema.String, payload: Schema.String, updatedAt: Schema.Number }),
+);
+const isQueryBatch = Schema.is(Schema.Struct({ rows: Schema.Number, bytes: Schema.Number }));
 const encodeStoredShellSnapshot = Schema.encodeEffect(StoredShellSnapshotJson);
 const decodeStoredShellSnapshot = Schema.decodeUnknownEffect(StoredShellSnapshotJson);
 const decodeStoredThreadSnapshot = Schema.decodeUnknownEffect(StoredThreadSnapshotJson);
@@ -101,6 +115,11 @@ const openDatabase = Effect.fn("web.connectionStorage.openDatabase")(function* (
         }
         if (!request.result.objectStoreNames.contains(VCS_REFS_STORE_NAME)) {
           request.result.createObjectStore(VCS_REFS_STORE_NAME);
+        }
+        if (!request.result.objectStoreNames.contains(QUERY_STORE_NAME)) {
+          request.result
+            .createObjectStore(QUERY_STORE_NAME)
+            .createIndex(QUERY_UPDATED_INDEX_NAME, ["environmentId", "updatedAt", "bytes"]);
         }
       });
       request.addEventListener("error", () => {
@@ -291,6 +310,73 @@ function removeDatabaseValuesInRangeOnConnection(
   }).pipe(Effect.withSpan("web.connectionStorage.removeDatabaseValuesInRange"));
 }
 
+function saveQueryOnConnection(
+  database: IDBDatabase,
+  environmentId: EnvironmentId,
+  key: string,
+  payload: string,
+  updatedAt: number,
+) {
+  return Effect.callback<void, ConnectionTransientError>((resume) => {
+    try {
+      const bytes = new TextEncoder().encode(payload).length;
+      const transaction = database.transaction(QUERY_STORE_NAME, "readwrite");
+      transaction.addEventListener("abort", () => {
+        resume(
+          Effect.fail(catalogError("write", transaction.error ?? "Unknown IndexedDB write error")),
+        );
+      });
+      transaction.addEventListener("complete", () => {
+        resume(Effect.void);
+      });
+      const store = transaction.objectStore(QUERY_STORE_NAME);
+      if (bytes > QUERY_MAX_PAYLOAD_BYTES) {
+        store.delete(queryCacheKey(environmentId, key));
+        return;
+      }
+      store.put({ environmentId, payload, updatedAt, bytes }, queryCacheKey(environmentId, key));
+      const batchKey = queryBatchKey(environmentId);
+      const batchRequest = store.get(batchKey);
+      batchRequest.addEventListener("success", () => {
+        const batch: unknown = batchRequest.result;
+        const rows = (isQueryBatch(batch) ? batch.rows : 0) + 1;
+        const written = (isQueryBatch(batch) ? batch.bytes : 0) + bytes;
+        if (
+          isQueryBatch(batch) &&
+          rows < QUERY_PRUNE_BATCH_ROWS &&
+          written < QUERY_PRUNE_BATCH_BYTES
+        ) {
+          store.put({ rows, bytes: written }, batchKey);
+          return;
+        }
+        store.put({ rows: 0, bytes: 0 }, batchKey);
+        const request = store
+          .index(QUERY_UPDATED_INDEX_NAME)
+          .openKeyCursor(IDBKeyRange.bound([environmentId], [environmentId, []]), "prev");
+        let kept = 0;
+        let totalBytes = 0;
+        request.addEventListener("success", () => {
+          const cursor = request.result;
+          if (cursor === null) return;
+          const [, rowUpdatedAt, rowBytes] = cursor.key as [string, number, number];
+          kept += 1;
+          totalBytes += rowBytes;
+          if (
+            kept > QUERY_MAX_ROWS - QUERY_PRUNE_BATCH_ROWS ||
+            totalBytes > QUERY_MAX_BYTES - QUERY_PRUNE_BATCH_BYTES ||
+            rowUpdatedAt < updatedAt - QUERY_MAX_AGE_MS
+          ) {
+            store.delete(cursor.primaryKey);
+          }
+          cursor.continue();
+        });
+      });
+    } catch (cause) {
+      resume(Effect.fail(catalogError("write", cause)));
+    }
+  }).pipe(Effect.withSpan("web.connectionStorage.saveQuery"));
+}
+
 function readDatabaseValue(database: DatabaseHandle, storeName: string, key: IDBValidKey) {
   return withDatabase(database, (opened) => readDatabaseValueOnConnection(opened, storeName, key));
 }
@@ -326,26 +412,19 @@ function threadCacheKey(environmentId: EnvironmentId, threadId: ThreadId) {
   return `${environmentId}:${threadId}`;
 }
 
+function queryCacheKey(environmentId: EnvironmentId, key: string) {
+  return `${environmentId}:v1:${key}`;
+}
+
+function queryBatchKey(environmentId: EnvironmentId) {
+  return `${environmentId}:batch`;
+}
+
 function vcsRefsCacheKey(environmentId: EnvironmentId, cwd: string) {
   return `${environmentId}:${cwd}`;
 }
 
 // MessageChannel yields without nested-timer clamping or background throttling.
-const yieldToBrowserTask = Effect.callback<void>((resume) => {
-  const { port1, port2 } = new MessageChannel();
-  port1.addEventListener(
-    "message",
-    () => {
-      port1.close();
-      resume(Effect.void);
-    },
-    { once: true },
-  );
-  port1.start();
-  port2.postMessage(null);
-  // A closed port delivers nothing, so interruption needs no listener bookkeeping.
-  return Effect.sync(() => port1.close());
-});
 
 export const layer = Layer.effectContext(
   Effect.gen(function* () {
@@ -574,12 +653,46 @@ export const layer = Layer.effectContext(
               VCS_REFS_STORE_NAME,
               IDBKeyRange.bound(`${environmentId}:`, `${environmentId}:\uffff`),
             ),
+            removeDatabaseValuesInRange(
+              database,
+              QUERY_STORE_NAME,
+              IDBKeyRange.bound(`${environmentId}:`, `${environmentId}:\uffff`),
+            ),
           ],
           { concurrency: "unbounded", discard: true },
         ).pipe(Effect.mapError((cause) => persistenceError("clear-environment", cause)));
       }),
     });
 
-    return Context.make(Persistence.EnvironmentCacheStore, cacheStore);
+    const queryStore: NonNullable<typeof EnvironmentQueryStore.Service> = {
+      load: Effect.fn("EnvironmentQueryStore.load")(
+        function* (environmentId, key) {
+          const stored = yield* readDatabaseValue(
+            database,
+            QUERY_STORE_NAME,
+            queryCacheKey(environmentId, key),
+          );
+          const now = yield* Clock.currentTimeMillis;
+          return isStoredQuery(stored) &&
+            stored.environmentId === environmentId &&
+            stored.updatedAt >= now - QUERY_MAX_AGE_MS
+            ? Option.some(stored.payload)
+            : Option.none();
+        },
+        Effect.catch(() => Effect.succeedNone),
+      ),
+      save: (environmentId, key, payload) =>
+        Clock.currentTimeMillis.pipe(
+          Effect.flatMap((now) =>
+            withDatabase(database, (opened) =>
+              saveQueryOnConnection(opened, environmentId, key, payload, now),
+            ),
+          ),
+          Effect.catch(() => Effect.logWarning("Offline query database save failed")),
+        ),
+    };
+    return Context.make(Persistence.EnvironmentCacheStore, cacheStore).pipe(
+      Context.add(EnvironmentQueryStore, queryStore),
+    );
   }),
 );

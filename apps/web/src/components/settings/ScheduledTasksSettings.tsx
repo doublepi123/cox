@@ -1,4 +1,5 @@
 import { translateCurrent, useTranslation } from "../../i18n";
+import { Link } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
 import { AsyncResult } from "effect/reactivity";
@@ -21,6 +22,7 @@ import type {
   ScheduledTask,
   ScheduledTaskId,
   ScheduledTaskSchedule,
+  ScheduledTaskThreadMode,
   ScheduledTaskUpsertInput,
   ScheduledTaskWebhookDeliverySummary,
   ThreadId,
@@ -39,6 +41,7 @@ import {
   MIN_SCHEDULED_TASK_INTERVAL_MS,
   ProviderInstanceId,
   resolveEnvironmentMachineKind,
+  scheduledTaskThreadMode,
 } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
@@ -59,7 +62,8 @@ import {
   useEnvironmentHttpBaseUrl,
   type EnvironmentPresentation,
 } from "../../state/environments";
-import { useProjects, useThreadShell } from "../../state/entities";
+import { useProjects, useQuietThreadShell, useThreadShell } from "../../state/entities";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { environmentAtomList, environmentIdsKey } from "../../state/environmentAtomList";
 import { formatEnvironmentQueryError, useEnvironmentQuery } from "../../state/query";
@@ -137,6 +141,7 @@ const EMPTY_DRAFT: DraftState = {
   weekdays: new Set([1, 2, 3, 4, 5]),
   projectId: "",
   threadId: "",
+  threadMode: "new_thread",
   workspaceMode: "worktree",
   baseRef: "main",
   startFromOrigin: true,
@@ -178,7 +183,6 @@ function WebhookFiltersField({
           </p>
         </div>
         <Button
-          className="shrink-0"
           variant="outline"
           size="sm"
           disabled={filters.length >= MAX_WEBHOOK_FILTERS}
@@ -267,7 +271,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="flex items-baseline justify-between" htmlFor={htmlFor}>
+      <Label layout="spread" htmlFor={htmlFor}>
         <span>{label}</span>
         {hint ? (
           <span className="font-normal text-2xs text-muted-foreground/80">{hint}</span>
@@ -550,7 +554,6 @@ function ScheduledTaskEnvironmentList({
   return (
     <SettingsGroup>
       {populated.map(({ environment, tasks }) => {
-        const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
         return (
           <div key={environment.environmentId} className="divide-y divide-border/50">
             <div className="flex items-center justify-between gap-3">
@@ -606,25 +609,6 @@ function ScheduledTaskEnvironmentList({
         );
       })}
     </SettingsGroup>
-  );
-}
-
-function ScheduledTaskEnvironmentSubtitle({
-  environment,
-  secondary,
-}: {
-  readonly environment: EnvironmentPresentation;
-  readonly secondary: string;
-}) {
-  const { t } = useTranslation();
-  const transport = t("Local server");
-  return (
-    <>
-      {secondary && secondary !== transport ? (
-        <span className="block truncate">{secondary}</span>
-      ) : null}
-      <span className="block truncate">{transport}</span>
-    </>
   );
 }
 
@@ -775,6 +759,9 @@ function ScheduledTaskRow({
           {task.lastRunStatus !== "never" ? (
             <Badge variant={statusVariant(task.lastRunStatus)}>{task.lastRunStatus}</Badge>
           ) : null}
+          {task.threadId !== null && scheduledTaskThreadMode(task) !== "new_thread" ? (
+            <ScheduledTaskThreadLink environmentId={environmentId} threadId={task.threadId} />
+          ) : null}
           {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
         </div>
       }
@@ -835,6 +822,27 @@ function ScheduledTaskRow({
   );
 }
 
+function ScheduledTaskThreadLink({
+  environmentId,
+  threadId,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}) {
+  const { t } = useTranslation();
+  const ref = scopeThreadRef(environmentId, threadId);
+  const title = useQuietThreadShell(ref)?.title.trim();
+  return (
+    <Link
+      to="/$environmentId/$threadId"
+      params={buildThreadRouteParams(ref)}
+      className="max-w-64 truncate underline underline-offset-2 hover:text-foreground"
+    >
+      {title || t("Open thread")}
+    </Link>
+  );
+}
+
 function WebhookDeliveriesDialog({
   environmentId,
   task,
@@ -873,7 +881,7 @@ function WebhookDeliveriesDialog({
         if (!next) onClose();
       }}
     >
-      <DialogPopup className="max-w-2xl">
+      <DialogPopup width="2xl">
         <DialogHeader>
           <DialogTitle>
             {t("Deliveries ·")} {task.title}
@@ -1106,7 +1114,7 @@ function ScheduledTaskEditorDialog({
       }}
     >
       {/* The form owns the draft so a keystroke re-renders it, not the dialog chrome. */}
-      <DialogPopup className="max-w-xl">
+      <DialogPopup width="xl">
         <ScheduledTaskEditorForm
           initialEnvironmentId={initialEnvironmentId}
           task={task}
@@ -1119,39 +1127,73 @@ function ScheduledTaskEditorDialog({
   );
 }
 
+const THREAD_MODE_LABELS: Record<ScheduledTaskThreadMode, string> = {
+  new_thread: "New thread each run",
+  continue: "One thread, continuing the conversation",
+  fresh_session: "One thread, fresh session each run",
+};
+
 function ScheduledTaskDestination({
   environmentId,
   threadId,
+  threadMode,
+  onThreadModeChange,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | null;
+  readonly threadMode: ScheduledTaskThreadMode;
+  readonly onThreadModeChange: ((mode: ScheduledTaskThreadMode) => void) | undefined;
 }) {
   const { t } = useTranslation();
   const ref = threadId === null ? null : scopeThreadRef(environmentId, threadId);
   const shell = useThreadShell(ref);
-  // The shell can omit older settled threads; their family read still carries the title.
   const family = useEnvironmentQuery(
     ref !== null && shell === null ? threadFamilies.familyAtom(environmentId, ref.threadId) : null,
   );
   const thread = shell ?? family.data?.threads.find((row) => row.id === threadId);
+  const bound = ref !== null && threadMode !== "new_thread";
+  const detail =
+    threadMode === "new_thread"
+      ? "Each run starts a new thread with the workspace and model below."
+      : !bound
+        ? threadMode === "continue"
+          ? "The first run starts a thread with the workspace and model below. Later runs continue that conversation."
+          : "The first run starts a thread with the workspace and model below. Later runs post there, each in a fresh session without earlier runs' context."
+        : threadMode === "continue"
+          ? "Each run continues this conversation, in its workspace and with its current model."
+          : "Each run starts a fresh session in this thread, without earlier runs' context.";
   return (
-    <Field label={t("Destination")}>
-      {ref === null ? (
-        <p className="text-sm text-muted-foreground">
-          {t("Each run starts a new thread with the workspace and model below.")}
-        </p>
-      ) : (
-        <div className="space-y-1 text-sm">
+    <Field label={t("Destination")} htmlFor="scheduled-task-destination">
+      {onThreadModeChange ? (
+        <Select
+          value={threadMode}
+          onValueChange={(value) => onThreadModeChange(value as ScheduledTaskThreadMode)}
+        >
+          <SelectTrigger size="sm" id="scheduled-task-destination">
+            <SelectValue>{t(THREAD_MODE_LABELS[threadMode])}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {(Object.keys(THREAD_MODE_LABELS) as ScheduledTaskThreadMode[]).map((mode) => (
+              <SelectItem key={mode} value={mode}>
+                {t(THREAD_MODE_LABELS[mode])}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      ) : null}
+      <div className="space-y-1 text-sm">
+        {bound ? (
           <p className="wrap-anywhere">
             {thread?.title.trim() || t("Thread {id}", { id: ref.threadId })}
           </p>
+        ) : null}
+        <p className="text-muted-foreground">{t(detail)}</p>
+        {threadMode !== "new_thread" ? (
           <p className="text-muted-foreground">
-            {t(
-              "Each run continues this conversation, in its workspace and with its current model.",
-            )}
+            {t("Deleting the thread also deletes this task.")}
           </p>
-        </div>
-      )}
+        ) : null}
+      </div>
     </Field>
   );
 }
@@ -1173,6 +1215,8 @@ function ScheduledTaskEditorForm({
   const { scope, connectedEnvironments } = useSettingsScope();
   const [environmentId, setEnvironmentId] = useState(initialEnvironmentId);
   const environment = useEnvironment(environmentId);
+  const offersThreadModes =
+    environment?.serverConfig?.environment.capabilities?.scheduledTaskThreadModes === true;
   const connected =
     environment?.connection.phase === "connected" && environment.serverConfig !== null;
   const tasksQuery = useEnvironmentQuery(
@@ -1343,6 +1387,7 @@ function ScheduledTaskEditorForm({
       schedule,
       projectId: selectedProjectId as ProjectId,
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
+      ...(offersThreadModes ? { threadMode: draft.threadMode } : {}),
       workspaceStrategy,
       modelSelection,
       runtimeMode: draft.runtimeMode,
@@ -1469,6 +1514,12 @@ function ScheduledTaskEditorForm({
           <ScheduledTaskDestination
             environmentId={environmentId}
             threadId={draft.threadId ? (draft.threadId as ThreadId) : null}
+            threadMode={draft.threadMode}
+            onThreadModeChange={
+              offersThreadModes
+                ? (threadMode) => setDraft((current) => ({ ...current, threadMode }))
+                : undefined
+            }
           />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1559,7 +1610,7 @@ function ScheduledTaskEditorForm({
           <Field label={t("Prompt")} htmlFor="scheduled-task-prompt">
             <Textarea
               id="scheduled-task-prompt"
-              className="max-h-64 overflow-y-auto"
+              scrollable
               placeholder={t("What should the agent do each time this runs?")}
               value={draft.prompt}
               onChange={(event) =>
@@ -1795,16 +1846,17 @@ function ScheduledTaskEditorForm({
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="scheduled-task-time">{t("Run at")}</Label>
-                  <Input
-                    type="time"
-                    id="scheduled-task-time"
-                    nativeInput
-                    className="w-32"
-                    value={draft.timeOfDay}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, timeOfDay: event.target.value }))
-                    }
-                  />
+                  <div className="min-w-0 w-32">
+                    <Input
+                      type="time"
+                      id="scheduled-task-time"
+                      nativeInput
+                      value={draft.timeOfDay}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, timeOfDay: event.target.value }))
+                      }
+                    />
+                  </div>
                   <span className="text-xs text-muted-foreground">{t("on")}</span>
                 </div>
                 <ToggleGroup
@@ -1831,18 +1883,19 @@ function ScheduledTaskEditorForm({
             ) : (
               <div className="flex items-center gap-2">
                 <Label htmlFor="scheduled-task-interval">{t("Run every")}</Label>
-                <Input
-                  type="number"
-                  id="scheduled-task-interval"
-                  nativeInput
-                  min={1}
-                  step="any"
-                  className="w-24"
-                  value={draft.intervalMinutes}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, intervalMinutes: event.target.value }))
-                  }
-                />
+                <div className="min-w-0 w-24">
+                  <Input
+                    type="number"
+                    id="scheduled-task-interval"
+                    nativeInput
+                    min={1}
+                    step="any"
+                    value={draft.intervalMinutes}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, intervalMinutes: event.target.value }))
+                    }
+                  />
+                </div>
                 <span className="text-xs text-muted-foreground">{t("minutes")}</span>
               </div>
             )}

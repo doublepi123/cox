@@ -28,6 +28,7 @@ function MenuPopup({
   anchor,
   keepMounted = false,
   width = "default",
+  limit,
   ...props
 }: MenuPrimitive.Popup.Props & {
   align?: MenuPrimitive.Positioner.Props["align"];
@@ -36,7 +37,8 @@ function MenuPopup({
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
   keepMounted?: boolean;
-  width?: "default" | "content";
+  width?: "default" | "content" | "anchor" | "compact" | "relationships" | "diff" | "history";
+  limit?: "history";
 }) {
   return (
     <MenuPrimitive.Portal keepMounted={keepMounted}>
@@ -55,12 +57,24 @@ function MenuPopup({
             "dropdown-glass relative flex origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
             "max-w-[calc(100vw-2rem)]",
             width === "content" ? "w-max min-w-0" : "min-w-[min(10rem,calc(100vw-2rem))]",
+            width === "anchor" && "w-(--anchor-width)",
+            width === "compact" && "max-w-56",
+            width === "relationships" && "min-w-60 max-w-(--available-width)",
+            width === "diff" && "max-w-[min(28rem,calc(100vw-2rem))]",
+            width === "history" && "max-w-96",
             className,
           )}
           data-slot="menu-popup"
           {...props}
         >
-          <div className="max-h-(--available-height) w-full overflow-y-auto p-1">{children}</div>
+          <div
+            className={cn(
+              "max-h-(--available-height) w-full overflow-y-auto p-1",
+              limit === "history" && "max-h-[min(20rem,var(--available-height))]",
+            )}
+          >
+            {children}
+          </div>
         </MenuPrimitive.Popup>
       </MenuPrimitive.Positioner>
     </MenuPrimitive.Portal>
@@ -77,12 +91,7 @@ function MenuSearchInput({
     <div className="min-w-0 shrink-0 px-2 pt-1.5 pb-1">
       <div className="relative -translate-y-px border-b border-border/70 pb-1.5 transition-colors focus-within:border-ring">
         {busy ? (
-          <Spinner
-            aria-hidden="true"
-            size="md"
-            tone="muted"
-            className="pointer-events-none absolute top-1.5 left-0"
-          />
+          <Spinner aria-hidden="true" size="md" tone="muted" placement="menu-search" />
         ) : (
           <SearchIcon
             aria-hidden="true"
@@ -91,7 +100,7 @@ function MenuSearchInput({
         )}
         <Input
           {...props}
-          className="rounded-none bg-transparent text-sm [&_input]:h-6.5 [&_input]:ps-5 [&_input]:font-sans [&_input]:leading-6.5"
+          variant="menu-search"
           size="sm"
           unstyled
           onKeyDown={(event) => {
@@ -114,11 +123,19 @@ function MenuItem({
   inset,
   density = "default",
   variant = "default",
+  disabledHover = false,
+  align = "start",
+  grouped = false,
+  fill = false,
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean;
   density?: "default" | "touch";
   variant?: "default" | "destructive" | "ghost";
+  disabledHover?: boolean | undefined;
+  align?: "start" | "between";
+  grouped?: boolean;
+  fill?: boolean;
 }) {
   return (
     <MenuPrimitive.Item
@@ -131,6 +148,10 @@ function MenuItem({
             className: "h-auto min-h-7 w-full sm:text-xs",
           }),
         density === "touch" && "min-h-10 sm:min-h-10",
+        grouped && "group",
+        fill && "w-full",
+        disabledHover && "data-disabled:pointer-events-auto",
+        align === "between" && "justify-between",
         className,
       )}
       data-density={density}
@@ -223,14 +244,20 @@ function MenuRadioItem({
   className,
   children,
   hideIndicator: _hideIndicator = false,
+  disabledHover = false,
+  flexible = false,
   ...props
 }: MenuPrimitive.RadioItem.Props & {
   hideIndicator?: boolean;
+  disabledHover?: boolean | undefined;
+  flexible?: boolean;
 }) {
   return (
     <MenuPrimitive.RadioItem
       className={cn(
         "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-sm px-2 py-1 text-base text-foreground outline-none data-checked:bg-foreground/[0.08] data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        flexible && "min-w-0 flex-1",
+        disabledHover && "data-disabled:pointer-events-auto",
         className,
       )}
       data-slot="menu-radio-item"
@@ -261,14 +288,17 @@ function MenuRadioItemIndicator({
 function MenuGroupLabel({
   className,
   inset,
+  truncate = false,
   ...props
 }: MenuPrimitive.GroupLabel.Props & {
   inset?: boolean;
+  truncate?: boolean;
 }) {
   return (
     <MenuPrimitive.GroupLabel
       className={cn(
         "px-2 py-1.5 font-medium text-muted-foreground text-xs data-inset:ps-9 sm:data-inset:ps-8",
+        truncate && "max-w-64 truncate",
         className,
       )}
       data-inset={inset}
@@ -301,6 +331,16 @@ function MenuShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
   );
 }
 
+function MenuItemDetail({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      className={cn("ms-auto shrink-0 ps-4 text-secondary-label tabular-nums", className)}
+      data-slot="menu-item-detail"
+      {...props}
+    />
+  );
+}
+
 function MenuSub(props: MenuPrimitive.SubmenuRoot.Props) {
   return <MenuPrimitive.SubmenuRoot data-slot="menu-sub" {...props} />;
 }
@@ -309,11 +349,13 @@ function MenuSubTrigger({
   className,
   inset,
   density = "default",
+  compactArrow = false,
   children,
   ...props
 }: MenuPrimitive.SubmenuTrigger.Props & {
   inset?: boolean;
   density?: "default" | "touch";
+  compactArrow?: boolean;
 }) {
   return (
     <MenuPrimitive.SubmenuTrigger
@@ -329,7 +371,7 @@ function MenuSubTrigger({
       {...props}
     >
       {children}
-      <ChevronRightIcon className="-me-0.5 ms-auto opacity-80" />
+      <ChevronRightIcon className={cn("-me-0.5 ms-auto opacity-80", compactArrow && "ms-0")} />
     </MenuPrimitive.SubmenuTrigger>
   );
 }
@@ -339,11 +381,15 @@ function MenuSubPopup({
   sideOffset = 0,
   alignOffset,
   align = "start",
+  width,
+  limit,
   ...props
 }: MenuPrimitive.Popup.Props & {
   align?: MenuPrimitive.Positioner.Props["align"];
   sideOffset?: MenuPrimitive.Positioner.Props["sideOffset"];
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
+  width?: "default" | "content" | "anchor" | "compact" | "relationships" | "diff" | "history";
+  limit?: "history";
 }) {
   const defaultAlignOffset = align !== "center" ? -5 : undefined;
 
@@ -355,6 +401,8 @@ function MenuSubPopup({
       data-slot="menu-sub-content"
       side="inline-end"
       sideOffset={sideOffset}
+      {...(width === undefined ? {} : { width })}
+      {...(limit === undefined ? {} : { limit })}
       {...props}
     />
   );
@@ -384,6 +432,7 @@ export {
   MenuGroupLabel as DropdownMenuLabel,
   MenuSeparator,
   MenuSeparator as DropdownMenuSeparator,
+  MenuItemDetail,
   MenuShortcut,
   MenuShortcut as DropdownMenuShortcut,
   MenuSub,

@@ -620,7 +620,9 @@ describe("PullRequestSyncReactor", () => {
             },
           ]);
           assert.deepStrictEqual(
-            (yield* Ref.get(fixture.syncCommands)).map(({ commandId: _, ...rest }) => rest),
+            (yield* Ref.get(fixture.syncCommands)).map(
+              ({ commandId: _commandId, ...rest }) => rest,
+            ),
             [
               {
                 type: "thread.pull-request-link.sync",
@@ -1262,7 +1264,9 @@ describe("PullRequestSyncReactor", () => {
             ],
           );
           assert.deepStrictEqual(
-            (yield* Ref.get(fixture.linkCommands)).map(({ commandId: _, ...rest }) => rest),
+            (yield* Ref.get(fixture.linkCommands)).map(
+              ({ commandId: _commandId, ...rest }) => rest,
+            ),
             [
               {
                 type: "thread.pull-request.link",

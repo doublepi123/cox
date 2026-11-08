@@ -111,12 +111,12 @@ export const make = Effect.gen(function* () {
       : selection;
     if (resolved) selection = resolved;
     const now = DateTime.toEpochMillis(yield* DateTime.now);
-    const limited = exhaustedUsageWindow(
-      snapshots.find((provider) => provider.instanceId === selection.instanceId),
-      now,
-      selection.model,
-    );
-    if (limited || resolved === null) {
+    const selected = snapshots.find((provider) => provider.instanceId === selection.instanceId);
+    const unusable =
+      selected?.enabled === true &&
+      selected.status === "error" &&
+      (!selected.installed || selected.auth.status === "unauthenticated");
+    if (unusable || exhaustedUsageWindow(selected, now, selection.model) || resolved === null) {
       const fallback = fallbackTextGenerationModelSelection(
         settings,
         (instanceId, driver, candidate) => {
@@ -127,6 +127,7 @@ export const make = Effect.gen(function* () {
             resolveProjectProviderInstanceEnabled(settings, null, instanceId) &&
             provider.installed &&
             provider.auth.status !== "unauthenticated" &&
+            provider.status !== "error" &&
             isProviderAvailable(provider) &&
             isProviderTextGenerationCapable(provider) &&
             (operation !== "generateReviewGuide" || INVESTIGATING_DRIVERS.has(driver)) &&

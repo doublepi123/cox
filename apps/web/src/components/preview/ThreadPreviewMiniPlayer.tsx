@@ -11,7 +11,6 @@ import {
   useState,
 } from "react";
 import { create } from "zustand";
-import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useChatCanvas } from "../chat/ChatCanvasContext";
 import type { ChatCanvasPreview } from "../chat/chatCanvasLayout";
@@ -19,7 +18,6 @@ import type { ChatCanvasPreview } from "../chat/chatCanvasLayout";
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
 import type { BrowserViewportResizeDirection } from "~/browser/browserViewportLayout";
 import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
-import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
 import { type ServerBrowserHandle, ServerBrowserSurface } from "~/browser/ServerBrowserSurface";
 import {
   closeServerPictureInPicture,
@@ -104,7 +102,6 @@ function useBrowserMiniPlayerSource(threadRef: ScopedThreadRef | null, tabId: st
   const fittedSourceContent = useBrowserSurfaceStore((state) =>
     runtimeTabId === null ? null : (state.byTabId[runtimeTabId]?.fittedSourceContent ?? null),
   );
-  const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
   const serverTab = threadRef !== null && snapshot?.runtime === "server";
   const streamViewport = useStreamedSourceSize((state) =>
     threadRef &&
@@ -158,11 +155,7 @@ function BrowserMiniPlayer({
 }) {
   const { t } = useTranslation();
   const httpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
-  const { serverEpoch, snapshot, serverTab, sourceSize } = useBrowserMiniPlayerSource(
-    threadRef,
-    tabId,
-  );
-  const runtimeTabId = previewRuntimeTabId(threadRef, serverEpoch, tabId);
+  const { snapshot, serverTab, sourceSize } = useBrowserMiniPlayerSource(threadRef, tabId);
   const serverSurfaceRef = useRef<ServerBrowserHandle | null>(null);
   const serverPictureInPicture =
     useServerPictureInPictureKey() === serverPictureInPictureKey(threadRef.threadId, tabId);

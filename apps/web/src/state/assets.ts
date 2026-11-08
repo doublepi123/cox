@@ -8,9 +8,7 @@ import { projectFaviconCache } from "../assets/projectFaviconCache";
 
 import { environmentProjectClonesAtom } from "./projectClones";
 import { environmentSession } from "./session";
-const localMediaEnvironment = Atom.make((get) => {
-  return null;
-});
+const localMediaEnvironment = Atom.make(null);
 export const assetEnvironment = createAssetEnvironmentAtoms(
   connectionAtomRuntime,
   localMediaEnvironment,

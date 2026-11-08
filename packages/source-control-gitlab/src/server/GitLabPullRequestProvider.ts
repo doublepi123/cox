@@ -1,15 +1,18 @@
+import { removeAgentCredits } from "@t3tools/source-control-core/server/mergeMessage";
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type {
+  PullRequestActor,
   PullRequestCapabilities,
   PullRequestReaction,
   PullRequestViewerPermissions,
 } from "@t3tools/contracts";
 
 import * as GitLabPullRequestCli from "./GitLabPullRequestCli.ts";
+import type { GitLabDiffRefs, GitLabMergeRequestListState } from "./gitLabMergeRequestJson.ts";
 import {
   PullRequestProviderError,
   type PullRequestProviderFailure,
@@ -24,21 +27,22 @@ const CAPABILITIES: PullRequestCapabilities = {
   comment: true,
   actions: [...definition.changeRequestActions],
   mergeMethods: ["merge", "squash", "rebase"],
-  // GitLab has no merge-target-into-source operation.
+  deleteBranch: true,
   updateMethods: ["rebase"],
   search: true,
   reactions: true,
-  // GitLab's viewed marks live in browser-local storage.
+  mentions: true,
+  referenceSigils: ["#", "!"],
   viewedFiles: "environment",
   review: {
     inlineComment: true,
     reply: true,
     resolve: true,
-    // GitLab has no requested-changes verdict.
-    verdicts: ["comment", "approve"],
+    verdicts: ["comment", "approve", "request-changes"],
   },
-  reviewers: { request: true, listCandidates: true },
-  edit: { changeRequest: true, comment: true },
+  reviewers: { request: true, listCandidates: true, searchCandidates: true },
+  labels: true,
+  edit: { changeRequest: true, comment: true, maintainerEdits: true },
 };
 
 const UNAVAILABLE_REQUIREMENT = {
@@ -62,15 +66,22 @@ const MERGE_ACTIONS: ReadonlySet<string> = new Set([
 /** Authors may close/reopen/change draft state regardless of role; REST omits authorship. */
 export function gitLabViewerPermissions(input: {
   readonly viewerCanMerge: boolean;
+  readonly viewerCanEditMaintainerEdits?: boolean | undefined;
+  readonly viewerCanDeleteBranch?: boolean;
+  readonly viewerCanEditLabels?: boolean | undefined;
 }): PullRequestViewerPermissions {
   return {
-    actions: CAPABILITIES.actions.filter(
-      (action) => !MERGE_ACTIONS.has(action) || input.viewerCanMerge,
+    actions: CAPABILITIES.actions.filter((action) =>
+      action === "delete-branch"
+        ? input.viewerCanDeleteBranch === true
+        : !MERGE_ACTIONS.has(action) || input.viewerCanMerge,
     ),
     comment: true,
     resolve: true,
     verdicts: CAPABILITIES.review.verdicts,
     requestReviewers: true,
+    maintainerEdits: input.viewerCanEditMaintainerEdits === true,
+    labels: input.viewerCanEditLabels === true,
     ...(input.viewerCanMerge ? { updateMethods: CAPABILITIES.updateMethods } : {}),
   };
 }
@@ -85,6 +96,8 @@ const MERGE_REQUEST_DETAIL_TTL = Duration.minutes(1);
 const PROJECT_MERGE_CAPABILITIES_TTL = Duration.minutes(15);
 const READ_CACHE_CAPACITY = 256;
 
+const GRAPHQL_LIST_SUPPORT_TTL = Duration.hours(1);
+
 function gitLabProviderFailure(
   error: GitLabPullRequestCli.GitLabPullRequestCliError,
 ): PullRequestProviderFailure {
@@ -95,11 +108,19 @@ function gitLabProviderFailure(
   return { reason: "failed" };
 }
 
+const isOutdated = (
+  thread: GitLabDiffRefs | undefined,
+  current: GitLabDiffRefs | undefined,
+): boolean =>
+  thread !== undefined &&
+  current !== undefined &&
+  (thread.baseSha !== current.baseSha ||
+    thread.startSha !== current.startSha ||
+    thread.headSha !== current.headSha);
+
 export const make = Effect.gen(function* () {
   const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
 
-  // Keyed on the checkout as well: `glab` picks the host and the account to answer as from the
-  // checkout's remote and config, so two checkouts may read the same project as different people.
   const mergeRequestDetails = yield* Cache.makeWith(
     (key: string) => {
       const [cwd, repository, number, host] = JSON.parse(key) as [string, string, number, string];
@@ -108,6 +129,24 @@ export const make = Effect.gen(function* () {
     {
       capacity: READ_CACHE_CAPACITY,
       timeToLive: (exit) => (Exit.isSuccess(exit) ? MERGE_REQUEST_DETAIL_TTL : Duration.zero),
+    },
+  );
+  const graphqlListSupport = yield* Cache.makeWith(
+    (key: string) => {
+      const [cwd, host] = JSON.parse(key) as [string, string | undefined];
+      return cli.supportsGraphqlList({ cwd, host }).pipe(
+        Effect.catchIf(
+          (cause) =>
+            cause._tag !== "GitLabCliUnavailableError" &&
+            cause._tag !== "GitLabCliAuthenticationError" &&
+            cause._tag !== "GitLabCliRateLimitError",
+          () => Effect.succeed(false),
+        ),
+      );
+    },
+    {
+      capacity: READ_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? GRAPHQL_LIST_SUPPORT_TTL : Duration.zero),
     },
   );
   const projectMergeCapabilities = yield* Cache.makeWith(
@@ -134,8 +173,6 @@ export const make = Effect.gen(function* () {
     readonly number: number;
   }) => Cache.get(mergeRequestDetails, detailKey(input));
 
-  // Dropped on both sides, as the service does with its own reads: a read that starts while the
-  // write is in flight must not outlive it.
   const writing =
     <
       I extends {
@@ -163,8 +200,6 @@ export const make = Effect.gen(function* () {
       cause: error,
     });
 
-  // Optional endpoints may lose part of the activity, but an unusable CLI or account must
-  // reach the caller so it can report authentication failures and pause a throttled host.
   const recoverRead = <A>(
     read: Effect.Effect<A, GitLabPullRequestCli.GitLabPullRequestCliError>,
     fallback: A,
@@ -180,7 +215,16 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  // REST omits line counts; the CLI recovers optional stats failures per batch.
+  const listStates = (input: Parameters<typeof cli.getListStates>[0]) =>
+    cli.getListStates(input).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("GitLab merge request approval and pipeline read failed", {
+          repository: input.repository,
+          reason: error._tag,
+        }).pipe(Effect.as<ReadonlyMap<number, GitLabMergeRequestListState>>(new Map())),
+      ),
+    );
+
   const mergeRequestWithStats = (
     input: {
       readonly cwd: string;
@@ -209,28 +253,48 @@ export const make = Effect.gen(function* () {
   const provider: PullRequestProviderApi = {
     kind: SourceControlProviderKind.make("gitlab"),
     capabilities: CAPABILITIES,
+    mergeMessageRewrite: removeAgentCredits,
     unavailableRequirement: UNAVAILABLE_REQUIREMENT,
 
     getViewer: (input) => cli.getViewerUsername(input).pipe(Effect.mapError(fail("getViewer"))),
 
     listChangeRequests: (input) =>
-      cli
-        .listMergeRequests({
-          cwd: input.cwd,
-          host: input.host,
-          repository: input.repository,
-          state: input.state,
-          involvement: input.involvement,
-          viewer: input.viewer,
-          limit: input.limit,
-          query: input.query,
-          cursor: input.cursor,
-          filters: input.filters,
-        })
-        .pipe(
-          Effect.mapError(fail("listChangeRequests")),
-          Effect.map((batch) => ({ ...batch, continues: true })),
+      Cache.get(graphqlListSupport, JSON.stringify([input.cwd, input.host])).pipe(
+        Effect.orElseSucceed(() => false),
+        Effect.flatMap((graphql) =>
+          cli.listMergeRequests({
+            cwd: input.cwd,
+            host: input.host,
+            repository: input.repository,
+            state: input.state,
+            involvement: input.involvement,
+            viewer: input.viewer,
+            limit: input.limit,
+            query: input.query,
+            cursor: input.cursor,
+            filters: input.filters,
+            graphql,
+          }),
         ),
+        Effect.flatMap(({ listStates: carried, ...batch }) =>
+          (carried === undefined
+            ? listStates({
+                cwd: input.cwd,
+                host: input.host,
+                repository: input.repository,
+                numbers: batch.items.map((item) => item.number),
+              })
+            : Effect.succeed(carried)
+          ).pipe(
+            Effect.map((states) => ({
+              ...batch,
+              items: batch.items.map((item) => withListState(item, states)),
+              continues: true,
+            })),
+          ),
+        ),
+        Effect.mapError(fail("listChangeRequests")),
+      ),
 
     getFileStats: (input) =>
       cli.getMergeRequestFileStats(input).pipe(Effect.mapError(fail("getFileStats"))),
@@ -244,12 +308,30 @@ export const make = Effect.gen(function* () {
         Effect.mapError(fail("getChangeRequestChecks")),
       ),
 
-    // Merge settings only affect the detail panel's actions.
     getChangeRequestPreview: (input) =>
-      cli.getMergeRequestDetail(input).pipe(Effect.mapError(fail("getChangeRequestPreview"))),
+      cli
+        .getMergeRequestDetail({ ...input, maintainerEdits: false })
+        .pipe(Effect.mapError(fail("getChangeRequestPreview"))),
 
     getChangeRequestSummary: (input) =>
-      mergeRequestWithStats(input).pipe(Effect.mapError(fail("getChangeRequestSummary"))),
+      Effect.all(
+        [
+          mergeRequestWithStats(
+            input,
+            cli.getMergeRequestDetail({ ...input, maintainerEdits: false }),
+          ),
+          listStates({
+            cwd: input.cwd,
+            host: input.host,
+            repository: input.repository,
+            numbers: [input.number],
+          }),
+        ],
+        { concurrency: 2 },
+      ).pipe(
+        Effect.map(([mergeRequest, states]) => withListState(mergeRequest, states)),
+        Effect.mapError(fail("getChangeRequestSummary")),
+      ),
 
     getChangeRequest: (input) =>
       Effect.all(
@@ -267,7 +349,6 @@ export const make = Effect.gen(function* () {
           ...mergeRequest,
           mergeCapabilities,
           viewerPermissions: gitLabViewerPermissions(mergeRequest),
-          // Missing divergence counts mean unknown, not up to date.
           baseComparison:
             mergeRequest.divergedCommits === undefined
               ? "unknown"
@@ -285,36 +366,76 @@ export const make = Effect.gen(function* () {
         [
           recoverRead(cli.listNotes(input), { comments: [], truncated: true }),
           recoverRead(cli.listCommits(input), []),
-          recoverRead(cli.listDiscussions(input), { threads: [], truncated: true }),
+          recoverRead(cli.listDiscussions(input), {
+            threads: [],
+            diffRefsByThreadId: new Map(),
+            overviewFindingIds: [],
+            truncated: true,
+          }),
           recoverRead(cli.listReactions(input), {
             reactions: [] as ReadonlyArray<PullRequestReaction>,
             reactionsByNoteId: new Map<string, ReadonlyArray<PullRequestReaction>>(),
+            editedAtByNoteId: new Map<string, string>(),
+            botLogins: new Set<string>(),
           }),
+          recoverRead(
+            cli.getMergeRequestDetail({ ...input, downstreamChecks: false }).pipe(
+              Effect.map((mergeRequest) => ({
+                url: mergeRequest.url,
+                diffRefs: mergeRequest.diffRefs,
+              })),
+            ),
+            null,
+          ),
         ],
-        { concurrency: 4 },
+        { concurrency: 5 },
       ).pipe(
         Effect.mapError(fail("getChangeRequestActivity")),
-        Effect.map(([notes, commits, discussions, awards]): ProviderChangeRequestActivity => ({
-          reactions: awards.reactions,
-          comments: notes.comments.map((comment) => ({
-            ...comment,
-            reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
-          })),
-          commentCount: notes.comments.length,
-          commentsTruncated: notes.truncated || discussions.truncated,
-          reviewThreads: discussions.threads.map((thread) => ({
-            ...thread,
-            comments: thread.comments.map((comment) => ({
-              ...comment,
-              reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
-            })),
-          })),
-          commits,
-        })),
+        Effect.map(
+          ([notes, commits, discussions, awards, detail]): ProviderChangeRequestActivity => {
+            const noteUrl = (id: string) => (detail === null ? null : `${detail.url}#note_${id}`);
+            const findingIds = new Set(discussions.overviewFindingIds);
+            const edited = (id: string) => {
+              const editedAt = awards.editedAtByNoteId.get(id);
+              return editedAt === undefined ? {} : { editedAt };
+            };
+            const botLogins = new Set([...awards.botLogins].map((login) => login.toLowerCase()));
+            const withBotFlag = (author: PullRequestActor | null) =>
+              author !== null && botLogins.has(author.login.toLowerCase())
+                ? { ...author, isBot: true }
+                : author;
+            return {
+              reactions: awards.reactions,
+              comments: notes.comments.map((comment) => ({
+                ...comment,
+                ...(findingIds.has(comment.id) ? { kind: "review-comment" as const } : {}),
+                ...edited(comment.id),
+                author: withBotFlag(comment.author),
+                url: noteUrl(comment.id),
+                reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
+              })),
+              commentCount: notes.comments.length,
+              commentsTruncated: notes.truncated || discussions.truncated,
+              reviewThreads: discussions.threads.map((thread) => ({
+                ...thread,
+                isOutdated: isOutdated(
+                  discussions.diffRefsByThreadId.get(thread.id),
+                  detail?.diffRefs,
+                ),
+                comments: thread.comments.map((comment) => ({
+                  ...comment,
+                  ...edited(comment.id),
+                  author: withBotFlag(comment.author),
+                  url: noteUrl(comment.id),
+                  reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
+                })),
+              })),
+              commits,
+            };
+          },
+        ),
       ),
 
-    // Straight from the host, never the shared read: this is what a write is refused or let
-    // through on, and access granted or withdrawn within the minute must count.
     getViewerPermissions: (input) =>
       cli
         .getMergeRequestDetail({ ...input, downstreamChecks: false })
@@ -349,7 +470,6 @@ export const make = Effect.gen(function* () {
         Effect.map((revisions) => ({ revisions })),
       ),
 
-    // MR reviewers are users; groups belong to approval rules.
     listReviewerCandidates: (input) =>
       cli
         .listReviewerCandidates({
@@ -357,8 +477,32 @@ export const make = Effect.gen(function* () {
           host: input.host,
           repository: input.repository,
           number: input.number,
+          query: input.query,
         })
         .pipe(Effect.mapError(fail("listReviewerCandidates"))),
+
+    listLabelCandidates: (input) =>
+      cli
+        .listLabelCandidates({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          number: input.number,
+        })
+        .pipe(Effect.mapError(fail("listLabelCandidates"))),
+
+    setLabels: writing((input) =>
+      cli
+        .setLabels({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          number: input.number,
+          labels: input.labels,
+          applied: input.applied,
+        })
+        .pipe(Effect.mapError(fail("setLabels"))),
+    ),
 
     listRepositoryLabels: (input) =>
       cli
@@ -379,6 +523,17 @@ export const make = Effect.gen(function* () {
           search: input.query,
         })
         .pipe(Effect.mapError(fail("searchRepositoryAuthors"))),
+
+    searchRepositoryReferences: (input) =>
+      cli
+        .searchProjectReferences({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          search: input.query,
+          sigil: input.sigil,
+        })
+        .pipe(Effect.mapError(fail("searchRepositoryReferences"))),
 
     setReviewerRequest: writing((input) =>
       cli
@@ -402,6 +557,7 @@ export const make = Effect.gen(function* () {
           number: input.number,
           action: input.action,
           ...(input.mergeMethod === undefined ? {} : { mergeMethod: input.mergeMethod }),
+          ...(input.removeAgentCreditsOnMerge === true ? { removeAgentCreditsOnMerge: true } : {}),
         })
         .pipe(Effect.mapError(fail("runAction"))),
     ),
@@ -415,6 +571,9 @@ export const make = Effect.gen(function* () {
           number: input.number,
           ...(input.title === undefined ? {} : { title: input.title }),
           ...(input.body === undefined ? {} : { description: input.body }),
+          ...(input.maintainerCanModify === undefined
+            ? {}
+            : { allowCollaboration: input.maintainerCanModify }),
         })
         .pipe(Effect.mapError(fail("updateChangeRequest"))),
     ),
@@ -483,3 +642,11 @@ export const make = Effect.gen(function* () {
 
   return provider;
 });
+
+function withListState<Item extends { readonly number: number }>(
+  item: Item,
+  states: ReadonlyMap<number, GitLabMergeRequestListState>,
+): Item & Partial<GitLabMergeRequestListState> {
+  const state = states.get(item.number);
+  return state === undefined ? item : { ...item, ...state };
+}

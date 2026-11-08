@@ -68,7 +68,11 @@ const decodeClaudeOutput = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Union([ClaudeOutputEnvelope, Schema.Array(ClaudeOutputMessage)])),
 );
 
-const ClaudeErrorResult = Schema.Struct({ is_error: Schema.Literal(true), result: Schema.String });
+const ClaudeErrorResult = Schema.Struct({
+  is_error: Schema.Literal(true),
+  result: Schema.optionalKey(Schema.String),
+  errors: Schema.optionalKey(Schema.Array(Schema.String)),
+});
 const isClaudeErrorResult = Schema.is(ClaudeErrorResult);
 const decodeJsonOption = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
@@ -78,7 +82,13 @@ function claudeErrorResult(stdout: string): string | undefined {
   const messages: ReadonlyArray<unknown> = Array.isArray(output) ? output : [output];
   return messages
     .filter(isClaudeErrorResult)
-    .map((message) => message.result.trim())
+    .map((message) =>
+      (
+        message.result ??
+        message.errors?.filter((error) => !error.startsWith("[ede_diagnostic]")).join("\n") ??
+        ""
+      ).trim(),
+    )
     .findLast((result) => result.length > 0);
 }
 
@@ -174,7 +184,12 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       disableAllHooks: true,
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
       ...(fastMode ? { fastMode: true } : {}),
-      ...(compiledSelection.settings.ultracode ? { ultracode: true, enableWorkflows: true } : {}),
+      ...(typeof compiledSelection.settings.ultracode === "boolean"
+        ? {
+            ultracode: compiledSelection.settings.ultracode,
+            ...(compiledSelection.settings.ultracode ? { enableWorkflows: true } : {}),
+          }
+        : {}),
       ...(requestEnvironment === undefined ? {} : { env: requestEnvironment }),
     };
     const settingsJson = yield* encodeJsonForOperation(

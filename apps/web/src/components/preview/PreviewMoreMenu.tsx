@@ -107,7 +107,7 @@ export function PreviewMoreMenu({
         <MenuItem
           closeOnClick={false}
           onClick={(event: React.MouseEvent) => event.preventDefault()}
-          className="justify-between"
+          align="between"
           disabled={disabled}
         >
           <span>Zoom</span>
@@ -150,7 +150,7 @@ export function PreviewMoreMenu({
         <MenuSeparator />
         <MenuGroup>
           {profileName ? (
-            <MenuGroupLabel className="max-w-64">
+            <MenuGroupLabel truncate>
               <span className="block truncate">Profile: {profileName}</span>
             </MenuGroupLabel>
           ) : null}

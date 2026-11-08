@@ -131,11 +131,18 @@ function AlertDialogTitle({ className, ...props }: AlertDialogPrimitive.Title.Pr
   );
 }
 
-function AlertDialogDescription({ className, ...props }: AlertDialogPrimitive.Description.Props) {
+function AlertDialogDescription({
+  className,
+  visuallyHidden = false,
+  preserveLines = false,
+  ...props
+}: AlertDialogPrimitive.Description.Props & { visuallyHidden?: boolean; preserveLines?: boolean }) {
   return (
     <AlertDialogPrimitive.Description
       className={cn(
         "wrap-anywhere max-h-[min(24rem,60dvh)] min-h-0 overflow-y-auto overscroll-contain text-muted-foreground text-sm select-text",
+        visuallyHidden && "sr-only",
+        preserveLines && "whitespace-pre-line",
         className,
       )}
       data-slot="alert-dialog-description"

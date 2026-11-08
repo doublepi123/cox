@@ -47,6 +47,7 @@ export function ProviderAuthenticationSection({
   const complete = useAtomCommand(serverEnvironment.completeProviderAuth, commands);
   const cancel = useAtomCommand(serverEnvironment.cancelProviderAuth, commands);
   const logout = useAtomCommand(serverEnvironment.logoutProviderAuth, commands);
+  const removeMethod = useAtomCommand(serverEnvironment.removeProviderAuthMethod, commands);
   const [methodId, setMethodId] = useState("");
   const [draft, setDraft] = useState({ id: "", values: {} as Record<string, string> });
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +92,7 @@ export function ProviderAuthenticationSection({
           : t("Sign in on {environment}.", { environment: environmentLabel });
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
+  const selectedMethod = auth?.methods?.find((method) => method.id === methodId);
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
   const values = draft.id === draftId ? draft.values : {};
   const url =
@@ -185,14 +187,16 @@ export function ProviderAuthenticationSection({
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
-              <SelectTrigger size="sm" aria-label={t("Sign-in method")} className="w-44">
-                <SelectValue>
-                  {t(
-                    auth?.methods?.find((method) => method.id === methodId)?.name ??
-                      "Provider default",
-                  )}
-                </SelectValue>
-              </SelectTrigger>
+              <div className="min-w-0 w-44">
+                <SelectTrigger fill size="sm" aria-label={t("Sign-in method")}>
+                  <SelectValue>
+                    {t(
+                      auth?.methods?.find((method) => method.id === methodId)?.name ??
+                        "Provider default",
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+              </div>
               <SelectPopup>
                 <SelectItem value="">{t("Provider default")}</SelectItem>
                 {auth?.methods?.map((method) => (
@@ -202,6 +206,32 @@ export function ProviderAuthenticationSection({
                 ))}
               </SelectPopup>
             </Select>
+          ) : null}
+          {!active && selectedMethod?.canRemove ? (
+            <Button
+              size="sm"
+              variant="ghost-muted"
+              disabled={disabled}
+              onClick={() => {
+                void ensureLocalApi()
+                  .dialogs.confirm(
+                    t("Remove the incomplete connection {name}?", { name: selectedMethod.name }),
+                  )
+                  .then((confirmed) => {
+                    if (!confirmed) return;
+                    void run(() =>
+                      removeMethod({
+                        environmentId,
+                        input: { instanceId, methodId: selectedMethod.id },
+                      }),
+                    ).then((removed) => {
+                      if (removed) setMethodId("");
+                    });
+                  });
+              }}
+            >
+              {t("Remove connection")}
+            </Button>
           ) : null}
           {url ? (
             <>
@@ -413,15 +443,11 @@ export function ProviderAuthenticationSection({
                   />
                 </label>
               ))}
-              <Button
-                type="submit"
-                size="sm"
-                variant="outline"
-                className="w-fit"
-                disabled={disabled}
-              >
-                {t("Connect")}
-              </Button>
+              <span className="inline-flex min-w-0 w-fit">
+                <Button type="submit" size="sm" variant="outline" disabled={disabled}>
+                  {t("Connect")}
+                </Button>
+              </span>
             </form>
           ) : null}
           {url && (interaction?.type === "browser" ? interaction.acceptsCallback : !interaction) ? (
@@ -453,15 +479,16 @@ export function ProviderAuthenticationSection({
                   onChange={(event) => updateDraft("callback", event.target.value)}
                 />
               </label>
-              <Button
-                type="submit"
-                size="sm"
-                variant="outline"
-                className="w-fit"
-                disabled={disabled || !values.callback?.trim()}
-              >
-                {t("Continue")}
-              </Button>
+              <span className="inline-flex min-w-0 w-fit">
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled || !values.callback?.trim()}
+                >
+                  {t("Continue")}
+                </Button>
+              </span>
             </form>
           ) : null}
           {error || query.error ? (

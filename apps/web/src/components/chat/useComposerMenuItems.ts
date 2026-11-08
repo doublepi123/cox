@@ -1,4 +1,5 @@
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
+import { translateCurrent } from "../../i18n";
 
 import { useState } from "react";
 import type {
@@ -62,12 +63,12 @@ export function useComposerMenuItems({
   planModeUiEnabled,
   sideChatAvailable,
   sideChatDisabledReason,
+  freshSessionAvailable,
   compactSlashCommandAvailable,
   selectedProvider,
   selectedProviderSkills,
   selectedProviderSlashCommands,
   showSkillsInSlashMenu,
-  questionAttachmentTarget,
 }: {
   readonly composerTrigger: ComposerTrigger | null;
   readonly environmentId: EnvironmentId;
@@ -80,6 +81,7 @@ export function useComposerMenuItems({
   readonly planModeUiEnabled: boolean;
   readonly sideChatAvailable: boolean;
   readonly sideChatDisabledReason: string | null;
+  readonly freshSessionAvailable: boolean;
   readonly compactSlashCommandAvailable: boolean;
   readonly selectedProvider: ProviderDriverKind;
   readonly selectedProviderSkills: ServerProvider["skills"];
@@ -238,6 +240,19 @@ export function useComposerMenuItems({
               },
             ] as const)
           : []),
+        ...(freshSessionAvailable
+          ? ([
+              {
+                id: "slash:clear",
+                type: "slash-command",
+                command: "clear",
+                label: "/clear",
+                description: translateCurrent(
+                  "Start a fresh session; earlier messages stay visible",
+                ),
+              },
+            ] as const)
+          : []),
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const slashMenuSkills = getProviderSkillsForSlashMenu(
         selectedProviderSkills,
@@ -267,7 +282,9 @@ export function useComposerMenuItems({
           (skill.scope ? `${skill.scope} skill` : ""),
       }));
       const visibleProviderSlashCommandItems = providerSlashCommandItems.filter(
-        (item) => item.command.name !== "compact" || compactSlashCommandAvailable,
+        (item) =>
+          (item.command.name !== "compact" || compactSlashCommandAvailable) &&
+          (item.command.name !== "clear" || !freshSessionAvailable),
       );
       const slashCommandItems = slashCommandItemsForPromptPosition(
         [...builtInSlashCommandItems, ...visibleProviderSlashCommandItems, ...skillItems],

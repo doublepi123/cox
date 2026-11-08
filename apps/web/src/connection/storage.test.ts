@@ -14,11 +14,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const fixedHandle = (database: IDBDatabase) => ({
-  get: Effect.succeed(database),
-  invalidate: () => Effect.void,
-});
-
 describe("IndexedDB connection recovery", () => {
   it.effect("reopens after a forced close and finalizes the current connection", () =>
     Effect.gen(function* () {

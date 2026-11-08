@@ -136,9 +136,7 @@ import { useComposerDraftStore } from "../../composerDraftStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { buildSidebarProjectSnapshots } from "../../sidebarProjectGrouping";
 import { ProjectSettingsPanel } from "./ProjectSettingsPanel";
-import { ProjectsSettings } from "./ProjectsSettings";
-import { SettingsScopeProvider } from "./SettingsScopeContext";
-import { validateSettingsScopeSearch, type SettingsScopeSearch } from "./settingsScope";
+import { type SettingsScopeSearch } from "./settingsScope";
 import { retainSettingsScope, validateSettingsRouteSearch } from "./settingsScopeNavigation";
 
 const primaryId = EnvironmentId.make("primary");
@@ -265,38 +263,6 @@ async function mountPanel(search: Omit<SettingsScopeSearch, "project"> = {}) {
   );
   await vi.waitFor(() => expect(nameInput(screen)).not.toBeNull());
   stack.move();
-  return { ...screen, router };
-}
-
-async function mountSettings(search: SettingsScopeSearch) {
-  const searchParams = new URLSearchParams(
-    Object.entries(search).flatMap(([key, value]) => (value === undefined ? [] : [[key, value]])),
-  );
-  const route = createRootRoute({
-    validateSearch: validateSettingsScopeSearch,
-    component: () => (
-      <SettingsScopeProvider
-        search={route.useSearch()}
-        onChange={(next) => void router.navigate({ to: "/settings/projects", search: () => next })}
-      >
-        <ProjectsSettings />
-      </SettingsScopeProvider>
-    ),
-  });
-  const router = createRouter({
-    routeTree: route,
-    history: createMemoryHistory({
-      initialEntries: [`/settings/projects?${searchParams.toString()}`],
-    }),
-  });
-  await router.load();
-  // The settings route tree above validates scope search params, which the default router lacks.
-  const screen = await render(
-    <RegistryContext.Provider value={appAtomRegistry}>
-      <RouterProvider router={router} />
-    </RegistryContext.Provider>,
-    { router: false },
-  );
   return { ...screen, router };
 }
 

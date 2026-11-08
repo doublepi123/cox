@@ -1,4 +1,4 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
+import { requireSettingsSecretLiteral, SourceControlProviderKind } from "@t3tools/contracts";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -223,12 +223,12 @@ export const makeDiscovery = Effect.gen(function* () {
     label: discovery.label,
     installHint: discovery.installHint,
     probe: Effect.fn("GitHubSourceControlProvider.discovery")(function* (cwd: string) {
+      const current = yield* sourceControlHost.settings
+        .getWithSecrets(GitHubClient.definition.kind)
+        .pipe(Effect.orElseSucceed(() => undefined));
       const settings = readSourceControlHostSettings(
         GitHubClient.settings,
-        yield* sourceControlHost.settings.get.pipe(
-          Effect.map((current) => current.sourceControlHosts[GitHubClient.definition.kind]),
-          Effect.orElseSucceed(() => undefined),
-        ),
+        current?.sourceControlHosts[GitHubClient.definition.kind],
       );
       const cli = yield* probeSourceControlProvider({
         cwd,
@@ -237,7 +237,21 @@ export const makeDiscovery = Effect.gen(function* () {
         },
         spec: { ...discovery, parseAuth: (input) => parseGitHubAuth(input, settings) },
       });
-      const savedToken = (settings.tokens["github.com"] ?? "").trim() !== "";
+      const saved = yield* Effect.result(
+        requireSettingsSecretLiteral(settings.tokens["github.com"], current?.secretProviders ?? {}),
+      );
+      if (Result.isFailure(saved) && settings.hosts["github.com"]?.enabled !== false) {
+        return offerAppSignIn({
+          ...cli,
+          status: "available" as const,
+          auth: providerAuth({
+            status: "unauthenticated",
+            host: "github.com",
+            detail: saved.failure.message,
+          }),
+        });
+      }
+      const savedToken = Result.isSuccess(saved) && saved.success.trim() !== "";
       const signedIn =
         appSignIn.enabled && !savedToken && (settings.signIns["github.com"] ?? "").trim() !== "";
       const variable = environmentTokenVariable(environment);
@@ -339,6 +353,7 @@ function fromGitHubApiError(
       );
     case "GitHubNotSignedInError":
     case "GitHubHostDisabledError":
+    case "SettingsSecretUnresolvedError":
       return failure(error.message, error);
     case "GitHubApiAuthenticationError":
       return failure(

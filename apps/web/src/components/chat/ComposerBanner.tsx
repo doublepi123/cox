@@ -244,13 +244,7 @@ function Children({ className, render, ...props }: useRender.ComponentProps<"div
 
 function Scroll({ className, children, ...props }: ComponentProps<typeof ScrollArea>) {
   return (
-    <ScrollArea
-      radius="none"
-      scrollFade
-      className={cn("h-auto max-h-[min(24rem,40dvh)]", className)}
-      {...props}
-    >
-      {}
+    <ScrollArea radius="none" scrollFade preset="banner" className={className} {...props}>
       <div className="[[data-has-overflow-y]>&]:pe-2">{children}</div>
     </ScrollArea>
   );

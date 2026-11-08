@@ -75,7 +75,6 @@ function resolveRenameCommit(input: { readonly title: string; readonly originalT
   return { action: "commit", title: trimmed };
 }
 // Delay the input-swallowing native menu through the double-click rename interval.
-const TITLE_MENU_OPEN_DELAY_MS = 500;
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,

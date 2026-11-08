@@ -51,6 +51,8 @@ export class ProviderRuntimeRecoveryError extends Schema.TaggedError<ProviderRun
   }
 }
 
+const isProviderRuntimeRecoveryError = Schema.is(ProviderRuntimeRecoveryError);
+
 export interface ProviderRuntimeRecoverySummary {
   readonly terminalizedRuns: number;
   readonly stoppedSessions: number;
@@ -440,6 +442,60 @@ export const make = Effect.gen(function* () {
           },
         });
       }
+      const unsentResumeRunIds = runs.flatMap((run) =>
+        run.startedAt === null && run.usageLimitContinuationOfRunId !== undefined ? [run.id] : [],
+      );
+      const limitRecovery = projection.thread.limitRecovery;
+      if (limitRecovery?.autoResume === true && unsentResumeRunIds.length > 0) {
+        events.push({
+          id: yield* allocateEventId(),
+          type: "thread.metadata-updated",
+          threadId: projection.thread.id,
+          occurredAt: now,
+          payload: {
+            ...projection.thread,
+            limitRecovery: { ...limitRecovery, requestId: commandId },
+            updatedAt: now,
+          },
+        });
+      }
+      const unsentResumePrompts =
+        unsentResumeRunIds.length === 0
+          ? []
+          : (yield* projections
+              .getThreadRecords(projection.thread.id, ["turnItems"], {
+                turnItemTypes: ["user_message"],
+                turnItemRunIds: unsentResumeRunIds,
+              })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderRuntimeRecoveryError({
+                      operation: "read-projections",
+                      threadId: projection.thread.id,
+                      cause,
+                    }),
+                ),
+              )).turnItems;
+      const unsentResumePromptIds = new Set(unsentResumePrompts.map((item) => item.id));
+      for (const item of unsentResumePrompts) {
+        if (item.type !== "user_message") continue;
+        const active =
+          item.status === "pending" || item.status === "running" || item.status === "waiting";
+        events.push({
+          id: yield* allocateEventId(),
+          type: "turn-item.updated",
+          threadId: projection.thread.id,
+          ...(item.runId === null ? {} : { runId: item.runId }),
+          occurredAt: now,
+          payload: {
+            ...item,
+            ...(active ? { status: "cancelled", completedAt: now } : {}),
+            inputIntent: "queued_turn",
+            updatedAt: now,
+          },
+        });
+      }
       for (const question of questions) {
         events.push({
           id: yield* allocateEventId(),
@@ -550,6 +606,7 @@ export const make = Effect.gen(function* () {
         for (const item of projection.turnItems.filter(
           (candidate) =>
             candidate.runId === run.id &&
+            !unsentResumePromptIds.has(candidate.id) &&
             (candidate.nodeId === null || !messageRequestNodeIds.has(candidate.nodeId)) &&
             !isAppOwnedDelegationItem(candidate) &&
             // A link card waits on the user, not the run, and answers by message.
@@ -701,7 +758,9 @@ export const make = Effect.gen(function* () {
         });
       }
       for (const session of projection.providerSessions.filter(
-        (candidate) => candidate.status !== "stopped" && candidate.status !== "error",
+        (candidate) =>
+          (candidate.status !== "stopped" && candidate.status !== "error") ||
+          (candidate.status === "error" && (candidate.extensionStatuses?.length ?? 0) > 0),
       )) {
         events.push({
           id: yield* allocateEventId(),
@@ -710,7 +769,13 @@ export const make = Effect.gen(function* () {
           driver: session.driver,
           providerInstanceId: session.providerInstanceId,
           occurredAt: now,
-          payload: { ...session, status: "stopped", updatedAt: now, lastError: null },
+          payload: {
+            ...session,
+            status: session.status === "error" ? "error" : "stopped",
+            ...(session.extensionStatuses === undefined ? {} : { extensionStatuses: [] }),
+            updatedAt: now,
+            lastError: session.status === "error" ? session.lastError : null,
+          },
         });
       }
       for (const [providerThreadId, work] of cancelledBackgroundWork) {
@@ -748,6 +813,7 @@ export const make = Effect.gen(function* () {
         (candidate) => candidate.status !== "stopped" && candidate.status !== "error",
       ).length;
       let retiredEffects: number;
+      let cancelledEffectIds: ReadonlyArray<string> = [];
       if (events.length === 0) {
         const retiredEffectIds = yield* outbox
           .cancelUnsettled({
@@ -765,7 +831,7 @@ export const make = Effect.gen(function* () {
                 }),
             ),
           );
-        yield* outbox.signalCancellations(retiredEffectIds);
+        cancelledEffectIds = retiredEffectIds;
         retiredEffects = retiredEffectIds.length;
       } else {
         const result = yield* eventSink
@@ -798,6 +864,7 @@ export const make = Effect.gen(function* () {
         stoppedSessions,
         closedRequests: requests.length,
         retiredEffects,
+        cancelledEffectIds,
       };
     },
   );
@@ -818,31 +885,47 @@ export const make = Effect.gen(function* () {
     let closedRequests = 0;
     let retiredEffects = 0;
     const stoppedThisPass = new Map<string, RecoverySession>();
-    for (const threadId of threadIds) {
-      const projection = yield* projections.getRuntimeRecoveryProjection(threadId).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderRuntimeRecoveryError({
-              operation: "read-projections",
-              threadId,
-              cause,
-            }),
+    const grouped = trigger === "shutdown" && threadIds.length > 1;
+    const groupSize = grouped ? 32 : 1;
+    for (let offset = 0; offset < threadIds.length; offset += groupSize) {
+      const cancelledEffectIds: string[] = [];
+      const reconcileGroup = Effect.gen(function* () {
+        for (const threadId of threadIds.slice(offset, offset + groupSize)) {
+          const projection = yield* projections.getRuntimeRecoveryProjection(threadId).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderRuntimeRecoveryError({
+                  operation: "read-projections",
+                  threadId,
+                  cause,
+                }),
+            ),
+          );
+          const enabled =
+            continueAfterRestart !== null &&
+            resolveProjectSettings(continueAfterRestart, projection.thread.projectId).settings
+              .continueThreadsAfterServerUpdate;
+          const result = yield* reconcileProjection(projection, trigger, enabled, stoppedThisPass);
+          for (const session of projection.providerSessions) {
+            if (session.status !== "stopped" && session.status !== "error") {
+              stoppedThisPass.set(session.id, session);
+            }
+          }
+          cancelledEffectIds.push(...result.cancelledEffectIds);
+          terminalizedRuns += result.terminalizedRuns;
+          stoppedSessions += result.stoppedSessions;
+          closedRequests += result.closedRequests;
+          retiredEffects += result.retiredEffects;
+        }
+      });
+      yield* (grouped ? eventSink.withProviderBatch(reconcileGroup) : reconcileGroup).pipe(
+        Effect.mapError((cause) =>
+          isProviderRuntimeRecoveryError(cause)
+            ? cause
+            : new ProviderRuntimeRecoveryError({ operation: "reconcile", cause }),
         ),
       );
-      const enabled =
-        continueAfterRestart !== null &&
-        resolveProjectSettings(continueAfterRestart, projection.thread.projectId).settings
-          .continueThreadsAfterServerUpdate;
-      const result = yield* reconcileProjection(projection, trigger, enabled, stoppedThisPass);
-      for (const session of projection.providerSessions) {
-        if (session.status !== "stopped" && session.status !== "error") {
-          stoppedThisPass.set(session.id, session);
-        }
-      }
-      terminalizedRuns += result.terminalizedRuns;
-      stoppedSessions += result.stoppedSessions;
-      closedRequests += result.closedRequests;
-      retiredEffects += result.retiredEffects;
+      if (cancelledEffectIds.length > 0) yield* outbox.signalCancellations(cancelledEffectIds);
     }
     const outboxReconciliation = yield* outbox.reconcileAfterProcessLoss.pipe(
       Effect.mapError(
@@ -861,39 +944,55 @@ export const make = Effect.gen(function* () {
   const prepareForShutdown = Effect.gen(function* () {
     const enabled = yield* settings.getSettings.pipe(Effect.orElseSucceed(() => null));
     if (!enabled) return;
-    const threadIds = yield* projections.getRecoveryThreadIds("runtime");
-    for (const threadId of threadIds) {
-      yield* Effect.gen(function* () {
-        const projection = yield* projections.getRuntimeRecoveryProjection(threadId);
-        if (
-          !resolveProjectSettings(enabled, projection.thread.projectId).settings
-            .continueThreadsAfterServerUpdate
-        )
-          return;
-        const run = restartContinuationRun(projection, yield* DateTime.now);
-        if (!run) return;
-        const commandId = CommandId.make(`command:restart-prepare:${run.id}`);
-        yield* eventSink.writeWithEffects({
-          commandId,
-          events: [],
-          effects: [
-            {
-              id: `effect:restart-continuation:${run.id}`,
-              commandId,
-              threadId,
-              request: { type: "provider-runtime.continue", sourceRunId: run.id },
-            },
-          ],
-        });
-      }).pipe(
-        Effect.catchCauseIf(
-          (cause) => !Cause.hasInterruptsOnly(cause),
-          (cause) =>
-            Effect.logWarning("Failed to prepare a restart continuation", { threadId, cause }),
+    const enabledProjects = Object.entries(enabled.projectSettingsOverrides)
+      .filter(([, overrides]) => overrides.continueThreadsAfterServerUpdate === true)
+      .map(([id]) => id);
+    if (!enabled.continueThreadsAfterServerUpdate && enabledProjects.length === 0) return;
+    const disabledProjects = Object.entries(enabled.projectSettingsOverrides)
+      .filter(([, overrides]) => overrides.continueThreadsAfterServerUpdate === false)
+      .map(([id]) => id);
+    const threadIds = yield* projections.getRecoveryThreadIds(
+      "restart-continuations",
+      enabled.continueThreadsAfterServerUpdate
+        ? { exclude: disabledProjects }
+        : { include: enabledProjects },
+    );
+    yield* Effect.forEach(
+      threadIds,
+      (threadId) =>
+        Effect.gen(function* () {
+          const projection = yield* projections.getRuntimeRecoveryProjection(threadId);
+          if (
+            !resolveProjectSettings(enabled, projection.thread.projectId).settings
+              .continueThreadsAfterServerUpdate
+          )
+            return;
+          const run = restartContinuationRun(projection, yield* DateTime.now);
+          if (!run) return;
+          const commandId = CommandId.make(`command:restart-prepare:${run.id}`);
+          yield* eventSink.writeWithEffects({
+            commandId,
+            events: [],
+            effects: [
+              {
+                id: `effect:restart-continuation:${run.id}`,
+                commandId,
+                threadId,
+                request: { type: "provider-runtime.continue", sourceRunId: run.id },
+              },
+            ],
+          });
+        }).pipe(
+          Effect.catchCauseIf(
+            (cause) => !Cause.hasInterruptsOnly(cause),
+            (cause) =>
+              Effect.logWarning("Failed to prepare a restart continuation", { threadId, cause }),
+          ),
         ),
-      );
-    }
+      { concurrency: 2, discard: true },
+    );
   }).pipe(
+    Effect.withSpan("ProviderRuntimeRecoveryService.prepareForShutdown"),
     Effect.mapError((cause) => new ProviderRuntimeRecoveryError({ operation: "reconcile", cause })),
   );
 

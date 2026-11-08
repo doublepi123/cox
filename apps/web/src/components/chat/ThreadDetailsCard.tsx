@@ -123,7 +123,7 @@ export function ThreadDetailsCard({
       onContextMenu={onContextMenu}
       data-thread-details-card
     >
-      <ScrollArea scrollFade className="min-h-0">
+      <ScrollArea scrollFade>
         <div ref={setContentElement}>{children(density)}</div>
       </ScrollArea>
     </div>

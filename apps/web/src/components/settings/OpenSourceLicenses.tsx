@@ -84,7 +84,7 @@ function LicenseNoticeRow({
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <article>
         <div className="flex min-h-10 items-center hover:bg-muted/35 sm:min-h-9">
-          <CollapsibleTrigger className="group flex min-h-10 min-w-0 flex-1 items-center gap-2.5 px-3 text-left sm:min-h-9 sm:px-4">
+          <CollapsibleTrigger variant="license">
             <ChevronRightIcon
               aria-hidden
               className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-90"
@@ -188,29 +188,31 @@ function LicenseHeaderAction({
       <div className="hidden sm:block">
         <LicenseCount filteredCount={filteredCount} totalCount={totalCount} />
       </div>
-      <InputGroup className="w-36 sm:w-44">
-        <InputGroupAddon>
-          <SearchIcon aria-hidden className="size-3" />
-        </InputGroupAddon>
-        <InputGroupInput
-          aria-label={t("Search open-source licenses")}
-          autoFocus
-          onBlur={() => {
-            if (query.length === 0) onSearchOpenChange(false);
-          }}
-          onChange={(event) => onQueryChange(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            onQueryChange("");
-            onSearchOpenChange(false);
-          }}
-          placeholder={t("Search licenses")}
-          size="sm"
-          type="search"
-          value={query}
-        />
-      </InputGroup>
+      <div className="min-w-0 w-36 sm:w-44">
+        <InputGroup>
+          <InputGroupAddon>
+            <SearchIcon aria-hidden className="size-3" />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label={t("Search open-source licenses")}
+            autoFocus
+            onBlur={() => {
+              if (query.length === 0) onSearchOpenChange(false);
+            }}
+            onChange={(event) => onQueryChange(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              onQueryChange("");
+              onSearchOpenChange(false);
+            }}
+            placeholder={t("Search licenses")}
+            size="sm"
+            type="search"
+            value={query}
+          />
+        </InputGroup>
+      </div>
     </div>
   );
 }

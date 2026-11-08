@@ -133,7 +133,9 @@ export function PullRequestRowBranches({ head, base }: { head: string; base: str
     <span className="flex min-w-0 items-center gap-1 font-mono">
       <MiddleTruncate value={head} />
       <span className="shrink-0">→</span>
-      <MiddleTruncate value={base} className="max-w-[45%] shrink-0" />
+      <span className="inline-flex min-w-0 max-w-[45%] shrink-0">
+        <MiddleTruncate value={base} />
+      </span>
     </span>
   );
 }

@@ -161,6 +161,7 @@ export function McpAppFrame(props: {
     updateModelContext,
     displayMode,
     toolDefinition,
+    toolCall,
   }));
   const hostRef = useRef<McpAppHost | null>(null);
   const [stepAsideFor, setStepAsideFor] = useState(props.awaitingUser);
@@ -207,11 +208,8 @@ export function McpAppFrame(props: {
       setNavigatedAway(true);
     }
   };
-  // The host belongs to this frame element, which is replaced when the document is reopened.
-  const attachFrame = (frame: HTMLIFrameElement) => {
-    frameRef.current = frame;
-    const hostContext = (): McpAppHostContext => {
-      const current = readLive();
+  const hostContext = useStableCallback(
+    (current: ReturnType<typeof readLive>): McpAppHostContext => {
       return {
         theme: current.theme.appearance,
         styles: { variables: mcpAppStyleVariables(current.theme.variables) },
@@ -237,7 +235,11 @@ export function McpAppFrame(props: {
           ? {}
           : { toolInfo: { tool: current.toolDefinition } }),
       };
-    };
+    },
+  );
+  // The host belongs to this frame element, which is replaced when the document is reopened.
+  const attachFrame = (frame: HTMLIFrameElement) => {
+    frameRef.current = frame;
     // Return inline so approvals stay visible above the app.
     const ask = async (message: string) => {
       flushSync(() => setDisplayMode("inline"));
@@ -257,7 +259,7 @@ export function McpAppFrame(props: {
       hostVersion: APP_VERSION,
       // Opaque origins require "*"; the window reference scopes delivery to this frame.
       post: (message) => target()?.postMessage(message, "*"),
-      hostContext,
+      hostContext: () => hostContext(readLive()),
       callTool: async ({ name, arguments: args }) => {
         const { environmentId, input } = scope();
         const info = await readLive().toolInfo({ environmentId, input: { ...input, name } });
@@ -375,6 +377,8 @@ export function McpAppFrame(props: {
       },
     });
     hostRef.current = host;
+    const initialToolCall = readLive().toolCall;
+    if (initialToolCall !== undefined) host.setToolCall(initialToolCall);
     const receive = (event: MessageEvent) => {
       if (event.source !== null && event.source === target()) host.receive(event.data);
     };
@@ -388,12 +392,14 @@ export function McpAppFrame(props: {
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes theme, width, display mode and tool definition to the MCP app host in the iframe
   useEffect(() => {
-    hostRef.current?.updateHostContext();
-  }, [theme, width, displayMode, toolDefinition]);
+    hostRef.current?.updateHostContext(
+      hostContext({ ...readLive(), theme, width, displayMode, toolDefinition }),
+    );
+  }, [theme, width, displayMode, toolDefinition, readLive, hostContext]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends the current tool call to the MCP app host, again for each new iframe document
   useEffect(() => {
     if (toolCall !== undefined) hostRef.current?.setToolCall(toolCall);
-  }, [toolCall, src, documentGeneration]);
+  }, [toolCall]);
   if (closed) {
     return (
       <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-muted-foreground text-xs">

@@ -87,7 +87,7 @@ function CustomSnoozeDialog() {
         if (!open) finish(null);
       }}
     >
-      <DialogPopup className="sm:max-w-sm">
+      <DialogPopup width="sm">
         <form
           className="flex min-h-0 flex-col"
           onSubmit={(event) => {
@@ -114,7 +114,7 @@ function CustomSnoozeDialog() {
             <div className="flex flex-col gap-4">
               <ToggleGroup
                 aria-label={t("Schedule type")}
-                className="w-full *:flex-1"
+                fill
                 value={[mode]}
                 onValueChange={(next) => {
                   const value = next[0];
@@ -133,11 +133,7 @@ function CustomSnoozeDialog() {
                       <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                         <PopoverTrigger
                           render={
-                            <Button
-                              id={`${id}-date`}
-                              variant="outline"
-                              className="w-full justify-between"
-                            />
+                            <Button align="between" fill id={`${id}-date`} variant="outline" />
                           }
                         >
                           {date.toLocaleDateString(undefined, {
@@ -164,12 +160,12 @@ function CustomSnoozeDialog() {
                         </PopoverPopup>
                       </Popover>
                     </div>
-                    <Label className="flex min-w-0 flex-col items-stretch" htmlFor={`${id}-time`}>
+                    <Label layout="stacked" htmlFor={`${id}-time`}>
                       {t("Time")}
                       <Input
                         nativeInput
                         id={`${id}-time`}
-                        className="h-9 sm:h-8"
+                        size="touch"
                         type="time"
                         required
                         value={time}
@@ -199,7 +195,7 @@ function CustomSnoozeDialog() {
                         <NumberFieldIncrement aria-label={t("Increase duration")} />
                       </NumberFieldGroup>
                     </NumberField>
-                    <Label className="flex min-w-0 flex-col items-stretch" htmlFor={`${id}-unit`}>
+                    <Label layout="stacked" htmlFor={`${id}-unit`}>
                       {t("Unit")}
                       <Select
                         value={unit}
@@ -210,9 +206,11 @@ function CustomSnoozeDialog() {
                           setError(null);
                         }}
                       >
-                        <SelectTrigger id={`${id}-unit`} className="min-w-0">
-                          <SelectValue />
-                        </SelectTrigger>
+                        <div className="min-w-0">
+                          <SelectTrigger fill id={`${id}-unit`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </div>
                         <SelectPopup>
                           <SelectItem value="minutes">{t("Minutes")}</SelectItem>
                           <SelectItem value="hours">{t("Hours")}</SelectItem>
@@ -231,21 +229,22 @@ function CustomSnoozeDialog() {
             )}
           </DialogPanel>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost-muted"
-              className="sm:mr-auto"
-              onClick={() => {
-                finish(null);
-                void navigate({
-                  to: "/settings/threads",
-                  hash: "snooze-options",
-                });
-              }}
-            >
-              <Settings2Icon />
-              {t("Edit snooze options")}
-            </Button>
+            <span className="inline-flex min-w-0 sm:mr-auto">
+              <Button
+                type="button"
+                variant="ghost-muted"
+                onClick={() => {
+                  finish(null);
+                  void navigate({
+                    to: "/settings/threads",
+                    hash: "snooze-options",
+                  });
+                }}
+              >
+                <Settings2Icon />
+                {t("Edit snooze options")}
+              </Button>
+            </span>
             <Button type="button" variant="outline" onClick={() => finish(null)}>
               {t("Cancel")}
             </Button>

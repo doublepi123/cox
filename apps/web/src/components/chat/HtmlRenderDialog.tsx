@@ -22,24 +22,25 @@ export function HtmlRenderDialog(props: {
         variant="media"
         showCloseButton={false}
         bottomStickOnMobile={false}
-        className="row-start-1"
+        surface="preview"
         initialFocus={closeButtonRef}
       >
-        <DialogTitle className="sr-only">
+        <DialogTitle visuallyHidden>
           {t("Expanded")}
           {props.title} preview
         </DialogTitle>
         <div className="relative w-[92vw]">
-          <Button
-            ref={closeButtonRef}
-            aria-label={t("Close")}
-            size="icon-xs"
-            variant="media-close"
-            className="absolute right-0 -top-10 z-20"
-            onClick={props.onClose}
-          >
-            <XIcon />
-          </Button>
+          <span className="inline-flex min-w-0 absolute right-0 -top-10 z-20">
+            <Button
+              ref={closeButtonRef}
+              aria-label={t("Close")}
+              size="icon-xs"
+              variant="media-close"
+              onClick={props.onClose}
+            >
+              <XIcon />
+            </Button>
+          </span>
           <div className="h-[min(86vh,calc(100vh-160px))] overflow-auto overscroll-contain rounded-lg bg-background p-4 shadow-2xl ring-1 ring-border/70 [container-type:size]">
             <div className="h-[100cqh] w-[100cqw]" style={{ zoom }}>
               <HtmlRenderDocument

@@ -90,17 +90,15 @@ export function GuideStop({
               {t("Stop")}
               {index + 1} of {stopCount}
             </p>
-            <CollapsibleTrigger
-              render={
-                <Button size="xs" variant="ghost-muted" className="@min-[56rem]/guide:hidden" />
-              }
-            >
-              <span className="tabular-nums">
-                {t("Stop")}
-                {index + 1} of {stopCount}
-              </span>
-              <ChevronDownIcon aria-hidden className={cn(railOpen && "rotate-180")} />
-            </CollapsibleTrigger>
+            <span className="inline-flex min-w-0 @min-[56rem]/guide:hidden">
+              <CollapsibleTrigger render={<Button size="xs" variant="ghost-muted" />}>
+                <span className="tabular-nums">
+                  {t("Stop")}
+                  {index + 1} of {stopCount}
+                </span>
+                <ChevronDownIcon aria-hidden className={cn(railOpen && "rotate-180")} />
+              </CollapsibleTrigger>
+            </span>
             <div className="flex items-center gap-1">
               <Button
                 size="icon-xs"
@@ -129,9 +127,11 @@ export function GuideStop({
               </span>
             </div>
           </header>
-          <CollapsiblePanel className="@min-[56rem]/guide:hidden">
-            <div className="pt-3">{stopList}</div>
-          </CollapsiblePanel>
+          <div className="@min-[56rem]/guide:hidden">
+            <CollapsiblePanel>
+              <div className="pt-3">{stopList}</div>
+            </CollapsiblePanel>
+          </div>
         </Collapsible>
 
         <div className="flex max-w-[60rem] flex-col gap-2">
@@ -188,7 +188,7 @@ export function GuideStop({
                   return (
                     <li key={file.path} className="border-border/60 not-first:border-t">
                       <Collapsible>
-                        <CollapsibleTrigger className="group flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+                        <CollapsibleTrigger variant="review-file">
                           <ChevronRightIcon
                             aria-hidden
                             className="size-3.5 shrink-0 text-muted-foreground group-data-panel-open:rotate-90"
@@ -274,10 +274,12 @@ export function GuideStop({
 
         <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
           {nextTitle !== null ? (
-            <Button size="multiline" className="max-w-full" onClick={() => onStep(1)}>
-              <span className="min-w-0 break-words">Next: {nextTitle}</span>
-              <ArrowRightIcon aria-hidden />
-            </Button>
+            <span className="inline-flex min-w-0 max-w-full">
+              <Button size="multiline" onClick={() => onStep(1)}>
+                <span className="min-w-0 break-words">Next: {nextTitle}</span>
+                <ArrowRightIcon aria-hidden />
+              </Button>
+            </span>
           ) : onFinish !== null ? (
             <Button onClick={onFinish}>
               <MessageSquareIcon aria-hidden />

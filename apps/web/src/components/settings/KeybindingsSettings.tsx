@@ -118,26 +118,28 @@ function KeybindingsSearchInput({
 }) {
   const { t } = useTranslation();
   return (
-    <InputGroup className="min-w-0 basis-full **:[input]:h-9 sm:basis-0 sm:flex-1 sm:**:[input]:h-8">
-      <InputGroupAddon>
-        <SearchIcon aria-hidden className="size-3.5" />
-      </InputGroupAddon>
-      <InputGroupInput
-        ref={inputRef}
-        type="search"
-        value={query}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
-          if (query.length > 0) onChange("");
-          else event.currentTarget.blur();
-        }}
-        placeholder={t("Search keybindings")}
-        aria-label={t("Search keybindings")}
-        size="sm"
-      />
-    </InputGroup>
+    <div className="min-w-0 basis-full **:[input]:h-9 sm:basis-0 sm:flex-1 sm:**:[input]:h-8">
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon aria-hidden className="size-3.5" />
+        </InputGroupAddon>
+        <InputGroupInput
+          ref={inputRef}
+          type="search"
+          value={query}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            if (query.length > 0) onChange("");
+            else event.currentTarget.blur();
+          }}
+          placeholder={t("Search keybindings")}
+          aria-label={t("Search keybindings")}
+          size="sm"
+        />
+      </InputGroup>
+    </div>
   );
 }
 type BooleanOperator = "and" | "or";
@@ -283,15 +285,17 @@ function WhenVariableSelect({
     selected || variables.some((option) => option === value) ? variables : [value, ...variables];
   return (
     <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
-      <SelectTrigger size="compact" className="min-w-0 flex-1">
-        <SelectValue placeholder={translateUi("Condition")} />
-        {unknownIdentifiers && unknownIdentifiers.length > 0 ? (
-          <UnknownWhenVariableWarning identifiers={unknownIdentifiers} focusable={false} />
-        ) : null}
-      </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false} className="max-h-72">
+      <div className="min-w-0 flex-1">
+        <SelectTrigger fill size="compact">
+          <SelectValue placeholder={translateUi("Condition")} />
+          {unknownIdentifiers && unknownIdentifiers.length > 0 ? (
+            <UnknownWhenVariableWarning identifiers={unknownIdentifiers} focusable={false} />
+          ) : null}
+        </SelectTrigger>
+      </div>
+      <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false} limit="compact">
         {options.map((option) => (
-          <SelectItem key={option} value={option} className="w-full">
+          <SelectItem key={option} value={option}>
             <span className="truncate">{option}</span>
           </SelectItem>
         ))}
@@ -310,21 +314,23 @@ function WhenExpressionRemoveButton({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        delay={200}
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className={cn("size-7", className)}
-            aria-label={label}
-            onClick={onRemove}
-          />
-        }
-      >
-        <MinusIcon aria-hidden className="size-3.5" />
-      </TooltipTrigger>
+      <span className={cn("inline-flex min-w-0", cn("size-7", className))}>
+        <TooltipTrigger
+          delay={200}
+          render={
+            <Button
+              fill
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={label}
+              onClick={onRemove}
+            />
+          }
+        >
+          <MinusIcon aria-hidden className="size-3.5" />
+        </TooltipTrigger>
+      </span>
       <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>
   );
@@ -356,7 +362,7 @@ function WhenExpressionNodeEditor({
           aria-label={t("Negate {condition}", { condition: condition.identifier })}
           variant="outline"
           size="compact"
-          className="min-w-10"
+          wide
         >
           {t("Not")}
         </Toggle>
@@ -390,16 +396,17 @@ function WhenExpressionNodeEditor({
             aria-label={t("Negate group")}
             variant="outline"
             size="compact"
-            className="min-w-10"
+            wide
           >
             {t("Not")}
           </Toggle>
           {onRemove ? (
-            <WhenExpressionRemoveButton
-              label={whenNodeRemoveLabel(node, depth)}
-              className="ml-auto"
-              onRemove={onRemove}
-            />
+            <span className="inline-flex min-w-0 ml-auto">
+              <WhenExpressionRemoveButton
+                label={whenNodeRemoveLabel(node, depth)}
+                onRemove={onRemove}
+              />
+            </span>
           ) : null}
         </div>
         <div className="relative pl-4">
@@ -480,9 +487,11 @@ function WhenExpressionNodeEditor({
     >
       <div className="flex flex-wrap items-center gap-2">
         <Select value={operator} onValueChange={(value) => setOperator(value as BooleanOperator)}>
-          <SelectTrigger size="compact" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
+          <div className="min-w-0 w-24">
+            <SelectTrigger fill size="compact">
+              <SelectValue />
+            </SelectTrigger>
+          </div>
           <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false}>
             <SelectItem value="and">{t("and")}</SelectItem>
             <SelectItem value="or">{t("or")}</SelectItem>
@@ -497,11 +506,12 @@ function WhenExpressionNodeEditor({
           {t("Group")}
         </Button>
         {onRemove ? (
-          <WhenExpressionRemoveButton
-            label={whenNodeRemoveLabel(node, depth)}
-            className="ml-auto"
-            onRemove={onRemove}
-          />
+          <span className="inline-flex min-w-0 ml-auto">
+            <WhenExpressionRemoveButton
+              label={whenNodeRemoveLabel(node, depth)}
+              onRemove={onRemove}
+            />
+          </span>
         ) : null}
       </div>
       <div className="space-y-2">
@@ -787,20 +797,21 @@ function KeybindingKeyControl({
           <KeybindingPill value={row.key} />
         </button>
       ) : (
-        <Input
-          data-keybinding-capture=""
-          autoFocus={isRecording}
-          aria-label={t("Keybinding for {command}", { command: t(commandLabel(row.command)) })}
-          value={isRecording ? "" : keyDraft}
-          placeholder={isRecording ? t("Press shortcut") : t("Unassigned")}
-          size="sm"
-          font="mono"
-          className="w-44"
-          onFocus={() => setDraft({ isRecording: true })}
-          onBlur={() => setDraft({ isRecording: false })}
-          onChange={(event) => setDraft({ keyDraft: event.currentTarget.value })}
-          onKeyDown={captureKeybinding}
-        />
+        <div className="min-w-0 w-44">
+          <Input
+            data-keybinding-capture=""
+            autoFocus={isRecording}
+            aria-label={t("Keybinding for {command}", { command: t(commandLabel(row.command)) })}
+            value={isRecording ? "" : keyDraft}
+            placeholder={isRecording ? t("Press shortcut") : t("Unassigned")}
+            size="sm"
+            font="mono"
+            onFocus={() => setDraft({ isRecording: true })}
+            onBlur={() => setDraft({ isRecording: false })}
+            onChange={(event) => setDraft({ keyDraft: event.currentTarget.value })}
+            onKeyDown={captureKeybinding}
+          />
+        </div>
       )}
     </>
   );
@@ -827,19 +838,15 @@ function WhenClauseControl({
   };
   return (
     <Popover onOpenChange={handleOpenChange}>
-      <PopoverTrigger
-        render={
-          <Button
-            variant={expression ? "ghost" : "ghost-muted"}
-            size="xs"
-            className="min-w-0 shrink"
-          />
-        }
-        aria-label={t("Edit when clause for {command}", { command: label })}
-      >
-        <span className="truncate font-mono">{expression || t("Always")}</span>
-        <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
-      </PopoverTrigger>
+      <span className="inline-flex min-w-0 shrink">
+        <PopoverTrigger
+          render={<Button variant={expression ? "ghost" : "ghost-muted"} size="xs" />}
+          aria-label={t("Edit when clause for {command}", { command: label })}
+        >
+          <span className="truncate font-mono">{expression || t("Always")}</span>
+          <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
+        </PopoverTrigger>
+      </span>
       <PopoverContent align="start" sideOffset={6}>
         <WhenExpressionBuilder
           value={value}
@@ -1055,10 +1062,12 @@ function NewKeybindingCommandSelect({
   draft,
   commandOptions,
   className,
+  fill = false,
 }: {
   draft: NewKeybindingDraft;
   commandOptions: ReadonlyArray<KeybindingCommandOption>;
   className?: string | undefined;
+  fill?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -1066,12 +1075,12 @@ function NewKeybindingCommandSelect({
       value={draft.commandDraft}
       onValueChange={(value) => draft.setCommandDraft(value as KeybindingCommand)}
     >
-      <SelectTrigger size="sm" className={className}>
+      <SelectTrigger size="sm" className={className} fill={fill}>
         <SelectValue placeholder={t("Command")} />
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false} className="max-h-72">
+      <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false} limit="compact">
         {commandOptions.map((command) => (
-          <SelectItem key={command} value={command} className="w-full">
+          <SelectItem key={command} value={command}>
             <span className="truncate">{t(commandLabel(command))}</span>
           </SelectItem>
         ))}
@@ -1168,13 +1177,13 @@ function NewKeybindingSettingsRow(props: NewKeybindingProps) {
       }
       control={
         <div className="flex flex-wrap items-center gap-2">
-          <NewKeybindingCommandSelect
-            draft={draft}
-            commandOptions={commandOptions}
-            className="w-56"
-          />
+          <div className="min-w-0 w-56">
+            <NewKeybindingCommandSelect fill draft={draft} commandOptions={commandOptions} />
+          </div>
           <KeybindingConflictWarning labels={draft.conflictLabels} />
-          <NewKeybindingKeyInput draft={draft} className="w-44" />
+          <div className="min-w-0 w-44">
+            <NewKeybindingKeyInput draft={draft} />
+          </div>
           <Button size="sm" disabled={isSaving || !draft.canSave} onClick={draft.save}>
             {isSaving ? "Saving" : t("Save")}
           </Button>
@@ -1218,7 +1227,7 @@ function BrowserKeybindingNotice() {
           </Button>
         }
       />
-      <TooltipPopup side="top" className="max-w-72">
+      <TooltipPopup side="top" width="compact">
         {message}
       </TooltipPopup>
     </Tooltip>

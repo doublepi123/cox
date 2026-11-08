@@ -85,6 +85,7 @@ import {
   resolveTimelineMinimapVisibleRange,
   resolveTimelineMinimapHitStripWidth,
   timelineTurnFoldRunIdsByEntryId,
+  liveAnswerPreview,
   type MessagesTimelineRow,
   type TimelineLatestRun,
 } from "./MessagesTimeline.logic";
@@ -136,6 +137,7 @@ import {
 import { useThreadFindPositionReader } from "./useThreadFindPositionReader";
 import { ThreadActivityAnnouncer } from "./ThreadActivityAnnouncer";
 import { useStableHandoffRuns, useIncrementalTimelineRows, useStableRows } from "./useTimelineRows";
+import { useClientSettings } from "../../hooks/useSettings";
 
 function timelineListStateFor(identity: string): {
   readonly identity: string;
@@ -574,6 +576,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
     }
   }
 
+  const preferredToolCallVisibility = useClientSettings((settings) => settings.toolCallVisibility);
+  const toolCallVisibility =
+    findActive && preferredToolCallVisibility === "zen" ? "hideAll" : preferredToolCallVisibility;
+  const revealedMessageId = citationRequest?.citation.messageId ?? null;
   // Imported turns and post-steer work fold under synthetic keys, not the entries' run ids.
   const findFoldRunIds = findActive
     ? timelineTurnFoldRunIdsByEntryId({
@@ -582,6 +588,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
         runningRunId,
         isWorking,
         runlessWorkActive,
+        toolCallVisibility,
+        revealedMessageId,
       })
     : null;
   const activeFindRunId =
@@ -623,6 +631,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
         runningRunId,
         isWorking,
         runlessWorkActive,
+        toolCallVisibility,
+        revealedMessageId,
       })
     ).get(citedEntry.id);
     setCitationExpandedFor(citationRequest.key);
@@ -681,6 +691,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     threadStartCheckpointReady,
     availableRevertTurnCounts,
     worktreeSetup,
+    toolCallVisibility,
+    revealedMessageId,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
   const matchedApprovalRequestIds = new Set<string>();
@@ -1074,6 +1086,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     awaitingUser: awaitingUser !== null,
     isPreparingWorktree,
     latestRunId: latestRun?.runId ?? null,
+    liveAnswerPreview:
+      isWorking && toolCallVisibility === "zen" ? liveAnswerPreview(timelineEntries) : null,
   };
   // Mounted in both the empty and filled timeline so a thread's first turn
   // starts from a baseline instead of a fresh, silent region.
@@ -1179,6 +1193,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     runningRunId,
     isWorking,
     runlessWorkActive,
+    toolCallVisibility,
     rows,
     contentInsetEndAdjustment,
   });
@@ -1298,7 +1313,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
         <TimelineRowActivityCtx value={activityState}>
           <TooltipScrollDismissArea
             ref={attachTimelineViewportElement}
-            className="relative h-full min-h-0"
+            viewport
             data-assistant-citation-viewport="true"
           >
             {onCiteAssistantText && citationThreadRef ? (
@@ -1633,11 +1648,15 @@ function WorkHistorySkeleton() {
     >
       {[0, 1, 2].map((index) => (
         <div key={index} className="flex items-center gap-2" aria-hidden="true">
-          <Skeleton className="size-3 shrink-0" />
-          <Skeleton
-            shape="pill"
-            className={index === 0 ? "h-2.5 w-2/5" : index === 1 ? "h-2.5 w-3/5" : "h-2.5 w-1/3"}
-          />
+          <Skeleton width="0.75rem" height="0.75rem" />
+          <div
+            className={cn(
+              "min-w-0",
+              index === 0 ? "h-2.5 w-2/5" : index === 1 ? "h-2.5 w-3/5" : "h-2.5 w-1/3",
+            )}
+          >
+            <Skeleton width="100%" height="100%" shape="pill" />
+          </div>
         </div>
       ))}
     </div>

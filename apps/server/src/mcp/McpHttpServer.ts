@@ -178,13 +178,11 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
 
-  return Effect.fn("McpHttpServer.authenticateRequest")(function* (httpEffect) {
-    const request = yield* HttpServerRequest.HttpServerRequest;
+  const authenticateRequest = Effect.fn("McpHttpServer.authenticateRequest")(function* (
+    request: HttpServerRequest.HttpServerRequest,
+  ) {
     const authorization = request.headers.authorization;
-    const token =
-      authorization?.startsWith("Bearer ") === true
-        ? authorization.slice("Bearer ".length).trim()
-        : "";
+    const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
     const invocation =
       (yield* registry.resolve(token)) ??
       (Option.isSome(clients) && token.length > 0
@@ -202,10 +200,13 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     }
     const limited = withModeLimit(invocation, request);
     if (limited === undefined) return invalidModeLimit;
+    return limited;
+  });
+  return Effect.fnUntraced(function* (httpEffect) {
+    const admitted = yield* authenticateRequest(yield* HttpServerRequest.HttpServerRequest);
+    if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
     return yield* httpEffect.pipe(
-      Effect.provideService(McpInvocationContext.McpInvocationContext, {
-        ...limited,
-      }),
+      Effect.provideService(McpInvocationContext.McpInvocationContext, admitted),
       Effect.map(normalizeMcpHttpResponse),
     );
   }) satisfies McpAuthMiddleware;
@@ -957,6 +958,34 @@ const withToolAnalytics =
     return yield* registration.pipe(Effect.provideService(McpServer.McpServer, recordingServer));
   });
 
+const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E, R>(
+  registration: Effect.Effect<A, E, R>,
+) {
+  const server = yield* McpServer.McpServer;
+  const tracingServer = McpServer.McpServer.of({
+    ...server,
+    addTool: Effect.fn("McpServer.addTool")(function (options) {
+      const name = options.tool.name;
+      return server.addTool({
+        ...options,
+        handle: (payload) =>
+          Effect.useSpan(
+            `mcp.tool.${name}`,
+            {
+              attributes: {
+                "rpc.system": "mcp",
+                "rpc.method": "tools/call",
+                "mcp.tool.name": name,
+              },
+            },
+            () => options.handle(payload),
+          ),
+      });
+    }),
+  });
+  return yield* registration.pipe(Effect.provideService(McpServer.McpServer, tracingServer));
+});
+
 /** `McpServer.registerToolkit` advertises the full codec schema; agents get the compact one. */
 const withAdvertisedSchemas = Effect.fn("McpHttpServer.withAdvertisedSchemas")(function* <
   Tools extends Record<string, Tool.Any>,
@@ -998,7 +1027,9 @@ export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, 
 ) => {
   const registration = Layer.effectDiscard(
     withToolAnalytics(
-      withAdvertisedSchemas(toolkit, McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+      withToolSpans(
+        withAdvertisedSchemas(toolkit, McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+      ),
     ),
   ).pipe(Layer.provide(McpServer.McpServer.layer));
   // @effect-diagnostics-next-line unsafeEffectTypeAssertion:off - the auth middleware provides it per request.
@@ -1014,7 +1045,7 @@ const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, 
   register: Effect.Effect<A, E, R>,
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
 ) =>
-  Layer.effectDiscard(withToolAnalytics(register)).pipe(
+  Layer.effectDiscard(withToolAnalytics(withToolSpans(register))).pipe(
     Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)),
   );
 

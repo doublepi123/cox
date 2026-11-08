@@ -86,6 +86,15 @@ export type DiffSide = typeof DiffSide.Type
 export const FileViewedState = Schema.Literals(["DISMISSED", "UNVIEWED", "VIEWED"])
 export type FileViewedState = typeof FileViewedState.Type
 
+
+
+
+
+
+
+export const IssueState = Schema.Literals(["CLOSED", "OPEN"])
+export type IssueState = typeof IssueState.Type
+
 /**
  * Detailed status information about a pull request merge.
  *
@@ -291,6 +300,8 @@ export declare namespace Typename {
   export type Actor = "Bot" | "EnterpriseUserAccount" | "Mannequin" | "Organization" | "User"
   /** Every possible `__typename` of interface `GitObject`. */
   export type GitObject = "Blob" | "Commit" | "Tag" | "Tree"
+
+  export type IssueOrPullRequest = "Issue" | "PullRequest"
   /** Every possible `__typename` of interface `Node`. */
   export type Node =
     | "AddedToMergeQueueEvent" | "AddedToProjectEvent" | "AddedToProjectV2Event" | "AddedToStackEvent" | "App"

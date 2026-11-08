@@ -287,11 +287,12 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
     normalizeWorkspaceRootForProjectCommand(trimmedIdentifier),
   );
   const normalizedWorkspaceRoot =
-    normalizedWorkspaceRootResult._tag === "Success" ? normalizedWorkspaceRootResult.success : null;
+    normalizedWorkspaceRootResult._tag === "Success"
+      ? normalizedWorkspaceRootResult.success
+      : normalizedWorkspaceRootResult.failure.normalizedWorkspaceRoot;
 
-  // A stored workspace path still identifies its project after the directory is gone.
   const exactWorkspaceMatch = activeProjects.find(
-    (project) => project.workspaceRoot === (normalizedWorkspaceRoot ?? trimmedIdentifier),
+    (project) => project.workspaceRoot === normalizedWorkspaceRoot,
   );
 
   const resolved = exactWorkspaceMatch;
@@ -300,7 +301,7 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
       operation: "resolveProjectTarget",
       identifier: trimmedIdentifier,
       activeProjectCount: activeProjects.length,
-      ...(normalizedWorkspaceRoot === null ? {} : { normalizedWorkspaceRoot }),
+      normalizedWorkspaceRoot,
       ...(normalizedWorkspaceRootResult._tag === "Failure"
         ? { cause: normalizedWorkspaceRootResult.failure }
         : {}),

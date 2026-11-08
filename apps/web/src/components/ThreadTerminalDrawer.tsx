@@ -1307,13 +1307,7 @@ function TerminalActionButton({
       >
         {children}
       </PopoverTrigger>
-      <PopoverPopup
-        tooltipStyle
-        side="bottom"
-        sideOffset={6}
-        align="center"
-        className="pointer-events-none select-none"
-      >
+      <PopoverPopup tooltipStyle side="bottom" sideOffset={6} align="center" presentation="passive">
         {label}
       </PopoverPopup>
     </Popover>

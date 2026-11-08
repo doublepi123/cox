@@ -128,7 +128,7 @@ it("does not create another session or approve for an already signed-in browser"
 
 it("escapes client-controlled HTML and preserves the exact static script", () => {
   const html = renderConsentPage({
-    authorizationQuery: 'state=\"><script>evil()</script>',
+    authorizationQuery: 'state="><script>evil()</script>',
     clientName: '<img src=x onerror="evil()">',
     redirectHost: "localhost",
     loginMode: "password",

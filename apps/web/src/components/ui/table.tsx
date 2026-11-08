@@ -2,12 +2,16 @@ import * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  fixed = false,
+  ...props
+}: React.ComponentProps<"table"> & { fixed?: boolean }) {
   return (
     <div data-slot="table-container" className="relative w-full overflow-x-auto">
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-xs", className)}
+        className={cn("w-full caption-bottom text-xs", fixed && "min-w-180 table-fixed", className)}
         {...props}
       />
     </div>
@@ -54,11 +58,22 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   );
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+function TableCell({
+  className,
+  wrap = false,
+  align,
+  ...props
+}: React.ComponentProps<"td"> & { wrap?: boolean }) {
   return (
     <td
       data-slot="table-cell"
-      className={cn("p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0", className)}
+      className={cn(
+        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        wrap && "whitespace-normal",
+        align === "center" && "text-center",
+        className,
+      )}
+      {...(align === undefined ? {} : { align })}
       {...props}
     />
   );

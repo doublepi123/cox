@@ -9,7 +9,6 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger } from "../ui/select";
-import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import { readableFailure } from "./pullRequestDetail.logic";
 import {
@@ -17,6 +16,10 @@ import {
   usePendingReviewComments,
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
+import {
+  PullRequestMarkdownTextarea,
+  type PullRequestCompletionScope,
+} from "./PullRequestMarkdownTextarea";
 
 const VERDICTS: ReadonlyArray<{
   readonly value: PullRequestReviewVerdict;
@@ -47,6 +50,7 @@ const VERDICTS: ReadonlyArray<{
 export function PullRequestReviewForm({
   environmentId,
   reference,
+  completionScope,
   term,
   verdicts,
   requestChangesSummaryRequired,
@@ -57,6 +61,7 @@ export function PullRequestReviewForm({
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
+  completionScope: PullRequestCompletionScope | null;
   /** The host's word for a change request, as in "pull request". */
   term: string;
   verdicts: ReadonlyArray<PullRequestReviewVerdict>;
@@ -131,13 +136,14 @@ export function PullRequestReviewForm({
 
   return (
     <>
-      <Textarea
+      <PullRequestMarkdownTextarea
         ref={textareaRef}
+        completionScope={completionScope}
         rows={3}
         value={body}
         placeholder={placeholder}
         aria-label="Review summary"
-        onChange={(event) => setSummary(reviewKey, event.target.value)}
+        onValueChange={(next) => setSummary(reviewKey, next)}
       />
       <div className="mt-2 flex justify-end gap-2">
         {offered.length > 1 ? (
@@ -148,12 +154,14 @@ export function PullRequestReviewForm({
               if (value !== null) setRequestedVerdict(value);
             }}
           >
-            <SelectTrigger size="xs" className="mr-auto w-auto min-w-0" aria-label="Review verdict">
-              <span className="flex items-center gap-1.5">
-                {selectedVerdict?.icon}
-                {selectedVerdict?.label}
-              </span>
-            </SelectTrigger>
+            <div className="min-w-0 mr-auto w-auto">
+              <SelectTrigger fill size="xs" aria-label="Review verdict">
+                <span className="flex items-center gap-1.5">
+                  {selectedVerdict?.icon}
+                  {selectedVerdict?.label}
+                </span>
+              </SelectTrigger>
+            </div>
             <SelectPopup side="top" alignItemWithTrigger={false}>
               {offered.map((verdict) => (
                 <SelectItem key={verdict.value} value={verdict.value}>

@@ -6,7 +6,7 @@ import { WorkspacePageHeader } from "./WorkspacePageHeader";
 export function NoActiveThreadState() {
   const { t: translateUi } = useTranslation();
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+    <SidebarInset viewport="dynamic">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
         <WorkspacePageHeader className="border-b border-border">
           {
@@ -18,9 +18,9 @@ export function NoActiveThreadState() {
           }
         </WorkspacePageHeader>
 
-        <Empty className="flex-1">
+        <Empty>
           <div className="w-full max-w-lg px-8 py-12">
-            <EmptyHeader className="max-w-none">
+            <EmptyHeader unconstrained>
               <EmptyTitle>{translateUi("Pick a thread to continue")}</EmptyTitle>
               <EmptyDescription>
                 {translateUi("Select an existing thread or create a new one to get started.")}

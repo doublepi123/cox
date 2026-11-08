@@ -23,6 +23,7 @@ import {
   makeAntigravityStdoutTransform,
 } from "../antigravityAuthSupport.ts";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import packageJson from "../../../package.json" with { type: "json" };
 import { normalizeAntigravitySessionUpdate } from "./AntigravityProtocol.ts";
 
 export interface AntigravityAcpRuntimeInput extends Omit<
@@ -40,7 +41,19 @@ export interface AntigravityAcpRuntimeInput extends Omit<
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly onAuthorizationUrl?: (url: string) => Effect.Effect<void, EffectAcpErrors.AcpError>;
   readonly clientFileReads?: boolean;
+  readonly runtimeVersion?: string | null;
+  readonly clientCapabilities?: AcpSessionRuntime.AcpSessionRuntimeOptions["clientCapabilities"];
   readonly authMethod?: AntigravityAuthMethod;
+}
+
+export function antigravityClientInfo(version: string | null | undefined) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version?.trim() ?? "");
+  const release = match?.slice(1).map(Number);
+  return release !== undefined &&
+    (release[0]! > 1 ||
+      (release[0] === 1 && (release[1]! > 5 || (release[1] === 5 && release[2]! >= 1))))
+    ? { name: "cox", title: "Cox", version: packageJson.version }
+    : { name: "zed", version: "0.0.0" };
 }
 
 export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(function* (
@@ -57,9 +70,9 @@ export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(
       authenticateEagerly: true,
       resumeMethod: "resume",
       cancelBehavior: "wait-for-prompt",
-      // The agent offers non-Gemini models only to allowlisted clients such as Zed.
-      clientInfo: { name: "zed", version: "0.0.0" },
+      clientInfo: antigravityClientInfo(input.runtimeVersion),
       clientCapabilities: {
+        ...input.clientCapabilities,
         // Advertising writes swaps the agent's diff edits for whole-file client_edit_file.
         fs: { readTextFile: input.clientFileReads === true, writeTextFile: false },
         terminal: false,

@@ -16,15 +16,11 @@ export function NoProjectsHero() {
   const { scratchEnvironmentId, startScratchThread } = useScratchProject();
   const scratchTargetEnvironmentId = scratchEnvironmentId(primaryEnvironmentId);
   return (
-    <SidebarInset
-      {...contentArea}
-      role="main"
-      className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
-    >
+    <SidebarInset {...contentArea} role="main" viewport="dynamic">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-        <Empty size="hero" className="flex-1">
+        <Empty size="hero">
           <div className="w-full max-w-lg px-8 py-12">
-            <EmptyHeader className="max-w-none">
+            <EmptyHeader unconstrained>
               <EmptyTitle>{t("What should we work on?")}</EmptyTitle>
               <EmptyDescription>
                 {scratchTargetEnvironmentId === null

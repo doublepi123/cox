@@ -14,6 +14,7 @@ import {
   getProviderOptionDescriptors,
   mergeModelCapabilities,
   readCustomModelEntries,
+  withClaudeUltracodeCapabilities as withUltracodeToggle,
 } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import { providerModelsFromSettings } from "@t3tools/provider-core/server/snapshotProbe";
@@ -52,8 +53,9 @@ function tryResolveClaudeModelCatalog(
     const profile = decodeClaudeProfileAdapter(entry.profileAdapter ?? {});
     const adapter = decodeClaudeModelAdapter(entry.adapter ?? {});
     if (Option.isNone(profile) || Option.isNone(adapter)) return null;
+    const model = ModelCatalog.catalogServerModel(resolved, entry);
     models.push({
-      model: ModelCatalog.catalogServerModel(resolved, entry),
+      model: { ...model, capabilities: withUltracodeToggle(model.capabilities) },
       runtime: profile.value.claudeCode ?? {},
       compatibility: adapter.value.claudeCode ?? {},
     });
@@ -63,6 +65,8 @@ function tryResolveClaudeModelCatalog(
     models,
   };
 }
+
+export { withClaudeUltracodeCapabilities as withUltracodeToggle } from "@t3tools/shared/model";
 
 /** Resolve the fallback on each read so its new-model badges can expire. */
 export function resolveClaudeModelCatalog(
@@ -125,7 +129,9 @@ export function scopeClaudeModelCatalog(
           ...entry,
           model: {
             ...entry.model,
-            capabilities: mergeModelCapabilities(entry.model.capabilities, override.capabilities),
+            capabilities: withUltracodeToggle(
+              mergeModelCapabilities(entry.model.capabilities, override.capabilities),
+            ),
           },
           runtime: {
             ...entry.runtime,
@@ -155,7 +161,7 @@ export function scopeClaudeModelCatalog(
         slug: entry.slug,
         name: entry.name,
         isCustom: true,
-        capabilities: entry.capabilities,
+        capabilities: withUltracodeToggle(entry.capabilities),
       },
       runtime: entry.capabilities.contextWindow
         ? { fixedContextWindowTokens: entry.capabilities.contextWindow }
@@ -346,10 +352,6 @@ export function normalizeClaudeCatalogEffort(
   const effortMap = resolveClaudeCatalogModel(catalog, model)?.runtime.effortMap;
   if (!effortMap || !Object.prototype.hasOwnProperty.call(effortMap, effort)) return effort;
   return effortMap[effort] ?? undefined;
-}
-
-export function isClaudeCatalogUltracodeEffort(effort: string | null | undefined): boolean {
-  return effort === "ultracode";
 }
 
 function resolveClaudeCatalogContextWindow(

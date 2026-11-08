@@ -124,6 +124,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   mcpModeLimitHeader: Schema.optionalKey(Schema.Boolean),
   /** Server answers server.prepareTriage. */
   triage: Schema.optionalKey(Schema.Boolean),
+  freshContext: Schema.optionalKey(Schema.Boolean),
+  scheduledTaskThreadModes: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

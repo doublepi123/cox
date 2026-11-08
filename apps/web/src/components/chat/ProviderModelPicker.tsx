@@ -497,7 +497,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           coarsePointer || openType === "touch" ? popupRef.current : searchInputRef.current
         }
         align="start"
-        className="before:hidden"
+        presentation="model-picker"
         padding="none"
         touchBackdrop
       >

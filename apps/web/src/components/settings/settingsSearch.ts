@@ -689,6 +689,14 @@ export const SETTINGS_SEARCH_ITEMS = [
   ...KEYBINDING_SEARCH_ITEMS,
 
   {
+    id: "tool-call-visibility",
+    title: "Tool calls in chat",
+    to: "/settings/labs",
+    searchTerms: [
+      "hide tool calls commands edits searches work log activity quiet chat zen final answers",
+    ],
+  },
+  {
     id: "providers",
     title: "Providers",
     to: "/settings/providers",
@@ -704,14 +712,6 @@ export const SETTINGS_SEARCH_ITEMS = [
       "usage sources CLIProxyAPI CLI proxy hub quota subscription limits management key add remove",
     ],
     providerSettingsOnly: true,
-  },
-  {
-    id: "cursor-keychain-usage",
-    title: "Cursor account usage",
-    to: "/settings/providers",
-    searchTerms: ["cursor macOS keychain usage tokens cost limits permission"],
-    providerSettingsOnly: true,
-    macProviderSettingsOnly: true,
   },
   {
     id: "model-services",

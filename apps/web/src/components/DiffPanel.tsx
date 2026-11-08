@@ -63,6 +63,7 @@ import {
 } from "../state/entities";
 import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
 import { formatRelativeTimeLabel, formatShortTimestamp } from "../timestampFormat";
+import { useNowMinute } from "../hooks/useNowMinute";
 import { DiffFilePathCopyButton } from "./DiffFilePathCopyButton";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
@@ -144,26 +145,27 @@ function DiffFileCollapseToggle({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="icon-micro"
-            variant="ghost"
-            className="-ms-0.5"
-            aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
-            aria-expanded={!collapsed}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle(fileKey);
-            }}
+      <span className="inline-flex min-w-0 -ms-0.5">
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-micro"
+              variant="ghost"
+              aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
+              aria-expanded={!collapsed}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggle(fileKey);
+              }}
+            />
+          }
+        >
+          <MorphIcon
+            className="size-4 text-muted-foreground/80"
+            icon={collapsed ? ChevronRight : ChevronDown}
           />
-        }
-      >
-        <MorphIcon
-          className="size-4 text-muted-foreground/80"
-          icon={collapsed ? ChevronRight : ChevronDown}
-        />
-      </TooltipTrigger>
+        </TooltipTrigger>
+      </span>
       <TooltipPopup side="top">{collapsed ? "Expand diff" : "Collapse diff"}</TooltipPopup>
     </Tooltip>
   );
@@ -208,6 +210,7 @@ export default function DiffPanel({
   visible,
 }: DiffPanelProps) {
   const { t, language } = useTranslation();
+  const nowMs = Date.parse(useNowMinute());
   const resolvedTheme = useRenderedAppearance();
   const settings = useClientSettings((settings) => ({
     diffFilesCollapsed: settings.diffFilesCollapsed,
@@ -799,15 +802,21 @@ export default function DiffPanel({
     <>
       <div className="@container/diff-refs flex min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag]">
         <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button size="xs" variant="secondary" />}
-            className={cn("max-w-full", headerCommitSha !== null && "min-w-0 shrink")}
-            aria-label={`Diff scope: ${selectedScopeLabel}`}
-            data-workspace-focus-default
+          <span
+            className={cn(
+              "inline-flex min-w-0",
+              cn("max-w-full", headerCommitSha !== null && "min-w-0 shrink"),
+            )}
           >
-            <span className="truncate">{selectedScopeLabel}</span>
-            <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-          </DropdownMenuTrigger>
+            <DropdownMenuTrigger
+              render={<Button size="xs" variant="secondary" />}
+              aria-label={`Diff scope: ${selectedScopeLabel}`}
+              data-workspace-focus-default
+            >
+              <span className="truncate">{selectedScopeLabel}</span>
+              <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+            </DropdownMenuTrigger>
+          </span>
           {headerCommitSha !== null ? (
             selectedCommitUrl ? (
               <Tooltip>
@@ -880,7 +889,7 @@ export default function DiffPanel({
               }}
             >
               <DropdownMenuSubTrigger>Commits</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="max-h-80 max-w-96">
+              <DropdownMenuSubContent width="history" limit="history">
                 <DropdownMenuRadioGroup
                   value={selectedCommitValue}
                   onValueChange={selectScopeValue}
@@ -902,7 +911,7 @@ export default function DiffPanel({
                           <TooltipTrigger
                             render={
                               <DropdownMenuRadioItem
-                                className="min-w-0 flex-1"
+                                flexible
                                 value={`commit:${commit.sha}`}
                                 closeOnClick
                               />
@@ -911,13 +920,11 @@ export default function DiffPanel({
                             <span className="flex items-center gap-3">
                               <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
                               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                                {formatRelativeTimeLabel(commit.committedAt, Date.now(), language)}
+                                {formatRelativeTimeLabel(commit.committedAt, nowMs, language)}
                               </span>
                             </span>
                           </TooltipTrigger>
-                          <TooltipPopup side="right" className="max-w-80">
-                            {commit.subject}
-                          </TooltipPopup>
+                          <TooltipPopup side="right">{commit.subject}</TooltipPopup>
                         </Tooltip>
                         {commitUrl ? (
                           <DropdownMenuItem
@@ -1008,18 +1015,16 @@ export default function DiffPanel({
                 selectBranchBaseRef(value === AUTOMATIC_BASE_REF ? null : value);
               }}
             >
-              <ComboboxTrigger
-                render={<Button variant="ghost-muted" size="xs" />}
-                className="min-w-9 max-w-48 shrink-0"
-                aria-label={`Change comparison target. Currently ${comparisonBaseRef}`}
-              >
-                <span className="min-w-0 truncate">{comparisonBaseRef}</span>
-                <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-              </ComboboxTrigger>
-              <ComboboxPopup
-                align="start"
-                className="w-72 min-w-0 max-w-[calc(100vw-1rem)] overflow-hidden"
-              >
+              <span className="inline-flex min-w-0 min-w-9 max-w-48 shrink-0">
+                <ComboboxTrigger
+                  render={<Button variant="ghost-muted" size="xs" />}
+                  aria-label={`Change comparison target. Currently ${comparisonBaseRef}`}
+                >
+                  <span className="min-w-0 truncate">{comparisonBaseRef}</span>
+                  <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+                </ComboboxTrigger>
+              </span>
+              <ComboboxPopup align="start" width="diff">
                 <ComboboxSearchInput
                   placeholder={t("Search refs...")}
                   value={baseRefQuery}
@@ -1033,11 +1038,8 @@ export default function DiffPanel({
                   </div>
                 </div>
                 <ComboboxEmpty>No matching refs.</ComboboxEmpty>
-                <ComboboxList className="max-h-64 min-w-0 overflow-x-hidden">
-                  <ComboboxItem
-                    className="w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)]"
-                    value={AUTOMATIC_BASE_REF}
-                  >
+                <ComboboxList limit="compact">
+                  <ComboboxItem layout="branch" value={AUTOMATIC_BASE_REF}>
                     <span className="block min-w-0 truncate">Automatic</span>
                   </ComboboxItem>
                   {baseRefChoices.map((choice) => {
@@ -1045,11 +1047,7 @@ export default function DiffPanel({
                     const hasBoth = choice.local !== null && choice.remote !== null;
                     const useRemote = choice.remote?.name === item;
                     return (
-                      <ComboboxItem
-                        key={choice.id}
-                        className="w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)]"
-                        value={item}
-                      >
+                      <ComboboxItem key={choice.id} layout="branch" value={item}>
                         <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center overflow-hidden">
                           <span className="block min-w-0 truncate pe-2">{choice.label}</span>
                           {hasBoth ? (
@@ -1061,7 +1059,7 @@ export default function DiffPanel({
                               <Switch
                                 aria-label={`Use remote version of ${choice.label}`}
                                 checked={useRemote}
-                                className="[--thumb-size:--spacing(3)]"
+                                size="compact"
                                 onCheckedChange={(checked) => {
                                   const nextRef = checked
                                     ? choice.remote?.name
@@ -1153,25 +1151,26 @@ export default function DiffPanel({
             </TooltipPopup>
           </Tooltip>
         )}
-        <ToggleGroup
-          aria-label={t("Diff layout")}
-          className="shrink-0"
-          variant="segmented"
-          value={[diffLayout]}
-          onValueChange={(value) => {
-            const next = value[0];
-            if (next === "stacked" || next === "split") {
-              updateClientSettings({ diffLayout: next });
-            }
-          }}
-        >
-          <Toggle aria-label={t("Stacked diff view")} value="stacked">
-            <Rows3Icon className="size-3.5" />
-          </Toggle>
-          <Toggle aria-label={t("Split diff view")} value="split">
-            <Columns2Icon className="size-3.5" />
-          </Toggle>
-        </ToggleGroup>
+        <span className="inline-flex min-w-0 shrink-0">
+          <ToggleGroup
+            aria-label={t("Diff layout")}
+            variant="segmented"
+            value={[diffLayout]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (next === "stacked" || next === "split") {
+                updateClientSettings({ diffLayout: next });
+              }
+            }}
+          >
+            <Toggle aria-label={t("Stacked diff view")} value="stacked">
+              <Rows3Icon className="size-3.5" />
+            </Toggle>
+            <Toggle aria-label={t("Split diff view")} value="split">
+              <Columns2Icon className="size-3.5" />
+            </Toggle>
+          </ToggleGroup>
+        </span>
         <Tooltip>
           <TooltipTrigger
             render={

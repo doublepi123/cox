@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
-import { ModelSwitchRow } from "./V2LifecycleRow";
+import { FreshSessionRow, ModelSwitchRow } from "./V2LifecycleRow";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import { AttachmentImage } from "../media/AttachmentImage";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -261,6 +261,7 @@ export function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mes
   const modelSwitch = item?.type === "user_message" ? item.modelSwitch : undefined;
   return (
     <>
+      {item?.type === "user_message" && item.freshContext ? <FreshSessionRow /> : null}
       {modelSwitch ? (
         <ModelSwitchRow environmentId={ctx.activeThreadEnvironmentId} modelSwitch={modelSwitch} />
       ) : null}
@@ -1170,17 +1171,18 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
       {showCollapseControl ? (
         <div className="mt-1.5 flex items-center justify-end gap-2" data-user-message-footer="true">
           {showCollapseControl ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost-muted"
-              aria-expanded={expanded}
-              data-scroll-anchor-ignore
-              onClick={() => setExpanded((value) => !value)}
-              className="-ml-1"
-            >
-              {expanded ? "Show less" : "Show full message"}
-            </Button>
+            <span className="inline-flex min-w-0 -ml-1">
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost-muted"
+                aria-expanded={expanded}
+                data-scroll-anchor-ignore
+                onClick={() => setExpanded((value) => !value)}
+              >
+                {expanded ? "Show less" : "Show full message"}
+              </Button>
+            </span>
           ) : null}
         </div>
       ) : null}

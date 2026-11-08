@@ -2058,7 +2058,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             yield* deliver;
             const retried = offeredMessages.at(-1)!.message.content;
             assert.notInclude(JSON.stringify(retried), '"type":"document"');
-            assert.include(JSON.stringify(retried), documentPath);
+            assert.include(JSON.stringify(retried), JSON.stringify(documentPath).slice(1, -1));
             assert.isBelow(Buffer.byteLength(JSON.stringify(offeredMessages)), 32_000_000);
             return;
           }
@@ -2107,7 +2107,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                 typeof sent === "string" ? [] : sent.filter((block) => block.type === "image"),
                 budget === "partial-images" ? 1 : 0,
               );
-              assert.include(JSON.stringify(sent), imagePath);
+              assert.include(JSON.stringify(sent), JSON.stringify(imagePath).slice(1, -1));
               yield* runtime.steerTurn({
                 threadId,
                 runId: RunId.make("run-claude-attachments"),
@@ -2126,7 +2126,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   : steered.filter((block) => block.type === "image"),
                 0,
               );
-              assert.include(JSON.stringify(steered), imagePath);
+              assert.include(JSON.stringify(steered), JSON.stringify(imagePath).slice(1, -1));
               assert.isBelow(
                 Buffer.byteLength(
                   JSON.stringify(offeredMessages.map((message) => message.message)),
@@ -2188,7 +2188,7 @@ describe("ClaudeAdapterV2 attachments", () => {
               0,
               budget,
             );
-            assert.include(JSON.stringify(sent), documentPath);
+            assert.include(JSON.stringify(sent), JSON.stringify(documentPath).slice(1, -1));
             return;
           }
           if (!resumed) {
@@ -2401,7 +2401,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             );
             if (scenario === "text-only")
               assert.equal(sent, ultrathink ? "Ultrathink:\nContinue." : "Continue.");
-            else assert.include(JSON.stringify(sent), documentPath);
+            else assert.include(JSON.stringify(sent), JSON.stringify(documentPath).slice(1, -1));
           }
         }).pipe(
           Effect.provide(
@@ -4607,8 +4607,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           "false",
         );
 
-        // Claude Code keeps the local file at the repository root, the main checkout's root in a
-        // worktree, and that file beats the user's settings.
         const repo = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-repo-" });
         const worktree = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-wt-" });
         const worktreeGitDir = path.join(repo, ".git", "worktrees", "wt");
@@ -4626,11 +4624,23 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             `{"env":{"ENABLE_TOOL_SEARCH":"${value}"}}`,
           );
         const userAuto = '{"env":{"ENABLE_TOOL_SEARCH":"auto"}}';
+        const platform = yield* HostProcess.Platform;
         yield* rootLocal("auto");
-        assert.equal(yield* openedToolSearch("{}", worktree), "true");
+        assert.equal(yield* openedToolSearch("{}", repo), "true");
+        assert.equal(
+          yield* openedToolSearch("{}", worktree),
+          platform === "win32" ? undefined : "true",
+        );
         yield* rootLocal("false");
-        assert.isUndefined(yield* openedToolSearch(userAuto, worktree));
-        assert.isUndefined(yield* openedToolSearch(userAuto, path.join(repo, "packages", "app")));
+        assert.isUndefined(yield* openedToolSearch(userAuto, repo));
+        assert.equal(
+          yield* openedToolSearch(userAuto, worktree),
+          platform === "win32" ? "true" : undefined,
+        );
+        assert.equal(
+          yield* openedToolSearch(userAuto, path.join(repo, "packages", "app")),
+          platform === "win32" ? "true" : undefined,
+        );
 
         // Project settings beat user settings, and the process env applies only when no file sets it.
         const project = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-project-" });
@@ -8091,12 +8101,116 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     { autoCompactWindow: "200000", model: "claude-sonnet-4-6", threshold: undefined },
     { autoCompactWindow: "650000", model: "claude-sonnet-4-6", threshold: undefined },
     { autoCompactWindow: "650000", model: "uncatalogued-model", threshold: 617_000 },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      threshold: 467_000,
+    },
+    {
+      autoCompactWindow: "300000",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      threshold: 267_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      projectSettings: '{"autoCompactWindow":400000}',
+      threshold: 367_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings:
+        '{"autoCompactWindow":500000,"modelSettings":{"claude-opus-5-5":{"autoCompactWindow":450000}}}',
+      threshold: 417_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      projectSettings: '{"modelSettings":{"claude-opus-5-5":{"autoCompactWindow":"auto"}}}',
+      threshold: undefined,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      launchArgs: `--settings '{"autoCompactWindow":350000}'`,
+      threshold: 317_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":"invalid"}',
+      threshold: undefined,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000,}',
+      threshold: undefined,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{/* invalid */ "autoCompactWindow":500000}',
+      threshold: undefined,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000,"modelSettings":null}',
+      threshold: 467_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      projectSettings: '{"autoCompactWindow":"auto"}',
+      threshold: 467_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      projectSettings: '{"autoCompactWindow":50000}',
+      threshold: 467_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings:
+        '{"autoCompactWindow":500000,"modelSettings":{"claude-opus-5-5":{"autoCompactWindow":50000}}}',
+      threshold: 467_000,
+    },
   ])(
     "ignores stale snapshots after compaction and reports threshold $autoCompactWindow for $model",
-    ({ autoCompactWindow, model, threshold }) =>
+    ({ autoCompactWindow, model, threshold, userSettings, projectSettings, launchArgs }) =>
       Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-compact-" });
+        const project = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-compact-" });
+        if (userSettings !== undefined) {
+          yield* fileSystem.writeFileString(path.join(home, "settings.json"), userSettings);
+        }
+        if (projectSettings !== undefined) {
+          yield* fileSystem.makeDirectory(path.join(project, ".claude"));
+          yield* fileSystem.writeFileString(
+            path.join(project, ".claude", "settings.json"),
+            projectSettings,
+          );
+        }
         const harness = yield* makeWakeHarnessWithOptions({
-          settings: { ...DEFAULT_CLAUDE_SETTINGS, autoCompactWindow },
+          settings: {
+            ...DEFAULT_CLAUDE_SETTINGS,
+            autoCompactWindow,
+            homePath: home,
+            launchArgs: launchArgs ?? "",
+          },
         });
         yield* harness.runtime.startTurn(
           makeClaudeTestTurnInput({
@@ -8107,6 +8221,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             text: "Continue.",
             attachments: [],
             modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model },
+            runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+              ...CLAUDE_TEST_RUNTIME_POLICY,
+              cwd: project,
+            }),
           }),
         );
         const usage = { ...zeroUsage, input_tokens: 1_000, output_tokens: 75 };
@@ -8145,6 +8263,89 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+  );
+
+  it.effect("reports the settings directory of a reused Claude query", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-home-" });
+      const first = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-first-" });
+      const second = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-second-" });
+      for (const [directory, window] of [
+        [first, 150_000],
+        [second, 180_000],
+      ] as const) {
+        yield* fileSystem.makeDirectory(path.join(directory, ".claude"));
+        yield* fileSystem.writeFileString(
+          path.join(directory, ".claude", "settings.json"),
+          JSON.stringify({ autoCompactWindow: window }),
+        );
+      }
+      const harness = yield* makeWakeHarnessWithOptions({
+        settings: { ...DEFAULT_CLAUDE_SETTINGS, homePath: home },
+      });
+      let firstOptions: ReturnType<typeof harness.getOpenedOptions>;
+      for (const [ordinal, cwd] of [
+        [1, first],
+        [2, second],
+      ] as const) {
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`attempt-compact-cwd-${ordinal}`),
+            providerTurnOrdinal: ordinal,
+            text: "Continue.",
+            attachments: [],
+            runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+              ...CLAUDE_TEST_RUNTIME_POLICY,
+              cwd,
+            }),
+          }),
+        );
+        if (ordinal === 1) firstOptions = harness.getOpenedOptions();
+        else assert.strictEqual(harness.getOpenedOptions(), firstOptions);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          usageSnapshotFrame(
+            `msg_cwd_${ordinal}`,
+            `00000000-0000-4000-8000-00000000080${ordinal}`,
+            {
+              ...zeroUsage,
+              input_tokens: 1_000,
+              output_tokens: 10,
+            },
+          ),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({
+            uuid: `00000000-0000-4000-8000-00000000081${ordinal}`,
+            result: "Done.",
+          }),
+        );
+        assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+      }
+      assert.deepEqual(
+        harness.events.flatMap((event) =>
+          event.type === "provider_turn.updated" && event.providerTurn.tokenUsage
+            ? [event.providerTurn.tokenUsage.autoCompactThreshold]
+            : [],
+        ),
+        [117_000, 117_000],
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
   );
 
   it.effect("shows a hook-dropped Claude prompt once and skips info-level lines", () =>

@@ -209,17 +209,15 @@ export function SourceControlWritingSettingsSection() {
               });
             }}
           >
-            <SelectTrigger
-              size="sm"
-              className="w-full sm:w-56"
-              aria-label={t("Source control writing style")}
-            >
-              <SelectValue>
-                {(value: SourceControlWritingStyleMode | null) =>
-                  value === null ? t("Mixed") : t(MODE_OPTIONS[value].label)
-                }
-              </SelectValue>
-            </SelectTrigger>
+            <div className="min-w-0 w-full sm:w-56">
+              <SelectTrigger fill size="sm" aria-label={t("Source control writing style")}>
+                <SelectValue>
+                  {(value: SourceControlWritingStyleMode | null) =>
+                    value === null ? t("Mixed") : t(MODE_OPTIONS[value].label)
+                  }
+                </SelectValue>
+              </SelectTrigger>
+            </div>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               {(Object.keys(MODE_OPTIONS) as SourceControlWritingStyleMode[]).map((mode) => (
                 <SelectItem key={mode} hideIndicator value={mode}>

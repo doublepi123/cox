@@ -166,6 +166,33 @@ function isJsonArray(value: Schema.Json | undefined): value is ReadonlyArray<Sch
   return Array.isArray(value);
 }
 
+const DATA_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
+
+function mapSubschemas(
+  value: { readonly [key: string]: Schema.Json },
+  transform: (schema: Schema.Json) => Schema.Json,
+): Record<string, Schema.Json> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => {
+      if (DATA_KEYWORDS.has(key)) return [key, child];
+      if (
+        key === "properties" &&
+        child !== null &&
+        typeof child === "object" &&
+        !isJsonArray(child)
+      ) {
+        return [
+          key,
+          Object.fromEntries(
+            Object.entries(child).map(([name, schema]) => [name, transform(schema)]),
+          ),
+        ];
+      }
+      return [key, isJsonArray(child) ? child.map(transform) : transform(child)];
+    }),
+  );
+}
+
 function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
   if (isJsonArray(value)) {
     return value.map(normalizeSchemaKeywords);
@@ -174,11 +201,7 @@ function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
     return value;
   }
 
-  const normalizedEntries = Object.entries(value).map(([key, child]) => [
-    key,
-    normalizeSchemaKeywords(child),
-  ]);
-  const normalizedObject = Object.fromEntries(normalizedEntries) as Record<string, Schema.Json>;
+  const normalizedObject = mapSubschemas(value, normalizeSchemaKeywords);
   // ACP's forward-compatible variants exclude known discriminator values.
   // The Effect generator does not support `not`; express this exact exclusion
   // as a string pattern while preserving validation of the known variants.
@@ -316,9 +339,7 @@ function flattenCompositions(
 ): Schema.Json {
   if (isJsonArray(value)) return value.map((child) => flattenCompositions(child, definitions));
   if (value === null || typeof value !== "object") return value;
-  const normalized = Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, flattenCompositions(child, definitions)]),
-  );
+  const normalized = mapSubschemas(value, (child) => flattenCompositions(child, definitions));
   const { allOf, anyOf, ...base } = normalized;
   const merge = (left: Schema.Json, right: Schema.Json): Schema.Json => {
     if (

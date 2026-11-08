@@ -14,6 +14,7 @@ import * as Tracer from "effect/Tracer";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { beforeEach } from "vite-plus/test";
+import { settingsSecretLiteral } from "@t3tools/contracts";
 
 import { OpenCodeSettings } from "../settings.ts";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
@@ -481,8 +482,8 @@ const layerTest = Layer.succeed(OpenCodeRuntime.OpenCodeRuntime, OpenCodeRuntime
   Layer.provideMerge(NodeServices.layer),
 );
 
-const makeOpenCodeSettings = (overrides?: Partial<OpenCodeSettings>): OpenCodeSettings =>
-  decodeOpenCodeSettings({
+const makeOpenCodeSettings = (overrides?: Partial<OpenCodeSettings>) => {
+  const settings = decodeOpenCodeSettings({
     enabled: true,
     binaryPath: "opencode",
     serverUrl: "",
@@ -490,9 +491,11 @@ const makeOpenCodeSettings = (overrides?: Partial<OpenCodeSettings>): OpenCodeSe
     customModels: [],
     ...overrides,
   });
+  return { ...settings, serverPassword: settingsSecretLiteral(settings.serverPassword) };
+};
 
 const checkProvider = Effect.fn("checkProvider")(function* (
-  settings: OpenCodeSettings,
+  settings: ReturnType<typeof makeOpenCodeSettings>,
   cwd = process.cwd(),
   environment?: NodeJS.ProcessEnv,
   server = replayOpenCodeServer(OPENCODE_1_RESPONSES, settings.serverPassword),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import { type CommandId, ProjectId } from "./baseSchemas.ts";
+import { SecretProviderId } from "./secretReference.ts";
 import {
   ProviderDriverKind,
   ProviderInstanceEnvironment,
@@ -15,6 +16,7 @@ import {
   globalIdleCompaction,
   idleCompactionPatch,
   requiredScopesForProjectMutation,
+  requiredScopesForServerSettingsPatch,
   resolveIdleCompaction,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
@@ -150,6 +152,13 @@ describe("ServerSettings usage price overrides", () => {
 });
 
 describe("ServerSettings secret providers", () => {
+  it("requires settings authority as well as provider management when removing a secret provider", () => {
+    expect(
+      requiredScopesForServerSettingsPatch({
+        secretProviders: { [SecretProviderId.make("personal")]: null },
+      }),
+    ).toEqual(["settings:write", "providers:manage"]);
+  });
   const onePassword = (account: string) => ({
     kind: "one_password",
     label: "Personal",

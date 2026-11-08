@@ -39,11 +39,12 @@ function Toggle({
   className,
   variant,
   size,
+  wide = false,
   ...props
-}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
+}: TogglePrimitive.Props & VariantProps<typeof toggleVariants> & { wide?: boolean }) {
   return (
     <TogglePrimitive
-      className={cn(toggleVariants({ className, size, variant }))}
+      className={cn(toggleVariants({ size, variant }), wide && "min-w-10", className)}
       data-slot="toggle"
       {...props}
     />

@@ -1,6 +1,7 @@
 import type { SdkCredentialStore } from "@cursor/sdk";
 import { ProviderSetupError, type ProviderInstanceId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -89,4 +90,22 @@ export const makeCursorCredentialStore = Effect.fn("makeCursorCredentialStore")(
     clear: () => runPromise(credentials.remove),
   };
   return { store, binding: credentials.binding };
+});
+
+export const readStoredCursorApiKey = Effect.fn("readStoredCursorApiKey")(function* (
+  instanceId: ProviderInstanceId,
+) {
+  const stored = yield* (yield* (yield* ProviderHost.ProviderHost).credentials(
+    "cursor",
+    instanceId,
+  )).get;
+  if (Option.isNone(stored)) return undefined;
+  const credentials = yield* decodeCredentials(new TextDecoder().decode(stored.value)).pipe(
+    Effect.option,
+  );
+  if (Option.isNone(credentials)) return undefined;
+  const { apiKey, apiKeyExpiresAtMs } = credentials.value;
+  return apiKeyExpiresAtMs === undefined || apiKeyExpiresAtMs > (yield* Clock.currentTimeMillis)
+    ? apiKey
+    : undefined;
 });

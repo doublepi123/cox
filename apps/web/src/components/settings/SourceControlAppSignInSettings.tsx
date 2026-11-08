@@ -103,7 +103,8 @@ export function SourceControlAppSignInSettings({
     readHostCredentialSettings(settings, definition.kind),
   );
   const signedIn = (signIns[host] ?? "").length > 0;
-  const tokenOverrides = (tokens[host] ?? "").length > 0;
+  const token = tokens[host];
+  const tokenOverrides = typeof token === "string" ? token.length > 0 : token !== undefined;
   const canSignIn = useAtomValue(
     sourceControlEnvironment.startSignIn.permissionAtom(environmentId),
   );

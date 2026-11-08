@@ -319,15 +319,16 @@ export function ProviderModelsSection({
     <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {showFilter ? (
-          <Input
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder={t("Filter models")}
-            size="sm"
-            className="w-56 max-w-full"
-            spellCheck={false}
-            aria-label={t("Filter models")}
-          />
+          <div className="min-w-0 w-56 max-w-full">
+            <Input
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder={t("Filter models")}
+              size="sm"
+              spellCheck={false}
+              aria-label={t("Filter models")}
+            />
+          </div>
         ) : null}
         <div className="flex items-center gap-2">
           {builtInModels.length > 0 ? (
@@ -356,17 +357,18 @@ export function ProviderModelsSection({
           </span>
         </div>
         {driverKind !== "antigravity" && !isAdding ? (
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost-muted"
-            // The ghost padding would inset the label from the column edge the toggles align to.
-            className="-me-2 ml-auto"
-            onClick={() => setIsAdding(true)}
-          >
-            <PlusIcon className="size-3" />
-            {t("Add custom model")}
-          </Button>
+          <span className="inline-flex min-w-0 -me-2 ml-auto">
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost-muted"
+              // The ghost padding would inset the label from the column edge the toggles align to.
+              onClick={() => setIsAdding(true)}
+            >
+              <PlusIcon className="size-3" />
+              {t("Add custom model")}
+            </Button>
+          </span>
         ) : null}
       </div>
       <div

@@ -19,6 +19,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Socket from "effect/socket/Socket";
 
@@ -370,6 +371,35 @@ describe("RpcSessionFactory", () => {
 
       expect(sockets[0]?.readyState).toBe(TestWebSocket.CLOSED);
     }),
+  );
+
+  it.effect("ends a stream at once when its socket closes", () =>
+    Effect.gen(function* () {
+      const { factory, sockets } = yield* makeFactory();
+      const session = yield* factory.connect(PREPARED);
+      const readyFiber = yield* Effect.forkChild(session.ready);
+      const socket = yield* awaitSocket(sockets);
+      socket.open();
+      yield* completeInitialConfig(socket);
+      yield* Fiber.join(readyFiber);
+      const ended = yield* Effect.forkChild(
+        Effect.raceFirst(
+          Effect.flip(session.closed),
+          session.client[WS_METHODS.subscribeServerLifecycle]({}).pipe(
+            Stream.runDrain,
+            Effect.andThen(Effect.never),
+          ),
+        ),
+      );
+      yield* awaitRequest(socket, 1);
+      socket.close(1006);
+      yield* TestClock.adjust("999 millis");
+
+      expect(ended.pollUnsafe()).toBeDefined();
+      const lateProbe = yield* Effect.forkChild(session.probe);
+      yield* TestClock.adjust("999 millis");
+      expect(lateProbe.pollUnsafe()?._tag).toBe("Failure");
+    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
   it.effect("replays current config and broadcasts updates to every subscriber", () =>

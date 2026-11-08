@@ -44,7 +44,7 @@ function SheetViewport({
   ...props
 }: SheetPrimitive.Viewport.Props & {
   side?: "right" | "left" | "top" | "bottom";
-  variant?: "default" | "inset" | "sidebar";
+  variant?: "default" | "inset" | "sidebar" | "right-panel";
 }) {
   return (
     <SheetPrimitive.Viewport
@@ -78,7 +78,7 @@ function SheetPopup({
   keepMounted?: boolean;
   transitionDurationMs?: number;
   side?: "right" | "left" | "top" | "bottom";
-  variant?: "default" | "inset" | "sidebar";
+  variant?: "default" | "inset" | "sidebar" | "right-panel";
 }) {
   const { t } = useTranslation();
   const transitionStyle =
@@ -106,6 +106,8 @@ function SheetPopup({
               "before:hidden sm:rounded-2xl sm:border sm:before:rounded-[calc(var(--radius-2xl)-1px)] sm:**:data-[slot=sheet-footer]:rounded-b-[calc(var(--radius-2xl)-1px)]",
             variant === "sidebar" &&
               "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
+            variant === "right-panel" &&
+              "w-[min(42vw,28rem)] min-w-80 max-w-[28rem] max-[760px]:w-[min(88vw,24rem)] max-[760px]:min-w-0 max-sm:w-full max-sm:max-w-none max-sm:border-s-0 wco:mt-(--workspace-topbar-height) wco:h-[calc(100%-var(--workspace-topbar-height))] wco:max-h-[calc(100%-var(--workspace-topbar-height))]",
             instant &&
               "transition-none! will-change-auto! data-ending-style:translate-x-0! data-starting-style:translate-x-0! data-ending-style:translate-y-0! data-starting-style:translate-y-0! data-ending-style:opacity-100! data-starting-style:opacity-100!",
             className,

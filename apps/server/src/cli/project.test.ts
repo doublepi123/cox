@@ -375,20 +375,20 @@ it.layer(NodeServices.layer)("project deletion with native V2 threads", (it) => 
 });
 
 it.layer(NodeServices.layer)("project lookup with unavailable workspaces", (it) => {
-  it.effect.each(["id", "stored path"] as const)(
+  it.effect.each(["id", "stored path", "relative path", "path with a trailing separator"] as const)(
     "removes an empty project by %s after its directory is gone",
     (identifier) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
         yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
-        yield* runCli([
-          "project",
-          "remove",
-          identifier === "id" ? project.id : workspaceRoot,
-          "--base-dir",
-          baseDir,
-        ]);
+        const target = {
+          id: project.id,
+          "stored path": workspaceRoot,
+          "relative path": NodePath.relative(process.cwd(), workspaceRoot),
+          "path with a trailing separator": `${workspaceRoot}${NodePath.sep}`,
+        }[identifier];
+        yield* runCli(["project", "remove", target, "--base-dir", baseDir]);
         assert.deepEqual((yield* readProjects(baseDir)).projects, []);
         assert.isFalse(yield* fs.exists(workspaceRoot));
       }),

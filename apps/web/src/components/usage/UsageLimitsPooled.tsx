@@ -202,15 +202,16 @@ function SegmentPopover({
         <div className="border-t border-border/60 pt-2.5 text-muted-foreground">
           <span className="flex items-center gap-3">
             <span className="tabular-nums">{resetCreditsSummary(credits, now, true)}</span>
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={redeem.busy || !redeem.canManageProviders}
-              className="ms-auto"
-              onClick={onRedeem}
-            >
-              {redeem.busy ? "Using…" : "Use reset"}
-            </Button>
+            <span className="inline-flex min-w-0 ms-auto">
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={redeem.busy || !redeem.canManageProviders}
+                onClick={onRedeem}
+              >
+                {redeem.busy ? "Using…" : "Use reset"}
+              </Button>
+            </span>
           </span>
         </div>
       ) : null}
@@ -455,43 +456,44 @@ function LegendRow({
   const resetsIn = formatResetsIn(window, now);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   return (
-    <PopoverTrigger
-      handle={popover}
-      payload={payload}
-      style={{ gridColumn: "1 / -1", gridRow: index + 1 }}
-      render={<Button variant="ghost" size="compact" />}
-      className="min-w-0 @2xl/pool:hidden"
-    >
-      <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
-        <span
-          aria-hidden
-          className="absolute inset-0 rounded-sm opacity-35"
-          style={{ backgroundColor: color }}
-        />
-        <span className="sr-only">{translateUi("Segment")} </span>
-        <span className="relative">{index}</span>
-      </span>
-      <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
-      <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
-      <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
-        {resetsIn?.replace("resets in ", "↻ ") ?? ""}
-        {credits ? (
-          <>
-            {resetsIn ? <span aria-hidden>·</span> : null}
-            <span
-              aria-hidden
-              className="inline-flex items-center gap-0.5 font-semibold text-foreground"
-            >
-              <TicketIcon className="size-3" aria-hidden />
-              {credits}
-            </span>
-            <span className="sr-only">
-              {credits} reset {credits === 1 ? "credit" : "credits"} banked
-            </span>
-          </>
-        ) : null}
-      </span>
-    </PopoverTrigger>
+    <span className="inline-flex min-w-0 @2xl/pool:hidden">
+      <PopoverTrigger
+        handle={popover}
+        payload={payload}
+        style={{ gridColumn: "1 / -1", gridRow: index + 1 }}
+        render={<Button variant="ghost" size="compact" />}
+      >
+        <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-sm opacity-35"
+            style={{ backgroundColor: color }}
+          />
+          <span className="sr-only">{translateUi("Segment")} </span>
+          <span className="relative">{index}</span>
+        </span>
+        <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
+        <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
+        <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
+          {resetsIn?.replace("resets in ", "↻ ") ?? ""}
+          {credits ? (
+            <>
+              {resetsIn ? <span aria-hidden>·</span> : null}
+              <span
+                aria-hidden
+                className="inline-flex items-center gap-0.5 font-semibold text-foreground"
+              >
+                <TicketIcon className="size-3" aria-hidden />
+                {credits}
+              </span>
+              <span className="sr-only">
+                {credits} reset {credits === 1 ? "credit" : "credits"} banked
+              </span>
+            </>
+          ) : null}
+        </span>
+      </PopoverTrigger>
+    </span>
   );
 }
 
@@ -653,7 +655,6 @@ export function UsageLimitsPooled({
           ) : null
         }
       </Popover>
-      {cursorPromptAt === pools.length ? cursorPrompt : null}
       {externalLinks.map((link) => (
         <section
           key={link.url}
@@ -702,9 +703,7 @@ function LimitNotices({ notices }: { readonly notices: readonly string[] }) {
     <Alert variant="warning" controlAlignment="first-line">
       <AlertTriangleIcon />
       {notices.map((notice) => (
-        <AlertTitle key={notice} className="break-words">
-          {notice}
-        </AlertTitle>
+        <AlertTitle key={notice}>{notice}</AlertTitle>
       ))}
     </Alert>
   );

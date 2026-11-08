@@ -940,7 +940,7 @@ function RenderedMarkdownSurface({
   useFileSaveSession(saveTarget, onPendingChange);
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <ScrollArea sizing="flex">
       <FileMarkdownPreview
         text={contents}
         cwd={cwd}
@@ -1231,7 +1231,7 @@ export default function FilePreviewPanel({
     if (fileAccess.isPending) {
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4" />
+          <Spinner size="md" />
           {t("Checking file access...")}
         </div>
       );
@@ -1252,7 +1252,7 @@ export default function FilePreviewPanel({
             ref={breadcrumbRef}
             hideScrollbars
             scrollFade
-            className="min-w-0 flex-1"
+            sizing="flex"
             data-file-breadcrumbs
           >
             <div className="flex h-full w-max min-w-full items-center text-xs">

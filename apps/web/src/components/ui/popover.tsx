@@ -44,6 +44,7 @@ function PopoverPopup({
   keepMounted = false,
   anchor,
   touchBackdrop = false,
+  presentation = "default",
   ...props
 }: PopoverPrimitive.Popup.Props & {
   padding?: keyof typeof popoverViewportPaddingClassName;
@@ -58,6 +59,14 @@ function PopoverPopup({
   anchor?: PopoverPrimitive.Positioner.Props["anchor"];
   width?: keyof typeof popoverPopupWidthClassName;
   touchBackdrop?: boolean;
+  presentation?:
+    | "default"
+    | "details"
+    | "banner"
+    | "approval"
+    | "model-picker"
+    | "passive"
+    | "base-branch";
 }) {
   // Viewport rekeys on close; persistent single-trigger forms need stable containers for drafts and submit
   // guards.
@@ -78,7 +87,8 @@ function PopoverPopup({
         collisionAvoidance={collisionAvoidance}
         collisionPadding={variant === "panel" ? 0 : undefined}
         className={cn(
-          "h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-transform data-instant:transition-none",
+          "h-(--positioner-height) w-(--positioner-width) max-w-(--available-width)",
+          !keepMounted && "transition-transform data-instant:transition-none",
           variant === "panel"
             ? "z-(--z-sheet) w-[min(calc(var(--thread-details-panel-width)+--spacing(4)),calc(var(--anchor-width)---spacing(2)))] transition-[top] duration-150 ease-out data-instant:transition-[top] motion-reduce:transition-none motion-reduce:data-instant:transition-none"
             : "z-[130]",
@@ -92,6 +102,7 @@ function PopoverPopup({
           className={cn(
             "relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) rounded-lg text-popover-foreground outline-none transition-[width,height,scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-[slot=calendar]:rounded-xl has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             variant !== "panel" && "dropdown-glass",
+            "[-webkit-app-region:no-drag]",
             tooltipStyle &&
               "w-fit text-balance rounded-md text-xs shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]",
             !tooltipStyle &&
@@ -100,6 +111,13 @@ function PopoverPopup({
             width !== "auto" && ["max-w-[calc(100vw-2rem)]", popoverPopupWidthClassName[width]],
             variant === "panel" &&
               "w-full overflow-visible rounded-none border-0 bg-transparent shadow-none before:hidden [backdrop-filter:none] [-webkit-backdrop-filter:none]",
+            presentation === "details" && "text-left whitespace-normal",
+            presentation === "banner" &&
+              "max-w-[min(30rem,calc(100vw-2rem))] whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full",
+            presentation === "approval" && "max-w-[min(22rem,calc(100vw-2rem))] whitespace-normal",
+            presentation === "model-picker" && "before:hidden",
+            presentation === "passive" && "pointer-events-none select-none",
+            presentation === "base-branch" && "max-w-80",
             className,
           )}
           data-slot="popover-popup"
@@ -129,10 +147,14 @@ function PopoverClose({ ...props }: PopoverPrimitive.Close.Props) {
   return <PopoverPrimitive.Close data-slot="popover-close" {...props} />;
 }
 
-function PopoverTitle({ className, ...props }: PopoverPrimitive.Title.Props) {
+function PopoverTitle({
+  className,
+  visuallyHidden = false,
+  ...props
+}: PopoverPrimitive.Title.Props & { visuallyHidden?: boolean }) {
   return (
     <PopoverPrimitive.Title
-      className={cn("font-semibold text-sm leading-none", className)}
+      className={cn("font-semibold text-sm leading-none", visuallyHidden && "sr-only", className)}
       data-slot="popover-title"
       {...props}
     />

@@ -46,7 +46,7 @@ export function TriageDraftHero(props: {
             render={
               <InlineButton
                 tone="muted"
-                className="pointer-events-auto"
+                interactive
                 onClick={() => copyToClipboard(TRIAGE_CLI_COMMAND, undefined)}
               />
             }

@@ -12,9 +12,9 @@ function NewThreadLinkRoute() {
   const parsed = parseNewThreadLink(search);
   if (!parsed.ok) {
     return (
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-        <Empty className="flex-1">
-          <EmptyHeader className="max-w-md">
+      <SidebarInset viewport="dynamic">
+        <Empty>
+          <EmptyHeader width="md">
             <EmptyTitle>{translateUi("Could not open the link")}</EmptyTitle>
             <EmptyDescription>{parsed.error}</EmptyDescription>
           </EmptyHeader>

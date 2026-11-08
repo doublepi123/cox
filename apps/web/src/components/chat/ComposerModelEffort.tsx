@@ -7,7 +7,7 @@ import {
 } from "@t3tools/client-runtime/model-traits";
 import type { ProviderOptionDescriptor, RuntimeMode } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
-import { CheckIcon, ChevronUpIcon } from "lucide-react";
+import { CheckIcon, ChevronUpIcon, WorkflowIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, use, useRef } from "react";
 
 import { cn } from "~/lib/utils";
@@ -35,11 +35,15 @@ function splitSpeed(
 ) {
   const speedSelect = selects.find((descriptor) => descriptor.id === "serviceTier") ?? null;
   const fastToggle = toggles.find((descriptor) => descriptor.id === "fastMode") ?? null;
+  const ultracodeToggle = toggles.find((descriptor) => descriptor.id === "ultracode") ?? null;
   return {
     speedSelect,
     fastToggle,
+    ultracodeToggle,
     columnSelects: selects.filter((descriptor) => descriptor !== speedSelect),
-    columnToggles: toggles.filter((descriptor) => descriptor !== fastToggle),
+    columnToggles: toggles.filter(
+      (descriptor) => descriptor !== fastToggle && descriptor !== ultracodeToggle,
+    ),
   };
 }
 
@@ -123,6 +127,7 @@ export function describeComposerEffort(
         {glyph && (display.speedLabel === "Fast" || display.speedLabel === "Ultrafast") ? (
           <FastBolt ultra={display.speedLabel === "Ultrafast"} />
         ) : null}
+        {display.ultracode ? <WorkflowIcon aria-hidden="true" className="size-3" /> : null}
         {glyph && display.otherLabels.length > 0 ? (
           <span
             // A label, so icon-only footers drop it; compacted rows drop it before the model.
@@ -505,6 +510,26 @@ function SpeedControl(props: { traits: TraitsSelectionInput }) {
 }
 
 /** Permissions change rarely, so the footer names the mode and nests the choice in a menu. */
+function UltracodeControl(props: { traits: TraitsSelectionInput }) {
+  const traits = useTraitsSelection(props.traits);
+  const sheet = use(DockedPickerContext).layout === "sheet";
+  const { ultracodeToggle } = splitSpeed(traits.selectDescriptors, traits.booleanDescriptors);
+  if (traits.modelIsUnavailable || !ultracodeToggle) return null;
+  const on = ultracodeToggle.currentValue === true;
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      data-checked={on || undefined}
+      className={sheet ? cn(SHEET_SEGMENT, "h-9 flex-none basis-auto px-3.5") : FOOTER_SEGMENT}
+      onClick={() => traits.changeBoolean(ultracodeToggle.id, !on)}
+    >
+      <WorkflowIcon aria-hidden="true" className="size-3" />
+      {ultracodeToggle.label}
+    </button>
+  );
+}
+
 function PermissionsMenu(props: {
   runtimeMode: RuntimeMode;
   options: ReadonlyArray<RuntimeModeOption>;
@@ -567,6 +592,7 @@ export function ComposerPickerFooter(props: {
       }
     >
       {props.traits ? <SpeedControl traits={props.traits} /> : null}
+      {props.traits ? <UltracodeControl traits={props.traits} /> : null}
       <PermissionsMenu
         runtimeMode={props.runtimeMode}
         options={props.runtimeModeOptions}

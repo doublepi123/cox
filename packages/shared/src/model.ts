@@ -72,6 +72,56 @@ export function withCodexUltraCapabilities(
   };
 }
 
+export function withClaudeUltracodeCapabilities(
+  capabilities: ModelCapabilities | null,
+): ModelCapabilities | null {
+  const descriptors = capabilities?.optionDescriptors ?? [];
+  const effortIndex = descriptors.findIndex(
+    (descriptor) =>
+      descriptor.id === "effort" &&
+      descriptor.type === "select" &&
+      descriptor.options.some((option) => option.id === "ultracode"),
+  );
+  const effort = descriptors[effortIndex];
+  if (effort?.type !== "select") return capabilities;
+  const ultracodeByDefault =
+    (effort.currentValue ?? effort.options.find((option) => option.isDefault)?.id) === "ultracode";
+  const hasXhigh = effort.options.some((option) => option.id === "xhigh");
+  const options = effort.options.flatMap(({ isDefault, ...option }) => {
+    if (option.id === "ultracode") {
+      return hasXhigh
+        ? []
+        : [{ id: "xhigh", label: "Extra High", ...(isDefault ? { isDefault } : {}) }];
+    }
+    if (ultracodeByDefault && option.id === "xhigh") return [{ ...option, isDefault: true }];
+    return [isDefault && !ultracodeByDefault ? { ...option, isDefault } : option];
+  });
+  return {
+    ...capabilities,
+    optionDescriptors: descriptors.toSpliced(
+      effortIndex,
+      1,
+      {
+        ...effort,
+        ...(effort.currentValue === "ultracode" ? { currentValue: "xhigh" } : {}),
+        options,
+      },
+      ...(descriptors.some(
+        (descriptor) => descriptor.id === "ultracode" && descriptor.type === "boolean",
+      )
+        ? []
+        : [
+            {
+              id: "ultracode",
+              label: "Ultracode",
+              type: "boolean" as const,
+              ...(ultracodeByDefault ? { currentValue: true } : {}),
+            },
+          ]),
+    ),
+  };
+}
+
 function getRawSelectionValueById(
   selections: ReadonlyArray<ProviderOptionSelection> | null | undefined,
   id: string,
@@ -238,12 +288,39 @@ function withDescriptorCurrentValue(
   };
 }
 
+export function withLegacyUltracodeEffort<
+  Selections extends ReadonlyArray<ProviderOptionSelection> | null | undefined,
+>(
+  descriptors: ReadonlyArray<ProviderOptionDescriptor> | null | undefined,
+  selections: Selections,
+): Selections | Array<ProviderOptionSelection> {
+  if (
+    !["ultracode", "ultra"].includes(String(getRawSelectionValueById(selections, "effort"))) ||
+    !descriptors?.some(
+      (descriptor) => descriptor.id === "ultracode" && descriptor.type === "boolean",
+    )
+  ) {
+    return selections;
+  }
+  return [
+    ...(selections ?? []).map((selection) =>
+      selection.id === "effort" && ["ultracode", "ultra"].includes(String(selection.value))
+        ? { id: "effort", value: "xhigh" }
+        : selection,
+    ),
+    ...(getRawSelectionValueById(selections, "ultracode") === undefined
+      ? [{ id: "ultracode", value: true }]
+      : []),
+  ];
+}
+
 export function getProviderOptionDescriptors(input: {
   caps: ModelCapabilities;
   selections?: ReadonlyArray<ProviderOptionSelection> | null | undefined;
 }): ReadonlyArray<ProviderOptionDescriptor> {
-  const { caps, selections } = input;
+  const { caps } = input;
   const baseDescriptors = (caps.optionDescriptors ?? []).map(cloneDescriptor);
+  const selections = withLegacyUltracodeEffort(baseDescriptors, input.selections);
 
   return baseDescriptors.map((descriptor) =>
     withDescriptorCurrentValue(
@@ -354,7 +431,9 @@ export function buildExplicitProviderOptionSelectionsFromDescriptors(
   if (!selections || selections.length === 0) {
     return undefined;
   }
-  const explicitIds = new Set(selections.map((selection) => selection.id));
+  const explicitIds = new Set(
+    withLegacyUltracodeEffort(descriptors, selections).map(({ id }) => id),
+  );
   const normalized = buildProviderOptionSelectionsFromDescriptors(descriptors)?.filter(
     (selection) => explicitIds.has(selection.id),
   );

@@ -345,13 +345,7 @@ export function SettingInheritance({
                 {hasMultipleEnvironments && groups.length > 1 ? (
                   <Collapsible>
                     <CollapsibleTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="sm-multiline"
-                          className="w-full justify-start text-left"
-                        />
-                      }
+                      render={<Button align="start" fill variant="ghost" size="sm-multiline" />}
                     >
                       <span className="flex w-full min-w-0 flex-col">
                         <span className="flex min-w-0 items-center gap-2">
@@ -437,10 +431,7 @@ export function SettingInheritance({
                           className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1"
                         >
                           <span className="flex min-w-0 flex-col items-start">
-                            <InlineButton
-                              className="min-w-0 max-w-full justify-start"
-                              onClick={project.open}
-                            >
+                            <InlineButton fit align="start" onClick={project.open}>
                               <span className="truncate">{project.label}</span>
                             </InlineButton>
                             {hasMultipleEnvironments ? (

@@ -164,8 +164,8 @@ function EnabledPullRequestThreadLinks({
       ) : null}
       {display === "picker" ? (
         <Dialog open onOpenChange={onPickerOpenChange}>
-          <DialogPopup className="max-w-md" showCloseButton={false}>
-            <DialogTitle className="sr-only">
+          <DialogPopup width="md" showCloseButton={false}>
+            <DialogTitle visuallyHidden>
               {t("Link")}
               {term} to a thread
             </DialogTitle>
@@ -219,7 +219,7 @@ function ThreadPicker({
   return (
     <Command mode="none" value={query} onValueChange={setQuery} aria-label="Choose a thread">
       <CommandInput placeholder={t("Search threads or projects...")} disabled={pending} />
-      <CommandList className="max-h-80 overflow-y-auto">
+      <CommandList maxHeight="threads">
         {candidates.length === 0 ? (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">
             No active threads found.

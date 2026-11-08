@@ -1,4 +1,4 @@
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind, settingsSecretLiteral } from "@t3tools/contracts";
 import { OpenCodeSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
@@ -228,7 +228,11 @@ export const OpenCodeDriver: ProviderDriver<
           documentationUrl: "https://opencode.ai/v2/docs/",
         },
       });
-    const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
+    const effectiveConfig = {
+      ...config,
+      enabled,
+      serverPassword: settingsSecretLiteral(config.serverPassword),
+    } satisfies OpenCodeSettings;
     const runtimeProbe = yield* makeOpenCodeRuntimeProbe(
       probeOpenCodeRuntime(effectiveConfig, processEnv).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient),

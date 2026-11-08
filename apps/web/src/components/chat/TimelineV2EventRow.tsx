@@ -86,12 +86,8 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
         <CollapsibleTrigger
           aria-label={label}
           aria-description={statusSummary}
-          className={cn(
-            "flex w-full min-w-0 items-center gap-2.5 py-2 pr-3.25 text-left transition-opacity hover:opacity-100",
-            expanded || summary.active
-              ? "text-foreground opacity-100"
-              : "text-muted-foreground opacity-55",
-          )}
+          variant="event-group"
+          emphasized={expanded || summary.active}
         >
           <span className="flex shrink-0 items-center -space-x-1.5" aria-hidden>
             {agents.slice(0, 3).map(({ item, status }) => (

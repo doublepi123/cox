@@ -28,6 +28,7 @@ export function RefreshIcon({
       aria-hidden
       ref={refreshing ? observeVisibleAnimation : undefined}
       className={cn(
+        "shrink-0",
         refreshIconVariants({ size }),
         refreshing && "motion-safe:visible-animate-spin",
         className,

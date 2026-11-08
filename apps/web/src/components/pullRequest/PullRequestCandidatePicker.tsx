@@ -103,14 +103,14 @@ export function PullRequestCandidatePicker<T>({
           </Button>
         }
       />
-      <ComboboxPopup align="start" side="bottom" className="w-72">
+      <ComboboxPopup align="start" side="bottom" width="md">
         <ComboboxSearchInput
           aria-label={searchLabel}
           placeholder={searchLabel}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
         />
-        <ComboboxList className="max-h-72">
+        <ComboboxList limit="candidates">
           {isPending ? (
             <PullRequestPeopleGhost rows={4} />
           ) : error !== null ? (

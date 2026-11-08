@@ -217,7 +217,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
               }
             </SelectValue>
           </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
+          <SelectPopup align="end" alignItemWithTrigger={false} width="details">
             <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
             <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
           </SelectPopup>
@@ -333,12 +333,12 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
                       : t(runtimeModeConfig[settings.defaultRuntimeMode].label)}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectPopup align="end" alignItemWithTrigger={false} width="details">
                   {runtimeModeOptions.map((mode) => {
                     const option = runtimeModeConfig[mode];
                     const Icon = option.icon;
                     return (
-                      <SelectItem key={mode} value={mode} className="min-w-64">
+                      <SelectItem key={mode} value={mode}>
                         <div className="grid gap-0.5">
                           <span className="inline-flex items-center gap-1.5 font-medium">
                             <Icon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -461,7 +461,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
                     }
                   </SelectValue>
                 </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectPopup align="end" alignItemWithTrigger={false} width="details">
                   <SelectItem value="last">{t("Last selected")}</SelectItem>
                   <SelectItem value="merge">{t(PULL_REQUEST_MERGE_METHOD_LABELS.merge)}</SelectItem>
                   <SelectItem value="squash">
@@ -531,7 +531,7 @@ export function WorktreeSubmodulesRow() {
               }
             </SelectValue>
           </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
+          <SelectPopup align="end" alignItemWithTrigger={false} width="details">
             {WORKTREE_SUBMODULES_OPTIONS.map((option) => (
               <SelectItem key={option} value={option}>
                 {t(WORKTREE_SUBMODULES_LABELS[option])}

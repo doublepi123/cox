@@ -19,14 +19,16 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useResizeDrag } from "~/hooks/useResizeDrag";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
-import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import {
+  getLocalStorageItem,
+  setLocalStorageItem,
+  writeLocalStorageValue,
+} from "~/hooks/useLocalStorage";
 import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
 import * as Schema from "effect/Schema";
 import { announceSidebarVisibility } from "~/lib/accessibilityAnnouncements";
 import { useHistoryBackDismiss } from "~/lib/historyBackDismiss";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "min(24rem, calc(100vw - 1rem))";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -106,13 +108,14 @@ function isMobileViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia(SIDEBAR_MOBILE_QUERY).matches;
 }
 
-async function persistSidebarOpen(open: boolean) {
-  await cookieStore.set({
-    expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
-    name: SIDEBAR_COOKIE_NAME,
-    path: "/",
-    value: String(open),
-  });
+function readStoredSidebarOpen(storageKey: string | undefined): boolean | null {
+  if (!storageKey) return null;
+  try {
+    return getLocalStorageItem(storageKey, Schema.Boolean);
+  } catch (error) {
+    console.error("Could not restore persisted sidebar state.", error);
+    return null;
+  }
 }
 
 // An offcanvas sidebar turns inert once collapsed, which drops focus to the body.
@@ -134,8 +137,11 @@ interface SidebarOpenState {
 }
 
 /** Per-provider open state, kept outside React so shortcuts can toggle it at event time. */
-function createSidebarOpenStore(defaultOpen: boolean) {
-  let state: SidebarOpenState = { open: defaultOpen, openMobile: false };
+function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undefined) {
+  let state: SidebarOpenState = {
+    open: readStoredSidebarOpen(storageKey) ?? defaultOpen,
+    openMobile: false,
+  };
   const listeners = new Set<() => void>();
   const collapseListeners = new Set<() => void>();
   const publish = (next: SidebarOpenState) => {
@@ -151,7 +157,7 @@ function createSidebarOpenStore(defaultOpen: boolean) {
       if (!isMobileViewport()) announceSidebarVisibility(open);
       publish({ ...state, open });
     }
-    void persistSidebarOpen(open);
+    if (storageKey) writeLocalStorageValue(storageKey, open, defaultOpen, Schema.Boolean);
   };
   const setOpenMobile = (openMobile: boolean) => {
     if (openMobile !== state.openMobile) publish({ ...state, openMobile });
@@ -178,15 +184,19 @@ function createSidebarOpenStore(defaultOpen: boolean) {
 
 function SidebarProvider({
   defaultOpen = true,
+  storageKey,
   className,
   style,
   children,
+  viewport = false,
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
+  storageKey?: string;
+  viewport?: boolean;
 }) {
   const isMobile = useMediaQuery(SIDEBAR_MOBILE_QUERY);
-  const [store] = React.useState(() => createSidebarOpenStore(defaultOpen));
+  const [store] = React.useState(() => createSidebarOpenStore(defaultOpen, storageKey));
   const { open, openMobile } = React.useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -217,6 +227,7 @@ function SidebarProvider({
       <div
         className={cn(
           "group/sidebar-wrapper flex min-h-svh w-full",
+          viewport && "h-dvh! min-h-0!",
           SIDEBAR_TITLEBAR_CONTROL_SIZE,
           className,
         )}
@@ -597,12 +608,19 @@ function SidebarInput({ className, ...props }: Omit<InputProps, "unstyled" | "va
   return <Input className={className} variant="sidebar" {...props} />;
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({
+  className,
+  viewport,
+  ...props
+}: React.ComponentProps<"main"> & { viewport?: "dynamic" | "small" }) {
   return (
     <main
       className={cn(
         "relative flex min-w-0 w-full flex-1 flex-col bg-background surface-grain group-data-[mobile-sheet=open]/sidebar-wrapper:isolate",
         "md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm/5",
+        viewport && "min-h-0 overflow-hidden overscroll-y-none",
+        viewport === "dynamic" && "h-dvh",
+        viewport === "small" && "h-svh md:h-dvh",
         className,
       )}
       data-slot="sidebar-inset"
@@ -646,9 +664,11 @@ function SidebarFooter({
 function SidebarContent({
   className,
   fixedHeader,
+  stretch = false,
   ...props
 }: React.ComponentProps<"div"> & {
   fixedHeader?: React.ReactNode;
+  stretch?: boolean;
 }) {
   return (
     <>
@@ -666,6 +686,7 @@ function SidebarContent({
             className={cn(
               "flex w-full min-w-0 flex-col [overflow-anchor:none] group-data-[collapsible=icon]:overflow-hidden [&>[data-sidebar=group]+[data-sidebar=group]]:pt-0",
               fixedHeader && "[&>[data-sidebar=group]:first-child]:pt-0",
+              stretch && "min-h-full",
               className,
             )}
             data-sidebar="content"
@@ -678,11 +699,18 @@ function SidebarContent({
   );
 }
 
-function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarGroup({
+  className,
+  layer = "default",
+  fill = false,
+  ...props
+}: React.ComponentProps<"div"> & { layer?: "default" | "header"; fill?: boolean }) {
   return (
     <div
       className={cn(
         "relative flex w-full min-w-0 flex-col p-[var(--sidebar-content-inset)]",
+        layer === "header" && "z-[1]",
+        fill && "flex-1",
         className,
       )}
       data-sidebar="group"
@@ -716,13 +744,20 @@ function SidebarMenu({
 function SidebarMenuItem({
   className,
   grow = false,
+  layout = "default",
   ...props
 }: React.ComponentProps<"li"> & {
   grow?: boolean;
+  layout?: "default" | "undo";
 }) {
   return (
     <li
-      className={cn("group/menu-item relative", grow && "min-w-0 flex-1 md:flex-none", className)}
+      className={cn(
+        "group/menu-item relative",
+        grow && "min-w-0 flex-1 md:flex-none",
+        layout === "undo" && "flex flex-1",
+        className,
+      )}
       data-sidebar="menu-item"
       data-slot="sidebar-menu-item"
       {...props}

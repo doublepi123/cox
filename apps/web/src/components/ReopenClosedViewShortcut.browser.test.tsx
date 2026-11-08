@@ -88,7 +88,6 @@ const snapshot = {
   canGoForward: false,
   updatedAt: "2026-09-22T12:00:00.000Z",
 } as const;
-let menuAction: ((action: string) => void) | undefined;
 
 function setup() {
   vi.clearAllMocks();

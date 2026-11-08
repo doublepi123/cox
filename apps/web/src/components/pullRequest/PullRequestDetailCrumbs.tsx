@@ -32,20 +32,21 @@ const ROW_CLASS_NAME =
 function BackButton({ onBack, focusable }: { onBack: () => void; focusable: boolean }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="icon-micro"
-            variant="ghost-muted"
-            {...(focusable ? {} : { tabIndex: -1 })}
-            onClick={onBack}
-            className="-ml-1.5"
-            aria-label="Back to this thread's pull requests"
-          >
-            <ArrowLeftIcon aria-hidden className="size-3.5" />
-          </Button>
-        }
-      />
+      <span className="inline-flex min-w-0 -ml-1.5">
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-micro"
+              variant="ghost-muted"
+              {...(focusable ? {} : { tabIndex: -1 })}
+              onClick={onBack}
+              aria-label="Back to this thread's pull requests"
+            >
+              <ArrowLeftIcon aria-hidden className="size-3.5" />
+            </Button>
+          }
+        />
+      </span>
       <TooltipPopup side="top">Back to pull requests</TooltipPopup>
     </Tooltip>
   );

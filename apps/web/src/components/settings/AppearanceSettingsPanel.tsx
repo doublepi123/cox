@@ -264,7 +264,7 @@ export function AppearanceSettingsPanel() {
                     updateSettings({ chatWidth: value });
                 }}
               >
-                <SelectTrigger size="sm" className="w-full min-w-0" aria-label={t("Chat width")}>
+                <SelectTrigger size="sm" fill aria-label={t("Chat width")}>
                   <SelectValue>{t(CHAT_WIDTH_LABELS[settings.chatWidth])}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -301,11 +301,7 @@ export function AppearanceSettingsPanel() {
                     updateSettings({ effortDisplay: value });
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full min-w-0"
-                  aria-label={t("Effort display")}
-                >
+                <SelectTrigger size="sm" fill aria-label={t("Effort display")}>
                   <SelectValue>{t(EFFORT_DISPLAY_LABELS[settings.effortDisplay])}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -432,13 +428,11 @@ export function AppearanceSettingsPanel() {
                   if (option) updateSettings({ environmentIdentificationMode: option[0] });
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full sm:w-40"
-                  aria-label={t("Environment identification")}
-                >
-                  <SelectValue>{t(environmentIdentificationLabel)}</SelectValue>
-                </SelectTrigger>
+                <div className="min-w-0 w-full sm:w-40">
+                  <SelectTrigger fill size="sm" aria-label={t("Environment identification")}>
+                    <SelectValue>{t(environmentIdentificationLabel)}</SelectValue>
+                  </SelectTrigger>
+                </div>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   {environmentIdentificationOptionList.map(([value, label]) => (
                     <SelectItem hideIndicator key={value} value={value}>

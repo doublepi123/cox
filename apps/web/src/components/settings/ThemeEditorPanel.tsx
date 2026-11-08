@@ -933,14 +933,15 @@ export function ThemeEditorPanel({
       </div>
       <div className="flex min-w-0 items-start gap-3">
         {isAdvanced ? (
-          <Input
-            aria-label={t("Filter colors")}
-            className="min-w-0 flex-1"
-            onChange={(event) => setRoleQuery(event.currentTarget.value)}
-            placeholder={t("Filter colors")}
-            size="sm"
-            value={roleQuery}
-          />
+          <div className="min-w-0 flex-1">
+            <Input
+              aria-label={t("Filter colors")}
+              onChange={(event) => setRoleQuery(event.currentTarget.value)}
+              placeholder={t("Filter colors")}
+              size="sm"
+              value={roleQuery}
+            />
+          </div>
         ) : null}
         <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-2 pt-0.5 text-sm font-medium">
           <span>{t("Advanced")}</span>

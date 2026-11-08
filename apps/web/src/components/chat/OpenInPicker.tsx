@@ -202,7 +202,6 @@ export const OpenInPicker = memo(function OpenInPicker({
   keybindings,
   availableEditors,
   openInCwd,
-  openInCwdIsFile = false,
   presentation = "toolbar",
   compact = false,
   enableShortcut = true,
@@ -299,7 +298,6 @@ export const OpenInPicker = memo(function OpenInPicker({
         {primaryOption && (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
-
             disabled={!openInCwd || !canOpenEditor}
             onClick={() => openInEditor(preferredEditor)}
           >
@@ -396,7 +394,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         <MenuPopup
           align="end"
           {...(isPanel ? { anchor: panelAnchorRef } : {})}
-          className={isPanel ? "w-(--anchor-width)" : undefined}
+          width={isPanel ? "anchor" : "default"}
         >
           {editorItems}
         </MenuPopup>

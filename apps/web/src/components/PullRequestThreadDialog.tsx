@@ -201,7 +201,7 @@ export function PullRequestThreadDialog({
     >
       <DialogPopup
         ref={popupRef}
-        className="max-w-xl"
+        width="xl"
         initialFocus={() => {
           if (coarsePointer) return popupRef.current;
           referenceInputRef.current?.focus();
@@ -210,7 +210,7 @@ export function PullRequestThreadDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center">
+          <DialogTitle withIcon>
             <SourceControlIcon className="me-2 size-4" />
             {t("Checkout")}
             {terminology.singular}

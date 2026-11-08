@@ -318,10 +318,8 @@ function SidebarControl() {
           render={
             <SidebarTrigger
               variant={isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"}
-              className={cn(
-                "pointer-events-auto",
-                isSidebarVisible && stageBackdropVariant && "relative top-auto translate-y-0",
-              )}
+              interactive
+              position={isSidebarVisible && stageBackdropVariant ? "inline" : "default"}
               aria-label={t("Toggle main sidebar")}
             />
           }
@@ -367,9 +365,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
-        className="h-dvh! min-h-0!"
+        viewport
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         defaultOpen
+        storageKey="cox:main-sidebar-open"
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />

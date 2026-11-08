@@ -364,7 +364,7 @@ function SnoozePresetFields(props: {
   // misclick on "When" can be undone without retyping it.
   const [memory, setMemory] = useState<KindMemory>({ minutes: 60, time: "09:00" });
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
       <Select
         value={when}
         items={WHEN_LABELS}
@@ -381,9 +381,11 @@ function SnoozePresetFields(props: {
           onChange(next);
         }}
       >
-        <SelectTrigger size="sm" className="w-32" aria-label={t("When")}>
-          <SelectValue>{t(WHEN_LABELS[when])}</SelectValue>
-        </SelectTrigger>
+        <div className="min-w-0 w-32">
+          <SelectTrigger fill size="sm" aria-label={t("When")}>
+            <SelectValue>{t(WHEN_LABELS[when])}</SelectValue>
+          </SelectTrigger>
+        </div>
         <SelectPopup>
           {WHEN_VALUES.map((value) => (
             <SelectItem hideIndicator key={value} value={value}>
@@ -398,22 +400,23 @@ function SnoozePresetFields(props: {
           onChange={(minutes) => onChange({ ...preset, minutes })}
         />
       ) : (
-        <>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">{t("at")}</span>
-          <Input
-            nativeInput
-            size="sm"
-            type="time"
-            className="w-32"
-            aria-label={t("Time")}
-            value={preset.time}
-            onChange={(event) => {
-              if (/^\d{2}:\d{2}$/.test(event.target.value)) {
-                onChange({ ...preset, time: event.target.value });
-              }
-            }}
-          />
-        </>
+          <div className="min-w-0 w-32">
+            <Input
+              nativeInput
+              size="sm"
+              type="time"
+              aria-label={t("Time")}
+              value={preset.time}
+              onChange={(event) => {
+                if (/^\d{2}:\d{2}$/.test(event.target.value)) {
+                  onChange({ ...preset, time: event.target.value });
+                }
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -436,40 +439,41 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
     setDraft(amount);
   }
   return (
-    <>
-      <NumberField
-        size="sm"
-        className="w-32"
-        min={1}
-        max={maxAmount}
-        step={1}
-        value={draft}
-        onValueChange={setDraft}
-        onValueCommitted={(value) => {
-          if (value === null) {
-            setDraft(amount);
-            return;
-          }
-          const next = Math.min(maxAmount, Math.max(1, Math.round(value)));
-          setDraft(next);
-          if (next !== amount) props.onChange(next * UNIT_MINUTES[unit]);
-        }}
-      >
-        <NumberFieldGroup>
-          <NumberFieldDecrement aria-label={t("Decrease")} />
-          <NumberFieldInput
-            aria-label={t("Amount")}
-            // Base UI commits on blur but not on Enter; refocus so keyboard users stay put.
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              const input = event.currentTarget;
-              input.blur();
-              input.focus();
-            }}
-          />
-          <NumberFieldIncrement aria-label={t("Increase")} />
-        </NumberFieldGroup>
-      </NumberField>
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="min-w-0 w-32">
+        <NumberField
+          size="sm"
+          min={1}
+          max={maxAmount}
+          step={1}
+          value={draft}
+          onValueChange={setDraft}
+          onValueCommitted={(value) => {
+            if (value === null) {
+              setDraft(amount);
+              return;
+            }
+            const next = Math.min(maxAmount, Math.max(1, Math.round(value)));
+            setDraft(next);
+            if (next !== amount) props.onChange(next * UNIT_MINUTES[unit]);
+          }}
+        >
+          <NumberFieldGroup>
+            <NumberFieldDecrement aria-label={t("Decrease")} />
+            <NumberFieldInput
+              aria-label={t("Amount")}
+              // Base UI commits on blur but not on Enter; refocus so keyboard users stay put.
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const input = event.currentTarget;
+                input.blur();
+                input.focus();
+              }}
+            />
+            <NumberFieldIncrement aria-label={t("Increase")} />
+          </NumberFieldGroup>
+        </NumberField>
+      </div>
       <Select
         value={unit}
         items={amount === 1 ? SINGULAR_UNIT_LABELS : UNIT_LABELS}
@@ -480,9 +484,13 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
           }
         }}
       >
-        <SelectTrigger size="sm" className="w-28" aria-label={t("Unit")}>
-          <SelectValue>{t((amount === 1 ? SINGULAR_UNIT_LABELS : UNIT_LABELS)[unit])}</SelectValue>
-        </SelectTrigger>
+        <div className="min-w-0 w-28">
+          <SelectTrigger fill size="sm" aria-label={t("Unit")}>
+            <SelectValue>
+              {t((amount === 1 ? SINGULAR_UNIT_LABELS : UNIT_LABELS)[unit])}
+            </SelectValue>
+          </SelectTrigger>
+        </div>
         <SelectPopup>
           {(Object.keys(UNIT_LABELS) as DurationUnit[]).map((value) => (
             <SelectItem hideIndicator key={value} value={value}>
@@ -491,6 +499,6 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
           ))}
         </SelectPopup>
       </Select>
-    </>
+    </div>
   );
 }

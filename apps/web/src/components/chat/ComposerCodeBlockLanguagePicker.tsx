@@ -80,7 +80,7 @@ export function ComposerCodeBlockLanguagePicker(props: {
           <span className="max-w-40 truncate">{codeLanguageLabel(props.language)}</span>
           <ChevronDownIcon className="opacity-60" />
         </ComboboxTrigger>
-        <ComboboxPopup align="start" className="w-56">
+        <ComboboxPopup align="start" width="sm">
           <ComboboxSearchInput
             aria-label={t("Search languages")}
             placeholder={t("Search languages")}

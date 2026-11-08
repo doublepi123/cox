@@ -72,7 +72,7 @@ export function AddUsageLimitSourceDialog({
         onOpenChange(next);
       }}
     >
-      <DialogPopup className="max-w-md">
+      <DialogPopup width="md">
         <DialogHeader>
           <DialogTitle>{t("Add a CLIProxyAPI hub")}</DialogTitle>
           <DialogDescription>

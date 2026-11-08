@@ -41,13 +41,6 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { toastManager } from "./ui/toast";
-const PREVIEW_FORWARDED_LAYOUT_COMMANDS = [
-  "workspace.focusNext",
-  "workspace.focusPrevious",
-  "sidebar.toggle",
-  "rightPanel.toggle",
-  "rightPanel.toggleMaximized",
-] as const;
 const isGlobalPullRequests = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
 export function ReopenClosedViewShortcut() {
@@ -71,7 +64,6 @@ export function ReopenClosedViewShortcut() {
     (state) => selectActiveRightPanel(state.byThreadKey, threadRef) === "preview",
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const hasHistory = useClosedViewStore((state) => state.entries.length > 0);
   const openPreview = useAtomCommand(previewEnvironment.open);
   const pending = useRef(Promise.resolve());
   const reopenNext = useEffectEvent(async () => {

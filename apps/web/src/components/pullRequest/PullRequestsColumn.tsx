@@ -178,13 +178,14 @@ export function PullRequestsColumn({
             </WorkspaceBreadcrumbItem>
             {searchExpanded ? null : <WorkspaceBreadcrumbSeparator />}
             <WorkspaceBreadcrumbItem className="shrink gap-1.5">
-              <PullRequestCompactFilterMenu
-                label="Filter by state"
-                value={state}
-                options={STATE_TABS}
-                onChange={onState}
-                className="shrink-0"
-              />
+              <span className="inline-flex min-w-0 shrink-0">
+                <PullRequestCompactFilterMenu
+                  label="Filter by state"
+                  value={state}
+                  options={STATE_TABS}
+                  onChange={onState}
+                />
+              </span>
               <PullRequestCompactFilterMenu
                 label="Filter by involvement"
                 value={involvement}

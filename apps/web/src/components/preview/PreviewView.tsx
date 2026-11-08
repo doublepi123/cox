@@ -38,7 +38,7 @@ import {
   useThreadPreviewState,
 } from "~/previewStateStore";
 
-import { useEnvironment, useEnvironmentHttpBaseUrl } from "~/state/environments";
+import { useEnvironmentHttpBaseUrl } from "~/state/environments";
 import { previewEnvironment } from "~/state/preview";
 import { usePreviewStreamAccess } from "~/state/previewStream";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -122,13 +122,7 @@ function ServerTabFileNotShown(props: {
     />
   );
 }
-export function PreviewView({
-  threadRef,
-  tabId: requestedTabId,
-  configuredUrls,
-  visible,
-  onSendAnnotation,
-}: Props) {
+export function PreviewView({ threadRef, tabId: requestedTabId, configuredUrls, visible }: Props) {
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(
     () =>
@@ -150,8 +144,6 @@ export function PreviewView({
 
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const open = useAtomCommand(previewEnvironment.open);
-  const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
-  const environmentLabel = useEnvironment(threadRef.environmentId)?.label ?? "the environment";
 
   const adjust = useAtomCommand(previewEnvironment.adjust, "preview appearance or zoom");
   usePreviewSession(threadRef);
@@ -201,11 +193,6 @@ export function PreviewView({
     if (isServerTab && serverSurfaceRef.current) {
       if (serverInputDisabled) return false;
       serverSurfaceRef.current.navigate(resolvedUrl);
-      rememberPreviewUrl(threadRef, resolvedUrl);
-      return true;
-    }
-    if (runtimeTabId && undefined) {
-      await undefined;
       rememberPreviewUrl(threadRef, resolvedUrl);
       return true;
     }
@@ -371,9 +358,11 @@ export function PreviewView({
         leadingActions={
           activeProfileId !== browserDefaults.profileId ? (
             <Tooltip>
-              <TooltipTrigger render={<Badge variant="outline" className="max-w-28 shrink-0" />}>
-                <span className="truncate">{activeProfileName}</span>
-              </TooltipTrigger>
+              <span className="inline-flex min-w-0 max-w-28 shrink-0">
+                <TooltipTrigger render={<Badge variant="outline" />}>
+                  <span className="truncate">{activeProfileName}</span>
+                </TooltipTrigger>
+              </span>
               <TooltipPopup side="top">{activeProfileName}</TooltipPopup>
             </Tooltip>
           ) : null

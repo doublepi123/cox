@@ -5,6 +5,8 @@ import type {
   PullRequestAction,
   PullRequestStackHead,
   PullRequestActor,
+  PullRequestReferenceCandidate,
+  PullRequestReferenceSigil,
   PullRequestBaseComparison,
   PullRequestCapabilities,
   PullRequestChecksState,
@@ -121,6 +123,10 @@ export interface ProviderChangeRequestSummary {
   readonly mergeability?: PullRequestMergeability | undefined;
   /** Null means no stack; absent means not requested. */
   readonly stack?: PullRequestStackMembership | null | undefined;
+  readonly headSha?: string | undefined;
+
+  readonly autoMergeEnabled?: boolean | undefined;
+  readonly autoMergeMethod?: PullRequestMergeMethod | undefined;
 }
 
 export interface ProviderChangeRequestStackLayer {
@@ -479,7 +485,7 @@ export interface PullRequestProviderApi {
       readonly mergeMethod?: PullRequestMergeMethod;
       readonly updateMethod?: PullRequestUpdateMethod;
     },
-  ) => Effect.Effect<void, PullRequestProviderError>;
+  ) => Effect.Effect<ProviderChangeRequestSummary | void, PullRequestProviderError>;
 
   /** Requires edit capability and at least one field. */
   readonly updateChangeRequest?: (
@@ -515,7 +521,11 @@ export interface PullRequestProviderApi {
 
   /** Exclude the author using host-specific account identities. */
   readonly listReviewerCandidates: (
-    input: ProviderRepositoryRef & { readonly number: number },
+    input: ProviderRepositoryRef & {
+      readonly number: number;
+
+      readonly query?: string | undefined;
+    },
   ) => Effect.Effect<PullRequestReviewerCandidateList, PullRequestProviderError>;
 
   readonly setReviewerRequest: (
@@ -548,6 +558,16 @@ export interface PullRequestProviderApi {
   readonly searchRepositoryAuthors?: (
     input: ProviderRepositoryRef & { readonly query?: string | undefined },
   ) => Effect.Effect<ProviderFilterOptionPage<PullRequestActor>, PullRequestProviderError>;
+
+  readonly searchRepositoryReferences?: (
+    input: ProviderRepositoryRef & {
+      readonly query?: string | undefined;
+      readonly sigil?: PullRequestReferenceSigil | undefined;
+    },
+  ) => Effect.Effect<
+    ProviderFilterOptionPage<PullRequestReferenceCandidate>,
+    PullRequestProviderError
+  >;
 
   readonly setLabels?: (
     input: ProviderRepositoryRef & {

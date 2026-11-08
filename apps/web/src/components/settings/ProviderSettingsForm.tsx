@@ -391,6 +391,7 @@ function ProviderSettingsSelect({
   inputId,
   size,
   className,
+  fill = false,
   onChange,
 }: {
   readonly field: ProviderSettingsFieldModel;
@@ -398,6 +399,7 @@ function ProviderSettingsSelect({
   readonly inputId: string;
   readonly size: "sm" | "xs";
   readonly className?: string | undefined;
+  readonly fill?: boolean;
   readonly onChange: ProviderSettingsFormProps["onChange"];
 }) {
   const options = field.options ?? [];
@@ -412,7 +414,13 @@ function ProviderSettingsSelect({
         onChange(nextProviderConfigWithFieldValue(value, field, next === fallback ? "" : next));
       }}
     >
-      <SelectTrigger id={inputId} size={size} className={className} aria-label={field.label}>
+      <SelectTrigger
+        id={inputId}
+        size={size}
+        className={className}
+        fill={fill}
+        aria-label={field.label}
+      >
         <SelectValue>{label}</SelectValue>
       </SelectTrigger>
       <SelectPopup align="start" alignItemWithTrigger={false}>
@@ -479,26 +487,29 @@ function ProviderSettingsFieldRow({
           aria-describedby={descriptionId}
         />
       ) : field.control === "select" ? (
-        <ProviderSettingsSelect
-          field={field}
-          value={value}
-          inputId={inputId}
-          size="sm"
-          className="w-full max-w-full @min-[32rem]/settings-row:w-56"
-          onChange={onChange}
-        />
+        <div className="min-w-0 w-full max-w-full @min-[32rem]/settings-row:w-56">
+          <ProviderSettingsSelect
+            fill
+            field={field}
+            value={value}
+            inputId={inputId}
+            size="sm"
+            onChange={onChange}
+          />
+        </div>
       ) : field.control === "textarea" ? (
-        <Textarea
-          id={inputId}
-          aria-describedby={descriptionId}
-          className="w-full max-w-full @min-[32rem]/settings-row:w-[min(24rem,50cqw)]"
-          value={readProviderConfigString(value, field.key)}
-          onChange={(event) =>
-            onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
-          }
-          placeholder={field.placeholder}
-          spellCheck={false}
-        />
+        <div className="w-full max-w-full @min-[32rem]/settings-row:w-[min(24rem,50cqw)]">
+          <Textarea
+            id={inputId}
+            aria-describedby={descriptionId}
+            value={readProviderConfigString(value, field.key)}
+            onChange={(event) =>
+              onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
+            }
+            placeholder={field.placeholder}
+            spellCheck={false}
+          />
+        </div>
       ) : field.acceptsSecretReference && environmentId !== undefined ? (
         <SecretSettingsControl
           field={field}
@@ -532,20 +543,21 @@ function ProviderSettingsFieldRow({
           ) : null}
         </div>
       ) : (
-        <DraftInput
-          id={inputId}
-          aria-describedby={descriptionId}
-          size="sm"
-          className="w-full max-w-full @min-[32rem]/settings-row:w-56"
-          type={field.control === "password" ? "password" : undefined}
-          autoComplete={field.control === "password" ? "off" : undefined}
-          value={readProviderConfigString(value, field.key)}
-          placeholder={field.placeholder}
-          onCommit={(next) => {
-            onChange(nextProviderConfigWithFieldValue(value, field, next));
-          }}
-          spellCheck={false}
-        />
+        <div className="min-w-0 w-full max-w-full @min-[32rem]/settings-row:w-56">
+          <DraftInput
+            id={inputId}
+            aria-describedby={descriptionId}
+            size="sm"
+            type={field.control === "password" ? "password" : undefined}
+            autoComplete={field.control === "password" ? "off" : undefined}
+            value={readProviderConfigString(value, field.key)}
+            placeholder={field.placeholder}
+            onCommit={(next) => {
+              onChange(nextProviderConfigWithFieldValue(value, field, next));
+            }}
+            spellCheck={false}
+          />
+        </div>
       );
 
     return (
@@ -586,14 +598,16 @@ function ProviderSettingsFieldRow({
       <FieldFrame variant={variant}>
         <label htmlFor={inputId} className={cn(variant === "card" && "block")}>
           {label}
-          <ProviderSettingsSelect
-            field={field}
-            value={value}
-            inputId={inputId}
-            size="sm"
-            className={cn("w-full", variant === "card" && "mt-1.5")}
-            onChange={onChange}
-          />
+          <div className={cn("min-w-0", cn("w-full", variant === "card" && "mt-1.5"))}>
+            <ProviderSettingsSelect
+              fill
+              field={field}
+              value={value}
+              inputId={inputId}
+              size="sm"
+              onChange={onChange}
+            />
+          </div>
           {description}
         </label>
       </FieldFrame>
@@ -605,16 +619,17 @@ function ProviderSettingsFieldRow({
       <FieldFrame variant={variant}>
         <label htmlFor={inputId} className={cn(variant === "card" && "block")}>
           {label}
-          <Textarea
-            id={inputId}
-            className={cn(variant === "card" && "mt-1.5")}
-            value={readProviderConfigString(value, field.key)}
-            onChange={(event) =>
-              onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
-            }
-            placeholder={field.placeholder}
-            spellCheck={false}
-          />
+          <span className={cn("block", variant === "card" && "mt-1.5")}>
+            <Textarea
+              id={inputId}
+              value={readProviderConfigString(value, field.key)}
+              onChange={(event) =>
+                onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
+              }
+              placeholder={field.placeholder}
+              spellCheck={false}
+            />
+          </span>
           {description}
         </label>
       </FieldFrame>

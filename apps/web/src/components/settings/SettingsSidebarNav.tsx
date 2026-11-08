@@ -46,7 +46,6 @@ import {
   type SettingsSearchItem,
 } from "./settingsSearch";
 import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchItems";
-import { validateSettingsScopeSearch } from "./settingsScope";
 import { useSettingsSectionNavigation } from "./useSettingsSectionNavigation";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
 
@@ -103,8 +102,6 @@ export function SettingsSidebarNav({
   const navArea = workspaceAreaProps("settings-nav", 0, t("Settings sections"));
   const navigate = useNavigate();
   const currentHash = useLocation({ select: (location) => location.hash });
-  const currentSearch = useLocation({ select: (location) => location.search });
-  const scopeSearch = validateSettingsScopeSearch(currentSearch);
   const activePath = SETTINGS_DETAIL_PAGE_PARENTS[pathname] ?? pathname;
   const navPaths = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
   const sectionNavigation = useSettingsSectionNavigation(
@@ -118,7 +115,7 @@ export function SettingsSidebarNav({
   // The phone menu layout keeps labels visible and starts with search closed.
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
-  const searchableItems = useAvailableSettingsSearchItems(scopeSearch);
+  const searchableItems = useAvailableSettingsSearchItems();
   const results = searchSettings(query, searchableItems, language);
   const isSearching = query.trim().length > 0;
   const hasResults = results.length > 0;

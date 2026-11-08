@@ -323,21 +323,21 @@ function SourceControlSectionSkeleton({
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex items-center gap-2">
                 <span className="relative inline-flex size-5 shrink-0 items-center justify-center">
-                  <Skeleton className="size-4.5" />
-                  <Skeleton
-                    shape="pill"
-                    className="pointer-events-none absolute -left-0.5 -top-0.5 size-2"
-                    aria-hidden
-                  />
+                  <Skeleton width="1.125rem" height="1.125rem" />
+                  <div className="min-w-0 pointer-events-none absolute -left-0.5 -top-0.5 size-2">
+                    <Skeleton width="100%" height="100%" shape="pill" aria-hidden />
+                  </div>
                 </span>
-                <Skeleton shape="pill" className="h-4 w-28" />
-                <Skeleton shape="pill" className="h-5 w-14" />
+                <Skeleton shape="pill" width="7rem" height="1rem" />
+                <Skeleton shape="pill" width="3.5rem" height="1.25rem" />
               </div>
-              <Skeleton shape="pill" className="h-3 w-full max-w-xs" />
+              <div className="min-w-0 h-3 w-full max-w-xs">
+                <Skeleton width="100%" height="100%" shape="pill" />
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Skeleton className="size-7" />
-              <Skeleton shape="pill" className="h-5 w-9" />
+              <Skeleton width="1.75rem" height="1.75rem" />
+              <Skeleton shape="pill" width="2.25rem" height="1.25rem" />
             </div>
           </div>
         </div>

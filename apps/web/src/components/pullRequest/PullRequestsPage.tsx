@@ -17,6 +17,7 @@ import type {
   PullRequestListInput,
   PullRequestListResult,
   PullRequestListState,
+  PullRequestSummary,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -63,6 +64,8 @@ import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
 import { INVOLVEMENT_TABS, SORT_OPTIONS, STATE_TABS } from "./pullRequestListOptions";
 import { PullRequestsColumn } from "./PullRequestsColumn";
 import { PullRequestListGroups } from "./PullRequestListGroups";
+import { pullRequestPanelReference } from "./usePullRequestDetail";
+import { usePullRequestIntentPrefetch } from "./usePullRequestIntentPrefetch";
 import {
   usePullRequestDisplayGroups,
   usePullRequestQueryFilters,
@@ -133,7 +136,6 @@ const EMPTY_VIEWERS: PullRequestListResult["viewers"] = {};
 const EMPTY_PARTITIONS: PullRequestPartitionsSnapshot = { authored: [], reviewing: [] };
 const NO_LIST_TARGETS: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput>> = [];
 const EMPTY_PREVIEW_SESSIONS = {};
-const EMPTY_PREVIEW_DESKTOP_STATE = {};
 const EMPTY_TERMINAL_LABELS = new Map<string, string>();
 const EMPTY_PENDING_SURFACES = new Set<string>();
 export function PullRequestsPage() {
@@ -422,9 +424,10 @@ export function PullRequestsPage() {
   const overrideEntry = (
     entry: EnvironmentPullRequestEntry,
     action: PullRequestAction,
+    reply?: PullRequestSummary,
   ): number | null => {
     const token = ++overrideToken.current;
-    const override = pullRequestOverrideAfterAction(entry, action, new Date(), token);
+    const override = pullRequestOverrideAfterAction(entry, action, new Date(), token, reply);
     if (override === null) return null;
     setOverrides((current) => new Map(current).set(pullRequestEntryKey(entry), override));
     return token;
@@ -439,13 +442,16 @@ export function PullRequestsPage() {
     });
   };
   const detailOverrideTokens = useRef(new Map<string, number | null>());
-  const onSpeedAction = useStableCallback(({ entry, action }: PullRequestSpeedActionResult) => {
-    // Some hosts accept a merge before it completes. Let the next host read declare it merged.
-    if (action !== "merge") overrideEntry(entry, action);
-  });
-  const onBatchClosed = useStableCallback((entry: EnvironmentPullRequestEntry) => {
-    onSpeedAction({ entry, action: "close" });
-  });
+  const onSpeedAction = useStableCallback(
+    ({ entry, action, reply }: PullRequestSpeedActionResult) => {
+      if (reply !== undefined || action !== "merge") overrideEntry(entry, action, reply);
+    },
+  );
+  const onBatchClosed = useStableCallback(
+    (entry: EnvironmentPullRequestEntry, reply: PullRequestSummary | undefined) => {
+      onSpeedAction({ entry, action: "close", reply });
+    },
+  );
   const { close: closeBatch, closingKeys } = usePullRequestCloseBatch(onBatchClosed);
   const [snapshotEnvironmentKey, setSnapshotEnvironmentKey] = useState("");
   if (environmentKey.length > 0 && snapshotEnvironmentKey !== environmentKey) {
@@ -1059,6 +1065,9 @@ export function PullRequestsPage() {
         ] as const,
     ),
   );
+  const prefetchEntry = usePullRequestIntentPrefetch((entry) =>
+    listedPullRequestsBySurface.has(pullRequestListEntryId(entry)),
+  );
   const selectEntry = (entry: PullRequestRowTarget) => {
     if (rightPanelRef === null) return;
     useRightPanelStore.getState().openPullRequest(rightPanelRef, entry);
@@ -1162,6 +1171,7 @@ export function PullRequestsPage() {
           showProvider={showProvider}
           statsRef={registerStatsRow}
           onSelect={selectEntry}
+          onIntent={prefetchEntry}
           hostActionsOf={hostActionsOf}
           onActed={onSpeedAction}
           closingKeys={closingKeys}
@@ -1424,7 +1434,7 @@ export function PullRequestsPage() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [keybindings]);
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+    <SidebarInset viewport="dynamic">
       <div className="relative flex min-h-0 flex-1">
         {pullRequestsSupported && rightPanelPresent ? openPanelControls : null}
         <PullRequestsColumn {...columnProps} />
@@ -1500,14 +1510,10 @@ export function PullRequestsPage() {
                   selectedEnvironmentId: panelEnvironmentId,
                 });
               }}
-              reference={{
+              reference={pullRequestPanelReference({
+                ...renderedPullRequestSurface,
                 projectId: renderedPullRequestSurface.projectId as ProjectId,
-                repository: renderedPullRequestSurface.repository,
-                number: renderedPullRequestSurface.number,
-                ...(renderedPullRequestSurface.host
-                  ? { host: renderedPullRequestSurface.host }
-                  : {}),
-              }}
+              })}
               listEntry={
                 listedPullRequestsBySurface.get(
                   pullRequestListEntryId(renderedPullRequestSurface),
@@ -1515,12 +1521,19 @@ export function PullRequestsPage() {
               }
               refreshToken={detailRefreshToken}
               tabOnPage
-              onActed={(action, phase = "done") => {
+              onActed={(action, phase = "done", reply) => {
                 // From every row held, not the ones on screen: a pull request closed from an open
                 // list has left the screen, and reopening it has to find it anyway.
                 const acted = heldPullRequestsBySurface.get(
                   pullRequestListEntryId(renderedPullRequestSurface),
                 );
+                if (reply !== undefined) {
+                  if (acted !== undefined) {
+                    if (action !== undefined) overrideEntry(acted, action, reply);
+                    detailOverrideTokens.current.delete(pullRequestEntryKey(acted));
+                  }
+                  return;
+                }
                 const stateOnly =
                   action !== undefined &&
                   acted !== undefined &&

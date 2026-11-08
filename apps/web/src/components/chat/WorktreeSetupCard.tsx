@@ -70,7 +70,7 @@ function StageIcon({ status }: { status: WorktreeSetupStage["status"] }) {
     case "done":
       return <CheckIcon aria-hidden className={className} />;
     case "running":
-      return <Spinner size="md" className="shrink-0" />;
+      return <Spinner size="md" />;
     case "failed":
       return <XIcon aria-hidden className={className} />;
     case "warning":
@@ -256,7 +256,9 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
         <>
           <dt className="text-foreground/80">{t("Branch")}</dt>
           <dd className="min-w-0 font-mono">
-            <MiddleTruncate value={snapshot.branch} className="flex" />
+            <span className="min-w-0 flex">
+              <MiddleTruncate value={snapshot.branch} />
+            </span>
           </dd>
         </>
       ) : null}
@@ -264,7 +266,9 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
         <>
           <dt className="text-foreground/80">{t("Base")}</dt>
           <dd className="min-w-0 font-mono">
-            <MiddleTruncate value={snapshot.baseRef} className="flex" />
+            <span className="min-w-0 flex">
+              <MiddleTruncate value={snapshot.baseRef} />
+            </span>
           </dd>
         </>
       ) : null}
@@ -272,7 +276,9 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
         <>
           <dt className="text-foreground/80">{t("Path")}</dt>
           <dd className="min-w-0 font-mono">
-            <MiddleTruncate value={snapshot.worktreePath} className="flex" />
+            <span className="min-w-0 flex">
+              <MiddleTruncate value={snapshot.worktreePath} />
+            </span>
           </dd>
         </>
       ) : null}

@@ -101,7 +101,9 @@ it.each(["running", "waiting"] as const)(
     );
 
     await screen.rerender(
-      <Timers status={{ ...status, status: "completed", completedAt: new Date().toISOString() }} />,
+      <Timers
+        status={{ ...status, status: "completed", completedAt: "2026-11-02T12:00:07.000Z" }}
+      />,
     );
     await act(() => vi.advanceTimersByTimeAsync(3000));
     expect(parent.element().textContent).toBe("7s");

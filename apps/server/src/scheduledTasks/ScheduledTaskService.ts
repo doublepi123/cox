@@ -22,7 +22,9 @@ import {
   type ScheduledTaskRunNowInput,
   type ScheduledTaskRunNowResult,
   type ScheduledTaskSetEnabledInput,
+  type ScheduledTaskThreadMode,
   type ScheduledTaskUpsertInput,
+  scheduledTaskThreadMode,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -168,6 +170,15 @@ const decodeMissingFieldsJson = Schema.decodeUnknownOption(MissingFieldsJson);
 const encodeHeadersJson = Schema.encodeSync(HeadersJson);
 const encodeMissingFieldsJson = Schema.encodeSync(MissingFieldsJson);
 
+function resolveThreadMode(
+  input: Pick<ScheduledTaskUpsertInput, "threadId" | "threadMode">,
+  existing: Pick<ScheduledTask, "threadId" | "threadMode"> | null,
+): ScheduledTaskThreadMode {
+  if (input.threadMode !== undefined) return input.threadMode;
+  const stored = existing === null ? "new_thread" : scheduledTaskThreadMode(existing);
+  return stored === "new_thread" && input.threadId != null ? "continue" : stored;
+}
+
 interface ScheduledTaskRow {
   readonly task_id: string;
   readonly title: string;
@@ -176,6 +187,7 @@ interface ScheduledTaskRow {
   readonly schedule_json: string;
   readonly project_id: string;
   readonly thread_id: string | null;
+  readonly thread_mode: string;
   readonly workspace_strategy_json: string;
   readonly model_selection_json: string;
   readonly runtime_mode: string;
@@ -321,6 +333,7 @@ const decodeRow = Effect.fnUntraced(
       schedule,
       projectId: row.project_id,
       threadId: row.thread_id,
+      threadMode: row.thread_mode,
       workspaceStrategy,
       modelSelection,
       runtimeMode: row.runtime_mode,
@@ -430,6 +443,7 @@ export const layer = Layer.effect(
         schedule_json,
         project_id,
         thread_id,
+        thread_mode,
         workspace_strategy_json,
         model_selection_json,
         runtime_mode,
@@ -467,6 +481,7 @@ export const layer = Layer.effect(
         schedule_json,
         project_id,
         thread_id,
+        thread_mode,
         workspace_strategy_json,
         model_selection_json,
         runtime_mode,
@@ -542,6 +557,7 @@ export const layer = Layer.effect(
           schedule_json,
           project_id,
           thread_id,
+          thread_mode,
           workspace_strategy_json,
           model_selection_json,
           runtime_mode,
@@ -566,6 +582,7 @@ export const layer = Layer.effect(
           ${JSON.stringify(task.schedule)},
           ${task.projectId},
           ${task.threadId},
+          ${scheduledTaskThreadMode(task)},
           ${JSON.stringify(task.workspaceStrategy)},
           ${JSON.stringify(task.modelSelection)},
           ${task.runtimeMode},
@@ -590,7 +607,14 @@ export const layer = Layer.effect(
           enabled = excluded.enabled,
           schedule_json = excluded.schedule_json,
           project_id = excluded.project_id,
-          thread_id = excluded.thread_id,
+          -- A first run may bind the thread while this save is in flight; only a
+          -- switch to new threads unbinds.
+          thread_id = CASE
+            WHEN excluded.thread_mode = 'new_thread' THEN NULL
+            WHEN excluded.project_id != scheduled_tasks.project_id THEN excluded.thread_id
+            ELSE COALESCE(excluded.thread_id, scheduled_tasks.thread_id)
+          END,
+          thread_mode = excluded.thread_mode,
           workspace_strategy_json = excluded.workspace_strategy_json,
           model_selection_json = excluded.model_selection_json,
           runtime_mode = excluded.runtime_mode,
@@ -710,6 +734,22 @@ export const layer = Layer.effect(
         ),
     );
 
+    const bindThread = Effect.fn("ScheduledTaskService.bindThread")(
+      function* (task: ScheduledTask, threadId: ThreadId) {
+        yield* sql`
+          UPDATE scheduled_tasks SET thread_id = ${threadId}
+          WHERE task_id = ${task.id} AND created_at = ${task.createdAt}
+            AND project_id = ${task.projectId}
+            AND thread_id IS NULL AND thread_mode != 'new_thread'
+        `;
+        const shell = yield* threadManagement.getThreadShell(threadId);
+        if (shell === null || shell.deletedAt != null) yield* deleteForThread(threadId);
+      },
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Could not bind a scheduled task to its first thread.", cause),
+      ),
+    );
+
     const runTask = Effect.fn("ScheduledTaskService.runTask")(function* (
       task: ScheduledTask,
       trigger: "scheduled" | "manual" | "webhook",
@@ -805,6 +845,7 @@ export const layer = Layer.effect(
         const messageId = MessageId.make(`scheduled-task-message:${fireKey}`);
         // A webhook prompt was rendered from the row when the request arrived.
         const prompt = webhook?.prompt ?? active.prompt;
+        const threadMode = scheduledTaskThreadMode(active);
 
         // A bound thread can move to another project (No project to a project) while
         // this fires. Follow it; one move needs at most two retries. Same ids replay safely.
@@ -823,6 +864,7 @@ export const layer = Layer.effect(
               text: prompt,
               attachments: [],
               mode: "queue",
+              ...(threadMode === "fresh_session" ? { freshContext: true } : {}),
               createdBy: active.createdBy,
               creationSource: active.creationSource,
             })
@@ -864,7 +906,12 @@ export const layer = Layer.effect(
                     createdBy: active.createdBy,
                     creationSource: active.creationSource,
                   })
-                  .pipe(Effect.map((launched) => launched.threadId)),
+                  .pipe(
+                    Effect.map((launched) => launched.threadId),
+                    Effect.tap((threadId) =>
+                      threadMode === "new_thread" ? Effect.void : bindThread(active, threadId),
+                    ),
+                  ),
               )
             : yield* Effect.exit(
                 // The stored selection only seeds fresh threads. A bound run
@@ -1104,6 +1151,13 @@ export const layer = Layer.effect(
       // keep their run history, and so real load failures propagate instead
       // of silently resetting an existing row.
       const existingTask = yield* findTask(id);
+      const threadMode = resolveThreadMode(input, existingTask);
+      const keptThreadId = input.threadId ?? existingTask?.threadId ?? null;
+      const movedOffThread =
+        existingTask !== null &&
+        existingTask.projectId !== input.projectId &&
+        keptThreadId === existingTask.threadId;
+      const threadId = threadMode === "new_thread" || movedOffThread ? null : keptThreadId;
       // Keep the existing next_run_at when the schedule itself is untouched:
       // editing a title or prompt must not postpone (or resurrect) a due
       // run — only schedule/enabled changes restart the clock.
@@ -1188,7 +1242,8 @@ export const layer = Layer.effect(
         enabled: input.enabled,
         schedule,
         projectId: input.projectId,
-        threadId: input.threadId ?? null,
+        threadId,
+        threadMode,
         workspaceStrategy,
         modelSelection: input.modelSelection,
         runtimeMode: input.runtimeMode,

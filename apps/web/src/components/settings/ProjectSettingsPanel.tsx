@@ -23,7 +23,7 @@ import {
   type SidebarProjectGroupMember,
   type SidebarProjectSnapshot,
 } from "../../sidebarProjectGrouping";
-import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
+import { useEnvironments } from "../../state/environments";
 import { useThreadShells, waitForProjectRemoval } from "../../state/entities";
 import { projectEnvironment } from "../../state/projects";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -39,10 +39,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "./settingsLayout";
-import {
-  canPickExternalProjectFavicon,
-  ProjectFaviconPickerDialog,
-} from "./ProjectFaviconPickerDialog";
+import { ProjectFaviconPickerDialog } from "./ProjectFaviconPickerDialog";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import {
@@ -178,7 +175,6 @@ function ProjectDetail({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate({ from: "/settings" });
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { environments } = useEnvironments();
   const environmentById = new Map(
     environments.map((environment) => [environment.environmentId, environment]),
@@ -198,15 +194,6 @@ function ProjectDetail({
   const projectNameEditedRef = useRef(false);
   const faviconPath = representative.faviconPath ?? null;
   const projectIcon = representative.projectIcon ?? null;
-  const pickProjectFavicon =
-    typeof window !== "undefined" &&
-    group.memberProjects.every(
-      (member) =>
-        member.environmentId === primaryEnvironmentId &&
-        canPickExternalProjectFavicon(member.workspaceRoot, navigator.platform),
-    )
-      ? undefined
-      : undefined;
   const { updateProjectGroup, canOrganizeProjectGroup } = useProjectGroupUpdate();
   const updateAllMembers = (
     input: ProjectGroupUpdate | ((member: SidebarProjectGroupMember) => ProjectGroupUpdate),
@@ -434,26 +421,27 @@ function ProjectDetail({
               ) : null
             }
             control={
-              <Input
-                key={`${group.projectKey}:${group.displayName}`}
-                size="sm"
-                className="w-full sm:w-64"
-                aria-label={t("Project name")}
-                disabled={!canEditGroup}
-                defaultValue={group.displayName}
-                onChange={() => {
-                  projectNameEditedRef.current = true;
-                }}
-                onBlur={(event) => {
-                  const wasEdited = projectNameEditedRef.current;
-                  projectNameEditedRef.current = false;
-                  void renameGroup(event.currentTarget.value, wasEdited);
-                }}
-                onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                  if (event.key === "Enter") event.currentTarget.blur();
-                }}
-              />
+              <div className="min-w-0 w-full sm:w-64">
+                <Input
+                  key={`${group.projectKey}:${group.displayName}`}
+                  size="sm"
+                  aria-label={t("Project name")}
+                  disabled={!canEditGroup}
+                  defaultValue={group.displayName}
+                  onChange={() => {
+                    projectNameEditedRef.current = true;
+                  }}
+                  onBlur={(event) => {
+                    const wasEdited = projectNameEditedRef.current;
+                    projectNameEditedRef.current = false;
+                    void renameGroup(event.currentTarget.value, wasEdited);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+              </div>
             }
           />
           <SettingsRow

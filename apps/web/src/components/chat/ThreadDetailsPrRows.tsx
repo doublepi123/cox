@@ -118,12 +118,13 @@ export function ThreadDetailsPrRows({
         </div>
       ) : null}
       <ThreadDetailsControl
+        motion="none"
+        fill
         variant="ghost"
         size="sm"
         onClick={() => setExpanded(!expanded)}
         part="row"
         tone="muted"
-        className="w-full active:scale-100"
       >
         <MorphIcon
           aria-hidden

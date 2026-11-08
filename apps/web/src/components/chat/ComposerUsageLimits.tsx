@@ -140,14 +140,15 @@ function UsageLimitsBannerBody({
                 />
               )}
               {externalUsage ? (
-                <Button
-                  size="sm"
-                  variant="link"
-                  className="self-start"
-                  onClick={() => void ensureLocalApi().shell.openExternal(externalUsage.url)}
-                >
-                  {t("Manage usage")}
-                </Button>
+                <span className="inline-flex min-w-0 self-start">
+                  <Button
+                    size="sm"
+                    variant="link"
+                    onClick={() => void ensureLocalApi().shell.openExternal(externalUsage.url)}
+                  >
+                    {t("Manage usage")}
+                  </Button>
+                </span>
               ) : null}
               {resetCreditInput && account.limits.resetCredits ? (
                 <ResetCredits

@@ -6,7 +6,11 @@ import type {
   ModelServiceProtocol,
   ServerProviderModel,
 } from "@t3tools/contracts";
-import { readCustomModelEntries, withCodexUltraCapabilities } from "./model.ts";
+import {
+  readCustomModelEntries,
+  withCodexUltraCapabilities,
+  withClaudeUltracodeCapabilities,
+} from "./model.ts";
 
 export const MODEL_SERVICE_AGENT_DRIVERS = ["codex", "claudeAgent", "pi", "opencode"] as const;
 
@@ -152,11 +156,15 @@ export function modelServiceAgentCapabilities(
                     option.id === "serviceTier" &&
                     option.type === "select") ||
                   (driver === "claudeAgent" &&
-                    option.id === "fastMode" &&
+                    ["fastMode", "ultracode"].includes(option.id) &&
                     option.type === "boolean")),
             ),
           ],
         }),
   };
-  return driver === "codex" ? withCodexUltraCapabilities(mapped) : mapped;
+  return driver === "codex"
+    ? withCodexUltraCapabilities(mapped)
+    : driver === "claudeAgent"
+      ? (withClaudeUltracodeCapabilities(mapped) ?? undefined)
+      : mapped;
 }

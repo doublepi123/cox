@@ -126,36 +126,38 @@ function RetentionControl({
   return (
     <div className="flex items-center gap-3">
       {value !== null ? (
-        <NumberField
-          value={draft}
-          min={minimum}
-          max={3650}
-          step={1}
-          size="sm"
-          className="w-auto"
-          onValueChange={setDraft}
-          onValueCommitted={(next) => {
-            if (next === null) setDraft(value);
-            else {
-              const days = Math.min(3650, Math.max(minimum, Math.round(next)));
-              setDraft(days);
-              onChange(days);
-            }
-          }}
-        >
-          <NumberFieldGroup>
-            <NumberFieldDecrement aria-label={t("Decrease {name}", { name: label })} />
-            <NumberFieldInput
-              aria-label={t("{name} in days", { name: label })}
-              size={5}
-              className="w-auto grow-0 text-right"
-            />
-            <span aria-hidden="true" className="self-center pr-2 text-xs">
-              {t("days")}
-            </span>
-            <NumberFieldIncrement aria-label={t("Increase {name}", { name: label })} />
-          </NumberFieldGroup>
-        </NumberField>
+        <div className="min-w-0 w-auto">
+          <NumberField
+            value={draft}
+            min={minimum}
+            max={3650}
+            step={1}
+            size="sm"
+            onValueChange={setDraft}
+            onValueCommitted={(next) => {
+              if (next === null) setDraft(value);
+              else {
+                const days = Math.min(3650, Math.max(minimum, Math.round(next)));
+                setDraft(days);
+                onChange(days);
+              }
+            }}
+          >
+            <NumberFieldGroup>
+              <NumberFieldDecrement aria-label={t("Decrease {name}", { name: label })} />
+              <NumberFieldInput
+                aria-label={t("{name} in days", { name: label })}
+                size={5}
+                fit
+                align="right"
+              />
+              <span aria-hidden="true" className="self-center pr-2 text-xs">
+                {t("days")}
+              </span>
+              <NumberFieldIncrement aria-label={t("Increase {name}", { name: label })} />
+            </NumberFieldGroup>
+          </NumberField>
+        </div>
       ) : (
         <span className="text-xs text-muted-foreground">{t("Off")}</span>
       )}

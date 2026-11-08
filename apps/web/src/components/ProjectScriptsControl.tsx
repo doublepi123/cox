@@ -139,6 +139,7 @@ export default function ProjectScriptsControl({
       runOnWorktreeCreate: fileScript.runOnWorktreeCreate ?? false,
       waitForSetup: fileScript.runOnWorktreeCreate === true && fileScript.async === false,
       runOnSettle: fileScript.runOnSettle ?? false,
+      stopOnSettle: fileScript.stopOnSettle ?? false,
       ...(readEnvironmentScope(environmentId, AuthSettingsWriteScope) ? { keybinding: null } : {}),
       previewUrl: fileScript.previewUrl ?? null,
       autoOpenPreview: fileScript.previewUrl ? (fileScript.autoOpenPreview ?? false) : false,
@@ -187,7 +188,7 @@ export default function ProjectScriptsControl({
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
             key={script.id}
-            className="group"
+            grouped
             disabled={!onRunScript}
             onClick={() => onRunScript?.(script)}
           >
@@ -196,10 +197,14 @@ export default function ProjectScriptsControl({
             <span className="relative ms-auto flex h-6 min-w-6 items-center justify-end">
               {shortcutLabel &&
                 (presentation === "menu" ? (
-                  <MenuShortcut className="ms-0 mr-7">{shortcutLabel}</MenuShortcut>
+                  <span className="inline-flex min-w-0 ms-0 mr-7">
+                    <MenuShortcut>{shortcutLabel}</MenuShortcut>
+                  </span>
                 ) : (
                   <span className="transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0">
-                    <MenuShortcut className="ms-0">{shortcutLabel}</MenuShortcut>
+                    <span className="inline-flex min-w-0 ms-0">
+                      <MenuShortcut>{shortcutLabel}</MenuShortcut>
+                    </span>
                   </span>
                 ))}
               <span
@@ -208,8 +213,7 @@ export default function ProjectScriptsControl({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
-                  className="size-6"
+                  size="icon-fixed-xs"
                   aria-label={t("Edit {name}", { name: script.name })}
                   onPointerDown={(event) => {
                     event.preventDefault();
@@ -285,35 +289,42 @@ export default function ProjectScriptsControl({
             : {})}
         >
           <Tooltip>
-            <TooltipTrigger
-              render={
-                <ThreadDetailsControl
-                  size="xs"
-                  variant={isPanel ? "ghost" : "outline"}
-                  part="primary"
-                  panel={isPanel}
-                  className={isPanel ? undefined : "w-7 sm:w-6 @3xl/header-actions:w-auto!"}
-                  aria-label={t("Run {name}", { name: primaryScript.name })}
-                  // Tooltip replaces the button data-slot, so toolbar theming needs a separate hook.
-                  data-toolbar-control=""
-                  aria-disabled={!onRunScript || undefined}
-                  onClick={() => onRunScript?.(primaryScript)}
-                />
-              }
+            <span
+              className={cn(
+                "inline-flex min-w-0",
+                isPanel ? undefined : "w-7 sm:w-6 @3xl/header-actions:w-auto!",
+              )}
             >
-              <ScriptIcon
-                icon={primaryScript.icon}
-                {...(isPanel ? { className: THREAD_DETAILS_PANEL_ICON_CLASS } : {})}
-              />
-              <span
-                className={cn(
-                  "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
-                  isPanel && cn("not-sr-only ml-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
-                )}
+              <TooltipTrigger
+                render={
+                  <ThreadDetailsControl
+                    fill
+                    size="xs"
+                    variant={isPanel ? "ghost" : "outline"}
+                    part="primary"
+                    panel={isPanel}
+                    aria-label={t("Run {name}", { name: primaryScript.name })}
+                    // Tooltip replaces the button data-slot, so toolbar theming needs a separate hook.
+                    data-toolbar-control=""
+                    aria-disabled={!onRunScript || undefined}
+                    onClick={() => onRunScript?.(primaryScript)}
+                  />
+                }
               >
-                {primaryScript.name}
-              </span>
-            </TooltipTrigger>
+                <ScriptIcon
+                  icon={primaryScript.icon}
+                  {...(isPanel ? { className: THREAD_DETAILS_PANEL_ICON_CLASS } : {})}
+                />
+                <span
+                  className={cn(
+                    "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
+                    isPanel && cn("not-sr-only ml-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
+                  )}
+                >
+                  {primaryScript.name}
+                </span>
+              </TooltipTrigger>
+            </span>
             <TooltipPopup side="top">
               {onRunScript
                 ? t("Run {name}", { name: primaryScript.name })
@@ -323,7 +334,7 @@ export default function ProjectScriptsControl({
           {isPanel ? (
             <span aria-hidden="true" className={THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS} />
           ) : (
-            <GroupSeparator className="hidden @3xl/header-actions:block" />
+            <GroupSeparator responsive />
           )}
           <Menu
             open={actionsMenuOpen.scripts}
@@ -349,7 +360,7 @@ export default function ProjectScriptsControl({
             <MenuPopup
               align="end"
               {...(isPanel ? { anchor: panelAnchorRef } : {})}
-              className={isPanel ? "w-(--anchor-width)" : undefined}
+              width={isPanel ? "anchor" : "default"}
             >
               {scriptItems}
             </MenuPopup>
@@ -395,7 +406,7 @@ export default function ProjectScriptsControl({
               >
                 <ChevronDownIcon className={THREAD_DETAILS_PANEL_CHEVRON_CLASS} />
               </MenuTrigger>
-              <MenuPopup align="end" anchor={panelAnchorRef} className="w-(--anchor-width)">
+              <MenuPopup align="end" anchor={panelAnchorRef} width="anchor">
                 {scriptItems}
               </MenuPopup>
             </Menu>
@@ -422,30 +433,37 @@ export default function ProjectScriptsControl({
         )
       ) : (
         <Tooltip>
-          <TooltipTrigger
-            render={
-              <ThreadDetailsControl
-                size="xs"
-                variant={isPanel ? "ghost" : "outline"}
-                part="row"
-                panel={isPanel}
-                className={isPanel ? undefined : "w-7 sm:w-6 @3xl/header-actions:w-auto!"}
-                aria-label={t(isPanel ? "Add project script" : "Add action")}
-                data-toolbar-control=""
-                onClick={openAddDialog}
-              />
-            }
+          <span
+            className={cn(
+              "inline-flex min-w-0",
+              isPanel ? undefined : "w-7 sm:w-6 @3xl/header-actions:w-auto!",
+            )}
           >
-            <PlusIcon className="size-3.5" />
-            <span
-              className={cn(
-                "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
-                isPanel && cn("not-sr-only ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS),
-              )}
+            <TooltipTrigger
+              render={
+                <ThreadDetailsControl
+                  fill
+                  size="xs"
+                  variant={isPanel ? "ghost" : "outline"}
+                  part="row"
+                  panel={isPanel}
+                  aria-label={t(isPanel ? "Add project script" : "Add action")}
+                  data-toolbar-control=""
+                  onClick={openAddDialog}
+                />
+              }
             >
-              {t(isPanel ? "Add project script" : "Add action")}
-            </span>
-          </TooltipTrigger>
+              <PlusIcon className="size-3.5" />
+              <span
+                className={cn(
+                  "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
+                  isPanel && cn("not-sr-only ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS),
+                )}
+              >
+                {t(isPanel ? "Add project script" : "Add action")}
+              </span>
+            </TooltipTrigger>
+          </span>
           <TooltipPopup side="top">{t(isPanel ? "Add project script" : "Add action")}</TooltipPopup>
         </Tooltip>
       )}

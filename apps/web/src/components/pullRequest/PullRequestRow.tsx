@@ -40,9 +40,8 @@ function PullRequestRowLabels({ labels }: { labels: EnvironmentPullRequestEntry[
         if (!label) return null;
         const remaining = labels.length - index - 1;
         return (
-          <PullRequestLabelChip
+          <span
             key={label.name}
-            label={label}
             className={
               index === 0
                 ? ""
@@ -51,10 +50,12 @@ function PullRequestRowLabels({ labels }: { labels: EnvironmentPullRequestEntry[
                   : "hidden @3xl/pr-row-meta:inline-flex"
             }
           >
-            {remaining > 0 ? (
-              <span className={cn("shrink-0", slot.overflow)}>+{remaining}</span>
-            ) : null}
-          </PullRequestLabelChip>
+            <PullRequestLabelChip label={label}>
+              {remaining > 0 ? (
+                <span className={cn("shrink-0", slot.overflow)}>+{remaining}</span>
+              ) : null}
+            </PullRequestLabelChip>
+          </span>
         );
       })}
     </span>
@@ -78,6 +79,7 @@ function PullRequestRowImpl({
   statsKey,
   statsRef,
   onSelect,
+  onIntent,
   hostActions,
   onActed,
   closing = false,
@@ -94,6 +96,8 @@ function PullRequestRowImpl({
   statsKey?: string;
   statsRef?: RefCallback<HTMLDivElement>;
   onSelect: (entry: PullRequestRowTarget) => void;
+
+  onIntent?: (entry: PullRequestRowTarget | null) => void;
   hostActions: ReadonlySet<PullRequestAction>;
   onActed: (result: PullRequestSpeedActionResult) => void;
   closing?: boolean;
@@ -115,6 +119,14 @@ function PullRequestRowImpl({
         type="button"
         aria-current={selected ? "true" : undefined}
         onClick={() => onSelect(entry)}
+        onPointerEnter={() => onIntent?.(entry)}
+        onPointerLeave={(event) => {
+          if (event.currentTarget !== document.activeElement) onIntent?.(null);
+        }}
+        onFocus={() => onIntent?.(entry)}
+        onBlur={(event) => {
+          if (!event.currentTarget.matches(":hover")) onIntent?.(null);
+        }}
         className={cn(
           PULL_REQUEST_ROW_CLASS,
           PAGE_ROW_CLASS,

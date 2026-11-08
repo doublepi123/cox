@@ -13,16 +13,27 @@ export type PullRequestBodySegment =
       readonly kind: "attachment";
       readonly url: string;
       readonly media: "video" | "image" | "unknown";
+    }
+  | {
+      readonly id: string;
+      readonly kind: "table";
+      readonly rows: ReadonlyArray<ReadonlyArray<PullRequestBodyTableCell>>;
     };
 
-const FENCE_PATTERN = /^\s{0,3}((?:`{3,})|(?:~{3,}))(.*)$/u;
+type PullRequestBodyTableCell = {
+  readonly id: string;
+  readonly header: boolean;
+  readonly segments: ReadonlyArray<PullRequestBodySegment>;
+};
+
+const FENCE_PATTERN = /^\s{0,3}((?:`{3,})|(?:~{3,}))(.*)\r?$/u;
 /**
  * How far a `<video>` tag may reach for its closing tag. Real embeds are one to three lines,
  * and the bound keeps an unclosed tag from making each one rescan the rest of the body.
  */
 const VIDEO_TAG_MAX_LINES = 8;
 
-const INDENTED_CODE_PATTERN = /^(?: {4}|\t)/u;
+const INDENTED_CODE_PATTERN = /^(?: {4}| {0,3}\t)/u;
 const BARE_URL_PATTERN = /^<?(https?:\/\/\S+?)>?$/u;
 const IMAGE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp|avif|heic|heif|svg)(?:$|[?#])/iu;
 const MARKDOWN_LINK_PATTERN = /^\[[^\]]*\]\((https?:\/\/[^\s)]+)\)$/u;
@@ -32,6 +43,17 @@ const VIDEO_TAG_SRC_PATTERN = /<(?:video|source)\b[^>]*\bsrc\s*=\s*["']([^"']+)[
 
 const STANDALONE_VIDEO_TAG_PATTERN = /^\s*<video\b/iu;
 const VIDEO_TAG_END_PATTERN = /<\/video>\s*$/iu;
+
+const TABLE_MAX_LINES = 64;
+const TABLE_START_PATTERN = /^\s*<table\b/iu;
+const TABLE_END_PATTERN = /<\/table>\s*$/iu;
+const TABLE_OPEN_PATTERN = /<table\b/giu;
+const TABLE_CLOSE_PATTERN = /<\/table\s*>/giu;
+
+const TABLE_STRUCTURE_TAG_PATTERN =
+  /<(\/?)(table|thead|tbody|tfoot|tr|td|th)\b((?:[^<>"']|"[^"]*"|'[^']*')*)>/giu;
+
+const CELL_SPAN_PATTERN = /\b(?:col|row)span\b/iu;
 
 function isWebUrl(url: string): boolean {
   try {
@@ -55,7 +77,81 @@ function attachmentFromLine(
   return null;
 }
 
+type TableRows = ReadonlyArray<ReadonlyArray<PullRequestBodyTableCell>>;
+
+function tableRows(html: string, htmlOffset: number): TableRows | null {
+  const rows: PullRequestBodyTableCell[][] = [];
+  let row: PullRequestBodyTableCell[] | null = null;
+  let cell: { tag: string; contentStart: number } | null = null;
+  let opened = false;
+  let closed = false;
+  let cursor = 0;
+  for (const match of html.matchAll(TABLE_STRUCTURE_TAG_PATTERN)) {
+    const closing = match[1] === "/";
+    const tag = match[2]!.toLowerCase();
+    if (cell !== null) {
+      if (!closing || tag !== cell.tag) return null;
+      const content = html.slice(cell.contentStart, match.index);
+      if (content.split("\n").some((line) => INDENTED_CODE_PATTERN.test(line) && line.trim()))
+        return null;
+      row!.push({
+        id: `cell:${htmlOffset + cell.contentStart}`,
+        header: tag === "th",
+        segments: splitBodyAt(content, htmlOffset + cell.contentStart),
+      });
+      cell = null;
+    } else {
+      if (html.slice(cursor, match.index).trim().length > 0) return null;
+      const tableOpen = opened && !closed;
+      if (tag === "table") {
+        if (closing ? !tableOpen || row !== null : opened) return null;
+        opened = true;
+        closed = closing;
+      } else if (tag === "tr") {
+        if (!tableOpen || closing === (row === null)) return null;
+        if (closing) rows.push(row!);
+        row = closing ? null : [];
+      } else if (tag === "td" || tag === "th") {
+        if (closing || row === null || CELL_SPAN_PATTERN.test(match[3]!)) return null;
+        cell = { tag, contentStart: match.index + match[0].length };
+      } else if (!tableOpen || row !== null) {
+        return null;
+      }
+    }
+    cursor = match.index + match[0].length;
+  }
+  if (!closed || html.slice(cursor).trim().length > 0) return null;
+  return rows.filter((cells) => cells.length > 0);
+}
+
+function mediaTableAt(
+  lines: ReadonlyArray<string>,
+  start: number,
+  startOffset: number,
+): { end: number; rows: TableRows | null } {
+  const lastCandidate = Math.min(start + TABLE_MAX_LINES, lines.length) - 1;
+  let depth = 0;
+  let end = start;
+  for (; ; end += 1) {
+    const line = lines[end]!;
+    depth +=
+      (line.match(TABLE_OPEN_PATTERN)?.length ?? 0) -
+      (line.match(TABLE_CLOSE_PATTERN)?.length ?? 0);
+    if (depth <= 0 || end === lastCandidate) break;
+  }
+  if (depth !== 0 || !TABLE_END_PATTERN.test(lines[end]!)) return { end, rows: null };
+  const rows = tableRows(lines.slice(start, end + 1).join("\n"), startOffset);
+  const hasMedia = rows?.some((cells) =>
+    cells.some((cell) => cell.segments.some((segment) => segment.kind === "attachment")),
+  );
+  return { end, rows: hasMedia ? rows : null };
+}
+
 export function splitPullRequestBody(body: string): ReadonlyArray<PullRequestBodySegment> {
+  return splitBodyAt(body, 0);
+}
+
+function splitBodyAt(body: string, baseOffset: number): ReadonlyArray<PullRequestBodySegment> {
   const segments: PullRequestBodySegment[] = [];
   const markdown: string[] = [];
   let markdownStart = 0;
@@ -65,7 +161,7 @@ export function splitPullRequestBody(body: string): ReadonlyArray<PullRequestBod
   // indented code block, so trimming a run would silently turn code into prose.
   const flushMarkdown = () => {
     const joined = markdown.join("\n");
-    const text = joined.replace(/^\n+/u, "");
+    const text = joined.replace(/^(?:\r?\n)+/u, "");
     const sourceOffset = markdownStart + joined.length - text.length;
     markdown.length = 0;
     if (text.trim().length > 0) {
@@ -79,7 +175,8 @@ export function splitPullRequestBody(body: string): ReadonlyArray<PullRequestBod
   };
 
   const lines = body.split("\n");
-  let lineStart = 0;
+  let tableScannedThrough = -1;
+  let lineStart = baseOffset;
   for (let index = 0; index < lines.length; lineStart += lines[index]!.length + 1, index += 1) {
     const line = lines[index]!;
     if (markdown.length === 0) markdownStart = lineStart;
@@ -105,6 +202,17 @@ export function splitPullRequestBody(body: string): ReadonlyArray<PullRequestBod
     if (openFence !== null || INDENTED_CODE_PATTERN.test(line)) {
       markdown.push(line);
       continue;
+    }
+
+    if (index > tableScannedThrough && TABLE_START_PATTERN.test(line)) {
+      const table = mediaTableAt(lines, index, lineStart);
+      tableScannedThrough = table.end;
+      if (table.rows !== null) {
+        flushMarkdown();
+        segments.push({ id: `table:${segments.length}`, kind: "table", rows: table.rows });
+        for (; index < table.end; index += 1) lineStart += lines[index]!.length + 1;
+        continue;
+      }
     }
 
     const bareAttachment = attachmentFromLine(line);
@@ -161,4 +269,13 @@ export function changeRequestReferenceAutolinker(
   return find === undefined || repositoryUrl === undefined
     ? null
     : (text) => find(text, repositoryUrl);
+}
+
+export function resolveChangeRequestMediaUrl(url: string, changeRequestUrl: string): string {
+  if (!/^\/(?![/\\])/u.test(url)) return url;
+  try {
+    return new URL(url, changeRequestUrl).href;
+  } catch {
+    return url;
+  }
 }

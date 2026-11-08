@@ -354,7 +354,9 @@ function GitActionProgressButtonContent({ progress }: { progress: GitActionProgr
       )}
       role="status"
     >
-      <Spinner aria-hidden="true" className="row-start-1 -mx-0.5 shrink-0" />
+      <span className="inline-flex min-w-0 row-start-1 -mx-0.5 shrink-0">
+        <Spinner aria-hidden="true" />
+      </span>
       <p className={cn("row-start-1 min-w-0 truncate text-left", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
         {progress.status}
       </p>
@@ -373,7 +375,7 @@ function GitActionProgressButtonContent({ progress }: { progress: GitActionProgr
             >
               {progress.output}
             </TooltipTrigger>
-            <TooltipPopup side="bottom" className="max-w-96 break-words">
+            <TooltipPopup side="bottom" width="wide">
               {progress.output}
             </TooltipPopup>
           </Tooltip>
@@ -411,7 +413,7 @@ function GitActionSuccessButtonContent({ success }: { success: InlineGitActionSu
             >
               {success.description}
             </TooltipTrigger>
-            <TooltipPopup side="bottom" className="max-w-96 break-words">
+            <TooltipPopup side="bottom" width="wide">
               {success.description}
             </TooltipPopup>
           </Tooltip>
@@ -611,7 +613,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                 setPublishRepositoryOverride(null);
               }}
               aria-labelledby="publish-provider-cards-label"
-              className="grid grid-cols-2"
+              layout="cards"
             >
               {sortedPublishProviderOptions.map((option) => {
                 const readiness = publishProviderReadiness(option.value);
@@ -720,7 +722,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                 }
                 aria-labelledby="publish-visibility-cards-label"
                 disabled={publishRepositoryAction.isPending}
-                className="grid grid-cols-2"
+                layout="cards"
               >
                 {[
                   {
@@ -863,9 +865,9 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                   </span>
                 </div>
                 <Button
+                  fill
                   variant="outline"
                   size="sm"
-                  className="w-full"
                   onClick={() => {
                     void openLink(publishResult.repository.url).catch(() => undefined);
                   }}
@@ -984,7 +986,7 @@ export default function GitActionsControl({
   const visibleInlineSuccess =
     inlineSuccess?.scopeKey === successScopeKey && !inlineSuccessExpired ? inlineSuccess : null;
 
-  const persistThreadBranchSync = (branch: string | null, manualSelection = false) => {
+  const persistThreadBranchSync = (branch: string | null, _manualSelection = false) => {
     if (!activeThreadRef) {
       return;
     }
@@ -1429,7 +1431,7 @@ export default function GitActionsControl({
                 nativeButton={false}
                 render={<span className="block w-full cursor-not-allowed" />}
               >
-                <MenuItem className="w-full" disabled>
+                <MenuItem fill disabled>
                   <GitActionItemIcon icon={item.icon} SourceControlIcon={SourceControlIcon} />
                   <MenuItemLabel>{t(item.label)}</MenuItemLabel>
                 </MenuItem>
@@ -1621,7 +1623,7 @@ export default function GitActionsControl({
                     className={THREAD_DETAILS_PANEL_CHEVRON_CLASS}
                   />
                 </MenuTrigger>
-                <MenuPopup align="end" anchor={panelAnchorRef} className="w-(--anchor-width)">
+                <MenuPopup align="end" anchor={panelAnchorRef} width="anchor">
                   {gitItems}
                 </MenuPopup>
               </Menu>
@@ -1640,35 +1642,41 @@ export default function GitActionsControl({
           onClick={onOpenChanges}
         >
           <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
-          <span className={cn("shrink-0", THREAD_DETAILS_PANEL_LABEL_CLASS)}>{t("Changes")}</span>
-          {changesBaseLabel ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="pointer-events-auto min-w-0 truncate text-xs text-muted-foreground" />
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <span className={cn("shrink-0", THREAD_DETAILS_PANEL_LABEL_CLASS)}>{t("Changes")}</span>
+            {changesBaseLabel ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="pointer-events-auto min-w-0 truncate font-normal text-muted-foreground" />
+                  }
+                >
+                  {changesBaseLabel}
+                </TooltipTrigger>
+                <TooltipPopup side="top">
+                  <span className="block max-w-96 break-words">{changesBaseLabel}</span>
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
+            <span className="ml-auto flex shrink-0 items-baseline gap-2 ps-2 font-mono tabular-nums">
+              <span
+                className={
+                  changesTotals.insertions
+                    ? "text-diff-addition-foreground"
+                    : "text-muted-foreground"
                 }
               >
-                {changesBaseLabel}
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                <span className="block max-w-96 break-words">{changesBaseLabel}</span>
-              </TooltipPopup>
-            </Tooltip>
-          ) : null}
-          <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums">
-            <span
-              className={
-                changesTotals.insertions ? "text-diff-addition-foreground" : "text-muted-foreground"
-              }
-            >
-              +{formatDiffCount(changesTotals.insertions)}
-            </span>
-            <span
-              className={
-                changesTotals.deletions ? "text-diff-deletion-foreground" : "text-muted-foreground"
-              }
-            >
-              -{formatDiffCount(changesTotals.deletions)}
+                +{formatDiffCount(changesTotals.insertions)}
+              </span>
+              <span
+                className={
+                  changesTotals.deletions
+                    ? "text-diff-deletion-foreground"
+                    : "text-muted-foreground"
+                }
+              >
+                -{formatDiffCount(changesTotals.deletions)}
+              </span>
             </span>
           </span>
         </ThreadDetailsControl>
@@ -1869,7 +1877,7 @@ export default function GitActionsControl({
           if (!open) setPendingDefaultBranchAction(null);
         }}
       >
-        <DialogPopup className="max-w-xl">
+        <DialogPopup width="xl">
           <DialogHeader>
             <DialogTitle>
               {pendingDefaultBranchActionCopy?.title ?? "Run action on default branch?"}
@@ -1879,32 +1887,38 @@ export default function GitActionsControl({
               <p className="text-xs text-muted-foreground">{featureBranchUnavailableReason}</p>
             )}
           </DialogHeader>
-          <DialogFooter variant="bare" className="sm:flex-wrap sm:items-center">
-            <Button
-              className="w-full sm:mr-auto sm:w-auto"
-              variant="outline"
-              size="sm"
-              onClick={() => setPendingDefaultBranchAction(null)}
-            >
-              {t("Abort")}
-            </Button>
-            <Button
-              className="w-full max-w-full sm:w-auto"
-              variant="outline"
-              size="sm-multiline"
-              onClick={() => continuePendingDefaultBranchAction(false)}
-              disabled={!canWriteSourceControl}
-            >
-              {pendingDefaultBranchActionCopy?.continueLabel ?? t("Continue")}
-            </Button>
-            <Button
-              className="w-full max-w-full sm:w-auto"
-              size="sm-multiline"
-              onClick={() => continuePendingDefaultBranchAction(true)}
-              disabled={!canChangeThreadBranch || featureBranchUnavailableReason !== null}
-            >
-              {t("Check out feature branch & continue")}
-            </Button>
+          <DialogFooter variant="bare" layout="wrap">
+            <span className="inline-flex min-w-0 w-full sm:mr-auto sm:w-auto">
+              <Button
+                fill
+                variant="outline"
+                size="sm"
+                onClick={() => setPendingDefaultBranchAction(null)}
+              >
+                {t("Abort")}
+              </Button>
+            </span>
+            <span className="inline-flex min-w-0 w-full max-w-full sm:w-auto">
+              <Button
+                fill
+                variant="outline"
+                size="sm-multiline"
+                onClick={() => continuePendingDefaultBranchAction(false)}
+                disabled={!canWriteSourceControl}
+              >
+                {pendingDefaultBranchActionCopy?.continueLabel ?? t("Continue")}
+              </Button>
+            </span>
+            <span className="inline-flex min-w-0 w-full max-w-full sm:w-auto">
+              <Button
+                fill
+                size="sm-multiline"
+                onClick={() => continuePendingDefaultBranchAction(true)}
+                disabled={!canChangeThreadBranch || featureBranchUnavailableReason !== null}
+              >
+                {t("Check out feature branch & continue")}
+              </Button>
+            </span>
           </DialogFooter>
         </DialogPopup>
       </Dialog>

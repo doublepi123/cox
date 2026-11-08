@@ -121,5 +121,12 @@ export function subagentDetailPreview(input: {
   const detail =
     (isTerminalSubagentStatus(input.status) ? result || progress : progress || result) || "";
   const compact = detail.replace(/\s+/gu, " ");
-  return compact.length > 280 ? `${compact.slice(0, 280).trimEnd()}…` : compact || null;
+  if (compact.length <= 280) return compact || null;
+  let end = 280;
+  const previous = compact.charCodeAt(end - 1);
+  const next = compact.charCodeAt(end);
+  if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+    end -= 1;
+  }
+  return `${compact.slice(0, end).trimEnd()}…`;
 }

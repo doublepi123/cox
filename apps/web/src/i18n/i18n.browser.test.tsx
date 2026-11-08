@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
@@ -34,13 +34,18 @@ function LanguageWorkspace() {
   );
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  setLanguagePreference("system");
-  localStorage.removeItem(LANGUAGE_STORAGE_KEY);
-});
+function restoreLanguage() {
+  return {
+    [Symbol.dispose]() {
+      vi.restoreAllMocks();
+      setLanguagePreference("system");
+      localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    },
+  };
+}
 
 it("defaults to Chinese device language in real navigation and project UI", async () => {
+  using _language = restoreLanguage();
   vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN", "en-US"]);
   setLanguagePreference("system");
   initializeI18n();
@@ -56,6 +61,7 @@ it("defaults to Chinese device language in real navigation and project UI", asyn
 });
 
 it("switches live, persists the preference, and keeps draft and agent content unchanged", async () => {
+  using _language = restoreLanguage();
   vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-US"]);
   setLanguagePreference("system");
   await using screen = await render(<LanguageWorkspace />);
@@ -91,6 +97,7 @@ it("switches live, persists the preference, and keeps draft and agent content un
 });
 
 it("responds to device language changes and cross-tab persisted preferences", async () => {
+  using _language = restoreLanguage();
   const languages = vi.spyOn(navigator, "languages", "get").mockReturnValue(["ja-JP"]);
   setLanguagePreference("system");
   await using screen = await render(<LanguageWorkspace />);
@@ -119,6 +126,7 @@ it("responds to device language changes and cross-tab persisted preferences", as
 });
 
 it("keeps live switching usable when browser storage is blocked", async () => {
+  using _language = restoreLanguage();
   setLanguagePreference("en");
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new DOMException("Storage blocked", "SecurityError");
@@ -131,6 +139,7 @@ it("keeps live switching usable when browser storage is blocked", async () => {
 });
 
 it("searches translated setting labels", async () => {
+  using _language = restoreLanguage();
   await page.viewport(1280, 900);
   setLanguagePreference("zh");
   await using screen = await render(<LanguageWorkspace />);
@@ -139,6 +148,7 @@ it("searches translated setting labels", async () => {
 });
 
 it("renders the actual local agent setup and project import in Chinese", async () => {
+  using _language = restoreLanguage();
   setLanguagePreference("zh");
   await using screen = await render(
     <AppAtomRegistryProvider>

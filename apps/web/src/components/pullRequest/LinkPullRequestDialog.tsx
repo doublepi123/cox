@@ -123,7 +123,7 @@ function LinkPullRequestDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (pending ? undefined : onOpenChange(next))}>
-      <DialogPopup className="max-w-xl" initialFocus={inputRef}>
+      <DialogPopup width="xl" initialFocus={inputRef}>
         <DialogHeader>
           <DialogTitle>{t("Link pull request")}</DialogTitle>
           <DialogDescription>

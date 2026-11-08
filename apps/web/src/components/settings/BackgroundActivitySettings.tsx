@@ -123,7 +123,7 @@ function BackgroundActivityAdvancedDialog({
 
   return (
     <Dialog open={open && canWriteSettings} onOpenChange={onOpenChange}>
-      <DialogPopup className="max-w-xl">
+      <DialogPopup width="xl">
         <DialogHeader>
           <DialogTitle>{t("Background Activity")}</DialogTitle>
           <DialogDescription>
@@ -156,13 +156,13 @@ function BackgroundActivityAdvancedDialog({
                   }
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full sm:w-40"
-                  aria-label={t("Shared background policy")}
-                >
-                  <SelectValue>{t(BACKGROUND_ACTIVITY_PROFILE_LABELS[activeProfile])}</SelectValue>
-                </SelectTrigger>
+                <div className="min-w-0 w-full sm:w-40">
+                  <SelectTrigger fill size="sm" aria-label={t("Shared background policy")}>
+                    <SelectValue>
+                      {t(BACKGROUND_ACTIVITY_PROFILE_LABELS[activeProfile])}
+                    </SelectValue>
+                  </SelectTrigger>
+                </div>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   <SelectItem hideIndicator value="balanced">
                     {t(BACKGROUND_ACTIVITY_PROFILE_LABELS.balanced)}
@@ -187,32 +187,33 @@ function BackgroundActivityAdvancedDialog({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={automaticGitFetchIntervalSeconds}
-                  min={0}
-                  step={5}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          automaticGitFetchInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label={t("Decrease Git fetch interval")} />
-                    <NumberFieldInput aria-label={t("Git fetch interval in seconds")} />
-                    <NumberFieldIncrement aria-label={t("Increase Git fetch interval")} />
-                  </NumberFieldGroup>
-                </NumberField>
+                <div className="min-w-0 w-32">
+                  <NumberField
+                    value={automaticGitFetchIntervalSeconds}
+                    min={0}
+                    step={5}
+                    size="sm"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            automaticGitFetchInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label={t("Decrease Git fetch interval")} />
+                      <NumberFieldInput aria-label={t("Git fetch interval in seconds")} />
+                      <NumberFieldIncrement aria-label={t("Increase Git fetch interval")} />
+                    </NumberFieldGroup>
+                  </NumberField>
+                </div>
                 <span className="text-xs text-muted-foreground">{t("seconds")}</span>
               </div>
             </div>
@@ -227,32 +228,33 @@ function BackgroundActivityAdvancedDialog({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={providerHealthRefreshIntervalSeconds}
-                  min={0}
-                  step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          providerHealthRefreshInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label={t("Decrease provider health interval")} />
-                    <NumberFieldInput aria-label={t("Provider health interval in seconds")} />
-                    <NumberFieldIncrement aria-label={t("Increase provider health interval")} />
-                  </NumberFieldGroup>
-                </NumberField>
+                <div className="min-w-0 w-32">
+                  <NumberField
+                    value={providerHealthRefreshIntervalSeconds}
+                    min={0}
+                    step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
+                    size="sm"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            providerHealthRefreshInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label={t("Decrease provider health interval")} />
+                      <NumberFieldInput aria-label={t("Provider health interval in seconds")} />
+                      <NumberFieldIncrement aria-label={t("Increase provider health interval")} />
+                    </NumberFieldGroup>
+                  </NumberField>
+                </div>
                 <span className="text-xs text-muted-foreground">{t("seconds")}</span>
               </div>
             </div>
@@ -265,32 +267,33 @@ function BackgroundActivityAdvancedDialog({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={hostPowerMonitorActiveIntervalSeconds}
-                  min={5}
-                  step={5}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          hostPowerMonitorActiveInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value, 5),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label={t("Decrease active host power interval")} />
-                    <NumberFieldInput aria-label={t("Active host power interval in seconds")} />
-                    <NumberFieldIncrement aria-label={t("Increase active host power interval")} />
-                  </NumberFieldGroup>
-                </NumberField>
+                <div className="min-w-0 w-32">
+                  <NumberField
+                    value={hostPowerMonitorActiveIntervalSeconds}
+                    min={5}
+                    step={5}
+                    size="sm"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            hostPowerMonitorActiveInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value, 5),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label={t("Decrease active host power interval")} />
+                      <NumberFieldInput aria-label={t("Active host power interval in seconds")} />
+                      <NumberFieldIncrement aria-label={t("Increase active host power interval")} />
+                    </NumberFieldGroup>
+                  </NumberField>
+                </div>
                 <span className="text-xs text-muted-foreground">{t("seconds")}</span>
               </div>
             </div>
@@ -303,32 +306,33 @@ function BackgroundActivityAdvancedDialog({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={hostPowerMonitorIdleIntervalSeconds}
-                  min={5}
-                  step={30}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          hostPowerMonitorIdleInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value, 5),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label={t("Decrease idle host power interval")} />
-                    <NumberFieldInput aria-label={t("Idle host power interval in seconds")} />
-                    <NumberFieldIncrement aria-label={t("Increase idle host power interval")} />
-                  </NumberFieldGroup>
-                </NumberField>
+                <div className="min-w-0 w-32">
+                  <NumberField
+                    value={hostPowerMonitorIdleIntervalSeconds}
+                    min={5}
+                    step={30}
+                    size="sm"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            hostPowerMonitorIdleInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value, 5),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label={t("Decrease idle host power interval")} />
+                      <NumberFieldInput aria-label={t("Idle host power interval in seconds")} />
+                      <NumberFieldIncrement aria-label={t("Increase idle host power interval")} />
+                    </NumberFieldGroup>
+                  </NumberField>
+                </div>
                 <span className="text-xs text-muted-foreground">{t("seconds")}</span>
               </div>
             </div>
@@ -437,19 +441,17 @@ export function BackgroundActivitySettingsRow() {
               }
             }}
           >
-            <SelectTrigger
-              size="sm"
-              className="w-full sm:w-40"
-              aria-label={translateUi("Background activity profile")}
-            >
-              <SelectValue>
-                {(value: BackgroundActivityProfileOption | null) =>
-                  value === null
-                    ? translateUi("Mixed")
-                    : translateUi(BACKGROUND_ACTIVITY_PROFILE_OPTION_LABELS[value])
-                }
-              </SelectValue>
-            </SelectTrigger>
+            <div className="min-w-0 w-full sm:w-40">
+              <SelectTrigger fill size="sm" aria-label={translateUi("Background activity profile")}>
+                <SelectValue>
+                  {(value: BackgroundActivityProfileOption | null) =>
+                    value === null
+                      ? translateUi("Mixed")
+                      : translateUi(BACKGROUND_ACTIVITY_PROFILE_OPTION_LABELS[value])
+                  }
+                </SelectValue>
+              </SelectTrigger>
+            </div>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               <SelectItem hideIndicator value="balanced">
                 {translateUi(BACKGROUND_ACTIVITY_PROFILE_LABELS.balanced)}

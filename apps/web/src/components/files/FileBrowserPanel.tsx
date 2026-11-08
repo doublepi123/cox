@@ -83,24 +83,26 @@ function FileSearchField(props: {
   value: string;
 }) {
   return (
-    <InputGroup variant="ghost" className="h-7 min-w-0 flex-1">
-      <InputGroupInput
-        type="search"
-        name={props.name}
-        size="sm"
-        value={props.value}
-        aria-label={props.ariaLabel}
-        placeholder="Search files"
-        data-workspace-focus-default
-        spellCheck={false}
-        onChange={(event) => props.onValueChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          props.onClose();
-          event.currentTarget.blur();
-        }}
-      />
-    </InputGroup>
+    <div className="min-w-0 h-7 flex-1">
+      <InputGroup variant="ghost">
+        <InputGroupInput
+          type="search"
+          name={props.name}
+          size="sm"
+          value={props.value}
+          aria-label={props.ariaLabel}
+          placeholder="Search files"
+          data-workspace-focus-default
+          spellCheck={false}
+          onChange={(event) => props.onValueChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            props.onClose();
+            event.currentTarget.blur();
+          }}
+        />
+      </InputGroup>
+    </div>
   );
 }
 

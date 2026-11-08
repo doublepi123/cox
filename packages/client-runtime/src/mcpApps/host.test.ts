@@ -70,6 +70,23 @@ function setup(overrides: Partial<Parameters<typeof makeMcpAppHost>[0]> = {}) {
 }
 
 describe("makeMcpAppHost", () => {
+  it("sends explicit host context changes and deduplicates repeated snapshots", () => {
+    const { host, sent } = setup();
+    initialize(host);
+    sent.length = 0;
+    const updated = { ...context("light"), containerDimensions: { width: 480, maxHeight: 2000 } };
+    host.updateHostContext(updated);
+    host.updateHostContext(updated);
+    const notifications = sent.filter(
+      (message) => message.method === "ui/notifications/host-context-changed",
+    );
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.params).toEqual({
+      theme: "light",
+      styles: updated.styles,
+      containerDimensions: updated.containerDimensions,
+    });
+  });
   it("initializes, then replays the tool input and result after initialized", () => {
     const { host, sent } = setup();
     host.setToolCall({

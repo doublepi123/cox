@@ -83,27 +83,28 @@ export function PullRequestDetailTabBar<Tab extends string>({
       aria-label="Pull request tabs"
       inert={inert}
     >
-      <ToggleGroup
-        className="shrink-0"
-        size="segmented"
-        variant="segmented"
-        value={[value]}
-        onValueChange={(next) => {
-          const nextTab = tabs.find((item) => item.value === next[0])?.value;
-          if (nextTab) onValueChange?.(nextTab);
-        }}
-      >
-        {tabs.map((tab) => (
-          <Toggle
-            key={tab.value}
-            value={tab.value}
-            onPointerEnter={onTabIntent ? () => onTabIntent(tab.value) : undefined}
-            onFocus={onTabIntent ? () => onTabIntent(tab.value) : undefined}
-          >
-            {tab.label}
-          </Toggle>
-        ))}
-      </ToggleGroup>
+      <span className="inline-flex min-w-0 shrink-0">
+        <ToggleGroup
+          size="segmented"
+          variant="segmented"
+          value={[value]}
+          onValueChange={(next) => {
+            const nextTab = tabs.find((item) => item.value === next[0])?.value;
+            if (nextTab) onValueChange?.(nextTab);
+          }}
+        >
+          {tabs.map((tab) => (
+            <Toggle
+              key={tab.value}
+              value={tab.value}
+              onPointerEnter={onTabIntent ? () => onTabIntent(tab.value) : undefined}
+              onFocus={onTabIntent ? () => onTabIntent(tab.value) : undefined}
+            >
+              {tab.label}
+            </Toggle>
+          ))}
+        </ToggleGroup>
+      </span>
       {children}
     </nav>
   );

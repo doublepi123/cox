@@ -99,7 +99,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
               {...buttonProps}
               size={presentation === "touch" ? "multiline" : "xs"}
               variant={option.decision === "accept" ? "default" : "outline"}
-              className={presentation === "touch" ? "min-w-0 flex-1 sm:flex-none" : undefined}
+              flexible={presentation === "touch"}
             >
               {content}
             </Button>

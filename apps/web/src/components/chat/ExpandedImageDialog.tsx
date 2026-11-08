@@ -166,7 +166,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         variant="media"
         showCloseButton={false}
         bottomStickOnMobile={false}
-        className="row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
+        surface="image"
         onKeyDown={onKeyDown}
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
@@ -174,28 +174,29 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           if (event.target === event.currentTarget) close();
         }}
       >
-        <DialogTitle className="sr-only">
+        <DialogTitle visuallyHidden>
           {t("Expanded")}
           {mediaLabel} preview
         </DialogTitle>
-        <Button
-          type="button"
-          ref={closeButtonRef}
-          size="icon-sm"
-          variant="media-close"
-          className="absolute right-0 top-0 z-20"
-          onClick={close}
-          aria-label={`Close ${mediaLabel} preview`}
-        >
-          <XIcon />
-        </Button>
+        <span className="inline-flex min-w-0 absolute right-0 top-0 z-20">
+          <Button
+            type="button"
+            ref={closeButtonRef}
+            size="icon-sm"
+            variant="media-close"
+            onClick={close}
+            aria-label={`Close ${mediaLabel} preview`}
+          >
+            <XIcon />
+          </Button>
+        </span>
         {preview.images.length > 1 && (
           <Button
             type="button"
             size="icon"
             variant="media-navigation"
-            className="left-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
             aria-label={t("Previous media")}
+            navigation="previous"
             onClick={() => navigateImage(-1)}
           >
             <ChevronLeftIcon className="size-5" />
@@ -270,8 +271,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             type="button"
             size="icon"
             variant="media-navigation"
-            className="right-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
             aria-label={t("Next media")}
+            navigation="next"
             onClick={() => navigateImage(1)}
           >
             <ChevronRightIcon className="size-5" />

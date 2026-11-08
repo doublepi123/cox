@@ -45,12 +45,18 @@ type TooltipHoverTracker = ReturnType<typeof createTooltipHoverTracker>;
 const TooltipHoverContext = createContext<TooltipActionsRef | null>(null);
 const TooltipScrollContext = createContext<TooltipHoverTracker | null>(null);
 
-function TooltipScrollDismissArea({ onScrollCapture, ...props }: ComponentProps<"div">) {
+function TooltipScrollDismissArea({
+  onScrollCapture,
+  className,
+  viewport = false,
+  ...props
+}: ComponentProps<"div"> & { viewport?: boolean }) {
   const [tracker] = useState(createTooltipHoverTracker);
   return (
     <TooltipScrollContext value={tracker}>
       <div
         {...props}
+        className={cn(viewport && "relative h-full min-h-0", className)}
         onScrollCapture={(event) => {
           onScrollCapture?.(event);
           tracker.dismissUnfocused();
@@ -123,6 +129,9 @@ function TooltipPopup({
   sideOffset = 4,
   side = "top",
   variant = "default",
+  width = "default",
+  textFormat = "default",
+  interactive = false,
   anchor,
   children,
   ...props
@@ -131,6 +140,9 @@ function TooltipPopup({
   side?: TooltipPrimitive.Positioner.Props["side"];
   sideOffset?: TooltipPrimitive.Positioner.Props["sideOffset"];
   variant?: "default" | "glass" | "code";
+  width?: "default" | "compact" | "card" | "wide";
+  textFormat?: "default" | "pre" | "left";
+  interactive?: boolean;
   anchor?: TooltipPrimitive.Positioner.Props["anchor"];
 }) {
   return (
@@ -145,6 +157,12 @@ function TooltipPopup({
             variant === "code"
               ? "max-w-120 wrap-anywhere text-left font-mono text-[11px] leading-relaxed"
               : "max-w-80 wrap-anywhere whitespace-normal leading-snug",
+            width === "compact" && "max-w-72",
+            width === "card" && "w-80 max-w-[calc(100vw-2rem)]",
+            width === "wide" && "max-w-96 break-words",
+            textFormat === "pre" && "whitespace-pre-wrap",
+            textFormat === "left" && "text-left whitespace-normal",
+            interactive && "pointer-events-auto",
             className,
           )}
           data-slot="tooltip-popup"

@@ -12,7 +12,6 @@ import {
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   getClaudeCatalogModelCapabilities,
-  isClaudeCatalogUltracodeEffort,
   normalizeClaudeCatalogEffort,
   resolveClaudeCatalogApiModelId,
   resolveClaudeCatalogEffort,
@@ -36,13 +35,16 @@ export function compileClaudeModelSelection(
   catalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
 ): CompiledClaudeModelSelection {
   const capabilities = getClaudeCatalogModelCapabilities(catalog, selection.model);
-  const descriptors = getProviderOptionDescriptors({ caps: capabilities });
+  const descriptors = getProviderOptionDescriptors({
+    caps: capabilities,
+    selections: selection.options,
+  });
   const supportsBoolean = (id: string) =>
     descriptors.some((descriptor) => descriptor.type === "boolean" && descriptor.id === id);
   const rawEffort = getModelSelectionStringOptionValue(selection, "effort");
   const resolvedEffort = resolveClaudeCatalogEffort(catalog, selection.model, rawEffort);
   const effort = normalizeClaudeCatalogEffort(catalog, resolvedEffort, selection.model);
-  const ultracode = isClaudeCatalogUltracodeEffort(resolvedEffort);
+  const ultracode = descriptors.find((descriptor) => descriptor.id === "ultracode")?.currentValue;
   const nativeEffort = catalog.source === "model-service" && !ultracode ? undefined : effort;
   const requestEffort = catalog.source === "model-service" ? effort : undefined;
   const tier = getProviderOptionCurrentValue(
@@ -62,7 +64,9 @@ export function compileClaudeModelSelection(
   const settings = {
     ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
     ...(typeof fastMode === "boolean" ? { fastMode } : {}),
-    ...(ultracode ? { ultracode: true, enableWorkflows: true } : {}),
+    ...(typeof ultracode === "boolean"
+      ? { ultracode, ...(ultracode ? { enableWorkflows: true } : {}) }
+      : {}),
   };
   const apiModelId = resolveClaudeCatalogApiModelId(catalog, selection);
   const contextWindowTokens = capabilities.contextWindow;

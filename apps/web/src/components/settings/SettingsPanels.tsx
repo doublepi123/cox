@@ -17,14 +17,12 @@ import {
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   type ResponseStreamingMode,
-  type QuitConfirmationMode,
   SidebarProjectSortOrder,
 } from "@t3tools/contracts/settings";
 
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
-import { APP_VERSION } from "../../branding";
 import { AboutVersionTitle } from "./AboutVersionTitle";
 import { DesktopUpdates } from "./DesktopUpdates";
 
@@ -111,22 +109,7 @@ const DIFF_LAYOUT_LABELS: Record<DiffLayout, string> = {
   stacked: "Stacked",
   split: "Split",
 };
-const QUIT_CONFIRMATION_MODE_LABELS: Record<QuitConfirmationMode, string> = {
-  direct: "Direct",
-  hold: "Hold",
-  "double-click": "Double press",
-};
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
-function AboutVersionSection() {
-  const { t } = useTranslation();
-  return (
-    <SettingsSection title="Cox">
-      <SettingsRow
-        title={t("Local coding-agent workspace · {version}", { version: APP_VERSION })}
-      />
-    </SettingsSection>
-  );
-}
 export function useSettingsRestore(onRestored?: () => void) {
   const { t } = useTranslation();
   const {
@@ -427,27 +410,28 @@ function AutoSettleDaysInput({
     setDraft(String(value));
   }
   return (
-    <Input
-      size="sm"
-      type="number"
-      min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-      max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-      className="w-full sm:w-24"
-      value={draft}
-      onChange={(event) => {
-        setDraft(event.target.value);
-        const parsed = Number(event.target.value);
-        if (
-          Number.isInteger(parsed) &&
-          parsed >= MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS &&
-          parsed <= MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS
-        ) {
-          onCommit(parsed);
-        }
-      }}
-      onBlur={() => setDraft(String(value))}
-      aria-label={t("Days of inactivity before auto-settle")}
-    />
+    <div className="min-w-0 w-full sm:w-24">
+      <Input
+        size="sm"
+        type="number"
+        min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
+        max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          const parsed = Number(event.target.value);
+          if (
+            Number.isInteger(parsed) &&
+            parsed >= MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS &&
+            parsed <= MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS
+          ) {
+            onCommit(parsed);
+          }
+        }}
+        onBlur={() => setDraft(String(value))}
+        aria-label={t("Days of inactivity before auto-settle")}
+      />
+    </div>
   );
 }
 export function LegacyFeaturesSection() {
@@ -573,11 +557,13 @@ export function GeneralSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger size="sm" className="w-full sm:w-44" aria-label={t("Project order")}>
-                <SelectValue>
-                  {t(SIDEBAR_PROJECT_SORT_ORDER_LABELS[settings.sidebarProjectSortOrder])}
-                </SelectValue>
-              </SelectTrigger>
+              <div className="min-w-0 w-full sm:w-44">
+                <SelectTrigger fill size="sm" aria-label={t("Project order")}>
+                  <SelectValue>
+                    {t(SIDEBAR_PROJECT_SORT_ORDER_LABELS[settings.sidebarProjectSortOrder])}
+                  </SelectValue>
+                </SelectTrigger>
+              </div>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 {SidebarProjectSortOrder.literals.map((sortOrder) => (
                   <SelectItem hideIndicator key={sortOrder} value={sortOrder}>
@@ -724,13 +710,11 @@ export function GeneralSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger
-                size="sm"
-                className="w-full sm:w-40"
-                aria-label={t("Timestamp format")}
-              >
-                <SelectValue>{t(TIMESTAMP_FORMAT_LABELS[settings.timestampFormat])}</SelectValue>
-              </SelectTrigger>
+              <div className="min-w-0 w-full sm:w-40">
+                <SelectTrigger fill size="sm" aria-label={t("Timestamp format")}>
+                  <SelectValue>{t(TIMESTAMP_FORMAT_LABELS[settings.timestampFormat])}</SelectValue>
+                </SelectTrigger>
+              </div>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="locale">
                   {t(TIMESTAMP_FORMAT_LABELS.locale)}
@@ -812,18 +796,16 @@ export function ChatSettingsPanel() {
                 if (option) updateSettings({ sendShortcut: option.value });
               }}
             >
-              <SelectTrigger
-                size="sm"
-                className="w-auto min-w-0 max-w-full"
-                aria-label={t("Send shortcut")}
-              >
-                <SelectValue>
-                  {
-                    sendShortcutOptions.find((option) => option.value === settings.sendShortcut)
-                      ?.label
-                  }
-                </SelectValue>
-              </SelectTrigger>
+              <div className="min-w-0 w-auto min-w-0 max-w-full">
+                <SelectTrigger fill size="sm" aria-label={t("Send shortcut")}>
+                  <SelectValue>
+                    {
+                      sendShortcutOptions.find((option) => option.value === settings.sendShortcut)
+                        ?.label
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+              </div>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 {sendShortcutOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
@@ -905,11 +887,7 @@ export function ChatSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger
-                size="sm"
-                className="w-auto min-w-0"
-                aria-label={t("Follow-up behavior")}
-              >
+              <SelectTrigger size="sm" fit aria-label={t("Follow-up behavior")}>
                 <SelectValue>
                   {settings.followUpBehavior === "queue" ? "Queue" : t("Steer")}
                 </SelectValue>
@@ -952,7 +930,7 @@ function DiffColorsSettingsRow() {
                 updateSettings({ diffColorScheme: value });
             }}
           >
-            <SelectTrigger size="sm" className="w-full min-w-0" aria-label={t("Diff colors")}>
+            <SelectTrigger size="sm" fill aria-label={t("Diff colors")}>
               <span
                 aria-hidden="true"
                 className={
@@ -1007,9 +985,11 @@ export function DiffsSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label={t("Diff layout")}>
-                <SelectValue>{t(DIFF_LAYOUT_LABELS[settings.diffLayout])}</SelectValue>
-              </SelectTrigger>
+              <div className="min-w-0 w-full sm:w-40">
+                <SelectTrigger fill size="sm" aria-label={t("Diff layout")}>
+                  <SelectValue>{t(DIFF_LAYOUT_LABELS[settings.diffLayout])}</SelectValue>
+                </SelectTrigger>
+              </div>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="stacked">
                   {t(DIFF_LAYOUT_LABELS.stacked)}
@@ -1072,15 +1052,13 @@ export function DiffsSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger
-                size="sm"
-                className="w-full sm:w-40"
-                aria-label={t("Default diff file state")}
-              >
-                <SelectValue>
-                  {settings.diffFilesCollapsed ? "Collapsed" : t("Expanded")}
-                </SelectValue>
-              </SelectTrigger>
+              <div className="min-w-0 w-full sm:w-40">
+                <SelectTrigger fill size="sm" aria-label={t("Default diff file state")}>
+                  <SelectValue>
+                    {settings.diffFilesCollapsed ? "Collapsed" : t("Expanded")}
+                  </SelectValue>
+                </SelectTrigger>
+              </div>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="expanded">
                   {t("Expanded")}
@@ -1165,19 +1143,17 @@ function ScopedCompactIdleThreadsRow() {
             if (mode) updateSettings({ idleCompaction: mode.value });
           }}
         >
-          <SelectTrigger
-            size="sm"
-            className="w-full sm:w-56"
-            aria-label={t("Compact idle threads")}
-          >
-            <SelectValue>
-              {(value: string | null) =>
-                value === null
-                  ? t("Mixed")
-                  : t(IDLE_COMPACTION_MODES.find((mode) => mode.value === value)?.label ?? "")
-              }
-            </SelectValue>
-          </SelectTrigger>
+          <div className="min-w-0 w-full sm:w-56">
+            <SelectTrigger fill size="sm" aria-label={t("Compact idle threads")}>
+              <SelectValue>
+                {(value: string | null) =>
+                  value === null
+                    ? t("Mixed")
+                    : t(IDLE_COMPACTION_MODES.find((mode) => mode.value === value)?.label ?? "")
+                }
+              </SelectValue>
+            </SelectTrigger>
+          </div>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {IDLE_COMPACTION_MODES.map((mode) => (
               <SelectItem
@@ -1275,15 +1251,16 @@ export function ThreadsSettingsPanel() {
             ) : null
           }
           control={
-            <DraftInput
-              size="sm"
-              className="w-full sm:w-72"
-              value={mixedAddProjectBaseDirectory ? "" : settings.addProjectBaseDirectory}
-              onCommit={(next) => updateSettings({ addProjectBaseDirectory: next })}
-              placeholder={mixedAddProjectBaseDirectory ? t("Mixed") : "~/"}
-              spellCheck={false}
-              aria-label={t("Add project base directory")}
-            />
+            <div className="min-w-0 w-full sm:w-72">
+              <DraftInput
+                size="sm"
+                value={mixedAddProjectBaseDirectory ? "" : settings.addProjectBaseDirectory}
+                onCommit={(next) => updateSettings({ addProjectBaseDirectory: next })}
+                placeholder={mixedAddProjectBaseDirectory ? t("Mixed") : "~/"}
+                spellCheck={false}
+                aria-label={t("Add project base directory")}
+              />
+            </div>
           }
         />
         <SettingsRow
@@ -1604,17 +1581,15 @@ export function ThreadsSettingsPanel() {
                   }
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full sm:w-56"
-                  aria-label={t("Response streaming")}
-                >
-                  <SelectValue>
-                    {(value: ResponseStreamingMode | null) =>
-                      value === null ? t("Mixed") : t(RESPONSE_STREAMING_MODE_LABELS[value])
-                    }
-                  </SelectValue>
-                </SelectTrigger>
+                <div className="min-w-0 w-full sm:w-56">
+                  <SelectTrigger fill size="sm" aria-label={t("Response streaming")}>
+                    <SelectValue>
+                      {(value: ResponseStreamingMode | null) =>
+                        value === null ? t("Mixed") : t(RESPONSE_STREAMING_MODE_LABELS[value])
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                </div>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   <SelectItem hideIndicator value="turn">
                     {t(RESPONSE_STREAMING_MODE_LABELS.turn)}

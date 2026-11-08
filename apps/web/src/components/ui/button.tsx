@@ -29,6 +29,12 @@ const buttonVariants = cva(
           "size-11 sm:size-10 [&_svg:not([class*='size-'])]:size-5 sm:[&_svg:not([class*='size-'])]:size-4.5",
         "icon-xs":
           "size-7 sm:size-6 not-in-data-[slot=input-group]:[&_svg:not([class*='size-'])]:size-4 sm:not-in-data-[slot=input-group]:[&_svg:not([class*='size-'])]:size-3.5",
+        "icon-fixed-xs": "size-6",
+        "icon-fixed-sm": "size-7",
+        "icon-fixed": "size-9",
+        "responsive-action":
+          "h-7 w-7 px-0 sm:h-6 sm:w-6 @3xl/header-actions:w-auto @3xl/header-actions:px-[calc(--spacing(2)-1px)] gap-1 text-sm sm:text-xs",
+        "command-hint": "h-auto px-2 text-xs",
         lg: "h-10 px-[calc(--spacing(3.5)-1px)] sm:h-9",
         micro:
           "h-5 gap-1 rounded-sm px-[calc(--spacing(1.5)-1px)] text-[11px] before:rounded-[calc(var(--radius-sm)-1px)] sm:text-[11px] [&_svg:not([class*='size-'])]:size-3 sm:[&_svg:not([class*='size-'])]:size-3",
@@ -63,6 +69,9 @@ const buttonVariants = cva(
         outline:
           "[--control-icon-color:var(--contrast-muted-foreground)] border-input bg-popover not-dark:bg-clip-padding text-foreground shadow-xs/5 not-disabled:not-active:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/2%)] dark:not-disabled:not-active:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-accent/50 dark:[:hover,[data-pressed]]:bg-input/64",
         overlay: "border-transparent bg-black/70 text-white/65 [:hover,[data-pressed]]:bg-black/90",
+        "toast-close":
+          "[--control-icon-color:currentColor] rounded-md border-transparent text-muted-foreground/80 hover:bg-transparent hover:text-muted-foreground",
+        "command-hint": "border-transparent text-foreground hover:bg-transparent",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground [:active,[data-pressed]]:bg-secondary/80 [:hover,[data-pressed]]:bg-secondary/90",
         "warning-outline":
@@ -78,15 +87,54 @@ type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
 interface ButtonProps extends useRender.ComponentProps<"button"> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  fill?: boolean;
+  align?: "center" | "start" | "between";
+  motion?: "default" | "none";
+  flexible?: boolean;
+  position?: "default" | "inline";
+  interactive?: boolean;
+  placement?: "default" | "selection";
+  navigation?: "previous" | "next";
+  alignContent?: "center" | "start";
 }
 
-function Button({ className, variant, size, render, ...props }: ButtonProps) {
+function Button({
+  className,
+  variant,
+  size,
+  render,
+  fill = false,
+  align = "center",
+  motion = "default",
+  flexible = false,
+  position = "default",
+  interactive = false,
+  placement = "default",
+  navigation,
+  alignContent = "center",
+  ...props
+}: ButtonProps) {
   const typeValue: React.ButtonHTMLAttributes<HTMLButtonElement>["type"] = render
     ? undefined
     : "button";
 
   const defaultProps = {
-    className: cn(buttonVariants({ className, size, variant })),
+    className: cn(
+      buttonVariants({ size, variant }),
+      fill && "w-full min-w-0",
+      align === "start" && "justify-start text-left",
+      align === "between" && "justify-between",
+      motion === "none" && "active:scale-100",
+      flexible && "min-w-0 flex-1 sm:flex-none",
+      position === "inline" && "relative top-auto translate-y-0",
+      interactive && "pointer-events-auto",
+      placement === "selection" && "fixed z-50 max-w-[calc(100vw-1rem)]",
+      navigation && "top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2",
+      navigation === "previous" && "left-0",
+      navigation === "next" && "right-0",
+      alignContent === "start" && "items-start [&>svg]:mt-0.5",
+      className,
+    ),
     "data-slot": "button",
     type: typeValue,
   };
@@ -105,6 +153,11 @@ const inlineButtonVariants = cva(
   {
     defaultVariants: { tone: "default" },
     variants: {
+      touchTarget: {
+        padded: "pointer-coarse:min-h-11 pointer-coarse:px-1.5",
+        expanded:
+          "pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-x-1.5 pointer-coarse:after:-inset-y-2",
+      },
       tone: {
         default: "text-foreground",
         muted: "text-muted-foreground hover:text-foreground",
@@ -119,11 +172,31 @@ const inlineButtonVariants = cva(
 export function InlineButton({
   className,
   tone,
+  touchTarget,
+  fit = false,
+  interactive = false,
+  align = "center",
+  reveal,
   render,
   ...props
-}: useRender.ComponentProps<"button"> & VariantProps<typeof inlineButtonVariants>) {
+}: useRender.ComponentProps<"button"> &
+  VariantProps<typeof inlineButtonVariants> & {
+    fit?: boolean;
+    interactive?: boolean;
+    align?: "center" | "start" | "baseline";
+    reveal?: "environment" | "provider";
+  }) {
   const defaultProps = {
-    className: cn(inlineButtonVariants({ tone }), className),
+    className: cn(
+      inlineButtonVariants({ tone, touchTarget }),
+      fit && "min-w-0 max-w-full",
+      interactive && "pointer-events-auto",
+      align === "start" && "justify-start",
+      align === "baseline" && "align-baseline",
+      reveal === "environment" && "group/usage-environment",
+      reveal === "provider" && "group/usage-provider",
+      className,
+    ),
     "data-slot": "inline-button",
     type: render ? undefined : ("button" as const),
   };

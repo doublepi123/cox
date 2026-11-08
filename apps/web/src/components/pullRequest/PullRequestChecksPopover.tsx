@@ -72,7 +72,7 @@ function ChecksBody({
   }
   return (
     <>
-      <ScrollArea className="-me-3 w-auto max-h-64">
+      <ScrollArea preset="checks">
         <ul
           className={cn(
             "grid gap-x-2 gap-y-1 pe-3",

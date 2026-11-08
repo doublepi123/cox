@@ -289,7 +289,7 @@ export function AttachmentFilePreview(props: {
         <MermaidFilePreview text={content.text} />
       </Suspense>
     ) : kind === "markdown" && rendered ? (
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea sizing="flex">
         <ChatMarkdown
           text={maskMarkdownFrontmatter(content.text)}
           cwd={undefined}

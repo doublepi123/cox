@@ -296,9 +296,8 @@ export function DraftHeroHeadline({
         <TooltipTrigger
           render={
             <ComboboxTrigger
-              render={<InlineButton tone="picker" />}
+              render={<InlineButton tone="picker" interactive fit align="baseline" />}
               data-draft-project-trigger=""
-              className="pointer-events-auto min-w-0 max-w-full align-baseline"
             />
           }
         >
@@ -311,7 +310,7 @@ export function DraftHeroHeadline({
           <TooltipPopup side="top">{activeProjectTitle}</TooltipPopup>
         ) : null}
       </Tooltip>
-      <ComboboxPopup align="center" className="w-72 overflow-hidden">
+      <ComboboxPopup align="center" width="md">
         <ComboboxSearchInput
           aria-label={t("Search projects")}
           placeholder={t("Search projects...")}
@@ -384,7 +383,7 @@ export function DraftHeroHeadline({
           render={
             <InlineButton
               tone="muted"
-              className="pointer-events-auto"
+              interactive
               onClick={() =>
                 void startScratch().then((started) => {
                   if (started) {

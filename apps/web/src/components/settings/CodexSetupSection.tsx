@@ -112,9 +112,11 @@ export function CodexSetupSection(props: CodexSetupSectionProps) {
           title={props.displayName || props.provider?.displayName || "Codex"}
           description={<CodexSignInDescription />}
           control={
-            <Button size="sm" variant="outline" className="min-w-44" disabled>
-              {t("Open sign-in page")}
-            </Button>
+            <span className="inline-flex min-w-0 min-w-44">
+              <Button size="sm" variant="outline" disabled>
+                {t("Open sign-in page")}
+              </Button>
+            </span>
           }
           secondaryControl={
             <Button size="sm" variant="ghost-muted" disabled>

@@ -17,12 +17,14 @@ export function withBrowserStreamQuery(rawUrl: string, access: BrowserStreamAcce
 
 export const resolveBrowserStreamAccess = Effect.fn(
   "clientRuntime.preview.resolveBrowserStreamAccess",
-)(function* (input: { readonly prepared: PreparedConnection; readonly hubBasePath: string }) {
-  const httpBase = environmentEndpointUrl(input.prepared.httpBaseUrl, input.hubBasePath);
-  return {
-    httpBase,
-    wsBase: httpBase.replace(/^http/, "ws"),
-    query: {},
-    credentials: true,
-  } satisfies BrowserStreamAccess;
-});
+)((input: { readonly prepared: PreparedConnection; readonly hubBasePath: string }) =>
+  Effect.sync(() => {
+    const httpBase = environmentEndpointUrl(input.prepared.httpBaseUrl, input.hubBasePath);
+    return {
+      httpBase,
+      wsBase: httpBase.replace(/^http/, "ws"),
+      query: {},
+      credentials: true,
+    } satisfies BrowserStreamAccess;
+  }),
+);

@@ -154,10 +154,11 @@ function ProviderCustomColorPicker(props: {
             <PopoverClose
               render={
                 <Button
+                  align="start"
+                  fill
                   type="button"
                   size="compact"
                   variant="ghost-muted"
-                  className="w-full justify-start"
                   onClick={props.onClear}
                 >
                   <XIcon className="size-3.5" aria-hidden />

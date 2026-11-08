@@ -52,11 +52,8 @@ export const ModelListRow = memo(function ModelListRow(props: {
       index={props.index}
       value={modelPickerModelKey(props.instanceId, props.slug)}
       disabled={Boolean(props.disabledReason)}
-      className={cn(
-        "group relative w-full !min-w-0 max-w-full cursor-pointer",
-        props.disabledReason &&
-          "data-disabled:pointer-events-auto data-disabled:cursor-not-allowed",
-      )}
+      layout="model"
+      disabledHover={Boolean(props.disabledReason)}
     >
       {/* One row shape in every tab: the logo names the provider, so Favorites needs no second line. */}
       <ProviderInstanceIcon
@@ -106,33 +103,34 @@ export const ModelListRow = memo(function ModelListRow(props: {
       <div className="flex shrink-0 items-center gap-1.5">
         {props.jumpLabel ? <Kbd>{props.jumpLabel}</Kbd> : null}
         <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size={props.comfortable ? "icon-sm" : "icon-xs"}
-                variant="ghost-muted"
-                className="-mr-1 shrink-0"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  props.onToggleFavorite(props.instanceId, props.slug);
-                }}
-                onKeyDown={(event) => {
-                  event.stopPropagation();
-                }}
-                disabled={Boolean(props.disabledReason)}
-                aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
-              >
-                <StarIcon
-                  className={cn(
-                    props.comfortable ? "size-4" : "size-3.5 sm:size-3",
-                    props.isFavorite && "fill-current text-warning",
-                    (!props.isFavorite || props.favoriteStarOnHover) &&
-                      "opacity-0 group-hover:opacity-100 group-data-highlighted:opacity-100 in-focus-visible:opacity-100 pointer-coarse:opacity-100",
-                  )}
-                />
-              </Button>
-            }
-          />
+          <span className="inline-flex min-w-0 -mr-1 shrink-0">
+            <TooltipTrigger
+              render={
+                <Button
+                  size={props.comfortable ? "icon-sm" : "icon-xs"}
+                  variant="ghost-muted"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onToggleFavorite(props.instanceId, props.slug);
+                  }}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  disabled={Boolean(props.disabledReason)}
+                  aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                >
+                  <StarIcon
+                    className={cn(
+                      props.comfortable ? "size-4" : "size-3.5 sm:size-3",
+                      props.isFavorite && "fill-current text-warning",
+                      (!props.isFavorite || props.favoriteStarOnHover) &&
+                        "opacity-0 group-hover:opacity-100 group-data-highlighted:opacity-100 in-focus-visible:opacity-100 pointer-coarse:opacity-100",
+                    )}
+                  />
+                </Button>
+              }
+            />
+          </span>
           <TooltipPopup side="top" align="center">
             {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
           </TooltipPopup>

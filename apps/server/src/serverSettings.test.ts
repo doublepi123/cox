@@ -10,6 +10,7 @@ import {
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
   SecretProviderId,
+  SecretProviderKind,
   ServerSettings,
   ServerSettingsPatch,
   UsageLimitSourceId,
@@ -349,6 +350,54 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       }
       assert.deepStrictEqual((yield* service.getSettings).secretProviders, {});
     }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("clears references to a removed secret provider before persisting the settings", () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const personal = SecretProviderId.make("personal");
+      const instanceId = ProviderInstanceId.make("codex_secret_removal");
+      const reference = { provider: personal, reference: "op://Private/item/token" };
+      yield* service.updateSettings({
+        secretProviders: {
+          [personal]: {
+            kind: SecretProviderKind.make("one_password"),
+            label: "Personal",
+            config: { account: "my" },
+          },
+        },
+        sourceControlHosts: { bitbucket: { accessToken: reference, email: "me@example.test" } },
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            environment: [
+              { name: "TOKEN", value: reference, sensitive: true },
+              { name: "BASE_URL", value: "https://example.test", sensitive: false },
+            ],
+          },
+        },
+      });
+      const saved = yield* service.updateSettings({ secretProviders: { [personal]: null } });
+      assert.deepEqual(saved.secretProviders, {});
+      assert.equal(saved.sourceControlHosts.bitbucket?.accessToken, "");
+      assert.equal(saved.sourceControlHosts.bitbucket?.email, "me@example.test");
+      assert.deepEqual(saved.providerInstances[instanceId]?.environment, [
+        { name: "BASE_URL", value: "https://example.test", sensitive: false },
+      ]);
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      assert.notInclude(yield* fs.readFileString(config.settingsPath), reference.reference);
+      yield* service.updateSettings({
+        secretProviders: {
+          [personal]: {
+            kind: SecretProviderKind.make("one_password"),
+            label: "Personal",
+            config: { account: "my" },
+          },
+        },
+      });
+      assert.equal((yield* service.getSettings).sourceControlHosts.bitbucket?.accessToken, "");
+    }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
   );
 
   it.effect("saves through a symlinked settings file without replacing the link", () =>

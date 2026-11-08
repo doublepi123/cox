@@ -12,13 +12,20 @@ const emptySizeClassName = {
 function Empty({
   className,
   size = "default",
+  layout = "default",
   ...props
-}: React.ComponentProps<"div"> & { size?: keyof typeof emptySizeClassName }) {
+}: React.ComponentProps<"div"> & {
+  size?: keyof typeof emptySizeClassName;
+  layout?: "default" | "fill" | "scroll";
+}) {
   return (
     <div
       className={cn(
         "flex min-w-0 flex-1 flex-col items-center justify-center text-balance text-center",
         emptySizeClassName[size],
+        layout === "fill" && "min-h-full",
+        layout === "scroll" &&
+          "scrollbar-gutter-both min-h-0 justify-center-safe overflow-y-auto [&>*]:shrink-0",
         className,
       )}
       data-slot="empty"
@@ -27,10 +34,20 @@ function Empty({
   );
 }
 
-function EmptyHeader({ className, ...props }: React.ComponentProps<"div">) {
+function EmptyHeader({
+  className,
+  unconstrained = false,
+  width,
+  ...props
+}: React.ComponentProps<"div"> & { unconstrained?: boolean; width?: "md" }) {
   return (
     <div
-      className={cn("flex max-w-sm flex-col items-center text-center", className)}
+      className={cn(
+        "flex max-w-sm flex-col items-center text-center",
+        unconstrained && "max-w-none",
+        width === "md" && "max-w-md",
+        className,
+      )}
       data-slot="empty-header"
       {...props}
     />

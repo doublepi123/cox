@@ -17,8 +17,9 @@ function ToggleGroup({
   size: sizeProp,
   orientation = "horizontal",
   children,
+  fill = false,
   ...props
-}: ToggleGroupPrimitive.Props & VariantProps<typeof toggleVariants>) {
+}: ToggleGroupPrimitive.Props & VariantProps<typeof toggleVariants> & { fill?: boolean }) {
   const size =
     sizeProp === undefined ? (variant === "segmented" ? "segmented" : "default") : sizeProp;
   const value = { size, variant };
@@ -26,6 +27,7 @@ function ToggleGroup({
     <ToggleGroupPrimitive
       className={cn(
         "flex w-fit *:focus-visible:z-10 dark:*:[[data-slot=separator]:has(+[data-slot=toggle]:hover)]:before:bg-input/64 dark:*:[[data-slot=separator]:has(+[data-slot=toggle][data-pressed])]:before:bg-input dark:*:[[data-slot=toggle]:hover+[data-slot=separator]]:before:bg-input/64 dark:*:[[data-slot=toggle][data-pressed]+[data-slot=separator]]:before:bg-input",
+        fill && "w-full *:flex-1",
         orientation === "horizontal"
           ? "*:pointer-coarse:after:min-w-auto"
           : "*:pointer-coarse:after:min-h-auto",
@@ -54,8 +56,9 @@ function Toggle({
   children,
   variant,
   size,
+  wide,
   ...props
-}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
+}: TogglePrimitive.Props & VariantProps<typeof toggleVariants> & { wide?: boolean }) {
   const context = React.use(ToggleGroupContext);
 
   const resolvedVariant = variant ?? context.variant;
@@ -68,6 +71,7 @@ function Toggle({
       data-variant={resolvedVariant}
       size={resolvedSize}
       variant={resolvedVariant}
+      {...(wide === undefined ? {} : { wide })}
       {...props}
     >
       {children}

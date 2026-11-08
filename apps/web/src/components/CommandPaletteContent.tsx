@@ -1,6 +1,6 @@
 import { useTranslation } from "../i18n";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import { type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode, type RefObject } from "react";
 
 import { Command, CommandFooter, CommandInput, CommandPanel } from "./ui/command";
 import { Kbd, KbdGroup } from "./ui/kbd";
@@ -22,6 +22,24 @@ function claimFocusInOpenDialog(input: HTMLInputElement | null) {
   }
 }
 
+export interface PendingInputSelection {
+  readonly value: string;
+  readonly start: number | null;
+  readonly end: number | null;
+  readonly direction: "forward" | "backward" | "none" | null;
+}
+
+function restorePendingSelection(
+  input: HTMLInputElement,
+  pendingSelectionRef: RefObject<PendingInputSelection | null> | undefined,
+) {
+  const selection = pendingSelectionRef?.current;
+  if (!pendingSelectionRef || !selection) return;
+  pendingSelectionRef.current = null;
+  if (input.value !== selection.value) return;
+  input.setSelectionRange(selection.start, selection.end, selection.direction ?? undefined);
+}
+
 type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children"> & {
   readonly children: ReactNode;
   readonly escapeLabel?: ReactNode;
@@ -29,6 +47,7 @@ type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children
   readonly footerTrailing?: ReactNode;
   readonly inputAccessory?: ReactNode;
   readonly inputProps: ComponentProps<typeof CommandInput>;
+  readonly pendingSelectionRef?: RefObject<PendingInputSelection | null>;
   readonly panelSize?: "list" | "tall-list" | "fill";
   readonly showBackHint?: boolean;
   readonly testId?: string;
@@ -41,6 +60,7 @@ export function CommandPaletteContent({
   footerTrailing,
   inputAccessory,
   inputProps,
+  pendingSelectionRef,
   panelSize = "list",
   showBackHint,
   testId,
@@ -51,21 +71,21 @@ export function CommandPaletteContent({
     <div className="contents" data-testid={testId}>
       <Command {...commandProps}>
         <div className="relative">
-          <CommandInput autoFocus={false} {...inputProps} ref={claimFocusInOpenDialog} />
+          <CommandInput
+            autoFocus={false}
+            {...inputProps}
+            ref={(input) => {
+              if (!input) return;
+              restorePendingSelection(input, pendingSelectionRef);
+              claimFocusInOpenDialog(input);
+            }}
+          />
           {inputAccessory}
         </div>
-        <CommandPanel
-          className={
-            panelSize === "fill"
-              ? "flex min-h-0 flex-1 flex-col"
-              : panelSize === "tall-list"
-                ? "max-h-[min(34rem,76vh)]"
-                : "flex max-h-[min(28rem,70vh)] min-h-0 flex-col"
-          }
-        >
+        <CommandPanel sizing={panelSize === "list" ? "default" : panelSize}>
           {children}
         </CommandPanel>
-        <CommandFooter className="max-sm:flex-col max-sm:items-start">
+        <CommandFooter mobileStack>
           <div className="flex items-center gap-3 pointer-coarse:hidden">
             <KbdGroup>
               <Kbd>

@@ -103,21 +103,21 @@ export const layer: Layer.Layer<
       const baselineOrdinalWithinScope = Math.max(0, run.ordinal - 1);
       const hasReadyCheckpoint = (ordinalWithinScope: number) =>
         readyCheckpointOrdinals.includes(ordinalWithinScope);
+      const materializeBaseline = (ordinalWithinScope: number) =>
+        checkpoints.materializeBaselineCheckpoint({
+          scope,
+          ordinalWithinScope,
+          nodeId: rootNode.id,
+          capturedAt: run.requestedAt,
+          forceMissing: sideChat,
+        });
       const threadStartCheckpoint =
         baselineOrdinalWithinScope === 0 || hasReadyCheckpoint(0)
           ? null
-          : yield* checkpoints.materializeBaselineCheckpoint({
-              scope,
-              ordinalWithinScope: 0,
-              forceMissing: sideChat,
-            });
+          : yield* materializeBaseline(0);
       const baselineCheckpoint = hasReadyCheckpoint(baselineOrdinalWithinScope)
         ? null
-        : yield* checkpoints.materializeBaselineCheckpoint({
-            scope,
-            ordinalWithinScope: baselineOrdinalWithinScope,
-            forceMissing: sideChat,
-          });
+        : yield* materializeBaseline(baselineOrdinalWithinScope);
       const checkpoint = yield* checkpoints.capture({
         scope,
         runId: run.id,

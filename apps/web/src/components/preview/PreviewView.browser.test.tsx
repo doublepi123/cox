@@ -121,7 +121,6 @@ vi.mock(import("~/browser/previewRuntime"), async (original) => ({
 vi.mock(import("~/browser/browserViewportActions"), { spy: true });
 
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
 import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { dispatchPreviewAction } from "./previewActionBus";
 import { PreviewView } from "./PreviewView";
@@ -131,7 +130,6 @@ const TEST_THREAD_REF = {
   environmentId: EnvironmentId.make("environment-1"),
   threadId: ThreadId.make("thread-1"),
 } as const;
-const TEST_RUNTIME_TAB_ID = previewRuntimeTabId(TEST_THREAD_REF, null, "tab-1");
 
 function view(onSendAnnotation?: ComponentProps<typeof PreviewView>["onSendAnnotation"]) {
   return (
@@ -142,21 +140,6 @@ function view(onSendAnnotation?: ComponentProps<typeof PreviewView>["onSendAnnot
       {...(onSendAnnotation ? { onSendAnnotation } : {})}
     />
   );
-}
-
-function annotation(id: string, screenshot: unknown = null) {
-  return {
-    id,
-    pageUrl: "https://example.com/dashboard",
-    pageTitle: "Dashboard",
-    comment: "Tighten this spacing",
-    elements: [],
-    regions: [],
-    strokes: [],
-    styleChanges: [],
-    screenshot,
-    createdAt: "2026-07-27T00:00:00.000Z",
-  };
 }
 
 // The mocked modules and stores are shared by the whole file, so every test starts by

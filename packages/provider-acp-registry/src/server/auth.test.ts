@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId, type ProviderAuthState } from "@t3tools/contracts";
 import { AcpRegistrySettings } from "../settings.ts";
 import * as Deferred from "effect/Deferred";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -11,7 +12,7 @@ import type * as AcpSchema from "effect-acp/compat";
 import { AcpRequestError } from "effect-acp/errors";
 
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
-import { makeAcpRegistryAuth } from "./auth.ts";
+import { formatFailureDetail, makeAcpRegistryAuth } from "./auth.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 
@@ -59,6 +60,7 @@ const makeHarness = (
   failVerification = false,
   settings = decodeSettings({ agentId: "test-agent" }),
   providerInstanceId = instanceId,
+  authenticateError?: AcpRequestError,
 ) =>
   Effect.gen(function* () {
     const verify = yield* Deferred.make<void>();
@@ -109,6 +111,9 @@ const makeHarness = (
             authenticate: (methodId) =>
               Effect.gen(function* () {
                 authenticated.push(methodId);
+                if (authenticateError !== undefined) {
+                  return yield* authenticateError;
+                }
                 if (elicitation)
                   yield* elicitation(
                     {
@@ -345,3 +350,121 @@ it.effect("does not report authentication when post-login verification fails", (
     assert.isTrue(h.killed());
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it.effect("surfaces the agent error message when authenticate fails with AcpRequestError", () =>
+  Effect.gen(function* () {
+    const error = new AcpRequestError({
+      method: "authenticate",
+      code: -32000,
+      errorMessage: "Connect to the VPN, then sign in again.",
+    });
+    const h = yield* makeHarness(
+      browserMethod,
+      false,
+      decodeSettings({ agentId: "test-agent" }),
+      instanceId,
+      error,
+    );
+    yield* h.controller.start("owner", Effect.void, "browser");
+    const failed = yield* h.phase("failed");
+    assert.strictEqual(
+      failed.message,
+      "The ACP agent could not complete sign-in. Connect to the VPN, then sign in again.",
+    );
+    assert.deepEqual(h.changed, []);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "surfaces the agent error message when post-sign-in verification fails for agent auth",
+  () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness(browserMethod, true);
+      const flow = yield* h.controller.start("owner", Effect.void, "browser");
+      yield* h.phase("waiting");
+      yield* h.controller.respond!("owner", {
+        instanceId,
+        flowId: flow.flowId!,
+        interactionId: "consent",
+        response: { type: "browser", action: "accept" },
+      });
+      yield* h.phase("verifying");
+      yield* Deferred.succeed(h.verify, undefined);
+      const failed = yield* h.phase("failed");
+      assert.strictEqual(
+        failed.message,
+        "The provider could not create a session after sign-in. Authentication required",
+      );
+      assert.deepEqual(h.changed, []);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it("formatFailureDetail handles all cause types and formatting edge cases cleanly", () => {
+  const baseWithPeriod = "The ACP agent could not complete sign-in.";
+  const baseWithoutPeriod = "The ACP agent could not complete sign-in";
+
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, undefined), baseWithPeriod);
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, null), baseWithPeriod);
+
+  assert.strictEqual(
+    formatFailureDetail(baseWithPeriod, new Error("Something broke")),
+    baseWithPeriod,
+  );
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, "string error"), baseWithPeriod);
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, { foo: "bar" }), baseWithPeriod);
+
+  const emptyError = new AcpRequestError({
+    method: "authenticate",
+    code: -32000,
+    errorMessage: "",
+  });
+  const whitespaceError = new AcpRequestError({
+    method: "authenticate",
+    code: -32000,
+    errorMessage: "   \t\n  ",
+  });
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, emptyError), baseWithPeriod);
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, whitespaceError), baseWithPeriod);
+
+  const validError = new AcpRequestError({
+    method: "authenticate",
+    code: -32000,
+    errorMessage: "Connect to the VPN, then sign in again.",
+  });
+  assert.strictEqual(
+    formatFailureDetail(baseWithPeriod, validError),
+    "The ACP agent could not complete sign-in. Connect to the VPN, then sign in again.",
+  );
+  assert.strictEqual(
+    formatFailureDetail(baseWithoutPeriod, validError),
+    "The ACP agent could not complete sign-in. Connect to the VPN, then sign in again.",
+  );
+
+  const unpunctError = new AcpRequestError({
+    method: "authenticate",
+    code: -32000,
+    errorMessage: "  Invalid credentials  ",
+  });
+  assert.strictEqual(
+    formatFailureDetail(baseWithPeriod, unpunctError),
+    "The ACP agent could not complete sign-in. Invalid credentials",
+  );
+
+  assert.strictEqual(
+    formatFailureDetail(baseWithPeriod, Cause.fail(validError)),
+    "The ACP agent could not complete sign-in. Connect to the VPN, then sign in again.",
+  );
+  assert.strictEqual(
+    formatFailureDetail(baseWithPeriod, Cause.die(validError)),
+    "The ACP agent could not complete sign-in. Connect to the VPN, then sign in again.",
+  );
+
+  const longText = "A".repeat(600);
+  const longError = new AcpRequestError({
+    method: "authenticate",
+    code: -32000,
+    errorMessage: longText,
+  });
+  const expectedLong = `The ACP agent could not complete sign-in. ${"A".repeat(500)}…`;
+  assert.strictEqual(formatFailureDetail(baseWithPeriod, longError), expectedLong);
+});

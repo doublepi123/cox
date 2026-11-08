@@ -250,6 +250,8 @@ export const make = Effect.gen(function* () {
       projectOrganization: true,
       ignoredFileListing: true,
       triage: true,
+      freshContext: true,
+      scheduledTaskThreadModes: true,
       serverBrowser: true,
       mcpModeLimitHeader: true,
     },

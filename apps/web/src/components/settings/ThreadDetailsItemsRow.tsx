@@ -34,22 +34,24 @@ export function ThreadDetailsItemsRow() {
       }
       control={
         <Menu>
-          <MenuTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-between sm:w-40"
-                aria-label={t("Thread details: {enabled} of {total} on", {
-                  enabled,
-                  total: THREAD_DETAILS_ITEMS.length,
-                })}
-              />
-            }
-          >
-            {t("{enabled} of {total} on", { enabled, total: THREAD_DETAILS_ITEMS.length })}
-            <ChevronDownIcon aria-hidden />
-          </MenuTrigger>
+          <span className="inline-flex min-w-0 w-full justify-between sm:w-40">
+            <MenuTrigger
+              render={
+                <Button
+                  fill
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("Thread details: {enabled} of {total} on", {
+                    enabled,
+                    total: THREAD_DETAILS_ITEMS.length,
+                  })}
+                />
+              }
+            >
+              {t("{enabled} of {total} on", { enabled, total: THREAD_DETAILS_ITEMS.length })}
+              <ChevronDownIcon aria-hidden />
+            </MenuTrigger>
+          </span>
           <MenuPopup align="end">
             <ThreadDetailsItemsMenuItems />
           </MenuPopup>

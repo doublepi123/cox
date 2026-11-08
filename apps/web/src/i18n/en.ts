@@ -1,4 +1,16 @@
 export const en = {
+  "Fast and Ultrafast are unavailable with this ChatGPT connection. Use an existing Codex CLI login for speed options your account supports.":
+    "Fast and Ultrafast are unavailable with this ChatGPT connection. Use an existing Codex CLI login for speed options your account supports.",
+  "Tool calls in chat": "Tool calls in chat",
+  "Show all": "Show all",
+  "Hide successful": "Hide successful",
+  "Hide all": "Hide all",
+  Zen: "Zen",
+  "Hide tool calls or intermediate messages. Approvals, questions, and errors always remain visible.":
+    "Hide tool calls or intermediate messages. Approvals, questions, and errors always remain visible.",
+  "Stop this action when the thread settles": "Stop this action when the thread settles",
+  "Remove the incomplete connection {name}?": "Remove the incomplete connection {name}?",
+  "Remove connection": "Remove connection",
   "Test all models": "Test all models",
   "Stop remaining tests": "Stop remaining tests",
   "Ignore failed models ({count})": "Ignore failed models ({count})",
@@ -3763,4 +3775,22 @@ export const en = {
   Release: "Release",
   "Client update actions": "Client update actions",
   "Cox update actions": "Cox update actions",
+  "Your next message starts a fresh session": "Your next message starts a fresh session",
+  "The agent won't see earlier messages in this thread.":
+    "The agent won't see earlier messages in this thread.",
+  "Keep the current session": "Keep the current session",
+  "Start a fresh session; earlier messages stay visible":
+    "Start a fresh session; earlier messages stay visible",
+  "New thread each run": "New thread each run",
+  "One thread, continuing the conversation": "One thread, continuing the conversation",
+  "One thread, fresh session each run": "One thread, fresh session each run",
+  "The first run starts a thread with the workspace and model below. Later runs continue that conversation.":
+    "The first run starts a thread with the workspace and model below. Later runs continue that conversation.",
+  "The first run starts a thread with the workspace and model below. Later runs post there, each in a fresh session without earlier runs' context.":
+    "The first run starts a thread with the workspace and model below. Later runs post there, each in a fresh session without earlier runs' context.",
+  "Each run starts a fresh session in this thread, without earlier runs' context.":
+    "Each run starts a fresh session in this thread, without earlier runs' context.",
+  "Deleting the thread also deletes this task.": "Deleting the thread also deletes this task.",
+  "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.":
+    "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.",
 } as const;

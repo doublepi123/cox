@@ -202,7 +202,7 @@ describe("central model settings", () => {
     ).toEqual([]);
   });
 
-  it("exposes a real Claude Ultracode workflow choice for service models with xhigh", () => {
+  it("exposes an independent Claude Ultracode workflow toggle for service models with xhigh", () => {
     const capabilities = {
       optionDescriptors: [
         {
@@ -222,13 +222,14 @@ describe("central model settings", () => {
     const mapped = modelServiceAgentCapabilities("claudeAgent", capabilities);
     expect(mapped?.optionDescriptors?.[0]).toMatchObject({
       id: "effort",
-      currentValue: "ultracode",
-      options: [
-        { id: "high" },
-        { id: "xhigh" },
-        { id: "max" },
-        { id: "ultracode", label: "Ultracode", isDefault: true },
-      ],
+      currentValue: "xhigh",
+      options: [{ id: "high" }, { id: "xhigh", isDefault: true }, { id: "max" }],
+    });
+    expect(mapped?.optionDescriptors?.[1]).toEqual({
+      id: "ultracode",
+      label: "Ultracode",
+      type: "boolean",
+      currentValue: true,
     });
     expect(modelServiceAgentCapabilities("claudeAgent", mapped!)?.optionDescriptors).toEqual(
       mapped?.optionDescriptors,

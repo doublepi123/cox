@@ -14,9 +14,20 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import {
+  antigravityClientInfo,
   applyAntigravityAcpModelSelection,
   buildAntigravityPrompt,
 } from "./AntigravityAcpSupport.ts";
+
+describe("antigravityClientInfo", () => {
+  it.each([undefined, null, "", "unknown", "1.4.5", "1.5.0", "1.5.1-beta"])(
+    "keeps legacy model access for %s",
+    (version) => expect(antigravityClientInfo(version)).toEqual({ name: "zed", version: "0.0.0" }),
+  );
+  it.each(["1.5.1", "1.5.2", "1.6.0", "2.0.0", " 1.5.1 "])("identifies Cox to %s", (version) =>
+    expect(antigravityClientInfo(version)).toMatchObject({ name: "cox", title: "Cox" }),
+  );
+});
 
 const modelConfig = {
   id: "model",
@@ -38,15 +49,17 @@ function makeModelRuntime(
     if (failure) return yield* failure;
     selections.push(model);
   });
-  const setConfigOption = Effect.fn("AntigravityAcpSupportTest.setConfigOption")(function* (
+  const setConfigOption = Effect.fn("AntigravityAcpSupportTest.setConfigOption")((
     configId: string,
     value: string | boolean,
     options?: { readonly allowUnlistedValue?: boolean },
-  ) {
-    selections.push(
-      `${configId}=${String(value)}${options?.allowUnlistedValue === true ? " (unlisted)" : ""}`,
-    );
-    return { configOptions };
+  ) => {
+    return Effect.sync(() => {
+      selections.push(
+        `${configId}=${String(value)}${options?.allowUnlistedValue === true ? " (unlisted)" : ""}`,
+      );
+      return { configOptions };
+    });
   });
   return {
     runtime: { getConfigOptions: Effect.succeed(configOptions), setModel, setConfigOption },

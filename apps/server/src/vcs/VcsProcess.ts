@@ -210,6 +210,7 @@ export const make = Effect.gen(function* () {
         ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
         ...(input.onStdoutChunk !== undefined ? { onStdoutChunk: input.onStdoutChunk } : {}),
         env: {
+          ...(input.command === "git" ? { LANGUAGE: "C" } : {}),
           ...input.env,
           ...explicitBareRepositoryEnv({ ...process.env, ...input.env }, hostPlatform),
         },

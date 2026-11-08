@@ -58,7 +58,7 @@ function PullRequestBaseFreshnessWarning({
         {children}
         <TriangleAlertIcon aria-hidden className={cn("size-3.5 shrink-0", iconClassName)} />
       </PopoverTrigger>
-      <PopoverPopup align="start" side="bottom" className="max-w-80" padding="compact">
+      <PopoverPopup align="start" side="bottom" presentation="base-branch" padding="compact">
         <p className="text-xs text-foreground">{summary}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">Changes can be cleanly merged.</p>
         {freshness.methods.length > 0 ? (

@@ -294,7 +294,9 @@ function PullRequestBadge({
         side="top"
         sideOffset={0}
         variant="glass"
-        className="pointer-events-auto w-80 max-w-[calc(100vw-2rem)] text-left whitespace-normal"
+        width="card"
+        textFormat="left"
+        interactive
       >
         <div className="-mx-1 max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain">
           {visibleThreadPullRequests(pullRequests).length > 0 ? (

@@ -44,27 +44,30 @@ export function CommandPaletteSubmitButton(props: {
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="outline"
-            size="xs"
-            tabIndex={-1}
-            className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
-            aria-label={props.ariaLabel}
-            disabled={props.disabled}
-            onMouseDown={(event) => {
-              event.preventDefault();
-            }}
-            onClick={props.onSubmit}
-          />
-        }
-      >
-        <span>{props.label}</span>
-        <KbdGroup className="pointer-events-none -me-0.5">
-          <Kbd>{props.shortcutLabel}</Kbd>
-        </KbdGroup>
-      </TooltipTrigger>
+      <span className="inline-flex min-w-0 absolute inset-e-2.5 top-1/2 -translate-y-1/2">
+        <TooltipTrigger
+          render={
+            <Button
+              variant="outline"
+              size="xs"
+              tabIndex={-1}
+              aria-label={props.ariaLabel}
+              disabled={props.disabled}
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={props.onSubmit}
+            />
+          }
+        >
+          <span>{props.label}</span>
+          <span className="inline-flex min-w-0 pointer-events-none -me-0.5">
+            <KbdGroup>
+              <Kbd>{props.shortcutLabel}</Kbd>
+            </KbdGroup>
+          </span>
+        </TooltipTrigger>
+      </span>
       <TooltipPopup side="top">{props.tooltip}</TooltipPopup>
     </Tooltip>
   );

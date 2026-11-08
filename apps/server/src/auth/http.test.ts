@@ -57,6 +57,32 @@ const postJson = (path: string, body: unknown, headers?: Readonly<Record<string,
     body: encodeJson(body),
   });
 
+it.effect.each(["DPoP", "dpop", "dPoP"])("challenges a refused %s request with DPoP", (scheme) =>
+  Effect.gen(function* () {
+    const crypto = yield* Crypto.Crypto;
+    const requestContext = Context.make(Crypto.Crypto, crypto);
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
+      (web) =>
+        Effect.promise(async () => {
+          const response = await web.handler(
+            postJson(
+              "/api/auth/websocket-ticket",
+              {},
+              {
+                authorization: `${scheme} invalid-test-token`,
+              },
+            ),
+            requestContext,
+          );
+          expect(response.status).toBe(401);
+          expect(response.headers.get("www-authenticate")).toBe("DPoP");
+        }),
+      (web) => Effect.promise(() => web.dispose()),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect("creates isolated local sessions, checks origin, and sets safe cookies", () =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;

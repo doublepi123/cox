@@ -30,7 +30,7 @@ export function SidebarThreadUndoNotice() {
 
   return (
     // No min-w-0: the undo button sets this item's minimum, so a shared row squeezes its neighbour.
-    <SidebarMenuItem className="flex flex-1" aria-hidden={!summary} inert={!summary}>
+    <SidebarMenuItem layout="undo" aria-hidden={!summary} inert={!summary}>
       <div
         onTransitionEnd={(event) => {
           if (!summary && event.target === event.currentTarget) setShownSummary(null);

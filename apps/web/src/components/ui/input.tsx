@@ -4,11 +4,14 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 
 type InputProps = Omit<InputPrimitive.Props & React.RefAttributes<HTMLInputElement>, "size"> & {
-  size?: "sm" | "compact" | "default" | "lg" | number;
+  size?: "sm" | "compact" | "default" | "lg" | "touch" | number;
   font?: "default" | "mono";
   unstyled?: boolean;
-  variant?: "default" | "sidebar";
+  variant?: "default" | "sidebar" | "menu-search" | "combobox" | "combobox-search" | "command";
   nativeInput?: boolean;
+  adornment?: "autocomplete" | "combobox";
+  hasStartAddon?: boolean;
+  hasEndAddon?: boolean;
 };
 
 function Input({
@@ -18,16 +21,27 @@ function Input({
   unstyled = false,
   variant = "default",
   nativeInput = false,
+  adornment,
+  hasStartAddon = false,
+  hasEndAddon = false,
   ...props
 }: InputProps) {
-  const isUnstyled = unstyled || variant === "sidebar";
+  const isUnstyled = unstyled || ["sidebar", "menu-search", "combobox-search"].includes(variant);
   const inputClassName = cn(
     "h-8.5 w-full min-w-0 rounded-[inherit] px-[calc(--spacing(3)-1px)] leading-8.5 outline-none placeholder:text-placeholder sm:h-7.5 sm:leading-7.5 [transition:background-color_5000000s_ease-in-out_0s]",
     size === "compact" && "h-7 px-[calc(--spacing(2.5)-1px)] text-xs leading-7 sm:h-7 sm:leading-7",
     size === "sm" && "h-7.5 px-[calc(--spacing(2.5)-1px)] leading-7.5 sm:h-6.5 sm:leading-6.5",
     size === "lg" && "h-9.5 leading-9.5 sm:h-8.5 sm:leading-8.5",
+    variant === "menu-search" && "h-6.5 ps-5 font-sans leading-6.5 sm:h-6.5 sm:leading-6.5",
     variant === "sidebar" &&
       "h-auto p-0 font-medium text-base leading-normal text-sidebar-foreground placeholder:text-sidebar-muted-foreground md:text-sm sm:h-auto sm:leading-normal",
+    adornment &&
+      hasStartAddon &&
+      (size === "sm"
+        ? "ps-[calc(--spacing(7.5)-1px)] sm:ps-[calc(--spacing(7)-1px)]"
+        : "ps-[calc(--spacing(8.5)-1px)] sm:ps-[calc(--spacing(8)-1px)]"),
+    hasEndAddon && (size === "sm" ? "pe-6.5" : "pe-7"),
+    variant === "command" && "ps-9! sm:ps-[calc(var(--command-shell-inset)+1.5rem)]!",
     props.type === "search" &&
       "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none",
     props.type === "number" &&
@@ -71,7 +85,14 @@ function Input({
             size === "compact" &&
             "rounded-md before:rounded-[calc(var(--radius-md)-1px)]",
           font === "mono" && "font-mono tabular-nums",
+          size === "touch" && "h-9 sm:h-8",
           variant === "sidebar" && "min-w-0 flex-1",
+          variant === "combobox" && "has-disabled:opacity-100",
+          variant === "combobox-search" &&
+            "rounded-none bg-transparent text-sm has-disabled:opacity-100",
+          variant === "menu-search" && "rounded-none bg-transparent text-sm",
+          variant === "command" &&
+            "border-transparent! bg-transparent! shadow-none before:hidden has-focus-visible:ring-0 placeholder:text-placeholder",
           className,
         ) || undefined
       }

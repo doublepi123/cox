@@ -277,7 +277,7 @@ export function UsagePriceOverrides({
         if (!pending) onOpenChange(open);
       }}
     >
-      <DialogPopup className="max-w-4xl">
+      <DialogPopup width="4xl">
         <DialogHeader>
           <DialogTitle>{t("Custom model prices")}</DialogTitle>
           <DialogDescription>
@@ -289,20 +289,22 @@ export function UsagePriceOverrides({
         <DialogPanel>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <Label id="usage-prices-apply-label" className="shrink-0">
-                {t("Apply to")}
-              </Label>
+              <span className="inline-flex min-w-0 shrink-0">
+                <Label id="usage-prices-apply-label">{t("Apply to")}</Label>
+              </span>
               <Menu>
-                <MenuTrigger
-                  render={<Button variant="outline" size="sm" className="min-w-0" />}
-                  aria-labelledby="usage-prices-apply-label usage-prices-selection"
-                  disabled={pending || hasChanges}
-                >
-                  <span id="usage-prices-selection" className="truncate">
-                    {selectionLabel}
-                  </span>
-                  <ChevronDownIcon className="size-3.5 shrink-0" aria-hidden />
-                </MenuTrigger>
+                <span className="inline-flex min-w-0">
+                  <MenuTrigger
+                    render={<Button variant="outline" size="sm" />}
+                    aria-labelledby="usage-prices-apply-label usage-prices-selection"
+                    disabled={pending || hasChanges}
+                  >
+                    <span id="usage-prices-selection" className="truncate">
+                      {selectionLabel}
+                    </span>
+                    <ChevronDownIcon className="size-3.5 shrink-0" aria-hidden />
+                  </MenuTrigger>
+                </span>
                 <MenuPopup align="start">
                   <MenuCheckboxItem
                     checked={selectedIds === null}
@@ -348,7 +350,7 @@ export function UsagePriceOverrides({
           ) : (
             <>
               <div className="min-w-0 overflow-hidden rounded-lg border border-border">
-                <Table className="min-w-180 table-fixed" aria-label={t("Custom model prices")}>
+                <Table fixed aria-label={t("Custom model prices")}>
                   <colgroup>
                     <col className="w-[22%]" />
                     <col className="w-[18%]" />
@@ -384,7 +386,7 @@ export function UsagePriceOverrides({
                   <TableBody>
                     {rows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center whitespace-normal">
+                        <TableCell colSpan={7} wrap align="center">
                           <p className="py-6 text-muted-foreground">
                             {selected.some((environment) => environment.prices === null)
                               ? "Some environment prices are unavailable."
@@ -398,7 +400,7 @@ export function UsagePriceOverrides({
                         const alias = (row.alias ?? aliasCell.value).trim();
                         return (
                           <TableRow key={row.id} data-row-id={row.id}>
-                            <TableCell className="whitespace-normal">
+                            <TableCell wrap>
                               {row.isNew ? (
                                 <Input
                                   size="compact"
@@ -462,7 +464,7 @@ export function UsagePriceOverrides({
                               </TableCell>
                             )}
                             {row.removed ? null : alias !== "" ? (
-                              <TableCell colSpan={4} className="whitespace-normal">
+                              <TableCell colSpan={4} wrap>
                                 <span className="break-all text-muted-foreground">
                                   {t("Counted as")} {alias}
                                 </span>
@@ -596,7 +598,7 @@ export function UsagePriceOverrides({
             </div>
           ) : null}
         </DialogPanel>
-        <DialogFooter variant="bare" className="items-center sm:justify-between">
+        <DialogFooter variant="bare" layout="centered-between">
           <span className="text-xs text-muted-foreground">
             {hasChanges ? `Changes apply to ${destinationLabel}` : ""}
           </span>

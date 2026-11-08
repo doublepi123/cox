@@ -15,8 +15,8 @@ export function WizardPopup({
   readonly size?: "default" | "wide";
 }) {
   return (
-    <DialogPopup {...props} className={size === "wide" ? "max-w-3xl" : "max-w-xl"}>
-      <ScrollArea className="*:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4">
+    <DialogPopup {...props} width={size === "wide" ? "3xl" : "xl"}>
+      <ScrollArea scrollbarInset>
         <div className="flex min-h-0 flex-col">{children}</div>
       </ScrollArea>
     </DialogPopup>
@@ -36,7 +36,7 @@ export function WizardHeader({
 }) {
   return (
     <DialogHeader>
-      <DialogTitle className={identity ? "sr-only" : undefined}>{title}</DialogTitle>
+      <DialogTitle visuallyHidden={!!identity}>{title}</DialogTitle>
       {identity}
       {description ? <DialogDescription>{description}</DialogDescription> : null}
       {children}
@@ -52,7 +52,7 @@ export function WizardFooter({
   readonly leading?: ReactNode;
 }) {
   return (
-    <DialogFooter variant="bare" className={leading ? "sm:justify-between" : undefined}>
+    <DialogFooter variant="bare" layout={leading ? "between" : "default"}>
       {leading}
       {leading ? (
         <div className="flex flex-col-reverse gap-2 sm:flex-row">{children}</div>
@@ -138,16 +138,19 @@ export function WizardPanel({
   children,
   holdHeight = false,
   className,
+  reserveSpace = false,
 }: {
   readonly children: ReactNode;
   readonly holdHeight?: boolean;
   readonly className?: string;
+  readonly reserveSpace?: boolean;
 }) {
   return (
     <div
       data-slot="dialog-panel"
       className={cn(
         "min-w-0 space-y-4 bg-background/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5",
+        reserveSpace && "min-h-72",
         className,
       )}
     >

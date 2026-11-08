@@ -1,4 +1,16 @@
 export const zh = {
+  "Fast and Ultrafast are unavailable with this ChatGPT connection. Use an existing Codex CLI login for speed options your account supports.":
+    "此 ChatGPT 连接不支持 Fast 和 Ultrafast。请使用现有 Codex CLI 登录以启用账户支持的速度选项。",
+  "Tool calls in chat": "聊天中的工具调用",
+  "Show all": "全部显示",
+  "Hide successful": "隐藏成功调用",
+  "Hide all": "隐藏全部调用",
+  Zen: "专注模式",
+  "Hide tool calls or intermediate messages. Approvals, questions, and errors always remain visible.":
+    "隐藏工具调用或中间消息；审批、问题和错误始终显示。",
+  "Stop this action when the thread settles": "线程结算时停止此动作",
+  "Remove the incomplete connection {name}?": "移除未完成的连接 {name}？",
+  "Remove connection": "移除连接",
   "Test all models": "一键测试模型",
   "Stop remaining tests": "停止后续测试",
   "Ignore failed models ({count})": "忽略失败模型（{count}）",
@@ -3630,4 +3642,20 @@ export const zh = {
   Release: "交还",
   "Client update actions": "客户端更新操作",
   "Cox update actions": "Cox 更新操作",
+  "Your next message starts a fresh session": "下一条消息将开启全新会话",
+  "The agent won't see earlier messages in this thread.": "Agent 不会收到此对话中此前的消息。",
+  "Keep the current session": "保留当前会话",
+  "Start a fresh session; earlier messages stay visible": "开启全新会话；此前消息仍保留显示",
+  "New thread each run": "每次运行创建新对话",
+  "One thread, continuing the conversation": "同一对话，延续上下文",
+  "One thread, fresh session each run": "同一对话，每次使用全新会话",
+  "The first run starts a thread with the workspace and model below. Later runs continue that conversation.":
+    "首次运行使用下方工作区和模型创建对话，之后延续该对话。",
+  "The first run starts a thread with the workspace and model below. Later runs post there, each in a fresh session without earlier runs' context.":
+    "首次运行使用下方工作区和模型创建对话，之后仍在其中运行，但每次使用不含此前上下文的全新会话。",
+  "Each run starts a fresh session in this thread, without earlier runs' context.":
+    "每次在此对话中开启全新会话，不携带此前运行的上下文。",
+  "Deleting the thread also deletes this task.": "删除对话也会删除此任务。",
+  "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.":
+    "引用 {label} 的凭据字段和 Agent 环境变量将被清除；外部凭据库中的密钥不会改动。",
 } as const;

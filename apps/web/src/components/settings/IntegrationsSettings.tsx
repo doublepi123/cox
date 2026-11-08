@@ -68,9 +68,11 @@ function BrowserSearchEngineSetting() {
               }
             }}
           >
-            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label={t("Search engine")}>
-              <SelectValue>{t(SEARCH_ENGINE_LABELS[engine])}</SelectValue>
-            </SelectTrigger>
+            <div className="min-w-0 w-full sm:w-40">
+              <SelectTrigger fill size="sm" aria-label={t("Search engine")}>
+                <SelectValue>{t(SEARCH_ENGINE_LABELS[engine])}</SelectValue>
+              </SelectTrigger>
+            </div>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               {BrowserSearchEngine.literals.map((literal) => (
                 <SelectItem hideIndicator key={literal} value={literal}>
@@ -91,18 +93,19 @@ function BrowserSearchEngineSetting() {
               : t("Enter an http or https URL containing %s. Searches use DuckDuckGo until then.")
           }
           control={
-            <DraftInput
-              nativeInput
-              size="sm"
-              className="w-full sm:w-64"
-              aria-label={t("Custom search URL")}
-              placeholder="https://example.com/search?q=%s"
-              autoCapitalize="none"
-              spellCheck={false}
-              maxLength={BROWSER_CUSTOM_SEARCH_URL_MAX_LENGTH}
-              value={customUrl}
-              onCommit={(next) => updateSettings({ browserCustomSearchUrl: next.trim() })}
-            />
+            <div className="min-w-0 w-full sm:w-64">
+              <DraftInput
+                nativeInput
+                size="sm"
+                aria-label={t("Custom search URL")}
+                placeholder="https://example.com/search?q=%s"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={BROWSER_CUSTOM_SEARCH_URL_MAX_LENGTH}
+                value={customUrl}
+                onCommit={(next) => updateSettings({ browserCustomSearchUrl: next.trim() })}
+              />
+            </div>
           }
         />
       ) : null}

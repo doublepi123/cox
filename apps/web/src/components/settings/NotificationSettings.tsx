@@ -67,13 +67,11 @@ export function NotificationSettings() {
             updateSettings({ notificationMode: value });
           }}
         >
-          <SelectTrigger
-            size="sm"
-            className="w-full sm:w-56"
-            aria-label={t("Thread notifications")}
-          >
-            <SelectValue>{t(NOTIFICATION_MODE_LABELS[mode])}</SelectValue>
-          </SelectTrigger>
+          <div className="min-w-0 w-full sm:w-56">
+            <SelectTrigger fill size="sm" aria-label={t("Thread notifications")}>
+              <SelectValue>{t(NOTIFICATION_MODE_LABELS[mode])}</SelectValue>
+            </SelectTrigger>
+          </div>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {Object.entries(NOTIFICATION_MODE_LABELS).map(([value, label]) => (
               <SelectItem key={value} hideIndicator value={value}>

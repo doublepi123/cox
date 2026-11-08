@@ -47,7 +47,7 @@ export function ContextChipShell({
   return (
     <Tooltip>
       <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
+      <TooltipPopup side="top" textFormat="pre">
         {tooltip}
       </TooltipPopup>
     </Tooltip>
@@ -78,7 +78,7 @@ export function ContextChipPopover(props: {
         <ContextChipLabel>{props.label}</ContextChipLabel>
       </PopoverTrigger>
       <PopoverPopup side="top" width="lg" padding="compact">
-        <PopoverTitle className="sr-only">{props.accessibleLabel}</PopoverTitle>
+        <PopoverTitle visuallyHidden>{props.accessibleLabel}</PopoverTitle>
         {props.children}
       </PopoverPopup>
     </Popover>
@@ -231,7 +231,7 @@ export function FileChip(props: {
           )
         }
       />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
+      <TooltipPopup side="top" textFormat="pre">
         {props.tooltip}
       </TooltipPopup>
     </Tooltip>
@@ -291,7 +291,7 @@ function SvgFileChip(props: ComponentProps<typeof FileChip>) {
           />
         }
       />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
+      <TooltipPopup side="top" textFormat="pre">
         {props.tooltip}
       </TooltipPopup>
     </Tooltip>

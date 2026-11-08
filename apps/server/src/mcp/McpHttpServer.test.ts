@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as Tracer from "effect/Tracer";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { HttpBody, HttpClient, HttpClientRequest, HttpRouter } from "effect/http";
 
@@ -124,6 +125,25 @@ const serveSnapshots = (clientId: string, result: unknown) =>
     yield* Deferred.await(connected);
     return inputs;
   });
+
+const recordSpans = () => {
+  const spans: Array<Tracer.NativeSpan> = [];
+  const order: Array<string> = [];
+  const tracer = Tracer.make({
+    span: (options) => {
+      const span = new Tracer.NativeSpan(options);
+      spans.push(span);
+      order.push(`start ${span.spanId}`);
+      const end = span.end.bind(span);
+      span.end = (endTime, exit) => {
+        end(endTime, exit);
+        order.push(`end ${span.spanId}`);
+      };
+      return span;
+    },
+  });
+  return { tracer, spans, order };
+};
 
 const callTool = (name: string, args: Record<string, unknown>) =>
   Effect.gen(function* () {
@@ -764,6 +784,7 @@ it.effect("admits provider and OAuth client credentials and points only clients 
         issuedAt: 1,
       };
       const seen: Array<McpInvocationContext.McpInvocationScope> = [];
+      const traced = recordSpans();
       const ProbeToolkit = Toolkit.make(
         Tool.make("probe", {
           description: "Reports the caller.",
@@ -808,6 +829,7 @@ it.effect("admits provider and OAuth client credentials and points only clients 
       );
       yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
         Layer.build,
+        Effect.withTracer(traced.tracer),
       );
       const httpClient = yield* HttpClient.HttpClient;
       const call = (token: string | undefined) =>
@@ -838,6 +860,20 @@ it.effect("admits provider and OAuth client credentials and points only clients 
         });
 
       expect((yield* call(providerToken)).status).toBe(200);
+      const toolSpan = traced.spans.find((span) => span.name === "mcp.tool.probe");
+      expect(Object.fromEntries(toolSpan?.attributes ?? [])).toEqual({
+        "rpc.system": "mcp",
+        "rpc.method": "tools/call",
+        "mcp.tool.name": "probe",
+      });
+      const authSpan = traced.spans.find(
+        (span) =>
+          span.name === "McpHttpServer.authenticateRequest" && span.traceId === toolSpan?.traceId,
+      );
+      expect(authSpan).toBeDefined();
+      expect(traced.order.slice(0, traced.order.indexOf(`start ${toolSpan?.spanId}`))).toContain(
+        `end ${authSpan?.spanId}`,
+      );
       expect((yield* call(clientToken)).status).toBe(200);
       expect(seen.map((scope) => scope.requestNamespace)).toEqual([
         "provider-session",
@@ -854,9 +890,15 @@ it.effect("admits provider and OAuth client credentials and points only clients 
       expect(expiredClient.headers["www-authenticate"]).toContain("resource_metadata=");
       expect(expiredClient.headers["www-authenticate"]).toContain('error="invalid_token"');
 
+      const spansBeforeRejection = traced.spans.length;
       const deadProvider = yield* call("deadProviderToken");
       expect(deadProvider.status).toBe(401);
       expect(deadProvider.headers["www-authenticate"]).toBe('Bearer error="invalid_token"');
+      expect(
+        traced.spans
+          .slice(spansBeforeRejection)
+          .filter((span) => span.name.startsWith("mcp.tool.")),
+      ).toEqual([]);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

@@ -38,6 +38,8 @@ it.layer(NodeServices.layer)("PR filesystem cache", (it) => {
       const invalidate = yield* cache
         .invalidate("pr")
         .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* cache.invalidate("other-pr");
+      assert.isUndefined(invalidate.pollUnsafe());
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(read);
       yield* Fiber.join(invalidate);

@@ -385,6 +385,8 @@ export interface ChatComposerProps {
   onUsageLimitsCommand?: (() => void) | undefined;
   sideChatAvailable?: boolean;
   sideChatDisabledReason?: string | null;
+
+  onFreshSession?: (() => void) | undefined;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
@@ -1049,21 +1051,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const onBlur = () => {
       pasteAsTextShortcutUntilRef.current = 0;
     };
-    const onDesktopPasteAsText = () => {
-      const activeElement = document.activeElement;
-      const blocksPasteToFocus =
-        activeElement instanceof Element &&
-        activeElement.closest(
-          'input, textarea, select, button, a[href], summary, [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"], [role="button"], [role="menuitem"], [role="option"]',
-        ) !== null;
-      // A background composer takes no paste-to-focus, so it arms only for its own focus.
-      if (
-        (activeElement instanceof Node && composerFormRef.current?.contains(activeElement)) ||
-        (!blocksPasteToFocus && !backgroundThread)
-      ) {
-        armPasteAsTextShortcut();
-      }
-    };
     target.addEventListener("keydown", onKeyDown, true);
     // An arm lasts a second, so a background composer can skip the window blur reset.
     if (!backgroundThread) window.addEventListener("blur", onBlur);
@@ -1107,6 +1094,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     planModeUiEnabled,
     sideChatAvailable: props.sideChatAvailable === true,
     sideChatDisabledReason: props.sideChatDisabledReason ?? null,
+    freshSessionAvailable: props.onFreshSession !== undefined,
     compactSlashCommandAvailable,
     selectedProvider,
     selectedProviderSkills,
@@ -1798,6 +1786,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (applied) {
           setComposerHighlightedItemId(null);
           setIsComposerModelPickerOpen(true);
+        }
+        return;
+      }
+      if (item.command === "clear") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (applied) {
+          setComposerHighlightedItemId(null);
+          props.onFreshSession?.();
         }
         return;
       }

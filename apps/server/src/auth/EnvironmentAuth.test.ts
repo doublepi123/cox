@@ -17,6 +17,22 @@ import * as SessionStore from "./SessionStore.ts";
 
 const TEST_SERVER_PORT = 13_773;
 
+it.each(["Bearer", "bearer", "bEaReR", "DPoP", "dpop", "dPoP"])(
+  "selects %s without altering the case-sensitive credential",
+  (scheme) => {
+    expect(
+      EnvironmentAuth.selectRequestCredential(
+        request({ authorization: `${scheme} CaseSensitiveToken` }),
+        "session",
+        undefined,
+      ),
+    ).toEqual({
+      token: "CaseSensitiveToken",
+      source: scheme.toLowerCase() === "dpop" ? "dpop" : "bearer",
+    });
+  },
+);
+
 const layerServerConfig = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
   Layer.effect(
     ServerConfig.ServerConfig,

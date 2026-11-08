@@ -108,31 +108,33 @@ export function PullRequestSearchInput({
   const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <InputGroup className="min-w-0 flex-1 **:[input]:h-9 sm:**:[input]:h-8">
-      <InputGroupAddon>
-        {busy ? <Spinner aria-hidden /> : <SearchIcon aria-hidden />}
-      </InputGroupAddon>
-      <InputGroupInput
-        type="search"
-        value={draft ?? value}
-        onFocus={() => setDraft(value)}
-        onBlur={() => setDraft(null)}
-        onChange={(event) => {
-          setDraft(event.currentTarget.value);
-          onChange(event.currentTarget.value);
-          if ((event.nativeEvent as InputEvent).inputType === "insertFromPaste") {
-            onSubmit(event.currentTarget.value);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-            onSubmit(event.currentTarget.value);
-          }
-        }}
-        placeholder="Search pull requests, or label:bug"
-        aria-label={t("Search pull requests")}
-      />
-    </InputGroup>
+    <div className="min-w-0 flex-1 **:[input]:h-9 sm:**:[input]:h-8">
+      <InputGroup>
+        <InputGroupAddon>
+          {busy ? <Spinner aria-hidden /> : <SearchIcon aria-hidden />}
+        </InputGroupAddon>
+        <InputGroupInput
+          type="search"
+          value={draft ?? value}
+          onFocus={() => setDraft(value)}
+          onBlur={() => setDraft(null)}
+          onChange={(event) => {
+            setDraft(event.currentTarget.value);
+            onChange(event.currentTarget.value);
+            if ((event.nativeEvent as InputEvent).inputType === "insertFromPaste") {
+              onSubmit(event.currentTarget.value);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              onSubmit(event.currentTarget.value);
+            }
+          }}
+          placeholder="Search pull requests, or label:bug"
+          aria-label={t("Search pull requests")}
+        />
+      </InputGroup>
+    </div>
   );
 }
 
@@ -190,7 +192,7 @@ function PullRequestFilterRadioGroup<Value extends string>({
           <MenuRadioItem
             key={option.value}
             value={option.value}
-            className={option.unavailable ? "data-disabled:pointer-events-auto" : undefined}
+            disabledHover={option.unavailable ? true : undefined}
             disabled={option.unavailable !== undefined}
           >
             <span className="flex min-w-0 items-center gap-2">

@@ -58,13 +58,14 @@ import {
   type RuntimeMode,
   type ScheduledTask,
   type ScheduledTaskUpsertInput,
+  scheduledTaskThreadMode,
   type ServerProvider,
   type ServerProviderModel,
   ThreadId,
   isOrchestrationV2WorkActive,
   resolveProjectProviderInstanceEnabled,
 } from "@t3tools/contracts";
-import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
+import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import {
@@ -267,6 +268,7 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
     enabled: task.enabled,
     projectId: task.projectId,
     boundThreadId: task.threadId,
+    freshSession: scheduledTaskThreadMode(task) === "fresh_session",
     schedule: task.schedule,
     nextRunAt: task.nextRunAt,
     lastRunStatus: task.lastRunStatus,
@@ -1400,10 +1402,10 @@ const make = Effect.gen(function* () {
       );
     }
 
-    const requestedOptions = input.target?.options;
+    const descriptors = provider.models.find((candidate) => candidate.slug === model)?.capabilities
+      ?.optionDescriptors;
+    const requestedOptions = withLegacyUltracodeEffort(descriptors, input.target?.options);
     if (requestedOptions !== undefined) {
-      const descriptors = provider.models.find((candidate) => candidate.slug === model)
-        ?.capabilities?.optionDescriptors;
       const invalid = invalidOptionSelections(requestedOptions, descriptors);
       if (invalid.length > 0) {
         return yield* failure(
@@ -1415,7 +1417,9 @@ const make = Effect.gen(function* () {
 
     const inheritsOptions =
       instanceId === inheritedSelection.instanceId && model === inheritedSelection.model;
-    let options = inheritsOptions ? inheritedSelection.options : undefined;
+    let options = inheritsOptions
+      ? withLegacyUltracodeEffort(descriptors, inheritedSelection.options)
+      : undefined;
     if (requestedOptions !== undefined) {
       const selections = new Map(
         (requestedOptions.length === 0 ? [] : (options ?? [])).map((selection) => [
@@ -1797,6 +1801,12 @@ const make = Effect.gen(function* () {
         schedule: input.schedule,
         projectId,
         threadId: bindToCurrentThread && parent !== undefined ? parent.thread.id : null,
+        threadMode:
+          input.freshSession === true
+            ? "fresh_session"
+            : bindToCurrentThread
+              ? "continue"
+              : "new_thread",
         workspaceStrategy: scheduledTaskWorkspaceStrategy(bindToCurrentThread),
         modelSelection,
         runtimeMode: limits.runtimeMode,
@@ -1859,6 +1869,16 @@ const make = Effect.gen(function* () {
               : "bindToCurrentThread binds to this thread, which belongs to a different project.",
           );
         }
+        if (
+          input.bindToCurrentThread === false &&
+          input.freshSession === true &&
+          existing.threadId !== null
+        ) {
+          return yield* failure(
+            "invalid_request",
+            "To move this task to a new thread with fresh sessions, first unbind it with bindToCurrentThread: false, then set freshSession: true in a second call.",
+          );
+        }
         const threadId =
           input.bindToCurrentThread === undefined
             ? existing.threadId
@@ -1878,6 +1898,18 @@ const make = Effect.gen(function* () {
           schedule: input.schedule ?? existing.schedule,
           projectId: existing.projectId,
           threadId,
+          threadMode:
+            input.freshSession === undefined && input.bindToCurrentThread === undefined
+              ? scheduledTaskThreadMode(existing)
+              : (input.freshSession ??
+                  (input.bindToCurrentThread !== false &&
+                    scheduledTaskThreadMode(existing) === "fresh_session"))
+                ? "fresh_session"
+                : threadId === null &&
+                    (input.bindToCurrentThread === false ||
+                      scheduledTaskThreadMode(existing) === "new_thread")
+                  ? "new_thread"
+                  : "continue",
           workspaceStrategy,
           modelSelection: existing.modelSelection,
           runtimeMode: existing.runtimeMode,
@@ -2869,6 +2901,7 @@ const make = Effect.gen(function* () {
           text: input.message,
           attachments: [],
           mode,
+          ...(input.freshContext ? { freshContext: true } : {}),
           createdBy: "agent",
           creationSource: "mcp",
         })

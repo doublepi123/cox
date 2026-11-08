@@ -25,7 +25,9 @@ function ChildApproval({ entry }: { entry: ChildThreadApproval }) {
       aria-label={t("Approval from {title}", { title: entry.title })}
       className="rounded-lg border border-border bg-background p-3 text-xs"
     >
-      <p className="mb-2 font-medium">{t("Approval needed from {title}", { title: entry.title })}</p>
+      <p className="mb-2 font-medium">
+        {t("Approval needed from {title}", { title: entry.title })}
+      </p>
       <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono">
         {approval.detail || approval.requestKind}
       </pre>
@@ -60,7 +62,9 @@ function ChildApproval({ entry }: { entry: ChildThreadApproval }) {
             if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
               const failure = squashAtomCommandFailure(result);
               setError(
-                failure instanceof Error ? failure.message : t("Failed to submit approval decision."),
+                failure instanceof Error
+                  ? failure.message
+                  : t("Failed to submit approval decision."),
               );
             }
             setResponding(false);

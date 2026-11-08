@@ -3,6 +3,7 @@ import {
   type PullRequestReviewVerdict,
   type RepositoryIdentity,
   secretSetting,
+  SettingsSecretValue,
   SourceControlProviderKind,
   type SourceControlProviderInfo,
   TrimmedNonEmptyString,
@@ -212,7 +213,7 @@ export const hostCredentialSettingsFields = {
     Schema.withDecodingDefault(Effect.succeed({})),
     Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
   ),
-  tokens: Schema.Record(SourceControlHostName, TrimmedString).pipe(
+  tokens: Schema.Record(SourceControlHostName, SettingsSecretValue).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
     secretSetting,
     Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
@@ -254,11 +255,7 @@ export interface SourceControlDefinition {
   readonly parseCommitUrl?: (url: URL, known: boolean) => CommitLink | null;
   /** Null when the URL is not one of this host's change requests. */
   readonly parseChangeRequestUrl: (url: URL) => ParsedChangeRequestUrl | null;
-  /**
-   * The change request URL a bare `#123` autolink might name, for hosts that write every
-   * reference through their issue route. Only a candidate: the caller must read it as a change
-   * request before treating it as one.
-   */
+
   readonly changeRequestUrlFromReferenceAutolink: (url: URL) => string | null;
   /**
    * The actions this host can take on a change request, the same list its server provider

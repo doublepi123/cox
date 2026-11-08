@@ -331,7 +331,6 @@ describe("composer follow-up preference", () => {
         expect(label.getBoundingClientRect().width).toBeGreaterThanOrEqual(40);
       }
       if (width < 640 && !collapsed) {
-        const label = model.querySelector<HTMLElement>("[data-chat-provider-model-picker-label]")!;
         const effort = model.querySelector<HTMLElement>("[data-composer-effort-suffix]")!;
         expect(effort.checkVisibility()).toBe(false);
       }

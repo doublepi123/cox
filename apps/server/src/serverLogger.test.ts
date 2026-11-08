@@ -21,7 +21,7 @@ import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import * as ServerConfig from "./config.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ServerLogger from "./serverLogger.ts";
-import { logBrowserAutoOpenUnavailable, maybeOpenBrowser } from "./serverRuntimeStartup.ts";
+import { maybeOpenBrowser } from "./serverRuntimeStartup.ts";
 
 interface ExportedRequest {
   readonly url: string;

@@ -74,7 +74,6 @@ export function FileSurfaceAction(props: {
           pressed === undefined ? (
             <Button
               type="button"
-              className="shrink-0"
               disabled={props.disabled ?? false}
               onClick={props.onPress}
               aria-label={props.label}
@@ -85,7 +84,6 @@ export function FileSurfaceAction(props: {
             </Button>
           ) : (
             <Toggle
-              className="shrink-0"
               pressed={pressed}
               disabled={props.disabled ?? false}
               onPressedChange={props.onPress}

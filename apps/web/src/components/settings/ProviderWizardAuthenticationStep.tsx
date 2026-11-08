@@ -39,7 +39,7 @@ export function ProviderWizardAuthenticationStep({
 
   return (
     <>
-      <WizardPanel className="min-h-72">
+      <WizardPanel reserveSpace>
         <SettingsGroup variant="plain">
           {provider && (canAuthenticate || signedIn) ? (
             <ProviderAuthenticationSection

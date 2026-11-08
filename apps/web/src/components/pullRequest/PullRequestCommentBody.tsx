@@ -40,19 +40,20 @@ export function PullRequestCommentBody({
         ) : null}
       </div>
       {overflowing ? (
-        <Button
-          size="xs"
-          variant="ghost-muted"
-          className="mt-2"
-          aria-expanded={expanded}
-          aria-controls={id}
-          onClick={() => {
-            if (expanded) clip.current?.scrollIntoView({ block: "nearest" });
-            setExpanded(!expanded);
-          }}
-        >
-          {expanded ? "Show less" : "Show full comment"}
-        </Button>
+        <span className="inline-flex min-w-0 mt-2">
+          <Button
+            size="xs"
+            variant="ghost-muted"
+            aria-expanded={expanded}
+            aria-controls={id}
+            onClick={() => {
+              if (expanded) clip.current?.scrollIntoView({ block: "nearest" });
+              setExpanded(!expanded);
+            }}
+          >
+            {expanded ? "Show less" : "Show full comment"}
+          </Button>
+        </span>
       ) : null}
     </div>
   );

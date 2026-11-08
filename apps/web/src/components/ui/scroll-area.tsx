@@ -29,6 +29,9 @@ function ScrollArea({
   chainVerticalScroll = false,
   radius = "inherit",
   viewportTabIndex,
+  sizing = "default",
+  scrollbarInset = false,
+  preset,
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
   scrollFade?: boolean;
@@ -38,12 +41,35 @@ function ScrollArea({
   chainVerticalScroll?: boolean;
   radius?: "inherit" | "none";
   viewportTabIndex?: number;
+  sizing?: "default" | "content" | "flex" | "diagnostics";
+  scrollbarInset?: boolean;
+  preset?:
+    | "onboarding"
+    | "imports"
+    | "banner"
+    | "checks"
+    | "picker"
+    | "diagnostics"
+    | "resources"
+    | "processes";
 }) {
   return (
     <ScrollAreaPrimitive.Root
       className={cn(
         "relative size-full min-h-0 overflow-hidden",
         radius === "none" ? "rounded-none" : "rounded-[inherit]",
+        sizing === "content" && "h-auto",
+        sizing === "flex" && "min-w-0 flex-1",
+        sizing === "diagnostics" && "w-full max-w-full",
+        scrollbarInset && "*:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4",
+        preset === "onboarding" && "mt-5 h-auto max-h-[min(32rem,55dvh)]",
+        preset === "imports" && "mt-2 h-auto max-h-80",
+        preset === "banner" && "h-auto max-h-[min(24rem,40dvh)]",
+        preset === "checks" && "-me-3 w-auto max-h-64",
+        preset === "picker" && "max-h-64",
+        preset === "diagnostics" && "max-h-[min(64vh,44rem)] w-full max-w-full",
+        preset === "resources" && "max-h-[min(68vh,48rem)] w-full max-w-full",
+        preset === "processes" && "max-h-[28rem] w-full max-w-full",
         className,
       )}
       {...props}

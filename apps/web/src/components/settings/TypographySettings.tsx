@@ -459,57 +459,58 @@ function FontFamilySettingsRow({
         onSelect={onValueChange}
       />
     ) : (
-      <Input
-        size="sm"
-        aria-label={t("{name} family", { name: title })}
-        aria-invalid={draftPending || undefined}
-        autoCapitalize="off"
-        autoComplete="off"
-        className="min-w-0 flex-1"
-        maxLength={200}
-        onFocus={() => {
-          setInputFocused(true);
-          discoverInstalledFonts();
-        }}
-        onBlur={() => {
-          setInputFocused(false);
-          flushDraft();
-        }}
-        onChange={(event) => {
-          const next = event.currentTarget.value;
-          setDraft(next);
-          setDraftSettled(false);
-          cancelPendingCommit();
-          const typedAgainst = value;
-          const typedInGeneration = adopted.generation;
-          commitTimerRef.current = {
-            id: window.setTimeout(() => {
-              commitTimerRef.current = null;
-              if (readAdoptedGeneration() === typedInGeneration) commitDraft(next);
-            }, 400),
-            value: typedAgainst,
-          };
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") flushDraft();
-          if (event.key === "Escape") {
-            // Discard uncommitted typing without closing the settings page,
-            // which is what an unhandled Escape does.
-            event.preventDefault();
-            event.stopPropagation();
+      <div className="min-w-0 flex-1">
+        <Input
+          size="sm"
+          aria-label={t("{name} family", { name: title })}
+          aria-invalid={draftPending || undefined}
+          autoCapitalize="off"
+          autoComplete="off"
+          maxLength={200}
+          onFocus={() => {
+            setInputFocused(true);
+            discoverInstalledFonts();
+          }}
+          onBlur={() => {
+            setInputFocused(false);
+            flushDraft();
+          }}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setDraft(next);
+            setDraftSettled(false);
             cancelPendingCommit();
-            setDraft(value);
-            setDraftSettled(true);
-          }
-        }}
-        placeholder={defaultFamily}
-        spellCheck={false}
-        value={draft}
-      />
+            const typedAgainst = value;
+            const typedInGeneration = adopted.generation;
+            commitTimerRef.current = {
+              id: window.setTimeout(() => {
+                commitTimerRef.current = null;
+                if (readAdoptedGeneration() === typedInGeneration) commitDraft(next);
+              }, 400),
+              value: typedAgainst,
+            };
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") flushDraft();
+            if (event.key === "Escape") {
+              // Discard uncommitted typing without closing the settings page,
+              // which is what an unhandled Escape does.
+              event.preventDefault();
+              event.stopPropagation();
+              cancelPendingCommit();
+              setDraft(value);
+              setDraftSettled(true);
+            }
+          }}
+          placeholder={defaultFamily}
+          spellCheck={false}
+          value={draft}
+        />
+      </div>
     );
   const control = (
-    <div className="flex w-full items-center gap-2 sm:w-auto">
-      <div className="min-w-0 flex-1 sm:w-44 sm:flex-none">{familyControl}</div>
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto @min-[32rem]/settings-row:flex-nowrap">
+      <div className="min-w-36 flex-1 sm:w-44 sm:flex-none">{familyControl}</div>
       <Select
         value={String(size.value)}
         onValueChange={(next) => {
@@ -520,9 +521,11 @@ function FontFamilySettingsRow({
           }
         }}
       >
-        <SelectTrigger size="sm" className="w-22 shrink-0" aria-label={size.label}>
-          <SelectValue>{size.value} px</SelectValue>
-        </SelectTrigger>
+        <div className="min-w-0 w-22 shrink-0">
+          <SelectTrigger fill size="sm" aria-label={size.label}>
+            <SelectValue>{size.value} px</SelectValue>
+          </SelectTrigger>
+        </div>
         <SelectPopup align="end" alignItemWithTrigger={false}>
           {Array.from({ length: size.max - size.min + 1 }, (_, index) => size.min + index).map(
             (px) => (

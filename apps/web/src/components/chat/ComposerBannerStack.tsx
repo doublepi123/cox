@@ -145,7 +145,6 @@ export function NoticeText({
                 size="icon-xs"
                 variant="ghost-muted"
                 aria-label={detailsLabel}
-                className="flex-none"
               />
             }
           >
@@ -155,7 +154,7 @@ export function NoticeText({
             aria-label={translateUi("Notice details")}
             tooltipStyle
             side="top"
-            className="max-w-[min(30rem,calc(100vw-2rem))] whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full"
+            presentation="banner"
           >
             <ComposerBanner.Scroll className="max-h-[min(var(--available-height),24rem,40dvh)]">
               {children}

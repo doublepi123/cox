@@ -128,7 +128,7 @@ function ProviderOptionGrid({
       disabled={disabled}
       value={value}
       onValueChange={onValueChange}
-      className="grid grid-cols-1 sm:grid-cols-2"
+      layout="responsive-cards"
     >
       {options.map((option) => (
         <RadioPrimitive.Root
@@ -515,7 +515,7 @@ export function AddProviderInstanceDialog({
           />
         ) : (
           <>
-            <WizardPanel className={cn(isAcpRegistry && wizardStep === identityStep && "min-h-72")}>
+            <WizardPanel reserveSpace={isAcpRegistry && wizardStep === identityStep}>
               <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
                 <div id="add-instance-driver-label" className="text-sm font-medium text-foreground">
                   {t("Provider")}
@@ -680,15 +680,16 @@ export function AddProviderInstanceDialog({
                     </span>
                   }
                   control={
-                    <Input
-                      id="add-provider-label"
-                      aria-describedby="add-provider-label-description"
-                      size="sm"
-                      className="w-full @min-[32rem]/settings-row:w-56"
-                      placeholder={t("e.g. Work")}
-                      value={label}
-                      onChange={(event) => setIdentityDraft({ label: event.target.value })}
-                    />
+                    <div className="min-w-0 w-full @min-[32rem]/settings-row:w-56">
+                      <Input
+                        id="add-provider-label"
+                        aria-describedby="add-provider-label-description"
+                        size="sm"
+                        placeholder={t("e.g. Work")}
+                        value={label}
+                        onChange={(event) => setIdentityDraft({ label: event.target.value })}
+                      />
+                    </div>
                   }
                 />
                 <SettingsRow
@@ -710,22 +711,23 @@ export function AddProviderInstanceDialog({
                     ) : undefined
                   }
                   control={
-                    <Input
-                      id="add-provider-instance-id"
-                      aria-describedby={
-                        showInstanceIdError
-                          ? "add-provider-instance-id-description add-provider-instance-id-error"
-                          : "add-provider-instance-id-description"
-                      }
-                      size="sm"
-                      className="w-full @min-[32rem]/settings-row:w-56"
-                      placeholder={`${driver}_work`}
-                      value={instanceId}
-                      onChange={(event) => {
-                        setIdentityDraft({ instanceIdOverride: event.target.value });
-                      }}
-                      aria-invalid={showInstanceIdError}
-                    />
+                    <div className="min-w-0 w-full @min-[32rem]/settings-row:w-56">
+                      <Input
+                        id="add-provider-instance-id"
+                        aria-describedby={
+                          showInstanceIdError
+                            ? "add-provider-instance-id-description add-provider-instance-id-error"
+                            : "add-provider-instance-id-description"
+                        }
+                        size="sm"
+                        placeholder={`${driver}_work`}
+                        value={instanceId}
+                        onChange={(event) => {
+                          setIdentityDraft({ instanceIdOverride: event.target.value });
+                        }}
+                        aria-invalid={showInstanceIdError}
+                      />
+                    </div>
                   }
                 />
                 <SettingsRow

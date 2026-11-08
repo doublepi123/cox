@@ -306,18 +306,19 @@ function LinkRowImpl({
             if (!open) setMenuPosition(null);
           }}
         >
-          <MenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-micro"
-                aria-label={`Actions for #${link.number}`}
-                className="relative"
-              >
-                <MoreHorizontalIcon className="size-3.5" />
-              </Button>
-            }
-          />
+          <span className="inline-flex min-w-0 relative">
+            <MenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-micro"
+                  aria-label={`Actions for #${link.number}`}
+                >
+                  <MoreHorizontalIcon className="size-3.5" />
+                </Button>
+              }
+            />
+          </span>
           <MenuPopup
             anchor={menuAnchor}
             align={menuPosition ? "start" : "end"}

@@ -165,7 +165,6 @@ export function ThreadDetailsPrRow({
     reference,
     terminology,
     onSuccess: () => {
-      detailQuery.refresh();
       checksQuery.refresh();
       onActed?.();
     },
@@ -214,6 +213,8 @@ export function ThreadDetailsPrRow({
         url: detail.url,
         headBranch: detail.headBranch,
         baseBranch: detail.baseBranch,
+        state: detail.state,
+        isDraft: detail.isDraft,
         reviewThreads: [],
         comments: [],
         checks: detail.checks,
@@ -249,13 +250,7 @@ export function ThreadDetailsPrRow({
         {status?.tooltip ?? `${capitalizeTerm(terminology.singular)} #${number}`}
       </TooltipPopup>
     ) : (
-      <TooltipPopup
-        side="top"
-        align="start"
-        sideOffset={4}
-        variant="glass"
-        className="max-w-80 text-left whitespace-normal"
-      >
+      <TooltipPopup side="top" align="start" sideOffset={4} variant="glass" textFormat="left">
         <div className="flex min-w-0 max-w-80 flex-col gap-2 px-1 py-2">
           <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-none">
             <span className="min-w-0 truncate font-medium text-foreground">{detail.title}</span>
@@ -367,31 +362,32 @@ export function ThreadDetailsPrRow({
   const watchControl = (part: "secondary" | "icon") =>
     watching ? (
       <Tooltip>
-        <TooltipTrigger
-          render={
-            <ThreadDetailsControl
-              type="button"
-              variant="ghost"
-              size="sm"
-              part={part}
-              className="group/watch"
-              aria-label={`Stop watching #${number}`}
-              onClick={onStopWatching}
+        <span className="inline-flex min-w-0 group/watch">
+          <TooltipTrigger
+            render={
+              <ThreadDetailsControl
+                type="button"
+                variant="ghost"
+                size="sm"
+                part={part}
+                aria-label={`Stop watching #${number}`}
+                onClick={onStopWatching}
+              />
+            }
+          >
+            <EyeIcon
+              aria-hidden
+              className={cn(part === "icon" ? "size-3.5" : "size-4", "group-hover/watch:hidden")}
             />
-          }
-        >
-          <EyeIcon
-            aria-hidden
-            className={cn(part === "icon" ? "size-3.5" : "size-4", "group-hover/watch:hidden")}
-          />
-          <EyeOffIcon
-            aria-hidden
-            className={cn(
-              part === "icon" ? "size-3.5" : "size-4",
-              "hidden group-hover/watch:block",
-            )}
-          />
-        </TooltipTrigger>
+            <EyeOffIcon
+              aria-hidden
+              className={cn(
+                part === "icon" ? "size-3.5" : "size-4",
+                "hidden group-hover/watch:block",
+              )}
+            />
+          </TooltipTrigger>
+        </span>
         <TooltipPopup side="top">
           {t(
             "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts. Click to stop.",
@@ -411,7 +407,7 @@ export function ThreadDetailsPrRow({
             size="sm"
             part={part}
             multiline={wrap}
-            className={wrap ? "items-start [&>svg]:mt-0.5" : undefined}
+            alignContent={wrap ? "start" : "center"}
             aria-label={openAriaLabel}
             onClick={onOpen}
             onAuxClick={onOpen}

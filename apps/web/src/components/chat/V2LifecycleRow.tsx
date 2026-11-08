@@ -44,6 +44,7 @@ import {
   CircleStopIcon,
   ArrowRightLeftIcon,
   ArrowRightIcon,
+  EraserIcon,
   GitForkIcon,
   MessageSquareIcon,
 } from "lucide-react";
@@ -57,7 +58,7 @@ import {
 } from "../../providerInstances";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { getTriggerDisplayModelName } from "./providerIconUtils";
-import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
+import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { cn } from "~/lib/utils";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { subagentResumedSince } from "./V2LifecycleRow.logic";
@@ -457,7 +458,9 @@ function SubagentTimelineLink(props: {
           {detail === null ? (
             statusLabel
           ) : detail.includes("/") && !detail.includes(" ") ? (
-            <MiddleTruncate value={detail} showTitle={false} className="flex" />
+            <span className="min-w-0 flex">
+              <MiddleTruncate value={detail} showTitle={false} />
+            </span>
           ) : (
             <span className="block truncate">{detail}</span>
           )}
@@ -578,6 +581,10 @@ function EnvironmentHandoffRow({
   return <HandoffRow {...props} environmentId={environmentId} providers={providers} />;
 }
 
+export function FreshSessionRow() {
+  return <TimelineSystemDivider label="New session" icon={EraserIcon} />;
+}
+
 /** A same-harness model or effort change. Shows only what changed. */
 export function ModelSwitchRow(props: {
   readonly environmentId: EnvironmentId;
@@ -666,17 +673,11 @@ function HandoffEndpoint(props: {
       : model !== undefined && model.length > 0
         ? model
         : (entry?.displayName ?? props.instanceId);
-  const labelColor = providerTextColor(
-    entry?.driverKind ?? ProviderDriverKind.make(props.instanceId),
-  );
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            tabIndex={0}
-            className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          >
+      <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+        <TooltipTrigger
+          render={
             <ProviderInstanceIcon
               driverKind={entry?.driverKind ?? ProviderDriverKind.make(props.instanceId)}
               displayName={entry?.displayName ?? props.instanceId}
@@ -688,15 +689,9 @@ function HandoffEndpoint(props: {
               iconClassName={cn(showBadge && "opacity-60")}
               indicatorBackground="var(--background)"
             />
-            <span
-              className={cn("truncate font-medium", labelColor.className)}
-              style={labelColor.style}
-            >
-              {label}
-            </span>
-          </span>
-        }
-      />
+          }
+        />
+      </span>
       <TooltipPopup>
         {entry?.displayName ?? props.instanceId} · {label}
       </TooltipPopup>

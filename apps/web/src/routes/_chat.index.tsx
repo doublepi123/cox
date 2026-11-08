@@ -79,14 +79,10 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
   const { t } = useTranslation();
   const contentArea = workspaceAreaProps("home", 1, "Home");
   return (
-    <SidebarInset
-      {...contentArea}
-      role="main"
-      className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
-    >
+    <SidebarInset {...contentArea} role="main" viewport="dynamic">
       {null}
-      <Empty className="flex-1">
-        <EmptyHeader className="max-w-md">
+      <Empty>
+        <EmptyHeader width="md">
           <EmptyTitle>{t("Couldn’t start a new thread")}</EmptyTitle>
           <EmptyDescription>
             {t("The project is still available. Try opening the draft again.")}

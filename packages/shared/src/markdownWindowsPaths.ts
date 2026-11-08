@@ -1,4 +1,4 @@
-import type { Processor } from "unified";
+import type { Plugin } from "unified";
 import { isWindowsAbsolutePath } from "./path.ts";
 
 interface DestinationCompileContext {
@@ -45,18 +45,18 @@ function keepWindowsProsePathEscape(this: EscapeCompileContext) {
  * destinations themselves. Prose paths end at whitespace: past that, nothing tells a path
  * from a sentence, and `C:\x and \*this\*` must still read `*this*`.
  */
-export function remarkKeepWindowsProsePaths(this: Processor) {
+export const remarkKeepWindowsProsePaths: Plugin = function () {
   (this.data().fromMarkdownExtensions ??= []).push({
     exit: { characterEscape: keepWindowsProsePathEscape },
   });
-}
+};
 
 /**
  * CommonMark reads the `\.` in `C:\me\.t3\shot.png` as an escape. Every backslash in a
  * Windows path is a separator, so link, image, and definition destinations that are
  * Windows paths keep the text as written, and so do escapes inside drive paths.
  */
-export function remarkKeepWindowsPaths(this: Processor) {
+export const remarkKeepWindowsPaths: Plugin = function () {
   (this.data().fromMarkdownExtensions ??= []).push({
     exit: {
       resourceDestinationString: keepWindowsPathDestination,
@@ -64,4 +64,4 @@ export function remarkKeepWindowsPaths(this: Processor) {
       characterEscape: keepWindowsPathEscape,
     },
   });
-}
+};

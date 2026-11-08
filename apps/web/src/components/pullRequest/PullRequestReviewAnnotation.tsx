@@ -8,7 +8,7 @@ import type {
   PullRequestThreadCommentsResult,
   PullRequestThreadComment,
 } from "@t3tools/contracts";
-import { HammerIcon, MessageSquareIcon, Trash2Icon } from "lucide-react";
+import { HammerIcon, MessageSquareIcon, MessageSquarePlusIcon, Trash2Icon } from "lucide-react";
 import { Circle, CircleCheck } from "lucide";
 import { useRef, useState } from "react";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -19,17 +19,21 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { PullRequestEditButton } from "./PullRequestEditButton";
-import { Textarea } from "../ui/textarea";
 import { isCommentSubmitShortcut } from "../diffs/commentSubmitShortcut";
 import {
   editPullRequestThreadComment,
   mergePullRequestThreadComments,
+  visibleBody,
 } from "./pullRequestDetail.logic";
 import { PullRequestActorLabel } from "./pullRequestPresentation";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import type { PendingReviewComment } from "./pullRequestReviewStore";
+import {
+  PullRequestMarkdownTextarea,
+  type PullRequestCompletionScope,
+} from "./PullRequestMarkdownTextarea";
 
 const CARD_CLASS =
   "mx-3 my-2 rounded-xl border border-border/70 bg-background p-3 text-sm shadow-sm";
@@ -89,15 +93,16 @@ export function PendingReviewCommentCard({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <MessageSquareIcon className="size-3.5" />
         <span>Pending. Sent when you submit the review</span>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          className="ml-auto"
-          aria-label="Discard this comment"
-          onClick={onRemove}
-        >
-          <Trash2Icon className="size-3.5" />
-        </Button>
+        <span className="inline-flex min-w-0 ml-auto">
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Discard this comment"
+            onClick={onRemove}
+          >
+            <Trash2Icon className="size-3.5" />
+          </Button>
+        </span>
       </div>
       <p className="mt-2 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
     </div>
@@ -112,10 +117,12 @@ export function ReviewThreadCard({
   canReact,
   environmentId,
   reference,
+  completionScope,
   pending,
   fixPending,
   fixLabel = "Fix in a thread",
   onFix,
+  onAddToChat,
   onReply,
   onLoadMore,
   canEditComment,
@@ -130,10 +137,13 @@ export function ReviewThreadCard({
   canReact: boolean;
   environmentId: EnvironmentId;
   reference: PullRequestRef;
+  completionScope: PullRequestCompletionScope | null;
   pending: boolean;
   fixPending?: boolean;
   fixLabel?: string;
   onFix?: () => void;
+
+  onAddToChat?: (thread: PullRequestReviewThread) => void;
   onReply: (body: string) => Promise<boolean>;
   onLoadMore: (cursor: string) => Promise<PullRequestThreadCommentsResult | null>;
   canEditComment: (comment: PullRequestThreadComment) => boolean;
@@ -236,27 +246,27 @@ export function ReviewThreadCard({
         </button>
         {thread.isOutdated ? <span>outdated</span> : null}
         {onFix ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            className="ml-auto"
-            disabled={pending || fixPending}
-            onClick={onFix}
-          >
-            <HammerIcon className="size-3" />
-            {fixPending ? "Preparing..." : fixLabel}
-          </Button>
+          <span className="inline-flex min-w-0 ml-auto">
+            <Button size="xs" variant="ghost" disabled={pending || fixPending} onClick={onFix}>
+              <HammerIcon className="size-3" />
+              {fixPending ? "Preparing..." : fixLabel}
+            </Button>
+          </span>
+        ) : null}
+        {onAddToChat && comments.some((comment) => visibleBody(comment.body) !== null) ? (
+          <span className={onFix ? undefined : "ml-auto"}>
+            <Button size="xs" variant="ghost" onClick={() => onAddToChat({ ...thread, comments })}>
+              <MessageSquarePlusIcon className="size-3" />
+              Add to chat
+            </Button>
+          </span>
         ) : null}
         {canResolve ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            className={onFix ? undefined : "ml-auto"}
-            disabled={pending}
-            onClick={onToggleResolved}
-          >
-            {thread.isResolved ? "Unresolve" : "Resolve"}
-          </Button>
+          <span className={cn("inline-flex min-w-0", onFix || onAddToChat ? undefined : "ml-auto")}>
+            <Button size="xs" variant="ghost" disabled={pending} onClick={onToggleResolved}>
+              {thread.isResolved ? "Unresolve" : "Resolve"}
+            </Button>
+          </span>
         ) : null}
       </div>
 
@@ -287,6 +297,7 @@ export function ReviewThreadCard({
                     cwd={workspaceRoot}
                     environmentId={environmentId}
                     label={t("Edit comment")}
+                    completionScope={completionScope}
                     saving={savingEdit}
                     onSave={(body) => void saveEdit(comment.id, body)}
                     onCancel={() => setEditingId(null)}
@@ -326,13 +337,14 @@ export function ReviewThreadCard({
           {canReply ? (
             replying ? (
               <div className="mt-2">
-                <Textarea
+                <PullRequestMarkdownTextarea
+                  completionScope={completionScope}
                   autoFocus
                   size="sm"
                   value={reply}
                   placeholder={t("Reply")}
                   aria-label="Reply to this conversation"
-                  onChange={(event) => setReply(event.target.value)}
+                  onValueChange={setReply}
                   onKeyDown={(event) =>
                     submitKeys({
                       value: reply,
@@ -356,9 +368,11 @@ export function ReviewThreadCard({
                 </div>
               </div>
             ) : (
-              <Button size="xs" variant="ghost" className="mt-2" onClick={() => setReplying(true)}>
-                {t("Reply")}
-              </Button>
+              <span className="inline-flex min-w-0 mt-2">
+                <Button size="xs" variant="ghost" onClick={() => setReplying(true)}>
+                  {t("Reply")}
+                </Button>
+              </span>
             )
           ) : null}
         </>

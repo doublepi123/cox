@@ -48,7 +48,11 @@ import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useClientSettings, updateClientSettings } from "~/hooks/useSettings";
 import { useRenderedAppearance } from "~/hooks/useTheme";
 import { areAllDiffFilesCollapsed } from "~/lib/diffCollapse";
-import { pullRequestFindingKey, type PullRequestFinding } from "./pullRequestDetail.logic";
+import {
+  pullRequestFindingKey,
+  type PullRequestChatSubject,
+  type PullRequestFinding,
+} from "./pullRequestDetail.logic";
 import {
   canEditPullRequestComment,
   canResolvePullRequestThread,
@@ -109,6 +113,7 @@ import {
   ReviewThreadCard,
   toViewerSide,
 } from "./PullRequestReviewAnnotation";
+import { pullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 import {
   getFileViewedRange,
   isFileDiffCollapsed,
@@ -267,6 +272,7 @@ function PullRequestCodeTab({
   pendingFinding,
   fixFindingLabel = "Fix in a thread",
   onFixFinding,
+  onAddToChat,
   onAddToAgentSelection,
   onRefresh,
   refreshToken = 0,
@@ -282,6 +288,8 @@ function PullRequestCodeTab({
   pendingFinding?: string | null;
   fixFindingLabel?: string;
   onFixFinding?: (finding: PullRequestFinding) => void;
+
+  onAddToChat?: (subject: PullRequestChatSubject) => void;
   onAddToAgentSelection?: (input: PullRequestAgentSelectionInput) => void;
   onRefresh: () => void;
   refreshToken?: number;
@@ -481,6 +489,7 @@ function PullRequestCodeTab({
     commit,
     cacheKey: `pull-request:${referenceKey}:${detail.updatedAt}:${commit ?? "all"}`,
   });
+  const completionScope = pullRequestCompletionScope(detail, environmentId, reference);
   const hostReview = detail.capabilities.review;
   const review = {
     inlineComment: hostReview.inlineComment && detail.viewerPermissions.comment,
@@ -837,19 +846,20 @@ function PullRequestCodeTab({
   const renderHeaderPrefix = (item: CodeViewItem<ReviewAnnotationGroup>) => {
     const collapsed = item.collapsed === true;
     return (
-      <Button
-        size="icon-micro"
-        variant="ghost-muted"
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? "Expand diff" : "Collapse diff"}
-        className="mr-1"
-        onClick={(event) => {
-          event.stopPropagation();
-          toggleFile(item.id);
-        }}
-      >
-        <MorphIcon className="size-4" icon={collapsed ? ChevronRight : ChevronDown} />
-      </Button>
+      <span className="inline-flex min-w-0 mr-1">
+        <Button
+          size="icon-micro"
+          variant="ghost-muted"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand diff" : "Collapse diff"}
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleFile(item.id);
+          }}
+        >
+          <MorphIcon className="size-4" icon={collapsed ? ChevronRight : ChevronDown} />
+        </Button>
+      </span>
     );
   };
 
@@ -919,10 +929,14 @@ function PullRequestCodeTab({
       canReact={detail.capabilities.reactions === true}
       environmentId={environmentId}
       reference={reference}
+      completionScope={completionScope}
       pending={threadPending}
       fixPending={pendingFinding === pullRequestFindingKey({ kind: "thread", thread })}
       fixLabel={fixFindingLabel}
       {...(onFixFinding ? { onFix: () => onFixFinding({ kind: "thread", thread }) } : {})}
+      {...(onAddToChat
+        ? { onAddToChat: (loaded) => onAddToChat({ kind: "thread", thread: loaded }) }
+        : {})}
       onLoadMore={async (cursor): Promise<PullRequestThreadCommentsResult | null> => {
         const result = await loadThreadComments({
           environmentId,
@@ -987,6 +1001,7 @@ function PullRequestCodeTab({
           kind="draft"
           rangeLabel={`${draft.path}:${getReviewPositionAnchor(draft.position).line}`}
           text=""
+          completionScope={canCommentOnLines ? completionScope : null}
           submitLabel={canCommentOnLines ? "Add to review" : "Add to agent"}
           {...(canCommentOnLines && onAddToAgentSelection
             ? {
@@ -1040,15 +1055,16 @@ function PullRequestCodeTab({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {orderedCommits.length > 0 ? (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button size="xs" variant="secondary" />}
-              className="min-w-0 max-w-64"
-              aria-label={`Diff scope: ${scopeLabel}`}
-            >
-              <span className="truncate">{scopeLabel}</span>
-              <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-w-[min(28rem,calc(100vw-2rem))]">
+            <span className="inline-flex min-w-0 max-w-64">
+              <DropdownMenuTrigger
+                render={<Button size="xs" variant="secondary" />}
+                aria-label={`Diff scope: ${scopeLabel}`}
+              >
+                <span className="truncate">{scopeLabel}</span>
+                <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+              </DropdownMenuTrigger>
+            </span>
+            <DropdownMenuContent align="start" width="diff">
               <DropdownMenuRadioGroup
                 value={commit ?? "all"}
                 onValueChange={(value) => onSelectedCommitChange(value === "all" ? null : value)}
@@ -1179,17 +1195,18 @@ function PullRequestCodeTab({
       <div className="flex shrink-0 items-center gap-1">
         <DropdownMenu>
           <Tooltip>
-            <TooltipTrigger
-              render={
-                <DropdownMenuTrigger
-                  render={<Button size="icon-sm" variant="ghost" />}
-                  className="@lg:hidden"
-                  aria-label={t("Diff options")}
-                />
-              }
-            >
-              <Settings2Icon className="size-3.5" />
-            </TooltipTrigger>
+            <span className="inline-flex min-w-0 @lg:hidden">
+              <TooltipTrigger
+                render={
+                  <DropdownMenuTrigger
+                    render={<Button size="icon-sm" variant="ghost" />}
+                    aria-label={t("Diff options")}
+                  />
+                }
+              >
+                <Settings2Icon className="size-3.5" />
+              </TooltipTrigger>
+            </span>
             <TooltipPopup side="top">{t("Diff options")}</TooltipPopup>
           </Tooltip>
           <DropdownMenuContent align="end">
@@ -1244,25 +1261,26 @@ function PullRequestCodeTab({
               {ignoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")}
             </TooltipPopup>
           </Tooltip>
-          <ToggleGroup
-            aria-label={t("Diff layout")}
-            className="shrink-0"
-            variant="segmented"
-            value={[diffLayout]}
-            onValueChange={(value) => {
-              const next = value[0];
-              if (next === "stacked" || next === "split") {
-                updateClientSettings({ diffLayout: next });
-              }
-            }}
-          >
-            <Toggle aria-label={t("Stacked diff view")} value="stacked">
-              <Rows3Icon className="size-3.5" />
-            </Toggle>
-            <Toggle aria-label={t("Split diff view")} value="split">
-              <Columns2Icon className="size-3.5" />
-            </Toggle>
-          </ToggleGroup>
+          <span className="inline-flex min-w-0 shrink-0">
+            <ToggleGroup
+              aria-label={t("Diff layout")}
+              variant="segmented"
+              value={[diffLayout]}
+              onValueChange={(value) => {
+                const next = value[0];
+                if (next === "stacked" || next === "split") {
+                  updateClientSettings({ diffLayout: next });
+                }
+              }}
+            >
+              <Toggle aria-label={t("Stacked diff view")} value="stacked">
+                <Rows3Icon className="size-3.5" />
+              </Toggle>
+              <Toggle aria-label={t("Split diff view")} value="split">
+                <Columns2Icon className="size-3.5" />
+              </Toggle>
+            </ToggleGroup>
+          </span>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1419,7 +1437,7 @@ function PullRequestCodeTab({
         <div className="shrink-0 border-b border-border/60">
           <Collapsible open={orphansOpen} onOpenChange={setOrphansOpen}>
             <h2>
-              <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs text-muted-foreground">
+              <CollapsibleTrigger variant="review-orphans">
                 <span>
                   {nextCursor === null
                     ? "Conversations not on the current diff"
@@ -1526,10 +1544,10 @@ function PullRequestCodeTab({
                 nextCursor === null ? null : (
                   <div className="shrink-0 border-t border-border/60 p-2">
                     <Button
+                      fill
                       type="button"
                       size="xs"
                       variant="outline"
-                      className="w-full"
                       disabled={diffQuery.isPending}
                       onClick={diffQuery.error !== null ? () => diffQuery.refresh() : loadNextSlice}
                     >

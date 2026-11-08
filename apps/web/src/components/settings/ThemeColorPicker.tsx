@@ -367,19 +367,20 @@ export const ThemeColorField = memo(function ThemeColorField({
           onInteract={() => onSelect?.(role)}
           value={swatchValue}
         />
-        <Input
-          aria-invalid={!isColorValue}
-          aria-label={t("{name} hex value", { name: label })}
-          className="w-28 shrink-0"
-          font="mono"
-          id={`${role}-hex`}
-          nativeInput
-          onChange={(event) => onChange(role, event.currentTarget.value)}
-          onFocus={() => onSelect?.(role)}
-          onPointerDown={() => onSelect?.(role)}
-          size="compact"
-          value={editorValue}
-        />
+        <div className="min-w-0 w-28 shrink-0">
+          <Input
+            aria-invalid={!isColorValue}
+            aria-label={t("{name} hex value", { name: label })}
+            font="mono"
+            id={`${role}-hex`}
+            nativeInput
+            onChange={(event) => onChange(role, event.currentTarget.value)}
+            onFocus={() => onSelect?.(role)}
+            onPointerDown={() => onSelect?.(role)}
+            size="compact"
+            value={editorValue}
+          />
+        </div>
       </div>
     </div>
   );

@@ -252,7 +252,7 @@ function SurfaceMenuItem(props: {
 }) {
   const item = (
     <MenuItem
-      className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
+      disabledHover={!props.available}
       onClick={props.onClick}
       disabled={!props.available}
       aria-keyshortcuts={props.shortcut}
@@ -457,19 +457,20 @@ function RightPanelEmptyState(props: {
                 </button>
                 {action.label === "Browser" && props.browserProfiles.length > 1 ? (
                   <Menu>
-                    <MenuTrigger
-                      render={
-                        <Button
-                          aria-label="Open browser in a profile"
-                          className="absolute top-1/2 right-8 -translate-y-1/2"
-                          size="icon-xs"
-                          variant="ghost-muted"
-                        />
-                      }
-                    >
-                      <ChevronDown className="size-3.5" />
-                    </MenuTrigger>
-                    <MenuPopup align="end" side="bottom" sideOffset={6} className="max-w-56">
+                    <span className="inline-flex min-w-0 absolute top-1/2 right-8 -translate-y-1/2">
+                      <MenuTrigger
+                        render={
+                          <Button
+                            aria-label="Open browser in a profile"
+                            size="icon-xs"
+                            variant="ghost-muted"
+                          />
+                        }
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </MenuTrigger>
+                    </span>
+                    <MenuPopup align="end" side="bottom" sideOffset={6} width="compact">
                       {props.browserProfiles.map((profile) => (
                         <MenuItem
                           key={profile.id}
@@ -551,13 +552,6 @@ function PreviewFavicon({ capturedUrl, url }: { capturedUrl: string | null; url:
       className="size-3 shrink-0 rounded-sm object-contain"
     />
   );
-}
-function sameOrigin(left: string, right: string): boolean {
-  try {
-    return new URL(left).origin === new URL(right).origin;
-  } catch {
-    return false;
-  }
 }
 function previewFaviconOf(
   surface: RightPanelSurface,
@@ -782,7 +776,6 @@ interface RightPanelTabHandlers {
   onClose: (surface: RightPanelSurface) => void;
   onAuxClick: (event: ReactMouseEvent, surface: RightPanelSurface) => void;
   onContextMenu: (event: ReactMouseEvent, surface: RightPanelSurface) => void;
-  onStartRename: (surfaceId: string) => void;
   onFinishRename: (surfaceId: string, title: string) => void;
 }
 // Chromium on Linux only suppresses primary-selection paste when mouseup is cancelled.
@@ -808,8 +801,7 @@ function RightPanelTab(
     canRename: boolean;
   },
 ) {
-  const { surface, onActivate, onClose, onAuxClick, onContextMenu, onStartRename, onFinishRename } =
-    props;
+  const { surface, onActivate, onClose, onAuxClick, onContextMenu, onFinishRename } = props;
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: surface.id,
     disabled: props.dragDisabled,
@@ -1044,7 +1036,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     if (surface.kind === "file" && surface.attachment === undefined) {
       items.push({ id: "copy-path", label: t("Copy path") });
     }
-    const menuPreviewTabId = previewTabIdOf(surface, props.previewSessions);
     items.push(
       { id: "close", label: t("Close") },
       {
@@ -1103,8 +1094,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       void handleTabContextMenu(event, surface);
     },
   );
-  const onStartRenameTab = useStableCallback((surfaceId: string) => setRenamingDevice(surfaceId));
-  const onFinishRenameTab = useStableCallback((surfaceId: string, title: string) => {
+  const onFinishRenameTab = useStableCallback(() => {
     setRenamingDevice(null);
   });
   // A newly active tab, or tabs that start overflowing, can sit outside the scrolled strip.
@@ -1172,7 +1162,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           ref={attachTabList}
           hideScrollbars
           scrollFade
-          className="min-w-0 flex-1"
+          sizing="flex"
           data-right-panel-tab-list
         >
           <div className="flex h-full w-max min-w-full items-center gap-1">
@@ -1202,7 +1192,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     onClose={onCloseTab}
                     onAuxClick={onTabAuxClick}
                     onContextMenu={onTabContextMenu}
-                    onStartRename={onStartRenameTab}
                     onFinishRename={onFinishRenameTab}
                   />
                 );
@@ -1213,12 +1202,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 <MenuTrigger
                   ref={addSurfaceTriggerRef}
                   render={
-                    <Button
-                      aria-label="Add panel surface"
-                      className="shrink-0"
-                      size="icon-xs"
-                      variant="ghost-muted"
-                    />
+                    <Button aria-label="Add panel surface" size="icon-xs" variant="ghost-muted" />
                   }
                 >
                   <Plus className="size-3.5" />
@@ -1235,7 +1219,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       return (
                         <MenuSub key={action.label}>
                           <MenuSubTrigger
-                            className="[&>svg:last-child]:ms-0"
+                            compactArrow
                             aria-keyshortcuts={action.shortcut}
                             onClick={(event) => {
                               const pointerType =
@@ -1253,7 +1237,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                             {action.label}
                             <MenuShortcut>{action.shortcut}</MenuShortcut>
                           </MenuSubTrigger>
-                          <MenuSubPopup className="max-w-56">
+                          <MenuSubPopup width="compact">
                             {browserProfiles.map((profile) => (
                               <MenuItem
                                 key={profile.id}

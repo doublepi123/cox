@@ -1,4 +1,7 @@
 import { useTranslation } from "../../i18n";
+import { ToolCallVisibility } from "@t3tools/contracts/settings";
+import * as Schema from "effect/Schema";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -12,9 +15,51 @@ export function LabsSettingsPanel() {
       <SettingsSection id="beta" title={translateUi("Beta")}>
         <BoringSidebarRow />
         <BoringSidebarMultilineRow />
+        <ToolCallVisibilityRow />
       </SettingsSection>
       <LegacyFeaturesSection />
     </SettingsPageContainer>
+  );
+}
+
+const TOOL_CALL_VISIBILITY_LABELS: Record<ToolCallVisibility, string> = {
+  showAll: "Show all",
+  hideSuccessful: "Hide successful",
+  hideAll: "Hide all",
+  zen: "Zen",
+};
+const isToolCallVisibility = Schema.is(ToolCallVisibility);
+
+function ToolCallVisibilityRow() {
+  const { t } = useTranslation();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("tool-call-visibility")}
+      description={t(
+        "Hide tool calls or intermediate messages. Approvals, questions, and errors always remain visible.",
+      )}
+      control={
+        <Select
+          value={settings.toolCallVisibility}
+          onValueChange={(value) => {
+            if (isToolCallVisibility(value)) updateSettings({ toolCallVisibility: value });
+          }}
+        >
+          <SelectTrigger size="sm" aria-label={t("Tool calls in chat")}>
+            <SelectValue>{t(TOOL_CALL_VISIBILITY_LABELS[settings.toolCallVisibility])}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {Object.entries(TOOL_CALL_VISIBILITY_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {t(label)}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
   );
 }
 

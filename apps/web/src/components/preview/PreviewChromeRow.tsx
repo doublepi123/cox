@@ -131,65 +131,67 @@ export function PreviewChromeRow({
 
         {leadingActions}
 
-        <InputGroup variant="ghost" className="group/address h-7 flex-1">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <InputGroupInput
-                  ref={inputRef}
-                  value={inputFocused ? draft : url}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onFocus={() => {
-                    setDraft(url);
-                    setInputFocused(true);
-                    queueMicrotask(() => inputRef.current?.select());
-                  }}
-                  onBlur={() => {
-                    setInputFocused(false);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") submit(event);
-                    if (event.key === "Escape") {
-                      event.preventDefault();
+        <div className="min-w-0 group/address h-7 flex-1">
+          <InputGroup variant="ghost">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <InputGroupInput
+                    ref={inputRef}
+                    value={inputFocused ? draft : url}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onFocus={() => {
                       setDraft(url);
-                      inputRef.current?.blur();
-                    }
-                  }}
-                  placeholder={t("Search or enter URL")}
-                  aria-label={t("Search or enter URL")}
-                  data-workspace-focus-default
-                  spellCheck={false}
-                  disabled={inputDisabled}
-                  data-preview-url-input
-                  size="sm"
-                />
-              }
-            />
-          </Tooltip>
-          {onOpenInBrowser && !inputFocused ? (
-            <InputGroupAddon align="inline-end">
-              {}
-              <span className="pointer-events-none flex opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/address:pointer-events-auto group-hover/address:opacity-100 max-sm:hidden">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={onOpenInBrowser}
-                        aria-label={t("Open in system browser")}
-                        type="button"
-                      />
-                    }
-                  >
-                    <ExternalLink />
-                  </TooltipTrigger>
-                  <TooltipPopup>{t("Open in system browser")}</TooltipPopup>
-                </Tooltip>
-              </span>
-            </InputGroupAddon>
-          ) : null}
-        </InputGroup>
+                      setInputFocused(true);
+                      queueMicrotask(() => inputRef.current?.select());
+                    }}
+                    onBlur={() => {
+                      setInputFocused(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") submit(event);
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setDraft(url);
+                        inputRef.current?.blur();
+                      }
+                    }}
+                    placeholder={t("Search or enter URL")}
+                    aria-label={t("Search or enter URL")}
+                    data-workspace-focus-default
+                    spellCheck={false}
+                    disabled={inputDisabled}
+                    data-preview-url-input
+                    size="sm"
+                  />
+                }
+              />
+            </Tooltip>
+            {onOpenInBrowser && !inputFocused ? (
+              <InputGroupAddon align="inline-end">
+                {}
+                <span className="pointer-events-none flex opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/address:pointer-events-auto group-hover/address:opacity-100 max-sm:hidden">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={onOpenInBrowser}
+                          aria-label={t("Open in system browser")}
+                          type="button"
+                        />
+                      }
+                    >
+                      <ExternalLink />
+                    </TooltipTrigger>
+                    <TooltipPopup>{t("Open in system browser")}</TooltipPopup>
+                  </Tooltip>
+                </span>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+        </div>
 
         {onPictureInPicture ? (
           <Tooltip>

@@ -188,7 +188,7 @@ export function FontFamilyPicker({
       <ComboboxTrigger aria-label={ariaLabel} render={<SelectButton size="sm" />}>
         {selectedFamily.length === 0 ? defaultFamily : selectedFamily}
       </ComboboxTrigger>
-      <ComboboxPopup align="end" className="flex w-72 flex-col">
+      <ComboboxPopup align="end" width="md" column>
         <ComboboxSearchInput
           placeholder={translateUi("Search fonts…")}
           value={query}

@@ -61,7 +61,7 @@ export function ProjectIconPickerDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPopup className="w-full sm:w-[32rem]">
+      <DialogPopup width="icon-picker">
         {/* The popup mounts per open, so the draft below starts from `current` each time. */}
         <ProjectIconPickerBody
           current={current}
@@ -123,7 +123,7 @@ function ProjectIconPickerBody({
         <DialogTitle>{t("Choose project icon")}</DialogTitle>
         <DialogDescription>{t("Choose an icon, emoji, or monogram.")}</DialogDescription>
       </DialogHeader>
-      <DialogPanel className="flex min-h-0 flex-col">
+      <DialogPanel flex>
         <ToggleGroup
           aria-label={t("Icon type")}
           variant="segmented"
@@ -170,7 +170,7 @@ function ProjectIconPickerBody({
               placeholder={t("Search all Lucide icons")}
               onChange={(event) => setQuery(event.currentTarget.value)}
             />
-            <ScrollArea scrollFade className="max-h-64">
+            <ScrollArea scrollFade preset="picker">
               <div className="grid grid-cols-8 gap-1 p-0.5 sm:grid-cols-10">
                 {icons.map((name) => (
                   <button
@@ -222,7 +222,7 @@ function ProjectIconPickerBody({
           </div>
         ) : (
           <>
-            <ScrollArea scrollFade className="max-h-64">
+            <ScrollArea scrollFade preset="picker">
               <div className="grid grid-cols-8 gap-1 p-0.5 sm:grid-cols-10">
                 {PROJECT_EMOJIS.map((option) => (
                   <button

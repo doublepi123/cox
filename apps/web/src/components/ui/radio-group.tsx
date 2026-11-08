@@ -3,10 +3,22 @@ import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
 
 import { cn } from "~/lib/utils";
 
-function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+function RadioGroup({
+  className,
+  layout = "column",
+  ...props
+}: RadioGroupPrimitive.Props & { layout?: "column" | "cards" | "responsive-cards" }) {
   return (
     <RadioGroupPrimitive
-      className={cn("flex flex-col gap-3", className)}
+      className={cn(
+        "gap-3",
+        layout === "column"
+          ? "flex flex-col"
+          : layout === "cards"
+            ? "grid grid-cols-2"
+            : "grid grid-cols-1 sm:grid-cols-2",
+        className,
+      )}
       data-slot="radio-group"
       {...props}
     />

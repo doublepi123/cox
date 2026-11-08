@@ -217,8 +217,8 @@ function createDesktopWindow(kind: "main" | "settings", width: number, height: n
   return new BrowserWindow({
     width,
     height,
-    minWidth: kind === "main" ? 800 : 720,
-    minHeight: 600,
+    minWidth: 400,
+    minHeight: 360,
     title: kind === "main" ? "Cox" : text("Settings"),
     ...(process.platform === "win32"
       ? {
@@ -357,8 +357,8 @@ async function start() {
       typeof bounds.width === "number" &&
       typeof bounds.height === "number"
     ) {
-      width = Math.max(800, Math.min(3840, bounds.width));
-      height = Math.max(600, Math.min(2160, bounds.height));
+      width = Math.max(400, Math.min(3840, bounds.width));
+      height = Math.max(360, Math.min(2160, bounds.height));
     }
   } catch {}
   window = createDesktopWindow("main", width, height);
@@ -571,8 +571,8 @@ async function start() {
         typeof saved.width === "number" &&
         typeof saved.height === "number"
       ) {
-        bounds.width = Math.max(720, Math.min(2560, saved.width));
-        bounds.height = Math.max(600, Math.min(2160, saved.height));
+        bounds.width = Math.max(400, Math.min(2560, saved.width));
+        bounds.height = Math.max(360, Math.min(2160, saved.height));
         if (
           "x" in saved &&
           "y" in saved &&

@@ -37,7 +37,7 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
 
   return (
     <div ref={containerRef} className="chat-markdown-table-container">
-      <ScrollArea radius="none" chainVerticalScroll scrollFade className="w-full max-w-full">
+      <ScrollArea radius="none" chainVerticalScroll scrollFade>
         <table {...props}>{children}</table>
       </ScrollArea>
       {/* Stays within the row's px-1: the chat lane clips sideways overflow. */}

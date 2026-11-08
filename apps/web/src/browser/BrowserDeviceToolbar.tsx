@@ -202,14 +202,13 @@ export function BrowserDeviceToolbar({
         items={SELECT_ITEMS}
         disabled={pending}
       >
-        <SelectTrigger
-          variant="ghost"
-          size="xs"
-          className={cn("shrink-0 justify-between", width >= 440 ? "w-36" : "w-24")}
-          aria-label={t("Browser device preset")}
+        <div
+          className={cn("min-w-0", cn("shrink-0 justify-between", width >= 440 ? "w-36" : "w-24"))}
         >
-          <SelectValue />
-        </SelectTrigger>
+          <SelectTrigger fill variant="ghost" size="xs" aria-label={t("Browser device preset")}>
+            <SelectValue />
+          </SelectTrigger>
+        </div>
         <SelectPopup align="start" alignItemWithTrigger={false}>
           <SelectItem value={RESPONSIVE_VALUE}>{t("Responsive")}</SelectItem>
           <SelectGroup>
@@ -236,55 +235,57 @@ export function BrowserDeviceToolbar({
           applyCustomSize();
         }}
       >
-        <Input
-          nativeInput
-          type="number"
-          inputMode="numeric"
-          size="compact"
-          font="mono"
-          min={PREVIEW_VIEWPORT_MIN_DIMENSION}
-          max={PREVIEW_VIEWPORT_MAX_DIMENSION}
-          value={presentedSize.width}
-          disabled={pending}
-          onFocus={() =>
-            setCustomSize(
-              (current) =>
-                current ?? {
-                  width: String(setting.width),
-                  height: String(setting.height),
-                },
-            )
-          }
-          onChange={(event) => updateCustomDimension("width", event.target.value)}
-          aria-label={t("Viewport width")}
-          aria-invalid={!customValid}
-          className={width >= 360 ? "w-14" : "w-13"}
-        />
+        <div className={cn("min-w-0", width >= 360 ? "w-14" : "w-13")}>
+          <Input
+            nativeInput
+            type="number"
+            inputMode="numeric"
+            size="compact"
+            font="mono"
+            min={PREVIEW_VIEWPORT_MIN_DIMENSION}
+            max={PREVIEW_VIEWPORT_MAX_DIMENSION}
+            value={presentedSize.width}
+            disabled={pending}
+            onFocus={() =>
+              setCustomSize(
+                (current) =>
+                  current ?? {
+                    width: String(setting.width),
+                    height: String(setting.height),
+                  },
+              )
+            }
+            onChange={(event) => updateCustomDimension("width", event.target.value)}
+            aria-label={t("Viewport width")}
+            aria-invalid={!customValid}
+          />
+        </div>
         <span className="text-xs text-muted-foreground">×</span>
-        <Input
-          nativeInput
-          type="number"
-          inputMode="numeric"
-          size="compact"
-          font="mono"
-          min={PREVIEW_VIEWPORT_MIN_DIMENSION}
-          max={PREVIEW_VIEWPORT_MAX_DIMENSION}
-          value={presentedSize.height}
-          disabled={pending}
-          onFocus={() =>
-            setCustomSize(
-              (current) =>
-                current ?? {
-                  width: String(setting.width),
-                  height: String(setting.height),
-                },
-            )
-          }
-          onChange={(event) => updateCustomDimension("height", event.target.value)}
-          aria-label={t("Viewport height")}
-          aria-invalid={!customValid}
-          className={width >= 360 ? "w-14" : "w-13"}
-        />
+        <div className={cn("min-w-0", width >= 360 ? "w-14" : "w-13")}>
+          <Input
+            nativeInput
+            type="number"
+            inputMode="numeric"
+            size="compact"
+            font="mono"
+            min={PREVIEW_VIEWPORT_MIN_DIMENSION}
+            max={PREVIEW_VIEWPORT_MAX_DIMENSION}
+            value={presentedSize.height}
+            disabled={pending}
+            onFocus={() =>
+              setCustomSize(
+                (current) =>
+                  current ?? {
+                    width: String(setting.width),
+                    height: String(setting.height),
+                  },
+              )
+            }
+            onChange={(event) => updateCustomDimension("height", event.target.value)}
+            aria-label={t("Viewport height")}
+            aria-invalid={!customValid}
+          />
+        </div>
       </form>
 
       <Tooltip>

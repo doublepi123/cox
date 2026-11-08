@@ -1,11 +1,15 @@
 import { useTranslation } from "../../i18n";
-import type { SecretProviderConfig, SecretProviderId } from "@t3tools/contracts";
+import {
+  AuthSettingsWriteScope,
+  type SecretProviderConfig,
+  type SecretProviderId,
+} from "@t3tools/contracts";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import type { EnvironmentPresentation } from "../../state/environments";
-import { useEnvironmentSessionState } from "../../state/session";
+import { useEnvironmentSessionState, useEnvironmentScope } from "../../state/session";
 import { OnePasswordIcon, type Icon } from "../Icons";
 import {
   AlertDialog,
@@ -88,6 +92,7 @@ function EnvironmentSecretProviders({
     }),
   });
   const readOnly = access.kind !== "editable" || projectScoped;
+  const canRemove = useEnvironmentScope(environmentId, AuthSettingsWriteScope) && !readOnly;
   const providers = useEnvironmentSettings(environmentId, (settings) => settings.secretProviders);
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [dialog, setDialog] = useState<
@@ -170,10 +175,12 @@ function EnvironmentSecretProviders({
                           {t("Edit")}
                         </Button>
                       ) : null}
-                      <RemoveSecretProviderButton
-                        label={config.label}
-                        onConfirm={() => updateSettings({ secretProviders: { [id]: null } })}
-                      />
+                      {canRemove ? (
+                        <RemoveSecretProviderButton
+                          label={config.label}
+                          onConfirm={() => updateSettings({ secretProviders: { [id]: null } })}
+                        />
+                      ) : null}
                     </div>
                   ) : null
                 }
@@ -217,9 +224,9 @@ function RemoveSecretProviderButton({
               {label}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("Provider variables that read from")} {label}{" "}
               {t(
-                "stop resolving until a provider with the same name is added again. The secrets themselves are untouched.",
+                "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.",
+                { label },
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

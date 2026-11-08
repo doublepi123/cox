@@ -16,10 +16,22 @@ const skeletonVariants = cva("bg-muted-foreground/15 motion-safe:animate-skeleto
 function Skeleton({
   className,
   shape,
+  width,
+  height,
+  style,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof skeletonVariants>) {
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof skeletonVariants> & {
+    width?: React.CSSProperties["width"];
+    height?: React.CSSProperties["height"];
+  }) {
   return (
-    <div className={cn(skeletonVariants({ shape }), className)} data-slot="skeleton" {...props} />
+    <div
+      className={cn(skeletonVariants({ shape }), width !== undefined && "shrink-0", className)}
+      style={{ width, height, ...style }}
+      data-slot="skeleton"
+      {...props}
+    />
   );
 }
 

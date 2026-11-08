@@ -154,6 +154,7 @@ import {
   makeLiveBodyDeduper,
   projectDomainEventForWire,
   projectThreadProjectionForWire,
+  threadStreamEventItem,
 } from "./orchestration-v2/WireProjection.ts";
 import { dedupeSnapshotBodies } from "@t3tools/shared/orchestrationV2DedupedBodies";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
@@ -169,7 +170,7 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import { latestProviderVersionCacheKeys } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
-import { makeProviderInstallation } from "./provider/providerInstallation.ts";
+import * as ProviderInstallation from "./provider/providerInstallation.ts";
 import { discoverModelService } from "./modelServices/discovery.ts";
 import { testModelService } from "./modelServices/testing.ts";
 import * as ModelServiceFetchClient from "effect/http/FetchHttpClient";
@@ -181,7 +182,7 @@ import { invalidateSettingsSecrets } from "./sourceControl/sourceControlHostSecr
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import { terminalOutputStream, withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
+import { terminalOutputStream, withOutputWindow } from "./terminal/OutputProtocol.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -352,8 +353,40 @@ export const withLateEditorConfig = <E, R>(
   );
 };
 
-function withoutWorkspaceSnapshots(providers: ReadonlyArray<ServerProvider>): ServerProvider[] {
-  return providers.map(({ workspaceSnapshots: _workspaceSnapshots, ...provider }) => provider);
+function workspaceSnapshotOrCatalog(
+  provider: ServerProvider,
+  cwd: string,
+  catalogOnDemand: boolean,
+) {
+  const snapshots = (provider.workspaceSnapshots ?? []).filter((snapshot) => snapshot.cwd === cwd);
+  return snapshots.length > 0 || !catalogOnDemand
+    ? snapshots
+    : [
+        {
+          cwd,
+          checkedAt: provider.checkedAt,
+          slashCommands: provider.slashCommands,
+          slashCommandsPending: true,
+          skills: provider.skills,
+        },
+      ];
+}
+
+function withoutWorkspaceSnapshots(
+  providers: ReadonlyArray<ServerProvider>,
+  catalogsPerCwd: ReadonlySet<string> = new Set(),
+): ServerProvider[] {
+  return providers.map(({ workspaceSnapshots: _workspaceSnapshots, ...provider }) =>
+    catalogsPerCwd.has(provider.instanceId)
+      ? {
+          ...provider,
+          slashCommands: provider.slashCommands.map(({ name }) => ({ name })),
+          skills: provider.skills.map(
+            ({ description: _d, shortDescription: _s, ...skill }) => skill,
+          ),
+        }
+      : provider,
+  );
 }
 
 function unexpectedCompatibilityError(error: never): never {
@@ -776,11 +809,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
           afterSequence,
         })
         .pipe(
-          Stream.map((stored) => ({
-            kind: "event" as const,
-            sequence: stored.sequence,
-            event: stored.event,
-          })),
+          Stream.map(threadStreamEventItem),
           coalesceThreadLiveStream,
           Stream.mapError(
             (cause) =>
@@ -1315,7 +1344,7 @@ export const layerWsRpc = (
         yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService.ProviderAuthService;
-      const providerInstallation = yield* makeProviderInstallation();
+      const providerInstallation = yield* ProviderInstallation.ProviderInstallation;
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
@@ -1697,6 +1726,7 @@ export const layerWsRpc = (
       const loadServerConfig = Effect.fn("ws.loadServerConfig")(function* (options: {
         readonly usageLimitsCommand: boolean;
         readonly workspaceSnapshotsOnDemand: boolean;
+        readonly catalogsPerCwd?: ReadonlySet<string>;
       }) {
         const keybindingsConfig = yield* keybindings.loadConfigState;
         const currentProviders = yield* providerRegistry.getProviders;
@@ -1704,7 +1734,7 @@ export const layerWsRpc = (
           ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
           : currentProviders;
         const providers = options.workspaceSnapshotsOnDemand
-          ? withoutWorkspaceSnapshots(commandProviders)
+          ? withoutWorkspaceSnapshots(commandProviders, options.catalogsPerCwd)
           : commandProviders;
         const settings = ServerSettings.redactServerSettingsForClient(
           yield* serverSettings.getSettings,
@@ -1765,6 +1795,7 @@ export const layerWsRpc = (
           threadFindProgressive: true,
           secretProviderSettings: true,
           secretReferences: true,
+          secretRequestReferences: true,
           ...Option.match(scratchWorkspaceRoot, {
             onNone: () => ({}),
             onSome: (root) => ({ scratchWorkspaceRoot: root }),
@@ -2323,6 +2354,9 @@ export const layerWsRpc = (
             if (instanceId === undefined || cwd === undefined) {
               return { providers: withoutWorkspaceSnapshots(commandProviders) };
             }
+            const catalogOnDemand =
+              input.providerCatalogsOnDemand === true &&
+              (yield* providerInstances.getInstance(instanceId))?.snapshotForCwd !== undefined;
             return {
               providers: commandProviders
                 .filter((provider) => provider.instanceId === instanceId)
@@ -2332,9 +2366,7 @@ export const layerWsRpc = (
                   models: [],
                   slashCommands: [],
                   skills: [],
-                  workspaceSnapshots: (provider.workspaceSnapshots ?? []).filter(
-                    (snapshot) => snapshot.cwd === cwd,
-                  ),
+                  workspaceSnapshots: workspaceSnapshotOrCatalog(provider, cwd, catalogOnDemand),
                 })),
             };
           }),
@@ -2436,6 +2468,7 @@ export const layerWsRpc = (
         [WS_METHODS.chatGptHandoffSubscribe]: (input) =>
           subscribeChatGptHandoff(input, currentSessionId),
         [WS_METHODS.providerAuthCancel]: (input) => providerAuth.cancel(input, currentSessionId),
+        [WS_METHODS.providerAuthRemoveMethod]: (input) => providerAuth.removeMethod(input),
         [WS_METHODS.providerAuthLogout]: (input) => providerAuth.logout(input),
         [WS_METHODS.providerAuthSubscribe]: (input) =>
           providerAuth.subscribe(input, currentSessionId),
@@ -2666,10 +2699,15 @@ export const layerWsRpc = (
           projectCloneTracker.retry(input.projectId).pipe(Effect.map((applied) => ({ applied }))),
         [WS_METHODS.subscribeProjectClones]: () => projectCloneTracker.stream,
         [WS_METHODS.sourceControlPublishRepository]: (input) =>
-          sourceControlRepositories.publishRepository(input).pipe(
-            Effect.tap(() => repositoryIdentityResolver.resolve(input.cwd, { refresh: true })),
-            Effect.tap(() => refreshGitStatus(input.cwd)),
-          ),
+          sourceControlRepositories
+            .publishRepository(input)
+            .pipe(
+              Effect.ensuring(
+                repositoryIdentityResolver
+                  .resolve(input.cwd, { refresh: true })
+                  .pipe(Effect.andThen(refreshGitStatus(input.cwd))),
+              ),
+            ),
         [WS_METHODS.projectsSearchEntries]: (input) =>
           workspaceEntries.search(input).pipe(
             Effect.mapError(
@@ -2994,12 +3032,26 @@ export const layerWsRpc = (
             Effect.gen(function* () {
               const usageLimitsCommand = input.usageLimitsCommand === true;
               const workspaceSnapshotsOnDemand = input.workspaceSnapshotsOnDemand === true;
+              const currentCatalogsPerCwd =
+                workspaceSnapshotsOnDemand && input.providerCatalogsOnDemand === true
+                  ? providerInstances.listInstances.pipe(
+                      Effect.map(
+                        (instances) =>
+                          new Set(
+                            instances
+                              .filter((instance) => instance.snapshotForCwd !== undefined)
+                              .map((instance) => instance.instanceId),
+                          ),
+                      ),
+                    )
+                  : Effect.succeed(new Set<string>());
               // Buffer changes through discovery and the initial snapshot's RPC ACK wait.
               const keybindingsChanges = yield* keybindings.subscribeChanges;
               const settingsChanges = yield* serverSettings.subscribeChanges;
               const config = yield* loadServerConfig({
                 usageLimitsCommand,
                 workspaceSnapshotsOnDemand,
+                catalogsPerCwd: yield* currentCatalogsPerCwd,
               });
               const keybindingsUpdates = keybindingsChanges.pipe(
                 Stream.map((event) => ({
@@ -3022,16 +3074,18 @@ export const layerWsRpc = (
                     usageLimitsCommand ? sameUsageLimitCommandCoverage : () => true,
                   ),
                 ),
-                (providers, sources) => {
-                  const commandProviders = usageLimitsCommand
-                    ? withUsageLimitsCommands(providers, sources)
-                    : providers;
-                  // Stripped before the de-dupe below, so snapshot-only changes send nothing.
-                  return workspaceSnapshotsOnDemand
-                    ? withoutWorkspaceSnapshots(commandProviders)
-                    : commandProviders;
-                },
+                (providers, sources) =>
+                  usageLimitsCommand ? withUsageLimitsCommands(providers, sources) : providers,
               ).pipe(
+                Stream.mapEffect((commandProviders) =>
+                  workspaceSnapshotsOnDemand
+                    ? currentCatalogsPerCwd.pipe(
+                        Effect.map((catalogsPerCwd) =>
+                          withoutWorkspaceSnapshots(commandProviders, catalogsPerCwd),
+                        ),
+                      )
+                    : Effect.succeed(commandProviders),
+                ),
                 // Compare initial paired values with the snapshot; blindly dropping them loses changes between snapshot and subscription.
                 (updates) => Stream.concat(rpcInitialItems([config.providers]), updates),
                 Stream.changesWith(
@@ -3208,7 +3262,7 @@ export const layer = Layer.unwrap(
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
           const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
           yield* RpcServer.make(ServerWsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
-            Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
+            Effect.provideService(RpcServer.Protocol, withOutputWindow(protocol)),
             Effect.provide(
               Layer.merge(
                 RpcAuthorization.layer(session.scopes, (method, payload) => {

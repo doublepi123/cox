@@ -39,25 +39,25 @@ import {
 export function PullRequestLabelChip({
   label,
   size = "sm",
-  className,
   children,
 }: {
   label: Pick<PullRequestLabel, "name" | "color">;
   size?: "sm" | "default";
-  className?: string;
   children?: ReactNode;
 }) {
   const color = pullRequestLabelColor(label.color);
   return (
-    <Badge
-      size={size}
-      variant={color ? "label" : "secondary"}
-      className={cn("min-w-0 max-w-40 shrink justify-start", className)}
-      {...(color ? { style: { "--label": color } as CSSProperties } : {})}
-    >
-      <span className="truncate">{label.name}</span>
-      {children}
-    </Badge>
+    <span className="inline-flex min-w-0 max-w-40 shrink">
+      <Badge
+        size={size}
+        variant={color ? "label" : "secondary"}
+        layout="label"
+        {...(color ? { style: { "--label": color } as CSSProperties } : {})}
+      >
+        <span className="truncate">{label.name}</span>
+        {children}
+      </Badge>
+    </span>
   );
 }
 

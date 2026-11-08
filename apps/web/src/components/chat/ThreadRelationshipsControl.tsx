@@ -885,7 +885,7 @@ export function ThreadRelationshipsPanel(props: {
                 >
                   <MoreHorizontalIcon className="size-3.5" />
                 </MenuTrigger>
-                <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
+                <MenuPopup align="end" width="relationships">
                   <MenuItem onClick={() => void detach()}>
                     <UnplugIcon className="size-3.5" />
                     {translateUi("Disconnect agent session")}

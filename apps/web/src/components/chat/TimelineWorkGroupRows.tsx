@@ -321,19 +321,20 @@ function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnap
   const scriptName = snapshot.setupScript?.name ?? "Setup script";
   return (
     <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="ghost-muted"
-            size="micro"
-            className="ml-auto min-w-0 shrink-0"
-            aria-label={`Background setup is still running: ${scriptName}. Show setup progress.`}
-          />
-        }
-      >
-        <Spinner className="size-3 shrink-0" />
-        <span className="truncate">{translateUi("Background setup")}</span>
-      </PopoverTrigger>
+      <span className="inline-flex min-w-0 ml-auto shrink-0">
+        <PopoverTrigger
+          render={
+            <Button
+              variant="ghost-muted"
+              size="micro"
+              aria-label={`Background setup is still running: ${scriptName}. Show setup progress.`}
+            />
+          }
+        >
+          <Spinner size="xs" />
+          <span className="truncate">{translateUi("Background setup")}</span>
+        </PopoverTrigger>
+      </span>
       <PopoverPopup side="bottom" align="end" width="lg" padding="compact">
         <WorktreeSetupCard
           snapshot={snapshot}
@@ -365,12 +366,17 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
 export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
   const { t } = useTranslation();
   const ctx = use(TimelineRowCtx);
-  const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const { isCompacting, isPreparingWorktree, liveAnswerPreview } = use(TimelineRowActivityCtx);
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
   // A failed group keeps this disclosure while an approval waits, but nothing is thinking then.
   const live = ctx.pendingApprovals.size === 0;
   const activity = (
-    <LiveActivityRow label={t("Thinking")} iconName="brain" active={live} shimmer={live} />
+    <LiveActivityRow
+      label={liveAnswerPreview ?? t("Thinking")}
+      iconName="brain"
+      active={live}
+      shimmer={live}
+    />
   );
   const { groupId } = row;
   if (groupId === undefined) return activity;

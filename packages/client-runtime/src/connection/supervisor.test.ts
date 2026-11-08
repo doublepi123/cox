@@ -447,7 +447,7 @@ describe("EnvironmentSupervisor", () => {
       );
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.prepared))).toBe(true);
 
-      yield* TestClock.adjust("3 seconds");
+      yield* TestClock.adjust("250 millis");
       yield* awaitState(
         supervisor.state,
         (state) => state.phase === "connected" && state.generation === 2,
@@ -773,7 +773,7 @@ describe("EnvironmentSupervisor", () => {
       yield* awaitState(supervisor.state, (state) => state.phase === "connected");
       yield* harness.wake("application-active-long");
       yield* harness.setNetworkStatus("offline");
-      yield* TestClock.adjust("2999 millis");
+      yield* TestClock.adjust("1499 millis");
       expect(yield* Ref.get(harness.sessionCount)).toBe(1);
 
       yield* TestClock.adjust("1 millis");

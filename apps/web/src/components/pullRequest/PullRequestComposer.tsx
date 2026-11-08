@@ -17,6 +17,7 @@ import {
   usePendingReviewComments,
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
+import { pullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 
 export function PullRequestComposer({
   environmentId,
@@ -153,6 +154,7 @@ export function PullRequestComposer({
         {verdicts.length > 0 ? (
           <div hidden={mode !== "review"}>
             <PullRequestReviewForm
+              completionScope={pullRequestCompletionScope(detail, environmentId, reference)}
               environmentId={environmentId}
               reference={reference}
               term={term}

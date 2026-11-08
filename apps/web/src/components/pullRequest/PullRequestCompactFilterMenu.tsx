@@ -35,32 +35,33 @@ export function PullRequestCompactFilterMenu<Value extends string>({
   if (!current) return null;
   return (
     <Menu>
-      <MenuTrigger
-        aria-label={triggerLabel || iconOnly ? `${label}: ${current.label}` : label}
-        title={iconOnly ? `${label}: ${current.label}` : undefined}
-        render={
-          outlined ? (
-            <Button variant="outline" size={iconOnly ? "icon" : "default"} />
+      <span className={cn("inline-flex min-w-0", className)}>
+        <MenuTrigger
+          aria-label={triggerLabel || iconOnly ? `${label}: ${current.label}` : label}
+          title={iconOnly ? `${label}: ${current.label}` : undefined}
+          render={
+            outlined ? (
+              <Button variant="outline" size={iconOnly ? "icon" : "default"} />
+            ) : (
+              <Button variant="ghost-muted" size="sm" />
+            )
+          }
+        >
+          {iconOnly ? (
+            <current.Icon aria-hidden className="size-4" />
+          ) : triggerLabel ? (
+            <>
+              {triggerIcon}
+              <span>{triggerLabel}</span>
+            </>
           ) : (
-            <Button variant="ghost-muted" size="sm" />
-          )
-        }
-        className={cn("min-w-0", className)}
-      >
-        {iconOnly ? (
-          <current.Icon aria-hidden className="size-4" />
-        ) : triggerLabel ? (
-          <>
-            {triggerIcon}
-            <span>{triggerLabel}</span>
-          </>
-        ) : (
-          <>
-            <span className="truncate">{current.label}</span>
-            <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
-          </>
-        )}
-      </MenuTrigger>
+            <>
+              <span className="truncate">{current.label}</span>
+              <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+            </>
+          )}
+        </MenuTrigger>
+      </span>
       <MenuPopup align="start" side="bottom">
         <MenuRadioGroup value={value} onValueChange={(next) => onChange(next as Value)}>
           {options.map((option) => {
@@ -69,7 +70,7 @@ export function PullRequestCompactFilterMenu<Value extends string>({
                 key={option.value}
                 value={option.value}
                 disabled={option.unavailable !== undefined}
-                className="data-disabled:pointer-events-auto"
+                disabledHover
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <PullRequestFilterOptionIcon option={option} />

@@ -164,20 +164,22 @@ export function AcpRegistrySearchStep({
       </h3>
 
       <form className="flex flex-wrap items-center gap-2" onSubmit={handleSearch}>
-        <InputGroup className="min-w-40 flex-1">
-          <InputGroupAddon>
-            <SearchIcon />
-          </InputGroupAddon>
-          <InputGroupInput
-            aria-label={t("Search ACP Registry")}
-            disabled={preparingId !== null}
-            onChange={(event) => registry.type(event.currentTarget.value)}
-            placeholder={t("Search agents…")}
-            size="sm"
-            type="search"
-            value={query}
-          />
-        </InputGroup>
+        <div className="min-w-0 min-w-40 flex-1">
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon />
+            </InputGroupAddon>
+            <InputGroupInput
+              aria-label={t("Search ACP Registry")}
+              disabled={preparingId !== null}
+              onChange={(event) => registry.type(event.currentTarget.value)}
+              placeholder={t("Search agents…")}
+              size="sm"
+              type="search"
+              value={query}
+            />
+          </InputGroup>
+        </div>
         <Button
           disabled={preparingId !== null}
           onClick={onManualConfiguration}
@@ -232,7 +234,7 @@ export function AcpRegistrySearchStep({
             <p className="mt-1 text-xs text-muted-foreground">{t("Try a broader search.")}</p>
           </div>
         ) : (
-          <ScrollArea scrollFade className="max-h-64">
+          <ScrollArea scrollFade preset="picker">
             <div className="pr-2.5">
               {results.map((agent) => (
                 <AcpRegistryAgentRow

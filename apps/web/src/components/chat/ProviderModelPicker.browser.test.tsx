@@ -42,7 +42,7 @@ it.each([
     const instanceId = ProviderInstanceId.make(`${kind}-service`);
     const driver = ProviderDriverKind.make(kind);
     const effortId = kind === "codex" ? "reasoningEffort" : "effort";
-    const mode = kind === "codex" ? "ultra" : "ultracode";
+    const mode = kind === "codex" ? "ultra" : "high";
     const modeLabel = kind === "codex" ? "Ultra" : "Ultracode";
     const models = [
       {
@@ -124,6 +124,9 @@ it.each([
           <output aria-label="Selected effort">
             {modelOptions?.find((option) => option.id === effortId)?.value ?? "high"}
           </output>
+          <output aria-label="Workflow enabled">
+            {String(modelOptions?.find((option) => option.id === "ultracode")?.value ?? false)}
+          </output>
           <ProviderModelPicker
             environmentId={null}
             activeInstanceId={instanceId}
@@ -151,13 +154,23 @@ it.each([
     await using screen = await render(<Picker />);
     await screen.getByRole("button", { name: /^Choose model/ }).click();
     await expect.element(page.getByRole("option", { name: /Service model/ })).toBeVisible();
-    await page.getByRole("radio", { name: modeLabel, exact: true }).click();
+    const modeControl = () =>
+      page.getByRole(kind === "codex" ? "radio" : "button", {
+        name: modeLabel,
+        exact: true,
+      });
+    await modeControl().click();
     await expect
       .element(screen.getByRole("status", { name: "Selected effort" }))
       .toHaveTextContent(mode);
     await expect
-      .element(page.getByRole("radio", { name: modeLabel, exact: true }))
-      .toHaveAttribute("aria-checked", "true");
+      .element(modeControl())
+      .toHaveAttribute(kind === "codex" ? "aria-checked" : "aria-pressed", "true");
+    if (kind === "claudeAgent") {
+      await expect
+        .element(screen.getByRole("status", { name: "Workflow enabled" }))
+        .toHaveTextContent("true");
+    }
     await page.getByRole("radio", { name: "Fast", exact: true }).click();
     await expect
       .element(screen.getByRole("status", { name: "Selected service tier" }))
@@ -173,8 +186,8 @@ it.each([
       .toBeVisible();
     await screen.getByRole("button", { name: /^Choose model/ }).click();
     await expect
-      .element(page.getByRole("radio", { name: modeLabel, exact: true }))
-      .toHaveAttribute("aria-checked", "true");
+      .element(modeControl())
+      .toHaveAttribute(kind === "codex" ? "aria-checked" : "aria-pressed", "true");
     await expect
       .element(page.getByRole("radio", { name: "Fast", exact: true }))
       .toHaveAttribute("aria-checked", "true");

@@ -46,7 +46,7 @@ const appendDpopChallengeOnUnauthorized =
   /* Request instrumentation already owns the span; keep this helper in that context. */
   Effect.fnUntraced(function* (error: EnvironmentAuthInvalidError) {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const usesDpop = request.headers.authorization?.startsWith("DPoP ") === true;
+    const usesDpop = /^DPoP /i.test(request.headers.authorization ?? "");
     if (usesDpop) {
       yield* appendDpopChallengeHeader;
     }

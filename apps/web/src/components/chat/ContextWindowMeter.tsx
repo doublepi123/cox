@@ -48,9 +48,8 @@ export function ContextWindowMeter(props: {
         closeDelay={onCompact ? 150 : 0}
         render={
           <Button
-            size="icon-sm"
+            size="icon-fixed-sm"
             variant="ghost-muted"
-            className="size-7"
             aria-label={
               usage.maxTokens !== null && usedPercentage
                 ? t("Context window {percentage} used", { percentage: usedPercentage })
@@ -97,7 +96,7 @@ export function ContextWindowMeter(props: {
         align="end"
         padding="none"
         width="sm"
-        className="text-left whitespace-normal"
+        presentation="details"
       >
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
@@ -159,16 +158,18 @@ export function ContextWindowMeter(props: {
           ) : null}
           {onCompact ? (
             <>
-              <Button
-                size="xs"
-                variant="outline"
-                className="mt-1 w-full justify-center"
-                disabled={compactDisabled}
-                onClick={onCompact}
-              >
-                <Minimize2Icon aria-hidden="true" />
-                {t("Compact context")}
-              </Button>
+              <span className="inline-flex min-w-0 mt-1 w-full justify-center">
+                <Button
+                  fill
+                  size="xs"
+                  variant="outline"
+                  disabled={compactDisabled}
+                  onClick={onCompact}
+                >
+                  <Minimize2Icon aria-hidden="true" />
+                  {t("Compact context")}
+                </Button>
+              </span>
               {compactDisabled && compactDisabledReason ? (
                 <div className="text-pretty text-secondary-label text-2xs">
                   {t(compactDisabledReason)}

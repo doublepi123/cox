@@ -140,15 +140,16 @@ export function PullRequestDetailGhost({
         <div className="pl-4 grid h-7 min-w-0 items-center overflow-hidden">
           <div className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground sm:text-xs">
             {onBack ? (
-              <Button
-                size="icon-micro"
-                variant="ghost-muted"
-                className="-ml-1.5"
-                onClick={onBack}
-                aria-label="Back to this thread's pull requests"
-              >
-                <ArrowLeftIcon aria-hidden className="size-3.5" />
-              </Button>
+              <span className="inline-flex min-w-0 -ml-1.5">
+                <Button
+                  size="icon-micro"
+                  variant="ghost-muted"
+                  onClick={onBack}
+                  aria-label="Back to this thread's pull requests"
+                >
+                  <ArrowLeftIcon aria-hidden className="size-3.5" />
+                </Button>
+              </span>
             ) : null}
             {seed ? (
               <>
@@ -323,12 +324,9 @@ export function PullRequestDetailGhost({
                 {entry?.labels ? (
                   entry.labels.length > 0 ? (
                     entry.labels.map((label) => (
-                      <PullRequestLabelChip
-                        key={label.name}
-                        label={label}
-                        size="default"
-                        className="max-w-48"
-                      />
+                      <span key={label.name} className="inline-flex min-w-0 max-w-48">
+                        <PullRequestLabelChip label={label} size="default" />
+                      </span>
                     ))
                   ) : (
                     <span className="text-muted-foreground">{t("None")}</span>

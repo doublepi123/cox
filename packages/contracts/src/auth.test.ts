@@ -18,6 +18,8 @@ import {
 } from "./auth.ts";
 import { EnvironmentHttpApi } from "./environmentHttp.ts";
 
+const decodeAuthAccessSnapshot = Schema.decodeSync(AuthAccessSnapshot);
+
 describe("authorization grants", () => {
   it("removes pairing and bootstrap-token routes while retaining MCP OAuth", () => {
     expect(Object.keys(EnvironmentHttpApi.groups.auth.endpoints).sort()).toEqual([
@@ -64,7 +66,7 @@ describe("authorization grants", () => {
   });
 
   it("keeps access snapshots and events limited to clients", () => {
-    expect(Schema.decodeSync(AuthAccessSnapshot)({ clientSessions: [] })).toEqual({
+    expect(decodeAuthAccessSnapshot({ clientSessions: [] })).toEqual({
       clientSessions: [],
     });
     const decode = Schema.decodeUnknownSync(AuthAccessStreamEvent);

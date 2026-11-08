@@ -255,7 +255,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       },
       {
         scopedLimitNames,
-        modelCatalog: boundCatalog,
+        modelCatalog,
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
       },
     ).pipe(

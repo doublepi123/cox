@@ -29,7 +29,7 @@ export function PullRequestDiffUnavailableState({
   );
 
   return (
-    <Empty size="compact" className="min-h-full" role="status">
+    <Empty size="compact" layout="fill" role="status">
       <div className="flex size-11 items-center justify-center rounded-full bg-warning-surface text-warning">
         <TriangleAlertIcon aria-hidden className="size-5" />
       </div>

@@ -118,12 +118,19 @@ export function buildTraitsTriggerDisplay(input: {
   speedLabel: string | null;
   /** Labels other than reasoning and speed, such as context window or thinking. */
   otherLabels: ReadonlyArray<string>;
+  ultracode: boolean;
 } {
   let fastModeFallbackLabel: string | null = null;
   let speedLabel: string | null = null;
   let reasoningLabelIndex = -1;
+  let ultracode = false;
   const labels: Array<string> = [];
   for (const descriptor of input.descriptors) {
+    if (descriptor.id === "ultracode" && descriptor.type === "boolean") {
+      ultracode = descriptor.currentValue === true;
+      if (ultracode) labels.push(descriptor.label);
+      continue;
+    }
     if (descriptor.id === "fastMode" && descriptor.type === "boolean") {
       speedLabel = descriptor.currentValue === true ? "Fast" : null;
       fastModeFallbackLabel = speedLabel ?? "Normal";
@@ -154,11 +161,11 @@ export function buildTraitsTriggerDisplay(input: {
         ? "Ultrathink"
         : descriptor.type === "boolean"
           ? `${descriptor.label} ${descriptor.currentValue === true ? "On" : "Off"}`
-          : getProviderOptionCurrentLabel(
+          : (getProviderOptionCurrentLabel(
               descriptor,
               input.modelSelection,
               input.reportedModelSelection,
-            );
+            ) ?? (descriptor.id === "thinking" ? descriptor.label : null));
     if (typeof label === "string" && label.length > 0) {
       if (
         reasoningLabelIndex === -1 &&
@@ -173,7 +180,7 @@ export function buildTraitsTriggerDisplay(input: {
 
   const otherLabels = labels.filter((_, index) => index !== reasoningLabelIndex);
   if (labels.length === 0 && fastModeFallbackLabel !== null) {
-    return { label: fastModeFallbackLabel, speedLabel, otherLabels };
+    return { label: fastModeFallbackLabel, speedLabel, otherLabels, ultracode };
   }
   if (speedLabel) {
     if (reasoningLabelIndex >= 0) {
@@ -182,5 +189,5 @@ export function buildTraitsTriggerDisplay(input: {
       labels.push(speedLabel);
     }
   }
-  return { label: labels.join(" · "), speedLabel, otherLabels };
+  return { label: labels.join(" · "), speedLabel, otherLabels, ultracode };
 }

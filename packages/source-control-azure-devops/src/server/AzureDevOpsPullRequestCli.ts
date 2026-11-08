@@ -189,7 +189,7 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly number: number;
       readonly action: PullRequestAction;
       readonly mergeMethod?: PullRequestMergeMethod;
-    }) => Effect.Effect<void, AzureDevOpsPullRequestCliError>;
+    }) => Effect.Effect<AzureDevOpsPullRequest | void, AzureDevOpsPullRequestCliError>;
 
     readonly updatePullRequest: (input: {
       readonly cwd: string;
@@ -603,7 +603,7 @@ export const make = Effect.gen(function* () {
         resource: "items",
         routeParameters: repositoryRoute(input.location),
         queryParameters: [
-          `path=${toItemPath(input.path)}`,
+          `path=${encodeURIComponent(toItemPath(input.path))}`,
           "versionDescriptor.versionType=commit",
           `versionDescriptor.version=${input.commit}`,
           "includeContent=true",
@@ -641,7 +641,12 @@ export const make = Effect.gen(function* () {
               "json",
             ],
           })
-          .pipe(Effect.asVoid);
+          .pipe(
+            Effect.map((result) => {
+              const decoded = decodePullRequestJson(result.stdout.trim());
+              return Result.isSuccess(decoded) ? (decoded.success ?? undefined) : undefined;
+            }),
+          );
       },
     ),
 

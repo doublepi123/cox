@@ -454,7 +454,7 @@ function ResourceHistoryChart({
                   </div>
                 }
               />
-              <TooltipPopup side="top" className="text-left">
+              <TooltipPopup side="top" textFormat="left">
                 <div className="space-y-0.5">
                   <div>
                     {t("CPU avg")} {bucket.avgCpuPercent.toFixed(1)}%
@@ -584,12 +584,7 @@ function ProcessTable({
 
   return (
     <div className="border-t border-border/60">
-      <ScrollArea
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="max-h-[min(68vh,48rem)] w-full max-w-full"
-      >
+      <ScrollArea chainVerticalScroll scrollFade hideScrollbars preset="resources">
         <table className="w-full min-w-[1320px] table-fixed text-left text-xs">
           <colgroup>
             <col className="w-[20%]" />
@@ -691,12 +686,7 @@ function HistoryProcessTable({
   const { t } = useTranslation();
   return (
     <div className="border-t border-border/60">
-      <ScrollArea
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="max-h-[28rem] w-full max-w-full"
-      >
+      <ScrollArea chainVerticalScroll scrollFade hideScrollbars preset="processes">
         <table className="w-full min-w-[1020px] table-fixed text-left text-xs">
           <colgroup>
             <col className="w-[24%]" />

@@ -41,12 +41,23 @@ function SelectTrigger({
   variant = "default",
   children,
   icon,
+  fill = false,
+  fit = false,
   ...props
 }: SelectPrimitive.Trigger.Props &
-  VariantProps<typeof selectTriggerVariants> & { icon?: React.ReactNode }) {
+  VariantProps<typeof selectTriggerVariants> & {
+    icon?: React.ReactNode;
+    fill?: boolean;
+    fit?: boolean;
+  }) {
   return (
     <SelectPrimitive.Trigger
-      className={cn(selectTriggerVariants({ size, variant }), className)}
+      className={cn(
+        selectTriggerVariants({ size, variant }),
+        fill && "w-full min-w-0",
+        fit && "w-auto min-w-0",
+        className,
+      )}
       data-slot="select-trigger"
       {...props}
     >
@@ -104,6 +115,8 @@ function SelectPopup({
   alignOffset = 0,
   alignItemWithTrigger = true,
   matchTriggerWidth = true,
+  limit,
+  width,
   anchor,
   ...props
 }: SelectPrimitive.Popup.Props & {
@@ -113,6 +126,8 @@ function SelectPopup({
   alignOffset?: SelectPrimitive.Positioner.Props["alignOffset"];
   alignItemWithTrigger?: SelectPrimitive.Positioner.Props["alignItemWithTrigger"];
   matchTriggerWidth?: boolean;
+  limit?: "compact";
+  width?: "details";
   anchor?: SelectPrimitive.Positioner.Props["anchor"];
 }) {
   return (
@@ -142,10 +157,15 @@ function SelectPopup({
             className={cn(
               "dropdown-glass relative h-full rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
               matchTriggerWidth && "min-w-(--anchor-width)",
+              width === "details" && "min-w-64",
             )}
           >
             <SelectPrimitive.List
-              className={cn("max-h-(--available-height) overflow-y-auto p-1", className)}
+              className={cn(
+                "max-h-(--available-height) overflow-y-auto p-1",
+                limit === "compact" && "max-h-[min(18rem,var(--available-height))]",
+                className,
+              )}
               data-slot="select-list"
             >
               {children}

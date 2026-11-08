@@ -110,7 +110,6 @@ export function WelcomeWizard({
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<WizardStep>("agents");
-  const { environments } = useEnvironments();
   const [isImporting, setIsImporting] = useState(false);
   const finishingPromiseRef = useRef<Promise<boolean> | null>(null);
   const completionErrorToastIdRef = useRef<ReturnType<typeof toastManager.add> | null>(null);
@@ -242,7 +241,7 @@ function AgentsStep({
       title={t("Connect your agents")}
       description={t("Choose an agent to start coding. You can add more later.")}
     >
-      <ScrollArea scrollFade className="mt-5 h-auto max-h-[min(32rem,55dvh)]">
+      <ScrollArea scrollFade preset="onboarding">
         <div className="space-y-5 pr-3">
           {environmentIds.map((environmentId) => (
             <ConnectedAgentsStep
@@ -1019,7 +1018,7 @@ function ImportStep({
           </div>
         </div>
       ) : null}
-      <ScrollArea scrollFade className="mt-2 h-auto max-h-80">
+      <ScrollArea scrollFade preset="imports">
         <div className="space-y-5 pr-3">
           {scans.map((scan) => {
             const scanCandidates = candidates.filter(
@@ -1145,7 +1144,7 @@ function ImportCandidateList({
                 )
               }
             />
-            <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            <CollapsibleTrigger variant="import-row">
               <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-90" />
               <span className="truncate text-sm text-muted-foreground">
                 {translateUi("Other folders")}
@@ -1205,7 +1204,7 @@ function ImportRepositoryGroup({
           indeterminate={selectedCount > 0 && selectedCount < keys.length}
           onCheckedChange={(checked) => onToggle(keys, checked === true)}
         />
-        <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <CollapsibleTrigger variant="import-row">
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-90" />
           <span className="truncate text-sm font-medium">{group.label}</span>
           <ImportRowMeta

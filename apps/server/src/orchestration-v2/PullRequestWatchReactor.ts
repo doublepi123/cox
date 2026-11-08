@@ -24,6 +24,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 
 import {
@@ -43,6 +44,8 @@ import {
 /** Checks take minutes; faster sweeps waste the account's shared host quota. */
 const SWEEP_MINUTES = 2;
 const READ_FAILURE_LIMIT = 8;
+
+const GROUP_READS = 4;
 /** Without fingerprints, reread quiet PRs on snapshot changes or this interval to catch edits. */
 const QUIET_REREAD_MS = 10 * 60_000;
 /** Reread despite unchanged fingerprints; they miss review-thread comment edits. */
@@ -614,22 +617,24 @@ export const make = Effect.gen(function* () {
         ),
       { discard: true },
     );
-    const fingerprints = yield* Effect.forEach(groups, fingerprintOf, {
-      concurrency: "unbounded",
-    });
+    const reads = yield* Semaphore.make(GROUP_READS);
     yield* Effect.forEach(
       groups,
-      (group, index) => {
-        const fingerprint = fingerprints[index]!;
-        return fingerprint === "paused"
-          ? Effect.void
-          : readGroup(group, fingerprint).pipe(
-              Effect.catchCause(
-                logFailure("pull request watch check failed", { pullRequest: group.key }),
-              ),
-            );
-      },
-      { concurrency: 4, discard: true },
+      (group) =>
+        fingerprintOf(group).pipe(
+          Effect.flatMap((fingerprint) =>
+            fingerprint === "paused"
+              ? Effect.void
+              : reads.withPermit(
+                  readGroup(group, fingerprint).pipe(
+                    Effect.catchCause(
+                      logFailure("pull request watch check failed", { pullRequest: group.key }),
+                    ),
+                  ),
+                ),
+          ),
+        ),
+      { concurrency: "unbounded", discard: true },
     );
   }).pipe(
     Effect.catchCause(logFailure("pull request watch sweep failed", {})),

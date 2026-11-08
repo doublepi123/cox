@@ -21,6 +21,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
 import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import {
   DEFAULT_HANDOFF_TOKEN_CAP,
@@ -31,7 +32,6 @@ import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import { CursorDriver } from "./driver.ts";
 import * as CursorAgentSdk from "./CursorAgentSdk.ts";
 import * as CursorSdk from "./CursorSdk.ts";
-import * as CursorKeychain from "./CursorKeychain.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -48,11 +48,6 @@ const layerTest = TestProviderHost.layer({ runBackgroundWork: false }).pipe(
     }),
   ),
   Layer.provideMerge(
-    Layer.succeed(CursorKeychain.CursorKeychain, {
-      accessToken: Effect.die("The driver test must not read the Keychain"),
-    }),
-  ),
-  Layer.provideMerge(
     Layer.succeed(
       ProviderEventLoggers.ProviderEventLoggers,
       ProviderEventLoggers.NoOpProviderEventLoggers,
@@ -61,7 +56,23 @@ const layerTest = TestProviderHost.layer({ runBackgroundWork: false }).pipe(
   Layer.provideMerge(
     Layer.succeed(
       HttpClient.HttpClient,
-      HttpClient.make(() => Effect.die("Disabled Cursor must not make an HTTP request")),
+      HttpClient.make((request, url) => {
+        if (url.pathname === "/auth/exchange_user_api_key")
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json({ accessToken: "sdk-account-token" }),
+            ),
+          );
+        if (url.pathname === "/aiserver.v1.DashboardService/GetCurrentPeriodUsage")
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json({ planUsage: { totalPercentUsed: 20 } }),
+            ),
+          );
+        return Effect.die(`Unexpected Cursor HTTP request: ${url.pathname}`);
+      }),
     ),
   ),
 );

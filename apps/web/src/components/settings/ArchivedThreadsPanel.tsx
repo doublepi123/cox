@@ -1,9 +1,10 @@
 import { useTranslation } from "../../i18n";
+import { useRef, useState } from "react";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import { Spinner } from "~/components/ui/spinner";
-import { ArchiveIcon, ArchiveX } from "lucide-react";
-import { type ScopedThreadRef } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { ArchiveIcon, ArchiveX, Trash2Icon } from "lucide-react";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { presentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
   isAtomCommandInterrupted,
@@ -25,6 +26,8 @@ export function ArchivedThreadsPanel() {
   const { t } = useTranslation();
   const { scope, groups: projectGroups, environments } = useSettingsScope();
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const deletingRef = useRef(false);
   const {
     snapshots: archivedSnapshots,
     error: archiveError,
@@ -124,6 +127,27 @@ export function ArchivedThreadsPanel() {
     return { groups: sortedGroups, hasMultipleEnvironments };
   })();
 
+  const deleteArchivedThread = async (threadRef: ScopedThreadRef, title?: string) => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeletingKey(scopedThreadKey(threadRef));
+    const result = await confirmAndDeleteThread(threadRef, title).finally(() => {
+      deletingRef.current = false;
+      setDeletingKey(null);
+    });
+    if (result._tag === "Success") refreshArchivedThreads();
+    else if (!isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("Failed to delete thread"),
+          description: error instanceof Error ? error.message : t("An error occurred."),
+        }),
+      );
+    }
+  };
+
   const handleArchivedThreadContextMenu = async (
     threadRef: ScopedThreadRef,
     position: { x: number; y: number },
@@ -156,19 +180,7 @@ export function ArchivedThreadsPanel() {
     }
 
     if (clicked === "delete") {
-      const result = await confirmAndDeleteThread(threadRef);
-      if (result._tag === "Success") {
-        refreshArchivedThreads();
-      } else if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: t("Failed to delete thread"),
-            description: error instanceof Error ? error.message : t("An error occurred."),
-          }),
-        );
-      }
+      await deleteArchivedThread(threadRef);
     }
   };
 
@@ -248,37 +260,53 @@ export function ArchivedThreadsPanel() {
                   </span>
                 }
                 control={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => {
-                      void (async () => {
-                        const result = await unarchiveThread(
-                          scopeThreadRef(thread.environmentId, thread.id),
-                        );
-                        if (result._tag === "Success") {
-                          refreshArchivedThreads();
-                          return;
-                        }
-                        if (!isAtomCommandInterrupted(result)) {
-                          const error = squashAtomCommandFailure(result);
-                          toastManager.add(
-                            stackedThreadToast({
-                              type: "error",
-                              title: "Failed to unarchive thread",
-                              description:
-                                error instanceof Error ? error.message : "An error occurred.",
-                            }),
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void (async () => {
+                          const result = await unarchiveThread(
+                            scopeThreadRef(thread.environmentId, thread.id),
                           );
-                        }
-                      })();
-                    }}
-                  >
-                    <ArchiveX className="size-3.5" />
-                    <span>{t("Unarchive")}</span>
-                  </Button>
+                          if (result._tag === "Success") {
+                            refreshArchivedThreads();
+                            return;
+                          }
+                          if (!isAtomCommandInterrupted(result)) {
+                            const error = squashAtomCommandFailure(result);
+                            toastManager.add(
+                              stackedThreadToast({
+                                type: "error",
+                                title: "Failed to unarchive thread",
+                                description:
+                                  error instanceof Error ? error.message : "An error occurred.",
+                              }),
+                            );
+                          }
+                        })();
+                      }}
+                    >
+                      <ArchiveX className="size-3.5" />
+                      <span>{t("Unarchive")}</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost-muted"
+                      disabled={deletingKey !== null}
+                      onClick={() =>
+                        void deleteArchivedThread(
+                          scopeThreadRef(thread.environmentId, thread.id),
+                          thread.title,
+                        )
+                      }
+                    >
+                      <Trash2Icon className="size-3.5" />
+                      {t("Delete")}
+                    </Button>
+                  </div>
                 }
               />
             ))}

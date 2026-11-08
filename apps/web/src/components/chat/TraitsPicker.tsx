@@ -104,9 +104,11 @@ type TraitsPersistence =
 function DefaultBadge() {
   const { t } = useTranslation();
   return (
-    <Badge variant="outline" size="sm" className="min-w-0">
-      {t("Default")}
-    </Badge>
+    <span className="inline-flex min-w-0">
+      <Badge variant="outline" size="sm">
+        {t("Default")}
+      </Badge>
+    </span>
   );
 }
 

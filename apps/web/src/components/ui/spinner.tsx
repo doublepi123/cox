@@ -25,14 +25,21 @@ function Spinner({
   className,
   size,
   tone,
+  placement,
   ...props
-}: React.ComponentPropsWithoutRef<typeof LoaderCircleIcon> & VariantProps<typeof spinnerVariants>) {
+}: React.ComponentPropsWithoutRef<typeof LoaderCircleIcon> &
+  VariantProps<typeof spinnerVariants> & { placement?: "menu-search" }) {
   const { t } = useTranslation();
   return (
     <LoaderCircleIcon
       aria-label={t("Loading")}
       ref={observeVisibleAnimation}
-      className={cn(spinnerVariants({ size, tone }), className)}
+      className={cn(
+        spinnerVariants({ size, tone }),
+        "shrink-0",
+        placement === "menu-search" && "pointer-events-none absolute top-1.5 left-0",
+        className,
+      )}
       role="status"
       {...props}
     />

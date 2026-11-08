@@ -158,13 +158,7 @@ function DiagnosticsTable({
 }) {
   const { t } = useTranslation();
   return (
-    <ScrollArea
-      radius="none"
-      chainVerticalScroll
-      scrollFade
-      hideScrollbars
-      className="w-full max-w-full"
-    >
+    <ScrollArea radius="none" chainVerticalScroll scrollFade hideScrollbars>
       <table
         className={cn("w-full text-left text-xs", minTableWidth, columnWidths && "table-fixed")}
       >
@@ -348,13 +342,7 @@ function ProcessDiagnosticsTable({
 
   return (
     <div className="border-t border-border/60">
-      <ScrollArea
-        radius="none"
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="max-h-[min(64vh,44rem)] w-full max-w-full"
-      >
+      <ScrollArea radius="none" chainVerticalScroll scrollFade hideScrollbars preset="diagnostics">
         <table className="w-full min-w-[1040px] table-fixed text-left text-xs">
           <colgroup>
             <col className="w-[24%]" />
@@ -585,12 +573,7 @@ function ProcessResourceHistoryTable({
 
   return (
     <div className="border-t border-border/60">
-      <ScrollArea
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="max-h-[min(64vh,44rem)] w-full max-w-full"
-      >
+      <ScrollArea chainVerticalScroll scrollFade hideScrollbars preset="diagnostics">
         <table className="w-full min-w-[980px] table-fixed text-left text-xs">
           <colgroup>
             <col className="w-[24%]" />
@@ -1270,13 +1253,7 @@ function DiagnosticsSettingsBody() {
 
       <SettingsSection title={t("Span Logs")}>
         {data && data.latestWarningAndErrorLogs.length > 0 ? (
-          <ScrollArea
-            radius="none"
-            chainVerticalScroll
-            scrollFade
-            hideScrollbars
-            className="w-full max-w-full"
-          >
+          <ScrollArea radius="none" chainVerticalScroll scrollFade hideScrollbars>
             <table className="w-full min-w-[920px] table-fixed text-left text-xs">
               <colgroup>
                 <col className="w-[11%]" />

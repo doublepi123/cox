@@ -6,8 +6,8 @@ import { MiddleTruncate } from "./middle-truncate";
 import "~/index.css";
 
 const narrow = (value: string) => (
-  <div style={{ width: 80 }}>
-    <MiddleTruncate value={value} className="w-full" />
+  <div style={{ width: 80, display: "flex" }}>
+    <MiddleTruncate value={value} />
   </div>
 );
 

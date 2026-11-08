@@ -354,11 +354,13 @@ export function ThemeSearchSection({
                 value={sortBy}
                 onValueChange={handleSortChange}
               >
-                <SelectTrigger size="sm" className="w-40" aria-label={t("Sort themes")}>
-                  <SelectValue>
-                    {t(SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "")}
-                  </SelectValue>
-                </SelectTrigger>
+                <div className="min-w-0 w-40">
+                  <SelectTrigger fill size="sm" aria-label={t("Sort themes")}>
+                    <SelectValue>
+                      {t(SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "")}
+                    </SelectValue>
+                  </SelectTrigger>
+                </div>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   {SORT_OPTIONS.map((option) => (
                     <SelectItem key={option.value} hideIndicator value={option.value}>

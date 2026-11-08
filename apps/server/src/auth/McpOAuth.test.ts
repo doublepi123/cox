@@ -412,7 +412,7 @@ it.live("signs in a hosted agent with an https callback that asked for a client 
 );
 
 it.live("rejects a wrong PKCE verifier and spends the code", () =>
-  withRoutes((handler, auth) =>
+  withRoutes((handler) =>
     Effect.gen(function* () {
       const clientId = yield* registeredClientId(handler);
       const params = authorizeParams(clientId);

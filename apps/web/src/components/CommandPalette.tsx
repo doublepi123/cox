@@ -131,6 +131,7 @@ import {
   hasTrailingPathSeparator,
   inferProjectTitleFromPath,
   isExplicitRelativeProjectPath,
+  isFilesystemBrowseQuery,
   isScratchProject,
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
@@ -143,7 +144,7 @@ import {
 } from "../commandPaletteStore";
 import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
-import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
+import { isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 
@@ -182,7 +183,7 @@ import {
   type SearchOverlayMode,
 } from "./CommandPalette.logic";
 
-import { CommandPaletteContent } from "./CommandPaletteContent";
+import { CommandPaletteContent, type PendingInputSelection } from "./CommandPaletteContent";
 import {
   selectCommandPaletteClientSettings,
   useEnvironmentLookups,
@@ -319,7 +320,7 @@ function CommandPaletteDialog(props: {
             ? t("Search project contents")
             : "Command palette"
       }
-      className={cn("overflow-hidden", props.mode === "content" && "h-105")}
+      panel={props.mode === "content" ? "palette" : "clipped"}
       data-command-palette="true"
       data-palette-mode={props.mode}
       data-testid="command-palette"
@@ -391,6 +392,7 @@ function OpenCommandPaletteDialog(props: {
   const resultListRef = useRef<LegendListRef | null>(null);
   // A pushed view drops the typed highlight until the user moves it again.
   const highlightClearedRef = useRef(viewStack.length > 0);
+  const remountSelectionRef = useRef<PendingInputSelection | null>(null);
   function clearTypedHighlight(): void {
     highlightClearedRef.current = true;
     setHighlightedItemValue(null);
@@ -542,6 +544,8 @@ function OpenCommandPaletteDialog(props: {
   );
   const isRemoteProjectCloneFlow = addProjectCloneFlow !== null;
   const isRemoteProjectRepositoryStep = addProjectCloneFlow?.step === "repository";
+  const canBrowsePaths =
+    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null;
   const pinnedCloneDirectoryName =
     addProjectCloneFlow?.step === "confirm"
       ? getCloneDirectoryLeafName(
@@ -552,13 +556,8 @@ function OpenCommandPaletteDialog(props: {
           addProjectCloneFlow.repository?.nameWithOwner ?? addProjectCloneFlow.remoteUrl,
         )
       : "";
-  const browsePath = getFilesystemBrowsePath(
-    query,
-    browseEnvironmentPlatform,
-    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null,
-  );
+  const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
   const isBrowsing = browsePath.isBrowsing;
-  const browseDirectoryPath = browsePath.directoryPath;
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
   const getAddProjectInitialQueryForEnvironment = (environmentId: EnvironmentId | null): string => {
     const environment = environments.find((candidate) => candidate.environmentId === environmentId);
@@ -830,9 +829,21 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
 
-  function handleQueryChange(nextQuery: string): void {
+  function handleQueryChange(nextQuery: string, source: EventTarget | null): void {
     browseNavigation.invalidate();
     clearTypedHighlight();
+    if (
+      source instanceof HTMLInputElement &&
+      (canBrowsePaths && isFilesystemBrowseQuery(nextQuery, browseEnvironmentPlatform)) !==
+        isBrowsing
+    ) {
+      remountSelectionRef.current = {
+        value: nextQuery,
+        start: source.selectionStart,
+        end: source.selectionEnd,
+        direction: source.selectionDirection,
+      };
+    }
     setQuery(nextQuery);
     if (nextQuery === "" && currentView?.initialQuery) {
       popView();
@@ -2466,7 +2477,8 @@ function OpenCommandPaletteDialog(props: {
           scrollCommandPaletteRowIntoView(resultListRef.current, rowIndex);
         }
       }}
-      onValueChange={handleQueryChange}
+      onValueChange={(nextQuery, { event }) => handleQueryChange(nextQuery, event.target)}
+      pendingSelectionRef={remountSelectionRef}
       showBackHint={isSubmenu}
       value={query}
     >

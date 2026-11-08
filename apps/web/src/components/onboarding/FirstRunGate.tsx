@@ -193,22 +193,23 @@ function FirstRunRecovery({
             ? t("Your saved settings could not be loaded.")
             : t("Cox could not confirm this workspace.")}
         </p>
-        <Button
-          className="mt-5"
-          size="sm"
-          variant="outline"
-          disabled={retrying}
-          onClick={() => {
-            if (settingsReadFailed) {
-              void ensureClientSettingsHydrated().catch(() => undefined);
-            } else {
-              window.location.reload();
-            }
-          }}
-        >
-          <RefreshIcon refreshing={retrying} />
-          {settingsReadFailed ? t("Retry") : t("Reload")}
-        </Button>
+        <span className="inline-flex min-w-0 mt-5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={retrying}
+            onClick={() => {
+              if (settingsReadFailed) {
+                void ensureClientSettingsHydrated().catch(() => undefined);
+              } else {
+                window.location.reload();
+              }
+            }}
+          >
+            <RefreshIcon refreshing={retrying} />
+            {settingsReadFailed ? t("Retry") : t("Reload")}
+          </Button>
+        </span>
       </div>
     </main>
   );

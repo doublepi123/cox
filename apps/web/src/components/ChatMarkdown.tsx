@@ -41,7 +41,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  AssetWorkspaceAssetNotFoundError,
   AuthPreviewOperateScope,
   type EditorId,
   type EnvironmentId,
@@ -69,7 +68,6 @@ import { InlineAudioPreview } from "./files/InlineAudioPreview";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 import React, {
   Suspense,
@@ -219,7 +217,6 @@ import {
   nodeToPlainText,
 } from "./chat/MarkdownCodeBlock.logic";
 import { reportMarkdownActionFailure } from "./chat/markdownActionFailure";
-const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
 interface ChatMarkdownProps {
   /** Compact markdown transforms remove blocks before rendering inside a label. */
   inline?: boolean;
@@ -245,6 +242,8 @@ interface ChatMarkdownProps {
   /** Loads media a source control host keeps behind a credential through the server, which holds
         `cwd`'s; without it a private repository's uploads load unauthenticated and 404. */
   sourceControlMedia?: boolean | undefined;
+
+  sourceControlMediaRepository?: string | undefined;
   headingLevelOffset?: number | undefined;
 }
 export interface ChatMarkdownContextReference {
@@ -302,7 +301,6 @@ function CodexArtifactTemplateCard(props: {
           type="button"
           size="sm"
           variant="outline"
-          className="shrink-0"
           onClick={() => props.onUse?.(props.template)}
         >
           Use template
@@ -480,6 +478,7 @@ function useChatMarkdownState({
   renderContextReference,
   headingLevelOffset = 0,
   sourceControlMedia = false,
+  sourceControlMediaRepository,
 }: ChatMarkdownProps) {
   const resolvedTheme = useRenderedAppearance();
   const markdownRef = useRef<HTMLElement>(null);
@@ -857,6 +856,7 @@ function useChatMarkdownState({
     expandMedia,
     fileLinkChip,
     sourceControlMedia,
+    sourceControlMediaRepository,
     renderContextReference,
     headingLevelOffset,
     imageBaseDir,
@@ -1316,6 +1316,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       cwd,
       environmentId,
       sourceControlMedia,
+      sourceControlMediaRepository,
       imageBaseDir,
       threadRef,
       workspaceMutationId,
@@ -1398,7 +1399,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
       return (
         <ChatMarkdownAssetImage
           environmentId={environmentId}
-          resource={{ _tag: SOURCE_CONTROL_MEDIA_ASSET, cwd, url: hostMediaUrl }}
+          resource={{
+            _tag: SOURCE_CONTROL_MEDIA_ASSET,
+            cwd,
+            url: hostMediaUrl,
+            ...(sourceControlMediaRepository ? { repository: sourceControlMediaRepository } : {}),
+          }}
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}

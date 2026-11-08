@@ -81,7 +81,7 @@ export const readThemeFileGuarded = (filePath: string, maxBytes: number): string
       if (read <= 0) break;
       offset += read;
     }
-    return contents.subarray(0, offset).toString("utf8");
+    return new TextDecoder().decode(contents.subarray(0, offset));
   } catch {
     return null;
   } finally {

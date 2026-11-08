@@ -18,11 +18,12 @@ function readSafeLabel(value: unknown): string | undefined {
 function sanitizeStackUrl(value: string): string {
   try {
     const url = new URL(value);
+    const position = /(?::\d+){1,2}$/.exec(url.hash || url.search)?.[0] ?? "";
     url.username = "";
     url.password = "";
     url.search = "";
     url.hash = "";
-    return url.toString();
+    return url.toString() + position;
   } catch {
     return value;
   }

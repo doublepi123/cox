@@ -222,20 +222,21 @@ function ModelPickerProviderNotices({
               <p className="line-clamp-3 text-muted-foreground">
                 {getProviderStatusMessage(entry.snapshot)}
               </p>
-              <InlineButton
-                className="mt-1"
-                onClick={() => {
-                  onRequestClose?.();
-                  onOpenProviderSetup?.(entry.instanceId);
-                }}
-              >
-                {setupEntries.length > 1 ? `Set up ${entry.displayName}` : "Open provider setup"}
-              </InlineButton>
+              <div className="mt-1">
+                <InlineButton
+                  onClick={() => {
+                    onRequestClose?.();
+                    onOpenProviderSetup?.(entry.instanceId);
+                  }}
+                >
+                  {setupEntries.length > 1 ? `Set up ${entry.displayName}` : "Open provider setup"}
+                </InlineButton>
+              </div>
             </div>
           ))}
         </div>
       ) : (
-        <ComboboxEmpty className="empty:h-0">{emptyLabel}</ComboboxEmpty>
+        <ComboboxEmpty collapseEmpty>{emptyLabel}</ComboboxEmpty>
       )}
       {updateRequiredNotices.map(({ instanceId, notice }) => (
         <p
@@ -1090,7 +1091,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       value={modelKey}
                       aria-expanded={legacySection.isExpanded}
                       density={sheet ? "comfortable" : "default"}
-                      className="group w-full cursor-pointer"
+                      layout="model"
                     >
                       <span className="text-sm leading-snug text-muted-foreground group-hover:text-foreground group-data-highlighted:text-foreground">
                         {legacySection.isExpanded ? "Show less" : "Show more"}

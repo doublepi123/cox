@@ -298,20 +298,21 @@ function ProviderSetupActions({
               </div>
               {installation?.canRemove && !installActive ? (
                 <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="col-start-1 row-start-1"
-                        aria-label={t("Remove downloaded runtime")}
-                        disabled={actionsDisabled || authActive}
-                        onClick={() => void removeRuntime()}
-                      />
-                    }
-                  >
-                    <Trash2Icon className="size-3.5" />
-                  </TooltipTrigger>
+                  <span className="inline-flex min-w-0 col-start-1 row-start-1">
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t("Remove downloaded runtime")}
+                          disabled={actionsDisabled || authActive}
+                          onClick={() => void removeRuntime()}
+                        />
+                      }
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </TooltipTrigger>
+                  </span>
                   <TooltipPopup>{t("Remove downloaded runtime")}</TooltipPopup>
                 </Tooltip>
               ) : null}
@@ -334,17 +335,18 @@ function ProviderSetupActions({
             {error ?? queryError}
           </p>
           {queryError ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-fit"
-              onClick={() => {
-                authQuery.refresh();
-                installQuery.refresh();
-              }}
-            >
-              {t("Retry setup status")}
-            </Button>
+            <span className="inline-flex min-w-0 w-fit">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  authQuery.refresh();
+                  installQuery.refresh();
+                }}
+              >
+                {t("Retry setup status")}
+              </Button>
+            </span>
           ) : null}
         </div>
       ) : null}

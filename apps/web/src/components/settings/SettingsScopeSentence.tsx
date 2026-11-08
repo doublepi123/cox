@@ -123,19 +123,20 @@ function ScopeMenu({
   const [query, setQuery] = useState("");
   const Trigger = options.length > 6 ? ComboboxTrigger : MenuTrigger;
   const trigger = (
-    <Trigger
-      aria-label={`${ariaLabel}: ${label}`}
-      render={<Button variant="outline" size="sm" />}
-      className="min-w-0 max-w-72"
-    >
-      {icon}
-      <span className="min-w-0 truncate">{label}</span>
-      <ChevronDownIcon
-        aria-hidden
-        strokeWidth={1.75}
-        className="-me-0.5 size-3.5 shrink-0 text-muted-foreground opacity-70"
-      />
-    </Trigger>
+    <span className="inline-flex min-w-0 max-w-72">
+      <Trigger
+        aria-label={`${ariaLabel}: ${label}`}
+        render={<Button variant="outline" size="sm" />}
+      >
+        {icon}
+        <span className="min-w-0 truncate">{label}</span>
+        <ChevronDownIcon
+          aria-hidden
+          strokeWidth={1.75}
+          className="-me-0.5 size-3.5 shrink-0 text-muted-foreground opacity-70"
+        />
+      </Trigger>
+    </span>
   );
   const choices = allOption ? [allOption, ...options] : options;
   if (options.length > 6) {
@@ -160,7 +161,7 @@ function ScopeMenu({
         }}
       >
         {trigger}
-        <ComboboxPopup align="start" className="w-80">
+        <ComboboxPopup align="start" width="lg">
           <ComboboxSearchInput
             aria-label={searchLabel}
             placeholder={searchLabel}

@@ -104,7 +104,7 @@ export interface McpAppHost {
     readonly arguments: unknown;
     readonly result: McpAppCallToolResult | undefined;
   }) => void;
-  readonly updateHostContext: () => void;
+  readonly updateHostContext: (context?: McpAppHostContext) => void;
   /**
    * Asks the app to wrap up before its document goes away (`ui/resource-teardown`),
    * resolving once it answers or after a short timeout, then disposes the host.
@@ -416,11 +416,11 @@ export function makeMcpAppHost(options: McpAppHostOptions): McpAppHost {
       toolCall = { arguments: toolCall.arguments, result: call.result };
       notify("ui/notifications/tool-result", normalizeMcpAppToolResult(call.result));
     },
-    updateHostContext: () => {
+    updateHostContext: (context) => {
       // The spec forbids messages before the app finishes initializing; it
       // reads the then-current context from the initialize response anyway.
       if (!initialized || sentContext === undefined) return;
-      const next = options.hostContext();
+      const next = context ?? options.hostContext();
       const changes: Record<string, unknown> = {};
       for (const key of Object.keys(next) as Array<keyof McpAppHostContext>) {
         if (JSON.stringify(next[key]) !== JSON.stringify(sentContext[key])) {

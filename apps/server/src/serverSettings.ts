@@ -19,6 +19,8 @@ import {
   type ServerSettingsPatch,
   globalIdleCompaction,
   withIdleCompaction,
+  isSecretReference,
+  type SecretReference,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -58,7 +60,13 @@ import {
   sourceControlHostSecretName,
 } from "./sourceControl/sourceControlHostSecrets.ts";
 
-import { mapSettingsSecrets, SECRET_REDACTED, type SettingsSecret } from "./settingsSecrets.ts";
+import {
+  mapSettingsSecrets,
+  mapSettingsSecretValues,
+  withoutRemovedSecretProviderReferences,
+  SECRET_REDACTED,
+  type SettingsSecret,
+} from "./settingsSecrets.ts";
 import {
   validateModelServiceBindings,
   ensureModelServiceRevisions,
@@ -75,6 +83,18 @@ const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+function withEchoedSecretReferences(current: ServerSettings, next: ServerSettings): ServerSettings {
+  const references = new Map<string, SecretReference>();
+  mapSettingsSecretValues(current, (value, secretName) => {
+    if (isSecretReference(value)) references.set(secretName, value);
+    return value;
+  });
+  if (references.size === 0) return next;
+  return mapSettingsSecretValues(next, (value, secretName) =>
+    value === SECRET_REDACTED ? (references.get(secretName) ?? value) : value,
+  );
+}
 
 // Conflicting flags resolve to false to preserve user disables.
 const foldProviderInstanceEnabledFlags = (settings: ServerSettings): ServerSettings => {
@@ -1085,8 +1105,11 @@ const make = Effect.gen(function* () {
             cause: parseFailure.value,
           });
         }
-        const updated = yield* update(current);
-        const persisted = yield* persistSettingsSecrets(current, updated);
+        const updated = withEchoedSecretReferences(current, yield* update(current));
+        const persisted = yield* persistSettingsSecrets(
+          current,
+          withoutRemovedSecretProviderReferences(current, updated),
+        );
         const next = yield* normalizeServerSettings(persisted.settings);
         const materializedNext = yield* Effect.uninterruptibleMask(() =>
           Effect.gen(function* () {

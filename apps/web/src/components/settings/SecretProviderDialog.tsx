@@ -66,7 +66,7 @@ export function SecretProviderDialog({
         if (!next) onClose();
       }}
     >
-      <DialogPopup className="max-w-md">
+      <DialogPopup width="md">
         <DialogHeader>
           <DialogTitle>
             {existing

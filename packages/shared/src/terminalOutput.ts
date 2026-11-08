@@ -230,9 +230,9 @@ function applySgr(attributes: Attributes, params: ReadonlyArray<number>): void {
       attributes.bg = String(code);
     else if (code === 39) attributes.fg = "";
     else if (code === 49) attributes.bg = "";
-    else if (code === 38 || code === 48) {
+    else if (code === 38 || code === 48 || code === 58) {
       const [color, next] = extendedColor(code, params, index);
-      if (color !== undefined) attributes[code === 38 ? "fg" : "bg"] = color;
+      if (color !== undefined && code !== 58) attributes[code === 38 ? "fg" : "bg"] = color;
       index = next;
       continue;
     }
@@ -246,6 +246,7 @@ const STRING_SEQUENCE_INTRODUCERS = new Set(["]", "P", "X", "_", "^"]);
 function escapeLength(input: string, index: number): number {
   const next = input[index + 1];
   if (next === undefined) return -1;
+  if (next === ESC) return 1;
   if (next === "[") {
     for (let cursor = index + 2; cursor < input.length; cursor += 1) {
       const code = input.charCodeAt(cursor);
@@ -260,16 +261,23 @@ function escapeLength(input: string, index: number): number {
       if (input[cursor] === "\n") return cursor - index;
       if (input[cursor] === ESC) {
         if (cursor + 1 >= input.length) return -1;
-        if (input[cursor + 1] === "\\") return cursor - index + 2;
+        return input[cursor + 1] === "\\" ? cursor - index + 2 : cursor - index;
       }
     }
     return -1;
   }
-  // Charset designations take three bytes; other sequences take two.
-  if (next === "(" || next === ")" || next === "*" || next === "+") {
-    return index + 2 < input.length ? 3 : -1;
+  let cursor = index + 1;
+  while (
+    cursor < input.length &&
+    input.charCodeAt(cursor) >= 0x20 &&
+    input.charCodeAt(cursor) <= 0x2f
+  ) {
+    cursor += 1;
   }
-  return 2;
+  if (cursor >= input.length) return -1;
+  const final = input.charCodeAt(cursor);
+  if (cursor > index + 1 && (final < 0x30 || final > 0x7e)) return cursor - index;
+  return cursor - index + 1;
 }
 
 const penTransitions = new Map<string, string>();
@@ -277,14 +285,37 @@ const penTransitions = new Map<string, string>();
 // Colon color sub-parameters carry an optional color-space id absent from the semicolon form.
 function csiParams(params: string): Array<number> {
   const numbers: Array<number> = [];
+  let pending: "code" | "mode" | number = "code";
   for (const part of params.split(";")) {
-    if (!part.includes(":")) {
-      numbers.push(Number(part));
+    const sub = part.split(":").map(Number);
+    const head = sub[0]!;
+    if (typeof pending === "number") {
+      numbers.push(head);
+      pending = pending > 1 ? pending - 1 : "code";
       continue;
     }
-    const sub = part.split(":").map(Number);
-    if ((sub[0] === 38 || sub[0] === 48) && sub[1] === 2 && sub.length >= 6) sub.splice(2, 1);
-    numbers.push(...sub);
+    if (pending === "mode") {
+      pending = "code";
+      if (sub.length === 1) {
+        numbers.push(head);
+        if (head === 5 || head === 2) pending = head === 5 ? 1 : 3;
+        continue;
+      }
+      if (head === 2 && sub.length >= 5) sub.splice(1, 1);
+      numbers.push(...sub.slice(0, head === 5 ? 2 : head === 2 ? 4 : 1));
+      continue;
+    }
+    if (sub.length === 1) {
+      numbers.push(head);
+      if (head === 38 || head === 48 || head === 58) pending = "mode";
+      continue;
+    }
+    if (head !== 38 && head !== 48 && head !== 58) {
+      numbers.push(head === 4 && sub[1] === 0 ? 24 : head);
+      continue;
+    }
+    if (sub[1] === 2 && sub.length >= 6) sub.splice(2, 1);
+    numbers.push(...sub.slice(0, sub[1] === 5 ? 3 : sub[1] === 2 ? 5 : 2));
   }
   return numbers;
 }
