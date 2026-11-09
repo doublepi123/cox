@@ -362,8 +362,15 @@ try {
         ),
         { x: 16, y: 19 },
       );
-      await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
-      await page.waitForFunction(() => document.visibilityState === "hidden");
+      await application.evaluate(async ({ BrowserWindow }) => {
+        const target = BrowserWindow.getAllWindows()[0];
+        if (!target) return;
+        const hidden = target.isVisible()
+          ? new Promise<void>((resolve) => target.once("hide", resolve))
+          : Promise.resolve();
+        target.close();
+        await hidden;
+      });
       assert.equal(
         await application.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()[0]?.isVisible(),
