@@ -54,6 +54,9 @@ export const PiSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "~/.pi/agent", clearWhenEmpty: "omit" },
       }),
     ),
+    sessionDir: Schema.optionalKey(TrimmedString).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
     launchArgs: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({

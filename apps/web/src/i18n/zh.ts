@@ -1251,9 +1251,6 @@ export const zh = {
   "branch naming instructions": "分支命名指令",
   "Use julius/ followed by the issue ID and a short description.":
     "使用 julius/，后接问题编号和简短描述。",
-  "Your ChatGPT plan is connected": "已关联你的 ChatGPT 订阅",
-  "Eligible usage in Cox uses your ChatGPT plan. Manage your shared usage and any credit settings in ChatGPT.":
-    "Cox 中符合条件的用量由 ChatGPT 订阅承担。共享用量与额度设置请在 ChatGPT 中管理。",
   on: "所在环境：",
   "cancel Codex installation": "取消安装 Codex",
   "Could not read runtime path": "无法读取运行时路径",

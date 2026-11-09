@@ -138,9 +138,15 @@ export const piUsageReader: ProviderUsageReader<PiSettings, Path.Path> = {
     const sessionDirArg = config === undefined ? undefined : piLaunchSessionDir(config.launchArgs);
     const launchDir =
       sessionDirArg === undefined ? undefined : expandHomePath(sessionDirArg, launchHome);
+    const configuredDir = config?.sessionDir?.trim();
+    const resolvedConfiguredDir =
+      configuredDir === undefined ? undefined : expandHomePath(configuredDir, launchHome);
     return [
       ...(launchDir !== undefined && path.isAbsolute(launchDir)
         ? [{ dir: path.resolve(launchDir) }]
+        : []),
+      ...(resolvedConfiguredDir !== undefined && path.isAbsolute(resolvedConfiguredDir)
+        ? [{ dir: path.resolve(resolvedConfiguredDir) }]
         : []),
       {
         dir: resolvePiSessionsDir(

@@ -22,7 +22,7 @@ import "~/index.css";
 
 import { render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
-import { ProviderModelPicker } from "./ProviderModelPicker";
+import { DockedPickerContext, ProviderModelPicker } from "./ProviderModelPicker";
 
 it.each([
   { kind: "codex", width: 320 },
@@ -142,12 +142,18 @@ it.each([
             onInstanceModelChange={() => {}}
             effortColumn={<ComposerEffortColumn traits={traits} />}
             footer={
-              <ComposerPickerFooter
-                traits={traits}
-                runtimeMode="full-access"
-                runtimeModeOptions={[{ mode: "full-access", ...runtimeModeConfig["full-access"] }]}
-                onRuntimeModeChange={() => {}}
-              />
+              <DockedPickerContext
+                value={{ modelLabel: "Service model", layout: width === 320 ? "sheet" : "popover" }}
+              >
+                <ComposerPickerFooter
+                  traits={traits}
+                  runtimeMode="full-access"
+                  runtimeModeOptions={[
+                    { mode: "full-access", ...runtimeModeConfig["full-access"] },
+                  ]}
+                  onRuntimeModeChange={() => {}}
+                />
+              </DockedPickerContext>
             }
           />
         </>
@@ -172,6 +178,11 @@ it.each([
     await expect
       .element(modeControl())
       .toHaveAttribute(kind === "codex" ? "aria-checked" : "aria-pressed", "true");
+    if (kind === "claudeAgent" && width === 320) {
+      await expect
+        .element(modeControl())
+        .toHaveClass("data-checked:bg-popover");
+    }
     if (kind === "claudeAgent") {
       await expect
         .element(screen.getByRole("status", { name: "Workflow enabled" }))
@@ -204,6 +215,11 @@ it.each([
     await expect
       .element(modeControl())
       .toHaveAttribute(kind === "codex" ? "aria-checked" : "aria-pressed", "true");
+    if (kind === "claudeAgent" && width === 320) {
+      await expect
+        .element(modeControl())
+        .toHaveClass("data-checked:bg-popover");
+    }
     await expect
       .element(page.getByRole("radio", { name: "Fast", exact: true }))
       .toHaveAttribute("aria-checked", "true");

@@ -346,7 +346,13 @@ export const make = Effect.gen(function* () {
               },
             },
           });
-          Object.assign(additions, { agentDir, provider: "cox", model: selected, apiKey: "" });
+          Object.assign(additions, {
+            agentDir,
+            sessionDir: path.join(agentDir, "sessions"),
+            provider: "cox",
+            model: selected,
+            apiKey: "",
+          });
         }
         if (instance.driver === "opencode") {
           const opencode = {

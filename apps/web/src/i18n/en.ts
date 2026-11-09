@@ -1312,9 +1312,6 @@ export const en = {
   "branch naming instructions": "branch naming instructions",
   "Use julius/ followed by the issue ID and a short description.":
     "Use julius/ followed by the issue ID and a short description.",
-  "Your ChatGPT plan is connected": "Your ChatGPT plan is connected",
-  "Eligible usage in Cox uses your ChatGPT plan. Manage your shared usage and any credit settings in ChatGPT.":
-    "Eligible usage in Cox uses your ChatGPT plan. Manage your shared usage and any credit settings in ChatGPT.",
   on: "on",
   "cancel Codex installation": "cancel Codex installation",
   "Could not read runtime path": "Could not read runtime path",

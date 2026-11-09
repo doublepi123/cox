@@ -22,7 +22,6 @@ import { DevReplayHost } from "../components/DevReplayHost";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
 import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
-import { ChatGptWelcomeCoordinator } from "../components/settings/ChatGptWelcomeCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { Button } from "../components/ui/button";
@@ -143,7 +142,6 @@ function RootRouteBranch() {
 
   return (
     <>
-      <ChatGptWelcomeCoordinator />
       <FirstRunGate enabled={primaryEnvironmentAuthenticated}>
         <ReopenClosedViewShortcut />
         <ConfirmDialogHost />

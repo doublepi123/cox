@@ -14,6 +14,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { mergeUsage } from "@t3tools/shared/usageMerge";
 import {
   EnvironmentId,
+  ModelServiceId,
   ProviderDriverKind,
   ProviderInstanceId,
   UsageDay,
@@ -1183,6 +1184,89 @@ describe("UsageService", () => {
           ),
         );
       }).pipe(Effect.scoped),
+  );
+
+  it.live("reads Pi history from a model-service instance's session directory", () =>
+    Effect.gen(function* () {
+      const { home, settings } = yield* setup;
+      const agentDir = NodePath.join(home, "model-services", "runtime", "pi", "pi");
+      const dir = NodePath.join(agentDir, "sessions", "project");
+      yield* Effect.promise(async () => {
+        await NodeFSP.mkdir(dir, { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(dir, "session.jsonl"),
+          [
+            { type: "session", id: "pi-model-service" },
+            {
+              type: "message",
+              id: "assistant",
+              timestamp: "2026-08-01T10:00:00Z",
+              message: {
+                role: "assistant",
+                provider: "cox",
+                model: "actual-model",
+                usage: { input: 100, cacheRead: 50, cacheWrite: 5, output: 20, reasoning: 7 },
+              },
+            },
+          ]
+            .map((line) => encodeUnknownJsonString(line))
+            .join("\n") + "\n",
+        );
+      });
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSummary(WINDOW);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerService({
+            prefix: "usage-pi-model-service",
+            home,
+            ratesDocument: {
+              "actual-model": {
+                input_cost_per_token: 1,
+                output_cost_per_token: 4,
+                cache_read_input_token_cost: 0.1,
+                cache_creation_input_token_cost: 2,
+              },
+            },
+            settings: {
+              ...settings,
+              modelServices: {
+                [ModelServiceId.make("pi-model-service")]: {
+                  name: "Pi model service",
+                  baseUrl: "https://models.test",
+                  protocols: ["openai-chat"],
+                  models: [{ id: "actual-model", capabilities: null }],
+                },
+              },
+              providerInstances: {
+                ...settings.providerInstances,
+                [ProviderInstanceId.make("pi")]: {
+                  driver: ProviderDriverKind.make("pi"),
+                  modelService: {
+                    serviceId: ModelServiceId.make("pi-model-service"),
+                    modelIds: ["actual-model"],
+                  },
+                  config: { agentDir, sessionDir: NodePath.join(agentDir, "sessions") },
+                },
+              },
+            },
+          }),
+        ),
+      );
+      const pi = summary.buckets.filter((bucket) => bucket.provider === "pi");
+      assert.strictEqual(pi.length, 1);
+      assert.strictEqual(pi[0]?.model, "cox/actual-model");
+      assert.strictEqual(totalTokens(pi[0]!.totals), 175);
+      assert.strictEqual(pi[0]?.totals.reasoningTokens, 7);
+      assert.strictEqual(pi[0]?.costUsd, 195);
+      assert.strictEqual(
+        summary.sources.find((source) => source.fingerprint.provider === "pi")?.fingerprint
+          .resolvedHomePath,
+        NodePath.join(agentDir, "sessions"),
+      );
+    }).pipe(Effect.scoped),
   );
 
   it.live("reports missing Pi history and skips malformed records without losing valid usage", () =>

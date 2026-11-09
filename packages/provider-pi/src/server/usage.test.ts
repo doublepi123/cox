@@ -16,25 +16,36 @@ it.effect.each([
   { launchArgs: "--session-dir /old --session-dir /new", launchDir: "/new" },
   { launchArgs: '--system-prompt "--session-dir" --session-dir /actual', launchDir: "/actual" },
   { launchArgs: "--session-dir relative", launchDir: undefined },
-  { launchArgs: "--session-dir /ignored --mode rpc", launchDir: undefined },
-] as const)("keeps configured history alongside $launchArgs", ({ launchArgs, launchDir }) =>
-  Effect.gen(function* () {
-    if (piUsageReader.kind !== "transcripts") throw new Error("Expected transcript usage");
-    const directories = yield* piUsageReader.directories({
-      instanceId: ProviderInstanceId.make("pi_usage"),
-      configured: true,
-      config: decodeSettings({ launchArgs, agentDir: "~/configured" }),
-      environment: { HOME: "/instance", PI_CODING_AGENT_DIR: "/inherited" },
-    });
-    expect(directories).toEqual([
-      ...(launchDir === undefined ? [] : [{ dir: launchDir }]),
-      { dir: "/host/configured/sessions" },
-    ]);
-  }).pipe(
-    Effect.provide(Path.layer),
-    Effect.provideService(HostProcess.Platform, "linux"),
-    Effect.provideService(HostProcess.HomeDirectory, "/host"),
-  ),
+  { launchArgs: "--session-dir /ignored --mode rpc", launchDir: undefined, sessionDir: undefined },
+  { launchArgs: "", launchDir: undefined, sessionDir: "/configured/sessions" },
+  { launchArgs: "--session-dir /launch", launchDir: "/launch", sessionDir: "/configured" },
+  { launchArgs: "", launchDir: undefined, sessionDir: "~/configured" },
+  { launchArgs: "", launchDir: undefined, sessionDir: "/other/sessions" },
+] as const)(
+  "keeps configured history alongside $launchArgs",
+  ({ launchArgs, launchDir, sessionDir }) =>
+    Effect.gen(function* () {
+      if (piUsageReader.kind !== "transcripts") throw new Error("Expected transcript usage");
+      const directories = yield* piUsageReader.directories({
+        instanceId: ProviderInstanceId.make("pi_usage"),
+        configured: true,
+        config: decodeSettings({
+          launchArgs,
+          agentDir: "~/configured",
+          ...(sessionDir === undefined ? {} : { sessionDir }),
+        }),
+        environment: { HOME: "/instance", PI_CODING_AGENT_DIR: "/inherited" },
+      });
+      expect(directories).toEqual([
+        ...(launchDir === undefined ? [] : [{ dir: launchDir }]),
+        ...(sessionDir === undefined ? [] : [{ dir: sessionDir.replace(/^~/, "/instance") }]),
+        { dir: "/host/configured/sessions" },
+      ]);
+    }).pipe(
+      Effect.provide(Path.layer),
+      Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.HomeDirectory, "/host"),
+    ),
 );
 
 it.effect("keeps explicit session history when a launch directory is configured", () =>
