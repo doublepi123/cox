@@ -33,6 +33,7 @@ function flatten(items: readonly MenuItemConstructorOptions[]): MenuItemConstruc
 function menuActions() {
   return {
     openMain: vi.fn(),
+    openConnections: vi.fn(),
     openSettings: vi.fn(),
     checkUpdates: vi.fn(),
     toggleAutomaticUpdates: vi.fn(),
@@ -64,6 +65,7 @@ describe("native application menu placement", () => {
     expect(applicationItems.map((item) => item.click)).toEqual(
       expect.arrayContaining([
         actions.openSettings,
+        actions.openConnections,
         actions.checkUpdates,
         actions.toggleAutomaticUpdates,
       ]),
@@ -87,7 +89,10 @@ describe("native application menu placement", () => {
 
     expect(menu.some((item) => item.role === "appMenu")).toBe(false);
     expect(helpMenu?.label).toBe(help);
-    expect(fileItems.map((item) => item.click).filter(Boolean)).toEqual([actions.openSettings]);
+    expect(fileItems.map((item) => item.click).filter(Boolean)).toEqual([
+      actions.openSettings,
+      actions.openConnections,
+    ]);
     expect(helpItems.map((item) => item.click).filter(Boolean)).toEqual([
       actions.checkUpdates,
       actions.toggleAutomaticUpdates,

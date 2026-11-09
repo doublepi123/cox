@@ -168,7 +168,7 @@ await writeFile(
       productName: "Cox",
       version: manifest.version,
       bundledCoxVersion: coxVersion,
-      description: "Local-only coding agent workspace",
+      description: "Coding agent workspace for local and user-operated remote servers",
       author: "Cox contributors",
       license: "MIT",
       type: "module",

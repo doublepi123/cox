@@ -1,11 +1,11 @@
 # Cox
 
-Cox is a local-only Web UI for coding agents, derived from T3 Code.
+Cox is a Web UI and desktop client for coding agents, derived from T3 Code.
 
 ## Scope
 
 - Keep the browser UI, local Node server, agent providers, projects, threads, terminals, Git and checkpoints.
-- The desktop client may embed the existing browser UI and a loopback-only local backend for macOS and Windows. It may install and check the official Cox npm package, staging owned-backend upgrades for the next launch with matching data backups and rollback. Client-only packages must bootstrap Cox on first launch. User-controlled desktop-client updates may use official releases, with explicit consent before quitting or replacing the application. Do not add mobile apps, cloud accounts, T3 Connect, relay/tunnel infrastructure, remote environment linking or standalone desktop-update services.
+- The desktop client may embed the existing browser UI and a loopback-only local backend for macOS and Windows. It may install and check the official Cox npm package, staging owned-backend upgrades for the next launch with matching data backups and rollback. Client-only packages must bootstrap Cox before the first local session. User-controlled desktop-client updates may use official releases, with explicit consent before quitting or replacing the application. The desktop client may connect directly to a user-operated Cox server over HTTPS with password authentication; the remote server serves its own matching Web UI, and remote pages receive no local-backend or client-update privileges. Do not add mobile apps, cloud accounts, T3 Connect, relay/tunnel infrastructure, server discovery, multi-server aggregation, managed remote environments or standalone desktop-update services.
 - Bind the server to loopback by default. Nonloopback numeric listen addresses require COX_AUTH_PASSWORD; a password never broadens the bind automatically. Preserve local authentication and WebSocket origin checks.
 - Without a password, only local browsers may establish sessions automatically. Never expose local-no-password mode through a proxy; require a password and HTTPS for nonlocal access.
 - Cox state belongs in `~/.cox` or a checkout-local `.cox` directory, never `~/.t3`.

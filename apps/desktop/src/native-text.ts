@@ -15,6 +15,16 @@ const chinese = {
     "更新会退出 Cox，并中断正在运行的 Agent 任务和终端。",
   "Open installer": "打开安装包",
   Settings: "设置",
+  Connections: "连接管理",
+  "Connect to remote server": "连接远程服务器",
+  "Switching to a remote server stops the local backend and interrupts local agent tasks and terminals.":
+    "切换到远程服务器会停止本地后端，并中断本地 Agent 任务和终端。",
+  "Updating quits Cox. Remote agent tasks and terminals continue on the server.":
+    "更新会退出 Cox；远程 Agent 任务和终端会继续在服务器上运行。",
+  "The client update is not ready.": "客户端更新尚未就绪。",
+  "Forget remote server": "忘记远程服务器",
+  "Forget this server and clear its local session and cached data?":
+    "忘记此服务器并清除它的本地会话和缓存数据？",
   "Install client update": "安装客户端更新",
   "Updating the client quits Cox and interrupts running agent turns and terminals.":
     "更新客户端会退出 Cox，并中断正在运行的 Agent 任务和终端。",
@@ -56,6 +66,7 @@ const chinese = {
   "Could not open this link in your default browser.": "无法在默认浏览器中打开此链接。",
   "Cox permission": "Cox 权限",
   "Allow Cox to read your clipboard?": "允许 Cox 读取剪贴板？",
+  "Allow Cox to write to your clipboard?": "允许 Cox 写入剪贴板？",
   "Allow Cox notifications?": "允许 Cox 发送通知？",
   Deny: "拒绝",
   Allow: "允许",

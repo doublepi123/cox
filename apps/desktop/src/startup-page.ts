@@ -1,4 +1,4 @@
-function escapeHtml(value: string) {
+export function escapeHtml(value: string) {
   return value.replace(
     /[&<>"']/g,
     (character) =>
@@ -59,7 +59,9 @@ export function createStartupPage(
     '<h1>Cox</h1><div class="loading" aria-hidden="true"><span></span><span></span><span></span></div>',
     `<p id="cox-startup-status" class="status" role="status">${labels.preparing}</p>`,
     '<div id="cox-startup-progress" class="progress" role="progressbar" aria-label="Cox" aria-valuemin="0" aria-valuemax="100"><div id="cox-startup-bar" class="bar indeterminate"></div></div>',
-    '<div class="details"><span id="cox-startup-size"></span><span id="cox-startup-speed"></span></div></main></body></html>',
+    '<div class="details"><span id="cox-startup-size"></span><span id="cox-startup-speed"></span></div>',
+    `<button id="cox-open-connections" type="button" style="margin:24px auto 0;padding:7px 14px;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer;-webkit-app-region:no-drag">${zh ? "连接管理" : "Connections"}</button>`,
+    "</main></body></html>",
   ].join("");
 }
 

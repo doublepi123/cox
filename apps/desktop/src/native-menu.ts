@@ -35,7 +35,12 @@ const roleLabels = {
 
 type DesktopMenuActions = Readonly<
   Record<
-    "openMain" | "openSettings" | "checkUpdates" | "toggleAutomaticUpdates" | "openLogs",
+    | "openMain"
+    | "openConnections"
+    | "openSettings"
+    | "checkUpdates"
+    | "toggleAutomaticUpdates"
+    | "openLogs",
     NonNullable<MenuItemConstructorOptions["click"]>
   >
 >;
@@ -51,6 +56,11 @@ export function createDesktopMenuTemplate(
     label: text("Settings"),
     accelerator: "CmdOrCtrl+,",
     click: actions.openSettings,
+  };
+  const connections: MenuItemConstructorOptions = {
+    label: text("Connections"),
+    accelerator: "CmdOrCtrl+Shift+O",
+    click: actions.openConnections,
   };
   const updates: MenuItemConstructorOptions[] = [
     { id: "cox-check-updates", label: text("Check for updates"), click: actions.checkUpdates },
@@ -70,6 +80,7 @@ export function createDesktopMenuTemplate(
           { role: "about" },
           { type: "separator" },
           settings,
+          connections,
           { type: "separator" },
           ...updates,
           { type: "separator" },
@@ -80,7 +91,7 @@ export function createDesktopMenuTemplate(
       }
     : {
         label: text("File"),
-        submenu: [settings, { type: "separator" }, { role: "quit" }],
+        submenu: [settings, connections, { type: "separator" }, { role: "quit" }],
       };
   return localizeDesktopMenu(
     [

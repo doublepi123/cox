@@ -2,7 +2,7 @@
   "name": "@cox/desktop",
   "version": "0.2.17",
   "private": true,
-  "description": "Cox desktop client with an embedded local backend",
+  "description": "Cox desktop client for local and user-operated remote servers",
   "license": "MIT",
   "author": "Cox contributors",
   "type": "module",

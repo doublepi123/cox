@@ -6,7 +6,7 @@ import type {
 } from "@t3tools/contracts";
 
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
-const bridge: DesktopShellBridge = {
+const shellBridge: DesktopShellBridge = {
   platform: process.platform,
   windowKind: process.argv.includes("--cox-window-kind=settings") ? "settings" : "main",
   openSettings: (path) => ipcRenderer.invoke("cox:settings-open", path),
@@ -39,37 +39,97 @@ const bridge: DesktopShellBridge = {
     return () => ipcRenderer.removeListener("cox:window-state", handler);
   },
   syncWindowControls: () => ipcRenderer.send("cox:sync-window-controls"),
-  checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
-  downloadUpdates: () => ipcRenderer.invoke("cox:updates-download"),
-  applyUpdates: () => ipcRenderer.invoke("cox:updates-apply"),
-  setUpdatePolicy: (policy) => ipcRenderer.invoke("cox:updates-policy", policy),
-  getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
-  checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
-  installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),
-  applyBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-apply"),
-  setBackendUpdatePolicy: (policy, version) =>
-    ipcRenderer.invoke("cox:backend-update-policy", policy, version),
-  onBackendUpdate: (listener) => {
-    const handler = (_event: Electron.IpcRendererEvent, state: DesktopBackendUpdateState) =>
-      listener(state);
-    ipcRenderer.on("cox:backend-update", handler);
-    ipcRenderer.send("cox:backend-update-listening");
-    return () => ipcRenderer.removeListener("cox:backend-update", handler);
-  },
-  getClientUpdate: () => ipcRenderer.invoke("cox:client-update-state"),
-  checkClientUpdate: () => ipcRenderer.invoke("cox:client-update-check"),
-  downloadClientUpdate: () => ipcRenderer.invoke("cox:client-update-download"),
-  applyClientUpdate: () => ipcRenderer.invoke("cox:client-update-apply"),
-  setClientUpdatePolicy: (policy, version) =>
-    ipcRenderer.invoke("cox:client-update-policy", policy, version),
-  onClientUpdate: (listener) => {
-    const handler = (_event: Electron.IpcRendererEvent, state: DesktopClientUpdateState) =>
-      listener(state);
-    ipcRenderer.on("cox:client-update", handler);
-    return () => ipcRenderer.removeListener("cox:client-update", handler);
-  },
 };
+const bridge: DesktopShellBridge =
+  window.location.protocol === "https:"
+    ? shellBridge
+    : {
+        ...shellBridge,
+        checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
+        downloadUpdates: () => ipcRenderer.invoke("cox:updates-download"),
+        applyUpdates: () => ipcRenderer.invoke("cox:updates-apply"),
+        setUpdatePolicy: (policy) => ipcRenderer.invoke("cox:updates-policy", policy),
+        getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
+        checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
+        installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),
+        applyBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-apply"),
+        setBackendUpdatePolicy: (policy, version) =>
+          ipcRenderer.invoke("cox:backend-update-policy", policy, version),
+        onBackendUpdate: (listener) => {
+          const handler = (_event: Electron.IpcRendererEvent, state: DesktopBackendUpdateState) =>
+            listener(state);
+          ipcRenderer.on("cox:backend-update", handler);
+          ipcRenderer.send("cox:backend-update-listening");
+          return () => ipcRenderer.removeListener("cox:backend-update", handler);
+        },
+        getClientUpdate: () => ipcRenderer.invoke("cox:client-update-state"),
+        checkClientUpdate: () => ipcRenderer.invoke("cox:client-update-check"),
+        downloadClientUpdate: () => ipcRenderer.invoke("cox:client-update-download"),
+        applyClientUpdate: () => ipcRenderer.invoke("cox:client-update-apply"),
+        setClientUpdatePolicy: (policy, version) =>
+          ipcRenderer.invoke("cox:client-update-policy", policy, version),
+        onClientUpdate: (listener) => {
+          const handler = (_event: Electron.IpcRendererEvent, state: DesktopClientUpdateState) =>
+            listener(state);
+          ipcRenderer.on("cox:client-update", handler);
+          return () => ipcRenderer.removeListener("cox:client-update", handler);
+        },
+      };
 contextBridge.exposeInMainWorld("coxDesktop", bridge);
+
+if (window.location.protocol === "data:") {
+  const connections = {
+    show: () => ipcRenderer.invoke("cox:connections-show"),
+    useLocal: () => ipcRenderer.invoke("cox:connections-local"),
+    connect: (input: { id?: string; name?: string; origin?: string }) =>
+      ipcRenderer.invoke("cox:connections-connect", input),
+    forget: (id: string) => ipcRenderer.invoke("cox:connections-forget", id),
+  };
+  contextBridge.exposeInMainWorld("coxConnections", connections);
+  let busy = false;
+  const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+  const showError = (error: unknown) => {
+    const target = document.getElementById("cox-connection-error");
+    if (!target) return;
+    target.textContent = errorMessage(error);
+    target.hidden = false;
+  };
+  const run = async (action: () => Promise<unknown>) => {
+    if (busy) return;
+    busy = true;
+    const buttons = Array.from(document.querySelectorAll("button"));
+    for (const button of buttons) button.disabled = true;
+    try {
+      await action();
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+      for (const button of buttons) if (button.isConnected) button.disabled = false;
+    }
+  };
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("cox-open-connections")?.addEventListener("click", () => {
+      void run(connections.show);
+    });
+    document.getElementById("cox-connection-form")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = document.getElementById("cox-connection-name");
+      const origin = document.getElementById("cox-connection-origin");
+      if (!(name instanceof HTMLInputElement) || !(origin instanceof HTMLInputElement)) return;
+      void run(() => connections.connect({ name: name.value, origin: origin.value }));
+    });
+    document.getElementById("cox-connections")?.addEventListener("click", (event) => {
+      const button =
+        event.target instanceof Element ? event.target.closest("button[data-action]") : null;
+      if (!(button instanceof HTMLButtonElement)) return;
+      const id = button.dataset.id;
+      if (button.dataset.action === "local") void run(connections.useLocal);
+      if (button.dataset.action === "connect" && id) void run(() => connections.connect({ id }));
+      if (button.dataset.action === "forget" && id) void run(() => connections.forget(id));
+    });
+  });
+}
 
 ipcRenderer.on("cox:startup-progress", (_event, state: DesktopBackendUpdateState) => {
   if (window.location.protocol !== "data:" || bridge.windowKind !== "main") return;
@@ -97,9 +157,7 @@ ipcRenderer.on("cox:startup-progress", (_event, state: DesktopBackendUpdateState
   if (percent === null) progressbar.removeAttribute("aria-valuenow");
   else progressbar.setAttribute("aria-valuenow", String(percent));
   const bytes = (value: number) =>
-    value >= 1024 * 1024
-      ? `${(value / (1024 * 1024)).toFixed(1)} MB`
-      : `${Math.round(value / 1024)} KB`;
+    value >= 1024 * 1024 ? `${(value / 1024).toFixed(1)} MB` : `${Math.round(value / 1024)} KB`;
   size.textContent = downloading
     ? bytes(progress.transferredBytes) +
       (progress.totalBytes === null ? "" : ` / ${bytes(progress.totalBytes)} · ${percent}%`)

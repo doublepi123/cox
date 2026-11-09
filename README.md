@@ -8,7 +8,7 @@ English | [简体中文](README.zh-CN.md)
 
 [Website](https://doublepi.dev/) · [CoCode for Android](https://doublepi.dev/cocode/)
 
-Cox is a local Web interface for coding agents, derived from [T3 Code](https://github.com/pingdotgg/t3code), starting at `0102f07afb` in the `doublepi123/t3code` fork.
+Cox is a Web interface and desktop client for coding agents, derived from [T3 Code](https://github.com/pingdotgg/t3code), starting at `0102f07afb` in the `doublepi123/t3code` fork.
 
 Run the server on your computer and control your locally installed coding agents from a browser. Your projects, conversation history, credentials and checkpoints stay in your local Cox data directory.
 
@@ -27,7 +27,8 @@ Run `pnpm pages:test` and `pnpm pages:build` to validate and build it. See the
 ### Desktop client (macOS / Windows)
 
 The optional [Cox Desktop client](apps/desktop/README.md) embeds the existing Web UI,
-a standalone Node runtime and a loopback-only backend. Desktop builds launch by
+a standalone Node runtime and a loopback-only backend. It can also connect directly to a
+user-operated Cox server over HTTPS. Desktop builds launch by
 double-clicking and use `~/.cox/desktop`, separately from CLI data. Build installers
 on the target operating system with `pnpm desktop:build`; signing and native-platform
 acceptance are required before public distribution. Agent installation and authentication
@@ -102,11 +103,11 @@ is on your `PATH`, or use the `npx` command above.
 
 - Web UI and a local Node HTTP/WebSocket server.
 - Local agent providers, projects, threads, streaming chat, terminal sessions, Git/worktrees and checkpoints.
-- No Electron desktop app, React Native/iOS/Android app or app-store distribution.
-- No T3 Connect, Clerk cloud account, relay, tunnel service, hosted app or linked remote environments.
+- Electron desktop clients for macOS and Windows; no React Native/iOS/Android app or app-store distribution.
+- Direct desktop connections to user-operated Cox servers; no T3 Connect, Clerk cloud account, relay, tunnel service, hosted app, server discovery or managed remote environments.
 - No upstream release/update service or automatic migration from a T3 installation.
 
-Local-only refers to the control plane, not offline inference. Agent providers still use their configured model services, and Git integrations can contact your configured repository hosts. Provider authentication and local credential storage are retained.
+Local-by-default does not mean offline inference. Agent providers still use their configured model services, and Git integrations can contact your configured repository hosts. Provider authentication and local credential storage are retained.
 
 ## Interface language
 
@@ -252,11 +253,23 @@ The desktop shell and Cox backend have independent versions. Cox releases use ro
 versions and `v<VERSION>` tags; desktop releases use `apps/desktop/package.json` and
 `desktop-v<VERSION>` tags.
 
+Choose **Connections** in the native menu to switch between this computer and a saved remote
+server. Remote entries require an HTTPS origin such as `https://cox.example.com` and a server
+configured with `COX_AUTH_PASSWORD`; credentials in URLs, cleartext HTTP and certificate-error
+bypasses are rejected. The remote server supplies its own matching Web UI and uses the normal
+Cox password page, same-origin HTTPS API and WSS connections. Passwords are not saved in the
+desktop connection file. Each server has an isolated browser profile, and forgetting it clears
+that profile's local session and cached data. Remote pages cannot manage the local backend or
+desktop updates. Switching away from local mode stops the owned backend only after confirmation;
+disconnecting or quitting remote mode does not stop server-side agents or terminals. Third-party
+SSO redirects from an authenticating proxy are not embedded in the desktop window.
+
 - Combined installers include both versions in their filenames: for example,
   `cox-desktop-0.2.7-cox-0.1.45-mac-arm64.dmg`. macOS releases provide DMG installers only, without duplicate ZIP packages.
 - Client-only installers, such as `cox-desktop-0.2.7-client-only-win-x64.exe`, include the browser shell,
-  standalone Node and npm, but **no Cox backend**. Their first launch needs internet access
-  to install the latest stable `@doublepi123/cox`. No global Node/npm/Cox installation is needed.
+  standalone Node and npm, but **no Cox backend**. Their first local session needs internet access
+  to install the latest stable `@doublepi123/cox`; choosing a remote server does not install a local
+  backend. No global Node/npm/Cox installation is needed.
   A failed initial download offers Retry/Quit; subsequent launches use the verified local
   installation and can run offline (`--offline` disables update checks).
 - The client checks for Cox updates at startup and every six hours. Settings → About shows

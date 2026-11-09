@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, screen, session, shell } from "electron";
 import type { Event, IpcMainEvent } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";
@@ -20,6 +20,9 @@ import { MacAppUpdate } from "./mac-update.ts";
 import { loadMacUpdateLaunch, macUpdateInProgress } from "./mac-update-transaction.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { createStartupPage } from "./startup-page.ts";
+import { createConnectionPage } from "./connection-page.ts";
+import { DesktopConnectionStore, type RemoteConnectionProfile } from "./connections.ts";
+import { inspectRemoteServer, remotePartition } from "./remote.ts";
 import type { DesktopBackendUpdateState, DesktopClientUpdateState } from "@t3tools/contracts";
 import {
   backendEnvironment,
@@ -58,6 +61,14 @@ let desktopReady = false;
 let supportsSettingsWindow = false;
 let stoppingBackend = false;
 let origin: string | undefined;
+let localOrigin: string | undefined;
+let connectionMode: "local" | "remote" | "manager" = "manager";
+let activeRemoteProfile: RemoteConnectionProfile | undefined;
+let connectionStore: DesktopConnectionStore;
+let localPageUrl: string | undefined;
+let mainPartition = "persist:cox-desktop";
+let connectionGeneration = 0;
+let switchingConnections = false;
 let updates: BackendUpdates | undefined;
 let clientUpdates: ClientUpdates | undefined;
 let softwareUpdates: SoftwareUpdates | undefined;
@@ -100,8 +111,17 @@ let autoCheckStarted = false;
 let lastPromptedVersion: string | null = null;
 let nativeUpdatePrompt = false;
 let lastWindowColors = "";
+const configuredSessions = new Set<string>();
+
+function isRemoteContext() {
+  return (
+    connectionMode === "remote" ||
+    (connectionMode === "manager" && activeRemoteProfile !== undefined)
+  );
+}
 
 async function offerSoftwareUpdate(manual = false) {
+  if (isRemoteContext()) return offerRemoteClientUpdate(manual);
   if (!softwareUpdates) return;
   if (approvedQuit || quitPending || !desktopReady || nativeUpdatePrompt) return;
   let { backend: backendState, client } = softwareUpdates.getState();
@@ -165,6 +185,66 @@ async function offerSoftwareUpdate(manual = false) {
   }
 }
 
+async function offerRemoteClientUpdate(manual = false) {
+  if (!clientUpdates || approvedQuit || quitPending || !desktopReady || nativeUpdatePrompt) return;
+  let state = clientUpdates.getState();
+  const key = `remote:${state.status}:${state.latestVersion}`;
+  if (
+    !manual &&
+    ((state.status !== "available" && state.status !== "ready") || key === lastPromptedVersion)
+  )
+    return;
+  nativeUpdatePrompt = true;
+  try {
+    if (state.status === "available") {
+      lastPromptedVersion = key;
+      const answer = await dialog.showMessageBox({
+        type: "question",
+        title: text("Software updates"),
+        message: text("Software updates are available."),
+        detail: `Cox Desktop ${state.currentVersion} → ${state.latestVersion ?? ""}`,
+        buttons: [text("Later"), text("Download")],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (answer.response !== 1 || quitPending) return;
+      state = await clientUpdates.download();
+    }
+    if (state.status === "ready") {
+      await applySoftwareUpdates();
+      return;
+    }
+    if (manual)
+      await dialog.showMessageBox({
+        type: state.status === "error" ? "warning" : "info",
+        title: text("Software updates"),
+        message: text(
+          state.status === "error"
+            ? "Could not finish updating. Check for updates again."
+            : state.latestVersion === state.currentVersion
+              ? "The client and Cox are up to date."
+              : "No update information is available yet.",
+        ),
+        detail: state.message ?? "",
+        buttons: [text("Continue")],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+  } catch (error) {
+    if (!quitPending)
+      await dialog.showMessageBox({
+        type: "warning",
+        title: text("Software updates"),
+        message: text("Could not finish updating. Check for updates again."),
+        detail: String(error),
+      });
+  } finally {
+    nativeUpdatePrompt = false;
+  }
+}
+
 function updateVersions() {
   const state = softwareUpdates?.getState();
   if (!state) return "";
@@ -190,6 +270,7 @@ function syncUpdatePolicy() {
 
 function publishBackendUpdate(state: DesktopBackendUpdateState) {
   syncUpdatePolicy();
+  if (connectionMode !== "local") return;
   for (const target of [window, settingsWindow]) {
     if (target && !target.isDestroyed() && readyWindows.has(target.webContents.id))
       target.webContents.send("cox:backend-update", state);
@@ -200,6 +281,7 @@ function publishBackendUpdate(state: DesktopBackendUpdateState) {
 
 function publishClientUpdate(state: DesktopClientUpdateState) {
   syncUpdatePolicy();
+  if (connectionMode !== "local") return;
   for (const target of [window, settingsWindow]) {
     if (target && !target.isDestroyed() && readyWindows.has(target.webContents.id))
       target.webContents.send("cox:client-update", state);
@@ -221,8 +303,9 @@ function createDesktopWindow(
   width: number,
   height: number,
   show = true,
+  partition = activeRemoteProfile ? remotePartition(activeRemoteProfile.id) : "persist:cox-desktop",
 ) {
-  return new BrowserWindow({
+  const target = new BrowserWindow({
     width,
     height,
     show,
@@ -248,10 +331,73 @@ function createDesktopWindow(
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
-      partition: "persist:cox-desktop",
+      partition,
       additionalArguments: ["--cox-window-kind=" + kind],
     },
   });
+  if (!configuredSessions.has(partition)) {
+    configuredSessions.add(partition);
+    const permissions = new Set<string>(
+      partition === "persist:cox-desktop"
+        ? ["clipboard-sanitized-write", "fullscreen"]
+        : ["fullscreen"],
+    );
+    target.webContents.session.setPermissionCheckHandler(
+      (contents, permission, requestingOrigin, details) =>
+        Boolean(
+          origin &&
+          (contents === window?.webContents || contents === settingsWindow?.webContents) &&
+          details.isMainFrame &&
+          isBackendNavigation(details.requestingUrl ?? requestingOrigin, origin) &&
+          permissions.has(permission),
+        ),
+    );
+    target.webContents.session.setPermissionRequestHandler(
+      (contents, permission, callback, details) => {
+        if (
+          !origin ||
+          (contents !== window?.webContents && contents !== settingsWindow?.webContents) ||
+          !details.isMainFrame ||
+          !isBackendNavigation(details.requestingUrl, origin)
+        ) {
+          callback(false);
+          return;
+        }
+        if (permissions.has(permission)) {
+          callback(true);
+          return;
+        }
+        if (
+          !["clipboard-read", "clipboard-sanitized-write", "notifications"].includes(permission)
+        ) {
+          callback(false);
+          return;
+        }
+        void dialog
+          .showMessageBox({
+            type: "question",
+            title: text("Cox permission"),
+            message:
+              permission === "clipboard-read"
+                ? text("Allow Cox to read your clipboard?")
+                : permission === "clipboard-sanitized-write"
+                  ? text("Allow Cox to write to your clipboard?")
+                  : text("Allow Cox notifications?"),
+            buttons: [text("Deny"), text("Allow")],
+            defaultId: 0,
+            cancelId: 0,
+          })
+          .then(
+            (result) => {
+              if (result.response === 1) permissions.add(permission);
+              callback(result.response === 1);
+            },
+            () => callback(false),
+          );
+      },
+    );
+  }
+  return target;
 }
 
 function showWindow() {
@@ -268,7 +414,7 @@ async function requestQuit() {
     await finishQuit();
     return;
   }
-  if (desktopReady && window && !window.webContents.isCrashed()) {
+  if (connectionMode === "local" && desktopReady && window && !window.webContents.isCrashed()) {
     showWindow();
     window.webContents.send("cox:quit-requested", "update");
     return;
@@ -277,7 +423,9 @@ async function requestQuit() {
     type: "warning",
     title: text("Install client update"),
     message: text(
-      "Updating the client quits Cox and interrupts running agent turns and terminals.",
+      isRemoteContext()
+        ? "Updating quits Cox. Remote agent tasks and terminals continue on the server."
+        : "Updating the client quits Cox and interrupts running agent turns and terminals.",
     ),
     buttons: [text("Cancel"), text("Continue")],
     defaultId: 0,
@@ -299,6 +447,26 @@ async function applyBackendUpdate() {
 
 async function applySoftwareUpdates() {
   if (!softwareUpdates || approvedQuit || quitPending) return;
+  if (isRemoteContext()) {
+    const client = clientUpdates?.getState();
+    if (client?.status !== "ready") throw new Error("The client update is not ready.");
+    const answer = await dialog.showMessageBox({
+      type: "warning",
+      title: text("Restart and install updates?"),
+      message: text("Updating quits Cox. Remote agent tasks and terminals continue on the server."),
+      detail: `Cox Desktop ${client.currentVersion} → ${client.latestVersion ?? ""}`,
+      buttons: [text("Cancel"), text("Restart and update")],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (answer.response !== 1 || approvedQuit || quitPending) return;
+    updateAfterQuit = true;
+    restartAfterQuit = false;
+    quitPending = true;
+    await finishQuit();
+    return;
+  }
   await softwareUpdates.apply(
     async (state) => {
       const manual = state.client.status === "ready" && state.client.installMode === "manual";
@@ -358,11 +526,12 @@ async function finishQuit() {
     stoppingBackend = false;
     if (updateAfterQuit) {
       updateAfterQuit = false;
-      try {
-        await recoverBackend?.();
-      } catch (recoveryError) {
-        dialog.showErrorBox("Cox", String(recoveryError));
-      }
+      if (localOrigin)
+        try {
+          await recoverBackend?.();
+        } catch (recoveryError) {
+          dialog.showErrorBox("Cox", String(recoveryError));
+        }
       dialog.showErrorBox(text("Install client update"), String(error));
       return;
     }
@@ -430,6 +599,13 @@ async function start() {
   };
   const isTrustedSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
     Boolean(senderWindow(event));
+  const isTrustedLocalSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
+    connectionMode === "local" && isTrustedSender(event);
+  const checkActiveUpdates = async () => {
+    if (isRemoteContext()) await clientUpdates?.check();
+    else await softwareUpdates?.check();
+    await offerSoftwareUpdate();
+  };
   ipcMain.on("cox:desktop-ready", (event, capabilities: unknown) => {
     const target = senderWindow(event);
     if (!target) return;
@@ -450,27 +626,23 @@ async function start() {
       target.webContents.send("cox:navigate", settingsNavigation);
       settingsNavigation = undefined;
     }
-    if (updates) publishBackendUpdate(updates.getState());
-    if (clientUpdates) publishClientUpdate(clientUpdates.getState());
-    if (!autoCheckStarted && updates) {
-      autoCheckStarted = true;
-      void softwareUpdates
-        ?.check()
-        .then(() => offerSoftwareUpdate())
-        .catch(() => {});
-      setInterval(
-        () => {
-          if (desktopReady && !quitPending) {
-            void softwareUpdates
-              ?.check()
-              .then(() => offerSoftwareUpdate())
-              .catch(() => {});
-          }
-        },
-        6 * 60 * 60 * 1000,
-      ).unref();
+    if (connectionMode === "local" && updates) publishBackendUpdate(updates.getState());
+    if (connectionMode === "local" && clientUpdates) publishClientUpdate(clientUpdates.getState());
+    if (target === window && updates) {
+      void checkActiveUpdates().catch(() => {});
+      if (!autoCheckStarted) {
+        autoCheckStarted = true;
+        setInterval(
+          () => {
+            if (desktopReady && !quitPending) {
+              void checkActiveUpdates().catch(() => {});
+            }
+          },
+          6 * 60 * 60 * 1000,
+        ).unref();
+      }
     }
-    if (quitPending && !stoppingBackend)
+    if (connectionMode === "local" && quitPending && !stoppingBackend)
       window?.webContents.send("cox:quit-requested", updateAfterQuit ? "update" : "quit");
   });
   ipcMain.on("cox:sync-window-controls", (event) => {
@@ -478,7 +650,7 @@ async function start() {
     if (target) syncWindowControls(target);
   });
   ipcMain.on("cox:backend-update-listening", (event) => {
-    if (isTrustedSender(event)) rendererUpdatesReady = true;
+    if (isTrustedLocalSender(event)) rendererUpdatesReady = true;
   });
   for (const [channel, action] of [
     ["cox:updates-check", () => softwareUpdates?.check(true)],
@@ -486,12 +658,12 @@ async function start() {
     ["cox:updates-apply", () => applySoftwareUpdates()],
   ] as const) {
     ipcMain.handle(channel, (event) => {
-      if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+      if (!isTrustedLocalSender(event)) throw new Error("Untrusted desktop update request.");
       return action();
     });
   }
   ipcMain.handle("cox:updates-policy", (event, policy: unknown) => {
-    if (!isTrustedSender(event) || (policy !== "automatic" && policy !== "never"))
+    if (!isTrustedLocalSender(event) || (policy !== "automatic" && policy !== "never"))
       throw new Error("Invalid desktop update policy request.");
     return softwareUpdates?.setPolicy(policy);
   });
@@ -501,16 +673,16 @@ async function start() {
     ["cox:backend-update-install", async () => (await softwareUpdates?.download())?.backend],
   ] as const) {
     ipcMain.handle(channel, (event) => {
-      if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+      if (!isTrustedLocalSender(event)) throw new Error("Untrusted desktop update request.");
       return action();
     });
   }
   ipcMain.handle("cox:backend-update-apply", (event) => {
-    if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+    if (!isTrustedLocalSender(event)) throw new Error("Untrusted desktop update request.");
     return applyBackendUpdate();
   });
   ipcMain.handle("cox:backend-update-policy", (event, policy: unknown, version: unknown) => {
-    if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+    if (!isTrustedLocalSender(event)) throw new Error("Untrusted desktop update request.");
     if (
       (policy !== "automatic" && policy !== "ignore-version" && policy !== "never") ||
       (version !== undefined && typeof version !== "string")
@@ -526,13 +698,13 @@ async function start() {
     ["cox:client-update-download", async () => (await softwareUpdates?.download())?.client],
   ] as const) {
     ipcMain.handle(channel, (event) => {
-      if (!isTrustedSender(event)) throw new Error("Untrusted client update request.");
+      if (!isTrustedLocalSender(event)) throw new Error("Untrusted client update request.");
       return action();
     });
   }
   ipcMain.handle("cox:client-update-policy", (event, policy: unknown, version: unknown) => {
     if (
-      !isTrustedSender(event) ||
+      !isTrustedLocalSender(event) ||
       !["automatic", "ignore-version", "never"].includes(String(policy)) ||
       (version !== undefined && typeof version !== "string")
     )
@@ -542,14 +714,54 @@ async function start() {
       : softwareUpdates?.setPolicy(policy as "automatic" | "never").then((state) => state.client);
   });
   ipcMain.handle("cox:client-update-apply", async (event) => {
-    if (!isTrustedSender(event) || clientUpdates?.getState().status !== "ready")
+    if (!isTrustedLocalSender(event) || clientUpdates?.getState().status !== "ready")
       throw new Error("The client update is not ready.");
     await applySoftwareUpdates();
   });
-  window.on("enter-full-screen", () => syncWindowControls());
-  window.on("leave-full-screen", () => syncWindowControls());
-  window.webContents.on("did-finish-load", () => syncWindowControls());
-  window.webContents.on("zoom-changed", () => setImmediate(syncWindowControls));
+  function configureMainWindow() {
+    const target = window;
+    if (!target) return;
+    target.on("enter-full-screen", () => syncWindowControls(target));
+    target.on("leave-full-screen", () => syncWindowControls(target));
+    target.webContents.on("did-finish-load", () => syncWindowControls(target));
+    target.webContents.on("zoom-changed", () => setImmediate(() => syncWindowControls(target)));
+    target.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
+      if (isMainFrame && !inPlace) {
+        readyWindows.delete(target.webContents.id);
+        desktopReady = false;
+        rendererUpdatesReady = false;
+      }
+    });
+    target.on("close", (event) => {
+      if (approvedQuit) return;
+      event.preventDefault();
+      if (process.platform === "darwin") target.hide();
+      else app.quit();
+    });
+    target.on("resize", () => {
+      if (target.isMaximized() || target.isMinimized()) return;
+      const [currentWidth, currentHeight] = target.getSize();
+      try {
+        writeFileSync(boundsPath, JSON.stringify({ width: currentWidth, height: currentHeight }), {
+          mode: 0o600,
+        });
+      } catch {}
+    });
+    target.webContents.setWindowOpenHandler(({ url }) => {
+      void openExternal(url);
+      return { action: "deny" };
+    });
+    const guardNavigation = (event: Event, target: string) => {
+      if (localPageUrl && target === localPageUrl) return;
+      if (origin && isBackendNavigation(target, origin)) return;
+      event.preventDefault();
+      void openExternal(target);
+    };
+    target.webContents.on("will-navigate", guardNavigation);
+    target.webContents.on("will-redirect", guardNavigation);
+    target.webContents.on("will-attach-webview", (event) => event.preventDefault());
+  }
+  configureMainWindow();
   ipcMain.on("cox:quit-answer", (event, confirmed: unknown) => {
     if (!isTrustedSender(event) || !quitPending || stoppingBackend) return;
     if (confirmed === false) {
@@ -578,40 +790,6 @@ async function start() {
       } catch {}
     }
   });
-  window.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
-    if (isMainFrame && !inPlace) {
-      if (window) readyWindows.delete(window.webContents.id);
-      desktopReady = false;
-      rendererUpdatesReady = false;
-    }
-  });
-  window.on("close", (event) => {
-    if (approvedQuit) return;
-    event.preventDefault();
-    if (process.platform === "darwin") window?.hide();
-    else app.quit();
-  });
-  window.on("resize", () => {
-    if (!window || window.isMaximized() || window.isMinimized()) return;
-    const [currentWidth, currentHeight] = window.getSize();
-    try {
-      writeFileSync(boundsPath, JSON.stringify({ width: currentWidth, height: currentHeight }), {
-        mode: 0o600,
-      });
-    } catch {}
-  });
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    void openExternal(url);
-    return { action: "deny" };
-  });
-  const guardNavigation = (event: Event, target: string) => {
-    if (origin && isBackendNavigation(target, origin)) return;
-    event.preventDefault();
-    void openExternal(target);
-  };
-  window.webContents.on("will-navigate", guardNavigation);
-  window.webContents.on("will-redirect", guardNavigation);
-  window.webContents.on("will-attach-webview", (event) => event.preventDefault());
   const openSettings = async (path?: unknown, visible = true) => {
     if (!origin || quitPending) return;
     const destination = settingsWindowUrl(path ?? "/settings/general", origin);
@@ -757,63 +935,22 @@ async function start() {
     }, 250);
     prewarmSettingsTimer.unref();
   }
-  const permissions = new Set<string>(["clipboard-sanitized-write", "fullscreen"]);
-  window.webContents.session.setPermissionCheckHandler(
-    (contents, permission, requestingOrigin, details) =>
-      Boolean(
-        origin &&
-        (contents === window?.webContents || contents === settingsWindow?.webContents) &&
-        details.isMainFrame &&
-        isBackendNavigation(details.requestingUrl ?? requestingOrigin, origin) &&
-        permissions.has(permission),
-      ),
-  );
-  window.webContents.session.setPermissionRequestHandler(
-    (contents, permission, callback, details) => {
-      if (
-        !origin ||
-        (contents !== window?.webContents && contents !== settingsWindow?.webContents) ||
-        !details.isMainFrame ||
-        !isBackendNavigation(details.requestingUrl, origin)
-      ) {
-        callback(false);
-        return;
-      }
-      if (permissions.has(permission)) {
-        callback(true);
-        return;
-      }
-      if (!["clipboard-read", "notifications"].includes(permission)) {
-        callback(false);
-        return;
-      }
-      void dialog
-        .showMessageBox({
-          type: "question",
-          title: text("Cox permission"),
-          message:
-            permission === "clipboard-read"
-              ? text("Allow Cox to read your clipboard?")
-              : text("Allow Cox notifications?"),
-          buttons: [text("Deny"), text("Allow")],
-          defaultId: 0,
-          cancelId: 0,
-        })
-        .then(
-          (result) => {
-            if (result.response === 1) permissions.add(permission);
-            callback(result.response === 1);
-          },
-          () => callback(false),
-        );
-    },
-  );
   const menu = createDesktopMenuTemplate(process.platform, systemLocale(), {
     openMain: showWindow,
+    openConnections: () => {
+      void showConnections();
+    },
     openSettings: () => {
       void openSettings().catch(() => {});
     },
     checkUpdates: () => {
+      if (isRemoteContext()) {
+        void clientUpdates
+          ?.check(true)
+          .then(() => offerRemoteClientUpdate(true))
+          .catch(() => {});
+        return;
+      }
       void (supportsSettingsWindow ? openSettings("/settings/about") : Promise.resolve())
         .then(() => softwareUpdates?.check(true))
         .then(() => (supportsSettingsWindow ? undefined : offerSoftwareUpdate(true)))
@@ -824,7 +961,8 @@ async function start() {
         ?.setPolicy(item.checked ? "automatic" : "never")
         .then(async () => {
           if (item.checked) {
-            await softwareUpdates?.check();
+            if (isRemoteContext()) await clientUpdates?.check();
+            else await softwareUpdates?.check();
             await offerSoftwareUpdate();
           }
         })
@@ -865,7 +1003,6 @@ async function start() {
     startupColors,
     "data:image/png;base64," + readFileSync(startupIcon).toString("base64"),
   );
-  await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(startupPage));
   const nodePath = app.isPackaged
     ? join(
         process.resourcesPath,
@@ -1010,48 +1147,261 @@ async function start() {
         ? window.webContents.getURL().slice(origin.length)
         : "/";
     origin = await startBackend(runningBackendDirectory);
+    localOrigin = origin;
+    connectionMode = "local";
     await window?.loadURL(origin + mainPath);
     if (settingsWindow && !settingsWindow.isDestroyed())
       await settingsWindow.loadURL(origin + "/settings/about");
   };
-  while (true) {
-    if (approvedQuit || quitPending) return;
+  function replaceMainWindow(partition: string) {
+    const previous = window;
+    if (!previous || previous.isDestroyed()) return;
+    const [currentWidth = 1360, currentHeight = 900] = previous.getSize();
+    readyWindows.delete(previous.webContents.id);
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.destroy();
+    settingsWindow = undefined;
+    settingsNavigation = undefined;
+    desktopReady = false;
+    rendererUpdatesReady = false;
+    supportsSettingsWindow = false;
+    localPageUrl = undefined;
+    origin = undefined;
+    window = createDesktopWindow("main", currentWidth, currentHeight, true, partition);
+    mainPartition = partition;
+    configureMainWindow();
+    previous.destroy();
+  }
+
+  async function loadStartupPage() {
+    if (!window || window.isDestroyed()) return;
+    localPageUrl = "data:text/html;charset=utf-8," + encodeURIComponent(startupPage);
+    await window.loadURL(localPageUrl);
+  }
+
+  async function showConnections(error?: unknown) {
+    if (!connectionStore || !window || window.isDestroyed() || approvedQuit) return;
+    connectionGeneration++;
+    connectionMode = "manager";
+    origin = undefined;
+    startingBackend = false;
+    desktopReady = false;
+    rendererUpdatesReady = false;
+    supportsSettingsWindow = false;
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.destroy();
+    settingsWindow = undefined;
+    settingsNavigation = undefined;
+    const icon = "data:image/png;base64," + readFileSync(startupIcon).toString("base64");
+    localPageUrl =
+      "data:text/html;charset=utf-8," +
+      encodeURIComponent(
+        createConnectionPage(
+          systemLocale(),
+          connectionStore.snapshot(),
+          icon,
+          error === undefined ? undefined : String(error),
+        ),
+      );
+    await window.loadURL(localPageUrl);
+  }
+
+  async function startLocal() {
+    if (switchingConnections || approvedQuit || quitPending) return;
+    const backendUpdates = updates;
+    if (!backendUpdates) throw new Error("Cox updates are not initialized.");
+    switchingConnections = true;
+    const generation = ++connectionGeneration;
     try {
-      origin = await updates.launch(startBackend, () => backend?.stop() ?? Promise.resolve());
-      break;
-    } catch (error) {
-      if (approvedQuit || quitPending) return;
-      if (macUpdateLaunch && !macUpdateLaunch.acknowledged) {
-        await macUpdateLaunch.fail();
-        throw error;
-      }
-      log.write(String(error) + "\n");
-      const answer = await dialog.showMessageBox({
-        type: "error",
-        title: text("Cox startup"),
-        message:
-          text(
-            "Cox could not start or finish its first installation. Check your connection and retry.",
-          ) +
-          "\n\n" +
-          String(error),
-        buttons: [text("Quit"), text("Retry")],
-        defaultId: 1,
-        cancelId: 0,
-        noLink: true,
-      });
-      if (answer.response !== 1) {
-        await updates.close();
-        await backend?.stop();
-        approvedQuit = true;
-        app.quit();
+      activeRemoteProfile = undefined;
+      if (mainPartition !== "persist:cox-desktop") replaceMainWindow("persist:cox-desktop");
+      connectionMode = "local";
+      if (localOrigin) {
+        origin = localOrigin;
+        startingBackend = false;
+        localPageUrl = undefined;
+        await window?.loadURL(localOrigin);
+        connectionStore.setActive({ kind: "local" });
         return;
       }
+      origin = undefined;
+      startingBackend = true;
+      await loadStartupPage();
+      while (true) {
+        if (generation !== connectionGeneration || approvedQuit || quitPending) return;
+        try {
+          const startedOrigin = await backendUpdates.launch(
+            startBackend,
+            () => backend?.stop() ?? Promise.resolve(),
+          );
+          localOrigin = startedOrigin;
+          if (generation !== connectionGeneration || connectionMode !== "local") {
+            await backend?.stop();
+            localOrigin = undefined;
+            return;
+          }
+          origin = startedOrigin;
+          localPageUrl = undefined;
+          startingBackend = false;
+          if (!approvedQuit) await window?.loadURL(startedOrigin);
+          connectionStore.setActive({ kind: "local" });
+          break;
+        } catch (error) {
+          if (generation !== connectionGeneration || approvedQuit || quitPending) return;
+          if (macUpdateLaunch && !macUpdateLaunch.acknowledged) {
+            await macUpdateLaunch.fail();
+            throw error;
+          }
+          log.write(String(error) + "\n");
+          const answer = await dialog.showMessageBox({
+            type: "error",
+            title: text("Cox startup"),
+            message:
+              text(
+                "Cox could not start or finish its first installation. Check your connection and retry.",
+              ) +
+              "\n\n" +
+              String(error),
+            buttons: [text("Quit"), text("Retry")],
+            defaultId: 1,
+            cancelId: 0,
+            noLink: true,
+          });
+          if (answer.response !== 1) {
+            await backendUpdates.close();
+            await backend?.stop();
+            approvedQuit = true;
+            app.quit();
+            return;
+          }
+        }
+      }
+    } finally {
+      if (generation === connectionGeneration) startingBackend = false;
+      switchingConnections = false;
     }
   }
-  startingBackend = false;
-  if (!origin) return;
-  if (!approvedQuit) await window.loadURL(origin);
+
+  async function connectRemote(input: {
+    readonly id?: string;
+    readonly name?: string;
+    readonly origin?: string;
+  }) {
+    if (switchingConnections || approvedQuit || quitPending) return;
+    switchingConnections = true;
+    try {
+      const existing = input.id ? connectionStore.profile(input.id) : undefined;
+      if (input.id && !existing) throw new Error("Unknown remote server.");
+      const targetOrigin = input.origin ?? existing?.origin;
+      if (!targetOrigin) throw new Error("Enter an HTTPS server origin.");
+      const inspection = await inspectRemoteServer(targetOrigin, (input, init) =>
+        net.fetch(input instanceof URL ? input.href : input, init),
+      );
+      const profile = connectionStore.saveRemote(inspection, {
+        ...(input.id ? { id: input.id } : {}),
+        ...(input.name !== undefined ? { name: input.name } : {}),
+      });
+      if (localOrigin && backend) {
+        const answer = await dialog.showMessageBox({
+          type: "warning",
+          title: text("Connect to remote server"),
+          message: text(
+            "Switching to a remote server stops the local backend and interrupts local agent tasks and terminals.",
+          ),
+          buttons: [text("Cancel"), text("Continue")],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        if (answer.response !== 1) return;
+        await backend.stop();
+        localOrigin = undefined;
+      }
+      connectionGeneration++;
+      activeRemoteProfile = profile;
+      const partition = remotePartition(profile.id);
+      if (mainPartition !== partition) replaceMainWindow(partition);
+      connectionMode = "remote";
+      origin = profile.origin;
+      startingBackend = false;
+      localPageUrl = undefined;
+      await window?.loadURL(profile.origin);
+      connectionStore.setActive({ kind: "remote", profileId: profile.id });
+    } catch (error) {
+      log.write(`${String(error)}\n`);
+      await showConnections(error);
+    } finally {
+      switchingConnections = false;
+    }
+  }
+
+  async function forgetRemote(id: string) {
+    const profile = connectionStore.profile(id);
+    if (!profile) return;
+    const answer = await dialog.showMessageBox({
+      type: "warning",
+      title: text("Forget remote server"),
+      message: text("Forget this server and clear its local session and cached data?"),
+      detail: profile.origin,
+      buttons: [text("Cancel"), text("Continue")],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (answer.response !== 1) return;
+    const remoteSession = session.fromPartition(remotePartition(profile.id));
+    await remoteSession.clearStorageData();
+    await remoteSession.clearCache();
+    await remoteSession.clearAuthCache();
+    connectionStore.remove(profile.id);
+    if (activeRemoteProfile?.id === profile.id) activeRemoteProfile = undefined;
+    await showConnections();
+  }
+
+  const connectionManagerSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
+    Boolean(
+      window &&
+      !window.isDestroyed() &&
+      event.sender === window.webContents &&
+      event.senderFrame === window.webContents.mainFrame &&
+      localPageUrl &&
+      event.senderFrame.url === localPageUrl,
+    );
+  ipcMain.handle("cox:connections-show", (event) => {
+    if (!connectionManagerSender(event)) throw new Error("Untrusted connection request.");
+    return showConnections();
+  });
+  ipcMain.handle("cox:connections-local", (event) => {
+    if (!connectionManagerSender(event)) throw new Error("Untrusted connection request.");
+    return startLocal();
+  });
+  ipcMain.handle("cox:connections-connect", (event, input: unknown) => {
+    if (!connectionManagerSender(event) || typeof input !== "object" || input === null)
+      throw new Error("Invalid remote connection request.");
+    const value = input as Record<string, unknown>;
+    if (
+      (value.id !== undefined && typeof value.id !== "string") ||
+      (value.name !== undefined && typeof value.name !== "string") ||
+      (value.origin !== undefined && typeof value.origin !== "string")
+    )
+      throw new Error("Invalid remote connection request.");
+    return connectRemote({
+      ...(typeof value.id === "string" ? { id: value.id } : {}),
+      ...(typeof value.name === "string" ? { name: value.name } : {}),
+      ...(typeof value.origin === "string" ? { origin: value.origin } : {}),
+    });
+  });
+  ipcMain.handle("cox:connections-forget", (event, id: unknown) => {
+    if (!connectionManagerSender(event) || typeof id !== "string")
+      throw new Error("Invalid remote connection request.");
+    return forgetRemote(id);
+  });
+
+  const freshClientOnly =
+    metadata.coxVersion === null && !existsSync(join(home, "backend-updates", "state.json"));
+  connectionStore = new DesktopConnectionStore(home, freshClientOnly ? null : { kind: "local" });
+  const active = connectionStore.snapshot().active;
+  if (active?.kind === "remote") await connectRemote({ id: active.profileId });
+  else if (active?.kind === "local") await startLocal();
+  else await showConnections();
 }
 
 if (
