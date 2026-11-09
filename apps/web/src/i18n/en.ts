@@ -1,4 +1,18 @@
 export const en = {
+  "Update the client first; Cox will be checked again after relaunch.":
+    "Update the client first; Cox will be checked again after relaunch.",
+  "Software updates are not ready.": "Software updates are not ready.",
+  "Software updates changed. Check for updates again.":
+    "Software updates changed. Check for updates again.",
+  "Updates are ready to install.": "Updates are ready to install.",
+  "Cox update version": "Cox update version",
+  "Check for client and Cox updates together.": "Check for client and Cox updates together.",
+  "Could not finish updating. Check for updates again.":
+    "Could not finish updating. Check for updates again.",
+  "Downloading and verifying updates. Current tasks will not be interrupted.":
+    "Downloading and verifying updates. Current tasks will not be interrupted.",
+  "Updates are available. Download them together without interrupting current tasks.":
+    "Updates are available. Download them together without interrupting current tasks.",
   "Destination thread": "Destination thread",
   "Started by the first run": "Started by the first run",
   "Search all threads...": "Search all threads...",

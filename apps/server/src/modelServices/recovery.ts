@@ -16,6 +16,7 @@ export class ModelServiceRequestFailure extends Data.TaggedError("ModelServiceRe
   readonly retryAfterMs?: number;
   readonly code?: string | undefined;
   readonly source?: "gateway" | "upstream" | undefined;
+  readonly requestId?: string | undefined;
   readonly timeoutMs?: number;
   readonly terminationReason?: string;
   readonly budgetMs?: number;
@@ -26,6 +27,7 @@ export class ModelServiceRequestFailure extends Data.TaggedError("ModelServiceRe
     readonly source?: "gateway" | "upstream" | undefined;
     readonly status: number;
     readonly detail: string;
+    readonly requestId?: string | undefined;
     readonly timeoutMs?: number | undefined;
   };
 }> {}
@@ -55,6 +57,7 @@ export interface RecoveryDiagnostic {
   readonly status?: number;
   readonly code?: string | undefined;
   readonly source?: "gateway" | "upstream" | undefined;
+  readonly upstreamRequestId?: string | undefined;
   readonly elapsedMs: number;
 }
 
@@ -101,6 +104,7 @@ export function isRetryableModelServiceError(
       "unsupported_parameter",
       "unsupported_value",
       "invalid_request_error",
+      "invalid_encrypted_content",
       "max_output_tokens",
       "content_filter",
     ].includes(code)
@@ -118,6 +122,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   readonly enabled: Effect.Effect<boolean>;
   readonly cancelled?: Effect.Effect<boolean>;
   readonly attempt: (attempt: number) => Effect.Effect<A, ModelServiceRequestFailure, Scope.Scope>;
+  readonly repair?: (error: ModelServiceRequestFailure) => Effect.Effect<boolean>;
   readonly progress: (progress: RecoveryProgress) => Effect.Effect<void>;
   readonly diagnostic?: (event: RecoveryDiagnostic) => Effect.Effect<void>;
 }) {
@@ -137,6 +142,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   let retryAt = Infinity;
   let announced = false;
   let settled = false;
+  let repaired = false;
   let terminationReason = "recovery_budget_exhausted";
   let permanentFailure: ModelServiceRequestFailure | undefined;
   let lastAttemptFailure: ModelServiceRequestFailure | undefined;
@@ -237,15 +243,17 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt) {
       const reason = permanentFailure
         ? "permanent_attempt_failure"
-        : !cooled
-          ? "retry_after_cooldown"
-          : attempts >= policy.maxAttempts
-            ? "attempt_limit"
-            : active.size >= policy.maxConcurrent
-              ? "concurrency_limit"
-              : load.hedges >= 9 || load.inFlight >= 16
-                ? "service_load_limit"
-                : undefined;
+        : repaired
+          ? "request_repaired"
+          : !cooled
+            ? "retry_after_cooldown"
+            : attempts >= policy.maxAttempts
+              ? "attempt_limit"
+              : active.size >= policy.maxConcurrent
+                ? "concurrency_limit"
+                : load.hedges >= 9 || load.inFlight >= 16
+                  ? "service_load_limit"
+                  : undefined;
       if (reason && !waits.has(reason)) {
         waits.add(reason);
         yield* diagnostic({ event: "hedge_waiting", reason });
@@ -263,7 +271,13 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       if (policy.retryEnabled && now >= retryAt) {
         retryAt = Infinity;
         yield* launch(active.size > 0);
-      } else if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt && load.hedges < 9) {
+      } else if (
+        !repaired &&
+        policy.hedgeEnabled &&
+        active.size > 0 &&
+        now >= nextHedgeAt &&
+        load.hedges < 9
+      ) {
         yield* launch(true);
       }
     }
@@ -294,7 +308,9 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
                   active.size < policy.maxConcurrent &&
                   attempts < policy.maxAttempts
                   ? Math.min(
-                      policy.hedgeEnabled && active.size > 0 ? nextHedgeAt - now : Infinity,
+                      !repaired && policy.hedgeEnabled && active.size > 0
+                        ? nextHedgeAt - now
+                        : Infinity,
                       policy.retryEnabled ? retryAt - now : Infinity,
                     )
                   : Infinity,
@@ -322,7 +338,32 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       status: lastFailure.status,
       code: lastFailure.code,
       source: lastFailure.source,
+      upstreamRequestId: lastFailure.requestId,
     });
+    if (repaired) {
+      permanentFailure ??= lastFailure;
+      retryAt = Infinity;
+      continue;
+    }
+    if (lastFailure.code === "invalid_encrypted_content" && lastFailure.source === "upstream") {
+      const canRepair =
+        !repaired &&
+        !permanentFailure &&
+        policy.retryEnabled &&
+        attempts < policy.maxAttempts &&
+        options.repair &&
+        (yield* options.repair(lastFailure));
+      if (canRepair) {
+        repaired = true;
+        for (const id of active.keys()) yield* close(id, "request_repaired");
+        retryAt = yield* Clock.currentTimeMillis;
+        yield* report("retrying", 0, "invalid_encrypted_content");
+      } else {
+        permanentFailure ??= lastFailure;
+        retryAt = Infinity;
+      }
+      continue;
+    }
     const forceRetry =
       lastFailure.status === 429
         ? policy.retryOn429
@@ -367,6 +408,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       budgetExhausted || terminationReason === "recovery_attempts_exhausted"
         ? "gateway"
         : lastFailure.source,
+    requestId: lastFailure.requestId,
     terminationReason,
     budgetMs: policy.budgetMs,
     elapsedMs: (yield* Clock.currentTimeMillis) - started,
@@ -378,6 +420,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
             source: lastAttemptFailure.source,
             status: lastAttemptFailure.status,
             detail: lastAttemptFailure.detail,
+            requestId: lastAttemptFailure.requestId,
             timeoutMs: lastAttemptFailure.timeoutMs,
           },
         }

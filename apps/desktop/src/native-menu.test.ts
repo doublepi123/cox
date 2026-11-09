@@ -34,9 +34,7 @@ function menuActions() {
   return {
     openMain: vi.fn(),
     openSettings: vi.fn(),
-    checkClientUpdates: vi.fn(),
-    installClientUpdate: vi.fn(),
-    checkBackendUpdates: vi.fn(),
+    checkUpdates: vi.fn(),
     toggleAutomaticUpdates: vi.fn(),
     openLogs: vi.fn(),
   };
@@ -66,9 +64,7 @@ describe("native application menu placement", () => {
     expect(applicationItems.map((item) => item.click)).toEqual(
       expect.arrayContaining([
         actions.openSettings,
-        actions.checkClientUpdates,
-        actions.installClientUpdate,
-        actions.checkBackendUpdates,
+        actions.checkUpdates,
         actions.toggleAutomaticUpdates,
       ]),
     );
@@ -93,9 +89,7 @@ describe("native application menu placement", () => {
     expect(helpMenu?.label).toBe(help);
     expect(fileItems.map((item) => item.click).filter(Boolean)).toEqual([actions.openSettings]);
     expect(helpItems.map((item) => item.click).filter(Boolean)).toEqual([
-      actions.checkClientUpdates,
-      actions.installClientUpdate,
-      actions.checkBackendUpdates,
+      actions.checkUpdates,
       actions.toggleAutomaticUpdates,
       actions.openLogs,
     ]);
@@ -107,11 +101,15 @@ describe("native application menu placement", () => {
     (platform) => {
       const actions = menuActions();
       const items = flatten(createDesktopMenuTemplate(platform, "en-US", actions));
-      const install = items.filter((item) => item.id === "cox-client-update-install");
+      const check = items.filter((item) => item.id === "cox-check-updates");
       const automatic = items.filter((item) => item.id === "cox-automatic-updates");
 
-      expect(install).toHaveLength(1);
-      expect(install[0]).toMatchObject({ enabled: false, click: actions.installClientUpdate });
+      expect(check).toHaveLength(1);
+      expect(check[0]).toMatchObject({ label: "Check for updates", click: actions.checkUpdates });
+      expect(items.some((item) => item.id === "cox-client-update-install")).toBe(false);
+      expect(items.some((item) => /Check for (Client|Cox) Updates/.test(item.label ?? ""))).toBe(
+        false,
+      );
       expect(automatic).toHaveLength(1);
       expect(automatic[0]).toMatchObject({
         type: "checkbox",
@@ -123,6 +121,12 @@ describe("native application menu placement", () => {
       );
     },
   );
+
+  it("uses one localized check action and one shared automatic policy", () => {
+    const items = flatten(createDesktopMenuTemplate("darwin", "zh-CN", menuActions()));
+    expect(items.filter((item) => item.label === "检查更新")).toHaveLength(1);
+    expect(items.filter((item) => item.label === "自动检查更新")).toHaveLength(1);
+  });
 });
 
 describe("localized native menus", () => {

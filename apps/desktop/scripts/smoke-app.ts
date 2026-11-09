@@ -154,6 +154,52 @@ try {
   );
   assert.equal(page.url(), mainUrl);
   assert.equal(await settings.locator("[data-app-modal]").count(), 0);
+  await application.evaluate(({ app, Menu }) => {
+    const { join } = process.getBuiltinModule("path");
+    const require = process
+      .getBuiltinModule("module")
+      .createRequire(join(app.getAppPath(), "package.json"));
+    const { BackendUpdates } =
+      require("./dist/backend-updates.js") as typeof import("../src/backend-updates.ts");
+    const { ClientUpdates } =
+      require("./dist/client-updates.js") as typeof import("../src/client-updates.ts");
+    const originalBackend = BackendUpdates.prototype.check;
+    const originalClient = ClientUpdates.prototype.check;
+    const state = {
+      backend: 0,
+      client: 0,
+      restore: () => {
+        BackendUpdates.prototype.check = originalBackend;
+        ClientUpdates.prototype.check = originalClient;
+      },
+    };
+    Reflect.set(globalThis, "__coxUnifiedUpdateSmoke", state);
+    BackendUpdates.prototype.check = async function () {
+      state.backend++;
+      return this.getState();
+    };
+    ClientUpdates.prototype.check = async function () {
+      state.client++;
+      return this.getState();
+    };
+    const menu = Menu.getApplicationMenu();
+    const check = menu?.getMenuItemById("cox-check-updates");
+    if (!check || menu?.getMenuItemById("cox-client-update-install"))
+      throw new Error("Expected a single check action.");
+    check.click();
+  });
+  await settings.waitForFunction(async () => {
+    const result = await Reflect.get(window, "coxDesktop").checkUpdates();
+    return Boolean(result.backend && result.client);
+  });
+  const checked = await application.evaluate(() => {
+    const state = Reflect.get(globalThis, "__coxUnifiedUpdateSmoke");
+    const counts = { backend: state.backend, client: state.client };
+    state.restore();
+    return counts;
+  });
+  assert.ok(checked.backend >= 1);
+  assert.equal(checked.backend, checked.client);
   assert.equal(
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
     2,
@@ -206,6 +252,8 @@ try {
         .createRequire(join(app.getAppPath(), "package.json"));
       const { BackendUpdates } =
         require("./dist/backend-updates.js") as typeof import("../src/backend-updates.ts");
+      const { ClientUpdates } =
+        require("./dist/client-updates.js") as typeof import("../src/client-updates.ts");
       const { BackendProcess } = require("./dist/backend.js") as typeof import("../src/backend.ts");
       const state = { ready: false, response: 0, confirmations: 0, errors: 0, stopFailures: 0 };
       Reflect.set(globalThis, "__coxBackendRestartSmoke", state);
@@ -213,6 +261,13 @@ try {
       BackendUpdates.prototype.getState = function () {
         const current = getState.call(this);
         return state.ready ? { ...current, status: "ready", latestVersion: "99.0.0" } : current;
+      };
+      const getClientState = ClientUpdates.prototype.getState;
+      ClientUpdates.prototype.getState = function () {
+        const current = getClientState.call(this);
+        return state.ready
+          ? { ...current, status: "idle", latestVersion: current.currentVersion, message: null }
+          : current;
       };
       const stop = BackendProcess.prototype.stop;
       BackendProcess.prototype.stop = async function () {

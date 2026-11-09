@@ -13,8 +13,7 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { DialogSuppressionContext } from "./ui/dialog";
-import { useDesktopBackendUpdate } from "../hooks/useDesktopBackendUpdate";
-import { useDesktopClientUpdate } from "../hooks/useDesktopClientUpdate";
+import { useDesktopSoftwareUpdate } from "../hooks/useDesktopSoftwareUpdate";
 import { DesktopUpdateProgress } from "./DesktopUpdateProgress";
 import { toastManager } from "./ui/toast";
 import { closeDesktopSettings } from "../lib/closeDesktopSettings";
@@ -42,25 +41,31 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [quitting, setQuitting] = useState(false);
-  const updates = useDesktopBackendUpdate();
-  const clientUpdates = useDesktopClientUpdate();
+  const softwareUpdates = useDesktopSoftwareUpdate();
+  const { backend: updates, client: clientUpdates, plan } = softwareUpdates;
+  const unifiedUpdates = Boolean(window.coxDesktop?.checkUpdates || clientUpdates.state);
   const clientNotice = useRef<string | null>(null);
-  const clientStatus = clientUpdates.state?.status;
+  const updateToastId = useRef<string | null>(null);
   const clientVersion = clientUpdates.state?.latestVersion;
   useEffect(() => {
     if (
       window.coxDesktop?.windowKind === "settings" ||
-      !clientVersion ||
-      (clientStatus !== "available" && clientStatus !== "ready")
+      !unifiedUpdates ||
+      (plan.status !== "available" && plan.status !== "ready")
     )
       return;
-    const key = `${clientStatus}:${clientVersion}`;
+    const key = `${plan.status}:${clientVersion}:${updates.state?.latestVersion}`;
     if (clientNotice.current === key) return;
     clientNotice.current = key;
-    toastManager.add({
+    if (updateToastId.current) toastManager.close(updateToastId.current);
+    updateToastId.current = toastManager.add({
       type: "info",
-      title: t(clientStatus === "ready" ? "Client update ready" : "Client update available"),
-      description: t("Cox Desktop {version} is available.", { version: clientVersion }),
+      title: t("Software updates"),
+      description: t(
+        plan.status === "ready"
+          ? "Updates are ready to install."
+          : "Updates are available. Download them together without interrupting current tasks.",
+      ),
       actionProps: {
         children: t("View"),
         onClick: () => {
@@ -68,7 +73,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
         },
       },
     });
-  }, [clientStatus, clientVersion, t]);
+  }, [plan.status, clientVersion, updates.state?.latestVersion, unifiedUpdates, t]);
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
   const updateState = updates.state;
   const updateKey =
@@ -80,6 +85,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
         ? "update:" + updateState.latestVersion
         : null;
   const updateOpen =
+    !unifiedUpdates &&
     window.coxDesktop?.windowKind !== "settings" &&
     updateKey !== null &&
     updateKey !== dismissedUpdate;
@@ -176,14 +182,24 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
               )}
             </AlertDialogClose>
             {updateState?.status === "ready" && window.coxDesktop.applyBackendUpdate && (
-              <Button onClick={() => void updates.apply()}>{t("Update now")}</Button>
+              <Button onClick={() => void softwareUpdates.apply()}>{t("Update now")}</Button>
             )}
             {updateState?.status === "available" && (
-              <Button onClick={() => void updates.install()}>{t("Download Cox update")}</Button>
+              <Button
+                disabled={softwareUpdates.busy}
+                onClick={() => void softwareUpdates.download()}
+              >
+                {t("Download updates")}
+              </Button>
             )}
             {updateState?.status === "incompatible" && window.coxDesktop.openSettings && (
-              <Button onClick={() => void window.coxDesktop?.openSettings?.("/settings/about")}>
-                {t("Check for client updates")}
+              <Button
+                onClick={() => {
+                  void window.coxDesktop?.openSettings?.("/settings/about");
+                  void softwareUpdates.check();
+                }}
+              >
+                {t("Check for updates")}
               </Button>
             )}
           </AlertDialogFooter>

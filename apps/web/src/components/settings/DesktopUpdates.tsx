@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { EyeOffIcon, MoreHorizontalIcon, RefreshCcwIcon, RotateCcwIcon } from "lucide-react";
-import { useDesktopBackendUpdate } from "../../hooks/useDesktopBackendUpdate";
-import { useDesktopClientUpdate } from "../../hooks/useDesktopClientUpdate";
+import { useDesktopSoftwareUpdate } from "../../hooks/useDesktopSoftwareUpdate";
 import { useTranslation } from "../../i18n";
 import { DesktopUpdateProgress } from "../DesktopUpdateProgress";
 import { Button } from "../ui/button";
@@ -11,148 +9,97 @@ import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 export function DesktopUpdates() {
   const { t } = useTranslation();
-  const backend = useDesktopBackendUpdate();
-  const client = useDesktopClientUpdate();
-  const [applying, setApplying] = useState(false);
+  const updates = useDesktopSoftwareUpdate();
+  const { backend, client, plan, busy } = updates;
   const backendState = backend.state;
   const clientState = client.state;
   if (!backendState) return null;
 
-  const clientNeedsDownload =
-    clientState !== null &&
-    (clientState.status === "available" ||
-      (clientState.status === "error" && clientState.latestVersion !== null));
-  const backendNeedsDownload =
-    backendState.status === "available" ||
-    (backendState.status === "error" && backendState.latestVersion !== null);
-  const busy =
-    applying ||
-    clientState?.status === "checking" ||
-    clientState?.status === "downloading" ||
-    backendState.status === "checking" ||
-    backendState.status === "installing";
   const showRestore =
     clientState?.automaticChecks === false ||
     typeof clientState?.ignoredVersion === "string" ||
     backendState.automaticChecks === false ||
-    backendState.ignoredVersion !== null;
-  const showCheckInMenu = clientNeedsDownload || backendNeedsDownload;
+    typeof backendState.ignoredVersion === "string";
+  const showCheckInMenu = plan.status === "available" || plan.status === "error";
   const canIgnoreBackend = window.coxDesktop?.setBackendUpdatePolicy !== undefined;
   const showMenu = showCheckInMenu || showRestore;
-  const canApplyBackendUpdate = window.coxDesktop?.applyBackendUpdate !== undefined;
+  const canApplyBackendUpdate =
+    window.coxDesktop?.applyUpdates !== undefined ||
+    window.coxDesktop?.applyBackendUpdate !== undefined;
   const clientUpdateVersion =
     clientState?.latestVersion &&
     clientState.latestVersion !== clientState.currentVersion &&
     clientState.status !== "idle"
       ? clientState.latestVersion
       : null;
-  const description =
-    clientState?.status === "ready"
-      ? t(
-          clientState?.installMode === "automatic"
-            ? "The client update is ready. Restart when your tasks are finished."
-            : "The installer is ready. Open it to finish updating the client.",
-        )
-      : backendState.status === "ready"
-        ? canApplyBackendUpdate
-          ? t(
-              "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.",
-              { version: backendState.latestVersion ?? "" },
-            )
-          : t(
-              "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
-            )
-        : clientState?.status === "available"
-          ? t("Cox Desktop {version} is available.", {
-              version: clientState?.latestVersion ?? "",
-            })
-          : backendState.status === "available"
-            ? t("Cox {version} is available.", { version: backendState.latestVersion ?? "" })
-            : clientState?.status === "downloading"
-              ? t("Downloading client update…")
-              : backendState.status === "installing"
-                ? t("Downloading and verifying Cox…")
-                : clientState?.status === "checking" || backendState.status === "checking"
-                  ? t("Checking for updates…")
-                  : clientState?.status === "error"
-                    ? t(clientState?.message ?? "Could not update the client.")
-                    : backendState.status === "error"
-                      ? t(backendState.message ?? "Could not update Cox.")
-                      : backendState.status === "incompatible"
-                        ? t("This Cox update requires a newer desktop client.")
-                        : clientState?.automaticChecks === false ||
-                            backendState.automaticChecks === false
-                          ? t("Automatic update checks are disabled. You can still check manually.")
-                          : clientState?.ignoredVersion
-                            ? t(
-                                "Client {version} is ignored. Newer versions will still be offered.",
-                                {
-                                  version: clientState?.ignoredVersion ?? "",
-                                },
-                              )
-                            : backendState.ignoredVersion
-                              ? t(
-                                  "Cox {version} is ignored. Newer versions will still be offered.",
-                                  {
-                                    version: backendState.ignoredVersion,
-                                  },
-                                )
-                              : clientState !== null &&
-                                  clientState.latestVersion === clientState.currentVersion &&
-                                  backendState.latestVersion === backendState.currentVersion
-                                ? t("The client and Cox are up to date.")
-                                : t("The client checks for desktop and Cox updates automatically.");
+  const description = updates.error
+    ? t("Could not finish updating. Check for updates again.")
+    : plan.status === "checking"
+      ? t("Checking for updates…")
+      : plan.status === "downloading"
+        ? t("Downloading and verifying updates. Current tasks will not be interrupted.")
+        : plan.status === "error"
+          ? t("Could not finish updating. Check for updates again.")
+          : plan.status === "available"
+            ? t("Updates are available. Download them together without interrupting current tasks.")
+            : plan.status === "incompatible"
+              ? t("This Cox update requires a newer desktop client.")
+              : plan.status === "ready" && backendState.status === "incompatible"
+                ? t("Update the client first; Cox will be checked again after relaunch.")
+                : plan.status === "ready" && clientState?.status === "ready"
+                  ? t(
+                      clientState?.installMode === "automatic"
+                        ? "Updates are ready to install."
+                        : "The installer is ready. Open it to finish updating the client.",
+                    )
+                  : plan.status === "ready"
+                    ? canApplyBackendUpdate
+                      ? t(
+                          "Cox {version} is downloaded. Update now to restart Cox, or activate it on the next launch.",
+                          { version: backendState.latestVersion ?? "" },
+                        )
+                      : t(
+                          "Cox is downloaded. It will activate on the next launch without interrupting current tasks.",
+                        )
+                    : !plan.automaticChecks
+                      ? t("Automatic update checks are disabled. You can still check manually.")
+                      : clientState?.ignoredVersion
+                        ? t("Client {version} is ignored. Newer versions will still be offered.", {
+                            version: clientState?.ignoredVersion ?? "",
+                          })
+                        : backendState.ignoredVersion
+                          ? t("Cox {version} is ignored. Newer versions will still be offered.", {
+                              version: backendState.ignoredVersion,
+                            })
+                          : plan.status === "current"
+                            ? t("The client and Cox are up to date.")
+                            : t("The client checks for desktop and Cox updates automatically.");
 
-  const checkAll = () => void Promise.all([client.check(), backend.check()]);
+  const checkAll = () => void updates.check();
   const primary =
-    clientState?.status === "ready" ? (
-      <Button
-        size="sm"
-        disabled={busy}
-        onClick={() => {
-          setApplying(true);
-          void client.apply().finally(() => setApplying(false));
-        }}
-      >
-        {t(clientState?.installMode === "automatic" ? "Restart and update" : "Open installer")}
-      </Button>
-    ) : backendState.status === "ready" && canApplyBackendUpdate && !clientNeedsDownload ? (
-      <Button
-        size="sm"
-        disabled={busy}
-        onClick={() => {
-          setApplying(true);
-          void backend.apply().finally(() => setApplying(false));
-        }}
-      >
-        {t("Update now")}
-      </Button>
-    ) : clientNeedsDownload || backendNeedsDownload ? (
-      <Button
-        size="sm"
-        disabled={busy}
-        onClick={() => {
-          if (clientNeedsDownload && backendNeedsDownload)
-            void Promise.all([client.download(), backend.install()]);
-          else if (clientNeedsDownload) void client.download();
-          else void backend.install();
-        }}
-      >
+    plan.status === "ready" && (plan.clientReady || canApplyBackendUpdate) ? (
+      <Button size="sm" disabled={busy} onClick={() => void updates.apply()}>
         {t(
-          clientNeedsDownload && backendNeedsDownload
-            ? "Download updates"
-            : clientNeedsDownload
-              ? clientState?.status === "error"
-                ? "Retry"
-                : "Download client update"
-              : backendState.status === "error"
-                ? "Retry"
-                : "Download Cox update",
+          plan.clientReady
+            ? clientState?.installMode === "automatic"
+              ? "Restart and update"
+              : "Open installer"
+            : "Update now",
         )}
+      </Button>
+    ) : plan.status === "available" || plan.status === "error" ? (
+      <Button size="sm" disabled={busy} onClick={() => void updates.download()}>
+        {t(plan.status === "error" ? "Retry" : "Download updates")}
       </Button>
     ) : (
       <Button size="sm" variant="outline" disabled={busy} onClick={checkAll}>
-        {t("Check for updates")}
+        {t(
+          plan.status === "checking"
+            ? "Checking for updates…"
+            : plan.status === "downloading"
+              ? "Download updates"
+              : "Check for updates",
+        )}
       </Button>
     );
 
@@ -172,6 +119,14 @@ export function DesktopUpdates() {
         title={t("Installed Cox version")}
         control={<code>{backendState.currentVersion ?? "—"}</code>}
       />
+      {backendState.latestVersion &&
+      backendState.latestVersion !== backendState.currentVersion &&
+      backendState.status !== "idle" ? (
+        <SettingsRow
+          title={t("Cox update version")}
+          control={<code>{backendState.latestVersion}</code>}
+        />
+      ) : null}
       <SettingsRow
         title={t("Bundled Cox version")}
         control={<code>{backendState.bundledVersion ?? t("Not bundled")}</code>}
@@ -232,15 +187,7 @@ export function DesktopUpdates() {
                     </MenuItem>
                   ) : null}
                   {showRestore ? (
-                    <MenuItem
-                      disabled={busy}
-                      onClick={() =>
-                        void Promise.all([
-                          client.setPolicy("automatic"),
-                          backend.setPolicy("automatic"),
-                        ])
-                      }
-                    >
+                    <MenuItem disabled={busy} onClick={() => void updates.setPolicy("automatic")}>
                       <RotateCcwIcon />
                       {t("Restore automatic update checks")}
                     </MenuItem>
@@ -251,27 +198,43 @@ export function DesktopUpdates() {
           </div>
         }
       >
+        {updates.error ? (
+          <p className="text-xs text-destructive" role="alert">
+            {t(updates.error)}
+          </p>
+        ) : null}
+        {clientState?.status === "error" ? (
+          <p className="text-xs text-destructive" role="alert">
+            {t("Desktop client")}: {t(clientState.message ?? "Could not update the client.")}
+          </p>
+        ) : null}
+        {backendState.status === "error" ? (
+          <p className="text-xs text-destructive" role="alert">
+            Cox: {t(backendState.message ?? "Could not update Cox.")}
+          </p>
+        ) : null}
         {clientState?.progress ? (
-          <DesktopUpdateProgress progress={clientState?.progress} />
-        ) : backendState.progress ? (
-          <DesktopUpdateProgress progress={backendState.progress} />
+          <div>
+            <p className="text-xs text-muted-foreground">{t("Desktop client")}</p>
+            <DesktopUpdateProgress progress={clientState.progress} />
+          </div>
+        ) : null}
+        {backendState.progress ? (
+          <div>
+            <p className="text-xs text-muted-foreground">Cox</p>
+            <DesktopUpdateProgress progress={backendState.progress} />
+          </div>
         ) : null}
       </SettingsRow>
       <SettingsRow
         title={t("Automatic update checks")}
+        description={t("Check for client and Cox updates together.")}
         control={
           <Switch
             aria-label={t("Automatic update checks")}
-            checked={
-              clientState?.automaticChecks !== false && backendState.automaticChecks !== false
-            }
+            checked={plan.automaticChecks}
             disabled={busy}
-            onCheckedChange={(checked) =>
-              void Promise.all([
-                client.setPolicy(checked ? "automatic" : "never"),
-                backend.setPolicy(checked ? "automatic" : "never"),
-              ])
-            }
+            onCheckedChange={(checked) => void updates.setPolicy(checked ? "automatic" : "never")}
           />
         }
       />

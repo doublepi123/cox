@@ -31,7 +31,8 @@ import * as ServerConfig from "../config.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
 import { makeModelServiceSseParser } from "./sse.ts";
-import { modelServiceRequestBody } from "./requestCompatibility.ts";
+import { modelServiceRequestBody, withoutEncryptedReasoning } from "./requestCompatibility.ts";
+import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
 import {
   modelServiceHasReasoning,
   modelServiceStreamEvent,
@@ -85,6 +86,7 @@ const recoveryFailureResponse = (error: ModelServiceRequestFailure) =>
         message: error.detail,
         code: error.code ?? "cox_model_service_recovery_exhausted",
         source: error.source,
+        requestId: error.requestId,
         terminationReason: error.terminationReason,
         budgetMs: error.budgetMs,
         elapsedMs: error.elapsedMs,
@@ -536,8 +538,38 @@ export const make = Effect.gen(function* () {
         protocol,
         ...event,
       });
+    let hasEncryptedReasoning = false;
+    let omitEncryptedReasoning = false;
+    const rejectedFailure = (
+      status: number,
+      value: unknown,
+      fallbackCode: string,
+      message: string,
+      headers: Readonly<Record<string, string | undefined>>,
+    ) => {
+      const error = parseUpstreamError(value);
+      const details = upstreamErrorDetails(
+        error,
+        headers["x-request-id"] ?? headers["request-id"],
+        [service.apiKey ?? "", ...Object.values(service.headers), runtime.token],
+      );
+      return new ModelServiceRequestFailure({
+        detail: message + details.detail,
+        status,
+        retryable:
+          details.code !== "invalid_encrypted_content" &&
+          isRetryableModelServiceError(status, {
+            ...error,
+            ...(details.code ? { code: details.code } : {}),
+          }),
+        code: details.code ?? fallbackCode,
+        source: "upstream",
+        requestId: details.requestId,
+      });
+    };
     const attempt = Effect.fn("ModelServiceGateway.attempt")(
       function* (attemptId: number) {
+        const stripEncryptedReasoning = omitEncryptedReasoning;
         const started = yield* Clock.currentTimeMillis;
         yield* Effect.annotateCurrentSpan({ requestId, attempt: attemptId, incoming, protocol });
         const bridge =
@@ -569,9 +601,19 @@ export const make = Effect.gen(function* () {
         const headers = modelServiceHeaders(service, protocol);
         if (protocol === "anthropic-messages" && request.headers["anthropic-beta"])
           headers["anthropic-beta"] = request.headers["anthropic-beta"];
+        let requestBody = modelServiceRequestBody(
+          protocol,
+          selected.id,
+          bridge ? record(bridge.body) : body,
+        );
+        if (protocol === "openai-responses") {
+          const cleaned = withoutEncryptedReasoning(requestBody);
+          hasEncryptedReasoning ||= cleaned !== requestBody;
+          if (stripEncryptedReasoning) requestBody = cleaned;
+        }
         const outgoing = yield* HttpClientRequest.bodyJson(
           HttpClientRequest.post(upstreamUrl.href).pipe(HttpClientRequest.setHeaders(headers)),
-          modelServiceRequestBody(protocol, selected.id, bridge ? record(bridge.body) : body),
+          requestBody,
         );
         const headersStarted = yield* Clock.currentTimeMillis;
         const response = yield* HttpClient.withScope(http)
@@ -601,61 +643,32 @@ export const make = Effect.gen(function* () {
         });
         if (response.status < 200 || response.status >= 300) {
           let errorBytes = 0;
-          const rejected = record(
-            yield* response.stream.pipe(
-              Stream.takeUntil(
-                (chunk) => {
-                  errorBytes += chunk.length;
-                  return errorBytes > 16384;
-                },
-                { excludeLast: true },
-              ),
-              Stream.decodeText(),
-              Stream.runFold(
-                () => "",
-                (body, chunk) => body + chunk,
-              ),
-              Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))),
-              Effect.timeout("5 seconds"),
-              Effect.orElseSucceed(() => ({})),
+          const rejected = yield* response.stream.pipe(
+            Stream.takeUntil(
+              (chunk) => {
+                errorBytes += chunk.length;
+                return errorBytes > 16384;
+              },
+              { excludeLast: true },
             ),
+            Stream.decodeText(),
+            Stream.runFold(
+              () => "",
+              (body, chunk) => body + chunk,
+            ),
+            Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))),
+            Effect.timeout("5 seconds"),
+            Effect.orElseSucceed(() => ({})),
           );
-          const error = record(rejected.error);
-          const unsupportedUltra =
-            protocol === "openai-chat" &&
-            typeof error.message === "string" &&
-            /^Invalid value: 'ultra'\. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'\.(?: \(request id: [A-Za-z0-9_-]+\))?$/.test(
-              error.message,
-            );
-          const parameter = unsupportedUltra
-            ? "reasoning_effort"
-            : typeof error.param === "string"
-              ? /^(model|max_tokens|max_completion_tokens|reasoning_effort|service_tier|thinking|output_config|tools|messages)(?:\.|\[|$)/.exec(
-                  error.param,
-                )?.[1]
-              : undefined;
-          const code =
-            typeof error.code === "string" &&
-            [
-              "unsupported_parameter",
-              "unsupported_value",
-              "invalid_request_error",
-              "invalid_parameter",
-              "context_length_exceeded",
-            ].includes(error.code)
-              ? error.code
-              : undefined;
-          const details = [
-            parameter ? `parameter: ${parameter}` : undefined,
-            code ? `code: ${code}` : undefined,
-            unsupportedUltra ? "unsupported effort; allowed maximum: max" : undefined,
-          ].filter(Boolean);
+          const failure = rejectedFailure(
+            response.status >= 400 && response.status < 600 ? response.status : 502,
+            rejected,
+            "upstream_http_error",
+            `The upstream model service returned HTTP ${response.status}.`,
+            response.headers,
+          );
           return yield* new ModelServiceRequestFailure({
-            detail: `The upstream model service returned HTTP ${response.status}.${details.length ? ` Rejected request (${details.join(", ")}).` : ""}`,
-            status: response.status >= 400 && response.status < 600 ? response.status : 502,
-            retryable: isRetryableModelServiceError(response.status, error),
-            code: "upstream_http_error",
-            source: "upstream",
+            ...failure,
             retryAfterMs: retryAfterMilliseconds(
               response.headers["retry-after"],
               yield* Clock.currentTimeMillis,
@@ -698,19 +711,26 @@ export const make = Effect.gen(function* () {
               for (const frame of preview(decoder.decode(chunk, { stream: true }))) {
                 const event = modelServiceStreamEvent(protocol, frame);
                 if (event.error) {
-                  const status = Number(event.error.status ?? event.error.code);
+                  const error = parseUpstreamError(event.error);
+                  const details = upstreamErrorDetails(error);
+                  const status = Number(error.status ?? error.code);
                   const retryable = isRetryableModelServiceError(
                     status >= 400 && status < 600 ? status : 502,
-                    event.error,
+                    { ...error, ...(details.code ? { code: details.code } : {}) },
                   );
-                  return yield* new ModelServiceRequestFailure({
-                    detail:
-                      "The model service returned a stream error before producing a usable response.",
-                    status: status >= 400 && status < 600 ? status : retryable ? 502 : 422,
-                    retryable,
-                    code: "upstream_stream_error",
-                    source: "upstream",
-                  });
+                  return yield* rejectedFailure(
+                    details.code === "invalid_encrypted_content"
+                      ? 400
+                      : status >= 400 && status < 600
+                        ? status
+                        : retryable
+                          ? 502
+                          : 422,
+                    error,
+                    "upstream_stream_error",
+                    "The model service returned a stream error before producing a usable response.",
+                    response.headers,
+                  );
                 }
                 progress ||= event.progress;
               }
@@ -791,19 +811,24 @@ export const make = Effect.gen(function* () {
         const result = yield* response.json.pipe(
           Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(32 * 1024 * 1024)),
         );
-        if (record(result).error) {
-          const error = record(record(result).error);
+        const error = parseUpstreamError(result);
+        const details = upstreamErrorDetails(error);
+        if (
+          record(result).error ||
+          (details.code && !modelServiceResponseIsValid(protocol, result))
+        ) {
           const status = Number(error.status ?? error.code);
-          return yield* new ModelServiceRequestFailure({
-            detail: "The model service returned an error in a successful HTTP response.",
-            status: status >= 400 && status < 600 ? status : 502,
-            retryable: isRetryableModelServiceError(
-              status >= 400 && status < 600 ? status : 502,
-              error,
-            ),
-            code: "upstream_response_error",
-            source: "upstream",
-          });
+          return yield* rejectedFailure(
+            details.code === "invalid_encrypted_content"
+              ? 400
+              : status >= 400 && status < 600
+                ? status
+                : 502,
+            error,
+            "upstream_response_error",
+            "The model service returned an error in a successful HTTP response.",
+            response.headers,
+          );
         }
         if (!countTokens && !modelServiceResponseIsValid(protocol, result))
           return yield* new ModelServiceRequestFailure({
@@ -886,6 +911,17 @@ export const make = Effect.gen(function* () {
       enabled,
       cancelled: tracking.cancelled,
       attempt,
+      repair: Effect.fn("ModelServiceGateway.repair")(function* () {
+        if (protocol !== "openai-responses" || !hasEncryptedReasoning || omitEncryptedReasoning)
+          return false;
+        omitEncryptedReasoning = true;
+        yield* diagnostic({
+          event: "request_repaired",
+          reason: "invalid_encrypted_content",
+          repair: "removed_encrypted_reasoning",
+        });
+        return true;
+      }),
       progress: tracking.progress,
       diagnostic: (event) => diagnostic({ ...event }),
     }).pipe(

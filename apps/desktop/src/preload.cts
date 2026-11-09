@@ -39,6 +39,10 @@ const bridge: DesktopShellBridge = {
     return () => ipcRenderer.removeListener("cox:window-state", handler);
   },
   syncWindowControls: () => ipcRenderer.send("cox:sync-window-controls"),
+  checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
+  downloadUpdates: () => ipcRenderer.invoke("cox:updates-download"),
+  applyUpdates: () => ipcRenderer.invoke("cox:updates-apply"),
+  setUpdatePolicy: (policy) => ipcRenderer.invoke("cox:updates-policy", policy),
   getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
   checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
   installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),

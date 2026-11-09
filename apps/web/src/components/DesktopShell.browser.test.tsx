@@ -2,6 +2,7 @@ import type {
   DesktopShellBridge,
   DesktopWindowState,
   DesktopBackendUpdateState,
+  DesktopClientUpdateState,
 } from "@t3tools/contracts";
 import "../index.css";
 import { page } from "vite-plus/test/browser";
@@ -11,6 +12,7 @@ import { DesktopShell } from "./DesktopShell";
 import { DesktopUpdates } from "./settings/DesktopUpdates";
 import { Dialog, DialogPopup, DialogTitle } from "./ui/dialog";
 import { setLanguagePreference } from "../i18n";
+import { toastManager } from "./ui/toast";
 
 function installBridge(bridge: DesktopShellBridge | undefined) {
   const previous = Object.getOwnPropertyDescriptor(window, "coxDesktop");
@@ -24,6 +26,68 @@ function installBridge(bridge: DesktopShellBridge | undefined) {
 }
 
 describe("desktop shell", () => {
+  it("keeps client and Cox notices in one non-blocking update prompt", async () => {
+    const backend: DesktopBackendUpdateState = {
+      desktopVersion: "0.2.16",
+      bundledVersion: "0.1.54",
+      currentVersion: "0.1.54",
+      latestVersion: "0.1.55",
+      status: "available",
+      message: null,
+    };
+    const client: DesktopClientUpdateState = {
+      currentVersion: "0.2.16",
+      latestVersion: "0.2.17",
+      status: "checking",
+      progress: null,
+      message: null,
+      installMode: "automatic",
+      automaticChecks: true,
+      ignoredVersion: null,
+    };
+    let publishBackend: ((state: DesktopBackendUpdateState) => void) | undefined;
+    let publishClient: ((state: DesktopClientUpdateState) => void) | undefined;
+    const bridge: DesktopShellBridge = {
+      platform: "darwin",
+      ready: vi.fn(),
+      onQuitRequested: () => () => {},
+      answerQuit: vi.fn(),
+      setWindowColors: vi.fn(),
+      onWindowState: () => () => {},
+      syncWindowControls: vi.fn(),
+      openSettings: vi.fn(async () => {}),
+      checkUpdates: vi.fn(async () => ({ backend, client })),
+      getBackendUpdate: async () => backend,
+      onBackendUpdate: (listener) => {
+        publishBackend = listener;
+        return () => {};
+      },
+      getClientUpdate: async () => client,
+      onClientUpdate: (listener) => {
+        publishClient = listener;
+        return () => {};
+      },
+    };
+    using _bridge = installBridge(bridge);
+    using notices = vi.spyOn(toastManager, "add").mockReturnValue("software-updates");
+    using closed = vi.spyOn(toastManager, "close").mockImplementation(() => {});
+    await using _screen = await render(<DesktopShell />);
+    await act(() => publishClient?.({ ...client, status: "available" }));
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    expect(notices).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Software updates" }),
+    );
+    await act(() => {
+      publishBackend?.({ ...backend, status: "ready" });
+      publishClient?.({ ...client, status: "ready" });
+    });
+    expect(closed).toHaveBeenCalledWith("software-updates");
+    const notice = notices.mock.calls.at(-1)?.[0];
+    expect(notice?.description).toBe("Updates are ready to install.");
+    expect(notice?.actionProps?.onClick).toEqual(expect.any(Function));
+    expect(bridge.answerQuit).not.toHaveBeenCalled();
+  });
+
   it.each(["en", "zh"] as const)(
     "offers immediate and deferred application of a ready backend update in %s",
     async (language) => {
@@ -136,7 +200,7 @@ describe("desktop shell", () => {
     try {
       await using _screen = await render(<DesktopUpdates />);
       await expect
-        .element(page.getByRole("button", { name: "下载 Cox 更新", exact: true }))
+        .element(page.getByRole("button", { name: "下载更新", exact: true }))
         .toBeVisible();
       await act(() => setLanguagePreference("en"));
       await page.getByRole("button", { name: "Update actions", exact: true }).click();
@@ -202,7 +266,7 @@ describe("desktop shell", () => {
       .element(page.getByRole("button", { name: "Ignore all updates", exact: true }))
       .not.toBeInTheDocument();
     expect(bridge.installBackendUpdate).not.toHaveBeenCalled();
-    await page.getByRole("button", { name: "Download Cox update", exact: true }).click();
+    await page.getByRole("button", { name: "Download updates", exact: true }).click();
     await expect
       .element(
         page.getByText(

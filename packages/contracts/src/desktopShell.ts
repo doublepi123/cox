@@ -41,6 +41,11 @@ export interface DesktopBackendUpdateState {
   readonly progress?: DesktopUpdateProgress | null;
 }
 
+export interface DesktopSoftwareUpdateState {
+  readonly backend: DesktopBackendUpdateState;
+  readonly client: DesktopClientUpdateState;
+}
+
 export interface DesktopShellBridge {
   readonly platform: string;
   readonly windowKind?: "main" | "settings";
@@ -55,6 +60,10 @@ export interface DesktopShellBridge {
   setWindowColors(background: string, foreground: string): void;
   onWindowState(listener: (state: DesktopWindowState) => void): () => void;
   syncWindowControls(): void;
+  checkUpdates?(): Promise<DesktopSoftwareUpdateState>;
+  downloadUpdates?(): Promise<DesktopSoftwareUpdateState>;
+  applyUpdates?(): Promise<void>;
+  setUpdatePolicy?(policy: "automatic" | "never"): Promise<DesktopSoftwareUpdateState>;
   getBackendUpdate?(): Promise<DesktopBackendUpdateState>;
   checkBackendUpdate?(): Promise<DesktopBackendUpdateState>;
   installBackendUpdate?(): Promise<DesktopBackendUpdateState>;

@@ -221,8 +221,83 @@ describe("desktop update actions", () => {
     await using screen = await render(<DesktopUpdates />);
     expect(updateRow(screen).querySelectorAll("button")).toHaveLength(2);
     await screen.getByRole("button", { name: "Retry", exact: true }).click();
-    expect(mocks.downloadClient).toHaveBeenCalledOnce();
+    expect(mocks.checkClient).toHaveBeenCalledOnce();
+    expect(mocks.checkBackend).toHaveBeenCalledOnce();
+    expect(mocks.downloadClient).not.toHaveBeenCalled();
     expect(mocks.installBackend).not.toHaveBeenCalled();
+  });
+
+  it("downloads missing Cox updates before offering to apply an already downloaded client", async () => {
+    setup(
+      { status: "ready", latestVersion: "0.3.0" },
+      { status: "available", latestVersion: "0.2.0" },
+    );
+    await using screen = await render(<DesktopUpdates />);
+    await expect
+      .element(screen.getByRole("button", { name: "Restart and update", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Download updates", exact: true }).click();
+    expect(mocks.installBackend).toHaveBeenCalledOnce();
+    expect(mocks.applyClient).not.toHaveBeenCalled();
+    expect(mocks.downloadClient).not.toHaveBeenCalled();
+  });
+
+  it("does not hide a failed Cox update behind a ready client", async () => {
+    setup(
+      { status: "ready", latestVersion: "0.3.0" },
+      { status: "error", latestVersion: "0.2.0", message: "Cox download failed" },
+    );
+    await using screen = await render(<DesktopUpdates />);
+    await expect.element(screen.getByRole("alert")).toHaveTextContent("Cox: Cox download failed");
+    await expect.element(screen.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+    expect(mocks.applyClient).not.toHaveBeenCalled();
+  });
+
+  it("uses the unified desktop bridge for every primary action and automatic policy", async () => {
+    setup();
+    const bridge = {
+      checkUpdates: vi.fn(async () => undefined),
+      downloadUpdates: vi.fn(async () => undefined),
+      applyUpdates: vi.fn(async () => undefined),
+      setUpdatePolicy: vi.fn(async () => undefined),
+    };
+    using _bridge = stubGlobal("coxDesktop", bridge);
+    await using screen = await render(<DesktopUpdates />);
+    await screen.getByRole("button", { name: "Check for updates", exact: true }).click();
+    expect(bridge.checkUpdates).toHaveBeenCalledOnce();
+    expect(mocks.checkBackend).not.toHaveBeenCalled();
+    expect(mocks.checkClient).not.toHaveBeenCalled();
+    await page.getByRole("switch", { name: "Automatic update checks" }).click();
+    expect(bridge.setUpdatePolicy).toHaveBeenCalledWith("never");
+    mocks.backendState = { ...mocks.backendState!, status: "available", latestVersion: "0.2.0" };
+    await screen.rerender(<DesktopUpdates />);
+    await screen.getByRole("button", { name: "Download updates", exact: true }).click();
+    expect(bridge.downloadUpdates).toHaveBeenCalledOnce();
+    expect(mocks.installBackend).not.toHaveBeenCalled();
+    mocks.backendState = { ...mocks.backendState, status: "ready" };
+    await screen.rerender(<DesktopUpdates />);
+    await screen.getByRole("button", { name: "Update now", exact: true }).click();
+    expect(bridge.applyUpdates).toHaveBeenCalledOnce();
+    expect(mocks.applyBackend).not.toHaveBeenCalled();
+  });
+
+  it("shows independent progress for both downloads", async () => {
+    const progress = {
+      phase: "downloading" as const,
+      transferredBytes: 100,
+      totalBytes: 200,
+      bytesPerSecond: 50,
+      remainingSeconds: 2,
+    };
+    setup(
+      { status: "downloading", latestVersion: "0.3.0", progress },
+      { status: "installing", latestVersion: "0.2.0", progress },
+    );
+    await using screen = await render(<DesktopUpdates />);
+    expect(screen.container.querySelectorAll('[role="progressbar"]')).toHaveLength(2);
+    await expect
+      .element(screen.getByRole("button", { name: "Download updates", exact: true }))
+      .toBeDisabled();
   });
 
   it("controls both automatic update policies with one switch", async () => {

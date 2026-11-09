@@ -1,6 +1,19 @@
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 
 const chinese = {
+  "Update the client first; Cox will be checked again after relaunch.":
+    "需要先更新客户端，重新启动后将再次检查 Cox 更新。",
+  "Check for updates": "检查更新",
+  "Automatic update checks": "自动检查更新",
+  "Software updates": "软件更新",
+  "Software updates are available.": "发现可用更新。",
+  "Updates are ready. Install when your tasks are finished.": "更新已就绪，请在任务结束后安装。",
+  "The client and Cox are up to date.": "客户端和 Cox 均已是最新版本。",
+  "Could not finish updating. Check for updates again.": "更新未能完成，请重新检查更新。",
+  "Restart and install updates?": "重启并安装更新？",
+  "Updating quits Cox and interrupts running agent tasks and terminals.":
+    "更新会退出 Cox，并中断正在运行的 Agent 任务和终端。",
+  "Open installer": "打开安装包",
   Settings: "设置",
   "Install client update": "安装客户端更新",
   "Updating the client quits Cox and interrupts running agent turns and terminals.":

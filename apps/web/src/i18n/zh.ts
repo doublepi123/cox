@@ -1,4 +1,16 @@
 export const zh = {
+  "Update the client first; Cox will be checked again after relaunch.":
+    "需要先更新客户端，重新启动后将再次检查 Cox 更新。",
+  "Software updates are not ready.": "更新尚未全部就绪。",
+  "Software updates changed. Check for updates again.": "更新信息已变化，请重新检查更新。",
+  "Updates are ready to install.": "更新已就绪，可以一并安装。",
+  "Cox update version": "待更新 Cox 版本",
+  "Check for client and Cox updates together.": "同时检查客户端和 Cox 的更新。",
+  "Could not finish updating. Check for updates again.": "更新未能完成，请重新检查更新。",
+  "Downloading and verifying updates. Current tasks will not be interrupted.":
+    "正在下载并校验更新，不会中断当前任务。",
+  "Updates are available. Download them together without interrupting current tasks.":
+    "发现可用更新，可一并下载，不会中断当前任务。",
   "Destination thread": "目标对话",
   "Started by the first run": "首次运行时创建",
   "Search all threads...": "搜索全部对话…",

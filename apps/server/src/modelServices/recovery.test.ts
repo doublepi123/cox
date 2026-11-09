@@ -35,12 +35,14 @@ const harness = (policy: Partial<ModelServiceRecovery> = {}, reasoning = false) 
   const run = (
     attempt: (id: number) => Effect.Effect<number, ModelServiceRequestFailure>,
     progress: (event: RecoveryProgress) => Effect.Effect<void> = () => Effect.void,
+    repair?: () => Effect.Effect<boolean>,
   ) =>
     recoverModelServiceRequest({
       policy: { ...DEFAULT_MODEL_SERVICE_RECOVERY, ...policy },
       reasoning,
       load,
       enabled: Effect.sync(() => enabled),
+      ...(repair ? { repair } : {}),
       cancelled: Effect.sync(() => cancelled),
       diagnostic: (event) =>
         Effect.sync(() => {
@@ -77,6 +79,166 @@ const harness = (policy: Partial<ModelServiceRecovery> = {}, reasoning = false) 
     },
   };
 };
+
+const encryptedFailure = () =>
+  new ModelServiceRequestFailure({
+    detail: "Encrypted reasoning could not be verified.",
+    status: 400,
+    code: "invalid_encrypted_content",
+    source: "upstream",
+    retryable: false,
+    requestId: "4171489b-838f-4e4c-9366-18cf20dadc55",
+  });
+
+it.effect("repairs encrypted content once without enabling arbitrary HTTP 400 retries", () =>
+  Effect.gen(function* () {
+    const h = harness({ retryNonTransientErrors: false });
+    let repairs = 0;
+    const result = yield* h.run(
+      (id) => (id === 1 ? Effect.fail(encryptedFailure()) : Effect.succeed(id)),
+      () => Effect.void,
+      () =>
+        Effect.sync(() => {
+          repairs++;
+          return true;
+        }),
+    );
+    expect(result).toBe(2);
+    expect(repairs).toBe(1);
+    expect(h.started).toEqual([1, 2]);
+    expect(h.closed).toEqual([1, 2]);
+    expect(h.phases).toContainEqual(
+      expect.objectContaining({ phase: "retrying", reason: "invalid_encrypted_content" }),
+    );
+    expect(h.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "invalid_encrypted_content",
+        upstreamRequestId: "4171489b-838f-4e4c-9366-18cf20dadc55",
+      }),
+    );
+  }),
+);
+
+it.effect.each([false, true])(
+  "never repeats an unrepairable encrypted request despite forced retries (%s)",
+  (repairable) =>
+    Effect.gen(function* () {
+      const h = harness({ retryNonTransientErrors: true, maxAttempts: 100 });
+      let repairs = 0;
+      const error = yield* h
+        .run(
+          () => Effect.fail(encryptedFailure()),
+          () => Effect.void,
+          () =>
+            Effect.sync(() => {
+              repairs++;
+              return repairable;
+            }),
+        )
+        .pipe(Effect.flip);
+      expect(h.started).toHaveLength(repairable ? 2 : 1);
+      expect(repairs).toBe(1);
+      expect(error).toMatchObject({
+        code: "invalid_encrypted_content",
+        terminationReason: "non_retryable_error",
+      });
+    }),
+);
+
+it.effect.each([
+  { retryEnabled: false, maxAttempts: 100 },
+  { retryEnabled: true, maxAttempts: 1 },
+])("does not bypass disabled retries or the attempt budget (%j)", (policy) =>
+  Effect.gen(function* () {
+    const h = harness({ ...policy, retryNonTransientErrors: true });
+    let repairs = 0;
+    yield* h
+      .run(
+        () => Effect.fail(encryptedFailure()),
+        () => Effect.void,
+        () =>
+          Effect.sync(() => {
+            repairs++;
+            return true;
+          }),
+      )
+      .pipe(Effect.flip);
+    expect(h.started).toEqual([1]);
+    expect(repairs).toBe(0);
+  }),
+);
+
+it.effect("ends recovery if the single repaired attempt fails with a different error", () =>
+  Effect.gen(function* () {
+    const h = harness({ retryNonTransientErrors: true, maxAttempts: 100 });
+    const error = yield* h
+      .run(
+        (id) => Effect.fail(id === 1 ? encryptedFailure() : failure()),
+        () => Effect.void,
+        () => Effect.succeed(true),
+      )
+      .pipe(Effect.flip);
+    expect(error).toMatchObject({ status: 503 });
+    expect(h.started).toEqual([1, 2]);
+    expect(h.load.inFlight).toBe(0);
+  }),
+);
+
+it.effect("cancels old hedges and never hedges the single repaired attempt", () =>
+  Effect.gen(function* () {
+    const h = harness({ hedgeDelayMs: 100, maxConcurrent: 5, retryNonTransientErrors: true });
+    const fiber = yield* h
+      .run(
+        (id) =>
+          id === 1
+            ? Effect.sleep(150).pipe(Effect.andThen(Effect.fail(encryptedFailure())))
+            : id === 2
+              ? Effect.never
+              : Effect.sleep(500).pipe(Effect.as(id)),
+        () => Effect.void,
+        () => Effect.succeed(true),
+      )
+      .pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    expect(yield* Fiber.join(fiber)).toBe(3);
+    expect(h.started).toEqual([1, 2, 3]);
+    expect(h.closed.toSorted()).toEqual([1, 2, 3]);
+    expect(h.diagnostics).toContainEqual(
+      expect.objectContaining({ event: "attempt_closed", attempt: 2, reason: "request_repaired" }),
+    );
+    expect(h.load.inFlight).toBe(0);
+    expect(h.load.hedges).toBe(0);
+  }),
+);
+
+it.effect.each(["cancel", "budget"] as const)("releases the repaired attempt on %s", (end) =>
+  Effect.gen(function* () {
+    const h = harness({ budgetMs: 1000 });
+    const startedRepair = yield* Deferred.make<void>();
+    const fiber = yield* h
+      .run(
+        (id) =>
+          id === 1
+            ? Effect.fail(encryptedFailure())
+            : Deferred.succeed(startedRepair, undefined).pipe(Effect.andThen(Effect.never)),
+        () => Effect.void,
+        () => Effect.succeed(true),
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* Deferred.await(startedRepair);
+    if (end === "cancel") h.cancel();
+    yield* TestClock.adjust("2 seconds");
+    const failure = yield* Fiber.join(fiber);
+    expect(failure).toMatchObject(
+      end === "cancel"
+        ? { _tag: "ModelServiceRequestCancelled" }
+        : { status: 504, code: "recovery_budget_exhausted" },
+    );
+    expect(h.started).toEqual([1, 2]);
+    expect(h.closed.toSorted()).toEqual([1, 2]);
+    expect(h.load.inFlight).toBe(0);
+  }),
+);
 
 it.effect("retries transient errors and releases every attempt", () =>
   Effect.gen(function* () {
@@ -536,6 +698,7 @@ it.effect("distinguishes channel failures from permanent quota and request error
     expect(isRetryableModelServiceError(400, { code: "no_available_channels" })).toBe(true);
     expect(isRetryableModelServiceError(429, { code: "insufficient_quota" })).toBe(false);
     expect(isRetryableModelServiceError(503, { code: "context_length_exceeded" })).toBe(false);
+    expect(isRetryableModelServiceError(503, { code: "invalid_encrypted_content" })).toBe(false);
     expect(isRetryableModelServiceError(401, {})).toBe(false);
     expect(isRetryableModelServiceError(529, {})).toBe(true);
   }),

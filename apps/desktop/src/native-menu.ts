@@ -35,13 +35,7 @@ const roleLabels = {
 
 type DesktopMenuActions = Readonly<
   Record<
-    | "openMain"
-    | "openSettings"
-    | "checkClientUpdates"
-    | "installClientUpdate"
-    | "checkBackendUpdates"
-    | "toggleAutomaticUpdates"
-    | "openLogs",
+    "openMain" | "openSettings" | "checkUpdates" | "toggleAutomaticUpdates" | "openLogs",
     NonNullable<MenuItemConstructorOptions["click"]>
   >
 >;
@@ -59,17 +53,10 @@ export function createDesktopMenuTemplate(
     click: actions.openSettings,
   };
   const updates: MenuItemConstructorOptions[] = [
-    { label: text("Check for Client Updates"), click: actions.checkClientUpdates },
-    {
-      id: "cox-client-update-install",
-      label: text("Install client update"),
-      enabled: false,
-      click: actions.installClientUpdate,
-    },
-    { label: text("Check for Cox Updates"), click: actions.checkBackendUpdates },
+    { id: "cox-check-updates", label: text("Check for updates"), click: actions.checkUpdates },
     {
       id: "cox-automatic-updates",
-      label: text("Check for Cox Updates Automatically"),
+      label: text("Automatic update checks"),
       type: "checkbox",
       checked: true,
       click: actions.toggleAutomaticUpdates,

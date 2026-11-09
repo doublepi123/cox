@@ -15,6 +15,7 @@ import type { Event, IpcMainEvent } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";
 import { ClientUpdates } from "./client-updates.ts";
+import { SoftwareUpdates, softwareUpdateReady } from "./software-updates.ts";
 import { MacAppUpdate } from "./mac-update.ts";
 import { loadMacUpdateLaunch, macUpdateInProgress } from "./mac-update-transaction.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -26,7 +27,7 @@ import {
   isExternalNavigation,
   settingsWindowUrl,
 } from "./config.ts";
-import { desktopText, desktopUpdateNotice } from "./native-text.ts";
+import { desktopText } from "./native-text.ts";
 import { createDesktopMenuTemplate } from "./native-menu.ts";
 
 function systemLocale() {
@@ -59,9 +60,9 @@ let stoppingBackend = false;
 let origin: string | undefined;
 let updates: BackendUpdates | undefined;
 let clientUpdates: ClientUpdates | undefined;
+let softwareUpdates: SoftwareUpdates | undefined;
 let updateAfterQuit = false;
 let restartAfterQuit = false;
-let backendRestartPrompt = false;
 let recoverBackend: (() => Promise<void>) | undefined;
 let macUpdateLaunch: Awaited<ReturnType<typeof loadMacUpdateLaunch>> | undefined;
 let checkingMacLaunch = false;
@@ -100,111 +101,109 @@ let lastPromptedVersion: string | null = null;
 let nativeUpdatePrompt = false;
 let lastWindowColors = "";
 
-async function offerBackendUpdate(state: DesktopBackendUpdateState, manual = false) {
+async function offerSoftwareUpdate(manual = false) {
+  if (!softwareUpdates) return;
   if (approvedQuit || quitPending || !desktopReady || nativeUpdatePrompt) return;
-  if (
-    !manual &&
-    (rendererUpdatesReady ||
-      state.status !== "available" ||
-      state.latestVersion === lastPromptedVersion)
-  )
-    return;
+  let { backend: backendState, client } = softwareUpdates.getState();
+  const key = `${backendState.status}:${backendState.latestVersion}:${client.status}:${client.latestVersion}`;
+  const available = backendState.status === "available" || client.status === "available";
+  if (!manual && (rendererUpdatesReady || !available || key === lastPromptedVersion)) return;
   nativeUpdatePrompt = true;
   try {
-    if (state.status === "available") {
-      lastPromptedVersion = state.latestVersion;
+    if (available) {
+      lastPromptedVersion = key;
       const answer = await dialog.showMessageBox({
         type: "question",
-        title: text("Cox update"),
-        message: text("Cox {version} is available. Download now and activate on the next launch?", {
-          version: state.latestVersion ?? "",
-        }),
+        title: text("Software updates"),
+        message: text("Software updates are available."),
+        detail: updateVersions(),
         buttons: [text("Later"), text("Download")],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
       });
       if (answer.response !== 1 || quitPending) return;
-      state = await updates!.stage();
+      ({ backend: backendState, client } = await softwareUpdates.download());
     } else if (!manual) return;
     if (!quitPending) {
-      const answer = await dialog.showMessageBox({
-        title: text("Cox update"),
-        ...desktopUpdateNotice(systemLocale(), state),
+      const ready = softwareUpdateReady({ backend: backendState, client });
+      if (ready) {
+        await applySoftwareUpdates();
+        return;
+      }
+      const failed = backendState.status === "error" || client.status === "error";
+      await dialog.showMessageBox({
+        type: failed ? "warning" : "info",
+        title: text("Software updates"),
+        message: text(
+          failed
+            ? "Could not finish updating. Check for updates again."
+            : backendState.status === "incompatible"
+              ? "This Cox version requires a newer desktop client."
+              : backendState.latestVersion === backendState.currentVersion &&
+                  client.latestVersion === client.currentVersion
+                ? "The client and Cox are up to date."
+                : "No update information is available yet.",
+        ),
+        detail: [updateVersions(), backendState.message, client.message].filter(Boolean).join("\n"),
+        buttons: [text("Continue")],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
       });
-      if (state.status === "ready" && answer.response === 1) await applyBackendUpdate();
     }
   } catch (error) {
     if (!quitPending)
       await dialog.showMessageBox({
-        title: text("Cox update"),
-        ...desktopUpdateNotice(systemLocale(), {
-          ...state,
-          status: "error",
-          message: String(error),
-        }),
+        type: "warning",
+        title: text("Software updates"),
+        message: text("Could not finish updating. Check for updates again."),
+        detail: String(error),
       });
   } finally {
     nativeUpdatePrompt = false;
   }
 }
 
-function publishBackendUpdate(state: DesktopBackendUpdateState) {
+function updateVersions() {
+  const state = softwareUpdates?.getState();
+  if (!state) return "";
+  return [
+    state.client.latestVersion && state.client.status !== "idle"
+      ? `Cox Desktop ${state.client.currentVersion} → ${state.client.latestVersion}`
+      : null,
+    state.backend.latestVersion && state.backend.status !== "idle"
+      ? `Cox ${state.backend.currentVersion ?? "—"} → ${state.backend.latestVersion}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function syncUpdatePolicy() {
   const automatic = Menu.getApplicationMenu()?.getMenuItemById("cox-automatic-updates");
-  if (automatic) automatic.checked = state.automaticChecks !== false;
+  if (automatic)
+    automatic.checked =
+      updates?.getState().automaticChecks !== false &&
+      clientUpdates?.getState().automaticChecks !== false;
+}
+
+function publishBackendUpdate(state: DesktopBackendUpdateState) {
+  syncUpdatePolicy();
   for (const target of [window, settingsWindow]) {
     if (target && !target.isDestroyed() && readyWindows.has(target.webContents.id))
       target.webContents.send("cox:backend-update", state);
   }
   if (startingBackend && window && !window.isDestroyed())
     window.webContents.send("cox:startup-progress", state);
-  if (desktopReady && window && !window.isDestroyed()) {
-    void offerBackendUpdate(state).catch(() => {});
-  }
 }
 
 function publishClientUpdate(state: DesktopClientUpdateState) {
-  const install = Menu.getApplicationMenu()?.getMenuItemById("cox-client-update-install");
-  if (install) install.enabled = state.status === "ready";
+  syncUpdatePolicy();
   for (const target of [window, settingsWindow]) {
     if (target && !target.isDestroyed() && readyWindows.has(target.webContents.id))
       target.webContents.send("cox:client-update", state);
   }
-}
-
-async function checkClientUpdates() {
-  if (!clientUpdates || quitPending) return;
-  let state = await clientUpdates.check(true);
-  if (supportsSettingsWindow) {
-    settingsWindow?.webContents.send("cox:client-update", state);
-    return;
-  }
-  if (state.status === "available") {
-    const answer = await dialog.showMessageBox({
-      type: "question",
-      title: text("Check for Client Updates"),
-      message: text("Cox Desktop {version} is available.", { version: state.latestVersion ?? "" }),
-      buttons: [text("Later"), text("Download")],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    });
-    if (answer.response !== 1 || quitPending) return;
-    state = await clientUpdates.download();
-  }
-  await dialog.showMessageBox({
-    type: state.status === "error" ? "error" : "info",
-    title: text("Check for Client Updates"),
-    message:
-      state.status === "ready"
-        ? text(
-            "Client update downloaded. Choose Install client update from the {menu} menu when your tasks are finished.",
-            { menu: process.platform === "darwin" ? "Cox" : text("Help") },
-          )
-        : state.status === "error"
-          ? text("Could not update the client.") + "\n\n" + state.message
-          : text("The client is up to date."),
-  });
 }
 
 function syncWindowControls(target = window) {
@@ -295,28 +294,40 @@ async function requestQuit() {
 
 async function applyBackendUpdate() {
   if (updates?.getState().status !== "ready") throw new Error(text("The Cox update is not ready."));
-  if (approvedQuit || quitPending || backendRestartPrompt) return;
-  backendRestartPrompt = true;
-  try {
-    const answer = await dialog.showMessageBox({
-      type: "warning",
-      title: text("Restart and update Cox?"),
-      message: text(
-        "Updating Cox restarts the app and interrupts running agent tasks and terminals.",
-      ),
-      buttons: [text("Cancel"), text("Restart and update")],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    });
-    if (answer.response !== 1 || approvedQuit || quitPending) return;
-    if (updates?.getState().status !== "ready")
-      throw new Error(text("The Cox update is not ready."));
-    restartAfterQuit = true;
-    await requestQuit();
-  } finally {
-    backendRestartPrompt = false;
-  }
+  return applySoftwareUpdates();
+}
+
+async function applySoftwareUpdates() {
+  if (!softwareUpdates || approvedQuit || quitPending) return;
+  await softwareUpdates.apply(
+    async (state) => {
+      const manual = state.client.status === "ready" && state.client.installMode === "manual";
+      const answer = await dialog.showMessageBox({
+        type: "warning",
+        title: text("Restart and install updates?"),
+        message: text("Updating quits Cox and interrupts running agent tasks and terminals."),
+        detail: [
+          updateVersions(),
+          state.backend.status === "incompatible"
+            ? text("Update the client first; Cox will be checked again after relaunch.")
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        buttons: [text("Cancel"), text(manual ? "Open installer" : "Restart and update")],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      return answer.response === 1 && !approvedQuit && !quitPending;
+    },
+    async (state) => {
+      updateAfterQuit = state.client.status === "ready";
+      restartAfterQuit = !updateAfterQuit;
+      quitPending = true;
+      await finishQuit();
+    },
+  );
 }
 
 async function finishQuit() {
@@ -443,13 +454,17 @@ async function start() {
     if (clientUpdates) publishClientUpdate(clientUpdates.getState());
     if (!autoCheckStarted && updates) {
       autoCheckStarted = true;
-      void updates.check();
-      void clientUpdates?.check();
+      void softwareUpdates
+        ?.check()
+        .then(() => offerSoftwareUpdate())
+        .catch(() => {});
       setInterval(
         () => {
           if (desktopReady && !quitPending) {
-            void updates?.check();
-            void clientUpdates?.check();
+            void softwareUpdates
+              ?.check()
+              .then(() => offerSoftwareUpdate())
+              .catch(() => {});
           }
         },
         6 * 60 * 60 * 1000,
@@ -466,9 +481,24 @@ async function start() {
     if (isTrustedSender(event)) rendererUpdatesReady = true;
   });
   for (const [channel, action] of [
+    ["cox:updates-check", () => softwareUpdates?.check(true)],
+    ["cox:updates-download", () => softwareUpdates?.download()],
+    ["cox:updates-apply", () => applySoftwareUpdates()],
+  ] as const) {
+    ipcMain.handle(channel, (event) => {
+      if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
+      return action();
+    });
+  }
+  ipcMain.handle("cox:updates-policy", (event, policy: unknown) => {
+    if (!isTrustedSender(event) || (policy !== "automatic" && policy !== "never"))
+      throw new Error("Invalid desktop update policy request.");
+    return softwareUpdates?.setPolicy(policy);
+  });
+  for (const [channel, action] of [
     ["cox:backend-update-state", () => updates?.getState()],
-    ["cox:backend-update-check", () => updates?.check(true)],
-    ["cox:backend-update-install", () => updates?.stage()],
+    ["cox:backend-update-check", async () => (await softwareUpdates?.check(true))?.backend],
+    ["cox:backend-update-install", async () => (await softwareUpdates?.download())?.backend],
   ] as const) {
     ipcMain.handle(channel, (event) => {
       if (!isTrustedSender(event)) throw new Error("Untrusted desktop update request.");
@@ -486,12 +516,14 @@ async function start() {
       (version !== undefined && typeof version !== "string")
     )
       throw new Error("Invalid Cox update policy request.");
-    return updates?.setPolicy(policy, version);
+    return policy === "ignore-version"
+      ? updates?.setPolicy(policy, version)
+      : softwareUpdates?.setPolicy(policy).then((state) => state.backend);
   });
   for (const [channel, action] of [
     ["cox:client-update-state", () => clientUpdates?.getState()],
-    ["cox:client-update-check", () => clientUpdates?.check(true)],
-    ["cox:client-update-download", () => clientUpdates?.download()],
+    ["cox:client-update-check", async () => (await softwareUpdates?.check(true))?.client],
+    ["cox:client-update-download", async () => (await softwareUpdates?.download())?.client],
   ] as const) {
     ipcMain.handle(channel, (event) => {
       if (!isTrustedSender(event)) throw new Error("Untrusted client update request.");
@@ -505,14 +537,14 @@ async function start() {
       (version !== undefined && typeof version !== "string")
     )
       throw new Error("Invalid client update policy request.");
-    return clientUpdates?.setPolicy(policy as "automatic" | "ignore-version" | "never", version);
+    return policy === "ignore-version"
+      ? clientUpdates?.setPolicy(policy, version)
+      : softwareUpdates?.setPolicy(policy as "automatic" | "never").then((state) => state.client);
   });
   ipcMain.handle("cox:client-update-apply", async (event) => {
     if (!isTrustedSender(event) || clientUpdates?.getState().status !== "ready")
       throw new Error("The client update is not ready.");
-    if (quitPending) return;
-    updateAfterQuit = true;
-    await requestQuit();
+    await applySoftwareUpdates();
   });
   window.on("enter-full-screen", () => syncWindowControls());
   window.on("leave-full-screen", () => syncWindowControls());
@@ -781,35 +813,29 @@ async function start() {
     openSettings: () => {
       void openSettings().catch(() => {});
     },
-    checkClientUpdates: () => {
+    checkUpdates: () => {
       void (supportsSettingsWindow ? openSettings("/settings/about") : Promise.resolve())
-        .then(() => checkClientUpdates())
-        .catch(() => {});
-    },
-    installClientUpdate: () => {
-      if (clientUpdates?.getState().status !== "ready" || quitPending) return;
-      updateAfterQuit = true;
-      void requestQuit();
-    },
-    checkBackendUpdates: () => {
-      void updates
-        ?.check(true)
-        .then((state) => offerBackendUpdate(state, true))
+        .then(() => softwareUpdates?.check(true))
+        .then(() => (supportsSettingsWindow ? undefined : offerSoftwareUpdate(true)))
         .catch(() => {});
     },
     toggleAutomaticUpdates: (item) => {
-      void updates
+      void softwareUpdates
         ?.setPolicy(item.checked ? "automatic" : "never")
         .then(async () => {
-          if (item.checked && updates) await offerBackendUpdate(await updates.check(true), true);
+          if (item.checked) {
+            await softwareUpdates?.check();
+            await offerSoftwareUpdate();
+          }
         })
         .catch(async (error: unknown) => {
-          if (!updates) return;
-          item.checked = updates.getState().automaticChecks !== false;
-          await offerBackendUpdate(
-            { ...updates.getState(), status: "error", message: String(error) },
-            true,
-          );
+          syncUpdatePolicy();
+          await dialog.showMessageBox({
+            type: "warning",
+            title: text("Software updates"),
+            message: text("Could not finish updating. Check for updates again."),
+            detail: String(error),
+          });
         });
     },
     openLogs: () => {
@@ -945,6 +971,8 @@ async function start() {
         signal,
       }),
   });
+  softwareUpdates = new SoftwareUpdates(updates, clientUpdates);
+  syncUpdatePolicy();
   let runningBackendDirectory: string | undefined;
   const startBackend = async (directory: string) => {
     if (quitPending || approvedQuit) throw new Error("Cox startup was cancelled.");

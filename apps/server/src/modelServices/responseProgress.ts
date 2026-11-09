@@ -59,7 +59,10 @@ export function modelServiceStreamEvent(
     return {
       progress: false,
       error: record(
-        event.error ?? record(event.response).error ?? record(event.response).incomplete_details,
+        event.error ??
+          record(event.response).error ??
+          record(event.response).incomplete_details ??
+          event,
       ),
     };
   }

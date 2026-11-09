@@ -68,5 +68,6 @@ export type {
   DesktopWindowState,
   DesktopBackendUpdateState,
   DesktopClientUpdateState,
+  DesktopSoftwareUpdateState,
   DesktopUpdateProgress,
 } from "./desktopShell.ts";

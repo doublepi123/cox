@@ -31,10 +31,12 @@ export function useDesktopClientUpdate() {
     try {
       const next = await action();
       if (next && store.getSnapshot() === previous) store.receive(next);
+      return next ?? store.getSnapshot();
     } catch (error) {
       const current = store.getSnapshot();
       if (current)
         store.receive({ ...current, status: "error", progress: null, message: String(error) });
+      return store.getSnapshot();
     }
   };
   return {
