@@ -1,5 +1,4 @@
 export const zh = {
-  "Local service": "当前服务",
   "Cox service updates": "Cox 服务更新",
   "Current service": "当前服务",
   "Update the local Cox service from its official npm release.":

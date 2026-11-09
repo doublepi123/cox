@@ -1,5 +1,5 @@
 export const en = {
-  "Local service": "Current service",
+  "Current service": "Current service",
   "Cox service updates": "Cox service updates",
   "Update the local Cox service from its official npm release.":
     "Update the local Cox service from its official npm release.",

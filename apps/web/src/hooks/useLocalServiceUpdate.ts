@@ -33,7 +33,7 @@ export function useLocalServiceUpdate(enabled: boolean) {
           (next) => {
             if (!active) return;
             if (next.status === "downloading" || next.status === "restarting") {
-              timer ??= setInterval(load, 1_000);
+              if (!timer) timer = setInterval(load, 1_000);
             } else if (timer) {
               clearInterval(timer);
               timer = undefined;
@@ -63,10 +63,9 @@ export function useLocalServiceUpdate(enabled: boolean) {
       await request(action);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
     }
+    inFlight.current = false;
+    setBusy(false);
   };
 
   return {
