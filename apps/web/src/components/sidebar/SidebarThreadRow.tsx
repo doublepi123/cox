@@ -1122,37 +1122,33 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
-    props.pinningSupported && canOperateThread && !sortable?.isDragging ? (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={t("Unpin thread")}
-              onClick={handleUnpinClick}
-              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            />
-          }
-        >
-          <PinIcon
-            aria-hidden
-            className="size-3 shrink-0 group-hover/unpin:hidden group-focus-visible/unpin:hidden"
-          />
-          <PinOffIcon
-            aria-hidden
-            className="hidden size-3 shrink-0 group-hover/unpin:block group-focus-visible/unpin:block"
-          />
-        </TooltipTrigger>
-        <TooltipPopup>{t("Unpin thread")}</TooltipPopup>
-      </Tooltip>
-    ) : (
-      <PinIcon
-        aria-label={t("Pinned")}
-        role="img"
-        className="size-3 shrink-0 text-muted-foreground/65"
-      />
-    )
+    <PinIcon
+      aria-label={t("Pinned")}
+      role="img"
+      className="size-3 shrink-0 text-muted-foreground/65"
+    />
   ) : null;
+  const unpinButton =
+    showPin && props.pinningSupported && canOperateThread && !sortable?.isDragging ? (
+      <span className="ms-1 inline-flex border-s border-border/60 ps-1">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={t("Unpin thread")}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={handleUnpinClick}
+                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              />
+            }
+          >
+            <PinOffIcon aria-hidden className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup>{t("Unpin thread")}</TooltipPopup>
+        </Tooltip>
+      </span>
+    ) : null;
 
   const remoteMachineIcon =
     isRemote && !showsScratchMachine ? (
@@ -1349,7 +1345,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </span>
                     )}
                   </span>
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100">
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
+                      unpinButton &&
+                        "pointer-coarse:pointer-events-auto pointer-coarse:static pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:static [@media(hover:none)]:opacity-100",
+                    )}
+                  >
                     {variantAction === "unsnooze" ? (
                       !props.snoozeSupported ? null : (
                         <button
@@ -1407,6 +1409,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </Tooltip>
                     )}
                     {deleteButton}
+                    {unpinButton}
                   </span>
                 </span>
               )}
@@ -1465,8 +1468,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
-              {/* Left of the status slot, the pin would slide when hover swaps the
-                label for the wider row controls. */}
               {pinIndicator}
               {props.projectDisplayName ? (
                 <span
@@ -1546,13 +1547,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   {props.settlementSupported ||
                   showSnoozeButton ||
                   hasUnsentDraft ||
-                  deleteButton ? (
+                  deleteButton ||
+                  unpinButton ? (
                     <span
                       className={cn(
                         // Mouse clicks leave Settle focused; focus-within would pin controls over
                         // the status label after the pointer leaves. Use focus-visible instead.
                         "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
                         snoozeMenuOpen && "pointer-events-auto static opacity-100",
+                        unpinButton &&
+                          "pointer-coarse:pointer-events-auto pointer-coarse:static pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:static [@media(hover:none)]:opacity-100",
                       )}
                     >
                       {hasUnsentDraft ? (
@@ -1601,6 +1605,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         </Tooltip>
                       ) : null}
                       {deleteButton}
+                      {unpinButton}
                     </span>
                   ) : null}
                 </span>
