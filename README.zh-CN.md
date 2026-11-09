@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/web/public/cox.svg" width="96" height="96" alt="Cox 图标" />
+</p>
+
 # Cox
 
 [English](README.md) | 简体中文
