@@ -6,6 +6,7 @@ export * from "./background.ts";
 export * from "./acpRegistry.ts";
 export * from "./auth.ts";
 export * from "./environment.ts";
+export * from "./localServiceUpdate.ts";
 export * from "./environmentHttp.ts";
 export * from "./terminal.ts";
 export * from "./provider.ts";
@@ -63,11 +64,11 @@ export * from "./settingsSecretValue.ts";
 export * from "./modelService.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./browserUi.ts";
+export { DesktopUpdateProgress } from "./desktopShell.ts";
 export type {
   DesktopShellBridge,
   DesktopWindowState,
   DesktopBackendUpdateState,
   DesktopClientUpdateState,
   DesktopSoftwareUpdateState,
-  DesktopUpdateProgress,
 } from "./desktopShell.ts";

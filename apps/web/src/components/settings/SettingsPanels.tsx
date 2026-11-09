@@ -25,6 +25,7 @@ import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { AboutVersionTitle } from "./AboutVersionTitle";
 import { DesktopUpdates } from "./DesktopUpdates";
+import { LocalServiceUpdates } from "./LocalServiceUpdates";
 
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
@@ -1731,6 +1732,7 @@ export function AboutSettingsPanel() {
         />
       </SettingsSection>
 
+      <LocalServiceUpdates />
       <DesktopUpdates />
       <SettingsSection id="legal" title={translateUi("Legal")}>
         <SettingsRow

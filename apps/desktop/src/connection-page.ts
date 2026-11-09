@@ -13,33 +13,33 @@ export function createConnectionPage(
         title: "连接",
         subtitle: "在这台电脑上运行 Cox，或连接你自己部署的远程服务端。",
         local: "此电脑",
-        localDetail: "使用桌面客户端管理的本地 Cox 后端。",
+        localDetail: "使用本地 Cox 后端。连接远程服务器不会停止本地任务。",
         useLocal: "使用本地模式",
         remote: "远程服务器",
         add: "添加并连接",
         name: "名称（可选）",
-        origin: "HTTPS 服务器地址",
+        origin: "HTTP(S) 服务器地址",
         connect: "连接",
         forget: "忘记",
         current: "当前",
         security:
-          "仅支持 HTTPS 和已启用 COX_AUTH_PASSWORD 的 Cox 服务端。密码不会保存在连接配置中。",
+          "远程服务端必须启用 COX_AUTH_PASSWORD。HTTP 仅在可信网络中使用；密码、会话和内容不会被加密。密码不会保存在连接配置中。",
       }
     : {
         title: "Connections",
         subtitle: "Run Cox on this computer, or connect to a remote server that you operate.",
         local: "This computer",
-        localDetail: "Use the local Cox backend managed by the desktop client.",
+        localDetail: "Use the local Cox backend. Connecting remotely keeps local tasks running.",
         useLocal: "Use local mode",
         remote: "Remote servers",
         add: "Add and connect",
         name: "Name (optional)",
-        origin: "HTTPS server origin",
+        origin: "HTTP(S) server origin",
         connect: "Connect",
         forget: "Forget",
         current: "Current",
         security:
-          "Only Cox servers using HTTPS and COX_AUTH_PASSWORD are supported. Passwords are never saved in connection settings.",
+          "Remote servers must enable COX_AUTH_PASSWORD. Use HTTP only on trusted networks: credentials, sessions and content are not encrypted. Passwords are never saved in connection settings.",
       };
   const active = snapshot.active;
   const profiles = snapshot.profiles

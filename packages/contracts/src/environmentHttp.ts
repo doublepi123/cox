@@ -51,6 +51,7 @@ import {
   OrchestrationV2ThreadTranscript,
 } from "./orchestrationV2.ts";
 import { Project, ProjectMutation, ProjectSnapshot } from "./project.ts";
+import { LocalServiceUpdateState } from "./localServiceUpdate.ts";
 import {
   PullRequestDiffInput,
   PullRequestDiffResult,
@@ -575,7 +576,34 @@ class EnvironmentWebhooksHttpApi extends HttpApiGroup.make("webhooks")
   .add(HttpApiEndpoint.patch("webhookPatch", WEBHOOK_PATH, webhookEndpoint))
   .add(HttpApiEndpoint.get("webhookGet", WEBHOOK_PATH, webhookEndpoint)) {}
 
+class EnvironmentLocalServiceUpdatesHttpApi extends HttpApiGroup.make("localServiceUpdates")
+  .add(
+    HttpApiEndpoint.get("state", "/api/local-service-update", {
+      success: LocalServiceUpdateState,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("check", "/api/local-service-update/check", {
+      success: LocalServiceUpdateState,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("download", "/api/local-service-update/download", {
+      success: LocalServiceUpdateState,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("apply", "/api/local-service-update/apply", {
+      success: LocalServiceUpdateState,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 export class EnvironmentHttpApi extends HttpApi.make("environment")
+  .add(EnvironmentLocalServiceUpdatesHttpApi)
   .add(EnvironmentMetadataHttpApi)
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentMcpOAuthHttpApi)

@@ -126,6 +126,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   triage: Schema.optionalKey(Schema.Boolean),
   freshContext: Schema.optionalKey(Schema.Boolean),
   scheduledTaskThreadModes: Schema.optionalKey(Schema.Boolean),
+  localServiceUpdate: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

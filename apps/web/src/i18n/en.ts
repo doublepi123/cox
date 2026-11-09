@@ -1,4 +1,21 @@
 export const en = {
+  "Local service": "Current service",
+  "Cox service updates": "Cox service updates",
+  "Update the local Cox service from its official npm release.":
+    "Update the local Cox service from its official npm release.",
+  "Cox is up to date.": "Cox is up to date.",
+  "Download update": "Download update",
+  "Downloading and verifying Cox. Current tasks will not be interrupted.":
+    "Downloading and verifying Cox. Current tasks will not be interrupted.",
+  "Cox {version} is downloaded and backed up. Restart to finish updating.":
+    "Cox {version} is downloaded and backed up. Restart to finish updating.",
+  "Restarting Cox. This page will reconnect when it is ready.":
+    "Restarting Cox. This page will reconnect when it is ready.",
+  "A database and settings backup is kept before restart.":
+    "A database and settings backup is kept before restart.",
+  "Restart and update Cox?": "Restart and update Cox?",
+  "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.":
+    "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.",
   "Encrypted reasoning replay": "Encrypted reasoning replay",
   "Preserve (default)": "Preserve (default)",
   "Omit for incompatible services": "Omit for incompatible services",

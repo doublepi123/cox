@@ -16,7 +16,7 @@ export interface RemoteConnectionInput {
 export function normalizeRemoteOrigin(input: string): string {
   const url = new URL(input.trim());
   if (
-    url.protocol !== "https:" ||
+    !["http:", "https:"].includes(url.protocol) ||
     url.username ||
     url.password ||
     url.pathname !== "/" ||
@@ -24,7 +24,7 @@ export function normalizeRemoteOrigin(input: string): string {
     url.hash
   )
     throw new Error(
-      "Enter an HTTPS server origin without credentials, a path, query, or fragment.",
+      "Enter an HTTP(S) server origin without credentials, a path, query, or fragment.",
     );
   return url.origin;
 }

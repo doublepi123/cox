@@ -156,6 +156,33 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(layerEnvironmentAuth({ authPassword: Redacted.make(password) }))),
   );
 
+  it.effect("accepts a password-protected HTTP session on a trusted remote network", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const remoteRequest = request(
+        { host: "192.168.1.20:3773", origin: "http://192.168.1.20:3773" },
+        {},
+        "192.168.1.30",
+      );
+      yield* auth.assertBrowserSessionRequest(remoteRequest);
+      const issued = yield* auth.createBrowserSession(password, {
+        deviceType: "desktop",
+        ipAddress: "192.168.1.30",
+      });
+      expect(issued.response.authenticated).toBe(true);
+      const state = yield* auth.getSessionState(
+        request(
+          { host: "192.168.1.20:3773", origin: "http://192.168.1.20:3773" },
+          { [sessions.cookieName]: issued.sessionToken },
+          "192.168.1.30",
+        ),
+      );
+      expect(state.authenticated).toBe(true);
+      expect(state.auth.loginMode).toBe("password");
+    }).pipe(Effect.provide(layerEnvironmentAuth({ authPassword: Redacted.make(password) }))),
+  );
+
   it.effect("throttles password attempts and recovers after the failure window", () =>
     Effect.gen(function* () {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;

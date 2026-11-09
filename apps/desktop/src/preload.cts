@@ -39,42 +39,42 @@ const shellBridge: DesktopShellBridge = {
     return () => ipcRenderer.removeListener("cox:window-state", handler);
   },
   syncWindowControls: () => ipcRenderer.send("cox:sync-window-controls"),
+  openConnections: () => ipcRenderer.invoke("cox:connections-show"),
 };
-const bridge: DesktopShellBridge =
-  window.location.protocol === "https:"
-    ? shellBridge
-    : {
-        ...shellBridge,
-        checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
-        downloadUpdates: () => ipcRenderer.invoke("cox:updates-download"),
-        applyUpdates: () => ipcRenderer.invoke("cox:updates-apply"),
-        setUpdatePolicy: (policy) => ipcRenderer.invoke("cox:updates-policy", policy),
-        getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
-        checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
-        installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),
-        applyBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-apply"),
-        setBackendUpdatePolicy: (policy, version) =>
-          ipcRenderer.invoke("cox:backend-update-policy", policy, version),
-        onBackendUpdate: (listener) => {
-          const handler = (_event: Electron.IpcRendererEvent, state: DesktopBackendUpdateState) =>
-            listener(state);
-          ipcRenderer.on("cox:backend-update", handler);
-          ipcRenderer.send("cox:backend-update-listening");
-          return () => ipcRenderer.removeListener("cox:backend-update", handler);
-        },
-        getClientUpdate: () => ipcRenderer.invoke("cox:client-update-state"),
-        checkClientUpdate: () => ipcRenderer.invoke("cox:client-update-check"),
-        downloadClientUpdate: () => ipcRenderer.invoke("cox:client-update-download"),
-        applyClientUpdate: () => ipcRenderer.invoke("cox:client-update-apply"),
-        setClientUpdatePolicy: (policy, version) =>
-          ipcRenderer.invoke("cox:client-update-policy", policy, version),
-        onClientUpdate: (listener) => {
-          const handler = (_event: Electron.IpcRendererEvent, state: DesktopClientUpdateState) =>
-            listener(state);
-          ipcRenderer.on("cox:client-update", handler);
-          return () => ipcRenderer.removeListener("cox:client-update", handler);
-        },
-      };
+const bridge: DesktopShellBridge = process.argv.includes("--cox-remote=true")
+  ? shellBridge
+  : {
+      ...shellBridge,
+      checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
+      downloadUpdates: () => ipcRenderer.invoke("cox:updates-download"),
+      applyUpdates: () => ipcRenderer.invoke("cox:updates-apply"),
+      setUpdatePolicy: (policy) => ipcRenderer.invoke("cox:updates-policy", policy),
+      getBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-state"),
+      checkBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-check"),
+      installBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-install"),
+      applyBackendUpdate: () => ipcRenderer.invoke("cox:backend-update-apply"),
+      setBackendUpdatePolicy: (policy, version) =>
+        ipcRenderer.invoke("cox:backend-update-policy", policy, version),
+      onBackendUpdate: (listener) => {
+        const handler = (_event: Electron.IpcRendererEvent, state: DesktopBackendUpdateState) =>
+          listener(state);
+        ipcRenderer.on("cox:backend-update", handler);
+        ipcRenderer.send("cox:backend-update-listening");
+        return () => ipcRenderer.removeListener("cox:backend-update", handler);
+      },
+      getClientUpdate: () => ipcRenderer.invoke("cox:client-update-state"),
+      checkClientUpdate: () => ipcRenderer.invoke("cox:client-update-check"),
+      downloadClientUpdate: () => ipcRenderer.invoke("cox:client-update-download"),
+      applyClientUpdate: () => ipcRenderer.invoke("cox:client-update-apply"),
+      setClientUpdatePolicy: (policy, version) =>
+        ipcRenderer.invoke("cox:client-update-policy", policy, version),
+      onClientUpdate: (listener) => {
+        const handler = (_event: Electron.IpcRendererEvent, state: DesktopClientUpdateState) =>
+          listener(state);
+        ipcRenderer.on("cox:client-update", handler);
+        return () => ipcRenderer.removeListener("cox:client-update", handler);
+      },
+    };
 contextBridge.exposeInMainWorld("coxDesktop", bridge);
 
 if (window.location.protocol === "data:") {

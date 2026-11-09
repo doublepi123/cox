@@ -336,7 +336,12 @@ function createDesktopWindow(
       sandbox: true,
       webSecurity: true,
       partition,
-      additionalArguments: ["--cox-window-kind=" + kind],
+      additionalArguments: [
+        "--cox-window-kind=" + kind,
+        ...(activeRemoteProfile && partition === remotePartition(activeRemoteProfile.id)
+          ? ["--cox-remote=true"]
+          : []),
+      ],
     },
   });
   if (!configuredSessions.has(partition)) {
@@ -1185,7 +1190,7 @@ async function start() {
   }
 
   async function showConnections(error?: unknown) {
-    if (!connectionStore || !window || window.isDestroyed() || approvedQuit) return;
+    if (!connectionStore || !window || window.isDestroyed() || approvedQuit || quitPending) return;
     connectionGeneration++;
     connectionMode = "manager";
     origin = undefined;
@@ -1297,7 +1302,7 @@ async function start() {
       const existing = input.id ? connectionStore.profile(input.id) : undefined;
       if (input.id && !existing) throw new Error("Unknown remote server.");
       const targetOrigin = input.origin ?? existing?.origin;
-      if (!targetOrigin) throw new Error("Enter an HTTPS server origin.");
+      if (!targetOrigin) throw new Error("Enter an HTTP(S) server origin.");
       const inspection = await inspectRemoteServer(targetOrigin, (input, init) =>
         net.fetch(input instanceof URL ? input.href : input, init),
       );
@@ -1305,22 +1310,6 @@ async function start() {
         ...(input.id ? { id: input.id } : {}),
         ...(input.name !== undefined ? { name: input.name } : {}),
       });
-      if (localOrigin && backend) {
-        const answer = await dialog.showMessageBox({
-          type: "warning",
-          title: text("Connect to remote server"),
-          message: text(
-            "Switching to a remote server stops the local backend and interrupts local agent tasks and terminals.",
-          ),
-          buttons: [text("Cancel"), text("Continue")],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        });
-        if (answer.response !== 1) return;
-        await backend.stop();
-        localOrigin = undefined;
-      }
       connectionGeneration++;
       activeRemoteProfile = profile;
       const partition = remotePartition(profile.id);
@@ -1372,7 +1361,8 @@ async function start() {
       event.senderFrame.url === localPageUrl,
     );
   ipcMain.handle("cox:connections-show", (event) => {
-    if (!connectionManagerSender(event)) throw new Error("Untrusted connection request.");
+    if (!isTrustedSender(event) && !connectionManagerSender(event))
+      throw new Error("Untrusted connection request.");
     return showConnections();
   });
   ipcMain.handle("cox:connections-local", (event) => {

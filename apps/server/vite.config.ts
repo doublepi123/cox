@@ -23,7 +23,12 @@ export default mergeConfig(
       },
     },
     pack: {
-      entry: ["src/bin.ts", "src/claude-history-worker.ts"],
+      entry: [
+        "src/bin.ts",
+        "src/claude-history-worker.ts",
+        "src/persistence/databaseMigrationHead.ts",
+        "src/localServiceUpdate/activation.ts",
+      ],
       outDir: "dist",
       sourcemap: true,
       clean: true,

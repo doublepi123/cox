@@ -53,7 +53,7 @@ const appendDpopChallengeOnUnauthorized =
     return yield* error;
   });
 
-const currentEnvironmentTraceId = Effect.currentParentSpan.pipe(
+export const currentEnvironmentTraceId = Effect.currentParentSpan.pipe(
   Effect.map((span) => span.traceId),
   Effect.orElseSucceed(() => "unavailable"),
 );

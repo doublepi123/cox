@@ -27,6 +27,7 @@ import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPr
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
+import { SidebarConnections } from "./SidebarConnections";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
 export const SidebarChromeHeader = memo(function SidebarChromeHeader() {
@@ -183,6 +184,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         </SidebarMenuItem>
       ) : (
         <>
+          <SidebarConnections />
           <SidebarUtilityItem
             icon={<SettingsIcon />}
             label={t("Settings")}

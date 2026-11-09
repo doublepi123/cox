@@ -38,6 +38,19 @@ describe("desktop connection persistence", () => {
     expect(stored).not.toContain("credential");
   });
 
+  it("persists a password-protected HTTP origin without storing credentials", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    const profile = store.saveRemote(
+      { ...inspection, origin: "http://192.168.1.20:3773" },
+      { name: "Trusted LAN" },
+    );
+    store.setActive({ kind: "remote", profileId: profile.id });
+    expect(new DesktopConnectionStore(directory).profile(profile.id)?.origin).toBe(
+      "http://192.168.1.20:3773",
+    );
+  });
+
   it("reuses an origin and pins its environment identity", () => {
     const store = new DesktopConnectionStore(home());
     const first = store.saveRemote(inspection, {});

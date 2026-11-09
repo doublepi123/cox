@@ -25,6 +25,17 @@ describe("local desktop connection pages", () => {
     expect(page).toContain("form-action 'none'");
     expect(page).toContain("default-src 'none'");
     expect(page).toContain("Passwords are never saved");
+    expect(page).toContain("HTTP only on trusted networks");
+    expect(page).toContain("HTTP(S) server origin");
+    expect(page).toContain("keeps local tasks running");
+  });
+
+  it("describes simultaneous local and remote use in Chinese", () => {
+    const page = createConnectionPage("zh-CN", { active: { kind: "local" }, profiles: [profile] });
+    expect(page).toContain("HTTP 仅在可信网络中使用");
+    expect(page).toContain("密码、会话和内容不会被加密");
+    expect(page).toContain('data-action="local"');
+    expect(page).toContain('data-action="connect"');
   });
 
   it("offers connections during local backend preparation", () => {

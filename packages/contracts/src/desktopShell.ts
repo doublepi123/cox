@@ -1,14 +1,8 @@
+import * as Schema from "effect/Schema";
+
 export interface DesktopWindowState {
   readonly fullscreen: boolean;
   readonly zoomFactor: number;
-}
-
-export interface DesktopUpdateProgress {
-  readonly phase: "downloading" | "verifying" | "installing" | "validating" | "starting";
-  readonly transferredBytes: number;
-  readonly totalBytes: number | null;
-  readonly bytesPerSecond: number | null;
-  readonly remainingSeconds: number | null;
 }
 
 export interface DesktopClientUpdateState {
@@ -46,6 +40,15 @@ export interface DesktopSoftwareUpdateState {
   readonly client: DesktopClientUpdateState;
 }
 
+export const DesktopUpdateProgress = Schema.Struct({
+  phase: Schema.Literals(["downloading", "verifying", "installing", "validating", "starting"]),
+  transferredBytes: Schema.Number,
+  totalBytes: Schema.NullOr(Schema.Number),
+  bytesPerSecond: Schema.NullOr(Schema.Number),
+  remainingSeconds: Schema.NullOr(Schema.Number),
+});
+export type DesktopUpdateProgress = typeof DesktopUpdateProgress.Type;
+
 export interface DesktopShellBridge {
   readonly platform: string;
   readonly windowKind?: "main" | "settings";
@@ -60,6 +63,7 @@ export interface DesktopShellBridge {
   setWindowColors(background: string, foreground: string): void;
   onWindowState(listener: (state: DesktopWindowState) => void): () => void;
   syncWindowControls(): void;
+  openConnections?(): Promise<void>;
   checkUpdates?(): Promise<DesktopSoftwareUpdateState>;
   downloadUpdates?(): Promise<DesktopSoftwareUpdateState>;
   applyUpdates?(): Promise<void>;

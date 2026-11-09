@@ -1,4 +1,21 @@
 export const zh = {
+  "Local service": "当前服务",
+  "Cox service updates": "Cox 服务更新",
+  "Current service": "当前服务",
+  "Update the local Cox service from its official npm release.":
+    "从官方 npm 发布包更新当前连接的 Cox 服务。",
+  "Cox is up to date.": "Cox 已是最新版本。",
+  "Download update": "下载更新",
+  "Downloading and verifying Cox. Current tasks will not be interrupted.":
+    "正在下载并校验 Cox，不会中断当前任务。",
+  "Cox {version} is downloaded and backed up. Restart to finish updating.":
+    "Cox {version} 已下载并完成备份，重启后即可完成更新。",
+  "Restarting Cox. This page will reconnect when it is ready.":
+    "正在重启 Cox，就绪后页面会重新连接。",
+  "A database and settings backup is kept before restart.": "重启前会保留数据库和设置备份。",
+  "Restart and update Cox?": "重启并更新 Cox？",
+  "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.":
+    "Cox 会短暂断开连接，请先等待运行中的 Agent 任务结束。若新版本未通过健康检查，将自动恢复原服务。",
   "Encrypted reasoning replay": "加密 reasoning 回放",
   "Preserve (default)": "保留（默认）",
   "Omit for incompatible services": "禁用回放（不兼容服务）",

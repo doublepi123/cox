@@ -644,6 +644,13 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
 
   {
+    id: "local-service-update",
+    title: "Cox service updates",
+    to: "/settings/about",
+    scope: "environment",
+    searchTerms: ["local service systemd server self update backup rollback"],
+  },
+  {
     id: "privacy-policy",
     title: "Privacy policy",
     to: "/settings/about",

@@ -80,6 +80,8 @@ import * as GitManager from "./git/GitManager.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as LocalServiceUpdate from "./localServiceUpdate/LocalServiceUpdate.ts";
+import * as LocalServiceUpdateHttp from "./localServiceUpdate/http.ts";
 import * as ServerOwnership from "./serverOwnership.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
@@ -585,6 +587,7 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
 );
 
 const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
+  Layer.provideMerge(LocalServiceUpdate.layer.pipe(Layer.provide(layerServerEnvironment))),
   Layer.provideMerge(layerUsage),
   Layer.provideMerge(layerBackground),
   Layer.provideMerge(layerResourceDiagnostics),
@@ -613,6 +616,7 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(PullRequestHttp.layer),
       Layer.provide(ProjectHttp.layer),
       Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),
+      Layer.provide(LocalServiceUpdateHttp.layer),
       Layer.provide(WebhookRoute.layer),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
     ),
