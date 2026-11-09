@@ -210,6 +210,322 @@ async function requestModelDeletion(
 }
 
 describe("model services settings", () => {
+  const staleModels = [
+    {
+      id: "Vendor/Old",
+      name: "Old model",
+      source: "discovered" as const,
+      available: false,
+      capabilities: null,
+    },
+    {
+      id: "Vendor/OtherOld",
+      source: "discovered" as const,
+      available: false,
+      ignored: true,
+      capabilities: null,
+    },
+  ];
+  const manualModel = {
+    id: "Vendor/Manual",
+    name: "Manual model",
+    source: "manual" as const,
+    available: false,
+    capabilities: null,
+  };
+
+  it("offers one cleanup action after refresh and removes only the confirmed unlisted models", async () => {
+    const other = ModelServiceId.make("other");
+    setup({
+      [id]: {
+        ...configured,
+        models: [
+          ...configured.models,
+          ...staleModels.map((model) => ({ ...model, available: true })),
+          manualModel,
+        ],
+      },
+      [other]: configured,
+    });
+    state.discover.mockImplementationOnce(async () => {
+      const service = state.settings.modelServices[id]!;
+      state.settings = {
+        ...state.settings,
+        modelServices: {
+          ...state.settings.modelServices,
+          [id]: {
+            ...service,
+            revision: service.revision + 1,
+            discoveredAt: "2026-11-09T00:00:00Z",
+            models: [...configured.models, ...staleModels, manualModel],
+          },
+        },
+      };
+      notify();
+      return { _tag: "Success", value: undefined };
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("button", { name: /^Delete unlisted models/ }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
+    expect(state.save).not.toHaveBeenCalled();
+    const cleanup = screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true });
+    await expect.element(cleanup).toBeVisible();
+    await cleanup.click();
+    await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+    const list = page.getByRole("list", { name: "Models to delete", exact: true });
+    expect(list.element().textContent).toContain("Vendor/Old");
+    expect(list.element().textContent).toContain("Vendor/OtherOld");
+    expect(list.element().textContent).not.toContain("Vendor/Manual");
+    expect(list.element().textContent).not.toContain("Vendor/Exact");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(state.save).not.toHaveBeenCalled();
+    await cleanup.click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    expect(state.save).toHaveBeenCalledOnce();
+    const patch = state.save.mock.calls[0]![0].input.patch.modelServices[id];
+    expect(patch).toEqual({
+      ...configured,
+      revision: 1,
+      discoveredAt: "2026-11-09T00:00:00Z",
+      models: [...configured.models, manualModel],
+    });
+    expect(state.settings.modelServices[other]).toEqual(configured);
+    expect(state.discover).toHaveBeenCalledOnce();
+    expect(state.testModel).not.toHaveBeenCalled();
+    await expect
+      .element(screen.getByRole("status"))
+      .toHaveTextContent("Deleted 2 unlisted models.");
+    await expect
+      .element(screen.getByRole("button", { name: /^Delete unlisted models/ }))
+      .not.toBeInTheDocument();
+  });
+
+  it("keeps bound defaults and selections while deleting other missing models", async () => {
+    const work = ProviderInstanceId.make("work");
+    const bound = { ...staleModels[0]! };
+    const removable = staleModels[1]!;
+    const defaultModel = { ...bound, id: "Vendor/Default" };
+    setup({
+      [id]: { ...configured, models: [...configured.models, bound, removable, defaultModel] },
+    });
+    const instances = {
+      [work]: {
+        driver: ProviderDriverKind.make("pi"),
+        modelService: { serviceId: id, modelIds: ["Vendor/Exact", bound.id] },
+      },
+      [ProviderInstanceId.make("default")]: {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        modelService: { serviceId: id, modelIds: [], defaultModel: defaultModel.id },
+      },
+    };
+    state.settings = { ...state.settings, providerInstances: instances };
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Delete unlisted models (1)", exact: true }).click();
+    await expect
+      .element(page.getByText("Keeping 2 models required by agent bindings.", { exact: true }))
+      .toBeVisible();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    expect(state.settings.modelServices[id]?.models).toEqual([
+      ...configured.models,
+      bound,
+      defaultModel,
+    ]);
+    expect(state.settings.providerInstances).toEqual(instances);
+    expect(state.testModel).not.toHaveBeenCalled();
+  });
+
+  it("never empties a bound catalog when every discovered model disappears", async () => {
+    setup({ [id]: { ...configured, models: staleModels } });
+    state.settings = {
+      ...state.settings,
+      providerInstances: {
+        [ProviderInstanceId.make("work")]: {
+          driver: ProviderDriverKind.make("codex"),
+          modelService: { serviceId: id, modelIds: [] },
+        },
+      },
+    };
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("button", { name: "Delete unlisted models (0)", exact: true }))
+      .toBeDisabled();
+    await expect
+      .element(
+        screen.getByText(
+          "All unlisted models are required by agent bindings. Adjust the bindings before cleaning up.",
+          { exact: true },
+        ),
+      )
+      .toBeVisible();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("can remove all missing models from an unbound service", async () => {
+    setup({ [id]: { ...configured, models: staleModels } });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    expect(state.settings.modelServices[id]?.models).toEqual([]);
+    await expect
+      .element(screen.getByText("Fetch models or add them manually before binding an agent."))
+      .toBeVisible();
+  });
+
+  it("retains the catalog after a cleanup failure and allows retry", async () => {
+    const service = { ...configured, models: [...configured.models, ...staleModels, manualModel] };
+    setup({ [id]: service });
+    state.save.mockRejectedValueOnce(new Error("Controlled cleanup failure"));
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("The model service operation failed.");
+    expect(state.settings.modelServices[id]).toEqual(service);
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    expect(state.save).toHaveBeenCalledTimes(2);
+    expect(state.settings.modelServices[id]?.models).toEqual([...configured.models, manualModel]);
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("rechecks the catalog revision instead of applying an outdated cleanup confirmation", async () => {
+    setup({ [id]: { ...configured, models: [...configured.models, ...staleModels] } });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true }).click();
+    await act(() => {
+      const service = state.settings.modelServices[id]!;
+      state.settings = {
+        ...state.settings,
+        modelServices: {
+          [id]: {
+            ...service,
+            revision: service.revision + 1,
+            models: [
+              ...configured.models,
+              { ...staleModels[0]!, available: true },
+              staleModels[1]!,
+            ],
+          },
+        },
+      };
+      notify();
+    });
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent(
+        "The model catalog or connection changed. Close this dialog and review the cleanup again.",
+      );
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("rechecks bindings and permissions while the cleanup confirmation is open", async () => {
+    setup({ [id]: { ...configured, models: [...configured.models, staleModels[0]!] } });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Delete unlisted models (1)", exact: true }).click();
+    await act(() => {
+      state.settings = {
+        ...state.settings,
+        providerInstances: {
+          [ProviderInstanceId.make("work")]: {
+            driver: ProviderDriverKind.make("opencode"),
+            modelService: { serviceId: id, modelIds: [staleModels[0]!.id] },
+          },
+        },
+      };
+      notify();
+    });
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    await act(() => {
+      state.settings = { ...state.settings, providerInstances: {} };
+      notify();
+    });
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+    state.manage = false;
+    await screen.rerender(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("hides cleanup without missing discovered entries or manage permission", async () => {
+    setup({ [id]: { ...configured, models: [...configured.models, manualModel] } });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("button", { name: /^Delete unlisted models/ }))
+      .not.toBeInTheDocument();
+    await act(() => {
+      state.settings = {
+        ...state.settings,
+        modelServices: { [id]: { ...configured, models: staleModels } },
+      };
+      notify();
+    });
+    await expect
+      .element(screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true }))
+      .toBeEnabled();
+    await screen.getByLabelText("API URL", { exact: true }).fill("https://different.test/v1");
+    await expect
+      .element(screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true }))
+      .toBeDisabled();
+    await screen.rerender(<EnvironmentModelServices environmentId={environmentId} projectScoped />);
+    await expect
+      .element(screen.getByRole("button", { name: /^Delete unlisted models/ }))
+      .not.toBeInTheDocument();
+  });
+
+  it("does not offer newly missing models when discovery fails", async () => {
+    setup({
+      [id]: { ...configured, models: staleModels.map((model) => ({ ...model, available: true })) },
+    });
+    state.discover.mockRejectedValueOnce(new Error("Controlled discovery failure"));
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
+    await expect.element(screen.getByRole("alert")).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: /^Delete unlisted models/ }))
+      .not.toBeInTheDocument();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it.each(["en", "zh"] as const)(
+    "keeps batch cleanup and its confirmation readable on a 320px screen in %s",
+    async (language) => {
+      setup({ [id]: { ...configured, models: [...configured.models, ...staleModels] } });
+      const originalWidth = window.innerWidth;
+      const originalHeight = window.innerHeight;
+      const originalLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      await page.viewport(320, 812);
+      setLanguagePreference(language);
+      try {
+        await using screen = await render(
+          <EnvironmentModelServices environmentId={environmentId} />,
+        );
+        const action = screen.getByRole("button", {
+          name: language === "zh" ? "一键清理不再列出的模型（2）" : "Delete unlisted models (2)",
+          exact: true,
+        });
+        await expect.element(action).toBeVisible();
+        expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
+        await action.click();
+        const popup = page.getByRole("alertdialog").element();
+        expect(popup.scrollWidth).toBeLessThanOrEqual(popup.clientWidth);
+        expect(popup.getBoundingClientRect().right).toBeLessThanOrEqual(320);
+        await page
+          .getByRole("button", { name: language === "zh" ? "取消" : "Cancel", exact: true })
+          .click();
+        expect(state.save).not.toHaveBeenCalled();
+      } finally {
+        setLanguagePreference(parseLanguagePreference(originalLanguage));
+        if (originalLanguage === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+        await page.viewport(originalWidth, originalHeight);
+      }
+    },
+  );
+
   it("ignores one model without testing or removing it and can restore its full configuration", async () => {
     const otherService = ModelServiceId.make("other");
     const keep = { id: "Vendor/Keep", name: "Keep model", capabilities: null };

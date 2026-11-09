@@ -342,6 +342,25 @@ export const en = {
   "Add model": "Add model",
   "Delete model {model}": "Delete model {model}",
   "Delete model": "Delete model",
+  "{count} models are no longer listed by the service.":
+    "{count} models are no longer listed by the service.",
+  "Manual models and models selected or required by agents are kept.":
+    "Manual models and models selected or required by agents are kept.",
+  "All unlisted models are required by agent bindings. Adjust the bindings before cleaning up.":
+    "All unlisted models are required by agent bindings. Adjust the bindings before cleaning up.",
+  "Save changes before cleaning up models": "Save changes before cleaning up models",
+  "Delete unlisted models ({count})": "Delete unlisted models ({count})",
+  "Deleted {count} unlisted models.": "Deleted {count} unlisted models.",
+  "Delete {count} unlisted models?": "Delete {count} unlisted models?",
+  "Only models no longer listed by the service will be removed from the local catalog. Manual models and models selected or required by agents are kept. Refreshing models can add them back if the service lists them again.":
+    "Only models no longer listed by the service will be removed from the local catalog. Manual models and models selected or required by agents are kept. Refreshing models can add them back if the service lists them again.",
+  "Models to delete": "Models to delete",
+  "Keeping {count} models required by agent bindings.":
+    "Keeping {count} models required by agent bindings.",
+  "The model catalog or connection changed. Close this dialog and review the cleanup again.":
+    "The model catalog or connection changed. Close this dialog and review the cleanup again.",
+  "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.":
+    "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.",
   'Delete model "{model}"?': 'Delete model "{model}"?',
   "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.":
     "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.",

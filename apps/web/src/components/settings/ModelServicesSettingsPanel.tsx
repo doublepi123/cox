@@ -47,7 +47,10 @@ import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ModelServiceRecoverySettings } from "./ModelServiceRecoverySettings";
-import { modelRemovalBlockingAgents } from "./ModelServicesSettingsPanel.logic";
+import {
+  modelRemovalBlockingAgents,
+  unlistedModelRemovalPlan,
+} from "./ModelServicesSettingsPanel.logic";
 
 export const MODEL_SERVICE_PROTOCOL_LABELS: Record<ModelServiceProtocol, string> = {
   "openai-responses": "OpenAI Responses",
@@ -247,12 +250,27 @@ function ModelServiceEditor({
   const running = useRef(false);
   const [modelEditor, setModelEditor] = useState<null | "new" | ModelServiceModel>(null);
   const [removingModel, setRemovingModel] = useState<ModelServiceModel | null>(null);
+  const [removingUnlisted, setRemovingUnlisted] = useState<{
+    readonly modelIds: readonly string[];
+    readonly revision: number;
+  } | null>(null);
+  const [cleanupResult, setCleanupResult] = useState<number | null>(null);
   const cancelModelRemoval = useRef<HTMLButtonElement>(null);
+  const cancelUnlistedRemoval = useRef<HTMLButtonElement>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const bound = Object.values(settings.providerInstances).filter(
     (instance) => instance.modelService?.serviceId === id,
   ).length;
   const models = service?.models ?? [];
+  const cleanup = service
+    ? unlistedModelRemovalPlan(id, service, settings.providerInstances)
+    : { removable: [], protected: [] };
+  const unlistedCount = cleanup.removable.length + cleanup.protected.length;
+  const cleanupModels = cleanup.removable.filter((model) =>
+    removingUnlisted?.modelIds.includes(model.id),
+  );
+  const cleanupChanged =
+    removingUnlisted !== null && service?.revision !== removingUnlisted.revision;
   const removalBlockers =
     service && removingModel
       ? modelRemovalBlockingAgents(id, service, removingModel.id, settings.providerInstances)
@@ -289,6 +307,7 @@ function ModelServiceEditor({
     running.current = true;
     setBusy(true);
     setError(null);
+    setCleanupResult(null);
     try {
       const problem = await action();
       setError(problem ? t(problem) : null);
@@ -493,7 +512,7 @@ function ModelServiceEditor({
           </div>
         ) : null}
       </form>
-      {error && !removingModel ? (
+      {error && !removingModel && !removingUnlisted ? (
         <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
           {error}
         </p>
@@ -612,6 +631,46 @@ function ModelServiceEditor({
         ) : null}
       </div>
       <div className="space-y-4 bg-muted/10 px-4 pb-4 sm:px-5 sm:pb-5 lg:px-6 lg:pb-6">
+        {service && !readOnly && unlistedCount > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-sm">
+                {t("{count} models are no longer listed by the service.", { count: unlistedCount })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("Manual models and models selected or required by agents are kept.")}
+              </p>
+              {cleanup.removable.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    "All unlisted models are required by agent bindings. Adjust the bindings before cleaning up.",
+                  )}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              size="sm-multiline"
+              variant="outline"
+              disabled={busy || changed || cleanup.removable.length === 0}
+              title={changed ? t("Save changes before cleaning up models") : undefined}
+              onClick={() => {
+                setError(null);
+                setRemovingUnlisted({
+                  modelIds: cleanup.removable.map((model) => model.id),
+                  revision: service.revision,
+                });
+              }}
+            >
+              <Trash2Icon />
+              {t("Delete unlisted models ({count})", { count: cleanup.removable.length })}
+            </Button>
+          </div>
+        ) : null}
+        {cleanupResult !== null ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {t("Deleted {count} unlisted models.", { count: cleanupResult })}
+          </p>
+        ) : null}
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t(
             "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.",
@@ -902,6 +961,103 @@ function ModelServiceEditor({
                     if (modelEditor && modelEditor !== "new" && modelEditor.id === removingModel.id)
                       setModelEditor(null);
                     setRemovingModel(null);
+                  }
+                  return problem;
+                });
+              }}
+            >
+              {t(busy ? "Working…" : "Delete")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+      <AlertDialog
+        open={removingUnlisted !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setRemovingUnlisted(null);
+        }}
+      >
+        <AlertDialogPopup initialFocus={cancelUnlistedRemoval} bottomStickOnMobile={false}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("Delete {count} unlisted models?", { count: cleanupModels.length })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "Only models no longer listed by the service will be removed from the local catalog. Manual models and models selected or required by agents are kept. Refreshing models can add them back if the service lists them again.",
+              )}
+            </AlertDialogDescription>
+            <ul
+              aria-label={t("Models to delete")}
+              className="max-h-48 overflow-y-auto rounded-md border border-border p-3 text-left text-xs"
+            >
+              {cleanupModels.map((model) => (
+                <li key={model.id} className="break-all font-mono">
+                  {model.id}
+                </li>
+              ))}
+            </ul>
+            {cleanup.protected.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t("Keeping {count} models required by agent bindings.", {
+                  count: cleanup.protected.length,
+                })}
+              </p>
+            ) : null}
+            {cleanupChanged || changed ? (
+              <p role="alert" className="text-sm text-destructive">
+                {t(
+                  "The model catalog or connection changed. Close this dialog and review the cleanup again.",
+                )}
+              </p>
+            ) : null}
+            {!cleanupModels.length && !cleanupChanged && !changed ? (
+              <p role="alert" className="text-sm text-destructive">
+                {t(
+                  "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.",
+                )}
+              </p>
+            ) : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+                {error}
+              </p>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose
+              render={<Button ref={cancelUnlistedRemoval} variant="outline" disabled={busy} />}
+            >
+              {t("Cancel")}
+            </AlertDialogClose>
+            <Button
+              variant="destructive"
+              disabled={busy || readOnly || changed || cleanupChanged || !cleanupModels.length}
+              onClick={() => {
+                if (!service || readOnly || changed || cleanupChanged || !cleanupModels.length)
+                  return;
+                const removedIds = new Set(cleanupModels.map((model) => model.id));
+                void run(async () => {
+                  const problem = commandError(
+                    await update({
+                      environmentId,
+                      input: {
+                        patch: {
+                          modelServices: {
+                            [id]: {
+                              ...service,
+                              models: models.filter((model) => !removedIds.has(model.id)),
+                            },
+                          },
+                        },
+                      },
+                    }),
+                  );
+                  if (!problem) {
+                    if (modelEditor && modelEditor !== "new" && removedIds.has(modelEditor.id))
+                      setModelEditor(null);
+                    setRemovingUnlisted(null);
+                    setCleanupResult(removedIds.size);
                   }
                   return problem;
                 });

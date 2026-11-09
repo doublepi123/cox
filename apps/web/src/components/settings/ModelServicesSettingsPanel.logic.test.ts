@@ -10,7 +10,10 @@ import {
 import { MODEL_SERVICE_AGENT_DRIVERS } from "@t3tools/shared/modelServices";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
-import { modelRemovalBlockingAgents } from "./ModelServicesSettingsPanel.logic";
+import {
+  modelRemovalBlockingAgents,
+  unlistedModelRemovalPlan,
+} from "./ModelServicesSettingsPanel.logic";
 
 const serviceId = ModelServiceId.make("shared");
 const instanceId = ProviderInstanceId.make("work");
@@ -26,6 +29,93 @@ const instance = (binding: Partial<ModelServiceBinding> = {}): ProviderInstanceC
   modelService: { serviceId, modelIds: [], ...binding },
 });
 
+describe("unlisted model cleanup", () => {
+  const stale = {
+    id: "stale",
+    source: "discovered" as const,
+    available: false,
+    capabilities: null,
+  };
+  const anotherStale = { ...stale, id: "another-stale" };
+  const active = {
+    id: "active",
+    source: "discovered" as const,
+    available: true,
+    capabilities: null,
+  };
+
+  it("only removes confirmed missing non-manual entries, including legacy and ignored entries", () => {
+    const models: readonly ModelServiceModel[] = [
+      active,
+      stale,
+      { ...stale, id: "manual", source: "manual" },
+      { ...anotherStale, ignored: true },
+      { id: "unknown", capabilities: null },
+      { id: "legacy", available: false, capabilities: null },
+    ];
+    const plan = unlistedModelRemovalPlan(serviceId, { ...service, models }, {});
+    expect(plan.removable.map((model) => model.id)).toEqual(["stale", "another-stale", "legacy"]);
+    expect(plan.protected).toEqual([]);
+    expect(models[1]).toBe(stale);
+  });
+
+  it.each(MODEL_SERVICE_AGENT_DRIVERS)(
+    "keeps default and explicit selections for %s while cleaning other entries",
+    (driver) => {
+      const models = [active, stale, anotherStale, { ...stale, id: "free" }];
+      const instances = {
+        [instanceId]: {
+          ...instance({ modelIds: ["stale", "active"], defaultModel: "active" }),
+          driver: ProviderDriverKind.make(driver),
+        },
+        [ProviderInstanceId.make("default")]: instance({ defaultModel: "another-stale" }),
+      };
+      const original = structuredClone({ models, instances });
+      const plan = unlistedModelRemovalPlan(serviceId, { ...service, models }, instances);
+      expect(plan.removable.map((model) => model.id)).toEqual(["free"]);
+      expect(plan.protected.map((model) => model.id)).toEqual(["stale", "another-stale"]);
+      expect({ models, instances }).toEqual(original);
+    },
+  );
+
+  it("protects the combined deletion from emptying an automatic agent binding", () => {
+    const plan = unlistedModelRemovalPlan(
+      serviceId,
+      { ...service, models: [stale, anotherStale] },
+      { [instanceId]: instance() },
+    );
+    expect(plan.removable).toEqual([]);
+    expect(plan.protected).toEqual([stale, anotherStale]);
+    expect(
+      modelRemovalBlockingAgents(
+        serviceId,
+        { ...service, models: [stale, anotherStale] },
+        stale.id,
+        { [instanceId]: instance() },
+      ),
+    ).toEqual([]);
+  });
+
+  it("can empty an unbound service but never touches models from another service", () => {
+    const plan = unlistedModelRemovalPlan(
+      serviceId,
+      { ...service, models: [stale, anotherStale] },
+      { [instanceId]: instance({ serviceId: ModelServiceId.make("other"), modelIds: ["stale"] }) },
+    );
+    expect(plan.removable).toEqual([stale, anotherStale]);
+    expect(plan.protected).toEqual([]);
+  });
+
+  it("does not offer cleanup for current or manual-only catalogs", () => {
+    expect(
+      unlistedModelRemovalPlan(
+        serviceId,
+        { ...service, models: [active, { ...stale, source: "manual" }] },
+        { [instanceId]: instance() },
+      ),
+    ).toEqual({ removable: [], protected: [] });
+  });
+});
 describe("model removal binding protection", () => {
   it.each(MODEL_SERVICE_AGENT_DRIVERS)("protects explicit model selections for %s", (driver) => {
     expect(

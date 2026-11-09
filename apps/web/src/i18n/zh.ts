@@ -320,6 +320,24 @@ export const zh = {
   "Add model": "添加模型",
   "Delete model {model}": "删除模型 {model}",
   "Delete model": "删除模型",
+  "{count} models are no longer listed by the service.": "上游已不再列出 {count} 个模型。",
+  "Manual models and models selected or required by agents are kept.":
+    "保留手动模型及 Agent 已选择或仍依赖的模型。",
+  "All unlisted models are required by agent bindings. Adjust the bindings before cleaning up.":
+    "这些模型均被 Agent 绑定依赖，请先调整绑定再清理。",
+  "Save changes before cleaning up models": "先保存更改，再清理模型",
+  "Delete unlisted models ({count})": "一键清理不再列出的模型（{count}）",
+  "Deleted {count} unlisted models.": "已清理 {count} 个不再列出的模型。",
+  "Delete {count} unlisted models?": "清理 {count} 个不再列出的模型？",
+  "Only models no longer listed by the service will be removed from the local catalog. Manual models and models selected or required by agents are kept. Refreshing models can add them back if the service lists them again.":
+    "仅从本地目录删除上游不再列出的模型，保留手动模型及 Agent 已选择或仍依赖的模型。若上游再次提供这些模型，刷新后会重新添加。",
+  "Models to delete": "待删除模型",
+  "Keeping {count} models required by agent bindings.":
+    "将保留 {count} 个 Agent 绑定仍依赖的模型。",
+  "The model catalog or connection changed. Close this dialog and review the cleanup again.":
+    "模型目录或连接配置已变化，请关闭弹窗后重新检查清理清单。",
+  "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.":
+    "没有可清理的模型，它们可能已恢复上架或被 Agent 绑定依赖。",
   'Delete model "{model}"?': "删除模型“{model}”？",
   "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.":
     "将从本地模型目录移除此模型。若上游服务仍提供该模型，刷新模型时可能重新添加。",

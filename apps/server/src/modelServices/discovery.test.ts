@@ -342,6 +342,44 @@ describe("model service discovery", () => {
       expect(failure.detail).toContain("repeated");
     }),
   );
+  it.effect("does not mark retained models missing when a later discovery page fails", () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      const before = (yield* settings.getSettings).modelServices[id]!;
+      let pages = 0;
+      const http = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            ++pages === 1
+              ? Response.json({
+                  data: [{ id: "first-page" }],
+                  has_more: true,
+                  last_id: "first-page",
+                })
+              : Response.json({}, { status: 503 }),
+          ),
+        ),
+      );
+      const failure = yield* discoverModelService({ serviceId: id }).pipe(
+        Effect.provideService(HttpClient.HttpClient, http),
+        Effect.flip,
+      );
+      expect(failure.detail).toContain("HTTP 503");
+      expect((yield* settings.getSettings).modelServices[id]).toEqual(before);
+      expect(pages).toBe(2);
+    }).pipe(
+      Effect.provide(
+        ServerSettingsService.layerTest({
+          modelServices: {
+            [id]: config({
+              models: [{ id: "keep", source: "discovered", available: true, capabilities: null }],
+            }),
+          },
+        }),
+      ),
+    ),
+  );
   it.effect(
     "retains manual entries and marks removed models unavailable after a successful refresh",
     () =>
@@ -356,7 +394,13 @@ describe("model service discovery", () => {
           Effect.provideService(HttpClient.HttpClient, http),
         );
         expect(result.models.map((model) => model.id)).toEqual(["new", "manual", "removed"]);
-        expect(result.models.find((model) => model.id === "removed")?.available).toBe(false);
+        expect(result.models.find((model) => model.id === "removed")).toMatchObject({
+          available: false,
+          source: "discovered",
+        });
+        expect(result.models.find((model) => model.id === "manual")).toMatchObject({
+          source: "manual",
+        });
         const saved = (yield* settings.getSettings).modelServices[id];
         expect(saved?.revision).toBe(1);
         expect(saved?.apiKey).toBe("private-test-key");
@@ -368,6 +412,56 @@ describe("model service discovery", () => {
                 models: [
                   { id: "manual", capabilities: null, source: "manual" },
                   { id: "removed", capabilities: null, source: "discovered" },
+                ],
+              }),
+            },
+          }),
+        ),
+      ),
+  );
+  it.effect(
+    "marks an empty successful upstream catalog as missing and restores entries if they return",
+    () =>
+      Effect.gen(function* () {
+        let returned = false;
+        const http = HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                request.url === "https://models.dev/api.json"
+                  ? {}
+                  : { data: returned ? [{ id: "removed" }] : [] },
+              ),
+            ),
+          ),
+        );
+        const first = yield* discoverModelService({ serviceId: id }).pipe(
+          Effect.provideService(HttpClient.HttpClient, http),
+        );
+        expect(first.models.find((model) => model.id === "removed")).toMatchObject({
+          available: false,
+          ignored: true,
+        });
+        expect(first.models.find((model) => model.id === "manual")).toMatchObject({
+          source: "manual",
+        });
+        returned = true;
+        const next = yield* discoverModelService({ serviceId: id }).pipe(
+          Effect.provideService(HttpClient.HttpClient, http),
+        );
+        expect(next.models.find((model) => model.id === "removed")).toMatchObject({
+          available: true,
+          ignored: true,
+        });
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [id]: config({
+                models: [
+                  { id: "removed", source: "discovered", ignored: true, capabilities: null },
+                  { id: "manual", source: "manual", capabilities: null },
                 ],
               }),
             },
