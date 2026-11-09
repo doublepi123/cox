@@ -363,6 +363,7 @@ try {
         { x: 16, y: 19 },
       );
       await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+      await page.waitForFunction(() => document.visibilityState === "hidden");
       assert.equal(
         await application.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()[0]?.isVisible(),
