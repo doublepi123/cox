@@ -153,7 +153,9 @@ it.layer(NodeServices.layer)("Claude model service", (it) => {
           ["vendor/unknown", "sonnet"],
         );
         assert.strictEqual(snapshot.models.find((model) => model.isDefault)?.slug, "sonnet");
-        assert.isNull(snapshot.models[0]?.capabilities);
+        assert.deepEqual(snapshot.models[0]?.capabilities, {
+          optionDescriptors: [{ id: "ultracode", label: "Ultracode", type: "boolean" }],
+        });
         assert.strictEqual(snapshot.models[1]?.capabilities?.contextWindow, 64000);
         assert.isFalse(snapshot.models[1]?.capabilities?.supportsImages);
       }

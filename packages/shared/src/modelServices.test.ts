@@ -108,11 +108,18 @@ describe("central model settings", () => {
           options: [{ id: "ultra", label: "Ultra" }],
         },
         tiers,
-        ...(driver === "claudeAgent" ? [fast] : []),
+        ...(driver === "claudeAgent"
+          ? [fast, { id: "ultracode", label: "Ultracode", type: "boolean" }]
+          : []),
       ]);
       expect(
         modelServiceAgentCapabilities(driver, { optionDescriptors: [tiers] })?.optionDescriptors,
-      ).toEqual([tiers]);
+      ).toEqual([
+        tiers,
+        ...(driver === "claudeAgent"
+          ? [{ id: "ultracode", label: "Ultracode", type: "boolean" }]
+          : []),
+      ]);
     },
   );
   it("formats familiar model names without changing unknown IDs or custom display names", () => {
@@ -202,7 +209,7 @@ describe("central model settings", () => {
     ).toEqual([]);
   });
 
-  it("exposes an independent Claude Ultracode workflow toggle for service models with xhigh", () => {
+  it("exposes an independent Claude Ultracode toggle without replacing declared ultra or xhigh effort", () => {
     const capabilities = {
       optionDescriptors: [
         {
@@ -222,14 +229,13 @@ describe("central model settings", () => {
     const mapped = modelServiceAgentCapabilities("claudeAgent", capabilities);
     expect(mapped?.optionDescriptors?.[0]).toMatchObject({
       id: "effort",
-      currentValue: "xhigh",
-      options: [{ id: "high" }, { id: "xhigh", isDefault: true }, { id: "max" }],
+      currentValue: "ultra",
+      options: capabilities.optionDescriptors[0]!.options,
     });
     expect(mapped?.optionDescriptors?.[1]).toEqual({
       id: "ultracode",
       label: "Ultracode",
       type: "boolean",
-      currentValue: true,
     });
     expect(modelServiceAgentCapabilities("claudeAgent", mapped!)?.optionDescriptors).toEqual(
       mapped?.optionDescriptors,
@@ -258,9 +264,48 @@ describe("central model settings", () => {
       })?.optionDescriptors,
     ).toEqual([
       { id: "effort", label: "Reasoning", type: "select", currentValue: "ultra", options },
+      { id: "ultracode", label: "Ultracode", type: "boolean" },
     ]);
     expect(
       modelServiceAgentCapabilities("claudeAgent", { optionDescriptors: [] })?.optionDescriptors,
-    ).toEqual([]);
+    ).toEqual([{ id: "ultracode", label: "Ultracode", type: "boolean" }]);
+  });
+
+  it.each([
+    null,
+    {},
+    { contextWindow: 64000 },
+    { optionDescriptors: [] },
+    {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          currentValue: "high",
+          options: [
+            { id: "low", label: "Low" },
+            { id: "high", label: "High", isDefault: true },
+          ],
+        },
+      ],
+    },
+  ])("exposes Claude workflows independently of reasoning support: %j", (capabilities) => {
+    const mapped = modelServiceAgentCapabilities("claudeAgent", capabilities)!;
+    expect(mapped.optionDescriptors).toContainEqual({
+      id: "ultracode",
+      label: "Ultracode",
+      type: "boolean",
+    });
+    const effort = mapped.optionDescriptors?.find((descriptor) => descriptor.id === "effort");
+    if (effort?.type === "select")
+      expect(effort.options.map((option) => option.id)).toEqual(["low", "high"]);
+    expect(modelServiceAgentCapabilities("claudeAgent", mapped)).toEqual(mapped);
+    for (const driver of ["pi", "codex", "opencode"])
+      expect(
+        modelServiceAgentCapabilities(driver, capabilities)?.optionDescriptors?.some(
+          (descriptor) => descriptor.id === "ultracode",
+        ),
+      ).not.toBe(true);
   });
 });

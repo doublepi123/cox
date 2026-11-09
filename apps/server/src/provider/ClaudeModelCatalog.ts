@@ -255,7 +255,11 @@ export function getClaudeCatalogModelCapabilities(
   catalog: ClaudeModelCatalog,
   slugOrAlias: string | null | undefined,
 ): ModelCapabilities {
-  return resolveClaudeCatalogModel(catalog, slugOrAlias)?.model.capabilities ?? EMPTY_CAPABILITIES;
+  return (
+    withUltracodeToggle(
+      resolveClaudeCatalogModel(catalog, slugOrAlias)?.model.capabilities ?? EMPTY_CAPABILITIES,
+    ) ?? EMPTY_CAPABILITIES
+  );
 }
 
 function isVersionSupported(

@@ -29,9 +29,11 @@ it.each([
   { kind: "claudeAgent", width: 320 },
   { kind: "codex", width: 1024 },
   { kind: "claudeAgent", width: 1024 },
+  { kind: "claudeAgent", width: 320, withoutXhigh: true },
+  { kind: "claudeAgent", width: 1024, withoutXhigh: true },
 ])(
-  "offers native Codex Ultra or Claude Ultracode and retains Fast routing for $kind at $width px",
-  async ({ kind, width }) => {
+  "offers native Codex Ultra or independent Claude Ultracode and retains Fast routing for $kind at $width px (no xhigh: $withoutXhigh)",
+  async ({ kind, width, withoutXhigh }) => {
     const viewport = { width: window.innerWidth, height: window.innerHeight };
     await using _viewport = {
       async [Symbol.asyncDispose]() {
@@ -60,7 +62,7 @@ it.each([
                   { id: "low", label: "Low" },
                   { id: "medium", label: "Medium" },
                   { id: "high", label: "High", isDefault: true },
-                  { id: "xhigh", label: "Extra High" },
+                  ...(!withoutXhigh ? [{ id: "xhigh", label: "Extra High" }] : []),
                   { id: "max", label: "Max" },
                 ],
               },
@@ -154,6 +156,10 @@ it.each([
     await using screen = await render(<Picker />);
     await screen.getByRole("button", { name: /^Choose model/ }).click();
     await expect.element(page.getByRole("option", { name: /Service model/ })).toBeVisible();
+    if (withoutXhigh)
+      await expect
+        .element(page.getByRole("radio", { name: "Extra High", exact: true }))
+        .not.toBeInTheDocument();
     const modeControl = () =>
       page.getByRole(kind === "codex" ? "radio" : "button", {
         name: modeLabel,
@@ -170,6 +176,16 @@ it.each([
       await expect
         .element(screen.getByRole("status", { name: "Workflow enabled" }))
         .toHaveTextContent("true");
+      await page.getByRole("radio", { name: "Low", exact: true }).click();
+      await expect
+        .element(screen.getByRole("status", { name: "Selected effort" }))
+        .toHaveTextContent("low");
+      await expect.element(modeControl()).toHaveAttribute("aria-pressed", "true");
+      await modeControl().click();
+      await expect
+        .element(screen.getByRole("status", { name: "Selected effort" }))
+        .toHaveTextContent("low");
+      await modeControl().click();
     }
     await page.getByRole("radio", { name: "Fast", exact: true }).click();
     await expect

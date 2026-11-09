@@ -45,7 +45,7 @@ export function compileClaudeModelSelection(
   const resolvedEffort = resolveClaudeCatalogEffort(catalog, selection.model, rawEffort);
   const effort = normalizeClaudeCatalogEffort(catalog, resolvedEffort, selection.model);
   const ultracode = descriptors.find((descriptor) => descriptor.id === "ultracode")?.currentValue;
-  const nativeEffort = catalog.source === "model-service" && !ultracode ? undefined : effort;
+  const nativeEffort = catalog.source === "model-service" ? undefined : effort;
   const requestEffort = catalog.source === "model-service" ? effort : undefined;
   const tier = getProviderOptionCurrentValue(
     getProviderOptionDescriptors({

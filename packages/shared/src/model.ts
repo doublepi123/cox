@@ -83,7 +83,18 @@ export function withClaudeUltracodeCapabilities(
       descriptor.options.some((option) => option.id === "ultracode"),
   );
   const effort = descriptors[effortIndex];
-  if (effort?.type !== "select") return capabilities;
+  if (effort?.type !== "select") {
+    if (
+      descriptors.some(
+        (descriptor) => descriptor.id === "ultracode" && descriptor.type === "boolean",
+      )
+    )
+      return capabilities;
+    return {
+      ...capabilities,
+      optionDescriptors: [...descriptors, { id: "ultracode", label: "Ultracode", type: "boolean" }],
+    };
+  }
   const ultracodeByDefault =
     (effort.currentValue ?? effort.options.find((option) => option.isDefault)?.id) === "ultracode";
   const hasXhigh = effort.options.some((option) => option.id === "xhigh");
@@ -294,6 +305,15 @@ export function withLegacyUltracodeEffort<
   descriptors: ReadonlyArray<ProviderOptionDescriptor> | null | undefined,
   selections: Selections,
 ): Selections | Array<ProviderOptionSelection> {
+  const effort = descriptors?.find(
+    (descriptor) => descriptor.id === "effort" && descriptor.type === "select",
+  );
+  if (
+    getRawSelectionValueById(selections, "effort") === "ultra" &&
+    effort?.type === "select" &&
+    effort.options.some((option) => option.id === "ultra")
+  )
+    return selections;
   if (
     !["ultracode", "ultra"].includes(String(getRawSelectionValueById(selections, "effort"))) ||
     !descriptors?.some(

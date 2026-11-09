@@ -89,7 +89,10 @@ export function modelServiceAgentCapabilities(
   driver: string,
   capabilities: ModelCapabilities | null,
 ): ModelCapabilities | undefined {
-  if (!capabilities) return undefined;
+  if (!capabilities)
+    return driver === "claudeAgent"
+      ? (withClaudeUltracodeCapabilities(null) ?? undefined)
+      : undefined;
   const descriptor = capabilities.optionDescriptors?.find(
     (option) =>
       ["reasoningEffort", "effort", "thinking"].includes(option.id) && option.type === "select",
@@ -105,29 +108,14 @@ export function modelServiceAgentCapabilities(
             : [];
         })
       : [];
-  const workflow = driver === "claudeAgent" && options.some((option) => option.id === "xhigh");
-  const workflowOptions = workflow ? options.filter((option) => option.id !== "ultra") : options;
-  if (workflow && !workflowOptions.some((option) => option.id === "ultracode")) {
-    workflowOptions.push({
-      id: "ultracode",
-      label: "Ultracode",
-      description: "xhigh effort plus native Claude Code workflow orchestration",
-      ...(options.some((option) => option.id === "ultra" && option.isDefault)
-        ? { isDefault: true }
-        : {}),
-    });
-  }
-  const currentValue =
-    descriptor?.type === "select" && workflow && descriptor.currentValue === "ultra"
-      ? "ultracode"
-      : descriptor?.currentValue;
+  const currentValue = descriptor?.currentValue;
   const mapped: ModelCapabilities = {
     ...capabilities,
     ...(capabilities.optionDescriptors === undefined
       ? {}
       : {
           optionDescriptors: [
-            ...(workflowOptions.length
+            ...(options.length
               ? [
                   {
                     id:
@@ -138,9 +126,9 @@ export function modelServiceAgentCapabilities(
                           : "reasoningEffort",
                     label: "Reasoning",
                     type: "select" as const,
-                    options: workflowOptions,
+                    options,
                     ...(typeof currentValue === "string" &&
-                    workflowOptions.some((option) => option.id === currentValue)
+                    options.some((option) => option.id === currentValue)
                       ? { currentValue }
                       : {}),
                   },

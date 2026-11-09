@@ -3427,7 +3427,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           options?.env?.CLAUDE_CODE_EXTRA_BODY,
           JSON.stringify({ output_config: { effort } }),
         );
-        assert.equal(options?.effort, selected === "ultracode" ? "xhigh" : undefined);
+        assert.isUndefined(options?.effort);
         assert.equal(
           typeof options?.settings === "object" ? options.settings?.ultracode : undefined,
           selected === "ultracode" ? true : undefined,

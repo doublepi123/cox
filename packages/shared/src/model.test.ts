@@ -14,6 +14,7 @@ import {
   toCustomModelSetting,
   modelSelectionsEqual,
   withCodexUltraCapabilities,
+  withClaudeUltracodeCapabilities,
 } from "./model.ts";
 
 const codexCaps: ModelCapabilities = createModelCapabilities({
@@ -37,6 +38,63 @@ const codexCaps: ModelCapabilities = createModelCapabilities({
 });
 
 describe("descriptor helpers", () => {
+  it.each([
+    null,
+    {},
+    { contextWindow: 64000 },
+    { optionDescriptors: [] },
+    {
+      optionDescriptors: [
+        {
+          id: "effort",
+          label: "Reasoning",
+          type: "select" as const,
+          currentValue: "high",
+          options: [
+            { id: "low", label: "Low" },
+            { id: "high", label: "High", isDefault: true },
+          ],
+        },
+      ],
+    },
+  ])("adds a standalone Claude workflow toggle without adding reasoning levels: %j", (input) => {
+    const original = structuredClone(input);
+    const mapped = withClaudeUltracodeCapabilities(input)!;
+    expect(mapped.optionDescriptors?.at(-1)).toEqual({
+      id: "ultracode",
+      label: "Ultracode",
+      type: "boolean",
+    });
+    const effort = mapped.optionDescriptors?.find((descriptor) => descriptor.id === "effort");
+    if (effort?.type === "select") {
+      expect(effort.currentValue).toBe("high");
+      expect(effort.options.map((option) => option.id)).toEqual(["low", "high"]);
+    }
+    expect(withClaudeUltracodeCapabilities(mapped)).toBe(mapped);
+    expect(input).toEqual(original);
+  });
+
+  it("preserves an explicit workflow toggle and a service's declared Ultra effort", () => {
+    const caps: ModelCapabilities = {
+      optionDescriptors: [
+        {
+          id: "effort",
+          label: "Reasoning",
+          type: "select",
+          options: [{ id: "ultra", label: "Ultra", isDefault: true }],
+        },
+        { id: "ultracode", label: "My workflows", type: "boolean", currentValue: false },
+      ],
+    };
+    expect(withClaudeUltracodeCapabilities(caps)).toBe(caps);
+    const descriptors = getProviderOptionDescriptors({
+      caps,
+      selections: [{ id: "effort", value: "ultra" }],
+    });
+    expect(descriptors[0]?.currentValue).toBe("ultra");
+    expect(descriptors[1]?.currentValue).toBe(false);
+  });
+
   it("restores legacy Claude Ultra selections as Ultracode instead of dropping them to a default", () => {
     const descriptors = getProviderOptionDescriptors({
       caps: {

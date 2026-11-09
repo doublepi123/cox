@@ -108,7 +108,7 @@ describe("compileClaudeModelSelection", () => {
   });
 
   it.each(["ultracode", "ultra"])(
-    "enables real Claude workflows for service selection %s and sends a valid reasoning level",
+    "keeps a service's explicit %s effort separate from legacy workflow selections",
     (mode) => {
       const catalog = resolveClaudeModelServiceCatalog([
         {
@@ -133,9 +133,9 @@ describe("compileClaudeModelSelection", () => {
       const selected = selection("gpt-6.1-sol", [{ id: "effort", value: mode }]);
       const compiled = compileClaudeModelSelection(selected, catalog);
       expect(compiled).toMatchObject({
-        nativeEffort: "xhigh",
-        requestEffort: "xhigh",
-        settings: { ultracode: true, enableWorkflows: true },
+        nativeEffort: undefined,
+        requestEffort: mode === "ultracode" ? "xhigh" : "ultra",
+        settings: mode === "ultracode" ? { ultracode: true, enableWorkflows: true } : {},
       });
       const options = makeClaudeQueryOptions({
         modelSelection: selected,
@@ -144,14 +144,109 @@ describe("compileClaudeModelSelection", () => {
         resume: false,
         cwd: null,
       });
-      expect(options.effort).toBe("xhigh");
-      expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+      expect(options.effort).toBeUndefined();
+      if (mode === "ultracode")
+        expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+      else expect(options.settings).not.toHaveProperty("ultracode");
       expect(JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!)).toEqual({
-        output_config: { effort: "xhigh" },
+        output_config: { effort: mode === "ultracode" ? "xhigh" : "ultra" },
       });
       expect(selected.options?.[0]?.value).toBe(mode);
     },
   );
+
+  it.each(["low", "high", "vendor-effort", undefined])(
+    "enables workflows independently for a service with effort %s and no xhigh",
+    (effort) => {
+      const catalog = resolveClaudeModelServiceCatalog([
+        {
+          slug: "no-xhigh",
+          capabilities: effort
+            ? {
+                optionDescriptors: [
+                  {
+                    id: "reasoningEffort",
+                    label: "Reasoning",
+                    type: "select",
+                    options: ["low", "high", "vendor-effort"].map((id) => ({
+                      id,
+                      label: id,
+                      isDefault: id === "high",
+                    })),
+                  },
+                ],
+              }
+            : {},
+        },
+      ]);
+      const selected = selection("no-xhigh", [
+        ...(effort ? [{ id: "effort", value: effort }] : []),
+        { id: "ultracode", value: true },
+      ]);
+      const compiled = compileClaudeModelSelection(selected, catalog);
+      expect(compiled).toMatchObject({
+        nativeEffort: undefined,
+        effort,
+        requestEffort: effort,
+        settings: { ultracode: true, enableWorkflows: true },
+      });
+      const options = makeClaudeQueryOptions({
+        modelSelection: selected,
+        modelCatalog: catalog,
+        nativeThreadId: "independent-ultracode",
+        resume: false,
+        cwd: null,
+      });
+      expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+      expect(options.effort).toBeUndefined();
+      if (effort)
+        expect(JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!)).toEqual({
+          output_config: { effort },
+        });
+      else expect(options.env?.CLAUDE_CODE_EXTRA_BODY).toBeUndefined();
+      const off = compileClaudeModelSelection(
+        selection("no-xhigh", [
+          ...(effort ? [{ id: "effort", value: effort }] : []),
+          { id: "ultracode", value: false },
+        ]),
+        catalog,
+      );
+      expect(off.effort).toBe(compiled.effort);
+      expect(off.queryIdentity).not.toBe(compiled.queryIdentity);
+    },
+  );
+
+  it("allows a native custom model to use Ultracode with its chosen high effort", () => {
+    const catalog = scopeClaudeModelCatalog(BUNDLED_CLAUDE_MODEL_CATALOG, [
+      {
+        slug: "custom-high-only",
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "effort",
+              label: "Reasoning",
+              type: "select",
+              options: [{ id: "high", label: "High", isDefault: true }],
+            },
+          ],
+        },
+      },
+    ]);
+    const selected = selection("custom-high-only", [
+      { id: "effort", value: "high" },
+      { id: "ultracode", value: true },
+    ]);
+    const options = makeClaudeQueryOptions({
+      modelSelection: selected,
+      modelCatalog: catalog,
+      nativeThreadId: "custom-ultracode",
+      resume: false,
+      cwd: null,
+    });
+    expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
+    expect(options.effort).toBe("high");
+    expect(options.env?.CLAUDE_CODE_EXTRA_BODY).toBeUndefined();
+  });
 
   it("passes service-tier selections through extra body without turning on Claude native Fast", () => {
     const catalog = resolveClaudeModelServiceCatalog([

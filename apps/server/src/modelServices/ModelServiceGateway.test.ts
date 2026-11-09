@@ -2424,7 +2424,14 @@ it.layer(layer)("model service gateway", (it) => {
         });
         const bound = yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
         expect(record(bound[instanceId]!.config).customModels).toMatchObject([
-          { capabilities: { optionDescriptors: [{ id: "serviceTier", options: tiers }] } },
+          {
+            capabilities: {
+              optionDescriptors: [
+                { id: "serviceTier", options: tiers },
+                ...(driver === "claudeAgent" ? [{ id: "ultracode", type: "boolean" }] : []),
+              ],
+            },
+          },
         ]);
         if (driver === "codex") {
           const fs = yield* FileSystem.FileSystem;
@@ -2817,7 +2824,7 @@ it.layer(layer)("model service gateway", (it) => {
             cwd: null,
             environment: {},
           });
-          expect(options.effort).toBe("xhigh");
+          expect(options.effort).toBeUndefined();
           expect(options.settings).toMatchObject({ ultracode: true, enableWorkflows: true });
           const extraBody = JSON.parse(options.env!.CLAUDE_CODE_EXTRA_BODY!);
           expect(extraBody.output_config.effort).toBe("xhigh");

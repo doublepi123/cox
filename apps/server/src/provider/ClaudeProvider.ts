@@ -74,9 +74,7 @@ function claudeProviderModels(
     builtInModels,
     customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  ).map((model) =>
-    model.isCustom ? { ...model, capabilities: withUltracodeToggle(model.capabilities) } : model,
-  );
+  ).map((model) => ({ ...model, capabilities: withUltracodeToggle(model.capabilities) }));
 }
 
 const CLAUDE_PRESENTATION = {
