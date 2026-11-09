@@ -539,7 +539,9 @@ export const make = Effect.gen(function* () {
         ...event,
       });
     let hasEncryptedReasoning = false;
-    let omitEncryptedReasoning = false;
+    const replayPolicy =
+      selected.encryptedReasoningReplay ?? service.encryptedReasoningReplay ?? "preserve";
+    let omitEncryptedReasoning = replayPolicy === "omit";
     const rejectedFailure = (
       status: number,
       value: unknown,
@@ -609,7 +611,16 @@ export const make = Effect.gen(function* () {
         if (protocol === "openai-responses") {
           const cleaned = withoutEncryptedReasoning(requestBody);
           hasEncryptedReasoning ||= cleaned !== requestBody;
-          if (stripEncryptedReasoning) requestBody = cleaned;
+          if (stripEncryptedReasoning) {
+            if (cleaned !== requestBody)
+              yield* diagnostic({
+                event: "request_compatibility",
+                attempt: attemptId,
+                action: "removed_encrypted_reasoning",
+                reason: replayPolicy === "omit" ? "configured_omit" : "invalid_encrypted_content",
+              });
+            requestBody = cleaned;
+          }
         }
         const outgoing = yield* HttpClientRequest.bodyJson(
           HttpClientRequest.post(upstreamUrl.href).pipe(HttpClientRequest.setHeaders(headers)),

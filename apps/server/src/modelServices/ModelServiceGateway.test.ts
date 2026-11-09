@@ -158,7 +158,9 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     readonly driver?: string;
     readonly protocol?: ModelServiceConfig["protocols"][number];
     readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
-    readonly headersDelayMs?: number;
+    readonly encryptedReasoningReplay?: ModelServiceConfig["encryptedReasoningReplay"];
+    readonly modelReplay?: ModelServiceConfig["encryptedReasoningReplay"];
+    readonly headersDelayMs?: number | ((attempt: number) => number);
     readonly respond?: (
       request: import("effect/http/HttpClientRequest").HttpClientRequest,
     ) => Response;
@@ -173,6 +175,14 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
         ...service,
         revision: previous?.revision ?? 0,
         protocols: [options.protocol ?? "openai-chat"],
+        ...(options.encryptedReasoningReplay
+          ? { encryptedReasoningReplay: options.encryptedReasoningReplay }
+          : {}),
+        models: service.models.map((model) =>
+          model.id === "Vendor/Exact" && options.modelReplay
+            ? { ...model, encryptedReasoningReplay: options.modelReplay }
+            : model,
+        ),
         recovery: {
           ...DEFAULT_MODEL_SERVICE_RECOVERY,
           retryEnabled: false,
@@ -185,7 +195,11 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
   const http = HttpClient.make((request) =>
     Effect.gen(function* () {
       calls.push(request);
-      if (options.headersDelayMs) yield* Effect.sleep(options.headersDelayMs);
+      const headersDelayMs =
+        typeof options.headersDelayMs === "function"
+          ? options.headersDelayMs(calls.length)
+          : options.headersDelayMs;
+      if (headersDelayMs) yield* Effect.sleep(headersDelayMs);
       return HttpClientResponse.fromWeb(
         request,
         options.respond?.(request) ??
@@ -204,7 +218,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
       );
     }),
   );
-  const gateway = yield* make.pipe(Effect.provideService(HttpClient.HttpClient, http));
+  let gateway = yield* make.pipe(Effect.provideService(HttpClient.HttpClient, http));
   const driver = ProviderDriverKind.make(options.driver ?? "codex");
   const instances: ProviderInstanceConfigMap = {
     [instanceId]: {
@@ -216,7 +230,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
   };
   const materialized = yield* gateway.materialize(yield* settings.getSettings, instances);
   const config = record(materialized[instanceId]!.config);
-  const token =
+  let token =
     typeof config.apiKey === "string" && config.apiKey
       ? config.apiKey
       : materialized[instanceId]!.environment?.find((item) => item.name === "COX_MODEL_SERVICE_KEY")
@@ -243,10 +257,369 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     const text = yield* Effect.promise(() => HttpServerResponse.toWeb(response).text());
     return { status: response.status, headers: response.headers, text };
   }, Effect.scoped);
-  return { gateway, instances, materialized, config, token, calls, invoke, settings };
+  const restart = Effect.fn("ModelGateway.test.restart")(function* () {
+    gateway = yield* make.pipe(Effect.provideService(HttpClient.HttpClient, http));
+    const current = yield* gateway.materialize(yield* settings.getSettings, instances);
+    const fresh = record(current[instanceId]!.config);
+    token =
+      typeof fresh.apiKey === "string" && fresh.apiKey
+        ? fresh.apiKey
+        : current[instanceId]!.environment?.find((item) => item.name === "COX_MODEL_SERVICE_KEY")
+            ?.value;
+  });
+  return { gateway, instances, materialized, config, token, calls, invoke, settings, restart };
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each(["codex", "pi", "claudeAgent"])(
+    "omits Responses ciphertext on every first attempt across new requests and gateway restarts for %s",
+    (driver) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver,
+          protocol: "openai-responses",
+          encryptedReasoningReplay: "omit",
+          respond: () => Response.json(responsesAnswer),
+        });
+        const original = structuredClone(encryptedReasoningInput);
+        for (let request = 0; request < 3; request++) {
+          if (request === 2) yield* h.restart();
+          expect((yield* h.invoke("/v1/responses", encryptedReasoningInput)).status).toBe(200);
+        }
+        expect(h.calls).toHaveLength(3);
+        for (const request of h.calls)
+          expect(sentBody(request)).toEqual({
+            ...encryptedReasoningInput,
+            input: [
+              encryptedReasoningInput.input[0],
+              {
+                type: "reasoning",
+                id: "rs_summary",
+                summary: [{ type: "summary_text", text: "keep this summary" }],
+              },
+              ...encryptedReasoningInput.input.slice(3),
+            ],
+          });
+        expect(encryptedReasoningInput).toEqual(original);
+        expect(
+          (yield* h.settings.getSettings).modelServices[serviceId]?.encryptedReasoningReplay,
+        ).toBe("omit");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { service: "omit", model: "preserve", omitted: false },
+    { service: "preserve", model: "omit", omitted: true },
+    { service: "omit", model: undefined, omitted: true },
+    { service: undefined, model: undefined, omitted: false },
+  ] as const)("applies model replay overrides only to the configured model (%j)", (policy) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "openai-responses",
+        encryptedReasoningReplay: policy.service,
+        modelReplay: policy.model,
+        respond: () => Response.json(responsesAnswer),
+      });
+      yield* h.invoke("/v1/responses", encryptedReasoningInput);
+      const first = JSON.stringify(sentBody(h.calls[0]!));
+      expect(first.includes('"encrypted_content"')).toBe(!policy.omitted);
+      const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+      yield* h.settings.updateSettings({
+        modelServices: {
+          [serviceId]: {
+            ...current,
+            models: current.models.map((model) => ({
+              ...model,
+              encryptedReasoningReplay: "preserve",
+            })),
+          },
+        },
+      });
+      yield* h.invoke("/v1/responses", encryptedReasoningInput);
+      expect(sentBody(h.calls[1]!)).toEqual(encryptedReasoningInput);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not apply a model override to another model bound to the same service", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "openai-responses",
+        modelReplay: "omit",
+        respond: () => Response.json(responsesAnswer),
+      });
+      yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        [instanceId]: { ...h.instances[instanceId]!, modelService: { serviceId, modelIds: [] } },
+      });
+      yield* h.invoke("/v1/responses", { ...encryptedReasoningInput, model: "hidden" });
+      expect(sentBody(h.calls[0]!)).toEqual({ ...encryptedReasoningInput, model: "hidden" });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["preserve", "omit"] as const)(
+    "handles Claude thinking signatures after the real Anthropic-to-Responses bridge with replay=%s",
+    (policy) =>
+      Effect.gen(function* () {
+        const signatureBytes = Buffer.alloc(73);
+        signatureBytes[0] = 128;
+        const signature = signatureBytes.toString("base64url");
+        const body = {
+          model: "Vendor/Exact",
+          max_tokens: 100,
+          messages: [
+            { role: "user", content: "visible prompt" },
+            {
+              role: "assistant",
+              content: [
+                { type: "thinking", thinking: "thinking with signature", signature },
+                { type: "text", text: "visible answer" },
+                { type: "tool_use", id: "call_keep", name: "Read", input: { path: "file.txt" } },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                { type: "tool_result", tool_use_id: "call_keep", content: "visible result" },
+              ],
+            },
+          ],
+          tools: [{ name: "Read", input_schema: { type: "object", properties: {} } }],
+        };
+        const original = structuredClone(body);
+        const h = yield* harness({
+          driver: "claudeAgent",
+          protocol: "openai-responses",
+          encryptedReasoningReplay: policy,
+          respond: () =>
+            Response.json({
+              ...responsesAnswer,
+              id: "resp_fixture",
+              object: "response",
+              model: "Vendor/Exact",
+            }),
+        });
+        for (let request = 0; request < 2; request++) {
+          if (request) yield* h.restart();
+          const response = yield* h.invoke("/v1/messages", body);
+          expect(response.status).toBe(200);
+          expect(response.text).toContain("recovered safely");
+        }
+        expect(h.calls).toHaveLength(2);
+        for (const request of h.calls) {
+          const wire = sentBody(request);
+          const text = JSON.stringify(wire);
+          expect(text.includes('"encrypted_content"')).toBe(policy === "preserve");
+          if (policy === "preserve") expect(text).toContain(signature);
+          else expect(text).not.toContain(signature);
+          for (const retained of ["visible prompt", "visible answer", "visible result"])
+            expect(text).toContain(retained);
+          expect(wire.input).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                type: "function_call",
+                call_id: "call_keep",
+                name: "Read",
+                arguments: '{"path":"file.txt"}',
+              }),
+              expect.objectContaining({
+                type: "function_call_output",
+                call_id: "call_keep",
+                output: "visible result",
+              }),
+            ]),
+          );
+        }
+        expect(body).toEqual(original);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not rewrite other protocols when the replay policy is omit", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        driver: "pi",
+        protocol: "openai-chat",
+        encryptedReasoningReplay: "omit",
+      });
+      const body = {
+        ...encryptedReasoningInput,
+        messages: [
+          {
+            role: "assistant",
+            content: "visible",
+            reasoning_content: "keep other protocol reasoning",
+          },
+        ],
+      };
+      expect((yield* h.invoke("/v1/chat/completions", body)).status).toBe(200);
+      expect(sentBody(h.calls[0]!)).toEqual(body);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("stops after one repair for the observed embedded error even with forced retries", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "openai-responses",
+        recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 100 },
+        respond: () =>
+          Response.json(
+            {
+              error: {
+                code: "-4003",
+                type: "invalid_request_error",
+                message:
+                  "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+              },
+            },
+            { status: 400 },
+          ),
+      });
+      const response = yield* h.invoke("/v1/responses", encryptedReasoningInput);
+      expect(h.calls).toHaveLength(2);
+      expect(sentBody(h.calls[0]!)).toEqual(encryptedReasoningInput);
+      expect(JSON.stringify(sentBody(h.calls[1]!))).not.toContain('"encrypted_content"');
+      expect(JSON.parse(response.text).error).toMatchObject({
+        code: "invalid_encrypted_content",
+        attempts: 2,
+        terminationReason: "non_retryable_error",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("cancels old encrypted hedges and sends only one repaired body", () =>
+    Effect.gen(function* () {
+      let responses = 0;
+      const h = yield* harness({
+        driver: "pi",
+        protocol: "openai-responses",
+        headersDelayMs: (attempt) => (attempt === 2 ? 10000 : 150),
+        recovery: {
+          retryEnabled: true,
+          retryNonTransientErrors: true,
+          hedgeEnabled: true,
+          hedgeDelayMs: 100,
+          maxConcurrent: 2,
+          maxAttempts: 100,
+        },
+        respond: () =>
+          ++responses === 1
+            ? Response.json(
+                {
+                  error: {
+                    code: "-4003",
+                    type: "invalid_request_error",
+                    message:
+                      "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+                  },
+                },
+                { status: 400 },
+              )
+            : Response.json(responsesAnswer),
+      });
+      const fiber = yield* h
+        .invoke("/v1/responses", encryptedReasoningInput)
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      expect((yield* Fiber.join(fiber)).status).toBe(200);
+      expect(h.calls).toHaveLength(3);
+      expect(sentBody(h.calls[0]!)).toEqual(encryptedReasoningInput);
+      expect(sentBody(h.calls[1]!)).toEqual(encryptedReasoningInput);
+      expect(JSON.stringify(sentBody(h.calls[2]!))).not.toContain('"encrypted_content"');
+      expect(responses).toBe(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "records safe compatibility and failure diagnostics without treating HTTP 200 as a completed user turn",
+    () => {
+      const messages: Record<string, unknown>[] = [];
+      const logger = Logger.make(({ message }) => {
+        if (Array.isArray(message))
+          for (const entry of message)
+            if (entry !== null && typeof entry === "object") messages.push(record(entry));
+      });
+      return Effect.gen(function* () {
+        const upstreamRequestId = "4171489b-838f-4e4c-9366-18cf20dadc55";
+        const h = yield* harness({
+          protocol: "openai-responses",
+          encryptedReasoningReplay: "omit",
+          recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 100 },
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  code: "-4003",
+                  type: "invalid_request_error",
+                  message:
+                    "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+                },
+              },
+              { status: 400, headers: { "x-request-id": upstreamRequestId } },
+            ),
+        });
+        yield* h.invoke("/v1/responses", encryptedReasoningInput);
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "request_compatibility",
+            action: "removed_encrypted_reasoning",
+            reason: "configured_omit",
+            attempt: 1,
+          }),
+        );
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "attempt_failed",
+            code: "invalid_encrypted_content",
+            upstreamRequestId,
+          }),
+        );
+        const text = JSON.stringify(messages);
+        for (const secret of [
+          "opaque-private-ciphertext",
+          "second-private-ciphertext",
+          "keep this prompt",
+          "private-upstream-key",
+          "private-header",
+          "rs_private",
+        ])
+          expect(text).not.toContain(secret);
+        expect(messages).not.toContainEqual(
+          expect.objectContaining({ event: "terminal", reason: "response_ready" }),
+        );
+      }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+    },
+  );
+
+  it.effect(
+    "retains bounded failure handling if an omit-configured request is still rejected",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol: "openai-responses",
+          encryptedReasoningReplay: "omit",
+          recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 100 },
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  code: "-4003",
+                  type: "invalid_request_error",
+                  message:
+                    "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+                },
+              },
+              { status: 400 },
+            ),
+        });
+        const response = yield* h.invoke("/v1/responses", encryptedReasoningInput);
+        expect(response.status).toBe(400);
+        expect(h.calls).toHaveLength(1);
+        expect(JSON.parse(response.text).error).toMatchObject({
+          code: "invalid_encrypted_content",
+          attempts: 1,
+          terminationReason: "non_retryable_error",
+        });
+      }).pipe(Effect.scoped),
+  );
+
   it.effect.each([
     "http",
     "wrapped-http",
@@ -255,18 +628,34 @@ it.layer(layer)("model service gateway", (it) => {
     "wrapped-json",
     "sse-flat",
     "sse-failed",
+    "embedded-http",
+    "embedded-json",
+    "embedded-sse",
   ] as const)(
     "repairs encrypted Responses reasoning only after an explicit pre-output rejection (%s)",
     (format) =>
       Effect.gen(function* () {
         let calls = 0;
-        const stream = format.startsWith("sse");
+        const stream = format.startsWith("sse") || format === "embedded-sse";
         const h = yield* harness({
           driver: "pi",
           protocol: "openai-responses",
           recovery: { retryEnabled: true, retryNonTransientErrors: false, maxAttempts: 100 },
           respond: () => {
             if (++calls === 1) {
+              if (format.startsWith("embedded")) {
+                const error = {
+                  code: "-4003",
+                  type: "invalid_request_error",
+                  message:
+                    "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+                };
+                return format === "embedded-sse"
+                  ? new Response(`data: ${JSON.stringify({ type: "error", error })}\n\n`, {
+                      headers: { "content-type": "text/event-stream" },
+                    })
+                  : Response.json({ error }, { status: format === "embedded-http" ? 400 : 200 });
+              }
               if (format === "http")
                 return Response.json({ error: invalidEncryptedError }, { status: 400 });
               if (format === "wrapped-http")

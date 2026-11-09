@@ -292,7 +292,7 @@ export function SettingsSidebarNav({
       className={cn(
         "flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
         isMenuLayout &&
-          "w-full max-md:w-full border-e-0 [&_[data-slot=sidebar-menu-button]]:min-h-11",
+          "min-h-0 flex-1 shrink w-full max-md:w-full border-e-0 [&_[data-slot=sidebar-menu-button]]:min-h-11",
         !isMenuLayout &&
           compactSearchOpen &&
           "max-md:absolute max-md:inset-y-0 max-md:start-0 max-md:z-10 max-md:w-full",
@@ -397,32 +397,34 @@ export function SettingsSidebarNav({
                             </h3>
                           ) : null}
                           <SidebarMenu role="presentation">
-                            {group.paths.map((to) => {
-                              const Icon = SETTINGS_SECTION_ICONS[to];
-                              const isActive =
-                                !isMenuLayout &&
-                                (activePath === to || activePath.startsWith(`${to}/`));
-                              return (
-                                <SidebarMenuItem key={to} role="presentation">
-                                  <SidebarMenuButton
-                                    data-settings-section={to}
-                                    role="treeitem"
-                                    tabIndex={sectionNavigation.tabIndexFor(to)}
-                                    aria-selected={isActive}
-                                    aria-current={isActive ? "page" : undefined}
-                                    isActive={isActive}
-                                    onClick={() => handleSectionClick(to)}
-                                  >
-                                    <Icon />
-                                    <span
-                                      className={cn("truncate", !showLabels && "max-md:sr-only")}
+                            {group.paths
+                              .filter((to) => !isMenuLayout || to !== "/settings/about")
+                              .map((to) => {
+                                const Icon = SETTINGS_SECTION_ICONS[to];
+                                const isActive =
+                                  !isMenuLayout &&
+                                  (activePath === to || activePath.startsWith(`${to}/`));
+                                return (
+                                  <SidebarMenuItem key={to} role="presentation">
+                                    <SidebarMenuButton
+                                      data-settings-section={to}
+                                      role="treeitem"
+                                      tabIndex={sectionNavigation.tabIndexFor(to)}
+                                      aria-selected={isActive}
+                                      aria-current={isActive ? "page" : undefined}
+                                      isActive={isActive}
+                                      onClick={() => handleSectionClick(to)}
                                     >
-                                      {t(SETTINGS_SECTION_LABELS[to])}
-                                    </span>
-                                  </SidebarMenuButton>
-                                </SidebarMenuItem>
-                              );
-                            })}
+                                      <Icon />
+                                      <span
+                                        className={cn("truncate", !showLabels && "max-md:sr-only")}
+                                      >
+                                        {t(SETTINGS_SECTION_LABELS[to])}
+                                      </span>
+                                    </SidebarMenuButton>
+                                  </SidebarMenuItem>
+                                );
+                              })}
                           </SidebarMenu>
                         </div>
                       ),
@@ -433,6 +435,20 @@ export function SettingsSidebarNav({
             </div>
           </SidebarGroup>
         </SidebarContent>
+        {isMenuLayout ? (
+          <div className="shrink-0 border-t border-sidebar-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <Button
+              fill
+              size="xl"
+              variant="ghost"
+              align="start"
+              onClick={() => handleSectionClick("/settings/about")}
+            >
+              <InfoIcon />
+              {t("About")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </nav>
   );

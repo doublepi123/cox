@@ -1,4 +1,15 @@
 export const zh = {
+  "Encrypted reasoning replay": "加密 reasoning 回放",
+  "Preserve (default)": "保留（默认）",
+  "Omit for incompatible services": "禁用回放（不兼容服务）",
+  "Applies to OpenAI Responses after protocol conversion, including Claude, Pi and Codex. Omit encrypted reasoning from the first request without changing messages, tools or saved history. Models can override this setting.":
+    "适用于协议转换后的 OpenAI Responses 请求，包括 Claude、Pi 和 Codex。禁用后从首次请求起移除加密 reasoning，不改变可见消息、工具调用或保存的历史。可为单个模型覆盖此设置。",
+  "Model encrypted reasoning replay": "模型加密 reasoning 回放",
+  "Use service setting": "继承服务设置",
+  "Preserve encrypted reasoning": "保留加密 reasoning",
+  "Omit encrypted reasoning": "禁用加密 reasoning 回放",
+  "Overrides only this model's Responses replay policy. Saved conversation signatures are not modified.":
+    "仅覆盖此模型的 Responses 回放策略，不会修改已保存的对话 signature。",
   "Update the client first; Cox will be checked again after relaunch.":
     "需要先更新客户端，重新启动后将再次检查 Cox 更新。",
   "Software updates are not ready.": "更新尚未全部就绪。",

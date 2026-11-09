@@ -14,9 +14,10 @@ import { Tooltip, TooltipTrigger } from "../ui/tooltip";
 import { SettingsBreadcrumb } from "./SettingsBreadcrumb";
 import { SettingsSidebarNav } from "./SettingsSidebarNav";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
-import { GeneralSettingsPanel } from "./SettingsPanels";
+import { GeneralSettingsPanel, AboutSettingsPanel } from "./SettingsPanels";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { SettingsFrame } from "../../routes/_chat.settings";
+import { APP_VERSION } from "../../branding";
 
 function MobileSettingsIndex() {
   return (
@@ -74,6 +75,55 @@ async function setupMobileSettings(width: number, height: number, language: "en"
 }
 
 describe("mobile settings", () => {
+  it.each(["en", "zh"] as const)(
+    "keeps About visible at the bottom of the mobile menu in %s",
+    async (language) => {
+      await using _settings = await setupMobileSettings(320, 568, language);
+      await using screen = await render(<MobileSettingsIndex />, { router: "/settings" });
+      const about = screen.getByRole("button", {
+        name: language === "zh" ? "关于" : "About",
+        exact: true,
+      });
+      await expect.element(about).toBeVisible();
+      const box = about.element().getBoundingClientRect();
+      expect(box.bottom).toBeLessThanOrEqual(568);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      await expect
+        .element(
+          screen.getByRole("treeitem", { name: language === "zh" ? "关于" : "About", exact: true }),
+        )
+        .not.toBeInTheDocument();
+      await about.click();
+      await expect.poll(() => screen.router?.state.location.pathname).toBe("/settings/about");
+      await screen.rerender(
+        <AppAtomRegistryProvider>
+          <SidebarProvider>
+            <SettingsScopeProvider search={{}} onChange={() => undefined}>
+              <AboutSettingsPanel />
+            </SettingsScopeProvider>
+          </SidebarProvider>
+        </AppAtomRegistryProvider>,
+      );
+      await expect
+        .element(
+          screen.getByRole("button", {
+            name: language === "zh" ? `复制版本号 ${APP_VERSION}` : `Copy version ${APP_VERSION}`,
+            exact: true,
+          }),
+        )
+        .toBeVisible();
+      await expect
+        .element(
+          screen.getByRole("link", {
+            name: language === "zh" ? "查看许可证" : "View licenses",
+            exact: true,
+          }),
+        )
+        .toBeVisible();
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+    },
+  );
+
   it("shows sections as a first-level menu and opens a section from it", async () => {
     await using _settings = await setupMobileSettings(320, 740, "zh");
     await using screen = await render(<MobileSettingsIndex />, { router: "/settings" });

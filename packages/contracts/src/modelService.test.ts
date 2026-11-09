@@ -11,6 +11,7 @@ import { ProviderInstanceConfig } from "./providerInstance.ts";
 import { ServerSettings } from "./settings.ts";
 
 const decodeSettings = Schema.decodeSync(ServerSettings);
+const encodeSettings = Schema.encodeSync(ServerSettings);
 const decodeInstance = Schema.decodeSync(ProviderInstanceConfig);
 const encodeInstance = Schema.encodeSync(ProviderInstanceConfig);
 const decodeService = Schema.decodeSync(ModelServiceConfig);
@@ -20,6 +21,37 @@ const decodeUrl = Schema.decodeSync(ModelServiceBaseUrl);
 const decodeId = Schema.decodeSync(ModelServiceId);
 
 describe("model service contracts", () => {
+  it("keeps encrypted replay opt-in and round-trips service and model overrides", () => {
+    const legacy = decodeService({
+      name: "Old service",
+      baseUrl: "https://models.test",
+      protocols: ["openai-responses"],
+      models: [{ id: "old" }],
+    });
+    expect(legacy.encryptedReasoningReplay).toBeUndefined();
+    expect(legacy.models[0]?.encryptedReasoningReplay).toBeUndefined();
+    for (const policy of ["preserve", "omit"] as const) {
+      const service = decodeService({
+        ...legacy,
+        encryptedReasoningReplay: policy,
+        models: [
+          { id: "inherit" },
+          { id: "keep", encryptedReasoningReplay: "preserve" },
+          { id: "drop", encryptedReasoningReplay: "omit" },
+        ],
+      });
+      expect(decodeService(encodeService(service))).toEqual(service);
+      const settings = decodeSettings({ modelServices: { shared: service } });
+      expect(decodeSettings(encodeSettings(settings)).modelServices.shared).toEqual(service);
+    }
+    expect(() =>
+      decodeUnknownService({ ...legacy, encryptedReasoningReplay: "automatic" }),
+    ).toThrow();
+    expect(() =>
+      decodeUnknownService({ ...legacy, models: [{ id: "bad", encryptedReasoningReplay: true }] }),
+    ).toThrow();
+  });
+
   it("defaults recovery for existing services and validates bounded overrides", () => {
     const recovery = Schema.decodeUnknownSync(ModelServiceRecovery);
     expect(recovery({})).toEqual(DEFAULT_MODEL_SERVICE_RECOVERY);

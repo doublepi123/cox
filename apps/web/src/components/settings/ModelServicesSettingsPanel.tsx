@@ -5,6 +5,7 @@ import {
   type EnvironmentId,
   type ModelServiceModel,
   type ModelServiceProtocol,
+  type ModelServiceEncryptedReasoningReplay,
   type ServerSettings,
 } from "@t3tools/contracts";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -244,6 +245,9 @@ function ModelServiceEditor({
   const [modelsPath, setModelsPath] = useState(service?.modelsPath ?? "");
   const [enabled, setEnabled] = useState(service?.enabled ?? true);
   const [recovery, setRecovery] = useState(service?.recovery ?? DEFAULT_MODEL_SERVICE_RECOVERY);
+  const [encryptedReasoningReplay, setEncryptedReasoningReplay] = useState<
+    ModelServiceEncryptedReasoningReplay | undefined
+  >(service?.encryptedReasoningReplay);
   const [error, setError] = useState<string | null>(null);
   const [saving, setBusy] = useState(false);
   const busy = saving || tests.running;
@@ -299,6 +303,8 @@ function ModelServiceEditor({
     (connectionChanged ||
       name !== service.name ||
       enabled !== service.enabled ||
+      (encryptedReasoningReplay ?? "preserve") !==
+        (service.encryptedReasoningReplay ?? "preserve") ||
       JSON.stringify(recovery) !== JSON.stringify(service.recovery)),
   );
   const fetchOnSave = !service || connectionChanged;
@@ -329,6 +335,7 @@ function ModelServiceEditor({
         modelsPath,
         enabled,
         recovery,
+        ...(encryptedReasoningReplay !== undefined ? { encryptedReasoningReplay } : {}),
         models,
         ...(service?.discoveredAt ? { discoveredAt: service.discoveredAt } : {}),
       });
@@ -493,6 +500,26 @@ function ModelServiceEditor({
             disabled={readOnly || busy}
             onChange={setRecovery}
           />
+          <label className="grid gap-2 text-sm font-medium">
+            {t("Encrypted reasoning replay")}
+            <select
+              aria-label={t("Encrypted reasoning replay")}
+              className="min-h-10 min-w-0 rounded-md border border-input bg-background px-2"
+              value={encryptedReasoningReplay ?? "preserve"}
+              disabled={readOnly || busy}
+              onChange={(event) =>
+                setEncryptedReasoningReplay(event.target.value === "omit" ? "omit" : "preserve")
+              }
+            >
+              <option value="preserve">{t("Preserve (default)")}</option>
+              <option value="omit">{t("Omit for incompatible services")}</option>
+            </select>
+            <span className="text-xs font-normal leading-relaxed text-muted-foreground">
+              {t(
+                "Applies to OpenAI Responses after protocol conversion, including Claude, Pi and Codex. Omit encrypted reasoning from the first request without changing messages, tools or saved history. Models can override this setting.",
+              )}
+            </span>
+          </label>
         </div>
         {!readOnly ? (
           <div className="grid gap-2 lg:col-span-2 lg:border-t lg:border-border/60 lg:p-5 lg:pt-5">
@@ -1151,6 +1178,9 @@ function ModelEditor({
   const [serviceTiers, setServiceTiers] = useState(
     serviceTier?.options.map((option) => option.id).join(", ") ?? "",
   );
+  const [encryptedReasoningReplay, setEncryptedReasoningReplay] = useState<
+    ModelServiceEncryptedReasoningReplay | undefined
+  >(model?.encryptedReasoningReplay);
   const validNumber = (value: string) =>
     value === "" || (Number.isSafeInteger(Number(value)) && Number(value) > 0);
   return (
@@ -1210,6 +1240,7 @@ function ModelEditor({
         }
         onSave({
           ...(model?.ignored !== undefined ? { ignored: model.ignored } : {}),
+          ...(encryptedReasoningReplay !== undefined ? { encryptedReasoningReplay } : {}),
           ...(model?.id === id.trim() && model.inputModalities
             ? { inputModalities: model.inputModalities }
             : {}),
@@ -1321,6 +1352,33 @@ function ModelEditor({
           </label>
         ))}
       </div>
+      <label className="grid gap-1 text-sm">
+        {t("Model encrypted reasoning replay")}
+        <select
+          aria-label={t("Model encrypted reasoning replay")}
+          className="min-h-10 min-w-0 rounded-md border border-input bg-background px-2"
+          value={encryptedReasoningReplay ?? ""}
+          disabled={busy}
+          onChange={(event) =>
+            setEncryptedReasoningReplay(
+              event.target.value === "omit"
+                ? "omit"
+                : event.target.value === "preserve"
+                  ? "preserve"
+                  : undefined,
+            )
+          }
+        >
+          <option value="">{t("Use service setting")}</option>
+          <option value="preserve">{t("Preserve encrypted reasoning")}</option>
+          <option value="omit">{t("Omit encrypted reasoning")}</option>
+        </select>
+        <span className="text-xs text-muted-foreground">
+          {t(
+            "Overrides only this model's Responses replay policy. Saved conversation signatures are not modified.",
+          )}
+        </span>
+      </label>
       <fieldset disabled={busy} className="grid gap-1 sm:grid-cols-2">
         <legend className="text-sm">{t("Supported protocols")}</legend>
         {defaults.map((protocol) => (

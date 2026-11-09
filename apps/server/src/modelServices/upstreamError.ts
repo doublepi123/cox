@@ -67,9 +67,16 @@ export function upstreamErrorDetails(
   secrets: ReadonlyArray<string> = [],
 ) {
   const candidates = [error.code, error.type, error.reason];
-  const code = candidates.includes("invalid_encrypted_content")
-    ? "invalid_encrypted_content"
-    : candidates.find((value): value is string => typeof value === "string" && codes.has(value));
+  const embeddedEncryptedError =
+    typeof error.message === "string" &&
+    error.message.length <= 16384 &&
+    /^code:\s*invalid_encrypted_content\s*;\s*message:\s*The encrypted content(?: for item [A-Za-z0-9_-]+)? could not be verified\.\s*Reason:\s*Encrypted content could not be decrypted or parsed\.(?:\s*\(request id: [A-Za-z0-9_-]+\))?\s*$/.test(
+      error.message,
+    );
+  const code =
+    candidates.includes("invalid_encrypted_content") || embeddedEncryptedError
+      ? "invalid_encrypted_content"
+      : candidates.find((value): value is string => typeof value === "string" && codes.has(value));
   const encrypted = code === "invalid_encrypted_content";
   const unsupportedUltra =
     typeof error.message === "string" &&

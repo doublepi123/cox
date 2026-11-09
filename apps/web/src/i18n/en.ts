@@ -1,4 +1,15 @@
 export const en = {
+  "Encrypted reasoning replay": "Encrypted reasoning replay",
+  "Preserve (default)": "Preserve (default)",
+  "Omit for incompatible services": "Omit for incompatible services",
+  "Applies to OpenAI Responses after protocol conversion, including Claude, Pi and Codex. Omit encrypted reasoning from the first request without changing messages, tools or saved history. Models can override this setting.":
+    "Applies to OpenAI Responses after protocol conversion, including Claude, Pi and Codex. Omit encrypted reasoning from the first request without changing messages, tools or saved history. Models can override this setting.",
+  "Model encrypted reasoning replay": "Model encrypted reasoning replay",
+  "Use service setting": "Use service setting",
+  "Preserve encrypted reasoning": "Preserve encrypted reasoning",
+  "Omit encrypted reasoning": "Omit encrypted reasoning",
+  "Overrides only this model's Responses replay policy. Saved conversation signatures are not modified.":
+    "Overrides only this model's Responses replay policy. Saved conversation signatures are not modified.",
   "Update the client first; Cox will be checked again after relaunch.":
     "Update the client first; Cox will be checked again after relaunch.",
   "Software updates are not ready.": "Software updates are not ready.",

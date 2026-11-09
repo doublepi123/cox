@@ -210,6 +210,84 @@ async function requestModelDeletion(
 }
 
 describe("model services settings", () => {
+  it("saves a persistent replay policy without refreshing models or changing other service settings", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    const replay = screen.getByRole("combobox", {
+      name: "Encrypted reasoning replay",
+      exact: true,
+    });
+    await expect.element(replay).toHaveValue("preserve");
+    await replay.selectOptions("omit");
+    await screen.getByRole("button", { name: "Save changes", exact: true }).click();
+    expect(state.discover).not.toHaveBeenCalled();
+    expect(state.testModel).not.toHaveBeenCalled();
+    expect(state.save).toHaveBeenCalledOnce();
+    expect(state.save.mock.calls[0]![0].input.patch.modelServices[id]).toEqual({
+      ...configured,
+      encryptedReasoningReplay: "omit",
+      modelsPath: "",
+    });
+    await screen.unmount();
+    await using reopened = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(reopened.getByRole("combobox", { name: "Encrypted reasoning replay", exact: true }))
+      .toHaveValue("omit");
+  });
+
+  it("saves a model replay override and allows restoring service inheritance", async () => {
+    setup({ [id]: { ...configured, encryptedReasoningReplay: "omit" } });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await openModelActions(screen, "Exact model");
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+    const replay = screen.getByRole("combobox", {
+      name: "Model encrypted reasoning replay",
+      exact: true,
+    });
+    await expect.element(replay).toHaveValue("");
+    await replay.selectOptions("preserve");
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    expect(state.settings.modelServices[id]?.encryptedReasoningReplay).toBe("omit");
+    expect(state.settings.modelServices[id]?.models[0]).toMatchObject({
+      id: "Vendor/Exact",
+      encryptedReasoningReplay: "preserve",
+      capabilities: { contextWindow: 64000 },
+    });
+    await openModelActions(screen, "Exact model");
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+    await expect.element(replay).toHaveValue("preserve");
+    await replay.selectOptions("");
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    expect(state.settings.modelServices[id]?.models[0]?.encryptedReasoningReplay).toBeUndefined();
+    expect(state.discover).not.toHaveBeenCalled();
+    expect(state.testModel).not.toHaveBeenCalled();
+  });
+
+  it("retains the replay policy when another model field is edited and prevents read-only changes", async () => {
+    setup({
+      [id]: {
+        ...configured,
+        encryptedReasoningReplay: "omit",
+        models: [{ ...configured.models[0]!, encryptedReasoningReplay: "preserve" }],
+      },
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await openModelActions(screen, "Exact model");
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+    await screen.getByLabelText("Display name", { exact: true }).fill("Renamed model");
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    expect(state.settings.modelServices[id]?.models[0]).toMatchObject({
+      name: "Renamed model",
+      encryptedReasoningReplay: "preserve",
+    });
+    state.manage = false;
+    await screen.rerender(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("combobox", { name: "Encrypted reasoning replay", exact: true }))
+      .toBeDisabled();
+    expect(state.save).toHaveBeenCalledOnce();
+  });
+
   const staleModels = [
     {
       id: "Vendor/Old",

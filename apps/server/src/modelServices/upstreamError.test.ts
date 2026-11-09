@@ -11,6 +11,66 @@ const error = {
 const requestId = "4171489b-838f-4e4c-9366-18cf20dadc55";
 
 describe("upstream model error diagnostics", () => {
+  const embedded =
+    "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.";
+  it.each([
+    { error: { code: "-4003", type: "invalid_request_error", message: embedded } },
+    {
+      message: JSON.stringify({
+        error: { code: "-4003", type: "invalid_request_error", message: embedded },
+      }),
+    },
+    {
+      error: {
+        code: "-4003",
+        message: JSON.stringify({
+          error: { code: "-4003", type: "invalid_request_error", message: embedded },
+        }),
+      },
+    },
+  ])(
+    "normalizes explicit embedded encrypted-content failures without leaking upstream message: %j",
+    (value) => {
+      const safe = upstreamErrorDetails(parseUpstreamError(value));
+      expect(safe.code).toBe("invalid_encrypted_content");
+      expect(safe.detail).toContain("could not be verified, decrypted or parsed");
+      expect(safe.detail).not.toContain("-4003");
+    },
+  );
+  it.each([
+    { code: "-4003", type: "invalid_request_error", message: "Other invalid request" },
+    {
+      type: "invalid_request_error",
+      message:
+        "User quoted code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+    },
+    { type: "invalid_request_error", message: 'The user said "code: invalid_encrypted_content"' },
+    {
+      type: "invalid_request_error",
+      message: "code: invalid_encrypted_content; message: no evidence",
+    },
+    { type: "invalid_request_error", message: embedded + " User input: example" },
+    { type: "invalid_request_error", message: '"' + embedded + '"' },
+  ])("never infers encrypted failures from numeric codes or unrelated quoted text: %j", (value) => {
+    expect(upstreamErrorDetails(parseUpstreamError({ error: value })).code).toBe(
+      "invalid_request_error",
+    );
+  });
+  it("extracts only a safe request ID from the observed embedded wrapper", () => {
+    const safe = upstreamErrorDetails(
+      parseUpstreamError({
+        error: { code: "-4003", message: embedded + ` (request id: ${requestId})` },
+      }),
+    );
+    expect(safe.requestId).toBe(requestId);
+    expect(safe.code).toBe("invalid_encrypted_content");
+    const privateItem = upstreamErrorDetails({
+      message: embedded.replace("content could", "content for item rs_secret could"),
+    });
+    expect(privateItem.code).toBe("invalid_encrypted_content");
+    expect(privateItem.detail).not.toContain("rs_secret");
+  });
+
   it.each([
     { error },
     { message: JSON.stringify({ error }) },

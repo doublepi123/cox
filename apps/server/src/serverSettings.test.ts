@@ -102,6 +102,43 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
 
 it.layer(NodeServices.layer)("server settings", (it) => {
   it.effect(
+    "persists encrypted replay policies across a fresh settings service without changing secrets",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsModule.ServerSettingsService;
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const id = ModelServiceId.make("replay-policy");
+        const service = decodeModelService({
+          name: "Replay",
+          baseUrl: "https://models.test",
+          protocols: ["openai-responses"],
+          encryptedReasoningReplay: "omit",
+          apiKey: "private-replay-key",
+          headers: { "x-extra": "private-replay-header" },
+          models: [{ id: "inherit" }, { id: "keep", encryptedReasoningReplay: "preserve" }],
+        });
+        const saved = yield* settings.updateSettings({ modelServices: { [id]: service } });
+        const raw = yield* fs.readFileString(config.settingsPath);
+        assert.equal(JSON.parse(raw).modelServices[id].encryptedReasoningReplay, "omit");
+        assert.notInclude(raw, "private-replay-key");
+        assert.notInclude(raw, "private-replay-header");
+        const fresh = yield* Effect.gen(function* () {
+          const reloaded = yield* ServerSettingsModule.ServerSettingsService;
+          return yield* reloaded.getSettings;
+        }).pipe(
+          Effect.provide(
+            Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
+          ),
+        );
+        assert.deepEqual(fresh.modelServices[id], saved.modelServices[id]);
+        assert.equal(fresh.modelServices[id]?.encryptedReasoningReplay, "omit");
+        assert.equal(fresh.modelServices[id]?.models[1]?.encryptedReasoningReplay, "preserve");
+        assert.equal(fresh.modelServices[id]?.apiKey, "private-replay-key");
+      }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
+  );
+
+  it.effect(
     "stores centralized API keys and request headers separately, preserves masked edits, and rejects stale writes",
     () =>
       Effect.gen(function* () {

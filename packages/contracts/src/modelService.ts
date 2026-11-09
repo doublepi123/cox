@@ -14,6 +14,9 @@ export const ModelServiceProtocol = Schema.Literals([
 ]);
 export type ModelServiceProtocol = typeof ModelServiceProtocol.Type;
 
+export const ModelServiceEncryptedReasoningReplay = Schema.Literals(["preserve", "omit"]);
+export type ModelServiceEncryptedReasoningReplay = typeof ModelServiceEncryptedReasoningReplay.Type;
+
 export const ModelServiceBaseUrl = TrimmedNonEmptyString.check(
   Schema.makeFilter((value) => {
     try {
@@ -46,6 +49,7 @@ export const ModelServiceModel = Schema.Struct({
   inputModalities: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   outputModalities: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   supportsReasoning: Schema.optionalKey(Schema.Boolean),
+  encryptedReasoningReplay: Schema.optionalKey(ModelServiceEncryptedReasoningReplay),
   source: Schema.optionalKey(Schema.Literals(["discovered", "manual"])),
 });
 export type ModelServiceModel = typeof ModelServiceModel.Type;
@@ -88,6 +92,7 @@ export const ModelServiceConfig = Schema.Struct({
   models: Schema.Array(ModelServiceModel).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   discoveredAt: Schema.optionalKey(Schema.String),
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  encryptedReasoningReplay: Schema.optionalKey(ModelServiceEncryptedReasoningReplay),
   recovery: ModelServiceRecovery.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_MODEL_SERVICE_RECOVERY)),
   ),

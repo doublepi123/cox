@@ -26,6 +26,86 @@ const config = (patch: Partial<ModelServiceConfig> = {}): ModelServiceConfig =>
   });
 
 describe("model service discovery", () => {
+  it.effect.each([false, true])(
+    "preserves replay policy overrides across repeated discovery (metadataOnly=%s)",
+    (metadataOnly) =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        const http = HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                request.url === "https://models.dev/api.json"
+                  ? {
+                      fixture: {
+                        models: { override: { id: "override", limit: { context: 64000 } } },
+                      },
+                    }
+                  : {
+                      data: [
+                        { id: "override", encryptedReasoningReplay: "omit" },
+                        { id: "new", encryptedReasoningReplay: "omit" },
+                      ],
+                    },
+              ),
+            ),
+          ),
+        );
+        for (let refresh = 0; refresh < 2; refresh++) {
+          const result = yield* discoverModelService({ serviceId: id, metadataOnly }).pipe(
+            Effect.provideService(HttpClient.HttpClient, http),
+          );
+          expect(
+            result.models.find((model) => model.id === "override")?.encryptedReasoningReplay,
+          ).toBe("preserve");
+          expect(
+            result.models.find((model) => model.id === "missing")?.encryptedReasoningReplay,
+          ).toBe("omit");
+          expect(
+            result.models.find((model) => model.id === "manual")?.encryptedReasoningReplay,
+          ).toBe("omit");
+          if (!metadataOnly)
+            expect(
+              result.models.find((model) => model.id === "new")?.encryptedReasoningReplay,
+            ).toBeUndefined();
+          expect((yield* settings.getSettings).modelServices[id]?.encryptedReasoningReplay).toBe(
+            "omit",
+          );
+        }
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [id]: config({
+                encryptedReasoningReplay: "omit",
+                models: [
+                  {
+                    id: "override",
+                    capabilities: null,
+                    source: "discovered",
+                    encryptedReasoningReplay: "preserve",
+                  },
+                  {
+                    id: "missing",
+                    capabilities: null,
+                    source: "discovered",
+                    encryptedReasoningReplay: "omit",
+                  },
+                  {
+                    id: "manual",
+                    capabilities: null,
+                    source: "manual",
+                    encryptedReasoningReplay: "omit",
+                  },
+                ],
+              }),
+            },
+          }),
+        ),
+      ),
+  );
+
   it.effect("retains explicit ignored models when the upstream advertises them again", () =>
     Effect.gen(function* () {
       const http = HttpClient.make((request) =>
