@@ -66,6 +66,16 @@ try {
   page.on("console", (message) => {
     if (message.type() === "error") console.error("Renderer console:", message.text());
   });
+  if (clientOnly) {
+    await page
+      .getByRole("button", { name: /^(Use local mode|使用本地模式)$/ })
+      .waitFor({ timeout: 90_000 });
+    assert.equal(
+      existsSync(join(temporary, ".cox", "desktop", "backend-updates", "state.json")),
+      false,
+    );
+    await page.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
+  }
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: clientOnly ? 600_000 : 90_000 });
   await page.waitForFunction(
     async () => {
