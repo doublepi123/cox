@@ -41,8 +41,9 @@ describe("model service contracts", () => {
         ],
       });
       expect(decodeService(encodeService(service))).toEqual(service);
-      const settings = decodeSettings({ modelServices: { shared: service } });
-      expect(decodeSettings(encodeSettings(settings)).modelServices.shared).toEqual(service);
+      const id = ModelServiceId.make("shared");
+      const settings = decodeSettings({ modelServices: { [id]: service } });
+      expect(decodeSettings(encodeSettings(settings)).modelServices[id]).toEqual(service);
     }
     expect(() =>
       decodeUnknownService({ ...legacy, encryptedReasoningReplay: "automatic" }),
