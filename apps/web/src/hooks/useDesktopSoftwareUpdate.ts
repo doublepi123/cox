@@ -19,10 +19,9 @@ export function useDesktopSoftwareUpdate() {
       await action();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      inFlight.current = false;
-      setWorking(false);
     }
+    inFlight.current = false;
+    setWorking(false);
   };
   const check = async () => {
     if (window.coxDesktop?.checkUpdates) return window.coxDesktop.checkUpdates();

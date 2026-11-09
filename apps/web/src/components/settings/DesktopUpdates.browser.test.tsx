@@ -300,6 +300,23 @@ describe("desktop update actions", () => {
       .toBeDisabled();
   });
 
+  it("releases the action guard after a bridge failure so checking can be retried", async () => {
+    setup();
+    const checkUpdates = vi
+      .fn(async () => undefined)
+      .mockRejectedValueOnce(new Error("Update check failed"));
+    using _bridge = stubGlobal("coxDesktop", { checkUpdates });
+    await using screen = await render(<DesktopUpdates />);
+    await screen.getByRole("button", { name: "Check for updates", exact: true }).click();
+    await expect.element(screen.getByRole("alert")).toHaveTextContent("Update check failed");
+    await expect
+      .element(screen.getByRole("button", { name: "Check for updates", exact: true }))
+      .toBeEnabled();
+    await screen.getByRole("button", { name: "Check for updates", exact: true }).click();
+    expect(checkUpdates).toHaveBeenCalledTimes(2);
+    await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("controls both automatic update policies with one switch", async () => {
     setup();
     await using _screen = await render(<DesktopUpdates />);
