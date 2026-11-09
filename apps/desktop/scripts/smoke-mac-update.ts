@@ -69,6 +69,8 @@ try {
   });
   previousProcess = previous.process();
   const page = await previous.firstWindow();
+  if (flavor === "client-only")
+    await page.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 600_000 });
   await page.waitForFunction(
     () => Boolean(document.querySelector('[data-slot="sidebar-wrapper"]')),
