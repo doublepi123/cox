@@ -265,7 +265,14 @@ try {
       const { ClientUpdates } =
         require("./dist/client-updates.js") as typeof import("../src/client-updates.ts");
       const { BackendProcess } = require("./dist/backend.js") as typeof import("../src/backend.ts");
-      const state = { ready: false, response: 0, confirmations: 0, errors: 0, stopFailures: 0 };
+      const state = {
+        ready: false,
+        response: 0,
+        confirmations: 0,
+        errors: 0,
+        stopFailures: 0,
+        cleanupCalls: 0,
+      };
       Reflect.set(globalThis, "__coxBackendRestartSmoke", state);
       const getState = BackendUpdates.prototype.getState;
       BackendUpdates.prototype.getState = function () {
@@ -278,6 +285,14 @@ try {
         return state.ready
           ? { ...current, status: "idle", latestVersion: current.currentVersion, message: null }
           : current;
+      };
+      const close = ClientUpdates.prototype.close;
+      ClientUpdates.prototype.close = async function () {
+        await close.call(this);
+        state.cleanupCalls++;
+        throw Object.assign(new Error("Controlled update cache cleanup failure"), {
+          code: "ENOTEMPTY",
+        });
       };
       const stop = BackendProcess.prototype.stop;
       BackendProcess.prototype.stop = async function () {
@@ -301,6 +316,8 @@ try {
           JSON.stringify({
             backendStopped: !existsSync(paths.runtime),
             confirmations: state.confirmations,
+            errors: state.errors,
+            cleanupCalls: state.cleanupCalls,
             args: options?.args,
           }),
         );
@@ -397,21 +414,27 @@ try {
   const relaunched = JSON.parse(await readFile(relaunchMarker, "utf8")) as {
     backendStopped: boolean;
     confirmations: number;
+    errors: number;
+    cleanupCalls: number;
     args: string[];
   };
   assert.equal(relaunched.backendStopped, true);
   assert.equal(relaunched.confirmations, 3);
+  assert.equal(relaunched.errors, 1);
+  assert.ok(relaunched.cleanupCalls >= 2);
   assert.equal(
     relaunched.args.some((argument) => argument.startsWith("--cox-update-transaction=")),
     false,
   );
   if (!clientOnly) assert.equal(relaunched.args.includes("--offline"), true);
-  if (clientOnly) {
+  {
     const statePath = join(temporary, ".cox", "desktop", "backend-updates", "state.json");
-    const installed = JSON.parse(await readFile(statePath, "utf8")) as {
-      active: { version: string };
-    };
-    assert.ok(installed.active.version);
+    const installed = clientOnly
+      ? (JSON.parse(await readFile(statePath, "utf8")) as {
+          active: { version: string };
+        })
+      : undefined;
+    if (installed) assert.ok(installed.active.version);
     const offline = await _electron.launch({
       executablePath: executable,
       env: environment,
@@ -439,11 +462,63 @@ try {
         };
         return (await bridge.getBackendUpdate()).currentVersion;
       });
-      assert.equal(version, installed.active.version);
+      if (installed) assert.equal(version, installed.active.version);
+      const quitMarker = join(temporary, "ordinary-quit.json");
+      await offline.evaluate(
+        ({ app, dialog }, paths) => {
+          const { join } = process.getBuiltinModule("path");
+          const { existsSync, writeFileSync } = process.getBuiltinModule("fs");
+          const require = process
+            .getBuiltinModule("module")
+            .createRequire(join(app.getAppPath(), "package.json"));
+          const { ClientUpdates } =
+            require("./dist/client-updates.js") as typeof import("../src/client-updates.ts");
+          const close = ClientUpdates.prototype.close;
+          const state = { errors: 0, confirmations: 0, cleanupCalls: 0 };
+          ClientUpdates.prototype.close = async function () {
+            await close.call(this);
+            state.cleanupCalls++;
+            throw Object.assign(new Error("Controlled update cache cleanup failure"), {
+              code: "ENOTEMPTY",
+            });
+          };
+          dialog.showErrorBox = () => {
+            state.errors++;
+          };
+          dialog.showMessageBox = async () => {
+            state.confirmations++;
+            return { response: 1, checkboxChecked: false };
+          };
+          app.once("will-quit", () =>
+            writeFileSync(
+              paths.marker,
+              JSON.stringify({
+                ...state,
+                backendStopped: !existsSync(paths.runtime),
+              }),
+            ),
+          );
+        },
+        { marker: quitMarker, runtime: runtimePath },
+      );
       const exited = once(offlineProcess, "exit", { signal: AbortSignal.timeout(30_000) });
       await offline.evaluate(({ app }) => app.quit());
       assert.equal((await exited)[0], 0);
-      console.log("PASS: client-only first installation and cached offline second launch.");
+      const quit = JSON.parse(await readFile(quitMarker, "utf8")) as {
+        backendStopped: boolean;
+        errors: number;
+        confirmations: number;
+        cleanupCalls: number;
+      };
+      assert.equal(quit.backendStopped, true);
+      assert.equal(quit.errors, 0);
+      assert.equal(quit.confirmations, 0);
+      assert.ok(quit.cleanupCalls >= 1);
+      console.log(
+        "PASS: ordinary quit tolerates ENOTEMPTY cache cleanup without a dialog and stops the backend.",
+      );
+      if (clientOnly)
+        console.log("PASS: client-only first installation and cached offline second launch.");
     } finally {
       if (offlineProcess.exitCode === null && offlineProcess.signalCode === null) {
         const exited = once(offlineProcess, "exit");
@@ -453,7 +528,7 @@ try {
     }
   }
   console.log(
-    "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation, independent settings window reuse, shared preferences, backend update consent, cancellation, stop failure recovery and shutdown before relaunch.",
+    "PASS: packaged app window, embedded backend, automatic local sign-in, renderer isolation, clipboard write, single-instance activation, independent settings window reuse, shared preferences, backend update consent, cancellation, stop failure recovery, cache cleanup failure isolation and shutdown before relaunch.",
   );
 } catch (error) {
   console.error("Packaged window smoke failed:", error);

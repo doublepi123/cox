@@ -332,6 +332,7 @@ export class ClientUpdates {
   private operation: Promise<void> | undefined;
   private controller: AbortController | undefined;
   private closed = false;
+  private closing: Promise<void> | undefined;
   private applied = false;
   private failedMacVersion: string | undefined;
   private feed: ClientUpdateFeed | undefined;
@@ -737,12 +738,20 @@ export class ClientUpdates {
     }
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
     this.closed = true;
     this.controller?.abort();
-    await this.operation?.catch(() => {});
-    await this.preferenceOperation;
-    await this.automatic?.close();
-    await this.options.macUpdater?.close();
+    this.closing = (async () => {
+      await this.initialized;
+      await this.operation?.catch(() => {});
+      await this.preferenceOperation;
+      const results = await Promise.allSettled([
+        this.automatic?.close(),
+        this.options.macUpdater?.close(),
+      ]);
+      for (const result of results) if (result.status === "rejected") throw result.reason;
+    })();
+    return this.closing;
   }
 }

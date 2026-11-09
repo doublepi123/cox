@@ -15,6 +15,7 @@ import {
 import { dirname, join } from "node:path";
 import { macCommand, verifyMacApplication } from "./mac-update-platform.ts";
 import { macUpdatePaths, type MacUpdateTransaction } from "./mac-update-transaction.ts";
+import { cleanupDiscardedMacUpdates, discardMacUpdate } from "./mac-update-cleanup.ts";
 
 export interface MacUpdateCandidate {
   readonly version: string;
@@ -32,6 +33,8 @@ export interface MacUpdateAdapter {
 export class MacAppUpdate implements MacUpdateAdapter {
   private transaction: MacUpdateTransaction | undefined;
   private handedOff = false;
+  private closing: Promise<void> | undefined;
+  private readonly initialized: Promise<void>;
   private readonly options: {
     home: string;
     application: string;
@@ -39,6 +42,7 @@ export class MacAppUpdate implements MacUpdateAdapter {
     helperDirectory: string;
     currentVersion: string;
     offline: boolean;
+    onCleanupError?: (error: unknown) => void;
   };
   constructor(options: {
     home: string;
@@ -47,12 +51,22 @@ export class MacAppUpdate implements MacUpdateAdapter {
     helperDirectory: string;
     currentVersion: string;
     offline: boolean;
+    onCleanupError?: (error: unknown) => void;
   }) {
     this.options = options;
+    const report =
+      options.onCleanupError ??
+      ((error: unknown) => {
+        process.stderr.write(`Cox update cache cleanup deferred: ${String(error)}\n`);
+      });
+    this.initialized = cleanupDiscardedMacUpdates(options.home, options.application, report).catch(
+      report,
+    );
   }
 
   async prepare(archive: string, candidate: MacUpdateCandidate) {
     if (process.platform !== "darwin") throw new Error("Automatic macOS updates require macOS.");
+    await this.initialized;
     await this.close();
     const target = await realpath(this.options.application);
     if (
@@ -113,11 +127,12 @@ export class MacAppUpdate implements MacUpdateAdapter {
       this.transaction = transaction;
       this.handedOff = false;
     } catch (error) {
-      await rm(paths.staged, { recursive: true, force: true });
+      await rm(paths.staged, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       throw error;
     } finally {
       if (attached) await macCommand("hdiutil", ["detach", mount]);
-      if (!this.transaction) await rm(paths.directory, { recursive: true, force: true });
+      if (!this.transaction)
+        await rm(paths.directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   }
 
@@ -178,11 +193,16 @@ export class MacAppUpdate implements MacUpdateAdapter {
     }
   }
 
-  async close() {
-    if (!this.transaction || this.handedOff) return;
-    const paths = macUpdatePaths(this.options.home, this.transaction.id, this.transaction.target);
-    await rm(paths.staged, { recursive: true, force: true });
-    await rm(paths.directory, { recursive: true, force: true });
-    this.transaction = undefined;
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
+    this.closing = (async () => {
+      await this.initialized;
+      if (!this.transaction || this.handedOff) return;
+      await discardMacUpdate(this.options.home, this.transaction);
+      this.transaction = undefined;
+    })().finally(() => {
+      this.closing = undefined;
+    });
+    return this.closing;
   }
 }

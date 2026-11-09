@@ -399,7 +399,10 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
             "vendor/second",
           ]);
           expect(snapshot.models.find((model) => model.isDefault)?.slug).toBe("vendor/second");
-          expect(snapshot.models.every((model) => model.capabilities === null)).toBe(true);
+          for (const model of snapshot.models)
+            expect(model.capabilities).toEqual({
+              optionDescriptors: [{ id: "ultracode", label: "Ultracode", type: "boolean" }],
+            });
         }
       }).pipe(Effect.provide(layerTest)),
   );

@@ -512,4 +512,72 @@ describe("desktop client update lifecycle", () => {
     expect(states).toHaveLength(calls);
     expect(states.some((state) => state.status === "ready")).toBe(false);
   });
+
+  it("shares one cleanup promise across simultaneous and repeated closes", async () => {
+    const macUpdater = {
+      prepare: vi.fn(async () => {}),
+      apply: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    const { updates } = await fixture({ macUpdater });
+    const closing = updates.close();
+    expect(updates.close()).toBe(closing);
+    await closing;
+    expect(updates.close()).toBe(closing);
+    expect(macUpdater.close).toHaveBeenCalledOnce();
+  });
+
+  it("does not rerun a rejected cleanup every time the app attempts to quit", async () => {
+    const error = Object.assign(new Error("directory not empty"), { code: "ENOTEMPTY" });
+    const macUpdater = {
+      prepare: vi.fn(async () => {}),
+      apply: vi.fn(async () => {}),
+      close: vi.fn(async () => {
+        throw error;
+      }),
+    };
+    const { updates } = await fixture({ macUpdater });
+    clients.splice(clients.indexOf(updates), 1);
+    const closing = updates.close();
+    await expect(closing).rejects.toBe(error);
+    expect(updates.close()).toBe(closing);
+    await expect(updates.close()).rejects.toBe(error);
+    expect(macUpdater.close).toHaveBeenCalledOnce();
+  });
+
+  it("waits for macOS preparation before cleanup and never publishes a late ready state", async () => {
+    let finish = () => {};
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const release = feed();
+    const macRelease: ClientUpdateFeed = {
+      ...release,
+      artifacts: release.artifacts.map((artifact) =>
+        artifact.platform === "darwin"
+          ? { ...artifact, installMode: "automatic", macUpdateProtocol: 1 }
+          : artifact,
+      ),
+    };
+    const macUpdater = {
+      prepare: vi.fn(async () => {
+        await pending;
+      }),
+      apply: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    const { updates, states } = await fixture({ automaticUpdates: true, macUpdater }, macRelease);
+    await updates.check();
+    const download = updates.download();
+    await vi.waitFor(() => expect(macUpdater.prepare).toHaveBeenCalledOnce());
+    const calls = states.length;
+    const closing = updates.close();
+    await Promise.resolve();
+    expect(macUpdater.close).not.toHaveBeenCalled();
+    finish();
+    await Promise.all([download, closing]);
+    expect(macUpdater.close).toHaveBeenCalledOnce();
+    expect(states).toHaveLength(calls);
+    expect(states.some((state) => state.status === "ready")).toBe(false);
+  });
 });

@@ -2964,7 +2964,9 @@ it.layer(
             ["gateway/kimi-3[1m]", "Kimi (mine)", true],
           ],
         );
-        assert.deepStrictEqual(added[0]?.capabilities?.optionDescriptors, []);
+        assert.deepStrictEqual(added[0]?.capabilities?.optionDescriptors, [
+          { id: "ultracode", label: "Ultracode", type: "boolean" },
+        ]);
         assert.deepStrictEqual(added[1]?.capabilities?.optionDescriptors, [
           {
             id: "effort",
@@ -2976,6 +2978,7 @@ it.layer(
               { id: "high", label: "High" },
             ],
           },
+          { id: "ultracode", label: "Ultracode", type: "boolean" },
         ]);
       }).pipe(
         Effect.provide(

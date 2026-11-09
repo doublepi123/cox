@@ -1,6 +1,7 @@
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
 
 const chinese = {
+  "Cox could not stop its backend": "Cox 无法停止本地后端",
   "Update the client first; Cox will be checked again after relaunch.":
     "需要先更新客户端，重新启动后将再次检查 Cox 更新。",
   "Check for updates": "检查更新",

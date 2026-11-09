@@ -17,6 +17,7 @@ import { BackendUpdates } from "./backend-updates.ts";
 import { ClientUpdates } from "./client-updates.ts";
 import { SoftwareUpdates, softwareUpdateReady } from "./software-updates.ts";
 import { MacAppUpdate } from "./mac-update.ts";
+import { closeDesktopUpdates } from "./update-cleanup.ts";
 import { loadMacUpdateLaunch, macUpdateInProgress } from "./mac-update-transaction.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { createStartupPage } from "./startup-page.ts";
@@ -77,6 +78,9 @@ let restartAfterQuit = false;
 let recoverBackend: (() => Promise<void>) | undefined;
 let macUpdateLaunch: Awaited<ReturnType<typeof loadMacUpdateLaunch>> | undefined;
 let checkingMacLaunch = false;
+let reportUpdateCleanup = (error: unknown) => {
+  process.stderr.write(`Cox update cache cleanup deferred: ${String(error)}\n`);
+};
 const terminateMacLaunch = () => {
   void finishQuit();
 };
@@ -503,14 +507,12 @@ async function finishQuit() {
   stoppingBackend = true;
   try {
     if (!updateAfterQuit) {
-      await updates?.close();
-      await clientUpdates?.close();
+      await closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);
     }
     await backend?.stop();
     if (updateAfterQuit) {
       await clientUpdates?.apply();
-      await updates?.close();
-      await clientUpdates?.close();
+      await closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);
     }
     if (restartAfterQuit)
       app.relaunch({
@@ -535,7 +537,7 @@ async function finishQuit() {
       dialog.showErrorBox(text("Install client update"), String(error));
       return;
     }
-    dialog.showErrorBox("Cox could not stop its backend", String(error));
+    dialog.showErrorBox(text("Cox could not stop its backend"), String(error));
   }
 }
 
@@ -566,6 +568,9 @@ async function start() {
   }
   const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
   log.on("error", () => {});
+  reportUpdateCleanup = (error) => {
+    log.write(`Cox update cache cleanup deferred: ${String(error)}\n`);
+  };
   log.write(`\nCox desktop ${app.getVersion()} starting\n`);
   const boundsPath = join(home, "window.json");
   let width = 1360;
@@ -1070,6 +1075,7 @@ async function start() {
             helperDirectory: import.meta.dirname,
             currentVersion: app.getVersion(),
             offline: app.commandLine.hasSwitch("offline"),
+            onCleanupError: reportUpdateCleanup,
           }),
         }
       : {}),
@@ -1416,8 +1422,7 @@ if (
   app.on("activate", showWindow);
   app.on("before-quit", (event) => {
     if (approvedQuit) {
-      void updates?.close();
-      void clientUpdates?.close();
+      void closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);
       return;
     }
     event.preventDefault();
