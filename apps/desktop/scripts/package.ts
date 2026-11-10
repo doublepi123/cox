@@ -189,7 +189,7 @@ execFileSync(
   [
     "--input-type=module",
     "-e",
-    "import { createRequire } from 'node:module'; const require = createRequire(process.cwd() + '/package.json'); require.resolve('electron-updater'); require.resolve('electron-updater/out/providers/Provider.js');",
+    "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path'; const require = createRequire(process.cwd() + '/package.json'); require.resolve('electron-updater'); require.resolve('electron-updater/out/providers/Provider.js'); await import(pathToFileURL(resolve('dist/config.js')).href);",
   ],
   {
     cwd: application,

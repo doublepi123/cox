@@ -9,7 +9,7 @@ import { BackendProcess } from "./backend.ts";
 
 const fixture = `
 import { createServer } from 'node:http';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home-dir') + 1];
 const mode = process.env.FIXTURE_MODE;
@@ -28,7 +28,12 @@ process.on('SIGINT', () => {
 server.listen(0, '127.0.0.1', () => {
   const origin = 'http://127.0.0.1:' + server.address().port;
   mkdirSync(join(home, 'userdata'), { recursive: true });
-  const publish = () => writeFileSync(join(home, 'userdata', 'server-runtime.json'), mode === 'malformed-state' ? '{' : JSON.stringify({ pid: ['wrong-owner', 'late-wrong-owner'].includes(mode) ? 1 : process.pid, origin }));
+  const publish = () => {
+    const target = join(home, 'userdata', 'server-runtime.json');
+    const staged = target + '.tmp';
+    writeFileSync(staged, mode === 'malformed-state' ? '{' : JSON.stringify({ pid: ['wrong-owner', 'late-wrong-owner'].includes(mode) ? 1 : process.pid, origin }));
+    renameSync(staged, target);
+  };
   if (!['late-state', 'late-wrong-owner', 'missing-state'].includes(mode)) publish();
   if (mode === 'timeout') { console.log('FIXTURE_WAITING'); return; }
   process.stdout.write('Local UR');

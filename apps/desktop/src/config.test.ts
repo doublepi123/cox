@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   backendEnvironment,
   backendOriginFromOutput,
@@ -8,6 +12,26 @@ import {
 } from "./config.ts";
 
 describe("desktop local-only policy", () => {
+  it("loads navigation policy outside the workspace without development dependencies", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cox-desktop-config-"));
+    await using _cleanup = {
+      [Symbol.asyncDispose]: () => rm(directory, { recursive: true, force: true }),
+    };
+    const source = await readFile(new URL("./config.ts", import.meta.url), "utf8");
+    const staged = join(directory, "config.ts");
+    await writeFile(staged, source);
+    const output = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        "import { pathToFileURL } from 'node:url'; const config = await import(pathToFileURL(process.argv[1]).href); if (!config.isExternalNavigation('vscode://file/workspace/file.ts') || config.isExternalNavigation('vscode://evil.test/file.ts')) throw new Error('Navigation policy mismatch'); process.stdout.write('ok');",
+        staged,
+      ],
+      { cwd: directory, encoding: "utf8" },
+    );
+    expect(output).toBe("ok");
+  });
   it("keeps settings navigation within the owned settings routes and retains its context", () => {
     const origin = "http://127.0.0.1:3773";
     expect(

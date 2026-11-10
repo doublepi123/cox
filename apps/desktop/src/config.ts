@@ -1,5 +1,11 @@
 import { posix, win32 } from "node:path";
-import { isLocalEditorFileUrl } from "@t3tools/contracts";
+
+const isLocalEditorFileUrl = (url: URL): boolean =>
+  ["cursor:", "vscode:"].includes(url.protocol) &&
+  url.host === "file" &&
+  !url.username &&
+  !url.password &&
+  url.pathname.length > 1;
 
 export function backendOriginFromOutput(output: string): string | undefined {
   const match = /Local URL:\s*(http:\/\/127\.0\.0\.1:(\d+))(?=\s|$)/.exec(output);

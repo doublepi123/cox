@@ -1,5 +1,14 @@
 # Changelog
 
+## Desktop 0.2.22 — 2026-11-10
+
+- Fix packaged startup by keeping the desktop navigation policy independent of
+  development-only workspace runtime packages. Preserve strict editor URL checks.
+- Import the emitted navigation module during production packaging preflight, and
+  cover dependency-free loading outside the checkout. Publish native test runtime
+  descriptors atomically to match the real backend's write behavior.
+- Desktop 0.2.21 was blocked by native smoke tests and was not published.
+
 ## 0.1.60 — 2026-11-10
 
 - Port the Cox-applicable fixes from the November 9 T3 Code upstream range.
