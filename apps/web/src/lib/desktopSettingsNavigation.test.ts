@@ -49,6 +49,18 @@ describe("desktop settings navigation", () => {
     stop?.();
   });
 
+  it("keeps settings and thread navigation inline when a remote window has no split-window role", async () => {
+    const history = createMemoryHistory({ initialEntries: ["/threads/current"] });
+    const { windowKind: _windowKind, ...shell } = bridge("main");
+    expect(startDesktopSettingsNavigation(history, shell, vi.fn())).toBeUndefined();
+    history.push("/settings/providers?machine=remote");
+    await vi.waitFor(() => expect(history.location.pathname).toBe("/settings/providers"));
+    history.push("/threads/selected");
+    await vi.waitFor(() => expect(history.location.pathname).toBe("/threads/selected"));
+    expect(shell.openSettings).not.toHaveBeenCalled();
+    expect(shell.openMain).not.toHaveBeenCalled();
+  });
+
   it("preserves browser navigation and reports a failed desktop window request", async () => {
     const history = createMemoryHistory({ initialEntries: ["/"] });
     expect(startDesktopSettingsNavigation(history, undefined, vi.fn())).toBeUndefined();

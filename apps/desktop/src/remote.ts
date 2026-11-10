@@ -11,6 +11,7 @@ export interface RemoteConnectionInput {
   readonly id?: string;
   readonly name?: string;
   readonly origin?: string;
+  readonly openInNewWindow?: boolean;
 }
 
 export function normalizeRemoteOrigin(input: string): string {

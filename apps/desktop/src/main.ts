@@ -23,7 +23,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createStartupPage } from "./startup-page.ts";
 import { createConnectionPage } from "./connection-page.ts";
 import { DesktopConnectionStore, type RemoteConnectionProfile } from "./connections.ts";
-import { inspectRemoteServer, remotePartition } from "./remote.ts";
+import { inspectRemoteServer, remotePartition, type RemoteConnectionInput } from "./remote.ts";
+import { trustedWindowAccess, type WindowAccess } from "./window-access.ts";
 import type { DesktopBackendUpdateState, DesktopClientUpdateState } from "@t3tools/contracts";
 import {
   backendEnvironment,
@@ -54,6 +55,10 @@ app.setName("Cox");
 let window: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
 let settingsNavigation: string | undefined;
+let connectionsWindow: BrowserWindow | undefined;
+let connectionsPageUrl: string | undefined;
+let connectionsOwner: BrowserWindow | undefined;
+const remoteWindows = new Map<BrowserWindow, RemoteConnectionProfile>();
 const readyWindows = new Set<number>();
 let backend: BackendProcess | undefined;
 let approvedQuit = false;
@@ -117,10 +122,16 @@ let nativeUpdatePrompt = false;
 let lastWindowColors = "";
 const configuredSessions = new Set<string>();
 
+function hasReadyRemoteWindow() {
+  return [...remoteWindows.keys()].some(
+    (target) => !target.isDestroyed() && readyWindows.has(target.webContents.id),
+  );
+}
+
 function isRemoteContext() {
   return (
     connectionMode === "remote" ||
-    (connectionMode === "manager" && activeRemoteProfile !== undefined)
+    (connectionMode === "manager" && (activeRemoteProfile !== undefined || hasReadyRemoteWindow()))
   );
 }
 
@@ -190,7 +201,14 @@ async function offerSoftwareUpdate(manual = false) {
 }
 
 async function offerRemoteClientUpdate(manual = false) {
-  if (!clientUpdates || approvedQuit || quitPending || !desktopReady || nativeUpdatePrompt) return;
+  if (
+    !clientUpdates ||
+    approvedQuit ||
+    quitPending ||
+    (!desktopReady && !hasReadyRemoteWindow()) ||
+    nativeUpdatePrompt
+  )
+    return;
   let state = clientUpdates.getState();
   const key = `remote:${state.status}:${state.latestVersion}`;
   if (
@@ -302,12 +320,27 @@ function syncWindowControls(target = window) {
     target.webContents.send("cox:window-state", { fullscreen, zoomFactor });
 }
 
+function accessForWindow(target: BrowserWindow): WindowAccess | undefined {
+  if (target.isDestroyed()) return;
+  const profile = remoteWindows.get(target);
+  if (profile) return { origin: profile.origin, kind: "remote" };
+  if ((target === window || target === settingsWindow) && origin && connectionMode !== "manager")
+    return { origin, kind: connectionMode };
+}
+
+function accessForContents(contents: Electron.WebContents | null): WindowAccess | undefined {
+  const target = contents && BrowserWindow.fromWebContents(contents);
+  return target ? accessForWindow(target) : undefined;
+}
+
 function createDesktopWindow(
   kind: "main" | "settings",
   width: number,
   height: number,
   show = true,
   partition = activeRemoteProfile ? remotePartition(activeRemoteProfile.id) : "persist:cox-desktop",
+  remote = partition.startsWith("persist:cox-remote-"),
+  inlineSettings = false,
 ) {
   const target = new BrowserWindow({
     width,
@@ -338,9 +371,8 @@ function createDesktopWindow(
       partition,
       additionalArguments: [
         "--cox-window-kind=" + kind,
-        ...(activeRemoteProfile && partition === remotePartition(activeRemoteProfile.id)
-          ? ["--cox-remote=true"]
-          : []),
+        ...(remote ? ["--cox-remote=true"] : []),
+        ...(inlineSettings ? ["--cox-inline-settings=true"] : []),
       ],
     },
   });
@@ -352,22 +384,23 @@ function createDesktopWindow(
         : ["fullscreen"],
     );
     target.webContents.session.setPermissionCheckHandler(
-      (contents, permission, requestingOrigin, details) =>
-        Boolean(
-          origin &&
-          (contents === window?.webContents || contents === settingsWindow?.webContents) &&
+      (contents, permission, requestingOrigin, details) => {
+        const access = accessForContents(contents);
+        return Boolean(
+          access &&
           details.isMainFrame &&
-          isBackendNavigation(details.requestingUrl ?? requestingOrigin, origin) &&
+          isBackendNavigation(details.requestingUrl ?? requestingOrigin, access.origin) &&
           permissions.has(permission),
-        ),
+        );
+      },
     );
     target.webContents.session.setPermissionRequestHandler(
       (contents, permission, callback, details) => {
+        const access = accessForContents(contents);
         if (
-          !origin ||
-          (contents !== window?.webContents && contents !== settingsWindow?.webContents) ||
+          !access ||
           !details.isMainFrame ||
-          !isBackendNavigation(details.requestingUrl, origin)
+          !isBackendNavigation(details.requestingUrl, access.origin)
         ) {
           callback(false);
           return;
@@ -596,21 +629,27 @@ async function start() {
   } catch {}
   window = createDesktopWindow("main", width, height);
   const senderWindow = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) => {
-    const target = [window, settingsWindow].find(
+    const target = [window, settingsWindow, ...remoteWindows.keys()].find(
       (candidate) =>
         candidate && !candidate.isDestroyed() && candidate.webContents === event.sender,
     );
     return target &&
-      origin &&
-      event.senderFrame === target.webContents.mainFrame &&
-      isBackendNavigation(event.senderFrame.url, origin)
+      event.senderFrame &&
+      trustedWindowAccess(
+        accessForWindow(target),
+        target.webContents.mainFrame,
+        event.senderFrame,
+        event.senderFrame.url,
+      )
       ? target
       : undefined;
   };
   const isTrustedSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
     Boolean(senderWindow(event));
-  const isTrustedLocalSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
-    connectionMode === "local" && isTrustedSender(event);
+  const isTrustedLocalSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) => {
+    const target = senderWindow(event);
+    return target !== undefined && accessForWindow(target)?.kind === "local";
+  };
   const checkActiveUpdates = async () => {
     if (isRemoteContext()) await clientUpdates?.check();
     else await softwareUpdates?.check();
@@ -638,13 +677,13 @@ async function start() {
     }
     if (connectionMode === "local" && updates) publishBackendUpdate(updates.getState());
     if (connectionMode === "local" && clientUpdates) publishClientUpdate(clientUpdates.getState());
-    if (target === window && updates) {
+    if ((target === window || remoteWindows.has(target)) && updates) {
       void checkActiveUpdates().catch(() => {});
       if (!autoCheckStarted) {
         autoCheckStarted = true;
         setInterval(
           () => {
-            if (desktopReady && !quitPending) {
+            if ((desktopReady || hasReadyRemoteWindow()) && !quitPending) {
               void checkActiveUpdates().catch(() => {});
             }
           },
@@ -773,7 +812,7 @@ async function start() {
   }
   configureMainWindow();
   ipcMain.on("cox:quit-answer", (event, confirmed: unknown) => {
-    if (!isTrustedSender(event) || !quitPending || stoppingBackend) return;
+    if (senderWindow(event) !== window || !quitPending || stoppingBackend) return;
     if (confirmed === false) {
       quitPending = false;
       updateAfterQuit = false;
@@ -918,7 +957,16 @@ async function start() {
     }
   };
   ipcMain.handle("cox:settings-open", (event, path: unknown) => {
-    if (!isTrustedSender(event)) throw new Error("Untrusted settings window request.");
+    const target = senderWindow(event);
+    if (!target) throw new Error("Untrusted settings window request.");
+    const remote = remoteWindows.get(target);
+    if (remote) {
+      const destination = settingsWindowUrl(path ?? "/settings/general", remote.origin);
+      target.webContents.send("cox:navigate", destination.slice(remote.origin.length));
+      target.show();
+      target.focus();
+      return;
+    }
     return openSettings(path);
   });
   ipcMain.on("cox:settings-close", (event) => {
@@ -927,13 +975,22 @@ async function start() {
     }
   });
   ipcMain.handle("cox:main-open", (event, path: unknown) => {
-    if (!isTrustedSender(event) || typeof path !== "string" || !origin)
+    const owner = senderWindow(event);
+    const access = owner && accessForWindow(owner);
+    if (!owner || !access || typeof path !== "string")
       throw new Error("Invalid main window request.");
-    const target = new URL(path, origin);
-    if (!path.startsWith("/") || path.startsWith("//") || !isBackendNavigation(target.href, origin))
+    const target = new URL(path, access.origin);
+    if (
+      !path.startsWith("/") ||
+      path.startsWith("//") ||
+      !isBackendNavigation(target.href, access.origin)
+    )
       throw new Error("Invalid main window path.");
-    window?.webContents.send("cox:navigate", target.href.slice(origin.length));
-    showWindow();
+    const destination = remoteWindows.has(owner) ? owner : window;
+    destination?.webContents.send("cox:navigate", target.href.slice(access.origin.length));
+    if (destination?.isMinimized()) destination.restore();
+    destination?.show();
+    destination?.focus();
   });
   let prewarmSettingsTimer: ReturnType<typeof setTimeout> | undefined;
   function prewarmSettings() {
@@ -951,6 +1008,12 @@ async function start() {
       void showConnections();
     },
     openSettings: () => {
+      const target = BrowserWindow.getFocusedWindow();
+      const remote = target && remoteWindows.get(target);
+      if (target && remote) {
+        target.webContents.send("cox:navigate", "/settings/general");
+        return;
+      }
       void openSettings().catch(() => {});
     },
     checkUpdates: () => {
@@ -1189,7 +1252,61 @@ async function start() {
     await window.loadURL(localPageUrl);
   }
 
-  async function showConnections(error?: unknown) {
+  async function showConnections(error?: unknown, owner?: BrowserWindow) {
+    if (!connectionStore || approvedQuit || quitPending) return;
+    const icon = "data:image/png;base64," + readFileSync(startupIcon).toString("base64");
+    const focused = owner ?? BrowserWindow.getFocusedWindow();
+    const requestedOwner =
+      focused && (remoteWindows.has(focused) || focused === window || focused === settingsWindow)
+        ? focused === settingsWindow
+          ? window
+          : focused
+        : undefined;
+    if (!connectionsWindow || connectionsWindow.isDestroyed())
+      connectionsOwner = requestedOwner ?? window;
+    if (connectionsWindow && !connectionsWindow.isDestroyed() && error === undefined) {
+      if (requestedOwner && !switchingConnections) connectionsOwner = requestedOwner;
+      if (connectionsWindow.isMinimized()) connectionsWindow.restore();
+      connectionsWindow.show();
+      connectionsWindow.focus();
+      return;
+    }
+    const target =
+      connectionsWindow && !connectionsWindow.isDestroyed()
+        ? connectionsWindow
+        : createDesktopWindow("main", 820, 720, true, "cox-connection-manager", true);
+    connectionsWindow = target;
+    connectionsPageUrl =
+      "data:text/html;charset=utf-8," +
+      encodeURIComponent(
+        createConnectionPage(
+          systemLocale(),
+          connectionStore.snapshot(),
+          icon,
+          error === undefined ? undefined : String(error),
+        ),
+      );
+    target.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    target.webContents.removeAllListeners("will-navigate");
+    target.webContents.removeAllListeners("will-redirect");
+    const block = (event: Event) => event.preventDefault();
+    target.webContents.on("will-navigate", block);
+    target.webContents.on("will-redirect", block);
+    target.webContents.on("will-attach-webview", block);
+    target.once("closed", () => {
+      if (connectionsWindow === target) {
+        connectionsWindow = undefined;
+        connectionsPageUrl = undefined;
+        connectionsOwner = undefined;
+      }
+    });
+    if (process.platform === "win32") target.setMenuBarVisibility(false);
+    await target.loadURL(connectionsPageUrl);
+    target.show();
+    target.focus();
+  }
+
+  async function showConnectionsInMain(error?: unknown) {
     if (!connectionStore || !window || window.isDestroyed() || approvedQuit || quitPending) return;
     connectionGeneration++;
     connectionMode = "manager";
@@ -1291,13 +1408,58 @@ async function start() {
     }
   }
 
-  async function connectRemote(input: {
-    readonly id?: string;
-    readonly name?: string;
-    readonly origin?: string;
-  }) {
+  async function openRemoteWindow(profile: RemoteConnectionProfile) {
+    const target = createDesktopWindow(
+      "main",
+      width,
+      height,
+      true,
+      remotePartition(profile.id),
+      true,
+      true,
+    );
+    remoteWindows.set(target, profile);
+    const targetId = target.webContents.id;
+    target.setTitle(`Cox · ${profile.name}`);
+    target.webContents.setWindowOpenHandler(({ url }) => {
+      void openExternal(url);
+      return { action: "deny" };
+    });
+    const guard = (event: Event, url: string) => {
+      if (isBackendNavigation(url, profile.origin)) return;
+      event.preventDefault();
+      void openExternal(url);
+    };
+    target.webContents.on("will-navigate", guard);
+    target.webContents.on("will-redirect", guard);
+    target.webContents.on("will-attach-webview", (event) => event.preventDefault());
+    target.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
+      if (isMainFrame && !inPlace) readyWindows.delete(target.webContents.id);
+    });
+    target.on("enter-full-screen", () => syncWindowControls(target));
+    target.on("leave-full-screen", () => syncWindowControls(target));
+    target.webContents.on("did-finish-load", () => syncWindowControls(target));
+    target.webContents.on("zoom-changed", () => setImmediate(() => syncWindowControls(target)));
+    target.once("closed", () => {
+      readyWindows.delete(targetId);
+      remoteWindows.delete(target);
+    });
+    if (process.platform === "win32") target.setMenuBarVisibility(false);
+    try {
+      await target.loadURL(profile.origin);
+      return target;
+    } catch (error) {
+      if (!target.isDestroyed()) target.destroy();
+      throw error;
+    }
+  }
+
+  async function connectRemote(input: RemoteConnectionInput) {
     if (switchingConnections || approvedQuit || quitPending) return;
     switchingConnections = true;
+    const manager = connectionsWindow;
+    const owner = connectionsOwner ?? window;
+    const generation = connectionGeneration;
     try {
       const existing = input.id ? connectionStore.profile(input.id) : undefined;
       if (input.id && !existing) throw new Error("Unknown remote server.");
@@ -1306,10 +1468,37 @@ async function start() {
       const inspection = await inspectRemoteServer(targetOrigin, (input, init) =>
         net.fetch(input instanceof URL ? input.href : input, init),
       );
+      if (
+        approvedQuit ||
+        quitPending ||
+        owner?.isDestroyed() ||
+        (manager && (manager.isDestroyed() || connectionsWindow !== manager)) ||
+        generation !== connectionGeneration
+      )
+        return;
       const profile = connectionStore.saveRemote(inspection, {
         ...(input.id ? { id: input.id } : {}),
         ...(input.name !== undefined ? { name: input.name } : {}),
       });
+      if (input.openInNewWindow || (owner && remoteWindows.has(owner))) {
+        const target = await openRemoteWindow(profile);
+        if (
+          approvedQuit ||
+          quitPending ||
+          owner?.isDestroyed() ||
+          (manager &&
+            (manager.isDestroyed() ||
+              connectionsWindow !== manager ||
+              connectionsOwner !== owner)) ||
+          generation !== connectionGeneration
+        ) {
+          if (!target.isDestroyed()) target.destroy();
+          return;
+        }
+        if (!input.openInNewWindow && owner && !owner.isDestroyed()) owner.destroy();
+        if (manager && !manager.isDestroyed()) manager.close();
+        return;
+      }
       connectionGeneration++;
       activeRemoteProfile = profile;
       const partition = remotePartition(profile.id);
@@ -1320,9 +1509,11 @@ async function start() {
       localPageUrl = undefined;
       await window?.loadURL(profile.origin);
       connectionStore.setActive({ kind: "remote", profileId: profile.id });
+      if (connectionsWindow && !connectionsWindow.isDestroyed()) connectionsWindow.close();
     } catch (error) {
       log.write(`${String(error)}\n`);
-      await showConnections(error);
+      if (!manager || (!manager.isDestroyed() && connectionsWindow === manager))
+        await showConnections(error);
     } finally {
       switchingConnections = false;
     }
@@ -1342,32 +1533,56 @@ async function start() {
       noLink: true,
     });
     if (answer.response !== 1) return;
+    for (const [target, connected] of remoteWindows) {
+      if (connected.id === profile.id && !target.isDestroyed()) target.destroy();
+    }
+    const removedFromMain =
+      activeRemoteProfile?.id === profile.id && mainPartition === remotePartition(profile.id);
+    if (removedFromMain) {
+      activeRemoteProfile = undefined;
+      replaceMainWindow("persist:cox-desktop");
+      connectionMode = "manager";
+    }
     const remoteSession = session.fromPartition(remotePartition(profile.id));
     await remoteSession.clearStorageData();
     await remoteSession.clearCache();
     await remoteSession.clearAuthCache();
     connectionStore.remove(profile.id);
     if (activeRemoteProfile?.id === profile.id) activeRemoteProfile = undefined;
-    await showConnections();
+    if (removedFromMain) await showConnectionsInMain();
+    if (connectionsWindow && !connectionsWindow.isDestroyed()) {
+      connectionsWindow.close();
+      await showConnections();
+    } else if (!removedFromMain) await showConnections();
   }
 
   const connectionManagerSender = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) =>
     Boolean(
-      window &&
-      !window.isDestroyed() &&
-      event.sender === window.webContents &&
-      event.senderFrame === window.webContents.mainFrame &&
-      localPageUrl &&
-      event.senderFrame.url === localPageUrl,
+      (connectionsWindow &&
+        !connectionsWindow.isDestroyed() &&
+        event.sender === connectionsWindow.webContents &&
+        event.senderFrame === connectionsWindow.webContents.mainFrame &&
+        connectionsPageUrl &&
+        event.senderFrame.url === connectionsPageUrl) ||
+      (window &&
+        !window.isDestroyed() &&
+        event.sender === window.webContents &&
+        event.senderFrame === window.webContents.mainFrame &&
+        localPageUrl &&
+        event.senderFrame.url === localPageUrl),
     );
   ipcMain.handle("cox:connections-show", (event) => {
     if (!isTrustedSender(event) && !connectionManagerSender(event))
       throw new Error("Untrusted connection request.");
-    return showConnections();
+    return showConnections(undefined, senderWindow(event));
   });
   ipcMain.handle("cox:connections-local", (event) => {
     if (!connectionManagerSender(event)) throw new Error("Untrusted connection request.");
-    return startLocal();
+    return startLocal().then(() => {
+      if (connectionMode !== "local" || !origin || quitPending || approvedQuit) return;
+      showWindow();
+      if (connectionsWindow && !connectionsWindow.isDestroyed()) connectionsWindow.close();
+    });
   });
   ipcMain.handle("cox:connections-connect", (event, input: unknown) => {
     if (!connectionManagerSender(event) || typeof input !== "object" || input === null)
@@ -1376,13 +1591,17 @@ async function start() {
     if (
       (value.id !== undefined && typeof value.id !== "string") ||
       (value.name !== undefined && typeof value.name !== "string") ||
-      (value.origin !== undefined && typeof value.origin !== "string")
+      (value.origin !== undefined && typeof value.origin !== "string") ||
+      (value.openInNewWindow !== undefined && typeof value.openInNewWindow !== "boolean")
     )
       throw new Error("Invalid remote connection request.");
     return connectRemote({
       ...(typeof value.id === "string" ? { id: value.id } : {}),
       ...(typeof value.name === "string" ? { name: value.name } : {}),
       ...(typeof value.origin === "string" ? { origin: value.origin } : {}),
+      ...(typeof value.openInNewWindow === "boolean"
+        ? { openInNewWindow: value.openInNewWindow }
+        : {}),
     });
   });
   ipcMain.handle("cox:connections-forget", (event, id: unknown) => {
@@ -1397,7 +1616,7 @@ async function start() {
   const active = connectionStore.snapshot().active;
   if (active?.kind === "remote") await connectRemote({ id: active.profileId });
   else if (active?.kind === "local") await startLocal();
-  else await showConnections();
+  else await showConnectionsInMain();
 }
 
 if (

@@ -38,6 +38,22 @@ describe("local desktop connection pages", () => {
     expect(page).toContain('data-action="connect"');
   });
 
+  it.each([
+    ["en-US", "Open in a new window", "Keep the current window"],
+    ["zh-CN", "在新窗口打开", "保留当前窗口"],
+  ])(
+    "offers a default-off new-window choice for saved and new connections in %s",
+    (locale, label, detail) => {
+      const page = createConnectionPage(locale, { active: { kind: "local" }, profiles: [profile] });
+      expect(page).toContain(label);
+      expect(page).toContain(detail);
+      expect(page).toContain('id="cox-connection-new-window" type="checkbox"');
+      expect(page).not.toContain('type="checkbox" checked');
+      expect(page).toContain('data-action="connect"');
+      expect(page).toContain('id="cox-connection-form"');
+    },
+  );
+
   it("offers connections during local backend preparation", () => {
     expect(createStartupPage("zh-CN")).toContain("连接管理");
     expect(createStartupPage("en-US")).toContain("cox-open-connections");

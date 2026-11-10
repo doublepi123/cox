@@ -8,7 +8,13 @@ import type {
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 const shellBridge: DesktopShellBridge = {
   platform: process.platform,
-  windowKind: process.argv.includes("--cox-window-kind=settings") ? "settings" : "main",
+  ...(process.argv.includes("--cox-inline-settings=true")
+    ? {}
+    : {
+        windowKind: process.argv.includes("--cox-window-kind=settings")
+          ? ("settings" as const)
+          : ("main" as const),
+      }),
   openSettings: (path) => ipcRenderer.invoke("cox:settings-open", path),
   openMain: (path) => ipcRenderer.invoke("cox:main-open", path),
   onNavigate: (listener) => {
@@ -81,7 +87,7 @@ if (window.location.protocol === "data:") {
   const connections = {
     show: () => ipcRenderer.invoke("cox:connections-show"),
     useLocal: () => ipcRenderer.invoke("cox:connections-local"),
-    connect: (input: { id?: string; name?: string; origin?: string }) =>
+    connect: (input: { id?: string; name?: string; origin?: string; openInNewWindow?: boolean }) =>
       ipcRenderer.invoke("cox:connections-connect", input),
     forget: (id: string) => ipcRenderer.invoke("cox:connections-forget", id),
   };
@@ -108,6 +114,10 @@ if (window.location.protocol === "data:") {
       for (const button of buttons) if (button.isConnected) button.disabled = false;
     }
   };
+  const openInNewWindow = () => {
+    const choice = document.getElementById("cox-connection-new-window");
+    return choice instanceof HTMLInputElement && choice.checked;
+  };
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("cox-open-connections")?.addEventListener("click", () => {
       void run(connections.show);
@@ -117,7 +127,13 @@ if (window.location.protocol === "data:") {
       const name = document.getElementById("cox-connection-name");
       const origin = document.getElementById("cox-connection-origin");
       if (!(name instanceof HTMLInputElement) || !(origin instanceof HTMLInputElement)) return;
-      void run(() => connections.connect({ name: name.value, origin: origin.value }));
+      void run(() =>
+        connections.connect({
+          name: name.value,
+          origin: origin.value,
+          openInNewWindow: openInNewWindow(),
+        }),
+      );
     });
     document.getElementById("cox-connections")?.addEventListener("click", (event) => {
       const button =
@@ -125,7 +141,8 @@ if (window.location.protocol === "data:") {
       if (!(button instanceof HTMLButtonElement)) return;
       const id = button.dataset.id;
       if (button.dataset.action === "local") void run(connections.useLocal);
-      if (button.dataset.action === "connect" && id) void run(() => connections.connect({ id }));
+      if (button.dataset.action === "connect" && id)
+        void run(() => connections.connect({ id, openInNewWindow: openInNewWindow() }));
       if (button.dataset.action === "forget" && id) void run(() => connections.forget(id));
     });
   });

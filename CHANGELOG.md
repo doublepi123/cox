@@ -1,5 +1,18 @@
 # Changelog
 
+## Desktop 0.2.23 — 2026-11-10
+
+- Add an optional "Open in a new window" choice for saved and new remote
+  connections. Keep the current window by selecting it; leave it unchecked to
+  replace the current connection. Additional windows do not change the next
+  launch's primary connection or stop the local backend when closed.
+- Keep each remote window's settings, thread navigation and permissions bound
+  to its own server. Preserve server session isolation and restricted desktop
+  bridges without local backend or client update privileges.
+- Preserve the connection manager's target, retain the previous window when a
+  pending connection is cancelled, and bring the primary window forward when
+  returning to local mode.
+
 ## Desktop 0.2.22 — 2026-11-10
 
 - Fix packaged startup by keeping the desktop navigation policy independent of
