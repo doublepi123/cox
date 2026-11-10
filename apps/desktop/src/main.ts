@@ -1611,6 +1611,11 @@ async function start() {
       if (connectionsWindow && !connectionsWindow.isDestroyed()) connectionsWindow.close();
     });
   });
+  ipcMain.handle("cox:connections-new-window", (event, choice: unknown) => {
+    if (!connectionManagerSender(event) || typeof choice !== "boolean")
+      throw new Error("Invalid connection preference request.");
+    connectionStore.setOpenInNewWindow(choice);
+  });
   ipcMain.handle("cox:connections-connect", (event, input: unknown) => {
     if (!connectionManagerSender(event) || typeof input !== "object" || input === null)
       throw new Error("Invalid remote connection request.");

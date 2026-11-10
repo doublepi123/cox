@@ -61,6 +61,76 @@ describe("desktop preload connection roles", () => {
     expect(loadBridge(["--cox-window-kind=settings"]).bridge.windowKind).toBe("settings");
   });
 
+  it("saves each checkbox change immediately without connecting or disabling the page", async () => {
+    class Input {
+      checked = true;
+      addEventListener = vi.fn();
+    }
+    const choice = new Input();
+    const ready = vi.fn();
+    const querySelectorAll = vi.fn();
+    const { invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLInputElement: Input,
+        document: {
+          getElementById: (id: string) => (id === "cox-connection-new-window" ? choice : undefined),
+          addEventListener: ready,
+          querySelectorAll,
+        },
+      },
+      "data:",
+    );
+    expect(invoke).not.toHaveBeenCalled();
+    const onReady = ready.mock.calls.find(([name]) => name === "DOMContentLoaded")?.[1];
+    expect(onReady).toBeTypeOf("function");
+    onReady();
+    const onChange = choice.addEventListener.mock.calls.find(([name]) => name === "change")?.[1];
+    expect(onChange).toBeTypeOf("function");
+    choice.checked = false;
+    await onChange();
+    choice.checked = true;
+    await onChange();
+    expect(invoke.mock.calls).toEqual([
+      ["cox:connections-new-window", false],
+      ["cox:connections-new-window", true],
+    ]);
+    expect(querySelectorAll).not.toHaveBeenCalled();
+  });
+
+  it("shows preference persistence failures without an unhandled rejection", async () => {
+    class Input {
+      checked = false;
+      addEventListener = vi.fn();
+    }
+    const choice = new Input();
+    const error = { hidden: true, textContent: "" };
+    const ready = vi.fn();
+    const { invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLInputElement: Input,
+        document: {
+          getElementById: (id: string) =>
+            id === "cox-connection-new-window"
+              ? choice
+              : id === "cox-connection-error"
+                ? error
+                : undefined,
+          addEventListener: ready,
+        },
+      },
+      "data:",
+    );
+    const onReady = ready.mock.calls.find(([name]) => name === "DOMContentLoaded")?.[1];
+    onReady();
+    invoke.mockRejectedValueOnce("Could not save connection preference");
+    const onChange = choice.addEventListener.mock.calls.find(([name]) => name === "change")?.[1];
+    onChange();
+    await Promise.resolve();
+    expect(error).toEqual({ hidden: false, textContent: "Could not save connection preference" });
+  });
+
   it("updates retained connection cards using text rather than HTML and preserves form state", () => {
     class Card {
       readonly dataset: Record<string, string> = {};

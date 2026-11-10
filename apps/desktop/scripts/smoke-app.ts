@@ -548,6 +548,12 @@ try {
 } catch (error) {
   console.error("Packaged window smoke failed:", error);
   console.error(
+    "Desktop log:",
+    await readFile(join(temporary, ".cox", "desktop", "logs", "desktop.log"), "utf8")
+      .then((contents) => contents.slice(-32_768))
+      .catch(String),
+  );
+  console.error(
     "Electron output:",
     applicationProcess.stdout?.read(),
     applicationProcess.stderr?.read(),
@@ -555,15 +561,18 @@ try {
   for (const page of application.windows()) {
     console.error(
       "Renderer state:",
-      await page
-        .evaluate(() => ({
-          url: location.href,
-          bridge: typeof Reflect.get(window, "coxDesktop"),
-          desktop: document.documentElement.dataset.coxDesktop,
-          classes: document.documentElement.className,
-          text: document.body.innerText.slice(0, 2000),
-        }))
-        .catch(String),
+      await Promise.race([
+        page
+          .evaluate(() => ({
+            url: location.href.slice(0, 256),
+            bridge: typeof Reflect.get(window, "coxDesktop"),
+            desktop: document.documentElement.dataset.coxDesktop,
+            classes: document.documentElement.className,
+            text: document.body.innerText.slice(0, 2000),
+          }))
+          .catch(String),
+        delay(2_000, "Renderer did not answer failure diagnostics."),
+      ]),
     );
   }
   throw error;

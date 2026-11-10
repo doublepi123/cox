@@ -21,12 +21,11 @@ export type DesktopConnectionTarget =
 export interface DesktopConnectionSnapshot {
   readonly active: DesktopConnectionTarget;
   readonly profiles: ReadonlyArray<RemoteConnectionProfile>;
+  readonly openInNewWindow: boolean;
 }
 
-interface StoredConnections {
+interface StoredConnections extends DesktopConnectionSnapshot {
   readonly version: 1;
-  readonly active: DesktopConnectionTarget;
-  readonly profiles: ReadonlyArray<RemoteConnectionProfile>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,20 +67,46 @@ export class DesktopConnectionStore {
   constructor(home: string, initialActive: DesktopConnectionTarget = { kind: "local" }) {
     this.file = join(home, "connections.json");
     if (!existsSync(this.file)) {
-      this.state = { version: 1, active: initialActive, profiles: [] };
+      this.state = { version: 1, active: initialActive, profiles: [], openInNewWindow: true };
       return;
     }
     const value: unknown = JSON.parse(readFileSync(this.file, "utf8"));
-    if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.profiles))
+    if (
+      !isRecord(value) ||
+      value.version !== 1 ||
+      !Array.isArray(value.profiles) ||
+      (value.openInNewWindow !== undefined && typeof value.openInNewWindow !== "boolean")
+    )
       throw new Error("Invalid connection settings.");
     const profiles = value.profiles.map(decodeProfile);
     if (new Set(profiles.map((profile) => profile.id)).size !== profiles.length)
       throw new Error("Invalid duplicate connection settings.");
-    this.state = { version: 1, active: decodeTarget(value.active, profiles), profiles };
+    this.state = {
+      version: 1,
+      active: decodeTarget(value.active, profiles),
+      profiles,
+      openInNewWindow: value.openInNewWindow ?? true,
+    };
   }
 
   snapshot(): DesktopConnectionSnapshot {
-    return structuredClone({ active: this.state.active, profiles: this.state.profiles });
+    return structuredClone({
+      active: this.state.active,
+      profiles: this.state.profiles,
+      openInNewWindow: this.state.openInNewWindow,
+    });
+  }
+
+  setOpenInNewWindow(openInNewWindow: boolean): void {
+    if (this.state.openInNewWindow === openInNewWindow) return;
+    const previous = this.state;
+    this.state = { ...previous, openInNewWindow };
+    try {
+      this.persist();
+    } catch (error) {
+      this.state = previous;
+      throw error;
+    }
   }
 
   profile(id: string): RemoteConnectionProfile | undefined {

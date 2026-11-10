@@ -90,6 +90,8 @@ if (window.location.protocol === "data:") {
     useLocal: () => ipcRenderer.invoke("cox:connections-local"),
     connect: (input: { id?: string; name?: string; origin?: string; openInNewWindow?: boolean }) =>
       ipcRenderer.invoke("cox:connections-connect", input),
+    setOpenInNewWindow: (choice: boolean) =>
+      ipcRenderer.invoke("cox:connections-new-window", choice),
     forget: (id: string) => ipcRenderer.invoke("cox:connections-forget", id),
   };
   contextBridge.exposeInMainWorld("coxConnections", connections);
@@ -145,6 +147,9 @@ if (window.location.protocol === "data:") {
     if (error) error.hidden = true;
   });
   document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("cox-connection-new-window")?.addEventListener("change", () => {
+      void connections.setOpenInNewWindow(openInNewWindow()).catch(showError);
+    });
     document.getElementById("cox-open-connections")?.addEventListener("click", () => {
       void run(connections.show);
     });

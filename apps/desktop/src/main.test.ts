@@ -289,8 +289,121 @@ describe("desktop connection manager windows", () => {
     expect(primary().webContents.getURL()).toBe("about:blank");
     expect(manager().visible).toBe(true);
     expect(decodeURIComponent(manager().webContents.getURL())).toContain('id="cox-connections"');
+    expect(decodeURIComponent(manager().webContents.getURL())).toContain('type="checkbox" checked');
     expect(manager().options.webPreferences?.additionalArguments).toContain("--cox-remote=true");
     expect(fixture.launchBackend).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "saves choice %s without connecting and restores it on reopen",
+    async (choice) => {
+      fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+      await start();
+      const local = primary();
+      await invoke("cox:connections-show", local);
+      const target = manager();
+      const previousUrl = target.webContents.getURL();
+      await invoke("cox:connections-new-window", target, !choice);
+      await invoke("cox:connections-new-window", target, choice);
+      expect(target.webContents.getURL()).toBe(previousUrl);
+      expect(fixture.inspect).not.toHaveBeenCalled();
+      expect(JSON.parse(fixture.files.get(connectionsFile)!)).toMatchObject({
+        active: { kind: "local" },
+        profiles: [],
+        openInNewWindow: choice,
+      });
+      target.close();
+      await invoke("cox:connections-show", local);
+      const page = decodeURIComponent(manager().webContents.getURL());
+      expect(page.includes('type="checkbox" checked')).toBe(choice);
+      expect(local.webContents.getURL()).toBe(localOrigin);
+    },
+  );
+
+  it.each([false, true])("restores saved choice %s when starting the client", async (choice) => {
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({ version: 1, active: null, profiles: [], openInNewWindow: choice }),
+    );
+    await start();
+    const page = decodeURIComponent(manager().webContents.getURL());
+    expect(page.includes('type="checkbox" checked')).toBe(choice);
+    expect(primary().visible).toBe(false);
+    expect(fixture.launchBackend).not.toHaveBeenCalled();
+  });
+
+  it("keeps the saved unchecked choice after a failed connection refreshes Connections", async () => {
+    await start();
+    const target = manager();
+    await invoke("cox:connections-new-window", target, false);
+    fixture.inspect.mockRejectedValueOnce(new Error("Remote server is unavailable"));
+    await invoke("cox:connections-connect", target, {
+      origin: inspection.origin,
+      openInNewWindow: false,
+    });
+    expect(manager()).toBe(target);
+    const page = decodeURIComponent(target.webContents.getURL());
+    expect(page).toContain("Remote server is unavailable");
+    expect(page).not.toContain('type="checkbox" checked');
+  });
+
+  it("does not let the new-window preference change startup restoration of the main remote", async () => {
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({
+        version: 1,
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+        openInNewWindow: true,
+      }),
+    );
+    await start();
+    expect(primary().visible).toBe(true);
+    expect(primary().webContents.getURL()).toBe(inspection.origin);
+    expect(fixture.windows.filter((value) => !value.destroyed)).toHaveLength(1);
+    expect(JSON.parse(fixture.files.get(connectionsFile)!)).toMatchObject({
+      active: { kind: "remote", profileId: saved.id },
+      openInNewWindow: true,
+    });
+  });
+
+  it.each([null, "false", 0, {}, undefined])(
+    "rejects an invalid new-window preference %j",
+    async (choice) => {
+      await start();
+      expect(() => invoke("cox:connections-new-window", manager(), choice)).toThrow(
+        "Invalid connection preference request.",
+      );
+      expect(fixture.files.has(connectionsFile)).toBe(false);
+    },
+  );
+
+  it("restricts new-window preference writes to the connection manager main frame", async () => {
+    await start();
+    expect(() => invoke("cox:connections-new-window", primary(), false)).toThrow(
+      "Invalid connection preference request.",
+    );
+    const target = manager();
+    const handler = fixture.handlers.get("cox:connections-new-window")!;
+    expect(() =>
+      handler(
+        { sender: target.webContents, senderFrame: { url: target.webContents.getURL() } },
+        false,
+      ),
+    ).toThrow("Invalid connection preference request.");
+    await invoke("cox:connections-connect", target, {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const satellite = fixture.windows.find((value) =>
+      value.options.webPreferences?.additionalArguments?.includes("--cox-inline-settings=true"),
+    )!;
+    expect(() => invoke("cox:connections-new-window", satellite, false)).toThrow(
+      "Invalid connection preference request.",
+    );
+    expect(JSON.parse(fixture.files.get(connectionsFile)!)).not.toMatchObject({
+      openInNewWindow: false,
+    });
   });
 
   it("reuses the connection window when reactivated instead of showing the hidden primary", async () => {
@@ -330,10 +443,13 @@ describe("desktop connection manager windows", () => {
     expect(fixture.quit).not.toHaveBeenCalled();
   });
 
-  it("keeps default-off connection switching and reveals the primary only for its server", async () => {
+  it("keeps unchecked connection switching and reveals the primary only for its server", async () => {
     await start();
     const target = manager();
-    await invoke("cox:connections-connect", target, { origin: inspection.origin });
+    await invoke("cox:connections-connect", target, {
+      origin: inspection.origin,
+      openInNewWindow: false,
+    });
     expect(target.destroyed).toBe(true);
     expect(primary().visible).toBe(true);
     expect(primary().webContents.getURL()).toBe(inspection.origin);

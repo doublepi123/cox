@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -32,10 +32,90 @@ describe("desktop connection persistence", () => {
     expect(restored.snapshot()).toEqual({
       active: { kind: "remote", profileId: profile.id },
       profiles: [profile],
+      openInNewWindow: true,
     });
     const stored = readFileSync(join(directory, "connections.json"), "utf8");
     expect(stored).not.toContain("password");
     expect(stored).not.toContain("credential");
+  });
+
+  it("defaults new-window connections on without creating a settings file", () => {
+    const directory = home();
+    expect(new DesktopConnectionStore(directory, null).snapshot()).toEqual({
+      active: null,
+      profiles: [],
+      openInNewWindow: true,
+    });
+    expect(() => readFileSync(join(directory, "connections.json"))).toThrow();
+  });
+
+  it("defaults older settings on without losing profiles or rewriting them", () => {
+    const directory = home();
+    const profile = new DesktopConnectionStore(directory).saveRemote(inspection, {});
+    const stored = JSON.stringify({
+      version: 1,
+      active: { kind: "remote", profileId: profile.id },
+      profiles: [profile],
+    });
+    writeFileSync(join(directory, "connections.json"), stored);
+    expect(new DesktopConnectionStore(directory).snapshot()).toEqual({
+      active: { kind: "remote", profileId: profile.id },
+      profiles: [profile],
+      openInNewWindow: true,
+    });
+    expect(readFileSync(join(directory, "connections.json"), "utf8")).toBe(stored);
+  });
+
+  it.each([false, true])("remembers the last choice %s across restarts", (choice) => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    store.setOpenInNewWindow(!choice);
+    store.setOpenInNewWindow(choice);
+    expect(store.snapshot().openInNewWindow).toBe(choice);
+    expect(new DesktopConnectionStore(directory).snapshot()).toEqual({
+      active: null,
+      profiles: [],
+      openInNewWindow: choice,
+    });
+    expect(JSON.parse(readFileSync(join(directory, "connections.json"), "utf8"))).toMatchObject({
+      openInNewWindow: choice,
+    });
+  });
+
+  it("keeps the saved choice when profiles and the primary connection change", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    store.setOpenInNewWindow(false);
+    const profile = store.saveRemote(inspection, {});
+    store.setActive({ kind: "remote", profileId: profile.id });
+    store.remove(profile.id);
+    store.setActive({ kind: "local" });
+    expect(new DesktopConnectionStore(directory).snapshot()).toEqual({
+      active: { kind: "local" },
+      profiles: [],
+      openInNewWindow: false,
+    });
+  });
+
+  it("does not claim a failed save succeeded and allows the same choice to be retried", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    const file = join(directory, "connections.json");
+    mkdirSync(file);
+    expect(() => store.setOpenInNewWindow(false)).toThrow();
+    expect(store.snapshot().openInNewWindow).toBe(true);
+    rmSync(file, { recursive: true });
+    store.setOpenInNewWindow(false);
+    expect(new DesktopConnectionStore(directory).snapshot().openInNewWindow).toBe(false);
+  });
+
+  it.each([null, "false", 0, {}])("rejects a malformed saved new-window choice %j", (choice) => {
+    const directory = home();
+    writeFileSync(
+      join(directory, "connections.json"),
+      JSON.stringify({ version: 1, active: null, profiles: [], openInNewWindow: choice }),
+    );
+    expect(() => new DesktopConnectionStore(directory)).toThrow("Invalid connection settings.");
   });
 
   it("rejects insecure remote origins before persisting a profile", () => {
@@ -66,6 +146,6 @@ describe("desktop connection persistence", () => {
     );
     store.setActive({ kind: "remote", profileId: first.id });
     store.remove(first.id);
-    expect(store.snapshot()).toEqual({ active: null, profiles: [second] });
+    expect(store.snapshot()).toEqual({ active: null, profiles: [second], openInNewWindow: true });
   });
 });
