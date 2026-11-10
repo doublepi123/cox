@@ -23,7 +23,7 @@ export function createConnectionPage(
         forget: "忘记",
         current: "当前",
         newWindow: "在新窗口打开",
-        newWindowDetail: "保留当前窗口，单独打开远程服务器。",
+        newWindowDetail: "保留当前窗口和连接管理页，单独打开远程服务器。",
         security:
           "远程服务端必须使用 HTTPS 并启用 COX_AUTH_PASSWORD。密码只在服务器登录页输入，不会保存在连接配置中。",
       }
@@ -41,17 +41,15 @@ export function createConnectionPage(
         forget: "Forget",
         current: "Current",
         newWindow: "Open in a new window",
-        newWindowDetail: "Keep the current window and open this remote server separately.",
+        newWindowDetail:
+          "Keep the current window and Connections open, and open this remote server separately.",
         security:
           "Remote servers must use HTTPS and enable COX_AUTH_PASSWORD. Passwords are entered only on the server's sign-in page and never saved in connection settings.",
       };
   const active = snapshot.active;
-  const profiles = snapshot.profiles
-    .map(
-      (profile) =>
-        `<article class="server"><div class="server-copy"><strong>${escapeHtml(profile.name)}</strong><span>${escapeHtml(profile.origin)}</span><small>Cox ${escapeHtml(profile.serverVersion)}${active?.kind === "remote" && active.profileId === profile.id ? ` · ${labels.current}` : ""}</small></div><div class="actions"><button type="button" data-action="connect" data-id="${profile.id}">${labels.connect}</button><button type="button" class="secondary" data-action="forget" data-id="${profile.id}">${labels.forget}</button></div></article>`,
-    )
-    .join("");
+  const card = (profile?: DesktopConnectionSnapshot["profiles"][number]) =>
+    `<article class="server" data-profile-id="${escapeHtml(profile?.id ?? "")}"><div class="server-copy"><strong>${escapeHtml(profile?.name ?? "")}</strong><span>${escapeHtml(profile?.origin ?? "")}</span><small>Cox ${escapeHtml(profile?.serverVersion ?? "")}${profile && active?.kind === "remote" && active.profileId === profile.id ? ` · ${labels.current}` : ""}</small></div><div class="actions"><button type="button" data-action="connect" data-id="${escapeHtml(profile?.id ?? "")}">${labels.connect}</button><button type="button" class="secondary" data-action="forget" data-id="${escapeHtml(profile?.id ?? "")}">${labels.forget}</button></div></article>`;
+  const profiles = snapshot.profiles.map(card).join("");
   return [
     '<!doctype html><meta charset="utf-8">',
     `<html lang="${zh ? "zh" : "en"}">`,
@@ -63,7 +61,7 @@ export function createConnectionPage(
     `</style><body><main id="cox-connections"><header>${icon ? `<img alt="" src="${escapeHtml(icon)}">` : ""}<h1>${labels.title}</h1></header><p>${labels.subtitle}</p>`,
     `<div id="cox-connection-error" class="error" role="alert" ${error ? "" : "hidden"}>${escapeHtml(error ?? "")}</div>`,
     `<section><h2>${labels.local}</h2><div class="local"><div><strong>${labels.local}</strong><span>${labels.localDetail}</span></div><button type="button" data-action="local">${labels.useLocal}</button></div></section>`,
-    `<section><h2>${labels.remote}</h2><label class="window-choice"><input id="cox-connection-new-window" type="checkbox"><span>${labels.newWindow}<small>${labels.newWindowDetail}</small></span></label>${profiles}`,
+    `<section><h2>${labels.remote}</h2><label class="window-choice"><input id="cox-connection-new-window" type="checkbox"><span>${labels.newWindow}<small>${labels.newWindowDetail}</small></span></label><div id="cox-connection-profiles" data-active-profile-id="${active?.kind === "remote" ? escapeHtml(active.profileId) : ""}" data-current-label="${labels.current}">${profiles}</div><template id="cox-connection-profile">${card()}</template>`,
     `<form id="cox-connection-form"><input id="cox-connection-name" aria-label="${labels.name}" placeholder="${labels.name}" autocomplete="off"><input id="cox-connection-origin" aria-label="${labels.origin}" placeholder="https://cox.example.com" type="url" required autocomplete="url"><button type="submit">${labels.add}</button></form>`,
     `<p class="security">${labels.security}</p></section></main></body></html>`,
   ].join("");

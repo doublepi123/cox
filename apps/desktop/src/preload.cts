@@ -4,6 +4,7 @@ import type {
   DesktopBackendUpdateState,
   DesktopClientUpdateState,
 } from "@t3tools/contracts";
+import type { RemoteConnectionProfile } from "./connections.ts";
 
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 const shellBridge: DesktopShellBridge = {
@@ -111,13 +112,38 @@ if (window.location.protocol === "data:") {
       showError(error);
     } finally {
       busy = false;
-      for (const button of buttons) if (button.isConnected) button.disabled = false;
+      for (const button of document.querySelectorAll("button")) button.disabled = false;
     }
   };
   const openInNewWindow = () => {
     const choice = document.getElementById("cox-connection-new-window");
     return choice instanceof HTMLInputElement && choice.checked;
   };
+  ipcRenderer.on("cox:connection-saved", (_event, profile: RemoteConnectionProfile) => {
+    const profiles = document.getElementById("cox-connection-profiles");
+    const template = document.getElementById("cox-connection-profile");
+    if (!profiles || !(template instanceof HTMLTemplateElement)) return;
+    const existing = Array.from(profiles.children).find(
+      (child) => child instanceof HTMLElement && child.dataset.profileId === profile.id,
+    );
+    const card = existing ?? template.content.firstElementChild?.cloneNode(true);
+    if (!(card instanceof HTMLElement)) return;
+    const name = card.querySelector("strong");
+    const origin = card.querySelector("span");
+    const version = card.querySelector("small");
+    if (!name || !origin || !version) return;
+    card.dataset.profileId = profile.id;
+    name.textContent = profile.name;
+    origin.textContent = profile.origin;
+    version.textContent = `Cox ${profile.serverVersion}${profiles.dataset.activeProfileId === profile.id ? ` · ${profiles.dataset.currentLabel}` : ""}`;
+    for (const button of card.querySelectorAll("button")) {
+      button.dataset.id = profile.id;
+      button.disabled = busy;
+    }
+    if (!existing) profiles.append(card);
+    const error = document.getElementById("cox-connection-error");
+    if (error) error.hidden = true;
+  });
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("cox-open-connections")?.addEventListener("click", () => {
       void run(connections.show);

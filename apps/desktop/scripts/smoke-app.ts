@@ -61,20 +61,35 @@ async function waitForSettingsVisibility(visible: boolean) {
   throw new Error(`Settings window did not become ${visible ? "visible" : "hidden"}.`);
 }
 try {
-  const page = await application.firstWindow();
+  let page = await application.firstWindow();
   page.on("pageerror", (error) => console.error("Renderer error:", error));
   page.on("console", (message) => {
     if (message.type() === "error") console.error("Renderer console:", message.text());
   });
   if (clientOnly) {
-    await page
+    const connections = page.url().startsWith("data:")
+      ? page
+      : (application.windows().find((candidate) => candidate !== page) ??
+        (await application.waitForEvent("window", {
+          predicate: (candidate) => candidate !== page,
+        })));
+    await connections
       .getByRole("button", { name: /^(Use local mode|使用本地模式)$/ })
       .waitFor({ timeout: 90_000 });
+    assert.equal(
+      await connections.evaluate(() => typeof Reflect.get(window, "coxDesktop").checkUpdates),
+      "undefined",
+    );
     assert.equal(
       existsSync(join(temporary, ".cox", "desktop", "backend-updates", "state.json")),
       false,
     );
-    await page.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
+    const closed = connections.waitForEvent("close", { timeout: 600_000 });
+    await connections.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
+    await closed;
+    const main = application.windows().find((candidate) => candidate !== connections);
+    assert.ok(main, "Local mode must open the main window, not reuse Connections.");
+    page = main;
   }
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: clientOnly ? 600_000 : 90_000 });
   await page.waitForFunction(

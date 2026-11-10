@@ -1,5 +1,18 @@
 # Changelog
 
+## Desktop 0.2.24 — 2026-11-10
+
+- Always open connection management in a separate window, including first launch,
+  a failed startup connection and forgetting the primary remote server. Reopening
+  Connections or activating a client without a primary connection focuses that
+  window instead of showing a blank main window.
+- Keep Connections open when opening a remote server in a new window. Update saved
+  server cards without reloading the page or losing form inputs and the default-off
+  new-window choice. Retain existing local tasks and isolated remote windows.
+- Preserve pending-connection cancellation, closed-owner recovery, trusted-frame
+  checks and restricted desktop privileges. Update native first-install and macOS
+  update smoke checks for the separate connection window. Bundled Cox stays 0.1.60.
+
 ## Desktop 0.2.23 — 2026-11-10
 
 - Add an optional "Open in a new window" choice for saved and new remote

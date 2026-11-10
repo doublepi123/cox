@@ -7,21 +7,28 @@ const source = stripTypeScriptTypes(
   readFileSync(new URL("./preload.cts", import.meta.url), "utf8"),
 );
 
-function loadBridge(args: string[]) {
+function loadBridge(args: string[], globals: Record<string, unknown> = {}, protocol = "https:") {
   const exposed = new Map<string, Record<string, unknown>>();
   const invoke = vi.fn(async () => undefined);
+  const listeners = new Map<string, (...args: unknown[]) => void>();
   runInNewContext(source, {
     require: () => ({
       contextBridge: {
         exposeInMainWorld: (name: string, bridge: Record<string, unknown>) =>
           exposed.set(name, bridge),
       },
-      ipcRenderer: { invoke, on: vi.fn(), send: vi.fn(), removeListener: vi.fn() },
+      ipcRenderer: {
+        invoke,
+        on: (name: string, handler: (...args: unknown[]) => void) => listeners.set(name, handler),
+        send: vi.fn(),
+        removeListener: vi.fn(),
+      },
     }),
     process: { platform: "darwin", argv: args },
-    window: { location: { protocol: "https:" } },
+    window: { location: { protocol } },
+    ...globals,
   });
-  return { bridge: exposed.get("coxDesktop")!, exposed, invoke };
+  return { bridge: exposed.get("coxDesktop")!, exposed, invoke, listeners };
 }
 
 describe("desktop preload connection roles", () => {
@@ -52,5 +59,72 @@ describe("desktop preload connection roles", () => {
     expect(bridge.windowKind).toBe("main");
     expect(bridge.checkUpdates).toBeTypeOf("function");
     expect(loadBridge(["--cox-window-kind=settings"]).bridge.windowKind).toBe("settings");
+  });
+
+  it("updates retained connection cards using text rather than HTML and preserves form state", () => {
+    class Card {
+      readonly dataset: Record<string, string> = {};
+      readonly name = { textContent: "" };
+      readonly origin = { textContent: "" };
+      readonly version = { textContent: "" };
+      readonly buttons = [
+        { dataset: {}, disabled: false },
+        { dataset: {}, disabled: false },
+      ];
+      querySelector(selector: string) {
+        return selector === "strong" ? this.name : selector === "span" ? this.origin : this.version;
+      }
+      querySelectorAll() {
+        return this.buttons;
+      }
+    }
+    const card = new Card();
+    class Template {
+      content = { firstElementChild: { cloneNode: () => card } };
+    }
+    const template = new Template();
+    const profiles = {
+      children: [] as Card[],
+      dataset: { activeProfileId: "profile-1", currentLabel: "Current" },
+      append: vi.fn((value: Card) => profiles.children.push(value)),
+    };
+    const error = { hidden: false };
+    const getElementById = vi.fn((id: string) => {
+      if (id === "cox-connection-profiles") return profiles;
+      if (id === "cox-connection-profile") return template;
+      if (id === "cox-connection-error") return error;
+    });
+    const { listeners, bridge, exposed } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLElement: Card,
+        HTMLTemplateElement: Template,
+        document: { getElementById, addEventListener: vi.fn() },
+      },
+      "data:",
+    );
+    const update = listeners.get("cox:connection-saved")!;
+    const profile = {
+      id: "profile-1",
+      name: "<img src=x onerror=alert(1)>",
+      origin: "https://cox.example.com",
+      serverVersion: "0.1.60",
+    };
+    update(undefined, profile);
+    expect(card.name.textContent).toBe(profile.name);
+    expect(card.origin.textContent).toBe(profile.origin);
+    expect(card.version.textContent).toBe("Cox 0.1.60 · Current");
+    expect(card.buttons.every((button) => Reflect.get(button.dataset, "id") === profile.id)).toBe(
+      true,
+    );
+    expect(error.hidden).toBe(true);
+    update(undefined, { ...profile, serverVersion: "0.1.61" });
+    expect(profiles.append).toHaveBeenCalledTimes(1);
+    expect(card.version.textContent).toBe("Cox 0.1.61 · Current");
+    expect(getElementById).not.toHaveBeenCalledWith("cox-connection-new-window");
+    expect(getElementById).not.toHaveBeenCalledWith("cox-connection-name");
+    expect(getElementById).not.toHaveBeenCalledWith("cox-connection-origin");
+    expect(bridge.checkUpdates).toBeUndefined();
+    expect(exposed.has("coxConnections")).toBe(true);
   });
 });

@@ -36,6 +36,7 @@ describe("local desktop connection pages", () => {
     expect(page).toContain("COX_AUTH_PASSWORD");
     expect(page).toContain('data-action="local"');
     expect(page).toContain('data-action="connect"');
+    expect(page).toContain("保留当前窗口和连接管理页");
   });
 
   it.each([
@@ -51,8 +52,21 @@ describe("local desktop connection pages", () => {
       expect(page).not.toContain('type="checkbox" checked');
       expect(page).toContain('data-action="connect"');
       expect(page).toContain('id="cox-connection-form"');
+      expect(page).toContain('id="cox-connection-profiles"');
+      expect(page).toContain('data-profile-id="' + profile.id + '"');
+      expect(page).toContain('<template id="cox-connection-profile">');
     },
   );
+
+  it("identifies the current remote profile for safely updating cards without reloading inputs", () => {
+    const page = createConnectionPage("en-US", {
+      active: { kind: "remote", profileId: profile.id },
+      profiles: [profile],
+    });
+    expect(page).toContain('data-active-profile-id="' + profile.id + '"');
+    expect(page).toContain("Keep the current window and Connections open");
+    expect(page).toContain("Cox " + profile.serverVersion + " · Current");
+  });
 
   it("offers connections during local backend preparation", () => {
     expect(createStartupPage("zh-CN")).toContain("连接管理");

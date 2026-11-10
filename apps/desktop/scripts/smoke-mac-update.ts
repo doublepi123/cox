@@ -68,9 +68,21 @@ try {
     timeout: 30_000,
   });
   previousProcess = previous.process();
-  const page = await previous.firstWindow();
-  if (flavor === "client-only")
-    await page.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
+  let page = await previous.firstWindow();
+  if (flavor === "client-only") {
+    const connections = page.url().startsWith("data:")
+      ? page
+      : (previous.windows().find((candidate) => candidate !== page) ??
+        (await previous.waitForEvent("window", {
+          predicate: (candidate) => candidate !== page,
+        })));
+    const closed = connections.waitForEvent("close", { timeout: 600_000 });
+    await connections.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
+    await closed;
+    const main = previous.windows().find((candidate) => candidate !== connections);
+    assert.ok(main, "Local mode must open the main window, not reuse Connections.");
+    page = main;
+  }
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 600_000 });
   await page.waitForFunction(
     () => Boolean(document.querySelector('[data-slot="sidebar-wrapper"]')),
