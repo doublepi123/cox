@@ -13,6 +13,7 @@ import { Atom } from "effect/reactivity";
 import { applyCommandOutputFrame, EMPTY_COMMAND_OUTPUT } from "./commandOutput.ts";
 
 import {
+  createEnvironmentQueryAtomFamily,
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
@@ -21,7 +22,7 @@ import {
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
-import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
+import { EnvironmentRpcUnavailableError, request } from "../rpc/client.ts";
 import { fetchEnvironmentThreadTranscript } from "./threadTranscriptHttp.ts";
 
 export function createOrchestrationEnvironmentAtoms<R, E>(
@@ -39,6 +40,25 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       ? {}
       : { onAnswer: options.onCheckpointDiffAnswer };
   return {
+    threadLinkMetadata: createEnvironmentQueryAtomFamily(runtime, {
+      label: "environment-data:orchestration:thread-link-metadata",
+      refreshIntervalMs: 60_000,
+      staleTimeMs: 0,
+      idleTtlMs: 0,
+      execute: Effect.fn("orchestration.threadLinkMetadata")(function* (input: {
+        readonly threadIds: ReadonlyArray<ThreadId>;
+      }) {
+        const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+        const session = yield* SubscriptionRef.get(supervisor.session);
+        if (Option.isNone(session)) {
+          return yield* new EnvironmentRpcUnavailableError({
+            environmentId: supervisor.target.environmentId,
+            message: "The environment has no session.",
+          });
+        }
+        return yield* request(ORCHESTRATION_V2_WS_METHODS.getThreadLinkMetadata, input);
+      }),
+    }),
     threadTranscript: createEnvironmentCommand(runtime, {
       label: "environment-data:orchestration:thread-transcript",
       execute: Effect.fn("orchestration.execute")(function* (input: {
@@ -84,6 +104,11 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
             Stream.scan(() => EMPTY_COMMAND_OUTPUT, applyCommandOutputFrame),
             Stream.filter((view) => view !== EMPTY_COMMAND_OUTPUT),
           ),
+      }),
+      promptSuggestion: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+        label: "environment-data:orchestration-v2:prompt-suggestion",
+        tag: ORCHESTRATION_V2_WS_METHODS.subscribePromptSuggestion,
+        idleTtlMs: 0,
       }),
     },
     turnDiff: createEnvironmentRpcQueryAtomFamily(runtime, {

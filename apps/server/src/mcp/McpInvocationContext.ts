@@ -102,10 +102,11 @@ export interface McpInvocationScope {
 export const threadLinkFor = (
   scope: Pick<McpInvocationScope, "environmentId" | "client">,
   threadId: ThreadId,
+  title?: string,
 ): string => {
   const origin = scope.client?.webOrigin;
   return origin === undefined
-    ? formatThreadLink({ environmentId: scope.environmentId, threadId })
+    ? formatThreadLink({ environmentId: scope.environmentId, threadId }, title)
     : `${origin}/${encodeURIComponent(scope.environmentId)}/${encodeURIComponent(threadId)}`;
 };
 

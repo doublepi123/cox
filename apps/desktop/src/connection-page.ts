@@ -18,12 +18,12 @@ export function createConnectionPage(
         remote: "远程服务器",
         add: "添加并连接",
         name: "名称（可选）",
-        origin: "HTTP(S) 服务器地址",
+        origin: "HTTPS 服务器地址",
         connect: "连接",
         forget: "忘记",
         current: "当前",
         security:
-          "远程服务端必须启用 COX_AUTH_PASSWORD。HTTP 仅在可信网络中使用；密码、会话和内容不会被加密。密码不会保存在连接配置中。",
+          "远程服务端必须使用 HTTPS 并启用 COX_AUTH_PASSWORD。密码只在服务器登录页输入，不会保存在连接配置中。",
       }
     : {
         title: "Connections",
@@ -34,12 +34,12 @@ export function createConnectionPage(
         remote: "Remote servers",
         add: "Add and connect",
         name: "Name (optional)",
-        origin: "HTTP(S) server origin",
+        origin: "HTTPS server origin",
         connect: "Connect",
         forget: "Forget",
         current: "Current",
         security:
-          "Remote servers must enable COX_AUTH_PASSWORD. Use HTTP only on trusted networks: credentials, sessions and content are not encrypted. Passwords are never saved in connection settings.",
+          "Remote servers must use HTTPS and enable COX_AUTH_PASSWORD. Passwords are entered only on the server's sign-in page and never saved in connection settings.",
       };
   const active = snapshot.active;
   const profiles = snapshot.profiles

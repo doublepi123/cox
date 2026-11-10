@@ -28,7 +28,7 @@ Run `pnpm pages:test` and `pnpm pages:build` to validate and build it. See the
 
 The optional [Cox Desktop client](apps/desktop/README.md) embeds the existing Web UI,
 a standalone Node runtime and a loopback-only backend. It can also connect directly to a
-user-operated Cox server over HTTPS or password-protected HTTP on a trusted network. Desktop builds launch by
+user-operated Cox server over HTTPS with password authentication. Desktop builds launch by
 double-clicking and use `~/.cox/desktop`, separately from CLI data. Build installers
 on the target operating system with `pnpm desktop:build`; signing and native-platform
 acceptance are required before public distribution. Agent installation and authentication
@@ -267,12 +267,10 @@ versions and `v<VERSION>` tags; desktop releases use `apps/desktop/package.json`
 `desktop-v<VERSION>` tags.
 
 Choose **Connections** in the native menu to switch between this computer and a saved remote
-server. Remote entries accept an HTTPS origin such as `https://cox.example.com`, or an HTTP origin
-on a trusted network such as `http://192.168.1.20:3773`; the server must be configured with
-`COX_AUTH_PASSWORD`. Credentials in URLs and certificate-error bypasses are rejected. Plain HTTP
-does not encrypt passwords, sessions or content, so the connection manager shows a warning. The
-remote server supplies its own matching Web UI and uses the normal
-Cox password page and same-origin API/WebSocket connections (HTTPS/WSS or HTTP/WS). Passwords are not saved in the
+server. Remote entries require an HTTPS origin such as `https://cox.example.com`; the server must
+also be configured with `COX_AUTH_PASSWORD`. Credentials in URLs, plain HTTP and certificate-error
+bypasses are rejected. The remote server supplies its own matching Web UI and uses the normal
+Cox password page and same-origin HTTPS/WSS API/WebSocket connections. Passwords are not saved in the
 desktop connection file. Each server has an isolated browser profile, and forgetting it clears
 that profile's local session and cached data. Remote pages cannot manage the local backend or
 desktop updates. Local and remote instances can stay available at the same time; switching to a
@@ -321,7 +319,7 @@ COX_AUTH_PASSWORD='use-a-long-random-password' cox --no-browser
 
 The password protects localhost as well as external access. Configuring a password never changes the listen address automatically. A browser stays signed in for up to 30 days. After 10 failed attempts within 5 minutes, password sign-in pauses until that window passes. When a service manager runs Cox, keep the variable in an environment file that only you can read rather than on the command line. The previous name, `T3CODE_AUTH_PASSWORD`, is still accepted.
 
-To listen beyond loopback, explicitly pass `--host 0.0.0.0`, `--host ::`, or a numeric IPv4/IPv6 address together with `COX_AUTH_PASSWORD`; DNS hostnames other than `localhost` are rejected. Development Web URLs remain restricted to loopback. Use HTTPS for nonlocal browser access on untrusted networks, typically with a TLS reverse proxy forwarding to Cox. The desktop client also supports direct password-protected HTTP connections on a trusted network, with a cleartext warning before connection. CLI `auth session issue/list/revoke` commands are a trusted local control plane: they reuse the persisted authentication policy without changing it, even when the shell does not inherit the service's password environment.
+To listen beyond loopback, explicitly pass `--host 0.0.0.0`, `--host ::`, or a numeric IPv4/IPv6 address together with `COX_AUTH_PASSWORD`; DNS hostnames other than `localhost` are rejected. Development Web URLs remain restricted to loopback. Use HTTPS for nonlocal browser access, typically with a TLS reverse proxy forwarding to Cox. The desktop client requires HTTPS and password authentication for remote connections. CLI `auth session issue/list/revoke` commands are a trusted local control plane: they reuse the persisted authentication policy without changing it, even when the shell does not inherit the service's password environment.
 
 Password sign-in is meant for personal use on a trusted internal network. Do not rely on it alone on the public internet: the password would be the only barrier in front of agents that run commands and edit files. For internet access, put an authenticating proxy in front of Cox, such as Cloudflare Access with Cloudflare Tunnel, or a similar identity-aware proxy or VPN, and keep the password as a second layer. The proxy must use HTTPS, support WebSockets, and preserve the public host in `Host`; untrusted forwarded headers do not authorize browser origins.
 

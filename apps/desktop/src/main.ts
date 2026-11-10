@@ -1302,7 +1302,7 @@ async function start() {
       const existing = input.id ? connectionStore.profile(input.id) : undefined;
       if (input.id && !existing) throw new Error("Unknown remote server.");
       const targetOrigin = input.origin ?? existing?.origin;
-      if (!targetOrigin) throw new Error("Enter an HTTP(S) server origin.");
+      if (!targetOrigin) throw new Error("Enter an HTTPS server origin.");
       const inspection = await inspectRemoteServer(targetOrigin, (input, init) =>
         net.fetch(input instanceof URL ? input.href : input, init),
       );

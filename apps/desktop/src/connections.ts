@@ -96,6 +96,7 @@ export class DesktopConnectionStore {
     const existing = input.id
       ? this.profile(input.id)
       : this.state.profiles.find((profile) => profile.origin === inspection.origin);
+    const normalizedOrigin = normalizeRemoteOrigin(inspection.origin);
     if (existing && existing.environmentId !== inspection.environmentId)
       throw new Error(
         "The server identity changed. Forget this server and add it again only if this was expected.",
@@ -104,6 +105,7 @@ export class DesktopConnectionStore {
       id: existing?.id ?? newRemoteProfileId(),
       name: input.name?.trim() || existing?.name || inspection.label,
       ...inspection,
+      origin: normalizedOrigin,
     };
     this.state = {
       ...this.state,

@@ -12,6 +12,7 @@ import {
   makeProviderMaintenanceCapabilities,
   type ProviderMaintenanceCapabilities,
   type ProviderMaintenanceCapabilitiesResolver,
+  resolveMiseProviderMaintenance,
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import { parseGenericCliVersion } from "@t3tools/provider-core/server/snapshotProbe";
@@ -45,6 +46,12 @@ export const museMaintenance: ProviderMaintenanceCapabilitiesResolver = {
       compareVersions: compareMuseVersions,
     };
     if (!context || context.platform === "win32") return manual;
+    const mise = yield* resolveMiseProviderMaintenance(
+      { provider: DRIVER, packageName: null },
+      { tool: "muse" },
+      context,
+    );
+    if (mise) return { ...mise, compareVersions: compareMuseVersions };
     const fs = yield* FileSystem.FileSystem;
     const isLauncher = yield* Effect.gen(function* () {
       const stat = yield* fs.stat(context.realCommandPath);

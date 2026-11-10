@@ -251,6 +251,18 @@ export function resolveClaudeModelSlug(catalog: ClaudeModelCatalog, slugOrAlias:
   return resolveClaudeCatalogModel(catalog, slugOrAlias)?.model.slug ?? slugOrAlias;
 }
 
+export function resolveClaudeReportedModelSlug(
+  catalog: ClaudeModelCatalog,
+  reported: string,
+): string {
+  return (
+    (
+      resolveClaudeCatalogModel(catalog, reported) ??
+      resolveClaudeCatalogModel(catalog, reported.replace(/-\d{8}$/, ""))
+    )?.model.slug ?? reported
+  );
+}
+
 export function getClaudeCatalogModelCapabilities(
   catalog: ClaudeModelCatalog,
   slugOrAlias: string | null | undefined,

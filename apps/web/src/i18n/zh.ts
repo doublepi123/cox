@@ -805,6 +805,7 @@ export const zh = {
   "When you return": "返回时",
   "Before the cache expires (beta)": "缓存到期前（测试版）",
   Never: "从不",
+  "Follow settings": "跟随设置",
   "Use default": "使用默认设置",
   "Path to the Claude binary used by this instance.": "此实例使用的 Claude 可执行文件路径。",
   "CLAUDE_CONFIG_DIR path": "CLAUDE_CONFIG_DIR 路径",
@@ -3347,6 +3348,7 @@ export const zh = {
   "Pull requests start with this method. Last selected reuses whatever you chose most recently on this device.":
     "拉取请求默认使用此合并方式。“上次选择”会沿用你在此设备上最近选择的方式。",
   "Default pull request merge method": "默认拉取请求合并方式",
+  "Open {host}": "打开 {host}",
   "Reset to last selected": "恢复为上次选择",
   "Last selected": "上次选择",
   Mixed: "不一致",
@@ -3542,6 +3544,24 @@ export const zh = {
   "Read your existing Cursor CLI login from macOS Keychain to show account history and monthly limits. macOS may ask you to allow access.":
     "从 macOS 钥匙串读取现有 Cursor CLI 登录信息，以显示账号历史和月度限额。macOS 可能会请求你授权访问。",
   "Reclaim freed database space": "回收数据库空闲空间",
+  "Old history is cleaned up automatically, but these databases still hold the freed space. Reclaim on an idle managed instance, or run the command locally after stopping Cox.":
+    "旧历史会自动清理，但数据库仍会占用已释放的空间。可在空闲的托管实例上直接回收，或停止 Cox 后在本机运行命令。",
+  "Cox there restarts and is back in about {minutes} min.":
+    "Cox 将在该设备上重启，预计约 {minutes} 分钟后恢复。",
+  "Restarts Cox there. It is offline for about {minutes} min.":
+    "将在该设备上重启 Cox，预计离线约 {minutes} 分钟。",
+  "Cox on {environment} stops, rebuilds its database, and starts again. It is offline for about {minutes} min. Running agents stop when it restarts.":
+    "{environment} 上的 Cox 将停止、重建数据库并重新启动，预计离线约 {minutes} 分钟。正在运行的 Agent 会随重启停止。",
+  "Reclaiming {size} on {environment}": "正在回收 {environment} 上的 {size}",
+  "Could not reclaim space on {environment}": "无法回收 {environment} 上的空间",
+  "Reclaim {size} on {environment}?": "回收 {environment} 上的 {size}？",
+  "The last attempt failed: {error}": "上次尝试失败：{error}",
+  "Restart and reclaim": "重启并回收",
+  "Restarting…": "正在重启…",
+  Reclaim: "回收",
+  "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.":
+    "Claude 或 Codex 回合结束后，在空白输入框中显示预测的下一条消息。按 Tab 使用。每条建议都会发起一次额外的模型请求。需要兼容的提供商版本。",
+  "Suggest next prompt": "建议下一条提示词",
   "Reconnect this device to set up its provider, or select another device.":
     "请重新连接此设备以设置提供商，或选择其他设备。",
   "Refresh provider status, versions, and models in the background. Set to 0 to disable.":

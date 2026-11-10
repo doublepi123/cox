@@ -297,7 +297,7 @@ export function useProjectPathSearch(
   const normalizedTarget = {
     environmentId: target.environmentId,
     cwd: target.cwd,
-    query: target.query == null ? null : target.query.trim(),
+    query: target.query == null ? null : Array.from(target.query.trim()).slice(0, 256).join(""),
     kind: target.kind,
     imageOnly: target.imageOnly,
   };

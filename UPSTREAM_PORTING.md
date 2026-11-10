@@ -1,6 +1,13 @@
 # Upstream port status
 
-Latest follow-up: Cox baseline `69e6586c85`, upstream
+Latest follow-up: Cox baseline `d81e698bdc`, upstream
+`8e6a732305..dc7270581800518b9d7d4db6c8e13852067c8c2d` (126 reviewed commits).
+The worthwhile Cox-applicable updates are adapted; the complete disposition and
+validation are recorded in [the November 9 follow-up](UPSTREAM_PORTING_20261109.md).
+
+## November 8 follow-up
+
+Cox baseline `69e6586c85`, upstream
 `25bf84ab07..8e6a732305` (21 reviewed commits). The 10 recommended Cox-applicable
 updates are adapted; details and current validation are recorded in
 [the November 8 follow-up](UPSTREAM_PORTING_20261108.md).

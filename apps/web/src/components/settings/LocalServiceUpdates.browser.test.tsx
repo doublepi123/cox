@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { render, stubGlobal } from "../../../test/render";
+import { render } from "../../../test/render";
 import { page } from "vite-plus/test/browser";
 import "~/index.css";
 import { setLanguagePreference } from "../../i18n";

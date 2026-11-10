@@ -12,6 +12,7 @@ export interface ProviderMaintenanceCapabilities {
    * `latestVersion`, then npm.
    */
   readonly lookupLatestVersion?: Effect.Effect<string | null>;
+  readonly latestVersionCacheKey?: string;
   readonly compareVersions?: (current: string, latest: string) => number;
   /** Resolved executable path for advisories when no update command is proven. */
   readonly installPath?: string;

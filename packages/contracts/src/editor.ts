@@ -132,6 +132,15 @@ export const EDITORS = [
 export const EditorId = Schema.Literals(EDITORS.map((e) => e.id));
 export type EditorId = typeof EditorId.Type;
 
+export const LOCAL_FILE_LINK_SCHEMES = ["cursor", "vscode"] as const;
+
+export const isLocalEditorFileUrl = (url: URL): boolean =>
+  LOCAL_FILE_LINK_SCHEMES.some((scheme) => url.protocol === `${scheme}:`) &&
+  url.host === "file" &&
+  url.username.length === 0 &&
+  url.password.length === 0 &&
+  url.pathname.length > 1;
+
 export const FileManagerRevealKind = Schema.Literals(["finder", "file-explorer", "files"]);
 export type FileManagerRevealKind = typeof FileManagerRevealKind.Type;
 

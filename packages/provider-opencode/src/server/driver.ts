@@ -89,6 +89,7 @@ export const openCodeUpdateFor = (generation: ProbedOpenCode["generation"]) =>
       args: ["upgrade"],
       isCommandPath: isOpenCodeNativeCommandPath,
     },
+    mise: { tool: "opencode", upgrade: generation === "v2" },
   });
 
 type OpenCodeRuntimeProbe = Effect.Success<

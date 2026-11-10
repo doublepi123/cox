@@ -1,4 +1,24 @@
 export const en = {
+  "Old history is cleaned up automatically, but these databases still hold the freed space. Reclaim on an idle managed instance, or run the command locally after stopping Cox.":
+    "Old history is cleaned up automatically, but these databases still hold the freed space. Reclaim on an idle managed instance, or run the command locally after stopping Cox.",
+  "Cox there restarts and is back in about {minutes} min.":
+    "Cox there restarts and is back in about {minutes} min.",
+  "Restarts Cox there. It is offline for about {minutes} min.":
+    "Restarts Cox there. It is offline for about {minutes} min.",
+  "Cox on {environment} stops, rebuilds its database, and starts again. It is offline for about {minutes} min. Running agents stop when it restarts.":
+    "Cox on {environment} stops, rebuilds its database, and starts again. It is offline for about {minutes} min. Running agents stop when it restarts.",
+  "Reclaiming {size} on {environment}": "Reclaiming {size} on {environment}",
+  "Could not reclaim space on {environment}": "Could not reclaim space on {environment}",
+  "Reclaim {size} on {environment}?": "Reclaim {size} on {environment}?",
+  "The last attempt failed: {error}": "The last attempt failed: {error}",
+  "Restart and reclaim": "Restart and reclaim",
+  "Restarting…": "Restarting…",
+  Reclaim: "Reclaim",
+  "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.":
+    "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.",
+  "Suggest next prompt": "Suggest next prompt",
+  "Follow settings": "Follow settings",
+  "Default automatic pull": "Default automatic pull",
   "Current service": "Current service",
   "Cox service updates": "Cox service updates",
   "Update the local Cox service from its official npm release.":
@@ -3457,7 +3477,7 @@ export const en = {
     "Keeps this project's default branch current when the checkout has no local changes or commits.",
   "Keeps the default branch current when the checkout has no local changes or commits. Projects can override it.":
     "Keeps the default branch current when the checkout has no local changes or commits. Projects can override it.",
-  "Default automatic pull": "Default automatic pull",
+  "Open {host}": "Open {host}",
   "default automatic pull": "default automatic pull",
   "Reset automatic pull to off": "Reset automatic pull to off",
   "Remove agent credits when merging": "Remove agent credits when merging",

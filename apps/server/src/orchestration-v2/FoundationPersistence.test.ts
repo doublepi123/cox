@@ -1,4 +1,5 @@
 import * as NodeSqlite from "node:sqlite";
+import * as LocalServiceUpdate from "../localServiceUpdate/LocalServiceUpdate.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -361,6 +362,11 @@ it.effect("paces scheduled compaction while preserving retention state and fixed
     }).pipe(
       Effect.provide(
         DatabaseStorage.layer.pipe(
+          Layer.provide(
+            Layer.mock(LocalServiceUpdate.LocalServiceUpdate)({
+              state: Effect.succeed({ supported: false } as never),
+            }),
+          ),
           Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "compaction-" })),
           Layer.provide(NodeServices.layer),
         ),

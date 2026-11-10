@@ -309,8 +309,7 @@ describe("ProviderContinuationService", () => {
             ["node-provider-continuation-first", "node-provider-continuation-second"],
           );
           for (const command of acknowledgements) {
-            assert.equal(command.type, "delegated_task.completion-delivery.acknowledge");
-            assert.isNull(command.observedByRunId);
+            assert.equal(command.type, "delegated_task.completion-delivery.dispose");
           }
 
           yield* TestClock.adjust("1 hour");

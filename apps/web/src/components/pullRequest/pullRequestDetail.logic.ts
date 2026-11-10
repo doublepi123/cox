@@ -791,9 +791,16 @@ const FINDING_BODY_MAX_LENGTH = 1_000;
 
 function bounded(value: string): string {
   const trimmed = value.trim();
-  return trimmed.length <= FINDING_BODY_MAX_LENGTH
-    ? trimmed
-    : `${trimmed.slice(0, FINDING_BODY_MAX_LENGTH - 3)}...`;
+  if (trimmed.length <= FINDING_BODY_MAX_LENGTH) return trimmed;
+  const boundary = FINDING_BODY_MAX_LENGTH - 3;
+  const end =
+    trimmed.charCodeAt(boundary - 1) >= 0xd800 &&
+    trimmed.charCodeAt(boundary - 1) <= 0xdbff &&
+    trimmed.charCodeAt(boundary) >= 0xdc00 &&
+    trimmed.charCodeAt(boundary) <= 0xdfff
+      ? boundary - 1
+      : boundary;
+  return `${trimmed.slice(0, end)}...`;
 }
 
 function boundedField(value: string): string {

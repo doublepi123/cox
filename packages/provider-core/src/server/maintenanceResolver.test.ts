@@ -1095,6 +1095,40 @@ it.layer(
     });
   });
 
+  it.effect("separates environment-specific installer caches and invalidation", () =>
+    Effect.gen(function* () {
+      let lookups = 0;
+      const capabilities = (key: string, version: string): ProviderMaintenanceCapabilities => ({
+        ...makeProviderMaintenanceCapabilities({
+          provider: driver("packageTool"),
+          packageName: "@example/package-tool",
+          updateExecutable: "/usr/bin/mise",
+          updateArgs: ["upgrade", "package-tool"],
+          updateLockKey: "mise",
+          latestVersion: null,
+          lookupLatestVersion: Effect.sync(() => {
+            lookups += 1;
+            return version;
+          }),
+        }),
+        latestVersionCacheKey: key,
+      });
+      expect(yield* resolveLatestProviderVersion(capabilities("env-a", "2.0.0"))).toBe("2.0.0");
+      expect(yield* resolveLatestProviderVersion(capabilities("env-b", "3.0.0"))).toBe("3.0.0");
+      expect(yield* resolveLatestProviderVersion(capabilities("env-a", "4.0.0"))).toBe("2.0.0");
+      yield* invalidateLatestProviderVersion(capabilities("env-a", "4.0.0"));
+      expect(yield* resolveLatestProviderVersion(capabilities("env-a", "4.0.0"))).toBe("4.0.0");
+      expect(yield* resolveLatestProviderVersion(capabilities("env-b", "5.0.0"))).toBe("3.0.0");
+      expect(lookups).toBe(3);
+    }).pipe(
+      Effect.provide(ProviderLatestVersions.layer),
+      Effect.provideService(
+        HttpClient.HttpClient,
+        HttpClient.make(() => Effect.die("Unexpected npm lookup")),
+      ),
+    ),
+  );
+
   it.effect("shares installer lookups only for the same executable and update target", () =>
     Effect.gen(function* () {
       let lookups = 0;

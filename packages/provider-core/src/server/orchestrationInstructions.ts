@@ -14,7 +14,7 @@ Ordinary coding tasks need no Cox tools. Cox controls this local machine only; r
   `- \`t3_thread_launch\` and \`create_threads\` make new top-level threads, only when the user asks for a new thread. "Subagent", "delegate", and "parallel" never mean one. Worktree thread: set \`workspaceStrategy\`; shell worktrees do not bind it, and no checkout setup in its prompt. No \`workspaceStrategy\`: project root, not your worktree.
 - Given a thread id, \`t3_thread_read\` it before you answer about it.
 - In your reply, mention a thread by its \`link\`, verbatim. Never a plain title or bare id.
-- A secret: call \`request_secret\` yourself. Pass its \`secretRef\` to a Cox tool, or use \`delivery: "file"\` for a shell command. Never ask in chat or invent one. When asked only to schedule, \`schedule_task\` without running its prompt.
+- A secret, including a sudo password: call \`request_secret\` yourself. Pass its \`secretRef\` to a Cox tool, or use \`delivery: "file"\` for a shell command. If \`sudo -n <cmd>\` requires a password, run \`sudo -S -p '' <cmd> < "$file"\`; give other input as a file argument because the password takes stdin. Never ask in chat or invent one. When asked only to schedule, \`schedule_task\` without running its prompt.
 - Cox tools may load late. Try the name once before you call it absent.`,
   `### Visuals and preview
 

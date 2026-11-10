@@ -8,6 +8,7 @@ import {
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderCapabilities,
+  type OrchestrationV2PromptSuggestion,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
   type Project,
@@ -752,6 +753,61 @@ function makeBrowserAccessProject(projectId: ProjectId): Project {
     deletedAt: null,
   };
 }
+
+it.effect("does not serve late prompt suggestions after a thread is deleted", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    yield* Effect.gen(function* () {
+      const sink = yield* EventSink.EventSinkV2;
+      const ids = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread-prompt-suggestion-deleted");
+      const providerSessionId = yield* ids.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      const created = yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now });
+      yield* sink.write({ events: [created] });
+      yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+      const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId));
+      assert.isDefined(queue);
+      const runId = ids.derive.run({ threadId, ordinal: 1 });
+      const received = yield* Queue.unbounded<OrchestrationV2PromptSuggestion>();
+      yield* manager.subscribePromptSuggestion(threadId).pipe(
+        Stream.runForEach((suggestion) => Queue.offer(received, suggestion)),
+        Effect.forkScoped,
+      );
+      assert.isNull(yield* Queue.take(received));
+      yield* Queue.offer(queue!, {
+        type: "prompt_suggestion.updated",
+        driver: CODEX_DRIVER,
+        threadId,
+        runId,
+        text: "add tests",
+      });
+      assert.deepEqual(yield* Queue.take(received), { runId, text: "add tests" });
+      yield* sink.write({
+        events: [
+          {
+            ...created,
+            id: yield* ids.allocate.event({ threadId }),
+            type: "thread.deleted",
+            payload: { ...created.payload, deletedAt: now },
+          },
+        ],
+      });
+      yield* Queue.offer(queue!, {
+        type: "prompt_suggestion.updated",
+        driver: CODEX_DRIVER,
+        threadId,
+        runId,
+        text: "ship it",
+      });
+      assert.isNull(yield* Queue.take(received));
+    }).pipe(Effect.scoped, Effect.provide(layerTest({ state, idleTimeoutMs: 1_000 })));
+  }),
+);
 
 function runBrowserAccessScenario(input: {
   readonly enableAgentBrowserAccess: boolean;

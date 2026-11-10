@@ -30,10 +30,11 @@ function remoteFetcher() {
 }
 
 describe("remote Cox connections", () => {
-  it("normalizes HTTP(S) origins and rejects credential or ambiguous targets", () => {
+  it("normalizes HTTPS origins and rejects insecure, credentialed or ambiguous targets", () => {
     expect(normalizeRemoteOrigin(" https://cox.example.com:443/ ")).toBe("https://cox.example.com");
-    expect(normalizeRemoteOrigin(" http://192.168.1.20:3773/ ")).toBe("http://192.168.1.20:3773");
     for (const input of [
+      "http://192.168.1.20:3773/",
+      "http://127.0.0.1:3773/",
       "ftp://cox.example.com",
       "https://user:password@cox.example.com",
       "https://cox.example.com/cox",
@@ -65,31 +66,10 @@ describe("remote Cox connections", () => {
       });
   });
 
-  it("preflights an HTTP server without credentials and still requires a password", async () => {
+  it("rejects HTTP before making a remote request", async () => {
     const fetcher = remoteFetcher();
-    await expect(inspectRemoteServer("http://192.168.1.20:3773", fetcher)).resolves.toMatchObject({
-      origin: "http://192.168.1.20:3773",
-    });
-    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
-      "http://192.168.1.20:3773/.well-known/t3/environment",
-      "http://192.168.1.20:3773/api/auth/session",
-    ]);
-  });
-
-  it("rejects passwordless HTTP servers", async () => {
-    const fetcher = remoteFetcher();
-    fetcher.mockImplementation(async (input) =>
-      String(input).endsWith("/api/auth/session")
-        ? response({ authenticated: false, auth: { loginMode: "local" } })
-        : response({
-            environmentId: "environment-1",
-            label: "Build server",
-            serverVersion: "0.1.56",
-          }),
-    );
-    await expect(inspectRemoteServer("http://192.168.1.20:3773", fetcher)).rejects.toThrow(
-      "COX_AUTH_PASSWORD",
-    );
+    await expect(inspectRemoteServer("http://192.168.1.20:3773", fetcher)).rejects.toThrow("HTTPS");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("rejects passwordless HTTPS servers", async () => {

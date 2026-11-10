@@ -189,7 +189,12 @@ export function AssistantCitationChip({
               align="end"
               anchor={popupAnchor}
               initialFocus={() => {
-                commentInputRef.current?.focus({ preventScroll: true });
+                const input = commentInputRef.current;
+                if (input) {
+                  input.focus({ preventScroll: true });
+                  input.setSelectionRange(input.value.length, input.value.length);
+                  input.scrollTop = input.scrollHeight;
+                }
                 return false;
               }}
               finalFocus={

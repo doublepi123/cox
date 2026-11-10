@@ -179,9 +179,7 @@ it.each([
       .element(modeControl())
       .toHaveAttribute(kind === "codex" ? "aria-checked" : "aria-pressed", "true");
     if (kind === "claudeAgent" && width === 320) {
-      await expect
-        .element(modeControl())
-        .toHaveClass("data-checked:bg-popover");
+      await expect.element(modeControl()).toHaveClass("data-checked:bg-popover");
     }
     if (kind === "claudeAgent") {
       await expect
@@ -216,9 +214,7 @@ it.each([
       .element(modeControl())
       .toHaveAttribute(kind === "codex" ? "aria-checked" : "aria-pressed", "true");
     if (kind === "claudeAgent" && width === 320) {
-      await expect
-        .element(modeControl())
-        .toHaveClass("data-checked:bg-popover");
+      await expect.element(modeControl()).toHaveClass("data-checked:bg-popover");
     }
     await expect
       .element(page.getByRole("radio", { name: "Fast", exact: true }))

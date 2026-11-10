@@ -144,6 +144,7 @@ const withService = <A, E>(
                 type: "secret_request",
                 label: "GitHub token",
                 reason: "Used as GH_TOKEN.",
+                url: "https://github.com/settings/tokens",
                 ...(options.delivery === undefined ? {} : { delivery: options.delivery }),
                 secretStatus,
               },
@@ -189,6 +190,7 @@ it.effect("a saved answer becomes a one-use ref, and the thread only learns it w
       assert.include(dispatched[0] as object, {
         type: "secret_request.record",
         secretStatus: "saved",
+        url: "https://github.com/settings/tokens",
       });
       assert.notInclude(Object.values(dispatched[0] as object).map(String), "ghp_secret");
 

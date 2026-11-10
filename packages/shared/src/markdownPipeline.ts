@@ -1,4 +1,5 @@
 import type { Paragraph, PhrasingContent, Root, RootContent } from "mdast";
+import { isLocalEditorFileUrl } from "@t3tools/contracts";
 import { remarkKeepWindowsPaths } from "./markdownWindowsPaths.ts";
 import { type PluggableList, type Processor, unified } from "unified";
 import remarkParse from "remark-parse";
@@ -129,6 +130,26 @@ function rehypePreserveImageSourceMeta() {
   };
 }
 
+function rehypeNormalizeLocalEditorLinks() {
+  return (tree: MarkdownImageHastNode) => {
+    const visit = (node: MarkdownImageHastNode) => {
+      const href = node.properties?.href;
+      if (node.type === "element" && node.tagName === "a" && typeof href === "string") {
+        try {
+          const url = new URL(href);
+          if (url.protocol === "cursor:" || url.protocol === "vscode:") {
+            node.properties = { ...node.properties };
+            if (isLocalEditorFileUrl(url)) node.properties.href = url.href;
+            else delete node.properties.href;
+          }
+        } catch {}
+      }
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
+
 const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   ...defaultSchema,
   attributes: {
@@ -155,6 +176,8 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     href: [
       ...(defaultSchema.protocols?.href ?? []),
       "file",
+      "cursor",
+      "vscode",
       "t3-citation",
       "t3-context",
       THREAD_LINK_PROTOCOL,
@@ -260,6 +283,7 @@ export const CHAT_MARKDOWN_REHYPE_PLUGINS: PluggableList = [
   rehypePreserveBareAnchorPlaceholders,
   rehypeRawWhenPresent,
   rehypePreserveImageSourceMeta,
+  rehypeNormalizeLocalEditorLinks,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ];
 

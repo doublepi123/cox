@@ -199,7 +199,7 @@ export function remarkThoughtPreview(fallback: string) {
     const append = (value: string) => {
       const last = children.at(-1);
       const text = value.replace(/\s+/g, " ");
-      if (last?.type === "text") last.value = (last.value + text).replace(/\s+/g, " ");
+      if (last?.type === "text") last.value += text;
       else children.push({ type: "text", value: text });
     };
     const visit = (node: Root | RootContent) => {
@@ -230,6 +230,16 @@ export function remarkThoughtPreview(fallback: string) {
     };
     visit(tree);
     const first = children[0];
+    const collapsed: RootContent[] = [];
+    for (const child of children) {
+      const last = collapsed.at(-1);
+      if (child.type === "text" && last?.type === "text") {
+        last.value = (last.value + child.value).replace(/\s+/g, " ");
+      } else {
+        collapsed.push(child);
+      }
+    }
+    children.splice(0, children.length, ...collapsed);
     const last = children.at(-1);
     if (first?.type === "text") first.value = first.value.trimStart();
     if (last?.type === "text") last.value = last.value.trimEnd();

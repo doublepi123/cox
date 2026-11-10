@@ -181,7 +181,7 @@ const DeleteScheduledTaskTool = Tool.make("delete_scheduled_task", {
 
 const RequestSecretTool = Tool.make("request_secret", {
   description:
-    'Ask for one secret per single-line private card; never combine values. Wait for the user. Returns a one-use `secretRef`, or with `delivery: "file"` a private file path to read inside its shell command. Asked how to provide a secret: call this now, do not explain instead.',
+    'Ask for one secret per single-line private card; never combine values. Wait for the user. Returns a one-use `secretRef`, or with `delivery: "file"` a private file path to read inside its shell command. Sign-in or setup link: `url`. Asked how to provide a secret: call this now, do not explain instead.',
   parameters: OrchestratorMcpRequestSecretInput,
   success: OrchestratorMcpRequestSecretResult,
   failure: OrchestratorMcpFailure,

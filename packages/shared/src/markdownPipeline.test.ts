@@ -39,6 +39,22 @@ it("preserves in-app thread links through the shared Markdown sanitizer", () => 
   expect(JSON.stringify(tree)).not.toContain("javascript:");
 });
 
+it("normalizes editor file links but sanitizes other custom schemes", () => {
+  const processor = unified()
+    .use(remarkParse)
+    .use(CHAT_MARKDOWN_REMARK_PLUGINS)
+    .use(remarkRehype)
+    .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
+  const tree = processor.runSync(
+    processor.parse(
+      "[Editor](VSCODE://file/workspace/file.ts)\n\n[Bad](vscode://evil.test/workspace/file.ts)\n\n[Code](javascript:alert(1))",
+    ),
+  );
+  expect(JSON.stringify(tree)).toContain("vscode://file/workspace/file.ts");
+  expect(JSON.stringify(tree)).not.toContain("evil.test/workspace");
+  expect(JSON.stringify(tree)).not.toContain("javascript:");
+});
+
 it("builds the tree rehype-raw builds for markdown without HTML", () => {
   type Node = {
     type: string;

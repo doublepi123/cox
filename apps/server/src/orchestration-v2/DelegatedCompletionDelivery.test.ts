@@ -165,7 +165,7 @@ const seedParentWithTerminalTask = (input: {
   readonly runId: RunId;
   readonly rootNodeId: NodeId;
   readonly taskId: NodeId;
-  readonly deliveryState: "delivered" | "claimed" | "acknowledged" | "disposed";
+  readonly deliveryState: "pending" | "delivered" | "claimed" | "acknowledged" | "disposed";
   readonly completionWake?: "always" | "settled_only";
   readonly deliveryTaskIds?: ReadonlyArray<NodeId>;
   readonly parentRunStatus?: "running" | "completed";
@@ -1595,6 +1595,67 @@ it.layer(layerContinuationWorkerTest)("interrupted completion wakes", (it) => {
 it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
   "subagent follow-ups",
   (it) => {
+    it.effect("a late unobserved read wakes a pending result without restarting", () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const requests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("thread:late-read-live");
+        const runId = RunId.make("run:late-read-live");
+        const taskId = NodeId.make("task:late-read-live");
+        yield* seedParentWithTerminalTask({
+          threadId,
+          projectId: ProjectId.make("project:late-read-live"),
+          runId,
+          rootNodeId: NodeId.make("root:late-read-live"),
+          taskId,
+          deliveryState: "pending",
+          now,
+        });
+        const acknowledge = (key: string) =>
+          orchestrator.dispatch({
+            type: "delegated_task.completion-delivery.acknowledge",
+            commandId: CommandId.make(`command:late-read-live:${key}`),
+            parentThreadId: threadId,
+            taskId,
+            observedByRunId: null,
+          });
+        const before = yield* orchestrator.getThreadProjection(threadId);
+        const liveRead = yield* acknowledge("live");
+        assert.lengthOf(liveRead.storedEvents, 0);
+        const parent = before.runs.find((run) => run.id === runId)!;
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("event:late-read-live:parent-ended"),
+              type: "run.updated",
+              threadId,
+              runId,
+              occurredAt: now,
+              payload: { ...parent, status: "completed", completedAt: now },
+            },
+          ],
+        });
+        yield* acknowledge("ended");
+        const wake = yield* requests.take;
+        assert.equal(wake.threadId, threadId);
+        assert.equal(wake.delegatedCompletion?.parentRunId, runId);
+        const after = yield* orchestrator.getThreadProjection(threadId);
+        assert.equal(
+          after.subagents.find((task) => task.id === taskId)?.completionDelivery?.state,
+          "claimed",
+        );
+        const repeated = yield* acknowledge("repeated");
+        assert.lengthOf(repeated.storedEvents, 0);
+        yield* orchestrator.dispatch({
+          type: "delegated_task.completion-delivery.dispose",
+          commandId: CommandId.make("command:late-read-live:dispose"),
+          parentThreadId: threadId,
+          taskId,
+        });
+      }),
+    );
     it.effect("keeps a checkpoint completion committed between finalize's read and write", () =>
       Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;

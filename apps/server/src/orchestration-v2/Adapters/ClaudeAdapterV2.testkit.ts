@@ -439,6 +439,7 @@ function stableClaudeQueryOptions(
     model: options.model,
     tools: options.tools,
     permissionMode: options.permissionMode,
+    ...(options.promptSuggestions === true ? { promptSuggestions: true } : {}),
     ...(options.allowedTools === undefined ? {} : { allowedTools: options.allowedTools }),
     ...(options.disallowedTools === undefined ? {} : { disallowedTools: options.disallowedTools }),
     ...(options.settings === undefined ? {} : { settings: options.settings }),

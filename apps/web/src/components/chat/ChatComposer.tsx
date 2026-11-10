@@ -276,6 +276,8 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
+import { usePromptSuggestion } from "./usePromptSuggestion";
+import { Kbd } from "../ui/kbd";
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
   deadline.current = 0;
@@ -2125,6 +2127,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     });
   };
   const expandMobileComposerStable = useStableCallback(expandMobileComposer);
+  const { suggestion: promptSuggestion, dismiss: dismissPromptSuggestion } = usePromptSuggestion(
+    environmentId,
+    activeThread,
+  );
+  const offeredPromptSuggestion =
+    phase !== "running" &&
+    !isSendBusy &&
+    composerContextRecords.size === 0 &&
+    !isComposerApprovalState &&
+    !(showPlanFollowUpPrompt && activeProposedPlan) &&
+    !activePendingProgress &&
+    !projectSelectionRequired &&
+    !showProviderUnavailable
+      ? promptSuggestion
+      : null;
   const onComposerCommandKey = (key: string, event: KeyboardEvent, isTaskItem?: boolean) =>
     composerCommandKeyHandler({
       keybindings,
@@ -2162,6 +2179,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       readComposerSnapshot,
       applyPromptReplacement,
       submitComposer,
+      promptSuggestion: offeredPromptSuggestion,
+      dismissPromptSuggestion,
     })(key, event, isTaskItem);
   const {
     stashQueue,
@@ -3326,7 +3345,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               ? t("Choose a project above to start a thread")
                               : showProviderUnavailable
                                 ? t("Enable a provider in Settings to send a message")
-                                : t(DEFAULT_COMPOSER_PLACEHOLDER)
+                                : (offeredPromptSuggestion ?? t(DEFAULT_COMPOSER_PLACEHOLDER))
+                    }
+                    placeholderSuffix={
+                      offeredPromptSuggestion !== null ? (
+                        <span className="ml-2 inline-flex align-[1px]">
+                          <Kbd>⇥ Tab</Kbd>
+                        </span>
+                      ) : undefined
                     }
                     disabled={
                       projectSelectionRequired ||

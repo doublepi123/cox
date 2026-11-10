@@ -565,6 +565,7 @@ export function openRtf(bytes: ArrayBuffer): OfficeWorkerResult {
       const match = /^([a-z]+)(-?\d+)? ?/i.exec(source.slice(i));
       if (!match) {
         if (next === "~") emit("\u00a0");
+        else if ((next === "\n" || next === "\r") && !state.skip) html += "<br>";
         i++;
         continue;
       }

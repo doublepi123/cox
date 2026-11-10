@@ -33,6 +33,10 @@ import {
   type LocalServiceUpdatePlan,
 } from "./operation.ts";
 
+const decodePackageManifest = Schema.decodeEffect(
+  Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
+);
+
 export class LocalServiceUpdateError extends Error {
   readonly _tag = "LocalServiceUpdateError";
 }
@@ -187,9 +191,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
                 return yield* Effect.fail(
                   "The local Cox update unit must use the __COX_ENTRY__ placeholder.",
                 );
-              const manifest = yield* Schema.decodeEffect(
-                Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
-              )(
+              const manifest = yield* decodePackageManifest(
                 yield* FileSystem.FileSystem.pipe(
                   Effect.flatMap((fs) =>
                     fs.readFileString(path.join(target, "current", "package.json")),

@@ -82,14 +82,14 @@ export const CheckContext = Schema.Union([
 ])
 export type CheckContext = typeof CheckContext.Type
 
-
+/** An Issue is a place to discuss ideas, enhancements, tasks, and bugs for a project. */
 export const Issue = Schema.Struct({
   __typename: Schema.Literal("Issue"),
-
+  /** Identifies the issue number. */
   number: Shared.Int,
-
+  /** Identifies the issue title. */
   title: Schema.String,
-
+  /** Identifies the state of the issue. */
   issueState: GraphQL.enumLiterals(Shared.IssueState.literals)
 })
 export interface Issue extends Schema.Struct.Type<typeof Issue.fields> {}
@@ -106,17 +106,17 @@ export const ReferenceCandidatePullRequest = Schema.Struct({
 })
 export interface ReferenceCandidatePullRequest extends Schema.Struct.Type<typeof ReferenceCandidatePullRequest.fields> {}
 
-
+/** Used for return value of Repository.issueOrPullRequest. */
 export const IssueOrPullRequestOther = Schema.Struct({
   __typename: GraphQL.otherTypename<Shared.Typename.IssueOrPullRequest>()(["Issue", "PullRequest"])
 })
 export interface IssueOrPullRequestOther extends Schema.Struct.Type<typeof IssueOrPullRequestOther.fields> {}
 
-
-
-
-
-
+/**
+ * `fragment ReferenceCandidate on IssueOrPullRequest`
+ *
+ * Used for return value of Repository.issueOrPullRequest.
+ */
 export const ReferenceCandidate = Schema.Union([
   Issue,
   ReferenceCandidatePullRequest,
@@ -593,7 +593,7 @@ export interface PullRequestPreviewRepositoryPullRequestAuthorUser extends Schem
 export const PullRequestPreviewRepositoryPullRequestPullRequest = Schema.Struct({
   /** Identifies the pull request number. */
   number: Shared.Int,
-
+  /** Identifies the pull request title. */
   title: Schema.String,
   /** The HTTP URL for this pull request. */
   url: Shared.URI,
@@ -724,6 +724,8 @@ export const NodesIssueComment = Schema.Struct({
   lastEditedAt: Schema.NullOr(Shared.DateTime),
   /** The HTTP URL for this issue comment */
   url: Shared.URI,
+  /** Returns whether or not a comment has been minimized. */
+  isMinimized: Schema.Boolean,
   /** The actor who authored the comment. */
   author: Schema.NullOr(Schema.Union([
     PullRequestPreviewRepositoryPullRequestAuthorUser,
@@ -755,6 +757,8 @@ export const NodesPullRequestReview = Schema.Struct({
   lastEditedAt: Schema.NullOr(Shared.DateTime),
   /** The HTTP URL permalink for this PullRequestReview. */
   url: Shared.URI,
+  /** Returns whether or not a comment has been minimized. */
+  isMinimized: Schema.Boolean,
   /** The actor who authored the comment. */
   author: Schema.NullOr(Schema.Union([
     PullRequestPreviewRepositoryPullRequestAuthorUser,
@@ -809,7 +813,7 @@ export const PullRequestActivity = GraphQL.query("PullRequestActivity", {
       { name: "reviewsAfter", body: "String" }
     ],
     selections: [
-      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){author@include(if:$", "head", "){__typename login avatarUrl...on User{name}}commits(last:100)@include(if:$", "head", "){nodes{commit{id oid messageHeadline committedDate parents(first:1){totalCount}authors(first:10){nodes{name email user{login}}}}}}comments(first:100 after:$", "commentsAfter", ")@include(if:$", "withComments", "){pageInfo{hasNextPage endCursor}nodes{id body createdAt lastEditedAt url author{__typename login avatarUrl...on User{name}}}}reviews(first:100 after:$", "reviewsAfter", ")@include(if:$", "withReviews", "){pageInfo{hasNextPage endCursor}nodes{id body state submittedAt lastEditedAt url author{__typename login avatarUrl...on User{name}}}}}}"] }
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){author@include(if:$", "head", "){__typename login avatarUrl...on User{name}}commits(last:100)@include(if:$", "head", "){nodes{commit{id oid messageHeadline committedDate parents(first:1){totalCount}authors(first:10){nodes{name email user{login}}}}}}comments(first:100 after:$", "commentsAfter", ")@include(if:$", "withComments", "){pageInfo{hasNextPage endCursor}nodes{id body createdAt lastEditedAt url isMinimized author{__typename login avatarUrl...on User{name}}}}reviews(first:100 after:$", "reviewsAfter", ")@include(if:$", "withReviews", "){pageInfo{hasNextPage endCursor}nodes{id body state submittedAt lastEditedAt url isMinimized author{__typename login avatarUrl...on User{name}}}}}}"] }
     ],
     fragments: []
   },
@@ -880,7 +884,7 @@ export declare namespace PullRequestCommitStats {
 
 /** A repository pull request. */
 export const NodesPullRequest = Schema.Struct({
-
+  /** Identifies the pull request number. */
   number: Shared.Int,
   /** Identifies the oid of the head ref associated with the pull request, even if the ref has been deleted. */
   headRefOid: Shared.GitObjectID,
@@ -1345,17 +1349,17 @@ export declare namespace RepositoryLabels {
   export type Result = typeof RepositoryLabels.result.Type
 }
 
-
+/** The results of a search. */
 export const SearchResultItemOther = Schema.Struct({
   __typename: GraphQL.otherTypename<Shared.Typename.SearchResultItem>()(["Issue", "PullRequest"])
 })
 export interface SearchResultItemOther extends Schema.Struct.Type<typeof SearchResultItemOther.fields> {}
 
-
-
-
-
-
+/**
+ * A list of results that matched against a search query. Regardless of the number
+ * of matches, a maximum of 1,000 results will be available across all types,
+ * potentially split across many pages.
+ */
 export const SearchResultItemConnection = Schema.Struct({
   /** Information to aid in pagination. */
   pageInfo: AssignableUsersPageInfoPageInfo,
@@ -1370,12 +1374,12 @@ export interface SearchResultItemConnection extends Schema.Struct.Type<typeof Se
 
 /** A repository contains the content for a project. */
 export const RepositoryReferencesRepositoryRepository = Schema.Struct({
-
+  /** Returns a single issue-like object from the current repository by number. */
   issueOrPullRequest: Schema.NullOr(ReferenceCandidate)
 })
 export interface RepositoryReferencesRepositoryRepository extends Schema.Struct.Type<typeof RepositoryReferencesRepositoryRepository.fields> {}
 
-
+/** `query RepositoryReferences` */
 export const RepositoryReferences = GraphQL.query("RepositoryReferences", {
   document: {
     variables: [
@@ -1401,7 +1405,7 @@ export const RepositoryReferences = GraphQL.query("RepositoryReferences", {
     exact: Schema.Boolean
   },
   result: Schema.Struct({
-
+    /** Perform a search across resources, returning a maximum of 1,000 results. */
     search: SearchResultItemConnection,
     /** Lookup a given repository by the owner and repository name. */
     repository: Schema.optionalKey(Schema.NullOr(RepositoryReferencesRepositoryRepository))
@@ -1680,9 +1684,9 @@ export const PullRequestBranchToDeleteRepositoryPullRequestHeadRepositoryReposit
 })
 export interface PullRequestBranchToDeleteRepositoryPullRequestHeadRepositoryRepository extends Schema.Struct.Type<typeof PullRequestBranchToDeleteRepositoryPullRequestHeadRepositoryRepository.fields> {}
 
-
+/** A repository pull request. */
 export const PullRequestBranchToDeleteRepositoryPullRequestPullRequest = Schema.Struct({
-
+  /** Identifies the state of the pull request. */
   state: GraphQL.enumLiterals(Shared.PullRequestState.literals),
   /** Identifies the name of the head Ref associated with the pull request, even if the ref has been deleted. */
   headRefName: Schema.String,
@@ -1721,7 +1725,7 @@ export const PullRequestBranchToDelete = GraphQL.query("PullRequestBranchToDelet
     number: Shared.Int
   },
   result: Schema.Struct({
-
+    /** Lookup a given repository by the owner and repository name. */
     repository: Schema.NullOr(PullRequestBranchToDeleteRepositoryRepository)
   })
 })
@@ -1752,7 +1756,7 @@ export const RefRef = Schema.Struct({
 })
 export interface RefRef extends Schema.Struct.Type<typeof RefRef.fields> {}
 
-
+/** A repository contains the content for a project. */
 export const NodeRepository = Schema.Struct({
   __typename: Schema.Literal("Repository"),
   /** The Ref associated with the repository's default branch. */

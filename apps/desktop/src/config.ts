@@ -1,4 +1,5 @@
 import { posix, win32 } from "node:path";
+import { isLocalEditorFileUrl } from "@t3tools/contracts";
 
 export function backendOriginFromOutput(output: string): string | undefined {
   const match = /Local URL:\s*(http:\/\/127\.0\.0\.1:(\d+))(?=\s|$)/.exec(output);
@@ -18,7 +19,11 @@ export function isBackendNavigation(target: string, origin: string): boolean {
 export function isExternalNavigation(target: string): boolean {
   try {
     const url = new URL(target);
-    return ["https:", "http:", "mailto:"].includes(url.protocol) && !url.username && !url.password;
+    return (
+      (["https:", "http:", "mailto:"].includes(url.protocol) || isLocalEditorFileUrl(url)) &&
+      !url.username &&
+      !url.password
+    );
   } catch {
     return false;
   }

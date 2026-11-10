@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.60 — 2026-11-10
+
+- Port the Cox-applicable fixes from the November 9 T3 Code upstream range.
+  Preserve delegated completion delivery, report the actual Claude model, make
+  Codex goal startup and reasoning more reliable, and show live Muse retries.
+  Add Pi model-advertised service tiers and optional next-prompt suggestions.
+- Protect stored provider secrets during duplicate-row saves, add validated
+  sign-in links to private secret requests, and preserve permission boundaries
+  for direct Antigravity sessions and remote desktop connections.
+- Filter hidden GitHub comments and reviews; harden branch/worktree naming and
+  reduce unnecessary cleanup and browser status work. Resolve unloaded thread
+  links and persist compatible model selections before the next message.
+- Retain existing offline database repair and automatic vacuum behavior; the
+  upstream one-click reclaim is deferred pending safe native restart supervision.
+- Remote desktop connections now require HTTPS with password authentication.
+  Upgrade vulnerable DOMPurify, KaTeX, stream-json and undici resolutions.
+
 ## 0.1.41 — 2026-11-06
 
 - Preserve recent thread history when stored interrupt requests and large checkpoint

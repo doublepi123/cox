@@ -129,6 +129,7 @@ it("readThread preserves caller access errors and prefers activity-run status ov
       makeRun({ id: activeRunId, ordinal: 1, status: "running" }),
       makeRun({ id: cancelledRunId, ordinal: 2, status: "cancelled" }),
     ],
+    providerTurns: [],
     visibleTurnItems: [],
     runtimeRequests: [],
     messages: [],
@@ -212,6 +213,7 @@ it("taskStatus returns task.providerInstanceId rather than the driver kind", asy
       model: "gpt-5.4",
     }),
     runs: [makeRun({ id: activeRunId, ordinal: 1, status: "running" })],
+    providerTurns: [],
     visibleTurnItems: [],
     runtimeRequests: [],
     messages: [],
@@ -265,6 +267,7 @@ it("taskStatus returns task.providerInstanceId rather than the driver kind", asy
         instanceId: customCodexInstanceId,
       }),
     ],
+    providerTurns: [],
     visibleTurnItems: [],
     runtimeRequests: [],
     messages: [],
@@ -337,6 +340,7 @@ it("readThread and sendToThread reach threads in other projects", async () => {
     get runs() {
       return parentRuns;
     },
+    providerTurns: [],
     visibleTurnItems: [],
     runtimeRequests: [],
     messages: [],

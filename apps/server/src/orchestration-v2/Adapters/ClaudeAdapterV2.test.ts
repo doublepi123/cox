@@ -68,6 +68,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -3058,6 +3059,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly freshQueueOnReopen?: boolean;
     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
     readonly allocateSessionId?: Effect.Effect<string>;
+    readonly promptSuggestions?: boolean | Effect.Effect<boolean>;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -3228,6 +3230,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         providerSessionId: ProviderSessionId.make("provider-session-claude-wake"),
         modelSelection: CLAUDE_TEST_MODEL_SELECTION,
         runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+        promptSuggestions:
+          typeof options?.promptSuggestions === "object"
+            ? options.promptSuggestions
+            : Effect.succeed(options?.promptSuggestions === true),
       });
       const providerThread = yield* runtime.ensureThread({
         threadId,
@@ -3308,6 +3314,110 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       };
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
+
+  it.effect("reconciles prompt suggestion opt-in changes before reusing a query", () =>
+    Effect.gen(function* () {
+      const enabled = yield* Ref.make(false);
+      const harness = yield* makeWakeHarnessWithOptions({
+        promptSuggestions: Ref.get(enabled),
+        freshQueueOnReopen: true,
+        close: Queue.shutdown,
+      });
+      for (const [index, value] of [false, true, false].entries()) {
+        yield* Ref.set(enabled, value);
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`suggest-toggle-${index}`),
+            text: "Continue",
+            attachments: [],
+            providerTurnOrdinal: index + 1,
+          }),
+        );
+        assert.equal(harness.getOpenedOptions()?.promptSuggestions, value);
+        yield* harness.offerAndWait(
+          makeResultFrame({
+            uuid: `00000000-0000-4000-8000-${String(700 + index).padStart(12, "0")}`,
+            result: "Done.",
+          }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+      }
+      assert.lengthOf(harness.processQueues, 3);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect.each(["root", "subagent"] as const)(
+    "asks Claude for suggestions only on a %s user-driven thread",
+    (lineage) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({ promptSuggestions: true });
+        const base = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("attempt-prompt-suggestion"),
+          text: "Add a subtract function.",
+          attachments: [],
+        });
+        const input =
+          lineage === "root"
+            ? base
+            : {
+                ...base,
+                appThread: {
+                  ...base.appThread,
+                  lineage: {
+                    ...base.appThread.lineage,
+                    relationshipToParent: "subagent" as const,
+                  },
+                },
+              };
+        yield* harness.runtime.startTurn(input);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000690", result: "Done." }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+        assert.equal(harness.getOpenedOptions()?.promptSuggestions, lineage === "root");
+        if (lineage !== "root") return;
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "prompt_suggestion",
+            suggestion: "  add tests for subtract\n",
+            uuid: "00000000-0000-4000-8000-000000000691",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* harness.until(() =>
+          harness.events.some((event) => event.type === "prompt_suggestion.updated"),
+        );
+        assert.deepEqual(
+          harness.events.filter((event) => event.type === "prompt_suggestion.updated"),
+          [
+            {
+              type: "prompt_suggestion.updated",
+              driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+              threadId: harness.threadId,
+              runId: input.runId,
+              text: "add tests for subtract",
+            },
+          ],
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
 
   it.effect(
     "reopens service queries when effort changes without sending unsupported live SDK flags",

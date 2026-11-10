@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "node:crypto";
 export type {
   ProviderMaintenanceCapabilities,
   ProviderMaintenanceCommandAction,
@@ -92,6 +94,12 @@ export interface PackageManagedProviderMaintenanceDefinition {
       | NodeJS.ProcessEnv
       | ((context: ProviderMaintenanceResolutionContext) => NodeJS.ProcessEnv);
   } | null;
+  readonly mise?: MiseProviderTool;
+}
+
+export interface MiseProviderTool {
+  readonly tool: string;
+  readonly upgrade?: boolean;
 }
 
 const NpmLatestVersionResponse = Schema.Struct({
@@ -238,7 +246,15 @@ function isYarnGlobalCommandPath(commandPath: string): boolean {
 /** Version-manager installs are pinned in its config, so updating them means editing that. */
 function isMiseCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
-  return normalized.includes("/mise/installs/") || normalized.includes("/mise/shims/");
+  return (
+    (normalized.includes("/mise/installs/") && !normalized.includes("/mise/installs/node/")) ||
+    normalized.includes("/mise/shims/") ||
+    normalized.includes("/mise/command-wrappers/")
+  );
+}
+
+function isMiseExecutablePath(commandPath: string): boolean {
+  return /(?:^|\/)mise(?:\.exe)?$/.test(normalizeCommandPath(commandPath));
 }
 
 const winGetClaudeCommandPath =
@@ -420,6 +436,125 @@ const resolvePnpmGlobalLatestVersion = Effect.fn("resolvePnpmGlobalLatestVersion
   return nonEmptyString(listedEntries?.[0]?.dependencies?.[packageName]?.version);
 });
 
+const MiseInstall = Schema.Struct({
+  install_path: Schema.String,
+  requested_version: Schema.optional(Schema.NullOr(Schema.String)),
+  active: Schema.optional(Schema.Boolean),
+});
+const decodeMiseToolInstalls = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Array(MiseInstall)),
+);
+const decodeMiseInstalls = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(MiseInstall))),
+);
+
+function miseToolInstalls(
+  listing: string,
+  miseTool: string,
+): ReadonlyArray<typeof MiseInstall.Type> {
+  const installs = decodeMiseToolInstalls(listing);
+  if (Option.isSome(installs)) return installs.value;
+  const byTool = Option.getOrUndefined(decodeMiseInstalls(listing));
+  return byTool && Object.keys(byTool).every((tool) => tool === miseTool)
+    ? (byTool[miseTool] ?? [])
+    : [];
+}
+
+export const resolveMiseProviderMaintenance = Effect.fn("resolveMiseProviderMaintenance")(
+  function* (
+    owner: { readonly provider: ProviderDriverKind; readonly packageName: string | null },
+    mise: MiseProviderTool | undefined,
+    context: ProviderMaintenanceResolutionContext,
+  ) {
+    const commandPaths = [context.resolvedCommandPath, context.realCommandPath];
+    const isShim = isMiseExecutablePath(context.realCommandPath);
+    const looksMise =
+      isShim || commandPaths.some(isMiseCommandPath) || (yield* isMiseWrapperScript(context));
+    const manual = (installPath: string) =>
+      makeManualOnlyProviderMaintenanceCapabilities({ ...owner, installPath });
+    const notOwned = (installPath: string) => (looksMise ? manual(installPath) : null);
+    const commandName = normalizeCommandPath(context.resolvedCommandPath)
+      .split("/")
+      .at(-1)
+      ?.replace(/\.(?:exe|cmd|bat|ps1)$/, "");
+    if (!mise) return notOwned(context.realCommandPath);
+    const miseTool = mise.tool;
+    if (isShim && commandName !== miseTool) return manual(context.realCommandPath);
+
+    const fileSystem = yield* FileSystem.FileSystem;
+    const realPath = (target: string) =>
+      fileSystem.realPath(target).pipe(Effect.orElseSucceed(() => target));
+    const misePath =
+      (yield* resolveCommandPath("mise", { env: context.env })) ??
+      (isShim ? context.realCommandPath : null);
+    if (!misePath) return notOwned(context.realCommandPath);
+    const which = nonEmptyString(yield* runProbe(misePath, ["which", miseTool], context.env));
+    const resolvedPath = which ? yield* realPath(which) : null;
+    const binaryPath = isShim ? resolvedPath : context.realCommandPath;
+    if (!binaryPath) return manual(context.realCommandPath);
+    const binary = normalizeCommandPath(binaryPath);
+    const runsBinary = resolvedPath !== null && normalizeCommandPath(resolvedPath) === binary;
+    const listing = yield* runProbe(
+      misePath,
+      ["ls", "--json", "--installed", miseTool],
+      context.env,
+    );
+    if (!listing) return runsBinary ? manual(binaryPath) : notOwned(binaryPath);
+    const isUnder = (path: string, dir: string) =>
+      path.startsWith(`${normalizeCommandPath(dir).replace(/\/+$/, "")}/`);
+    const owning = yield* Effect.filter(miseToolInstalls(listing, miseTool), (install) =>
+      realPath(install.install_path).pipe(
+        Effect.map((installPath) => isUnder(binary, installPath)),
+      ),
+    );
+    if (owning.length === 0) return notOwned(binaryPath);
+    if (!runsBinary) return manual(binaryPath);
+    const install = owning.find(
+      (candidate) => candidate.active === true && candidate.requested_version === "latest",
+    );
+    if (!install || mise.upgrade === false) return manual(binaryPath);
+    if (!isShim) {
+      const toolDir = install.install_path
+        .replaceAll("\\", "/")
+        .replace(/\/+$/, "")
+        .replace(/\/[^/]+$/, "");
+      const latestDirs = [toolDir, yield* realPath(toolDir)].map((dir) => `${dir}/latest`);
+      const resolved = normalizeCommandPath(context.resolvedCommandPath);
+      if (!latestDirs.some((dir) => isUnder(resolved, dir))) return manual(binaryPath);
+    }
+    const args = ["upgrade", miseTool];
+    const services = yield* Effect.context<ProviderMaintenanceResolverServices>();
+    const envHash = NodeCrypto.createHash("sha256");
+    for (const [name, value] of Object.entries(context.env).toSorted(([a], [b]) =>
+      a < b ? -1 : 1,
+    )) {
+      envHash.update(`${name}\0${value ?? ""}\0`);
+    }
+    const envKey = envHash.digest("hex");
+    const capabilities = makeProviderMaintenanceCapabilities({
+      ...owner,
+      updateExecutable: misePath,
+      updateArgs: args,
+      updateLockKey: "mise",
+      updateCommand: ["mise", ...args].join(" "),
+      platform: context.platform,
+      env: context.env,
+      latestVersion: null,
+      lookupLatestVersion: runProbe(misePath, ["latest", miseTool], context.env).pipe(
+        Effect.map((latest) => {
+          const version = nonEmptyString(latest);
+          return version && /^\S+$/.test(version) ? version : null;
+        }),
+        Effect.provideContext(services),
+      ),
+    });
+    return {
+      ...capabilities,
+      latestVersionCacheKey: ["mise", misePath, miseTool, envKey].join("\0"),
+    };
+  },
+);
+
 export const resolvePackageManagedProviderMaintenance = Effect.fn(
   "resolvePackageManagedProviderMaintenance",
 )(function* (
@@ -448,6 +583,13 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     return manual;
   }
 
+  const mise = yield* resolveMiseProviderMaintenance(
+    { provider: definition.provider, packageName },
+    definition.mise,
+    context,
+  );
+  if (mise) return mise;
+
   const nativeUpdate = definition.nativeUpdate;
   const nativeEnv = nativeUpdate?.env;
   const native = nativeUpdate
@@ -467,9 +609,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   if (
     nativeUpdate?.isCommandPath &&
     commandPaths.some(nativeUpdate.isCommandPath) &&
-    !npmGlobalPrefixFromCommandPath(context.realCommandPath, packageName) &&
-    !commandPaths.some(isMiseCommandPath) &&
-    !(yield* isMiseWrapperScript(context))
+    !npmGlobalPrefixFromCommandPath(context.realCommandPath, packageName)
   ) {
     return native;
   }
@@ -558,14 +698,6 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   }
 
   const homebrew = homebrewOwnershipFromCommandPath(context.realCommandPath);
-  if (
-    commandPaths.some(isMiseCommandPath) ||
-    // Mise shims resolve to the version manager's keg, not the provider's.
-    (homebrew?.kind === "formula" && homebrew.name.toLowerCase() === "mise") ||
-    (yield* isMiseWrapperScript(context))
-  ) {
-    return manual;
-  }
   if (homebrew) {
     return (
       (yield* resolveHomebrewProviderMaintenance(
@@ -899,6 +1031,7 @@ const fetchNpmLatestVersion = Effect.fn("fetchNpmLatestVersion")(function* (pack
 /** The installer's own answer is cached apart from the npm registry entry. */
 function installerLatestVersionKey(capabilities: ProviderMaintenanceCapabilities) {
   if (!capabilities.lookupLatestVersion) return null;
+  if (capabilities.latestVersionCacheKey !== undefined) return capabilities.latestVersionCacheKey;
   const update = capabilities.update;
   return update
     ? [update.lockKey, update.executable, ...update.args].join("\0")

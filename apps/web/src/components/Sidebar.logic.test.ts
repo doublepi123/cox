@@ -717,6 +717,38 @@ describe("getFallbackThreadIdAfterDelete", () => {
 
     expect(fallbackThreadId).toBe(ThreadId.make("thread-next"));
   });
+
+  it("does not navigate to a deleted thread's side chat or subagent", () => {
+    const threads = [
+      makeThread({ id: ThreadId.make("thread-active") }),
+      makeThread({
+        id: ThreadId.make("thread-side-chat"),
+        createdAt: "2026-03-09T10:20:00.000Z",
+        lineage: {
+          rootThreadId: ThreadId.make("thread-active"),
+          parentThreadId: ThreadId.make("thread-active"),
+          relationshipToParent: "fork",
+          sideChat: true,
+        },
+      }),
+      makeThread({
+        id: ThreadId.make("thread-subagent"),
+        createdAt: "2026-03-09T10:15:00.000Z",
+        lineage: {
+          rootThreadId: ThreadId.make("thread-active"),
+          parentThreadId: ThreadId.make("thread-active"),
+          relationshipToParent: "subagent",
+        },
+      }),
+    ];
+    expect(
+      getFallbackThreadIdAfterDelete({
+        threads,
+        deletedThreadId: ThreadId.make("thread-active"),
+        sortOrder: "created_at",
+      }),
+    ).toBeNull();
+  });
 });
 describe("sortProjectsForSidebar", () => {
   it("sorts projects by the most recent user message across their threads", () => {

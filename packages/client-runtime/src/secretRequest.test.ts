@@ -11,6 +11,7 @@ import {
   secretRequestAnswerInput,
   secretRequestDisplay,
   secretRequestFailureMessage,
+  secretRequestLink,
   secretRequestPrivacyNote,
   secretRequestSources,
 } from "./secretRequest.ts";
@@ -31,6 +32,30 @@ describe("secretRequestPrivacyNote", () => {
   it("does not promise to hide a value that the agent's commands can read", () => {
     expect(secretRequestPrivacyNote({})).toBe("Stored securely, never shown to the agent");
     expect(secretRequestPrivacyNote({ delivery: "file" })).not.toContain("never shown");
+  });
+});
+
+describe("secretRequestLink", () => {
+  it.each([
+    [
+      "Open this link and sign in: https://a.dev/x?s=1. Then paste the code.",
+      "https://a.dev/x?s=1",
+    ],
+    ["Sign in [here](https://a.dev/login?state=abc(def)).", "https://a.dev/login?state=abc(def)"],
+    ["Open **https://a.dev/x?s=1** and sign in.", "https://a.dev/x?s=1"],
+    ["**Sign in at https://a.dev/device**", "https://a.dev/device"],
+    ["Open https://a.dev or https://b.dev.", undefined],
+    ["Open https://a.dev (also written https://a.dev/).", "https://a.dev/"],
+    ["Paste the code the CLI printed.", undefined],
+  ])("finds the one link in a reason: %s", (reason, href) => {
+    expect(secretRequestLink({ reason })?.href).toBe(href);
+  });
+
+  it("prefers the agent's url over a link in the reason", () => {
+    expect(
+      secretRequestLink({ url: "https://auth.acme.dev/a", reason: "See https://docs.acme.dev" })
+        ?.host,
+    ).toBe("auth.acme.dev");
   });
 });
 

@@ -109,6 +109,19 @@ describe("desktop local-only policy", () => {
       expect(environment[name]).toBeUndefined();
   });
 
+  it("allows only validated editor file deep links beside browser links", () => {
+    expect(isExternalNavigation("vscode://file/workspace/file.ts:12:4")).toBe(true);
+    expect(isExternalNavigation("cursor://file/workspace/file.ts")).toBe(true);
+    for (const target of [
+      "vscode://file",
+      "vscode://file/",
+      "vscode://evil.test/workspace/file.ts",
+      "vscode://user:password@file/workspace/file.ts",
+      "vscode-insiders://file/workspace/file.ts",
+    ]) {
+      expect(isExternalNavigation(target)).toBe(false);
+    }
+  });
   it("preserves Windows Path casing and uses the Windows separator", () => {
     const environment = backendEnvironment({
       inherited: { Path: "C:\\Windows;C:\\Tools", SystemRoot: "C:\\Windows" },

@@ -105,6 +105,10 @@ export function antigravityPermissionMode(runtimeMode: RuntimeMode): string {
   }
 }
 
+export function antigravityCliSessionMode(modeId: string): string {
+  return modeId === "yolo" || modeId === "auto_edit" ? "default" : modeId;
+}
+
 export function antigravityModelOptions(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
 ) {

@@ -15,10 +15,34 @@ export function LabsSettingsPanel() {
       <SettingsSection id="beta" title={translateUi("Beta")}>
         <BoringSidebarRow />
         <BoringSidebarMultilineRow />
+        <PromptSuggestionsRow />
         <ToolCallVisibilityRow />
       </SettingsSection>
       <LegacyFeaturesSection />
     </SettingsPageContainer>
+  );
+}
+
+function PromptSuggestionsRow() {
+  const { t } = useTranslation();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("prompt-suggestions-beta")}
+      description={t(
+        "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.",
+      )}
+      control={
+        <Switch
+          checked={settings.promptSuggestionsEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ promptSuggestionsEnabled: Boolean(checked) })
+          }
+          aria-label={t("Suggest next prompt")}
+        />
+      }
+    />
   );
 }
 

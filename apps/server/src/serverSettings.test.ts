@@ -1480,6 +1480,90 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect.each([true, false])(
+    "retains a redacted secret beside a duplicate plain row (sensitive last: %s)",
+    (sensitiveLast) =>
+      Effect.gen(function* () {
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const instanceId = ProviderInstanceId.make("codex_duplicate_redacted");
+        const saved = yield* service.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              driver: ProviderDriverKind.make("codex"),
+              environment: [{ name: "API_TOKEN", value: "retained-token", sensitive: true }],
+              config: {},
+            },
+          },
+        });
+        const secret =
+          ServerSettingsModule.redactServerSettingsForClient(saved).providerInstances[instanceId]!
+            .environment![0]!;
+        const plain = { name: "API_TOKEN", value: "plain-token", sensitive: false };
+        const next = yield* service.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...saved.providerInstances[instanceId]!,
+              environment: sensitiveLast ? [plain, secret] : [secret, plain],
+            },
+          },
+        });
+        assert.equal(
+          next.providerInstances[instanceId]?.environment?.find((row) => row.sensitive)?.value,
+          "retained-token",
+        );
+        const client = ServerSettingsModule.redactServerSettingsForClient(next);
+        assert.notInclude(JSON.stringify(client), "retained-token");
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("lets a later explicit empty duplicate clear a redacted secret", () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("codex_duplicate_clear");
+      const saved = yield* service.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            config: {},
+            environment: [{ name: "API_TOKEN", value: "clear-me", sensitive: true }],
+          },
+        },
+      });
+      const instance =
+        ServerSettingsModule.redactServerSettingsForClient(saved).providerInstances[instanceId]!;
+      const updated = yield* service.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            ...instance,
+            environment: [
+              instance.environment![0]!,
+              { name: "API_TOKEN", value: "", sensitive: true },
+            ],
+          },
+        },
+      });
+      assert.isFalse(
+        updated.providerInstances[instanceId]!.environment!.some((row) => row.value === "clear-me"),
+      );
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("persists prompt suggestion opt-in through the server patch wire schema", () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      assert.isFalse((yield* service.getSettings).promptSuggestionsEnabled);
+      const patch = yield* decodeServerSettingsPatch({
+        promptSuggestionsEnabled: true,
+      });
+      assert.deepEqual(patch, { promptSuggestionsEnabled: true });
+      assert.isTrue((yield* service.updateSettings(patch)).promptSuggestionsEnabled);
+      assert.isFalse(
+        (yield* service.updateSettings({ promptSuggestionsEnabled: false }))
+          .promptSuggestionsEnabled,
+      );
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("moves saved provider credentials to the secret store when settings load", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;

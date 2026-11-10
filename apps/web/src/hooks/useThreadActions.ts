@@ -13,6 +13,7 @@ import {
   EnvironmentAuthorizationError,
   EnvironmentId,
   type ScopedThreadRef,
+  type OrchestrationV2ThreadFamily,
   ThreadId,
   sessionGrantsScope,
 } from "@t3tools/contracts";
@@ -31,7 +32,7 @@ import { environmentServerConfigsAtom } from "../state/server";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { orchestrationEnvironment } from "../state/orchestration";
 import { projectEnvironment } from "../state/projects";
-import { threadEnvironment } from "../state/threads";
+import { threadEnvironment, threadFamilies } from "../state/threads";
 import { vcsEnvironment } from "../state/vcs";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
@@ -322,6 +323,13 @@ export function useThreadActions() {
   const loadSessionState = useAtomQueryRunner(environmentSession.sessionStateAtom, {
     reportFailure: false,
   });
+  const loadThreadFamily = useAtomQueryRunner(
+    (target: ScopedThreadRef) => threadFamilies.familyAtom(target.environmentId, target.threadId),
+    {
+      reportFailure: false,
+      refresh: true,
+    },
+  );
   const loadWorktreeThreadIds = useAtomQueryRunner(orchestrationEnvironment.worktreeThreadIds, {
     reportFailure: false,
     refresh: true,
@@ -441,13 +449,37 @@ export function useThreadActions() {
     if (permissionFailure) return permissionFailure;
     const resolved = resolveThreadTarget(target);
     if (!resolved) {
+      let threads = readEnvironmentThreadRefs(target.environmentId).flatMap((ref) => {
+        const shell = readThreadShell(ref);
+        return shell === null ? [] : [{ id: shell.id, lineage: shell.lineage }];
+      });
+      if (
+        appAtomRegistry.get(environmentServerConfigsAtom).get(target.environmentId)
+          ?.shellThreadFamilies
+      ) {
+        const family = await loadThreadFamily(target);
+        if (family._tag === "Success") threads = [...family.value.threads];
+      }
       const result = await deleteThreadMutation({
         environmentId: target.environmentId,
         input: { threadId: target.threadId },
       });
       if (result._tag === "Success") {
+        for (const ref of [
+          target,
+          ...threads
+            .filter(
+              (entry) =>
+                entry.lineage.sideChat === true && entry.lineage.parentThreadId === target.threadId,
+            )
+            .map((entry) => scopeThreadRef(target.environmentId, entry.id)),
+        ]) {
+          releaseComposerDraftUploads(ref);
+          clearComposerDraftForThread(ref);
+        }
         expireThreadUndos(target, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
         refreshArchivedThreadsForEnvironment(target.environmentId);
+        clearTerminalUiState(target);
         clearDeletedThreadPanelState(target);
       }
       return result;
@@ -457,6 +489,16 @@ export function useThreadActions() {
       const shell = readThreadShell(ref);
       return shell === null ? [] : [shell];
     });
+    const environmentConfig = appAtomRegistry
+      .get(environmentServerConfigsAtom)
+      .get(threadRef.environmentId);
+    let deletedFamilyThreads: ReadonlyArray<
+      Pick<OrchestrationV2ThreadFamily["threads"][number], "id" | "lineage">
+    > = threads;
+    if (environmentConfig?.shellThreadFamilies === true) {
+      const family = await loadThreadFamily(threadRef);
+      if (family._tag === "Success") deletedFamilyThreads = [...family.value.threads];
+    }
     const threadProject = readProject({
       environmentId: threadRef.environmentId,
       projectId: thread.projectId,
@@ -474,9 +516,6 @@ export function useThreadActions() {
       deletedIds && deletedIds.size > 0
         ? threads.filter((entry) => entry.id === threadRef.threadId || !deletedIds.has(entry.id))
         : threads;
-    const environmentConfig = appAtomRegistry
-      .get(environmentServerConfigsAtom)
-      .get(threadRef.environmentId);
     let orphanedWorktreePath = getOrphanedWorktreePathForThread(
       survivingThreads,
       threadRef.threadId,
@@ -567,6 +606,14 @@ export function useThreadActions() {
     refreshArchivedThreadsForEnvironment(threadRef.environmentId);
     releaseComposerDraftUploads(threadRef);
     clearComposerDraftForThread(threadRef);
+    for (const entry of deletedFamilyThreads) {
+      if (entry.lineage?.sideChat !== true || entry.lineage.parentThreadId !== threadRef.threadId) {
+        continue;
+      }
+      const sideChatRef = scopeThreadRef(threadRef.environmentId, entry.id);
+      releaseComposerDraftUploads(sideChatRef);
+      clearComposerDraftForThread(sideChatRef);
+    }
     clearProjectDraftThreadById(
       scopeProjectRef(threadRef.environmentId, thread.projectId),
       threadRef,

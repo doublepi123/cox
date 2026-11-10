@@ -107,6 +107,8 @@ export const ThreadComment = Schema.Struct({
   lastEditedAt: Schema.NullOr(Shared.DateTime),
   /** The HTTP URL permalink for this review comment. */
   url: Shared.URI,
+  /** Returns whether or not a comment has been minimized. */
+  isMinimized: Schema.Boolean,
   /** A list of reactions grouped by content left on the subject. */
   reactionGroups: Schema.NullOr(Schema.Array(ReactionGroup))
 })
@@ -151,11 +153,11 @@ export const NodesPullRequestReviewThread = Schema.Struct({
 })
 export interface NodesPullRequestReviewThread extends Schema.Struct.Type<typeof NodesPullRequestReviewThread.fields> {}
 
-
-
-
-
-
+/**
+ * `fragment ReviewThreadPage on PullRequestReviewThreadConnection`
+ *
+ * Review comment threads for a pull request review.
+ */
 export const ReviewThreadPage = Schema.Struct({
   /** Identifies the total count of items in the connection. */
   totalCount: Shared.Int,
@@ -276,6 +278,8 @@ export interface ReviewRequestConnection extends Schema.Struct.Type<typeof Revie
 export const LatestReviewsNodesPullRequestReview = Schema.Struct({
   /** Identifies the current state of the pull request review. */
   state: GraphQL.enumLiterals(Shared.PullRequestReviewState.literals),
+  /** Returns whether or not a comment has been minimized. */
+  isMinimized: Schema.Boolean,
   /** The actor who authored the comment. */
   author: Schema.NullOr(Actor)
 })
@@ -416,12 +420,12 @@ export const ReviewThreads = GraphQL.query("ReviewThreads", {
     ],
     selections: [
       { name: "viewer", body: ["{login}"] },
-      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){reviewThreads(first:100){...ReviewThreadPage}viewerCanUpdate viewerDidAuthor author{__typename login avatarUrl}...Reactions comments(first:100){nodes{id lastEditedAt author{__typename login avatarUrl}...Reactions}}reviews(first:100){nodes{id lastEditedAt author{__typename login avatarUrl}...Reactions}}reviewRequests(first:$", "requestedReviewers", "){nodes{requestedReviewer{__typename...on User{login name avatarUrl}...on Bot{login avatarUrl}...on Team{combinedSlug teamName:name teamAvatarUrl:avatarUrl}}}}latestReviews(first:50){nodes{state author{__typename login avatarUrl}}}reviewDismissals:timelineItems(itemTypes:[REVIEW_DISMISSED_EVENT]first:100){pageInfo{hasNextPage endCursor}nodes{__typename...on ReviewDismissedEvent{dismissalMessage review{id}}}}commits(last:100){nodes{commit{oid messageHeadline committedDate authors(first:3){nodes{name avatarUrl user{login}}}}}}}}"] }
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){reviewThreads(first:100){...ReviewThreadPage}viewerCanUpdate viewerDidAuthor author{__typename login avatarUrl}...Reactions comments(first:100){nodes{id lastEditedAt author{__typename login avatarUrl}...Reactions}}reviews(first:100){nodes{id lastEditedAt author{__typename login avatarUrl}...Reactions}}reviewRequests(first:$", "requestedReviewers", "){nodes{requestedReviewer{__typename...on User{login name avatarUrl}...on Bot{login avatarUrl}...on Team{combinedSlug teamName:name teamAvatarUrl:avatarUrl}}}}latestReviews(first:50){nodes{state isMinimized author{__typename login avatarUrl}}}reviewDismissals:timelineItems(itemTypes:[REVIEW_DISMISSED_EVENT]first:100){pageInfo{hasNextPage endCursor}nodes{__typename...on ReviewDismissedEvent{dismissalMessage review{id}}}}commits(last:100){nodes{commit{oid messageHeadline committedDate authors(first:3){nodes{name avatarUrl user{login}}}}}}}}"] }
     ],
     fragments: [
       { name: "ReviewThreadPage", body: ["on PullRequestReviewThreadConnection{totalCount pageInfo{hasNextPage endCursor}nodes{id isResolved isOutdated path line diffSide comments(first:10){totalCount pageInfo{hasNextPage endCursor}nodes{...ThreadComment}}}}"] },
       { name: "Reactions", body: ["on Reactable{__typename reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{__typename...on User{login}...on Bot{login}...on Organization{login}...on Mannequin{login}}}}}"] },
-      { name: "ThreadComment", body: ["on PullRequestReviewComment{id author{__typename login avatarUrl}body createdAt lastEditedAt url...Reactions}"] }
+      { name: "ThreadComment", body: ["on PullRequestReviewComment{id author{__typename login avatarUrl}body createdAt lastEditedAt url isMinimized...Reactions}"] }
     ]
   },
   variables: {
@@ -444,7 +448,7 @@ export declare namespace ReviewThreads {
 
 /** A repository pull request. */
 export const ReviewThreadPagesRepositoryPullRequestPullRequest = Schema.Struct({
-
+  /** The list of all review threads for this pull request. */
   reviewThreads: ReviewThreadPage
 })
 export interface ReviewThreadPagesRepositoryPullRequestPullRequest extends Schema.Struct.Type<typeof ReviewThreadPagesRepositoryPullRequestPullRequest.fields> {}
@@ -456,7 +460,7 @@ export const ReviewThreadPagesRepositoryRepository = Schema.Struct({
 })
 export interface ReviewThreadPagesRepositoryRepository extends Schema.Struct.Type<typeof ReviewThreadPagesRepositoryRepository.fields> {}
 
-
+/** `query ReviewThreadPages` */
 export const ReviewThreadPages = GraphQL.query("ReviewThreadPages", {
   document: {
     variables: [
@@ -471,7 +475,7 @@ export const ReviewThreadPages = GraphQL.query("ReviewThreadPages", {
     ],
     fragments: [
       { name: "ReviewThreadPage", body: ["on PullRequestReviewThreadConnection{totalCount pageInfo{hasNextPage endCursor}nodes{id isResolved isOutdated path line diffSide comments(first:10){totalCount pageInfo{hasNextPage endCursor}nodes{...ThreadComment}}}}"] },
-      { name: "ThreadComment", body: ["on PullRequestReviewComment{id author{__typename login avatarUrl}body createdAt lastEditedAt url...Reactions}"] },
+      { name: "ThreadComment", body: ["on PullRequestReviewComment{id author{__typename login avatarUrl}body createdAt lastEditedAt url isMinimized...Reactions}"] },
       { name: "Reactions", body: ["on Reactable{__typename reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{__typename...on User{login}...on Bot{login}...on Organization{login}...on Mannequin{login}}}}}"] }
     ]
   },
@@ -548,7 +552,7 @@ export const ReviewThreadComments = GraphQL.query("ReviewThreadComments", {
       { name: "node", body: ["(id:$", "threadId", "){__typename...on PullRequestReviewThread{pullRequest{id}comments(first:100 after:$", "after", "){pageInfo{hasNextPage endCursor}nodes{...ThreadComment}}}}"] }
     ],
     fragments: [
-      { name: "ThreadComment", body: ["on PullRequestReviewComment{id author{__typename login avatarUrl}body createdAt lastEditedAt url...Reactions}"] },
+      { name: "ThreadComment", body: ["on PullRequestReviewComment{id author{__typename login avatarUrl}body createdAt lastEditedAt url isMinimized...Reactions}"] },
       { name: "Reactions", body: ["on Reactable{__typename reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{__typename...on User{login}...on Bot{login}...on Organization{login}...on Mannequin{login}}}}}"] }
     ]
   },
@@ -560,7 +564,7 @@ export const ReviewThreadComments = GraphQL.query("ReviewThreadComments", {
     after: Schema.optional(Schema.NullOr(Schema.String))
   },
   result: Schema.Struct({
-
+    /** The currently authenticated user. */
     viewer: ViewerUser,
     /** Lookup a given repository by the owner and repository name. */
     repository: Schema.NullOr(ReviewThreadCommentsRepositoryRepository),
@@ -576,16 +580,16 @@ export declare namespace ReviewThreadComments {
   export type Result = typeof ReviewThreadComments.result.Type
 }
 
-
+/** A repository pull request. */
 export const ReviewDismissalsRepositoryPullRequestPullRequest = Schema.Struct({
   /** A list of events, comments, commits, etc. associated with the pull request. */
   timelineItems: PullRequestTimelineItemsConnection
 })
 export interface ReviewDismissalsRepositoryPullRequestPullRequest extends Schema.Struct.Type<typeof ReviewDismissalsRepositoryPullRequestPullRequest.fields> {}
 
-
+/** A repository contains the content for a project. */
 export const ReviewDismissalsRepositoryRepository = Schema.Struct({
-
+  /** Returns a single pull request from the current repository by number. */
   pullRequest: Schema.NullOr(ReviewDismissalsRepositoryPullRequestPullRequest)
 })
 export interface ReviewDismissalsRepositoryRepository extends Schema.Struct.Type<typeof ReviewDismissalsRepositoryRepository.fields> {}
@@ -611,7 +615,7 @@ export const ReviewDismissals = GraphQL.query("ReviewDismissals", {
     after: Schema.optional(Schema.NullOr(Schema.String))
   },
   result: Schema.Struct({
-
+    /** Lookup a given repository by the owner and repository name. */
     repository: Schema.NullOr(ReviewDismissalsRepositoryRepository)
   })
 })

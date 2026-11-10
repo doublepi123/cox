@@ -294,6 +294,11 @@ const artifacts = await build({
       extendInfo: {
         CFBundleDevelopmentRegion: "en",
         CFBundleLocalizations: ["en", "zh-Hans", "zh-Hant"],
+        NSCalendarsUsageDescription: "Commands you run in Cox may need access to your calendars.",
+        NSCalendarsFullAccessUsageDescription:
+          "Commands you run in Cox may need to read and write your calendar events.",
+        NSCalendarsWriteOnlyAccessUsageDescription:
+          "Commands you run in Cox may need to add events to your calendars.",
       },
       ...(process.env.CSC_NAME
         ? { identity: process.env.CSC_NAME }

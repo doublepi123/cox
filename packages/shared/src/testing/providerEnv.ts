@@ -2,7 +2,15 @@
 // ANTHROPIC_BASE_URL) and the agent's own T3 state. Tests that read the ambient environment
 // then pass or fail by who runs them. Tests that need one of these variables set it
 // themselves. Set T3CODE_TEST_KEEP_PROVIDER_ENV=1 to keep them, for example for a live run.
-const PROVIDER_ENV_PREFIXES = ["ANTHROPIC_", "CLAUDE_", "CODEX_", "OPENAI_", "T3CODE_"];
+const PROVIDER_ENV_PREFIXES = [
+  "ANTHROPIC_",
+  "CLAUDE_",
+  "CODEX_",
+  "OPENAI_",
+  "T3CODE_",
+  "COX_MODEL_SERVICE_",
+  "COX_CODEX_",
+];
 
 const KEPT_ENV = new Set([
   // CI sets these so the transfer budget integration test writes its report for the job summary.

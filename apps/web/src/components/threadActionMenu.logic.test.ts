@@ -64,7 +64,7 @@ describe("buildThreadActionMenuItems", () => {
     );
     expect(
       items.find((item) => item.id === "auto-settle")?.children?.map((item) => item.label),
-    ).toEqual(["已启用", "已禁用"]);
+    ).toEqual(["跟随设置", "从不"]);
     expect(items.find((item) => item.id === "copy")?.children?.map((item) => item.label)).toEqual([
       "路径",
       "分支",

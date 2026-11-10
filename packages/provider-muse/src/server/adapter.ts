@@ -7,6 +7,7 @@ import {
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderCapabilities,
+  type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ProviderTurn,
@@ -24,6 +25,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import type { MuseSettings } from "../settings.ts";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import * as Cause from "effect/Cause";
@@ -52,7 +54,7 @@ import {
   MuseSubscriptionUsage,
   MuseTokenUsageEvent,
   MuseTodoList,
-  MuseTurnRetryScheduled,
+  MuseRetryScheduled,
   MuseTurnCompleted,
   MuseTurnStartResult,
   MuseUserInput,
@@ -83,7 +85,10 @@ import {
   type BackgroundWorkReport,
 } from "@t3tools/provider-core/server/notification";
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import {
+  makeProviderFailure,
+  makeProviderRetryTurnItem,
+} from "@t3tools/provider-core/server/failure";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
@@ -213,12 +218,23 @@ interface ActiveTurn {
   readonly started: Map<string, DateTime.Utc>;
   readonly dirty: Set<string>;
   readonly settledRequests: Set<string>;
+  readonly retries: Array<MuseRetryRow>;
   readonly done: Deferred.Deferred<void>;
   todoPlanId?: PlanId;
   nextOrdinal: number;
   flushScheduled: boolean;
   interruptRequested: boolean;
   compact: boolean;
+}
+
+interface MuseRetryRow {
+  readonly method: string;
+  readonly turnId: string;
+  readonly nativeId: string;
+  readonly retry: OrchestrationV2ProviderRetry;
+  readonly cause: string;
+  readonly code: string | undefined;
+  running: boolean;
 }
 
 interface PendingRequest {
@@ -254,10 +270,12 @@ const INFORMATIONAL_NOTIFICATIONS = new Set([
   "session/tokenUsage",
   "session/todoListChanged",
   "turn/retryScheduled",
+  "turn/modelRetryScheduled",
   "usage/changed",
 ]);
 const TOOLS_WITH_NATIVE_ROWS = new Set(["write_todos", "request_user_input", "workflow"]);
 const responseAnswerSchema = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
+const MODEL_OUTPUT_KINDS = new Set(["agentMessage", "reasoning", "toolCall"]);
 
 export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
   options: MuseAdapterV2Options,
@@ -436,6 +454,50 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
           updatedAt: time,
         };
       };
+      const emitRetry = Effect.fnUntraced(function* (
+        turn: ActiveTurn,
+        row: MuseRetryRow,
+        status: "running" | "completed" | "interrupted",
+      ) {
+        const time = yield* DateTime.now;
+        const base = baseItem(turn, row.nativeId, time);
+        yield* emit({
+          type: "turn_item.updated",
+          driver: MUSE_PROVIDER,
+          turnItem: {
+            ...makeProviderRetryTurnItem({
+              ...base,
+              driver: MUSE_PROVIDER,
+              nodeId: turn.input.rootNodeId,
+              itemOrdinal: base.ordinal,
+              failure: makeProviderFailure({
+                message:
+                  status === "running"
+                    ? `${row.cause}. Retrying in ${formatDuration(row.retry.retryDelayMs ?? 0)}.`
+                    : row.cause,
+                code: row.code,
+                class: "provider_error",
+                retryable: true,
+              }),
+              retry: row.retry,
+              status,
+              updatedAt: time,
+            }),
+            id: base.id,
+          },
+        });
+      });
+      const settleRetries = Effect.fnUntraced(function* (
+        turn: ActiveTurn,
+        status: "completed" | "interrupted",
+        nativeTurnId?: string,
+      ) {
+        for (const row of turn.retries) {
+          if (!row.running || (nativeTurnId !== undefined && row.turnId !== nativeTurnId)) continue;
+          row.running = false;
+          yield* emitRetry(turn, row, status);
+        }
+      });
       const childItemIdentity = (context: ChildContext, nativeId: string) =>
         `${options.instanceId}:child:${context.childSessionId}:${nativeId}`;
       const itemStatus = (item: MuseItem): OrchestrationV2TurnItemStatus => {
@@ -955,6 +1017,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             yield* publishItem(turn, item, item.status === "inProgress" ? status : undefined);
         }
         turn.dirty.clear();
+        yield* settleRetries(turn, status === "completed" ? "completed" : "interrupted");
         for (const entry of pending.values())
           if (entry.request.providerTurnId !== null) yield* resolvePending(entry, "cancelled");
         turn.providerTurn = { ...turn.providerTurn, status, completedAt };
@@ -1394,6 +1457,8 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               return;
             const previous = turn.items.get(item.itemId);
             if (previous && previous.revision >= item.revision) return;
+            if (MODEL_OUTPUT_KINDS.has(item.kind))
+              yield* settleRetries(turn, "completed", item.turnId ?? turn.nativeId);
             turn.items.set(item.itemId, item);
             turn.dirty.delete(item.itemId);
             yield* publishItem(turn, item);
@@ -1428,6 +1493,8 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               }
             }
             if (item === previous) return;
+            if (MODEL_OUTPUT_KINDS.has(item.kind))
+              yield* settleRetries(turn, "completed", item.turnId ?? turn.nativeId);
             turn.items.set(item.itemId, item);
             turn.dirty.add(item.itemId);
             if (!turn.flushScheduled) {
@@ -1443,7 +1510,14 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             if (turn.compact) return;
             const result = yield* decode(MuseTurnCompleted, params);
             // A joined Muse turn ending does not end this run; its own turn does.
-            if (result.turnId !== turn.nativeId) break;
+            if (result.turnId !== turn.nativeId) {
+              yield* settleRetries(
+                turn,
+                result.terminal === "completed" ? "completed" : "interrupted",
+                result.turnId,
+              );
+              break;
+            }
             if (result.usage) {
               const usage = result.usage;
               turn.providerTurn = {
@@ -1488,6 +1562,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             break;
           case "session/tokenUsage": {
             const usage = yield* decode(MuseTokenUsageEvent, params);
+            yield* settleRetries(turn, "completed", usage.turnId ?? turn.nativeId);
             const previous = turn.providerTurn.turnTokenUsage;
             const contextUsage = thread?.contextUsage;
             turn.providerTurn = {
@@ -1611,21 +1686,35 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             });
             break;
           }
-          case "turn/retryScheduled": {
-            const retry = yield* decode(MuseTurnRetryScheduled, params);
-            const time = yield* DateTime.now;
-            yield* emit({
-              type: "turn_item.updated",
-              driver: MUSE_PROVIDER,
-              turnItem: {
-                ...baseItem(turn, `retry:${retry.nextAttempt}`, time),
-                type: "system_notice",
-                status: "completed",
-                title: "Muse retry",
-                completedAt: time,
-                message: `Muse is retrying this turn (attempt ${retry.nextAttempt} of ${retry.maxAttempts}): ${retry.reason}`,
+          case "turn/retryScheduled":
+          case "turn/modelRetryScheduled": {
+            const retry = yield* decode(MuseRetryScheduled, params);
+            const cause =
+              retry.httpStatus === undefined ? retry.errorKind : `HTTP ${retry.httpStatus}`;
+            const index =
+              retry.attempt > 1
+                ? turn.retries.findLastIndex(
+                    (row) => row.method === method && row.turnId === retry.turnId,
+                  )
+                : -1;
+            const row: MuseRetryRow = {
+              method,
+              turnId: retry.turnId,
+              nativeId: turn.retries[index]?.nativeId ?? `retry:${retry.sourceRange.first.id}`,
+              retry: {
+                attempt: retry.attempt,
+                maxAttempts: Math.max(1, retry.maxAttempts - 1),
+                retryDelayMs: Math.trunc(retry.retryDelayMs),
               },
-            });
+              cause:
+                retry.reason ??
+                (cause ? `Model request failed (${cause})` : "Model request failed"),
+              code: retry.errorKind,
+              running: true,
+            };
+            if (index === -1) turn.retries.push(row);
+            else turn.retries[index] = row;
+            yield* emitRetry(turn, row, "running");
             break;
           }
         }
@@ -2019,6 +2108,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
           started: new Map(),
           dirty: new Set(),
           settledRequests: new Set(),
+          retries: [],
           done: yield* Deferred.make<void>(),
           nextOrdinal: turnInput.providerTurnOrdinal * 100 + 1,
           flushScheduled: false,

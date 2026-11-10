@@ -12,14 +12,18 @@ export function recoverQueuedMessageEdit(input: {
   readonly editTarget: ComposerThreadTarget;
   readonly threadTarget: ComposerThreadTarget;
   readonly originalText: string;
+  readonly removedExistingAttachment?: boolean;
 }): "kept" | "discarded" | "clean" {
   const store = useComposerDraftStore.getState();
   const draft = store.getComposerDraft(input.editTarget);
   const recovery = resolveQueuedEditExit({
     editChanged:
-      draft !== null &&
-      (draft.prompt !== input.originalText || draft.images.length > 0 || draft.files.length > 0),
-    threadDraftEmpty: !composerDraftHasUserContent(store.getComposerDraft(input.threadTarget)),
+      input.removedExistingAttachment === true ||
+      (draft !== null &&
+        (draft.prompt !== input.originalText || draft.images.length > 0 || draft.files.length > 0)),
+    threadDraftEmpty:
+      composerDraftHasUserContent(draft) &&
+      !composerDraftHasUserContent(store.getComposerDraft(input.threadTarget)),
   });
   if (recovery === "kept") {
     store.moveComposerPromptAndImages(input.editTarget, input.threadTarget);
