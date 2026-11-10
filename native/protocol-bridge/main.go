@@ -27,10 +27,11 @@ type input struct {
 }
 
 type output struct {
-	Body   json.RawMessage `json:"body,omitempty"`
-	Chunks [][]byte        `json:"chunks,omitempty"`
-	Error  string          `json:"error,omitempty"`
-	State  *streamState    `json:"state,omitempty"`
+	Body   json.RawMessage       `json:"body,omitempty"`
+	Chunks [][]byte              `json:"chunks,omitempty"`
+	Error  string                `json:"error,omitempty"`
+	State  *streamState          `json:"state,omitempty"`
+	Replay *reasoningReplayState `json:"replay,omitempty"`
 }
 
 type session struct {
@@ -93,11 +94,28 @@ func (s *session) handle(in input) (out output) {
 			fields["stream"], _ = json.Marshal(in.Stream)
 			in.Body, _ = json.Marshal(fields)
 		}
+		replayBody := []byte(in.Body)
+		var replay *reasoningReplayState
+		if from == tr.FormatOpenAIResponse && to == tr.FormatOpenAI {
+			var err error
+			replay = &reasoningReplayState{}
+			replayBody, err = responsesChatReplayBody(in.Body, replay)
+			if err != nil {
+				return output{Error: err.Error()}
+			}
+		}
 		request := s.registry.TranslateRequestEnvelope(context.Background(), from, to, tr.RequestEnvelope{
-			Format: from, Model: in.Model, Stream: in.Stream, Body: in.Body,
+			Format: from, Model: in.Model, Stream: in.Stream, Body: replayBody,
 		})
 		if request.Err != nil || !json.Valid(request.Body) {
 			return output{Error: "The request cannot be represented by the upstream protocol."}
+		}
+		if from == tr.FormatOpenAIResponse && to == tr.FormatOpenAI {
+			var err error
+			request.Body, err = withoutUnavailableChatReasoning(request.Body, replay)
+			if err != nil {
+				return output{Error: err.Error()}
+			}
 		}
 		if to == tr.FormatCodex {
 			var converted map[string]json.RawMessage
@@ -138,7 +156,7 @@ func (s *session) handle(in input) (out output) {
 		}
 		s.from, s.to, s.model, s.stream = from, to, in.Model, in.Stream
 		s.original, s.translated = in.Body, request.Body
-		return output{Body: request.Body}
+		return output{Body: request.Body, Replay: replay}
 	case "response":
 		if s.original == nil {
 			return output{Error: "No request is active."}

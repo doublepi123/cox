@@ -19,6 +19,12 @@ const Response = Schema.Struct({
   body: Schema.optional(Schema.Unknown),
   chunks: Schema.optional(Schema.Array(Schema.String)),
   error: Schema.optional(Schema.String),
+  replay: Schema.optional(
+    Schema.Struct({
+      opaqueItemsOmitted: Schema.Int,
+      unavailableFieldsOmitted: Schema.Int,
+    }),
+  ),
   state: Schema.optional(
     Schema.Struct({
       doneReceived: Schema.Boolean,
@@ -124,6 +130,7 @@ export const openProtocolBridge = Effect.fn("openProtocolBridge")(
     );
     return {
       body: converted.body,
+      replay: converted.replay,
       snapshot: () => state,
       response: (body: unknown) =>
         exchange({ type: "response", body }).pipe(Effect.map((result) => result.body)),

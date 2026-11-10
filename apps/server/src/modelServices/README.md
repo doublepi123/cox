@@ -100,3 +100,41 @@ kept distinct from Cox's logical request ID.
 These checks and synthetic regressions address known boundary failures. They do
 not establish whether any historical upstream omitted `[DONE]`, sent an
 unterminated SSE frame, or failed elsewhere; historical raw SSE was not captured.
+
+## Responses history converted to Chat
+
+The Responses-to-Chat adapter never replays `[reasoning unavailable]` as actual
+reasoning. Empty or opaque-only reasoning items have no textual representation
+in Chat. Their generated placeholder field and placeholder-only assistant
+message are omitted. Item boundaries used to align tool calls are retained
+during conversion; visible messages, call IDs, parameters and results are not
+rewritten. Visible `summary_text` is retained; when no visible summary exists,
+supported visible reasoning `content` is used instead. Real longer text that
+mentions the placeholder is not removed. The original request and persisted
+conversation history remain unchanged.
+
+This normalization applies only when Responses history is converted to Chat.
+Native Responses replay and its encrypted-reasoning policy are unchanged, as
+are other protocol conversions and reasoning-effort mapping. It does not mean
+all upstreams accept replay of genuine visible reasoning, or that every session
+with a nonempty `reasoning_content` is invalid. No upstream-specific model-name
+rule or automatic protocol/model switch is introduced.
+
+Protocol completion and generated output are separate observations. A complete
+Chat stream with only normal `stop` choices, explicit zero output/completion
+tokens, no positive reasoning-token count and no text, reasoning, refusal,
+tool call or other output is diagnosed as `cox_model_service_zero_token_stop`.
+The gateway sends an explicit error instead of a silent successful converted
+completion. Nonstream responses use the same narrow rule and suppress gateway
+retries. Streaming checks run after response selection, never restart inference,
+and do not replace `[DONE]` or relax EOF validation. Missing/ambiguous usage,
+positive generation, reasoning-only, refusal, tools, length and content-filter
+results are not classified as this zero-token stop.
+
+Request compatibility logs contain omission counts only. Response diagnostics
+contain output character/tool-fragment counts and reported output/reasoning
+tokens, never the corresponding text, tool IDs/arguments, encrypted content or
+credentials. A zero-token result can have a valid upstream protocol terminal
+while the gateway emits an error; `stream_terminal` records both independently.
+Local synthetic tests do not prove the supplied historical task or every live
+upstream has recovered. No original task or diagnostic tool is replayed.

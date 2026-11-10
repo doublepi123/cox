@@ -32,6 +32,7 @@ import * as ServerConfig from "../config.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
 import { makeModelServiceStreamMonitor, ModelServiceStreamError } from "./streamIntegrity.ts";
+import { chatResponseOutput } from "./responseOutput.ts";
 import { modelServiceRequestBody, withoutEncryptedReasoning } from "./requestCompatibility.ts";
 import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
 import {
@@ -80,6 +81,9 @@ const SDK_PACKAGES: Record<ModelServiceProtocol, string> = {
 };
 const PREFIX = "/api/model-gateway";
 const isModelServiceError = Schema.is(ModelServiceError);
+const ZERO_TOKEN_STOP_CODE = "cox_model_service_zero_token_stop";
+const ZERO_TOKEN_STOP_MESSAGE =
+  "The model service completed without generating any content, reasoning or tool calls and reported zero output tokens. Check the service's history reasoning replay compatibility before trying again.";
 const recoveryFailureResponse = (error: ModelServiceRequestFailure) =>
   HttpServerResponse.jsonUnsafe(
     {
@@ -595,6 +599,16 @@ export const make = Effect.gen(function* () {
                 Effect.provideService(Path.Path, path),
                 Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
               );
+        if (
+          bridge?.replay &&
+          (bridge.replay.opaqueItemsOmitted > 0 || bridge.replay.unavailableFieldsOmitted > 0)
+        )
+          yield* diagnostic({
+            event: "request_compatibility",
+            attempt: attemptId,
+            action: "omitted_unavailable_reasoning_replay",
+            ...bridge.replay,
+          });
         const endpoint =
           protocol === "openai-responses"
             ? "responses"
@@ -709,6 +723,7 @@ export const make = Effect.gen(function* () {
           let outcome = "not_consumed";
           let failureStage: "upstream" | "bridge" | "downstream" | undefined;
           let downstreamExit = "not_started";
+          let zeroTokenStopDetected = false;
           const integrityError = (error: unknown) =>
             error instanceof ModelServiceStreamError
               ? error
@@ -754,6 +769,7 @@ export const make = Effect.gen(function* () {
                 downstreamEnded,
                 errorEmitted,
                 downstreamExit,
+                zeroTokenStopDetected,
                 delivery: "network_receipt_unconfirmed",
               });
             }),
@@ -876,6 +892,16 @@ export const make = Effect.gen(function* () {
                 Effect.try({
                   try: () => ({ chunk, frames: upstream.push(chunk) }),
                   catch: integrityError,
+                }),
+              ).pipe(
+                Effect.flatMap((result) => {
+                  if (!upstream.isZeroTokenStop()) return Effect.succeed(result);
+                  zeroTokenStopDetected = true;
+                  outcome = "zero_token_stop";
+                  failureStage = "upstream";
+                  return Effect.fail(
+                    new ModelServiceError({ detail: ZERO_TOKEN_STOP_MESSAGE, status: 502 }),
+                  );
                 }),
               ),
             ),
@@ -1022,18 +1048,22 @@ export const make = Effect.gen(function* () {
                 streamError(
                   cancelled
                     ? "cox_model_service_request_cancelled"
-                    : unavailable
-                      ? "cox_model_service_unavailable"
-                      : error instanceof ModelServiceStreamError || isModelServiceError(error)
-                        ? "cox_model_service_incomplete_stream"
-                        : "cox_model_service_stream_interrupted",
+                    : zeroTokenStopDetected
+                      ? ZERO_TOKEN_STOP_CODE
+                      : unavailable
+                        ? "cox_model_service_unavailable"
+                        : error instanceof ModelServiceStreamError || isModelServiceError(error)
+                          ? "cox_model_service_incomplete_stream"
+                          : "cox_model_service_stream_interrupted",
                   cancelled
                     ? error.detail
-                    : unavailable
-                      ? "This model service is unavailable."
-                      : error instanceof ModelServiceStreamError
-                        ? error.detail
-                        : "The model service stream was interrupted before protocol completion.",
+                    : zeroTokenStopDetected
+                      ? ZERO_TOKEN_STOP_MESSAGE
+                      : unavailable
+                        ? "This model service is unavailable."
+                        : error instanceof ModelServiceStreamError
+                          ? error.detail
+                          : "The model service stream was interrupted before protocol completion.",
                 ),
               );
             }),
@@ -1093,6 +1123,18 @@ export const make = Effect.gen(function* () {
           attempt: attemptId,
           elapsedMs: (yield* Clock.currentTimeMillis) - started,
         });
+        if (protocol === "openai-chat" && !countTokens) {
+          const output = chatResponseOutput(result);
+          yield* diagnostic({ event: "response_output", attempt: attemptId, output });
+          if (output.zeroTokenStop)
+            return yield* new ModelServiceRequestFailure({
+              detail: ZERO_TOKEN_STOP_MESSAGE,
+              code: ZERO_TOKEN_STOP_CODE,
+              status: 502,
+              retryable: false,
+              source: "gateway",
+            });
+        }
         return HttpServerResponse.jsonUnsafe(bridge ? yield* bridge.response(result) : result);
       },
       Effect.mapError((error) =>

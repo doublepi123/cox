@@ -9,6 +9,22 @@ const response = (status: string) =>
   frame({ type: `response.${status}`, response: { status, output: [] } });
 
 describe("model service stream integrity", () => {
+  it("separates protocol completion from an explicitly zero-generated empty stop", () => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    monitor.push(
+      encoder.encode(chat({}, "stop") + frame({ choices: [], usage: { completion_tokens: 0 } })),
+    );
+    expect(monitor.isZeroTokenStop()).toBe(false);
+    monitor.push(encoder.encode("data: [DONE]\n\n"));
+    monitor.finish();
+    expect(monitor.isZeroTokenStop()).toBe(true);
+    expect(monitor.snapshot()).toMatchObject({
+      terminal: "completed",
+      doneMarker: true,
+      validationError: undefined,
+      output: { outputTokens: 0, textCharacters: 0 },
+    });
+  });
   it.each(["\n", "\r\n"])("accepts split UTF-8, delimiters and DONE with %j", (newline) => {
     const monitor = makeModelServiceStreamMonitor("openai-chat");
     const text = (

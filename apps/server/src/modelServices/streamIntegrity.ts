@@ -1,6 +1,7 @@
 import type { ModelServiceProtocol } from "@t3tools/contracts";
 import * as Data from "effect/Data";
 import { makeModelServiceSseParser } from "./sse.ts";
+import { makeChatOutputTracker } from "./responseOutput.ts";
 
 export class ModelServiceStreamError extends Data.TaggedError("ModelServiceStreamError")<{
   readonly reason:
@@ -45,6 +46,7 @@ const finishReasons = new Set([
 export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
   const parse = makeModelServiceSseParser();
   const decoder = new TextDecoder("utf-8", { fatal: true });
+  const output = protocol === "openai-chat" ? makeChatOutputTracker() : undefined;
   const reasons = new Set<string>();
   let bytes = 0;
   let terminal: "none" | "completed" | "incomplete" | "failed" | "error" = "none";
@@ -107,6 +109,7 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
       if (!Array.isArray(event.choices))
         return fail("invalid_stream_event", "The model service sent an invalid Chat stream event.");
       for (const choice of event.choices) reason(record(choice).finish_reason);
+      output?.observe(event);
     } else if (protocol === "openai-responses") {
       const state =
         event.type === "response.completed"
@@ -171,7 +174,10 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
       finishReasons: [...reasons],
       finalized: finished,
       validationError: failure?.reason,
+      output: output?.snapshot(),
     }),
+    isZeroTokenStop: () =>
+      terminal === "completed" && doneMarker && output?.isZeroTokenStop() === true,
     finish: () => {
       if (failure) throw failure;
       if (finished) return;

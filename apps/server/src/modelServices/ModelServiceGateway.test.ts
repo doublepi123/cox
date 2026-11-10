@@ -288,6 +288,410 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect(
+    "omits opaque reasoning replay without changing visible history, tools or the effort",
+    () =>
+      withGatewayDiagnostics((messages) =>
+        Effect.gen(function* () {
+          const h = yield* harness();
+          const reasoning = [
+            {
+              type: "reasoning",
+              summary: [],
+              content: null,
+              encrypted_content: "opaque-private-ciphertext",
+            },
+            {
+              type: "reasoning",
+              summary: [],
+              content: [{ type: "reasoning_text", text: "visible reasoning" }],
+            },
+          ];
+          const original = {
+            model: "Vendor/Exact",
+            reasoning: { effort: "max" },
+            input: [
+              ...reasoning,
+              {
+                type: "function_call",
+                call_id: "call_diag",
+                name: "read_file",
+                arguments: '{"path":"file.txt"}',
+              },
+              { type: "function_call_output", call_id: "call_diag", output: "keep exact result" },
+              { role: "user", content: "hi" },
+            ],
+            tools: [{ type: "function", name: "read_file", parameters: { type: "object" } }],
+          };
+          const snapshot = structuredClone(original);
+          const answer = yield* h.invoke("/v1/responses", original);
+          expect(answer.status).toBe(200);
+          const outgoing = sentBody(h.calls[0]!);
+          expect(outgoing.reasoning_effort).toBe("max");
+          expect(outgoing.messages).toEqual([
+            {
+              role: "assistant",
+              reasoning_content: "visible reasoning",
+              tool_calls: [
+                {
+                  id: "call_diag",
+                  type: "function",
+                  function: { name: "read_file", arguments: '{"path":"file.txt"}' },
+                },
+              ],
+            },
+            { role: "tool", tool_call_id: "call_diag", content: "keep exact result" },
+            { role: "user", content: "hi" },
+          ]);
+          expect(JSON.stringify(outgoing)).not.toContain("opaque-private-ciphertext");
+          expect(JSON.stringify(outgoing)).not.toContain("[reasoning unavailable]");
+          expect(original).toEqual(snapshot);
+          expect(h.calls).toHaveLength(1);
+          expect(messages).toContainEqual(
+            expect.objectContaining({
+              event: "request_compatibility",
+              action: "omitted_unavailable_reasoning_replay",
+              opaqueItemsOmitted: 1,
+            }),
+          );
+          const logs = JSON.stringify(messages);
+          for (const value of [
+            "opaque-private-ciphertext",
+            "visible reasoning",
+            "keep exact result",
+            "file.txt",
+          ])
+            expect(logs).not.toContain(value);
+        }),
+      ),
+  );
+
+  it.effect(
+    "preserves opaque reasoning on native Responses without applying Chat replay cleanup",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol: "openai-responses",
+          respond: () => Response.json(responsesAnswer),
+        });
+        const original = {
+          model: "Vendor/Exact",
+          input: [
+            { type: "reasoning", summary: [], encrypted_content: "opaque-private-ciphertext" },
+            { role: "user", content: "hi" },
+          ],
+        };
+        expect((yield* h.invoke("/v1/responses", original)).status).toBe(200);
+        expect(sentBody(h.calls[0]!)).toEqual(original);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([false, true])(
+    "reports a completed zero-token Chat result without silent success or automatic replay (stream=%s)",
+    (stream) =>
+      withGatewayDiagnostics((messages) =>
+        Effect.gen(function* () {
+          const h = yield* harness({
+            recovery: {
+              retryEnabled: true,
+              retryNonTransientErrors: true,
+              hedgeEnabled: true,
+              maxAttempts: 10,
+            },
+            respond: () =>
+              stream
+                ? new Response(
+                    chatStreamFrame({ role: "assistant", content: "" }) +
+                      chatStreamFrame({}, "stop") +
+                      sseFrame({
+                        choices: [],
+                        usage: {
+                          prompt_tokens: 301284,
+                          completion_tokens: 0,
+                          total_tokens: 301284,
+                        },
+                      }) +
+                      "data: [DONE]\n\n",
+                    { headers: { "content-type": "text/event-stream" } },
+                  )
+                : Response.json({
+                    choices: [
+                      {
+                        index: 0,
+                        message: { role: "assistant", content: null },
+                        finish_reason: "stop",
+                      },
+                    ],
+                    usage: { prompt_tokens: 301284, completion_tokens: 0, total_tokens: 301284 },
+                  }),
+          });
+          const result = yield* h.invoke("/v1/responses", {
+            model: "Vendor/Exact",
+            input: "private prompt",
+            stream,
+          });
+          expect(result.status).toBe(stream ? 200 : 502);
+          expect(result.text).toContain("cox_model_service_zero_token_stop");
+          expect(result.text).toContain("reported zero output tokens");
+          expect(result.text).not.toContain('"type":"response.completed"');
+          expect(result.text).not.toContain('"type":"response.incomplete"');
+          expect(result.headers["x-should-retry"]).toBe(stream ? undefined : "false");
+          expect(h.calls).toHaveLength(1);
+          if (stream)
+            expect(messages).toContainEqual(
+              expect.objectContaining({
+                event: "stream_terminal",
+                outcome: "zero_token_stop",
+                zeroTokenStopDetected: true,
+                errorEmitted: true,
+                upstream: expect.objectContaining({
+                  terminal: "completed",
+                  doneMarker: true,
+                  output: expect.objectContaining({
+                    outputTokens: 0,
+                    textCharacters: 0,
+                    toolCallFragments: 0,
+                  }),
+                }),
+              }),
+            );
+          else
+            expect(messages).toContainEqual(
+              expect.objectContaining({
+                event: "response_output",
+                output: expect.objectContaining({ zeroTokenStop: true, outputTokens: 0 }),
+              }),
+            );
+          const logs = JSON.stringify(messages);
+          for (const secret of ["private prompt", "private-upstream-key", "private-header"])
+            expect(logs).not.toContain(secret);
+        }),
+      ),
+  );
+
+  it.effect(
+    "reports a zero-token stop after streamed headers without sending a completed Responses terminal",
+    () =>
+      withGatewayDiagnostics((messages) =>
+        Effect.gen(function* () {
+          let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+          const created = yield* Deferred.make<void>();
+          const h = yield* harness({
+            recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 10 },
+            respond: () =>
+              new Response(
+                new ReadableStream<Uint8Array>({
+                  start(output) {
+                    controller = output;
+                    output.enqueue(new TextEncoder().encode(chatStreamFrame({}, "stop")));
+                  },
+                }),
+                { headers: { "content-type": "text/event-stream" } },
+              ),
+          });
+          const request = HttpServerRequest.fromWeb(
+            new Request("http://127.0.0.1/api/model-gateway/v1/responses", {
+              method: "POST",
+              headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
+              body: JSON.stringify({ model: "Vendor/Exact", input: "hi", stream: true }),
+            }),
+          );
+          const response = yield* h.gateway.handle.pipe(
+            Effect.provideService(HttpServerRequest.HttpServerRequest, request),
+          );
+          if (response.body._tag !== "Stream") throw new Error("Expected streaming response");
+          let text = "";
+          const reading = yield* response.body.stream.pipe(
+            Stream.decodeText(),
+            Stream.runForEach((chunk) => {
+              text += chunk;
+              return text.includes("response.created")
+                ? Deferred.succeed(created, undefined)
+                : Effect.void;
+            }),
+            Effect.orDie,
+            Effect.forkChild,
+          );
+          yield* Deferred.await(created);
+          controller!.enqueue(
+            new TextEncoder().encode(sseFrame({ choices: [], usage: { completion_tokens: 0 } })),
+          );
+          controller!.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          controller!.close();
+          yield* Fiber.join(reading);
+          expect(text).toContain("response.created");
+          expect(text).toContain("cox_model_service_zero_token_stop");
+          expect(text).not.toContain("event: response.completed");
+          expect(h.calls).toHaveLength(1);
+        }).pipe(
+          Effect.scoped,
+          Effect.tap(() =>
+            Effect.sync(() => {
+              expect(messages).toContainEqual(
+                expect.objectContaining({ event: "stream_terminal", outcome: "zero_token_stop" }),
+              );
+            }),
+          ),
+        ),
+      ),
+  );
+
+  it.effect.each([
+    { name: "usage unknown", delta: {}, reason: "stop", usage: {} },
+    {
+      name: "generation known positive",
+      delta: {},
+      reason: "stop",
+      usage: { completion_tokens: 3 },
+    },
+    {
+      name: "reasoning only",
+      delta: { reasoning_content: "thinking" },
+      reason: "stop",
+      usage: { completion_tokens: 0 },
+    },
+    { name: "length", delta: {}, reason: "length", usage: { completion_tokens: 0 } },
+    { name: "filter", delta: {}, reason: "content_filter", usage: { completion_tokens: 0 } },
+    {
+      name: "tool-only",
+      delta: {
+        tool_calls: [
+          {
+            index: 0,
+            id: "call_a",
+            type: "function",
+            function: { name: "read_file", arguments: "{}" },
+          },
+        ],
+      },
+      reason: "tool_calls",
+      usage: { completion_tokens: 0 },
+    },
+  ])("retains legitimate converted $name completion semantics", (scenario) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        respond: () =>
+          new Response(
+            chatStreamFrame(scenario.delta) +
+              chatStreamFrame({}, scenario.reason) +
+              sseFrame({ choices: [], usage: scenario.usage }) +
+              "data: [DONE]\n\n",
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const result = yield* h.invoke("/v1/responses", {
+        model: "Vendor/Exact",
+        stream: true,
+        input: "hi",
+      });
+      expect(result.text).not.toContain("cox_model_service_zero_token_stop");
+      expect(result.text).toContain(
+        ["length", "content_filter"].includes(scenario.reason)
+          ? "event: response.incomplete"
+          : "event: response.completed",
+      );
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([false, true])(
+    "preserves a native Chat refusal instead of classifying it as a zero-token stop (stream=%s)",
+    (stream) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "pi",
+          protocol: "openai-chat",
+          respond: () =>
+            stream
+              ? new Response(
+                  chatStreamFrame({ refusal: "Cannot comply" }) +
+                    chatStreamFrame({}, "stop") +
+                    sseFrame({ choices: [], usage: { completion_tokens: 0 } }) +
+                    "data: [DONE]\n\n",
+                  { headers: { "content-type": "text/event-stream" } },
+                )
+              : Response.json({
+                  choices: [
+                    { message: { content: null, refusal: "Cannot comply" }, finish_reason: "stop" },
+                  ],
+                  usage: { completion_tokens: 0 },
+                }),
+        });
+        const result = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+          stream,
+        });
+        expect(result.status).toBe(200);
+        expect(result.text).toContain("Cannot comply");
+        expect(result.text).not.toContain("cox_model_service_zero_token_stop");
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([false, true])(
+    "does not replay a native Chat zero-token stop (stream=%s)",
+    (stream) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "pi",
+          protocol: "openai-chat",
+          recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 10 },
+          respond: () =>
+            stream
+              ? new Response(
+                  chatStreamFrame({}, "stop") +
+                    sseFrame({ choices: [], usage: { completion_tokens: 0 } }) +
+                    "data: [DONE]\n\n",
+                  { headers: { "content-type": "text/event-stream" } },
+                )
+              : Response.json({
+                  choices: [{ message: { content: null }, finish_reason: "stop" }],
+                  usage: { completion_tokens: 0 },
+                }),
+        });
+        const result = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+          stream,
+        });
+        expect(result.status).toBe(stream ? 200 : 502);
+        expect(result.text).toContain("cox_model_service_zero_token_stop");
+        if (stream) expect(result.text).not.toContain("data: [DONE]");
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["", "data: [DONE]", 'data: {"choices":\n\n'])(
+    "keeps incomplete zero-output streams distinct from a complete zero-token stop (%j)",
+    (tail) =>
+      withGatewayDiagnostics((messages) =>
+        Effect.gen(function* () {
+          const h = yield* harness({
+            respond: () =>
+              new Response(
+                chatStreamFrame({}, "stop") +
+                  sseFrame({ choices: [], usage: { completion_tokens: 0 } }) +
+                  tail,
+                { headers: { "content-type": "text/event-stream" } },
+              ),
+          });
+          const result = yield* h.invoke("/v1/responses", {
+            model: "Vendor/Exact",
+            input: "hi",
+            stream: true,
+          });
+          expect(result.text).not.toContain("cox_model_service_zero_token_stop");
+          expect(result.text).not.toContain("event: response.completed");
+          expect(result.text).toMatch(/incomplete|invalid JSON|terminal event/);
+          expect(h.calls).toHaveLength(1);
+          expect(messages).not.toContainEqual(
+            expect.objectContaining({ zeroTokenStopDetected: true }),
+          );
+        }),
+      ),
+  );
+
   it.effect.each([
     {
       name: "text",

@@ -54,6 +54,23 @@ The wrapper preserves SDK-emitted terminal events. Where the SDK omits a target
 Chat `[DONE]` or Gemini-to-Messages `message_stop`, finalization maps a real
 upstream terminal plus already-finished target choices/items to the missing
 target terminator. It does not infer upstream completion from transport EOF.
-Each JSONL reply includes only boolean completion `state` metadata alongside
-converted bodies/chunks or static errors. No body, tool argument or credential
-is included in this state. Tests use only local synthetic streams.
+Each streaming JSONL reply includes boolean completion `state` metadata alongside
+converted bodies/chunks or static errors. Responses-to-Chat request replies may
+also include `replay` omission counts, never the original text or ciphertext.
+No body, tool argument or credential is included in this metadata. Tests use
+only local synthetic streams.
+
+Responses-to-Chat request conversion drops unavailable reasoning replay rather
+than fabricating nonempty placeholder text. Visible summaries and supported
+visible reasoning content are preserved, and longer literal text mentioning
+`[reasoning unavailable]` is retained. Empty/opaque items still act as tool-call
+alignment boundaries inside the SDK; after conversion, placeholder-only fields
+and assistant messages are removed without changing tool pairs, arguments,
+results or visible message order. The original Responses request is retained
+for response conversion. Native Responses and other conversion routes are not
+subject to this Chat-specific adaptation.
+
+The bridge still emits legal empty Responses completions when the source stream
+is complete. The HTTP gateway separately diagnoses the narrower complete
+zero-token normal-stop case so legal empty, reasoning-only, refusal and
+length/filter semantics are not conflated with transport incompleteness.
