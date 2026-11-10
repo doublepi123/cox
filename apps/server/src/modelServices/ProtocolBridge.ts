@@ -19,6 +19,15 @@ const Response = Schema.Struct({
   body: Schema.optional(Schema.Unknown),
   chunks: Schema.optional(Schema.Array(Schema.String)),
   error: Schema.optional(Schema.String),
+  state: Schema.optional(
+    Schema.Struct({
+      doneReceived: Schema.Boolean,
+      doneAccepted: Schema.Boolean,
+      terminal: Schema.Boolean,
+      finalized: Schema.Boolean,
+      failed: Schema.Boolean,
+    }),
+  ),
 });
 const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(Response));
 const encode = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
@@ -83,12 +92,14 @@ export const openProtocolBridge = Effect.fn("openProtocolBridge")(
     );
     yield* child.stderr.pipe(Stream.runDrain, Effect.ignore, Effect.forkScoped);
     const lock = yield* Semaphore.make(1);
+    let state: typeof Response.Type.state;
     const exchange = (value: unknown) =>
       lock
         .withPermit(
           Effect.gen(function* () {
             yield* Queue.offer(input, encoder.encode((yield* encode(value)) + "\n"));
             const result = yield* Queue.take(output).pipe(Effect.flatMap(decode));
+            state = result.state;
             if (result.error) return yield* new ModelServiceError({ detail: result.error });
             return result;
           }),
@@ -113,10 +124,17 @@ export const openProtocolBridge = Effect.fn("openProtocolBridge")(
     );
     return {
       body: converted.body,
+      snapshot: () => state,
       response: (body: unknown) =>
         exchange({ type: "response", body }).pipe(Effect.map((result) => result.body)),
       chunk: (chunk: string) =>
         exchange({ type: "chunk", chunk }).pipe(
+          Effect.map((result) =>
+            (result.chunks ?? []).map((value) => Uint8Array.from(Buffer.from(value, "base64"))),
+          ),
+        ),
+      finish: () =>
+        exchange({ type: "finish" }).pipe(
           Effect.map((result) =>
             (result.chunks ?? []).map((value) => Uint8Array.from(Buffer.from(value, "base64"))),
           ),

@@ -152,6 +152,23 @@ const sentBody = (request: import("effect/http/HttpClientRequest").HttpClientReq
   if (request.body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
   return JSON.parse(new TextDecoder().decode(request.body.body));
 };
+const sseFrame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+const chatStreamFrame = (delta: unknown, finish_reason: string | null = null) =>
+  sseFrame({ id: "chat-integrity", choices: [{ index: 0, delta, finish_reason }] });
+const withGatewayDiagnostics = <A, E, R>(
+  test: (messages: Record<string, unknown>[]) => Effect.Effect<A, E, R>,
+) => {
+  const messages: Record<string, unknown>[] = [];
+  const logger = Logger.make(({ message }) => {
+    if (Array.isArray(message))
+      for (const entry of message)
+        if (entry !== null && typeof entry === "object") messages.push(record(entry));
+  });
+  return test(messages).pipe(
+    Effect.scoped,
+    Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
+  );
+};
 
 const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
@@ -271,6 +288,546 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each([
+    {
+      name: "text",
+      delta: { content: "safe answer" },
+      reason: "stop",
+      status: "completed",
+      items: 1,
+    },
+    {
+      name: "reasoning only",
+      delta: { reasoning_content: "safe reasoning" },
+      reason: "stop",
+      status: "completed",
+      items: 1,
+    },
+    { name: "empty stop", delta: {}, reason: "stop", status: "completed", items: 0 },
+    { name: "empty tool finish", delta: {}, reason: "tool_calls", status: "completed", items: 0 },
+    {
+      name: "text length",
+      delta: { content: "partial" },
+      reason: "length",
+      status: "incomplete",
+      items: 1,
+    },
+    {
+      name: "reasoning filtered",
+      delta: { reasoning_content: "partial" },
+      reason: "content_filter",
+      status: "incomplete",
+      items: 1,
+    },
+    { name: "empty length", delta: {}, reason: "length", status: "incomplete", items: 0 },
+  ])("strictly completes converted $name after DONE with usage-only tail", (scenario) =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          respond: () =>
+            new Response(
+              chatStreamFrame(scenario.delta) +
+                chatStreamFrame({}, scenario.reason) +
+                sseFrame({
+                  choices: [],
+                  usage: {
+                    prompt_tokens: 11,
+                    completion_tokens: 5,
+                    total_tokens: 16,
+                    prompt_tokens_details: { cached_tokens: 7 },
+                    completion_tokens_details: { reasoning_tokens: 3 },
+                  },
+                }) +
+                "data: [DONE]\n\n",
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "test",
+          stream: true,
+        });
+        expect(result.status).toBe(200);
+        expect(result.text.match(/event: response\.(?:completed|incomplete)/g)).toHaveLength(1);
+        const events = result.text
+          .split("\n")
+          .filter((line) => line.startsWith("data: "))
+          .map((line) => JSON.parse(line.slice(6)));
+        const terminal = events.find((event) => event.type === `response.${scenario.status}`);
+        expect(terminal.response.status).toBe(scenario.status);
+        expect(terminal.response.output).toHaveLength(scenario.items);
+        expect(terminal.response.usage).toMatchObject({
+          input_tokens: 11,
+          output_tokens: 5,
+          total_tokens: 16,
+          input_tokens_details: { cached_tokens: 7 },
+          output_tokens_details: { reasoning_tokens: 3 },
+        });
+        expect(result.text).not.toContain("cox_model_service_incomplete_stream");
+        expect(h.calls).toHaveLength(1);
+        expect(messages).toContainEqual(
+          expect.objectContaining({ event: "terminal", reason: "response_ready" }),
+        );
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            selectedResponse: true,
+            upstreamEof: true,
+            outcome: scenario.status,
+            convertedFinalized: true,
+            bridgeFinishAttempted: true,
+            bridge: expect.objectContaining({ terminal: scenario.status, terminalEvents: 1 }),
+            bridgeState: {
+              doneReceived: true,
+              doneAccepted: true,
+              terminal: true,
+              finalized: true,
+              failed: false,
+            },
+            upstream: expect.objectContaining({ doneMarker: true, tailLength: 0 }),
+            downstream: expect.objectContaining({ terminal: scenario.status, terminalEvents: 1 }),
+            downstreamEnded: true,
+            errorEmitted: false,
+            downstreamExit: "exhausted",
+            delivery: "network_receipt_unconfirmed",
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect.each([
+    { tail: "", reason: "missing_terminal_event" },
+    { tail: "data: [DONE]", reason: "incomplete_sse_frame" },
+    { tail: "data: [DONE]\r\n", reason: "incomplete_sse_frame" },
+    { tail: 'data: {"choices":', reason: "incomplete_sse_frame" },
+  ])("diagnoses post-output EOF without replay ($reason, $tail)", (scenario) =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          recovery: { retryEnabled: true, hedgeEnabled: true, maxAttempts: 10 },
+          respond: () =>
+            new Response(
+              chatStreamFrame({ content: "private-response-body" }) +
+                chatStreamFrame({}, "stop") +
+                scenario.tail,
+              {
+                headers: {
+                  "content-type": "text/event-stream",
+                  "x-request-id": "req_safe_fixture",
+                },
+              },
+            ),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "private-prompt",
+          stream: true,
+        });
+        expect(result.status).toBe(200);
+        expect(result.text).toContain("private-response-body");
+        expect(result.text).toContain("cox_model_service_incomplete_stream");
+        expect(result.text).not.toContain("response.completed");
+        expect(h.calls).toHaveLength(1);
+        expect(messages).toContainEqual(
+          expect.objectContaining({ event: "terminal", reason: "response_ready" }),
+        );
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            selectedResponse: true,
+            upstreamEof: true,
+            outcome: scenario.reason,
+            failureStage: "upstream",
+            upstreamRequestId: "req_safe_fixture",
+            errorEmitted: true,
+            upstream: expect.objectContaining({
+              doneMarker: false,
+              tailLength: scenario.tail.length,
+            }),
+            bridge: expect.objectContaining({ terminal: "none" }),
+            downstreamEnded: false,
+          }),
+        );
+        expect(JSON.stringify(messages)).not.toMatch(
+          /private-response-body|private-prompt|private-upstream-key|private-header/,
+        );
+      }),
+    ),
+  );
+
+  it.effect("diagnoses bridge refusal independently from upstream completion metadata", () =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          recovery: { retryEnabled: true, hedgeEnabled: true, maxAttempts: 10 },
+          respond: () =>
+            new Response(
+              chatStreamFrame({
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_fixture",
+                    type: "function",
+                    function: { name: "Read", arguments: '{"secret-path":' },
+                  },
+                ],
+              }) +
+                chatStreamFrame({}, "tool_calls") +
+                "data: [DONE]\n\n",
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          stream: true,
+          input: "test",
+          tools: [{ type: "function", name: "Read", parameters: { type: "object" } }],
+        });
+        expect(result.text).toContain("response.output_item.added");
+        expect(result.text).not.toContain("event: response.completed");
+        expect(result.text).toContain("cox_model_service_incomplete_stream");
+        expect(h.calls).toHaveLength(1);
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            outcome: "bridge_error",
+            failureStage: "bridge",
+            upstream: expect.objectContaining({ doneMarker: true }),
+            bridgeFrames: 2,
+            bridge: expect.objectContaining({ terminal: "none" }),
+            bridgeState: {
+              doneReceived: false,
+              doneAccepted: false,
+              terminal: false,
+              finalized: false,
+              failed: true,
+            },
+            errorEmitted: true,
+          }),
+        );
+        expect(JSON.stringify(messages)).not.toMatch(/secret-path|call_fixture/);
+      }),
+    ),
+  );
+
+  it.effect("reports upstream transport failure after usable output without replay", () =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+        const h = yield* harness({
+          driver: "pi",
+          recovery: { retryEnabled: true, hedgeEnabled: true, maxAttempts: 10 },
+          respond: () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(output) {
+                  controller = output;
+                  output.enqueue(new TextEncoder().encode(chatStreamFrame({ content: "first" })));
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const fiber = yield* h
+          .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [], stream: true })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("1 second");
+        controller!.error(new Error("private-transport-error"));
+        const result = yield* Fiber.join(fiber);
+        expect(result.text).toContain("first");
+        expect(result.text).toContain("cox_model_service_stream_interrupted");
+        expect(result.text).not.toContain("private-transport-error");
+        expect(h.calls).toHaveLength(1);
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            upstreamEof: false,
+            failureStage: "upstream",
+            outcome: "upstream_transport_error",
+            errorEmitted: true,
+            downstreamEnded: false,
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect.each([
+    { tail: 'data: {"choices":\n\n', reason: "invalid_json" },
+    { tail: "data: [DONE]\n\ndata: [DONE]\n\n", reason: "duplicate_terminal_event" },
+    {
+      tail: "data: [DONE]\n\n" + chatStreamFrame({ content: "late" }),
+      reason: "event_after_terminal",
+    },
+  ])("diagnoses malformed post-output streams without replay ($reason)", (scenario) =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+        const h = yield* harness({
+          driver: "pi",
+          recovery: { retryEnabled: true, hedgeEnabled: true, maxAttempts: 10 },
+          respond: () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(output) {
+                  controller = output;
+                  output.enqueue(new TextEncoder().encode(chatStreamFrame({ content: "initial" })));
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const fiber = yield* h
+          .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [], stream: true })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("1 second");
+        controller!.enqueue(new TextEncoder().encode(scenario.tail));
+        controller!.close();
+        const result = yield* Fiber.join(fiber);
+        expect(result.text).toContain("initial");
+        expect(result.text).toContain("cox_model_service_incomplete_stream");
+        expect(h.calls).toHaveLength(1);
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            outcome: scenario.reason,
+            failureStage: "upstream",
+            errorEmitted: true,
+            downstreamEnded: false,
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "does not turn native Responses incomplete into a gateway rejection or a successful completion",
+    () =>
+      withGatewayDiagnostics((messages) =>
+        Effect.gen(function* () {
+          const h = yield* harness({
+            protocol: "openai-responses",
+            recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 10 },
+            respond: () =>
+              new Response(
+                sseFrame({
+                  type: "response.incomplete",
+                  response: {
+                    status: "incomplete",
+                    output: [],
+                    incomplete_details: { reason: "max_output_tokens" },
+                  },
+                }),
+                { headers: { "content-type": "text/event-stream" } },
+              ),
+          });
+          const result = yield* h.invoke("/v1/responses", {
+            model: "Vendor/Exact",
+            input: "test",
+            stream: true,
+          });
+          expect(result.status).toBe(200);
+          expect(result.text).toContain("response.incomplete");
+          expect(result.text).not.toContain("response.completed");
+          expect(h.calls).toHaveLength(1);
+          expect(messages).toContainEqual(
+            expect.objectContaining({
+              event: "stream_terminal",
+              outcome: "incomplete",
+              downstreamEnded: true,
+              errorEmitted: false,
+            }),
+          );
+        }),
+      ),
+  );
+
+  it.effect.each([
+    "cancel",
+    "disable",
+    "consumer_stop",
+    "consumer_interrupt",
+    "consumer_failure",
+  ] as const)("keeps $0 distinct from protocol EOF and never replays output", (action) =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        let cancelled = false;
+        const h = yield* harness({
+          driver: "pi",
+          recovery: { retryEnabled: true, hedgeEnabled: true, maxAttempts: 10 },
+          respond: () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(output) {
+                  output.enqueue(
+                    new TextEncoder().encode(chatStreamFrame({ content: "initial output" })),
+                  );
+                },
+                cancel() {
+                  cancelled = true;
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const session = ProviderSessionId.make("integrity-stop-session");
+        yield* h.gateway.lifecycle.begin(
+          session,
+          recoveryInput("integrity-stop"),
+          () => Effect.void,
+        );
+        yield* h.gateway.lifecycle.observe(session, recoveryTurn("integrity-stop"));
+        yield* Effect.gen(function* () {
+          const request = HttpServerRequest.fromWeb(
+            new Request("http://127.0.0.1/api/model-gateway/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${h.token}.${session}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ model: "Vendor/Exact", messages: [], stream: true }),
+            }),
+          );
+          const response = yield* h.gateway.handle.pipe(
+            Effect.provideService(HttpServerRequest.HttpServerRequest, request),
+          );
+          if (response.body._tag !== "Stream") throw new Error("Expected stream");
+          if (action === "consumer_failure") {
+            const failed = yield* response.body.stream.pipe(
+              Stream.runForEach(() => Effect.fail("private-consumer-failure")),
+              Effect.exit,
+            );
+            expect(failed._tag).toBe("Failure");
+          } else if (action === "consumer_stop") {
+            const first = yield* response.body.stream.pipe(
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.orDie,
+            );
+            expect(new TextDecoder().decode(first[0])).toContain("initial output");
+          } else {
+            const reading = yield* response.body.stream.pipe(
+              Stream.decodeText(),
+              Stream.mkString,
+              Effect.orDie,
+              Effect.forkChild,
+            );
+            yield* TestClock.adjust("1 second");
+            if (action === "consumer_interrupt") yield* Fiber.interrupt(reading);
+            else {
+              if (action === "cancel") yield* h.gateway.lifecycle.cancel(session);
+              else {
+                const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+                yield* h.settings.updateSettings({
+                  modelServices: { [serviceId]: { ...current, enabled: false } },
+                });
+              }
+              yield* TestClock.adjust("1 second");
+              const text = yield* Fiber.join(reading);
+              expect(text).toContain(
+                action === "cancel"
+                  ? "cox_model_service_request_cancelled"
+                  : "cox_model_service_unavailable",
+              );
+              expect(text).not.toContain("data: [DONE]");
+            }
+          }
+        }).pipe(Effect.scoped);
+        expect(cancelled).toBe(true);
+        expect(h.calls).toHaveLength(1);
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            upstreamEof: false,
+            downstreamEnded: false,
+            outcome:
+              action === "cancel"
+                ? "request_cancelled"
+                : action === "disable"
+                  ? "service_disabled"
+                  : action === "consumer_interrupt"
+                    ? "downstream_interrupted"
+                    : action === "consumer_failure"
+                      ? "downstream_failed"
+                      : "downstream_stopped",
+            delivery: "network_receipt_unconfirmed",
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect.each(["\n", "\r\n"])("converts byte-split Chat terminal frames with %j", (newline) =>
+    Effect.gen(function* () {
+      const text = (
+        chatStreamFrame({ content: "你好" }) +
+        chatStreamFrame({}, "stop") +
+        sseFrame({
+          choices: [],
+          usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        }) +
+        "data: [DONE]\n\n"
+      ).replaceAll("\n", newline);
+      const h = yield* harness({
+        respond: () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(output) {
+                for (const byte of new TextEncoder().encode(text))
+                  output.enqueue(Uint8Array.of(byte));
+                output.close();
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const result = yield* h.invoke("/v1/responses", {
+        model: "Vendor/Exact",
+        input: "test",
+        stream: true,
+      });
+      expect(result.text).toContain("你好");
+      expect(result.text.match(/event: response.completed/g)).toHaveLength(1);
+      expect(result.text).not.toContain("cox_model_service_incomplete_stream");
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("reports incomplete pre-output SSE without interpreting EOF as completion", () =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          respond: () =>
+            new Response('data: {"private-key":', {
+              headers: { "content-type": "text/event-stream" },
+            }),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "test",
+          stream: true,
+        });
+        expect(result.status).toBe(502);
+        expect(result.text).toContain("upstream_incomplete_stream");
+        expect(result.text).not.toContain("private-key");
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "stream_terminal",
+            selectedResponse: false,
+            upstreamEof: true,
+            failureStage: "upstream",
+            outcome: "incomplete_sse_frame",
+            upstream: expect.objectContaining({ dataFrames: 0, tailLength: 21 }),
+          }),
+        );
+        expect(messages).not.toContainEqual(
+          expect.objectContaining({ event: "terminal", reason: "response_ready" }),
+        );
+      }),
+    ),
+  );
+
   it.effect.each(["codex", "pi", "claudeAgent"])(
     "omits Responses ciphertext on every first attempt across new requests and gateway restarts for %s",
     (driver) =>
@@ -681,7 +1238,7 @@ it.layer(layer)("model service gateway", (it) => {
             }
             return stream
               ? new Response(
-                  'data: {"type":"response.output_text.delta","delta":"recovered safely"}\n\ndata: {"type":"response.completed"}\n\n',
+                  'data: {"type":"response.output_text.delta","delta":"recovered safely"}\n\ndata: {"type":"response.completed","response":{"status":"completed","output":[]}}\n\n',
                   { headers: { "content-type": "text/event-stream" } },
                 )
               : Response.json(responsesAnswer);
@@ -1445,7 +2002,7 @@ it.layer(layer)("model service gateway", (it) => {
           new Response(
             ++calls === 1
               ? 'data: {"type":"response.output_item.added","item":{"type":"web_search_call","id":"failed-search"}}\n\ndata: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
-              : 'data: {"type":"response.output_text.delta","delta":"found"}\n\ndata: {"type":"response.completed"}\n\n',
+              : 'data: {"type":"response.output_text.delta","delta":"found"}\n\ndata: {"type":"response.completed","response":{"status":"completed","output":[]}}\n\n',
             { headers: { "content-type": "text/event-stream" } },
           ),
       });

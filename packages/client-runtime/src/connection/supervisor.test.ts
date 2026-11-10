@@ -1,6 +1,7 @@
 import { EnvironmentId, type ServerConfig } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -350,6 +351,183 @@ describe("EnvironmentSupervisor", () => {
 
       expect(yield* Ref.get(harness.prepareCount)).toBe(2);
     }),
+  );
+
+  it.effect("bounds sustained connection failure backoff to 15 seconds", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ prepare: () => Effect.fail(transient()) });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        const current = yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "backoff" && state.attempt === attempt,
+        );
+        const delay = current.retryAt! - (yield* Clock.currentTimeMillis);
+        expect(delay).toBeGreaterThanOrEqual(1000);
+        expect(delay).toBeLessThanOrEqual(15_000);
+        if (attempt >= 4) expect(delay).toBe(15_000);
+        if (attempt < 10) yield* TestClock.adjust(delay);
+      }
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("resets the retry ladder when an offline network returns", () =>
+    Effect.gen(function* () {
+      const reachable = yield* Ref.make(false);
+      const harness = yield* makeHarness({
+        prepare: () =>
+          Ref.get(reachable).pipe(
+            Effect.flatMap((ready) =>
+              ready ? Effect.succeed(PREPARED_CONNECTION) : Effect.fail(transient()),
+            ),
+          ),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        const current = yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "backoff" && state.attempt === attempt,
+        );
+        if (attempt < 4)
+          yield* TestClock.adjust(current.retryAt! - (yield* Clock.currentTimeMillis));
+      }
+      yield* harness.setNetworkStatus("offline");
+      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+      yield* Ref.set(reachable, true);
+      yield* harness.setNetworkStatus("online");
+      const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      expect(ready.attempt).toBe(1);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(5);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("replaces stale preparation immediately on a physical network change", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const stopped = yield* Ref.make(0);
+      const harness = yield* makeHarness({
+        prepare: (attempt) =>
+          attempt === 1
+            ? Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Effect.never),
+                Effect.ensuring(Ref.update(stopped, (count) => count + 1)),
+              )
+            : Effect.succeed(PREPARED_CONNECTION),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* Deferred.await(started);
+      yield* harness.wake("network-changed");
+      const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      expect(ready.attempt).toBe(1);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+      expect(yield* Ref.get(stopped)).toBe(1);
+    }),
+  );
+
+  it.effect(
+    "does not discard a synchronized connection snapshot on network-change notifications",
+    () =>
+      Effect.gen(function* () {
+        const ready = yield* Deferred.make<void>();
+        const harness = yield* makeHarness({ ready: () => Deferred.await(ready) });
+        const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+        yield* awaitState(supervisor.state, (state) => state.stage === "synchronizing");
+        yield* harness.wake("network-changed");
+        yield* Effect.yieldNow;
+        expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+        yield* Deferred.succeed(ready, undefined);
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+      }),
+  );
+
+  it.effect(
+    "coalesces network-online and physical-network notifications during a fresh attempt",
+    () =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const allow = yield* Deferred.make<void>();
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            attempt === 1
+              ? Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never))
+              : Deferred.await(allow).pipe(Effect.as(PREPARED_CONNECTION)),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+        yield* Deferred.await(started);
+        yield* harness.wake("network-changed");
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "connecting" && state.attempt === 1,
+        );
+        yield* harness.wake("network-changed");
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(allow, undefined);
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+        expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+      }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("manual retry cancels stale setup before creating a replacement", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const closed = yield* Ref.make(false);
+      const harness = yield* makeHarness({
+        prepare: (attempt) =>
+          attempt === 1
+            ? Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Effect.never),
+                Effect.ensuring(Ref.set(closed, true)),
+              )
+            : Ref.get(closed).pipe(
+                Effect.flatMap((previousClosed) =>
+                  previousClosed
+                    ? Effect.succeed(PREPARED_CONNECTION)
+                    : Effect.die("Previous setup still active"),
+                ),
+              ),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* Deferred.await(started);
+      yield* supervisor.retryNow;
+      const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      expect(ready.attempt).toBe(1);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+    }),
+  );
+
+  it.effect("keeps a healthy session while offline and online notifications probe it", () =>
+    Effect.gen(function* () {
+      const probes = yield* Ref.make(0);
+      const harness = yield* makeHarness({ probe: () => Ref.update(probes, (count) => count + 1) });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.setNetworkStatus("offline");
+      yield* TestClock.adjust("1 millis");
+      yield* harness.setNetworkStatus("online");
+      yield* harness.wake("network-changed");
+      yield* TestClock.adjust("1 millis");
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+      expect(yield* Ref.get(probes)).toBeGreaterThanOrEqual(1);
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connected");
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("keeps blocked failures idle until an external signal requests another attempt", () =>

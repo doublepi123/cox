@@ -9,6 +9,7 @@ import {
   isBackendNavigation,
   isExternalNavigation,
   settingsWindowUrl,
+  usageWindowUrl,
 } from "./config.ts";
 
 describe("desktop local-only policy", () => {
@@ -62,6 +63,23 @@ describe("desktop local-only policy", () => {
     ]) {
       expect(backendOriginFromOutput(`Local URL: ${value}`)).toBeUndefined();
     }
+  });
+
+  it("restricts usage windows to the same server and preserves filters", () => {
+    const origin = "https://remote.example.com";
+    expect(usageWindowUrl("/usage?metric=tokens#models", origin)).toBe(
+      origin + "/usage?metric=tokens#models",
+    );
+    for (const path of [
+      "//evil.test/usage",
+      "/\\evil.test/usage",
+      "/settings",
+      "/usage/other",
+      "/usage/../api",
+      "https://evil.test/usage",
+      null,
+    ])
+      expect(() => usageWindowUrl(path, origin)).toThrow("Invalid usage window path.");
   });
 
   it("keeps renderer navigation on the owned backend", () => {

@@ -31,3 +31,29 @@ and Responses compaction are outside this gateway. Unsupported SDK transformatio
 an explicit error rather than forwarding mismatched protocol bodies. The gateway does not
 retry generation requests or silently substitute models. Tests use synthetic requests and
 responses, without paid inference.
+
+Streaming uses `chunk` for one already-dispatched SSE data frame and `finish`
+after a checked upstream EOF. The subprocess does not parse HTTP chunk
+boundaries. `finish` validates completion and is idempotent; it never completes a
+Chat upstream based on EOF or `finish_reason` alone. Chat must supply `[DONE]`.
+Duplicate terminators and further data after a completed Responses conversion
+are errors, and a failed session cannot resume processing frames.
+
+Chat-to-Responses completion requires finished choices, closed output items and
+valid object-valued arguments/identities for successful function calls. Parallel
+tool arguments remain independent; malformed or missing successful arguments
+are rejected rather than silently converted to `{}`. Legacy `function_call`
+deltas unsupported by the SDK return an explicit conversion error. Truncated
+tool calls with a length/filter finish remain incomplete, never successful.
+Reasoning-only and empty output arrays receive one legal terminal event after
+the real marker. Late usage preserves input/output/total, cached and reasoning
+token counts. Length/filter outcomes remain `response.incomplete`, including
+when another choice stops normally.
+
+The wrapper preserves SDK-emitted terminal events. Where the SDK omits a target
+Chat `[DONE]` or Gemini-to-Messages `message_stop`, finalization maps a real
+upstream terminal plus already-finished target choices/items to the missing
+target terminator. It does not infer upstream completion from transport EOF.
+Each JSONL reply includes only boolean completion `state` metadata alongside
+converted bodies/chunks or static errors. No body, tool argument or credential
+is included in this state. Tests use only local synthetic streams.

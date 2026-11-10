@@ -17,6 +17,7 @@ import { useDesktopSoftwareUpdate } from "../hooks/useDesktopSoftwareUpdate";
 import { DesktopUpdateProgress } from "./DesktopUpdateProgress";
 import { toastManager } from "./ui/toast";
 import { closeDesktopSettings } from "../lib/closeDesktopSettings";
+import { isDesktopPageWindow } from "../lib/desktopSettingsNavigation";
 
 declare global {
   interface Window {
@@ -49,7 +50,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
   const clientVersion = clientUpdates.state?.latestVersion;
   useEffect(() => {
     if (
-      window.coxDesktop?.windowKind === "settings" ||
+      isDesktopPageWindow(window.coxDesktop) ||
       !unifiedUpdates ||
       (plan.status !== "available" && plan.status !== "ready")
     )
@@ -86,7 +87,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
         : null;
   const updateOpen =
     !unifiedUpdates &&
-    window.coxDesktop?.windowKind !== "settings" &&
+    !isDesktopPageWindow(window.coxDesktop) &&
     updateKey !== null &&
     updateKey !== dismissedUpdate;
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -121,7 +122,7 @@ export function DesktopShell({ children }: { readonly children?: ReactNode }) {
       attributeFilter: ["class", "style", "data-theme-id"],
     });
     updateColors();
-    bridge.ready({ settingsWindow: true });
+    bridge.ready({ settingsWindow: true, usageWindow: true });
     return () => {
       unsubscribe();
       unsubscribeClose?.();

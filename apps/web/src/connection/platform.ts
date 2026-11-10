@@ -57,25 +57,85 @@ const layerConnectivity = Connectivity.layer({
   ),
 });
 
-export function subscribeToApplicationWakeups(onWakeup: () => void): () => void {
-  const listener = () => {
-    if (document.visibilityState === "visible") onWakeup();
+export function subscribeToApplicationWakeups(
+  onWakeup: (reason: Wakeups.ConnectionWakeup) => void,
+): () => void {
+  let hiddenAt = document.visibilityState === "hidden" ? Date.now() : undefined;
+  let lastWakeupAt = -Infinity;
+  let lastWakeupWasLong = false;
+  let lastNetworkWakeupAt = -Infinity;
+  let networkChangedWhileHidden = false;
+  const listener = (event: Event) => {
+    if (
+      document.visibilityState !== "visible" ||
+      event.type === "pagehide" ||
+      event.type === "freeze"
+    ) {
+      hiddenAt ??= Date.now();
+      return;
+    }
+    const now = Date.now();
+    const longResume =
+      (hiddenAt !== undefined && now - hiddenAt >= 30_000) ||
+      (event.type === "pageshow" && "persisted" in event && event.persisted === true) ||
+      event.type === "resume";
+    hiddenAt = undefined;
+    if (
+      now - lastWakeupAt < 500 &&
+      !networkChangedWhileHidden &&
+      (!longResume || lastWakeupWasLong)
+    )
+      return;
+    lastWakeupAt = now;
+    lastWakeupWasLong = longResume;
+    const reason = longResume
+      ? "application-active-long"
+      : networkChangedWhileHidden
+        ? "network-changed"
+        : "application-active";
+    networkChangedWhileHidden = false;
+    onWakeup(reason);
   };
+  const networkChanged = () => {
+    if (document.visibilityState !== "visible") {
+      networkChangedWhileHidden = true;
+      return;
+    }
+    const now = Date.now();
+    if (now - lastNetworkWakeupAt < 500) return;
+    lastNetworkWakeupAt = now;
+    networkChangedWhileHidden = false;
+    onWakeup("network-changed");
+  };
+  const connection =
+    "connection" in navigator && navigator.connection instanceof EventTarget
+      ? navigator.connection
+      : undefined;
   document.addEventListener("visibilitychange", listener);
+  document.addEventListener("freeze", listener);
+  document.addEventListener("resume", listener);
   window.addEventListener("focus", listener);
   window.addEventListener("pageshow", listener);
+  window.addEventListener("pagehide", listener);
+  window.addEventListener("online", networkChanged);
+  connection?.addEventListener("change", networkChanged);
   return () => {
     document.removeEventListener("visibilitychange", listener);
+    document.removeEventListener("freeze", listener);
+    document.removeEventListener("resume", listener);
     window.removeEventListener("focus", listener);
     window.removeEventListener("pageshow", listener);
+    window.removeEventListener("pagehide", listener);
+    window.removeEventListener("online", networkChanged);
+    connection?.removeEventListener("change", networkChanged);
   };
 }
 
 const layerWakeups = Wakeups.layer({
-  changes: Stream.callback<"application-active">((queue) =>
+  changes: Stream.callback<Wakeups.ConnectionWakeup>((queue) =>
     Effect.acquireRelease(
       Effect.sync(() =>
-        subscribeToApplicationWakeups(() => Queue.offerUnsafe(queue, "application-active")),
+        subscribeToApplicationWakeups((reason) => Queue.offerUnsafe(queue, reason)),
       ),
       (unsubscribe) => Effect.sync(unsubscribe),
     ).pipe(Effect.asVoid),

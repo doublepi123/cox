@@ -67,7 +67,7 @@ import {
 } from "../ui/menu";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { AppRouteModal, AppRouteModalClose } from "../AppRouteModal";
+import { UsageFrame, UsageWindowClose } from "./UsageFrame";
 import { Skeleton } from "../ui/skeleton";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -493,11 +493,21 @@ export function UsagePage() {
   );
 
   return (
-    <AppRouteModal label={t("Usage")}>
+    <UsageFrame>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 border-b ps-5 pe-2">
+        <header
+          data-workspace-titlebar={
+            globalThis.window.coxDesktop?.windowKind === "usage" ? "" : undefined
+          }
+          className={cn(
+            "@container/usage-header flex min-h-12 shrink-0 items-center gap-1 border-b",
+            globalThis.window.coxDesktop?.windowKind === "usage"
+              ? "min-h-[var(--workspace-topbar-height)] ps-[var(--workspace-controls-left)] pe-[var(--workspace-controls-right)]"
+              : "ps-5 pe-2",
+          )}
+        >
           {topbarContent}
-          <AppRouteModalClose />
+          <UsageWindowClose />
         </header>
 
         <ScrollArea sizing="flex">
@@ -576,7 +586,7 @@ export function UsagePage() {
           }}
         />
       ) : null}
-    </AppRouteModal>
+    </UsageFrame>
   );
 }
 

@@ -16,6 +16,7 @@ const chinese = {
     "更新会退出 Cox，并中断正在运行的 Agent 任务和终端。",
   "Open installer": "打开安装包",
   Settings: "设置",
+  Usage: "用量",
   Connections: "连接管理",
   "Connect to remote server": "连接远程服务器",
   "Updating quits Cox. Remote agent tasks and terminals continue on the server.":

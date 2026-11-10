@@ -32,13 +32,13 @@ function loadBridge(args: string[], globals: Record<string, unknown> = {}, proto
 }
 
 describe("desktop preload connection roles", () => {
-  it("leaves satellite settings inline and never exposes local update privileges", async () => {
+  it("gives remote satellites split-window roles without local update privileges", async () => {
     const { bridge, exposed, invoke } = loadBridge([
       "--cox-window-kind=main",
       "--cox-remote=true",
-      "--cox-inline-settings=true",
+      "--cox-satellite=true",
     ]);
-    expect(bridge.windowKind).toBeUndefined();
+    expect(bridge.windowKind).toBe("main");
     expect(bridge.openSettings).toBeTypeOf("function");
     for (const name of [
       "checkUpdates",
@@ -52,6 +52,17 @@ describe("desktop preload connection roles", () => {
     expect(exposed.has("coxConnections")).toBe(false);
     await (bridge.openSettings as (path: string) => Promise<void>)("/settings/general");
     expect(invoke).toHaveBeenCalledWith("cox:settings-open", "/settings/general");
+    await (bridge.openUsage as (path: string) => Promise<void>)("/usage");
+    expect(invoke).toHaveBeenCalledWith("cox:usage-open", "/usage");
+  });
+
+  it.each(["settings", "usage"])("keeps remote %s windows restricted", (kind) => {
+    const { bridge } = loadBridge(["--cox-window-kind=" + kind, "--cox-remote=true"]);
+    expect(bridge.windowKind).toBe(kind);
+    expect(bridge.openMain).toBeTypeOf("function");
+    expect(bridge.openUsage).toBeTypeOf("function");
+    expect(bridge.checkUpdates).toBeUndefined();
+    expect(bridge.applyBackendUpdate).toBeUndefined();
   });
 
   it("retains separate settings roles and update methods for the local primary", () => {

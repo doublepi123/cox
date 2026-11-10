@@ -9,14 +9,13 @@ import type { RemoteConnectionProfile } from "./connections.ts";
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 const shellBridge: DesktopShellBridge = {
   platform: process.platform,
-  ...(process.argv.includes("--cox-inline-settings=true")
-    ? {}
-    : {
-        windowKind: process.argv.includes("--cox-window-kind=settings")
-          ? ("settings" as const)
-          : ("main" as const),
-      }),
+  windowKind: process.argv.includes("--cox-window-kind=settings")
+    ? "settings"
+    : process.argv.includes("--cox-window-kind=usage")
+      ? "usage"
+      : "main",
   openSettings: (path) => ipcRenderer.invoke("cox:settings-open", path),
+  openUsage: (path) => ipcRenderer.invoke("cox:usage-open", path),
   openMain: (path) => ipcRenderer.invoke("cox:main-open", path),
   onNavigate: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, path: string) => listener(path);
@@ -24,6 +23,7 @@ const shellBridge: DesktopShellBridge = {
     return () => ipcRenderer.removeListener("cox:navigate", handler);
   },
   closeSettings: () => ipcRenderer.send("cox:settings-close"),
+  closeUsage: () => ipcRenderer.send("cox:usage-close"),
   onSettingsCloseRequested: (listener) => {
     const handler = () => listener();
     ipcRenderer.on("cox:settings-close-requested", handler);

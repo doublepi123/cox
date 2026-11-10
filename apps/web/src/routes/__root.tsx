@@ -43,6 +43,7 @@ import { primaryServerConfigAtom, primaryServerWelcomeAtom } from "../state/serv
 import { readProject } from "../state/entities";
 import { ServerAuthGate } from "../components/ServerAuthGate";
 import { SidebarProvider } from "../components/ui/sidebar";
+import { isDesktopPageWindow } from "../lib/desktopSettingsNavigation";
 
 export const Route = createRootRoute({
   beforeLoad: async () => {
@@ -108,7 +109,7 @@ function RootRouteBranch() {
       />
     );
   }
-  if (window.coxDesktop?.windowKind === "settings") {
+  if (isDesktopPageWindow(window.coxDesktop)) {
     return (
       <SidebarProvider>
         <ConfirmDialogHost />

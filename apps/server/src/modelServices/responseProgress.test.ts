@@ -56,6 +56,14 @@ describe("model service response progress", () => {
       ).error,
     ).toEqual({ type: "overloaded_error" });
   });
+  it("treats a protocol-declared incomplete response as a result, not a retryable rejection", () => {
+    expect(
+      modelServiceStreamEvent(
+        "openai-responses",
+        'data: {"type":"response.incomplete","response":{"status":"incomplete","output":[],"incomplete_details":{"reason":"max_output_tokens"}}}',
+      ),
+    ).toEqual({ progress: true });
+  });
   it("chooses the reasoning threshold from actual request options", () => {
     expect(modelServiceHasReasoning({ reasoning: { effort: "high" } })).toBe(true);
     expect(modelServiceHasReasoning({ reasoning_effort: "none" }, true)).toBe(false);

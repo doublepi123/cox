@@ -26,6 +26,43 @@ function installBridge(bridge: DesktopShellBridge | undefined) {
 }
 
 describe("desktop shell", () => {
+  it.each(["settings", "usage"] as const)(
+    "announces split-window capabilities and suppresses update prompts in %s windows",
+    async (kind) => {
+      const backend: DesktopBackendUpdateState = {
+        desktopVersion: "0.2.25",
+        bundledVersion: "0.1.60",
+        currentVersion: "0.1.60",
+        latestVersion: "0.1.61",
+        status: "available",
+        message: null,
+      };
+      const bridge: DesktopShellBridge = {
+        platform: "darwin",
+        windowKind: kind,
+        ready: vi.fn(),
+        onQuitRequested: () => () => {},
+        answerQuit: vi.fn(),
+        setWindowColors: vi.fn(),
+        onWindowState: () => () => {},
+        syncWindowControls: vi.fn(),
+        getBackendUpdate: async () => backend,
+        onBackendUpdate: () => () => {},
+      };
+      using _bridge = installBridge(bridge);
+      using notices = vi.spyOn(toastManager, "add").mockReturnValue("unexpected-update");
+      await using _screen = await render(
+        <DesktopShell>
+          <span>Page content</span>
+        </DesktopShell>,
+      );
+      await expect.element(page.getByText("Page content")).toBeVisible();
+      expect(bridge.ready).toHaveBeenCalledWith({ settingsWindow: true, usageWindow: true });
+      expect(notices).not.toHaveBeenCalled();
+      await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    },
+  );
+
   it("keeps client and Cox notices in one non-blocking update prompt", async () => {
     const backend: DesktopBackendUpdateState = {
       desktopVersion: "0.2.16",

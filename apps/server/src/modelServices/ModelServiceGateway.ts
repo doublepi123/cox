@@ -19,6 +19,7 @@ import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -30,7 +31,7 @@ import * as Settings from "../serverSettings.ts";
 import * as ServerConfig from "../config.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
-import { makeModelServiceSseParser } from "./sse.ts";
+import { makeModelServiceStreamMonitor, ModelServiceStreamError } from "./streamIntegrity.ts";
 import { modelServiceRequestBody, withoutEncryptedReasoning } from "./requestCompatibility.ts";
 import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
 import {
@@ -693,30 +694,119 @@ export const make = Effect.gen(function* () {
           });
         }
         if (stream) {
+          const upstream = makeModelServiceStreamMonitor(protocol);
+          const preview = makeModelServiceStreamMonitor(protocol);
+          const downstream = makeModelServiceStreamMonitor(incoming);
+          const convertedMonitor = bridge ? makeModelServiceStreamMonitor(incoming) : undefined;
+          let selectedResponse = false;
+          let upstreamEof = false;
+          let bridgeFrames = 0;
+          let bridgeFinishAttempted = false;
+          let convertedFinalized = false;
+          let downstreamEnded = false;
+          let downstreamBytes = 0;
+          let errorEmitted = false;
+          let outcome = "not_consumed";
+          let failureStage: "upstream" | "bridge" | "downstream" | undefined;
+          let downstreamExit = "not_started";
+          const integrityError = (error: unknown) =>
+            error instanceof ModelServiceStreamError
+              ? error
+              : new ModelServiceStreamError({
+                  reason: "invalid_stream_event",
+                  detail: "The model service sent an invalid stream event.",
+                });
+          const upstreamRequestId = upstreamErrorDetails(
+            {},
+            response.headers["x-request-id"] ?? response.headers["request-id"],
+            [service.apiKey ?? "", ...Object.values(service.headers), runtime.token],
+          ).requestId;
+          yield* Effect.addFinalizer((exit) =>
+            Effect.gen(function* () {
+              if (outcome === "not_consumed" && (yield* tracking.cancelled))
+                outcome = "request_cancelled";
+              if (outcome === "not_consumed" && !(yield* enabled)) outcome = "service_disabled";
+              if (
+                outcome === "not_consumed" &&
+                Exit.isFailure(exit) &&
+                Cause.hasInterrupts(exit.cause)
+              )
+                outcome = selectedResponse ? "downstream_interrupted" : "attempt_interrupted";
+              if (selectedResponse && outcome === "not_consumed") outcome = "downstream_stopped";
+              if (outcome === "not_consumed") outcome = "attempt_stopped_before_selection";
+              yield* diagnostic({
+                event: "stream_terminal",
+                attempt: attemptId,
+                selectedResponse,
+                outcome,
+                failureStage,
+                upstreamRequestId,
+                upstreamEof,
+                upstream: selectedResponse ? upstream.snapshot() : preview.snapshot(),
+                converted: bridge !== undefined,
+                bridgeFrames,
+                bridgeFinishAttempted,
+                convertedFinalized,
+                bridge: convertedMonitor?.snapshot(),
+                bridgeState: bridge?.snapshot(),
+                downstream: downstream.snapshot(),
+                downstreamBytes,
+                downstreamEnded,
+                errorEmitted,
+                downstreamExit,
+                delivery: "network_receipt_unconfirmed",
+              });
+            }),
+          );
+          const checked = <A, E, R>(
+            stage: NonNullable<typeof failureStage>,
+            effect: Effect.Effect<A, E, R>,
+          ) =>
+            effect.pipe(
+              Effect.tapError((error) =>
+                Effect.sync(() => {
+                  failureStage = stage;
+                  outcome =
+                    error instanceof ModelServiceStreamError ? error.reason : `${stage}_error`;
+                }),
+              ),
+            );
           const rawPull = yield* Stream.toPull(response.stream);
           const pending: Uint8Array[] = [];
-          const preview = makeModelServiceSseParser();
-          const decoder = new TextDecoder();
           let buffered = 0;
           let progress = false;
           while (!progress) {
             const chunks = yield* rawPull.pipe(
               Pull.catchDone(() =>
-                Effect.fail(
-                  new ModelServiceRequestFailure({
+                Effect.gen(function* () {
+                  upstreamEof = true;
+                  outcome = "ended_before_output";
+                  yield* checked(
+                    "upstream",
+                    Effect.try({ try: () => preview.finish(), catch: integrityError }),
+                  );
+                  return yield* new ModelServiceRequestFailure({
                     detail: "The model service stream ended before producing a usable response.",
                     status: 502,
                     retryable: true,
                     code: "upstream_stream_ended_before_output",
                     source: "upstream",
-                  }),
-                ),
+                  });
+                }),
+              ),
+              Effect.tapError(() =>
+                Effect.sync(() => {
+                  failureStage = "upstream";
+                  if (outcome === "not_consumed") outcome = "upstream_transport_error";
+                }),
               ),
             );
             for (const chunk of chunks) {
               pending.push(chunk);
               buffered += chunk.length;
-              if (buffered > 1024 * 1024)
+              if (buffered > 1024 * 1024) {
+                outcome = "preview_limit";
+                failureStage = "upstream";
                 return yield* new ModelServiceRequestFailure({
                   detail:
                     "The model service sent too much data before producing a usable response.",
@@ -725,9 +815,16 @@ export const make = Effect.gen(function* () {
                   code: "gateway_preview_limit",
                   source: "gateway",
                 });
-              for (const frame of preview(decoder.decode(chunk, { stream: true }))) {
+              }
+              const frames = yield* checked(
+                "upstream",
+                Effect.try({ try: () => preview.push(chunk), catch: integrityError }),
+              );
+              for (const frame of frames) {
                 const event = modelServiceStreamEvent(protocol, frame);
                 if (event.error) {
+                  outcome = "upstream_error";
+                  failureStage = "upstream";
                   const error = parseUpstreamError(event.error);
                   const details = upstreamErrorDetails(error);
                   const status = Number(error.status ?? error.code);
@@ -758,66 +855,202 @@ export const make = Effect.gen(function* () {
             attempt: attemptId,
             elapsedMs: (yield* Clock.currentTimeMillis) - started,
           });
+          selectedResponse = true;
           const source = Stream.concat(
             Stream.fromIterable(pending),
             Stream.fromPull(Effect.succeed(rawPull)),
-          );
-          const parse = makeModelServiceSseParser();
-          const bytes = (
-            bridge
-              ? source.pipe(
-                  Stream.decodeText(),
-                  Stream.map((chunk) => parse(chunk)),
-                  Stream.flatMap(Stream.fromIterable),
-                  Stream.mapEffect((line) => bridge.chunk(line)),
-                  Stream.flatMap(Stream.fromIterable),
-                )
-              : source
           ).pipe(
+            Stream.onError((cause) =>
+              Effect.sync(() => {
+                if (failureStage === undefined && !Cause.hasInterrupts(cause)) {
+                  failureStage = "upstream";
+                  outcome = "upstream_transport_error";
+                }
+              }),
+            ),
+          );
+          const checkedSource = source.pipe(
+            Stream.mapEffect((chunk) =>
+              checked(
+                "upstream",
+                Effect.try({
+                  try: () => ({ chunk, frames: upstream.push(chunk) }),
+                  catch: integrityError,
+                }),
+              ),
+            ),
+          );
+          const converted = bridge
+            ? checkedSource.pipe(
+                Stream.flatMap(({ frames }) => Stream.fromIterable(frames)),
+                Stream.mapEffect((frame) => {
+                  bridgeFrames++;
+                  return checked("bridge", bridge.chunk(frame));
+                }),
+                Stream.flatMap(Stream.fromIterable),
+                Stream.mapEffect((chunk) =>
+                  checked(
+                    "bridge",
+                    Effect.try({
+                      try: () => {
+                        convertedMonitor?.push(chunk);
+                        return chunk;
+                      },
+                      catch: integrityError,
+                    }),
+                  ),
+                ),
+              )
+            : checkedSource.pipe(Stream.map(({ chunk }) => chunk));
+          const finalized = Stream.concat(
+            converted,
+            Stream.unwrap(
+              Effect.gen(function* () {
+                upstreamEof = true;
+                yield* checked(
+                  "upstream",
+                  Effect.try({ try: () => upstream.finish(), catch: integrityError }),
+                );
+                bridgeFinishAttempted = bridge !== undefined;
+                const tail = bridge ? yield* checked("bridge", bridge.finish()) : [];
+                if (convertedMonitor) {
+                  yield* checked(
+                    "bridge",
+                    Effect.try({
+                      try: () => {
+                        for (const chunk of tail) convertedMonitor.push(chunk);
+                        convertedMonitor.finish();
+                      },
+                      catch: integrityError,
+                    }),
+                  );
+                  convertedFinalized = true;
+                }
+                return Stream.fromIterable(tail);
+              }),
+            ),
+          ).pipe(
+            Stream.mapEffect((chunk) =>
+              checked(
+                "downstream",
+                Effect.try({
+                  try: () => {
+                    downstream.push(chunk);
+                    downstreamBytes += chunk.length;
+                    return chunk;
+                  },
+                  catch: integrityError,
+                }),
+              ),
+            ),
+            Stream.concat(
+              Stream.fromEffect(
+                checked(
+                  "downstream",
+                  Effect.try({
+                    try: () => {
+                      downstream.finish();
+                      downstreamEnded = true;
+                      const terminal = downstream.snapshot().terminal;
+                      outcome = terminal === "completed" ? "completed" : terminal;
+                    },
+                    catch: integrityError,
+                  }),
+                ),
+              ).pipe(Stream.drain),
+            ),
+          );
+          const streamError = (code: string, message: string) =>
+            new TextEncoder().encode(
+              `event: error\ndata: ${JSON.stringify(
+                incoming === "gemini"
+                  ? {
+                      error: {
+                        code: code === "cox_model_service_request_cancelled" ? 499 : 502,
+                        status:
+                          code === "cox_model_service_request_cancelled" ? "CANCELLED" : "INTERNAL",
+                        message,
+                      },
+                    }
+                  : incoming === "openai-responses"
+                    ? { type: "error", code, message, param: null }
+                    : {
+                        type: "error",
+                        error: {
+                          type:
+                            code === "cox_model_service_request_cancelled"
+                              ? "request_cancelled"
+                              : "stream_error",
+                          code,
+                          message,
+                        },
+                      },
+              )}\n\n`,
+            );
+          const bytes = finalized.pipe(
             Stream.interruptWhen(
               Effect.gen(function* () {
                 while (true) {
-                  if (yield* tracking.cancelled)
+                  if (yield* tracking.cancelled) {
+                    outcome = "request_cancelled";
                     return yield* new ModelServiceRequestCancelled({
                       detail: "The model service request was cancelled.",
                     });
-                  if (!(yield* enabled))
+                  }
+                  if (!(yield* enabled)) {
+                    outcome = "service_disabled";
                     return yield* new ModelServiceError({
                       detail: "This model service is unavailable.",
                       status: 503,
                     });
+                  }
                   yield* Effect.sleep(250);
                 }
               }),
             ),
-            Stream.catchTag("ModelServiceRequestCancelled", (error) =>
-              Stream.succeed(
-                new TextEncoder().encode(
-                  `event: error\ndata: ${JSON.stringify(
-                    incoming === "gemini"
-                      ? { error: { code: 499, status: "CANCELLED", message: error.detail } }
-                      : incoming === "openai-responses"
-                        ? {
-                            type: "error",
-                            code: "cox_model_service_request_cancelled",
-                            message: error.detail,
-                            param: null,
-                          }
-                        : {
-                            type: "error",
-                            error: {
-                              type: "request_cancelled",
-                              code: "cox_model_service_request_cancelled",
-                              message: error.detail,
-                            },
-                          },
-                  )}\n\n`,
-                ),
-              ),
+            Stream.onError((cause) =>
+              Effect.sync(() => {
+                if (Cause.hasInterrupts(cause)) outcome = "downstream_interrupted";
+                else if (outcome === "not_consumed") outcome = "stream_error";
+              }),
             ),
-            Stream.mapError(
-              (_error: unknown) =>
-                new ModelServiceError({ detail: "The model service stream was interrupted." }),
+            Stream.catch((error) => {
+              errorEmitted = true;
+              const cancelled = error instanceof ModelServiceRequestCancelled;
+              const unavailable = outcome === "service_disabled";
+              return Stream.succeed(
+                streamError(
+                  cancelled
+                    ? "cox_model_service_request_cancelled"
+                    : unavailable
+                      ? "cox_model_service_unavailable"
+                      : error instanceof ModelServiceStreamError || isModelServiceError(error)
+                        ? "cox_model_service_incomplete_stream"
+                        : "cox_model_service_stream_interrupted",
+                  cancelled
+                    ? error.detail
+                    : unavailable
+                      ? "This model service is unavailable."
+                      : error instanceof ModelServiceStreamError
+                        ? error.detail
+                        : "The model service stream was interrupted before protocol completion.",
+                ),
+              );
+            }),
+            Stream.onExit((exit) =>
+              Effect.sync(() => {
+                downstreamExit = Exit.isFailure(exit)
+                  ? Cause.hasInterrupts(exit.cause)
+                    ? "interrupted"
+                    : "failed"
+                  : downstreamEnded
+                    ? "exhausted"
+                    : "stopped";
+                if (Exit.isFailure(exit) && failureStage === undefined) {
+                  failureStage = "downstream";
+                  outcome = `downstream_${downstreamExit}`;
+                }
+              }),
             ),
           );
           return HttpServerResponse.stream(bytes, {
@@ -865,17 +1098,25 @@ export const make = Effect.gen(function* () {
       Effect.mapError((error) =>
         error instanceof ModelServiceRequestFailure
           ? error
-          : new ModelServiceRequestFailure({
-              detail: isModelServiceError(error)
-                ? error.detail
-                : "The model service connection failed or timed out.",
-              status: isModelServiceError(error) ? (error.status ?? 502) : 502,
-              retryable: !isModelServiceError(error),
-              code: isModelServiceError(error)
-                ? "gateway_protocol_error"
-                : "upstream_transport_error",
-              source: "gateway",
-            }),
+          : error instanceof ModelServiceStreamError
+            ? new ModelServiceRequestFailure({
+                detail: error.detail,
+                status: 502,
+                retryable: true,
+                code: "upstream_incomplete_stream",
+                source: "upstream",
+              })
+            : new ModelServiceRequestFailure({
+                detail: isModelServiceError(error)
+                  ? error.detail
+                  : "The model service connection failed or timed out.",
+                status: isModelServiceError(error) ? (error.status ?? 502) : 502,
+                retryable: !isModelServiceError(error),
+                code: isModelServiceError(error)
+                  ? "gateway_protocol_error"
+                  : "upstream_transport_error",
+                source: "gateway",
+              }),
       ),
     );
     const stateful =

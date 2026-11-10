@@ -30,6 +30,7 @@ type output struct {
 	Body   json.RawMessage `json:"body,omitempty"`
 	Chunks [][]byte        `json:"chunks,omitempty"`
 	Error  string          `json:"error,omitempty"`
+	State  *streamState    `json:"state,omitempty"`
 }
 
 type session struct {
@@ -41,6 +42,7 @@ type session struct {
 	original   []byte
 	translated []byte
 	parameter  any
+	completion streamCompletion
 }
 
 var reasoningChatModel = regexp.MustCompile(`^(?:gpt-[5-9](?:[.-]|$)|o[1-9](?:[.-]|$))`)
@@ -50,7 +52,22 @@ func (s *session) handle(in input) (out output) {
 		if recover() != nil {
 			out = output{Error: "Protocol conversion failed."}
 		}
+		if out.Error != "" && s.original != nil && s.stream {
+			s.completion.failed = true
+		}
+		if s.original != nil && s.stream {
+			out.State = &streamState{
+				DoneReceived: s.completion.sourceDoneReceived,
+				DoneAccepted: s.completion.sourceDone,
+				Terminal:     s.completion.terminal,
+				Finalized:    s.completion.finalized,
+				Failed:       s.completion.failed,
+			}
+		}
 	}()
+	if s.completion.failed {
+		return output{Error: "The protocol stream has already failed."}
+	}
 	switch in.Type {
 	case "request":
 		if s.original != nil {
@@ -152,6 +169,9 @@ func (s *session) handle(in input) (out output) {
 		if s.original == nil || !s.stream {
 			return output{Error: "No streaming request is active."}
 		}
+		if err := s.observeSource(in.Chunk); err != nil {
+			return output{Error: err.Error()}
+		}
 		chunks := s.registry.TranslateStream(context.Background(), s.to, s.from, s.model, s.original, s.translated, []byte(in.Chunk), &s.parameter)
 		if state, ok := s.parameter.(interface{ ToolInputError() error }); ok && state.ToolInputError() != nil {
 			return output{Error: "The upstream tool call could not be converted safely."}
@@ -167,7 +187,33 @@ func (s *session) handle(in input) (out output) {
 			}
 			framed = append(framed, chunk)
 		}
+		framed, err := s.normalizeResponseTerminal(framed)
+		if err != nil {
+			return output{Error: err.Error()}
+		}
+		if err := s.observeConverted(framed); err != nil {
+			return output{Error: err.Error()}
+		}
+		if s.to == tr.FormatOpenAI && s.from == tr.FormatOpenAIResponse && s.completion.sourceDone && !s.completion.terminal {
+			completion, err := s.completeResponse()
+			if err != nil {
+				return output{Error: err.Error()}
+			}
+			framed = append(framed, completion...)
+		}
 		return output{Chunks: framed}
+	case "finish":
+		if s.original == nil || !s.stream {
+			return output{Error: "No streaming request is active."}
+		}
+		if s.completion.finalized {
+			return output{Chunks: [][]byte{}}
+		}
+		tail, err := s.finishStream()
+		if err != nil {
+			return output{Error: err.Error()}
+		}
+		return output{Chunks: tail}
 	default:
 		return output{Error: "Invalid protocol bridge operation."}
 	}

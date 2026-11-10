@@ -11,6 +11,7 @@ import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../threadRoute
 import { retainThreadFindForRoute } from "../components/chat/threadFindStore";
 import { ThreadLinkPrompt } from "../components/promptLinks/ThreadLinkPrompt";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+import { isDesktopPageWindow } from "../lib/desktopSettingsNavigation";
 
 function threadRouteTargetKey(target: ThreadRouteTarget | null) {
   if (!target) return null;
@@ -18,7 +19,7 @@ function threadRouteTargetKey(target: ThreadRouteTarget | null) {
 }
 
 function ChatRouteLayout() {
-  if (window.coxDesktop?.windowKind === "settings") return <Outlet />;
+  if (isDesktopPageWindow(window.coxDesktop)) return <Outlet />;
   return <MainChatRouteLayout />;
 }
 

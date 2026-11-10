@@ -51,13 +51,15 @@ export type DesktopUpdateProgress = typeof DesktopUpdateProgress.Type;
 
 export interface DesktopShellBridge {
   readonly platform: string;
-  readonly windowKind?: "main" | "settings";
+  readonly windowKind?: "main" | "settings" | "usage";
   openSettings?(path: string): Promise<void>;
+  openUsage?(path: string): Promise<void>;
   openMain?(path: string): Promise<void>;
   onNavigate?(listener: (path: string) => void): () => void;
   closeSettings?(): void;
+  closeUsage?(): void;
   onSettingsCloseRequested?(listener: () => void): () => void;
-  ready(capabilities?: { readonly settingsWindow?: boolean }): void;
+  ready(capabilities?: { readonly settingsWindow?: boolean; readonly usageWindow?: boolean }): void;
   onQuitRequested(listener: (reason?: "quit" | "update") => void): () => void;
   answerQuit(confirmed: boolean): void;
   setWindowColors(background: string, foreground: string): void;

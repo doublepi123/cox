@@ -1,23 +1,30 @@
 import type { RouterHistory } from "@tanstack/react-router";
 import type { DesktopShellBridge } from "@t3tools/contracts";
 
+export function isDesktopPageWindow(bridge: DesktopShellBridge | undefined): boolean {
+  return bridge?.windowKind === "settings" || bridge?.windowKind === "usage";
+}
+
 export function startDesktopSettingsNavigation(
   history: RouterHistory,
   bridge: DesktopShellBridge | undefined,
   onError: (error: unknown) => void,
 ): (() => void) | undefined {
-  if (!bridge?.openSettings || !bridge.windowKind) return;
+  if (!bridge?.windowKind) return;
   return history.block({
     enableBeforeUnload: false,
     blockerFn: ({ nextLocation }) => {
       const settings =
         nextLocation.pathname === "/settings" || nextLocation.pathname.startsWith("/settings/");
+      const usage = nextLocation.pathname === "/usage";
       const open =
-        bridge.windowKind === "main" && settings
+        settings && bridge.windowKind !== "settings"
           ? bridge.openSettings
-          : bridge.windowKind === "settings" && !settings
-            ? bridge.openMain
-            : undefined;
+          : usage && bridge.windowKind !== "usage"
+            ? (bridge.openUsage ?? (isDesktopPageWindow(bridge) ? bridge.openMain : undefined))
+            : isDesktopPageWindow(bridge) && !settings && !usage
+              ? bridge.openMain
+              : undefined;
       if (!open) return false;
       void open(nextLocation.href).catch(onError);
       return true;

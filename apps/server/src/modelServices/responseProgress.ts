@@ -50,12 +50,7 @@ export function modelServiceStreamEvent(
   }
   const event = record(value);
   const type = event.type;
-  if (
-    event.error ||
-    type === "error" ||
-    type === "response.failed" ||
-    type === "response.incomplete"
-  ) {
+  if (event.error || type === "error" || type === "response.failed") {
     return {
       progress: false,
       error: record(
@@ -87,6 +82,7 @@ export function modelServiceStreamEvent(
     return {
       progress:
         type === "response.completed" ||
+        type === "response.incomplete" ||
         (typeof type === "string" && type.endsWith(".delta") && nonempty(event.delta)) ||
         (type === "response.output_item.added" &&
           ["function_call", "custom_tool_call"].includes(String(record(event.item).type))),

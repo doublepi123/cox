@@ -31,7 +31,7 @@ import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 
 const RETRY_BASE_DELAY_MS = 1_000;
-const RETRY_MAX_DELAY_MS = 300_000;
+const RETRY_MAX_DELAY_MS = 15_000;
 const SESSION_LOSS_RETRY_DELAY_MS = 250;
 // A cold server with a large database can take longer than 15 seconds to
 // answer, and that is not a reason to drop a working connection.
@@ -248,6 +248,14 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const signals = yield* Queue.unbounded<SupervisorSignal>();
   const resetRetryState = yield* Ref.make(false);
   const probeUnanswered = yield* Ref.make(false);
+  let nextNetworkSetupRestartAt = 0n;
+  const noteNetworkSetupChange = Clock.monotonicTimeNanos.pipe(
+    Effect.map((now) => {
+      if (now < nextNetworkSetupRestartAt) return false;
+      nextNetworkSetupRestartAt = now + 500_000_000n;
+      return true;
+    }),
+  );
   const state = yield* SubscriptionRef.make<SupervisorConnectionState>(
     !initialIntent.desired
       ? availableState(initialIntent, 0)
@@ -391,12 +399,24 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           if (next.network === "offline") {
             return false;
           }
+          if (
+            next.network === "online" &&
+            (yield* SubscriptionRef.get(state)).stage !== "synchronizing" &&
+            (yield* noteNetworkSetupChange)
+          ) {
+            return true;
+          }
           break;
         case "ConnectRequested":
           break;
         case "Wakeup":
           // An attempt that ran into a long suspension is likely stuck.
-          if (next.reason === "application-active-long") {
+          if (
+            next.reason === "application-active-long" ||
+            (next.reason === "network-changed" &&
+              (yield* SubscriptionRef.get(state)).stage !== "synchronizing" &&
+              (yield* noteNetworkSetupChange))
+          ) {
             return true;
           }
           break;
@@ -415,7 +435,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       case "RetryRequested":
         return QUICK_CONNECTION_PROBE_TIMEOUT;
       case "NetworkChanged":
-        return next.network === "offline" ? QUICK_CONNECTION_PROBE_TIMEOUT : undefined;
+        return QUICK_CONNECTION_PROBE_TIMEOUT;
       case "Wakeup":
         if (next.reason === "application-active") {
           return CONNECTION_PROBE_TIMEOUT;
@@ -766,12 +786,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           const next = yield* Queue.take(signals);
           switch (next._tag) {
             case "Wakeup":
+              if (next.reason === "network-changed") yield* noteNetworkSetupChange;
               return ConnectionWakeups.resetsRetryBackoff(next.reason);
             case "ConnectRequested":
             case "DisconnectRequested":
             case "RetryRequested":
-            case "NetworkChanged":
               return false;
+            case "NetworkChanged":
+              if (next.network === "online") yield* noteNetworkSetupChange;
+              return next.network === "online";
           }
         }
       }),
@@ -779,8 +802,16 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   });
 
   const waitForSignal = Queue.take(signals).pipe(
+    Effect.tap((next) =>
+      (next._tag === "NetworkChanged" && next.network === "online") ||
+      (next._tag === "Wakeup" && next.reason === "network-changed")
+        ? noteNetworkSetupChange
+        : Effect.void,
+    ),
     Effect.map(
-      (next) => next._tag === "Wakeup" && ConnectionWakeups.resetsRetryBackoff(next.reason),
+      (next) =>
+        (next._tag === "Wakeup" && ConnectionWakeups.resetsRetryBackoff(next.reason)) ||
+        (next._tag === "NetworkChanged" && next.network === "online"),
     ),
   );
 

@@ -31,6 +31,7 @@ import {
   isBackendNavigation,
   isExternalNavigation,
   settingsWindowUrl,
+  usageWindowUrl,
 } from "./config.ts";
 import { desktopText } from "./native-text.ts";
 import { createDesktopMenuTemplate } from "./native-menu.ts";
@@ -54,7 +55,15 @@ app.setName("Cox");
 
 let window: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
-let settingsNavigation: string | undefined;
+const pageWindows = new Map<
+  BrowserWindow,
+  {
+    readonly kind: "settings" | "usage";
+    readonly owner: BrowserWindow;
+    access: WindowAccess;
+    navigation?: string | undefined;
+  }
+>();
 let connectionsWindow: BrowserWindow | undefined;
 let connectionsPageUrl: string | undefined;
 let connectionsOwner: BrowserWindow | undefined;
@@ -235,7 +244,7 @@ async function offerRemoteClientUpdate(manual = false) {
       state = await clientUpdates.download();
     }
     if (state.status === "ready") {
-      await applySoftwareUpdates();
+      await applySoftwareUpdates(true);
       return;
     }
     if (manual)
@@ -294,7 +303,8 @@ function syncUpdatePolicy() {
 function publishBackendUpdate(state: DesktopBackendUpdateState) {
   syncUpdatePolicy();
   if (connectionMode !== "local") return;
-  for (const target of [window, settingsWindow]) {
+  for (const target of [window, ...pageWindows.keys()]) {
+    if (target && accessForWindow(target)?.kind !== "local") continue;
     if (target && !target.isDestroyed() && readyWindows.has(target.webContents.id))
       target.webContents.send("cox:backend-update", state);
   }
@@ -305,7 +315,8 @@ function publishBackendUpdate(state: DesktopBackendUpdateState) {
 function publishClientUpdate(state: DesktopClientUpdateState) {
   syncUpdatePolicy();
   if (connectionMode !== "local") return;
-  for (const target of [window, settingsWindow]) {
+  for (const target of [window, ...pageWindows.keys()]) {
+    if (target && accessForWindow(target)?.kind !== "local") continue;
     if (target && !target.isDestroyed() && readyWindows.has(target.webContents.id))
       target.webContents.send("cox:client-update", state);
   }
@@ -323,10 +334,32 @@ function syncWindowControls(target = window) {
 
 function accessForWindow(target: BrowserWindow): WindowAccess | undefined {
   if (target.isDestroyed()) return;
+  const page = pageWindows.get(target);
+  if (page) {
+    const ownerAccess = accessForWindow(page.owner);
+    return ownerAccess?.origin === page.access.origin &&
+      ownerAccess.kind === page.access.kind &&
+      isBackendNavigation(page.owner.webContents.getURL(), page.access.origin)
+      ? page.access
+      : undefined;
+  }
   const profile = remoteWindows.get(target);
   if (profile) return { origin: profile.origin, kind: "remote" };
-  if ((target === window || target === settingsWindow) && origin && connectionMode !== "manager")
+  if (target === window && origin && connectionMode !== "manager")
     return { origin, kind: connectionMode };
+}
+
+function mainOwner(target: BrowserWindow | null | undefined): BrowserWindow | undefined {
+  if (!target || target.isDestroyed()) return;
+  const owner =
+    pageWindows.get(target)?.owner ?? (target === connectionsWindow ? connectionsOwner : target);
+  return owner && !owner.isDestroyed() ? owner : undefined;
+}
+
+function closeOwnerPages(owner: BrowserWindow) {
+  for (const [target, page] of pageWindows) {
+    if (page.owner === owner && !target.isDestroyed()) target.destroy();
+  }
 }
 
 function accessForContents(contents: Electron.WebContents | null): WindowAccess | undefined {
@@ -335,13 +368,13 @@ function accessForContents(contents: Electron.WebContents | null): WindowAccess 
 }
 
 function createDesktopWindow(
-  kind: "main" | "settings",
+  kind: "main" | "settings" | "usage",
   width: number,
   height: number,
   show = true,
   partition = activeRemoteProfile ? remotePartition(activeRemoteProfile.id) : "persist:cox-desktop",
   remote = partition.startsWith("persist:cox-remote-"),
-  inlineSettings = false,
+  satellite = false,
 ) {
   const target = new BrowserWindow({
     width,
@@ -349,7 +382,7 @@ function createDesktopWindow(
     show,
     minWidth: 400,
     minHeight: 360,
-    title: kind === "main" ? "Cox" : text("Settings"),
+    title: kind === "main" ? "Cox" : text(kind === "usage" ? "Usage" : "Settings"),
     ...(process.platform === "win32"
       ? {
           autoHideMenuBar: true,
@@ -373,7 +406,7 @@ function createDesktopWindow(
       additionalArguments: [
         "--cox-window-kind=" + kind,
         ...(remote ? ["--cox-remote=true"] : []),
-        ...(inlineSettings ? ["--cox-inline-settings=true"] : []),
+        ...(satellite ? ["--cox-satellite=true"] : []),
       ],
     },
   });
@@ -492,15 +525,19 @@ async function applyBackendUpdate() {
   return applySoftwareUpdates();
 }
 
-async function applySoftwareUpdates() {
+async function applySoftwareUpdates(clientOnly = false) {
   if (!softwareUpdates || approvedQuit || quitPending) return;
-  if (isRemoteContext()) {
+  if (clientOnly || isRemoteContext()) {
     const client = clientUpdates?.getState();
     if (client?.status !== "ready") throw new Error("The client update is not ready.");
     const answer = await dialog.showMessageBox({
       type: "warning",
       title: text("Restart and install updates?"),
-      message: text("Updating quits Cox. Remote agent tasks and terminals continue on the server."),
+      message: text(
+        localOrigin
+          ? "Updating quits Cox and interrupts running agent tasks and terminals."
+          : "Updating quits Cox. Remote agent tasks and terminals continue on the server.",
+      ),
       detail: `Cox Desktop ${client.currentVersion} → ${client.latestVersion ?? ""}`,
       buttons: [text("Cancel"), text("Restart and update")],
       defaultId: 0,
@@ -634,7 +671,7 @@ async function start() {
   } catch {}
   window = createDesktopWindow("main", width, height, false);
   const senderWindow = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) => {
-    const target = [window, settingsWindow, ...remoteWindows.keys()].find(
+    const target = [window, ...pageWindows.keys(), ...remoteWindows.keys()].find(
       (candidate) =>
         candidate && !candidate.isDestroyed() && candidate.webContents === event.sender,
     );
@@ -676,9 +713,10 @@ async function start() {
       prewarmSettings();
     }
     syncWindowControls(target);
-    if (target === settingsWindow && settingsNavigation) {
-      target.webContents.send("cox:navigate", settingsNavigation);
-      settingsNavigation = undefined;
+    const page = pageWindows.get(target);
+    if (page?.navigation) {
+      target.webContents.send("cox:navigate", page.navigation);
+      page.navigation = undefined;
     }
     if (connectionMode === "local" && updates) publishBackendUpdate(updates.getState());
     if (connectionMode === "local" && clientUpdates) publishClientUpdate(clientUpdates.getState());
@@ -775,6 +813,7 @@ async function start() {
   function configureMainWindow() {
     const target = window;
     if (!target) return;
+    target.once("closed", () => closeOwnerPages(target));
     target.on("enter-full-screen", () => syncWindowControls(target));
     target.on("leave-full-screen", () => syncWindowControls(target));
     target.webContents.on("did-finish-load", () => syncWindowControls(target));
@@ -844,29 +883,50 @@ async function start() {
       } catch {}
     }
   });
-  const openSettings = async (path?: unknown, visible = true) => {
-    if (!origin || quitPending) return;
-    const destination = settingsWindowUrl(path ?? "/settings/general", origin);
-    if (!supportsSettingsWindow) {
-      await window?.loadURL(destination);
-      showWindow();
+  const openPageWindow = async (
+    kind: "settings" | "usage",
+    path?: unknown,
+    visible = true,
+    requestedOwner = window,
+  ) => {
+    const owner = mainOwner(requestedOwner);
+    const access = owner && accessForWindow(owner);
+    if (!owner || !access || quitPending || approvedQuit) return;
+    const pageUrl = kind === "settings" ? settingsWindowUrl : usageWindowUrl;
+    const destination = pageUrl(
+      path ?? (kind === "usage" ? "/usage" : "/settings/general"),
+      access.origin,
+    );
+    if (
+      kind === "settings" &&
+      owner === window &&
+      access.kind === "local" &&
+      !supportsSettingsWindow
+    ) {
+      await owner.loadURL(destination);
+      owner.show();
+      owner.focus();
       return;
     }
-    if (settingsWindow && !settingsWindow.isDestroyed()) {
-      if (settingsWindow.isMinimized()) settingsWindow.restore();
+    const existing = [...pageWindows.entries()].find(
+      ([target, page]) => !target.isDestroyed() && page.owner === owner && page.kind === kind,
+    );
+    if (existing) {
+      const [target, page] = existing;
+      if (target.isMinimized()) target.restore();
       if (visible) {
-        settingsWindow.show();
-        settingsWindow.focus();
+        target.show();
+        target.focus();
       }
-      if (path === undefined || path === "/settings") {
+      if (path === undefined || path === (kind === "usage" ? "/usage" : "/settings")) {
         return;
       }
-      if (readyWindows.has(settingsWindow.webContents.id))
-        settingsWindow.webContents.send("cox:navigate", destination.slice(origin.length));
-      else settingsNavigation = destination.slice(origin.length);
+      if (readyWindows.has(target.webContents.id))
+        target.webContents.send("cox:navigate", destination.slice(access.origin.length));
+      else page.navigation = destination.slice(access.origin.length);
       return;
     }
-    const boundsFile = join(home, "settings-window.json");
+    const boundsFile = join(home, kind + "-window.json");
     let bounds = {
       width: 1040,
       height: 780,
@@ -904,26 +964,41 @@ async function start() {
         }
       }
     } catch {}
-    const target = createDesktopWindow("settings", bounds.width, bounds.height, visible);
+    const profile = remoteWindows.get(owner);
+    const partition = profile ? remotePartition(profile.id) : mainPartition;
+    const target = createDesktopWindow(
+      kind,
+      bounds.width,
+      bounds.height,
+      visible,
+      partition,
+      access.kind === "remote",
+    );
     const targetId = target.webContents.id;
-    settingsWindow = target;
+    pageWindows.set(target, { kind, owner, access });
+    if (kind === "settings" && owner === window) settingsWindow = target;
     if (bounds.x !== undefined && bounds.y !== undefined) target.setPosition(bounds.x, bounds.y);
     target.webContents.setWindowOpenHandler(({ url }) => {
       void openExternal(url);
       return { action: "deny" };
     });
     const guardSettingsNavigation = (event: Event, url: string) => {
+      const currentOrigin = accessForWindow(target)?.origin;
+      if (!currentOrigin) {
+        event.preventDefault();
+        return;
+      }
       try {
         if (
-          settingsWindowUrl(
+          pageUrl(
             new URL(url).pathname + new URL(url).search + new URL(url).hash,
-            origin!,
+            currentOrigin,
           ) === url
         )
           return;
       } catch {}
       event.preventDefault();
-      if (!origin || !isBackendNavigation(url, origin)) void openExternal(url);
+      if (!isBackendNavigation(url, currentOrigin)) void openExternal(url);
     };
     target.webContents.on("will-navigate", guardSettingsNavigation);
     target.webContents.on("will-redirect", guardSettingsNavigation);
@@ -944,6 +1019,11 @@ async function start() {
     target.on("resize", remember);
     target.on("move", remember);
     target.on("close", (event) => {
+      if (kind === "usage" && !approvedQuit) {
+        event.preventDefault();
+        target.hide();
+        return;
+      }
       if (approvedQuit || !readyWindows.has(targetId) || target.webContents.isCrashed()) return;
       event.preventDefault();
       target.webContents.send("cox:settings-close-requested");
@@ -951,33 +1031,36 @@ async function start() {
     target.on("closed", () => {
       readyWindows.delete(targetId);
       if (settingsWindow === target) settingsWindow = undefined;
-      settingsNavigation = undefined;
+      pageWindows.delete(target);
     });
     if (process.platform === "win32") target.setMenuBarVisibility(false);
     try {
       await target.loadURL(destination);
+      if (owner.isDestroyed() && !target.isDestroyed()) target.destroy();
     } catch (error) {
       if (!target.isDestroyed()) target.destroy();
       throw error;
     }
   };
+  const openSettings = (path?: unknown, visible = true, owner = window) =>
+    openPageWindow("settings", path, visible, owner);
   ipcMain.handle("cox:settings-open", (event, path: unknown) => {
     const target = senderWindow(event);
     if (!target) throw new Error("Untrusted settings window request.");
-    const remote = remoteWindows.get(target);
-    if (remote) {
-      const destination = settingsWindowUrl(path ?? "/settings/general", remote.origin);
-      target.webContents.send("cox:navigate", destination.slice(remote.origin.length));
-      target.show();
-      target.focus();
-      return;
-    }
-    return openSettings(path);
+    return openSettings(path, true, target);
+  });
+  ipcMain.handle("cox:usage-open", (event, path: unknown) => {
+    const target = senderWindow(event);
+    if (!target) throw new Error("Untrusted usage window request.");
+    return openPageWindow("usage", path, true, target);
   });
   ipcMain.on("cox:settings-close", (event) => {
-    if (senderWindow(event) === settingsWindow) {
-      settingsWindow?.hide();
-    }
+    const target = senderWindow(event);
+    if (target && pageWindows.get(target)?.kind === "settings") target.hide();
+  });
+  ipcMain.on("cox:usage-close", (event) => {
+    const target = senderWindow(event);
+    if (target && pageWindows.get(target)?.kind === "usage") target.hide();
   });
   ipcMain.handle("cox:main-open", (event, path: unknown) => {
     const owner = senderWindow(event);
@@ -991,7 +1074,7 @@ async function start() {
       !isBackendNavigation(target.href, access.origin)
     )
       throw new Error("Invalid main window path.");
-    const destination = remoteWindows.has(owner) ? owner : window;
+    const destination = mainOwner(owner);
     destination?.webContents.send("cox:navigate", target.href.slice(access.origin.length));
     if (destination?.isMinimized()) destination.restore();
     destination?.show();
@@ -1008,28 +1091,32 @@ async function start() {
     prewarmSettingsTimer.unref();
   }
   const menu = createDesktopMenuTemplate(process.platform, systemLocale(), {
-    openMain: showWindow,
+    openMain: () => {
+      const target = mainOwner(BrowserWindow.getFocusedWindow());
+      if (!target || target === window) return showWindow();
+      if (target.isMinimized()) target.restore();
+      target.show();
+      target.focus();
+    },
     openConnections: () => {
       void showConnections();
     },
     openSettings: () => {
-      const target = BrowserWindow.getFocusedWindow();
-      const remote = target && remoteWindows.get(target);
-      if (target && remote) {
-        target.webContents.send("cox:navigate", "/settings/general");
-        return;
-      }
-      void openSettings().catch(() => {});
+      const target = mainOwner(BrowserWindow.getFocusedWindow() ?? window);
+      void openSettings(undefined, true, target).catch(() => {});
     },
     checkUpdates: () => {
-      if (isRemoteContext()) {
+      const target = mainOwner(BrowserWindow.getFocusedWindow() ?? window);
+      if ((target && accessForWindow(target)?.kind === "remote") || isRemoteContext()) {
         void clientUpdates
           ?.check(true)
           .then(() => offerRemoteClientUpdate(true))
           .catch(() => {});
         return;
       }
-      void (supportsSettingsWindow ? openSettings("/settings/about") : Promise.resolve())
+      void (
+        supportsSettingsWindow ? openSettings("/settings/about", true, target) : Promise.resolve()
+      )
         .then(() => softwareUpdates?.check(true))
         .then(() => (supportsSettingsWindow ? undefined : offerSoftwareUpdate(true)))
         .catch(() => {});
@@ -1229,17 +1316,20 @@ async function start() {
     localOrigin = origin;
     connectionMode = "local";
     await window?.loadURL(origin + mainPath);
-    if (settingsWindow && !settingsWindow.isDestroyed())
-      await settingsWindow.loadURL(origin + "/settings/about");
+    for (const [target, page] of pageWindows) {
+      if (page.owner !== window || page.access.kind !== "local" || target.isDestroyed()) continue;
+      page.access = { origin, kind: "local" };
+      page.navigation = undefined;
+      await target.loadURL(origin + (page.kind === "settings" ? "/settings/about" : "/usage"));
+    }
   };
   function replaceMainWindow(partition: string) {
     const previous = window;
     if (!previous || previous.isDestroyed()) return;
     const [currentWidth = 1360, currentHeight = 900] = previous.getSize();
     readyWindows.delete(previous.webContents.id);
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.destroy();
+    closeOwnerPages(previous);
     settingsWindow = undefined;
-    settingsNavigation = undefined;
     desktopReady = false;
     rendererUpdatesReady = false;
     supportsSettingsWindow = false;
@@ -1266,13 +1356,9 @@ async function start() {
   async function showConnections(error?: unknown, owner?: BrowserWindow, refresh = false) {
     if (!connectionStore || approvedQuit || quitPending) return;
     const icon = "data:image/png;base64," + readFileSync(startupIcon).toString("base64");
-    const focused = owner ?? BrowserWindow.getFocusedWindow();
+    const focused = mainOwner(owner ?? BrowserWindow.getFocusedWindow());
     const requestedOwner =
-      focused && (remoteWindows.has(focused) || focused === window || focused === settingsWindow)
-        ? focused === settingsWindow
-          ? window
-          : focused
-        : undefined;
+      focused && (remoteWindows.has(focused) || focused === window) ? focused : undefined;
     if (!connectionsWindow || connectionsWindow.isDestroyed() || connectionsOwner?.isDestroyed())
       connectionsOwner = requestedOwner ?? window;
     if (connectionsWindow && !connectionsWindow.isDestroyed() && error === undefined && !refresh) {
@@ -1335,9 +1421,8 @@ async function start() {
     desktopReady = false;
     rendererUpdatesReady = false;
     supportsSettingsWindow = false;
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.destroy();
+    closeOwnerPages(window);
     settingsWindow = undefined;
-    settingsNavigation = undefined;
     localPageUrl = undefined;
     window.hide();
     await window.loadURL("about:blank");
@@ -1454,6 +1539,7 @@ async function start() {
     target.webContents.on("did-finish-load", () => syncWindowControls(target));
     target.webContents.on("zoom-changed", () => setImmediate(() => syncWindowControls(target)));
     target.once("closed", () => {
+      closeOwnerPages(target);
       readyWindows.delete(targetId);
       remoteWindows.delete(target);
       if (
@@ -1525,6 +1611,7 @@ async function start() {
         return;
       }
       connectionGeneration++;
+      if (window) closeOwnerPages(window);
       activeRemoteProfile = profile;
       const partition = remotePartition(profile.id);
       if (mainPartition !== partition) replaceMainWindow(partition);

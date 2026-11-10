@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { basename, join, resolve } from "node:path";
-import type { BrowserWindowConstructorOptions } from "electron";
+import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions } from "electron";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { RemoteConnectionProfile } from "./connections.ts";
 
@@ -73,6 +73,7 @@ class TestWindow extends EventEmitter {
   readonly setMenuBarVisibility = vi.fn();
   readonly setTitle = vi.fn();
   readonly setWindowButtonPosition = vi.fn();
+  readonly setPosition = vi.fn();
   readonly options: BrowserWindowConstructorOptions;
   visible: boolean;
   destroyed = false;
@@ -96,6 +97,12 @@ class TestWindow extends EventEmitter {
   }
   isMinimized() {
     return false;
+  }
+  isMaximized() {
+    return false;
+  }
+  getBounds() {
+    return { x: 0, y: 0, width: this.options.width, height: this.options.height };
   }
   isFullScreen() {
     return false;
@@ -134,14 +141,21 @@ const fixture = {
   files: new Map<string, string>(),
   sessions: new Map<string, ReturnType<typeof createSession>>(),
   handlers: new Map<string, (event: unknown, input?: unknown) => Promise<unknown>>(),
+  listeners: new Map<string, (event: unknown, input?: unknown) => void>(),
   events: new EventEmitter(),
   started: Promise.resolve() as Promise<unknown>,
   loadURL: vi.fn(async (_url: string) => {}),
   launchBackend: vi.fn(async () => localOrigin),
   inspect: vi.fn(async (_origin: string) => inspection),
+  clientCheck: vi.fn(async () => undefined),
+  clientState: {} as { status?: string; currentVersion?: string; latestVersion?: string },
+  clientApply: vi.fn(async () => {}),
+  softwareCheck: vi.fn(async () => undefined),
+  softwareApply: vi.fn(async () => {}),
+  messageBox: vi.fn(async () => ({ response: 1 })),
   quit: vi.fn(),
   errors: vi.fn(),
-  menu: undefined as unknown,
+  menu: [] as MenuItemConstructorOptions[],
 };
 
 vi.mock("node:os", () => ({ homedir: () => userHome }));
@@ -188,14 +202,15 @@ vi.mock("electron", () => ({
   },
   BrowserWindow: TestWindow,
   ipcMain: {
-    on: vi.fn(),
+    on: (name: string, action: (event: unknown, input?: unknown) => void) =>
+      fixture.listeners.set(name, action),
     handle: (name: string, action: (event: unknown, input?: unknown) => Promise<unknown>) =>
       fixture.handlers.set(name, action),
   },
-  dialog: { showErrorBox: fixture.errors, showMessageBox: async () => ({ response: 1 }) },
+  dialog: { showErrorBox: fixture.errors, showMessageBox: fixture.messageBox },
   Menu: {
     setApplicationMenu: vi.fn(),
-    buildFromTemplate: (menu: unknown) => (fixture.menu = menu),
+    buildFromTemplate: (menu: MenuItemConstructorOptions[]) => (fixture.menu = menu),
     getApplicationMenu: () => ({ getMenuItemById: () => undefined }),
   },
   net: { fetch: vi.fn() },
@@ -214,13 +229,18 @@ vi.mock("./backend-updates.ts", () => ({
 }));
 vi.mock("./client-updates.ts", () => ({
   ClientUpdates: class {
+    check = fixture.clientCheck;
+    apply = fixture.clientApply;
     getState() {
-      return {};
+      return fixture.clientState;
     }
   },
 }));
 vi.mock("./software-updates.ts", () => ({
-  SoftwareUpdates: vi.fn(),
+  SoftwareUpdates: class {
+    check = fixture.softwareCheck;
+    apply = fixture.softwareApply;
+  },
   softwareUpdateReady: vi.fn(),
 }));
 vi.mock("./mac-update.ts", () => ({ MacAppUpdate: vi.fn() }));
@@ -239,6 +259,36 @@ function invoke(channel: string, target: TestWindow, input?: unknown) {
   return handler({ sender: target.webContents, senderFrame: target.webContents.mainFrame }, input);
 }
 
+function send(channel: string, target: TestWindow, input?: unknown) {
+  const listener = fixture.listeners.get(channel);
+  if (!listener) throw new Error("Missing IPC listener: " + channel);
+  listener({ sender: target.webContents, senderFrame: target.webContents.mainFrame }, input);
+}
+
+function pages(kind: "settings" | "usage") {
+  return fixture.windows.filter(
+    (target) =>
+      !target.destroyed &&
+      target.options.webPreferences?.additionalArguments?.includes("--cox-window-kind=" + kind),
+  );
+}
+
+function satellites() {
+  return fixture.windows.filter(
+    (target) =>
+      !target.destroyed &&
+      target.options.webPreferences?.additionalArguments?.includes("--cox-satellite=true"),
+  );
+}
+
+function clickMenu(match: (item: MenuItemConstructorOptions) => boolean) {
+  const flatten = (items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+    items.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? flatten(item.submenu) : [])]);
+  const item = flatten(fixture.menu).find(match);
+  if (!item?.click) throw new Error("Missing menu action");
+  Reflect.apply(item.click, undefined, []);
+}
+
 function manager() {
   const target = fixture.windows.find(
     (value) =>
@@ -253,7 +303,8 @@ function primary() {
     (value) =>
       !value.destroyed &&
       value.options.webPreferences?.partition !== "cox-connection-manager" &&
-      !value.options.webPreferences?.additionalArguments?.includes("--cox-inline-settings=true"),
+      value.options.webPreferences?.additionalArguments?.includes("--cox-window-kind=main") &&
+      !value.options.webPreferences?.additionalArguments?.includes("--cox-satellite=true"),
   );
   if (!target) throw new Error("Missing primary window");
   return target;
@@ -275,14 +326,384 @@ beforeEach(() => {
   fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: null }));
   fixture.sessions.clear();
   fixture.handlers.clear();
+  fixture.listeners.clear();
   fixture.events.removeAllListeners();
   fixture.inspect.mockReset().mockResolvedValue(inspection);
   fixture.loadURL.mockReset().mockResolvedValue(undefined);
+  fixture.clientState = {};
 });
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("desktop connection manager windows", () => {
+  it("opens and reuses a separate local usage window without navigating the main window", async () => {
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    const local = primary();
+    await invoke("cox:usage-open", local, "/usage?metric=tokens#models");
+    const target = pages("usage")[0]!;
+    expect(target.webContents.getURL()).toBe(localOrigin + "/usage?metric=tokens#models");
+    expect(target.options.webPreferences?.partition).toBe("persist:cox-desktop");
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    target.close();
+    expect(target.destroyed).toBe(false);
+    expect(target.visible).toBe(false);
+    await invoke("cox:usage-open", local, "/usage");
+    expect(pages("usage")).toEqual([target]);
+    expect(target.visible).toBe(true);
+    expect(fixture.launchBackend).toHaveBeenCalledTimes(1);
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("opens settings separately for the remote primary with its own session and restricted IPC", async () => {
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({
+        version: 1,
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+      }),
+    );
+    await start();
+    const remote = primary();
+    await invoke("cox:settings-open", remote, "/settings/providers?instanceId=codex#models");
+    const target = pages("settings")[0]!;
+    expect(target).not.toBe(remote);
+    expect(target.webContents.getURL()).toBe(
+      inspection.origin + "/settings/providers?instanceId=codex#models",
+    );
+    expect(target.webContents.session).toBe(remote.webContents.session);
+    expect(target.options.webPreferences?.additionalArguments).toContain("--cox-remote=true");
+    expect(remote.webContents.getURL()).toBe(inspection.origin);
+    expect(() => invoke("cox:backend-update-state", target)).toThrow("Untrusted");
+    expect(() => invoke("cox:client-update-state", target)).toThrow("Untrusted");
+    await invoke("cox:settings-open", remote, "/settings/appearance");
+    send("cox:desktop-ready", target, { settingsWindow: true, usageWindow: true });
+    expect(target.webContents.send).toHaveBeenCalledWith("cox:navigate", "/settings/appearance");
+    target.close();
+    expect(target.destroyed).toBe(false);
+    expect(target.webContents.send).toHaveBeenCalledWith("cox:settings-close-requested");
+    send("cox:settings-close", target);
+    expect(target.visible).toBe(false);
+    await invoke("cox:settings-open", remote, "/settings");
+    expect(pages("settings")).toEqual([target]);
+    expect(target.visible).toBe(true);
+    expect(fixture.launchBackend).not.toHaveBeenCalled();
+  });
+
+  it("keeps each remote connection's settings and usage separate and returns links to their owner", async () => {
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    const local = primary();
+    await invoke("cox:connections-show", local);
+    const connections = manager();
+    for (let index = 0; index < 2; index++) {
+      fixture.inspect.mockResolvedValueOnce({
+        ...inspection,
+        origin: `https://remote-${index}.example.com`,
+        environmentId: "environment-" + index,
+      });
+      await invoke("cox:connections-connect", connections, {
+        origin: `https://remote-${index}.example.com`,
+        openInNewWindow: true,
+      });
+    }
+    const [first, second] = satellites() as [TestWindow, TestWindow];
+    for (const remote of [first, second]) {
+      await invoke("cox:settings-open", remote, "/settings/general");
+      await invoke("cox:usage-open", remote, "/usage");
+    }
+    expect(pages("settings")).toHaveLength(2);
+    expect(pages("usage")).toHaveLength(2);
+    const [firstSettings, secondSettings] = pages("settings") as [TestWindow, TestWindow];
+    const [firstUsage, secondUsage] = pages("usage") as [TestWindow, TestWindow];
+    expect(firstSettings.webContents.session).toBe(first.webContents.session);
+    expect(firstUsage.webContents.session).toBe(first.webContents.session);
+    expect(secondSettings.webContents.session).toBe(second.webContents.session);
+    expect(firstUsage.webContents.session).not.toBe(secondUsage.webContents.session);
+    for (const target of [firstSettings, secondSettings, firstUsage, secondUsage]) {
+      expect(() => invoke("cox:backend-update-state", target)).toThrow("Untrusted");
+      send("cox:desktop-ready", target, { settingsWindow: true, usageWindow: true });
+      expect(target.webContents.send).not.toHaveBeenCalledWith(
+        "cox:backend-update",
+        expect.anything(),
+      );
+      expect(target.webContents.send).not.toHaveBeenCalledWith(
+        "cox:client-update",
+        expect.anything(),
+      );
+    }
+    await invoke("cox:main-open", firstSettings, "/threads/first");
+    expect(first.webContents.send).toHaveBeenCalledWith("cox:navigate", "/threads/first");
+    expect(second.webContents.send).not.toHaveBeenCalledWith("cox:navigate", "/threads/first");
+    expect(local.webContents.send).not.toHaveBeenCalledWith("cox:navigate", "/threads/first");
+    await invoke("cox:usage-open", firstSettings, "/usage");
+    expect(pages("usage")).toHaveLength(2);
+    send("cox:usage-close", firstUsage);
+    expect(firstUsage.visible).toBe(false);
+    expect(first.visible).toBe(true);
+    first.destroy();
+    expect(firstSettings.destroyed).toBe(true);
+    expect(firstUsage.destroyed).toBe(true);
+    expect(secondSettings.destroyed).toBe(false);
+    expect(secondUsage.destroyed).toBe(false);
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    expect(fixture.launchBackend).toHaveBeenCalledTimes(1);
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it.each(["cox:settings-open", "cox:usage-open"])(
+    "rejects other-frame and untrusted %s requests",
+    async (channel) => {
+      await start();
+      expect(() => invoke(channel, manager(), "/usage")).toThrow("Untrusted");
+      expect(() => invoke(channel, primary(), "/usage")).toThrow("Untrusted");
+      await invoke("cox:connections-connect", manager(), {
+        origin: inspection.origin,
+        openInNewWindow: true,
+      });
+      const remote = satellites()[0]!;
+      expect(() =>
+        fixture.handlers.get(channel)!(
+          { sender: remote.webContents, senderFrame: { url: remote.webContents.getURL() } },
+          "/usage",
+        ),
+      ).toThrow("Untrusted");
+      for (const path of [
+        "//evil.test/usage",
+        "/\\evil.test/settings",
+        "https://evil.test/settings",
+        "/api/auth/session",
+      ])
+        await expect(invoke(channel, remote, path)).rejects.toThrow("Invalid");
+      expect(pages("usage")).toHaveLength(0);
+      expect(pages("settings")).toHaveLength(0);
+    },
+  );
+
+  it("blocks foreign-origin navigation and cleans up failed auxiliary page loads", async () => {
+    await start();
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    await invoke("cox:usage-open", remote, "/usage");
+    const usage = pages("usage")[0]!;
+    for (const url of ["https://evil.test/usage", inspection.origin + "/api/auth/session"]) {
+      const event = { preventDefault: vi.fn() };
+      usage.webContents.emit("will-navigate", event, url);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+    }
+    fixture.loadURL.mockRejectedValueOnce(new Error("Auxiliary page failed"));
+    await expect(invoke("cox:settings-open", remote, "/settings/general")).rejects.toThrow(
+      "Auxiliary page failed",
+    );
+    expect(pages("settings")).toHaveLength(0);
+    expect(remote.destroyed).toBe(false);
+  });
+
+  it("uses the focused remote owner for native settings, Connections, Open Cox and update actions", async () => {
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    const local = primary();
+    await invoke("cox:connections-show", local);
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    await invoke("cox:usage-open", remote, "/usage");
+    const usage = pages("usage")[0]!;
+    usage.focus();
+    clickMenu((item) => item.accelerator === "CmdOrCtrl+,");
+    const settings = pages("settings")[0]!;
+    expect(settings.webContents.session).toBe(remote.webContents.session);
+    await vi.waitFor(() =>
+      expect(settings.webContents.getURL()).toBe(inspection.origin + "/settings/general"),
+    );
+    settings.focus();
+    clickMenu((item) => item.label === "Open Cox");
+    expect(fixture.focused).toBe(remote);
+    settings.focus();
+    clickMenu((item) => item.accelerator === "CmdOrCtrl+Shift+O");
+    clickMenu((item) => item.accelerator === "CmdOrCtrl+,");
+    expect(pages("settings")).toEqual([settings]);
+    settings.focus();
+    clickMenu((item) => item.id === "cox-check-updates");
+    expect(fixture.clientCheck).toHaveBeenCalledWith(true);
+    expect(fixture.softwareCheck).not.toHaveBeenCalled();
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    expect(fixture.launchBackend).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps distinct owners on the same saved remote profile from reusing each other's pages", async () => {
+    await start();
+    const connections = manager();
+    for (let index = 0; index < 2; index++)
+      await invoke("cox:connections-connect", connections, {
+        origin: inspection.origin,
+        openInNewWindow: true,
+      });
+    const [first, second] = satellites() as [TestWindow, TestWindow];
+    for (const owner of [first, second]) {
+      await invoke("cox:settings-open", owner, "/settings/general");
+      await invoke("cox:usage-open", owner, "/usage");
+    }
+    expect(first.webContents.session).toBe(second.webContents.session);
+    expect(pages("settings")).toHaveLength(2);
+    expect(pages("usage")).toHaveLength(2);
+    await invoke("cox:main-open", pages("usage")[1]!, "/threads/second");
+    expect(second.webContents.send).toHaveBeenCalledWith("cox:navigate", "/threads/second");
+    expect(first.webContents.send).not.toHaveBeenCalledWith("cox:navigate", "/threads/second");
+    first.destroy();
+    expect(pages("settings")).toHaveLength(1);
+    expect(pages("usage")).toHaveLength(1);
+  });
+
+  it("keeps native remote update confirmation client-only and warns about a running local backend", async () => {
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    await invoke("cox:connections-show", primary());
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    send("cox:desktop-ready", remote);
+    await invoke("cox:usage-open", remote, "/usage");
+    pages("usage")[0]!.focus();
+    fixture.clientState = { status: "ready", currentVersion: "0.2.25", latestVersion: "0.2.26" };
+    fixture.messageBox.mockResolvedValueOnce({ response: 0 });
+    clickMenu((item) => item.id === "cox-check-updates");
+    await vi.waitFor(() =>
+      expect(fixture.messageBox).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Restart and install updates?",
+          message: "Updating quits Cox and interrupts running agent tasks and terminals.",
+          detail: "Cox Desktop 0.2.25 → 0.2.26",
+        }),
+      ),
+    );
+    expect(fixture.softwareApply).not.toHaveBeenCalled();
+    expect(fixture.clientApply).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-frame, foreign-origin and wrong-role auxiliary close and navigation IPC", async () => {
+    await start();
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    await invoke("cox:settings-open", remote, "/settings/general");
+    await invoke("cox:usage-open", remote, "/usage");
+    const settings = pages("settings")[0]!;
+    const usage = pages("usage")[0]!;
+    send("cox:settings-close", usage);
+    send("cox:usage-close", settings);
+    for (const target of [settings, usage]) {
+      const childFrame = {
+        sender: target.webContents,
+        senderFrame: { url: target.webContents.getURL() },
+      };
+      expect(() => fixture.handlers.get("cox:main-open")!(childFrame, "/threads/other")).toThrow(
+        "Invalid",
+      );
+      fixture.listeners.get("cox:" + (target === settings ? "settings" : "usage") + "-close")!(
+        childFrame,
+      );
+      expect(target.visible).toBe(true);
+      target.webContents.mainFrame.url = "https://untrusted.example.com/usage";
+      expect(() => invoke("cox:settings-open", target, "/settings/general")).toThrow("Untrusted");
+      expect(() => invoke("cox:usage-open", target, "/usage")).toThrow("Untrusted");
+      send("cox:" + (target === settings ? "settings" : "usage") + "-close", target);
+      expect(target.visible).toBe(true);
+    }
+    expect(remote.webContents.send).not.toHaveBeenCalledWith("cox:navigate", "/threads/other");
+  });
+
+  it("revokes stale page IPC and navigation when the owner's document no longer matches its origin", async () => {
+    await start();
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const owner = satellites()[0]!;
+    await invoke("cox:usage-open", owner, "/usage");
+    const usage = pages("usage")[0]!;
+    owner.webContents.mainFrame.url = "https://untrusted.example.com";
+    expect(() => invoke("cox:main-open", usage, "/threads/selected")).toThrow("Invalid");
+    expect(() => invoke("cox:settings-open", usage, "/settings/general")).toThrow("Untrusted");
+    send("cox:usage-close", usage);
+    expect(usage.visible).toBe(true);
+    const event = { preventDefault: vi.fn() };
+    usage.webContents.emit("will-redirect", event, inspection.origin + "/usage");
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("cleans primary-owned pages on same-profile reconnect, connection switch and owner close", async () => {
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({
+        version: 1,
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+      }),
+    );
+    await start();
+    const remote = primary();
+    await invoke("cox:settings-open", remote, "/settings/general");
+    await invoke("cox:usage-open", remote, "/usage");
+    const previous = [...pages("settings"), ...pages("usage")];
+    await invoke("cox:connections-show", remote);
+    await invoke("cox:connections-connect", manager(), { id: saved.id, openInNewWindow: false });
+    expect(primary()).toBe(remote);
+    expect(previous.every((page) => page.destroyed)).toBe(true);
+    await invoke("cox:usage-open", remote, "/usage");
+    const beforeSwitch = pages("usage")[0]!;
+    await invoke("cox:connections-show", remote);
+    fixture.inspect.mockResolvedValueOnce({ ...inspection, origin: "https://other.example.com" });
+    await invoke("cox:connections-connect", manager(), {
+      origin: "https://other.example.com",
+      openInNewWindow: false,
+    });
+    expect(beforeSwitch.destroyed).toBe(true);
+    expect(remote.destroyed).toBe(true);
+    const next = primary();
+    await invoke("cox:settings-open", next, "/settings/general");
+    await invoke("cox:usage-open", next, "/usage");
+    next.destroy();
+    expect(pages("settings")).toHaveLength(0);
+    expect(pages("usage")).toHaveLength(0);
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("destroys a page whose owner closes before its load resolves", async () => {
+    await start();
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const owner = satellites()[0]!;
+    const loading = Promise.withResolvers<void>();
+    const reached = Promise.withResolvers<void>();
+    fixture.loadURL.mockImplementation(async (url) => {
+      if (!url.endsWith("/usage")) return;
+      reached.resolve();
+      await loading.promise;
+    });
+    const pending = invoke("cox:usage-open", owner, "/usage");
+    await reached.promise;
+    const usage = pages("usage")[0]!;
+    owner.destroy();
+    loading.resolve();
+    await pending;
+    expect(usage.destroyed).toBe(true);
+    expect(pages("usage")).toHaveLength(0);
+  });
+
   it("starts a fresh client-only app in a separate restricted connection window", async () => {
     await start();
     expect(primary().visible).toBe(false);
@@ -396,7 +817,7 @@ describe("desktop connection manager windows", () => {
       openInNewWindow: true,
     });
     const satellite = fixture.windows.find((value) =>
-      value.options.webPreferences?.additionalArguments?.includes("--cox-inline-settings=true"),
+      value.options.webPreferences?.additionalArguments?.includes("--cox-satellite=true"),
     )!;
     expect(() => invoke("cox:connections-new-window", satellite, false)).toThrow(
       "Invalid connection preference request.",
@@ -575,7 +996,7 @@ describe("desktop connection manager windows", () => {
       openInNewWindow: true,
     });
     const satellite = fixture.windows.find((value) =>
-      value.options.webPreferences?.additionalArguments?.includes("--cox-inline-settings=true"),
+      value.options.webPreferences?.additionalArguments?.includes("--cox-satellite=true"),
     )!;
     await invoke("cox:connections-show", satellite);
     satellite.destroy();

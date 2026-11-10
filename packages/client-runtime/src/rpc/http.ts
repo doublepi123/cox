@@ -152,7 +152,7 @@ const failRemoteRequest = (
   }
   return Effect.fail(
     new RemoteEnvironmentAuthFetchError({
-      message: `Failed to fetch local server endpoint ${requestUrl} (${String(cause)}).`,
+      message: `Failed to fetch Cox server endpoint ${requestUrl} (${String(cause)}).`,
       cause,
     }),
   );

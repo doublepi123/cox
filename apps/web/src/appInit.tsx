@@ -47,7 +47,10 @@ import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommand
 import { registerOpenFavoriteEditorCommand } from "./components/chat/OpenInPickerShortcut";
 import { environmentThreadShells } from "./state/threads";
 import { resolveThreadRouteTarget } from "./threadRoutes";
-import { startDesktopSettingsNavigation } from "./lib/desktopSettingsNavigation";
+import {
+  isDesktopPageWindow,
+  startDesktopSettingsNavigation,
+} from "./lib/desktopSettingsNavigation";
 /** Writes appearance settings onto the document, touching only the groups that changed. */
 function startClientAppearance(): void {
   const root = document.documentElement;
@@ -169,7 +172,7 @@ export function startAppServices(): AppRouter {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     void router.navigate({ href });
   });
-  if (window.coxDesktop?.windowKind === "settings") {
+  if (isDesktopPageWindow(window.coxDesktop)) {
     return router;
   }
   startModelPreferencesMigration();

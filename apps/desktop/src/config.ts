@@ -47,6 +47,15 @@ export function settingsWindowUrl(path: unknown, origin: string): string {
   return url.href;
 }
 
+export function usageWindowUrl(path: unknown, origin: string): string {
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//"))
+    throw new Error("Invalid usage window path.");
+  const url = new URL(path, origin);
+  if (!isBackendNavigation(url.href, origin) || url.pathname !== "/usage")
+    throw new Error("Invalid usage window path.");
+  return url.href;
+}
+
 export function backendEnvironment(input: {
   readonly inherited: NodeJS.ProcessEnv;
   readonly runtimeDirectory: string;

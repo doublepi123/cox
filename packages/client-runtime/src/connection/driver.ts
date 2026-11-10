@@ -3,7 +3,6 @@ import * as Effect from "effect/Effect";
 
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
@@ -63,8 +62,6 @@ export const make = Effect.gen(function* () {
         descriptor.environmentId === environmentId ? "answered" : "silent",
       ),
       Effect.orElseSucceed((): RouteCheck => "silent"),
-      // A cached descriptor would answer for a host that cannot be reached.
-      Effect.provideService(FetchHttpClient.RequestInit, { cache: "no-store" }),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
 
