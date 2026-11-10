@@ -750,6 +750,53 @@ export const layer = Layer.effect(
       ),
     );
 
+    const hasOutstandingRun = (id: ScheduledTaskId) =>
+      sql`
+        SELECT 1
+        FROM orchestration_v2_projection_runs AS run
+        CROSS JOIN orchestration_v2_projection_messages AS message
+          INDEXED BY orchestration_v2_projection_messages_run_idx
+          ON message.run_id = run.run_id AND message.thread_id = run.thread_id
+        WHERE run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+          AND message.role = 'user'
+          AND json_extract(message.payload_json, '$.scheduledTaskId') = ${id}
+        LIMIT 1
+      `.pipe(
+        NodeSqliteClient.readOnly,
+        Effect.map((rows) => rows.length > 0),
+        Effect.mapError((cause) =>
+          taskError("Could not check the schedule task's active run.", { taskId: id, cause }),
+        ),
+      );
+
+    const skipOutstandingRun = Effect.fn("ScheduledTaskService.skipOutstandingRun")(function* (
+      task: ScheduledTask,
+      now: DateTime.DateTime,
+    ) {
+      const next = nextRunAt(task, now);
+      const updated = yield* sql<{ task_id: string }>`
+        UPDATE scheduled_tasks
+        SET next_run_at = ${next}, updated_at = ${iso(now)}
+        WHERE task_id = ${task.id} AND created_at = ${task.createdAt}
+          AND next_run_at IS ${task.nextRunAt}
+          AND updated_at = ${task.updatedAt}
+          AND enabled = 1
+        RETURNING task_id
+      `.pipe(
+        Effect.mapError((cause) =>
+          taskError("Could not skip a busy schedule task.", { taskId: task.id, cause }),
+        ),
+      );
+      if (updated.length > 0) {
+        yield* notifyChanged;
+        yield* Effect.logInfo("Skipping schedule task with an outstanding run", {
+          taskId: task.id,
+          rescheduledTo: next,
+        });
+      }
+      return { task: (yield* findTask(task.id)) ?? task, threadId: null };
+    });
+
     const runTask = Effect.fn("ScheduledTaskService.runTask")(function* (
       task: ScheduledTask,
       trigger: "scheduled" | "manual" | "webhook",
@@ -771,6 +818,8 @@ export const layer = Layer.effect(
         }
         return { task, threadId: null };
       }
+
+      let markedRunning = false;
 
       return yield* Effect.gen(function* () {
         const startedAt = yield* localNow;
@@ -819,8 +868,47 @@ export const layer = Layer.effect(
           if (reason !== null) return yield* new WebhookDeliverySkipped({ reason });
         }
 
-        if (webhook === undefined) yield* markRunning(active.id, startedAtIso);
-        else
+        if (webhook === undefined) {
+          const claim = yield* sql
+            .withTransaction(
+              Effect.gen(function* () {
+                const current = yield* findTask(active.id);
+                if (
+                  current === null ||
+                  current.createdAt !== active.createdAt ||
+                  current.updatedAt !== active.updatedAt
+                )
+                  return "stale" as const;
+                if (current.lastRunStatus === "running" || (yield* hasOutstandingRun(active.id)))
+                  return "busy" as const;
+                yield* markRunning(active.id, startedAtIso);
+                return "claimed" as const;
+              }),
+            )
+            .pipe(
+              Effect.mapError((cause) =>
+                isScheduledTaskError(cause)
+                  ? cause
+                  : taskError("Could not reserve the schedule task's run.", {
+                      taskId: active.id,
+                      cause,
+                    }),
+              ),
+            );
+          if (claim === "busy") {
+            if (trigger === "scheduled") return yield* skipOutstandingRun(active, startedAt);
+            return yield* taskError("Schedule task already has a queued or active run.", {
+              taskId: active.id,
+            });
+          }
+          if (claim === "stale") {
+            if (trigger === "scheduled")
+              return { task: (yield* findTask(active.id)) ?? active, threadId: null };
+            return yield* taskError("Schedule task changed before the run could start.", {
+              taskId: active.id,
+            });
+          }
+        } else
           yield* sql
             .withTransaction(
               Effect.gen(function* () {
@@ -834,6 +922,8 @@ export const layer = Layer.effect(
                 taskError("Could not start webhook run.", { taskId: task.id, cause }),
               ),
             );
+
+        markedRunning = true;
 
         yield* notifyChanged;
 
@@ -975,7 +1065,11 @@ export const layer = Layer.effect(
         }
         return { task: completed, threadId };
       }).pipe(
-        Effect.onError((cause) => releaseStuckRun(task, errorMessage(cause), webhook?.deliveryId)),
+        Effect.onError((cause) =>
+          markedRunning
+            ? releaseStuckRun(task, errorMessage(cause), webhook?.deliveryId)
+            : Effect.void,
+        ),
         Effect.ensuring(
           Ref.update(activeRuns, (active) => {
             const next = new Set(active);
