@@ -177,7 +177,7 @@ API-key and custom API connections do not run ChatGPT subscription-limit queries
 For a shared connection, open **Settings → Model services**, add the base URL, API key and
 supported protocols, then choose **Save and fetch models**. Model discovery reads metadata
 only. You can also add or edit model metadata manually when a service has no model-list API.
-In **Settings → Providers**, bind a Codex, Claude Code, Pi or OpenCode instance to the service,
+In **Settings → Providers**, bind a Codex, Claude Code, Pi, OMO Native or OpenCode instance to the service,
 select its models and a default. Unbinding restores that instance's independent settings.
 
 Each service's **Request recovery** settings include an opt-in **Retry non-transient upstream
@@ -222,6 +222,26 @@ the upstream service can reject a tier for a particular account or connection. C
 silently retry with a different tier.
 Account-catalog speed options fill gaps in native model discovery without discarding
 native model settings. Cox does not advertise Fast when neither catalog reports it.
+
+### OMO Native
+
+OMO Native is an independent, disabled-by-default provider. Install the OMO Native CLI,
+then enable it in **Settings → Providers** and set **Binary path** to `omo` or its absolute
+path. Independent instances can use native credentials and configuration.
+
+Bind OMO Native to one model service to share its available tool-capable models. Cox writes
+an isolated `model-services/runtime/<instance>/omo/models.json` and session directory under
+its state directory. Models keep their exact upstream IDs with a `cox/` slug prefix.
+**OMO native roles** assigns models to agents and categories; empty assignments inherit the
+main model. The binding default can also be left empty to use the first available model.
+Use **Apply OMO models** to save the binding, main default and role assignments together.
+Custom role names start with a letter and contain only letters, digits, underscores or
+hyphens, up to 64 characters. Reserved object property names are rejected.
+
+Managed roles can select only available models from that instance's service binding.
+Before removing or ignoring a referenced model, clear or reassign its roles. If an explicitly
+selected role or main model becomes unavailable, Cox reports an error and preserves the
+selection so it can be repaired in settings. It does not silently choose another role model.
 
 ## Development
 

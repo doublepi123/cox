@@ -9,6 +9,7 @@ import {
   ClaudeSettings,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { OmoSettings } from "@t3tools/provider-omo/settings";
 
 import { providerClients } from "./providerDriverMeta";
 import { en } from "../../i18n/en";
@@ -20,7 +21,44 @@ import {
   seedRowsDraft,
 } from "./ProviderSettingsForm";
 
+const decodeOmoSettings = Schema.decodeSync(OmoSettings);
+const decodeOmoSettingsExit = Schema.decodeExit(OmoSettings);
+
 describe("ProviderSettingsForm helpers", () => {
+  it("registers independent OMO settings with hidden native roles and managed state", () => {
+    const omo = providerClients.get(ProviderDriverKind.make("omo"));
+    expect(omo?.label).toBe("OMO Native");
+    expect(decodeOmoSettings({})).toMatchObject({
+      enabled: false,
+      binaryPath: "omo",
+      launchArgs: "",
+      customModels: [],
+      agentModels: {},
+      categoryModels: {},
+      modelServiceManaged: false,
+    });
+    expect(deriveProviderSettingsFields(omo!).map((field) => field.key)).toEqual([
+      "provider",
+      "model",
+      "apiKey",
+      "agentDir",
+      "binaryPath",
+      "launchArgs",
+    ]);
+    expect(secretSettingsFields(OmoSettings)).toContain("apiKey");
+  });
+  it.each(["../oracle", "two words", "", "constructor", "prototype", "__proto__", "a".repeat(65)])(
+    "rejects invalid OMO role names: %s",
+    (name) => {
+      for (const field of ["agentModels", "categoryModels"]) {
+        expect(
+          decodeOmoSettingsExit({
+            [field]: Object.fromEntries([[name, "cox/Exact"]]),
+          })._tag,
+        ).toBe("Failure");
+      }
+    },
+  );
   it("has bilingual resources for every built-in provider form label and description", () => {
     for (const definition of providerClients.definitions) {
       for (const field of deriveProviderSettingsFields(definition)) {

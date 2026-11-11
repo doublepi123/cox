@@ -59,6 +59,7 @@ const TEXT_GENERATION_FALLBACK_DRIVERS = [
   "grok",
   "muse",
   "pi",
+  "omo",
   "opencode",
   "antigravity",
 ].map((driver) => ProviderDriverKind.make(driver));

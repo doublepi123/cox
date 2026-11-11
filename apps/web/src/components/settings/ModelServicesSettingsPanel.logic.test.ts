@@ -117,6 +117,36 @@ describe("unlisted model cleanup", () => {
   });
 });
 describe("model removal binding protection", () => {
+  it.each(["agentModels", "categoryModels"])(
+    "protects OMO %s references even with all-model bindings",
+    (field) => {
+      const instances = {
+        [instanceId]: {
+          ...instance(),
+          driver: ProviderDriverKind.make("omo"),
+          config: { [field]: { oracle: "cox/remove", inherit: "" } },
+        },
+      };
+      expect(modelRemovalBlockingAgents(serviceId, service, "remove", instances)).toEqual([
+        "Work Agent",
+      ]);
+      expect(modelRemovalBlockingAgents(serviceId, service, "keep", instances)).toEqual([]);
+      const plan = unlistedModelRemovalPlan(
+        serviceId,
+        {
+          ...service,
+          models: service.models.map((model) => ({
+            ...model,
+            available: false,
+            source: "discovered" as const,
+          })),
+        },
+        instances,
+      );
+      expect(plan.protected.map((model) => model.id)).toEqual(["remove"]);
+      expect(plan.removable.map((model) => model.id)).toEqual(["keep"]);
+    },
+  );
   it.each(MODEL_SERVICE_AGENT_DRIVERS)("protects explicit model selections for %s", (driver) => {
     expect(
       modelRemovalBlockingAgents(serviceId, service, "remove", {

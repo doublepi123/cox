@@ -1361,6 +1361,35 @@ function ProviderInstanceRow({
               readOnly={readOnly}
               onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
             />
+          ) : mode === "editor" && driver === "omo" ? (
+            <SettingsRow
+              title="OMO Native"
+              description={translateUi(
+                "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.",
+              )}
+              control={
+                !readOnly && !resolveProviderInstanceEnabled(instance) ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      actions.enableInstance(instanceId, { ...instance, enabled: true })
+                    }
+                  >
+                    {translateUi("Enable OMO Native")}
+                  </Button>
+                ) : undefined
+              }
+            >
+              <a
+                className="text-primary underline"
+                href="https://github.com/doublepi123/cox#omo-native"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {translateUi("Open docs")}
+              </a>
+            </SettingsRow>
           ) : mode === "editor" && driver === "pi" ? (
             <PiSetupSection
               environmentId={environmentId}

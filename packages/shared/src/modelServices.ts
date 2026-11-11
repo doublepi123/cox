@@ -5,6 +5,7 @@ import type {
   ModelServiceModel,
   ModelServiceProtocol,
   ServerProviderModel,
+  ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import {
   readCustomModelEntries,
@@ -12,7 +13,13 @@ import {
   withClaudeUltracodeCapabilities,
 } from "./model.ts";
 
-export const MODEL_SERVICE_AGENT_DRIVERS = ["codex", "claudeAgent", "pi", "opencode"] as const;
+export const MODEL_SERVICE_AGENT_DRIVERS = [
+  "codex",
+  "claudeAgent",
+  "pi",
+  "omo",
+  "opencode",
+] as const;
 
 export function modelServiceDisplayName(id: string): string {
   const match =
@@ -69,7 +76,22 @@ export function boundModelServiceModels(
 }
 
 export function modelServiceModelSlug(driver: string, id: string): string {
-  return driver === "pi" || driver === "opencode" ? `cox/${id}` : id;
+  return driver === "pi" || driver === "omo" || driver === "opencode" ? `cox/${id}` : id;
+}
+
+export function modelServiceRoleReferences(
+  instance: ProviderInstanceConfig,
+): ReadonlyArray<string> {
+  if (instance.driver !== "omo" || instance.config === null || typeof instance.config !== "object")
+    return [];
+  const config = instance.config as Record<string, unknown>;
+  return [config.agentModels, config.categoryModels].flatMap((roles) =>
+    roles !== null && typeof roles === "object" && !Array.isArray(roles)
+      ? Object.values(roles).filter(
+          (slug): slug is string => typeof slug === "string" && slug !== "",
+        )
+      : [],
+  );
 }
 
 export function modelServiceProviderModels(
@@ -98,11 +120,14 @@ export function modelServiceAgentCapabilities(
       ["reasoningEffort", "effort", "thinking"].includes(option.id) && option.type === "select",
   );
   const allowed =
-    driver === "pi" ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"] : [];
+    driver === "pi" || driver === "omo"
+      ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+      : [];
   const options =
     descriptor?.type === "select"
       ? descriptor.options.flatMap((option) => {
-          const id = driver === "pi" && option.id === "none" ? "off" : option.id;
+          const id =
+            (driver === "pi" || driver === "omo") && option.id === "none" ? "off" : option.id;
           return driver === "codex" || driver === "claudeAgent" || allowed.includes(id)
             ? [{ ...option, id }]
             : [];
@@ -119,7 +144,7 @@ export function modelServiceAgentCapabilities(
               ? [
                   {
                     id:
-                      driver === "pi"
+                      driver === "pi" || driver === "omo"
                         ? "thinking"
                         : driver === "claudeAgent"
                           ? "effort"

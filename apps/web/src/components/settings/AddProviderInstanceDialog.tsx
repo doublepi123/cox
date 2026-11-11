@@ -93,6 +93,7 @@ const MODEL_SERVICE_MANAGED_CONFIG_FIELDS: Readonly<Record<string, ReadonlyArray
   codex: ["baseUrl", "apiKey"],
   claudeAgent: ["baseUrl", "apiKey"],
   pi: ["provider", "model", "apiKey", "agentDir"],
+  omo: ["provider", "model", "apiKey", "agentDir"],
   opencode: ["serverUrl", "serverPassword"],
 };
 function validateInstanceId(id: string, existing: ReadonlySet<string>): string | null {

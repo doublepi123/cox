@@ -7,6 +7,7 @@ import {
   modelServiceAgentCapabilities,
   modelServiceDisplayName,
   modelServiceProviderModels,
+  modelServiceModelSlug,
 } from "./modelServices.ts";
 
 const id = ModelServiceId.make("shared");
@@ -23,6 +24,29 @@ const service = Schema.decodeSync(ModelServiceConfig)({
 });
 
 describe("central model settings", () => {
+  it("uses exact upstream slugs and Pi thinking capabilities for OMO", () => {
+    expect(modelServiceModelSlug("omo", "Vendor/Exact/ID")).toBe("cox/Vendor/Exact/ID");
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          options: [
+            { id: "none", label: "Off" },
+            { id: "high", label: "High" },
+            { id: "unsupported", label: "Unsupported" },
+          ],
+        },
+      ],
+    };
+    expect(modelServiceAgentCapabilities("omo", capabilities)).toEqual(
+      modelServiceAgentCapabilities("pi", capabilities),
+    );
+    expect(
+      modelServiceAgentCapabilities("omo", capabilities)?.optionDescriptors?.[0],
+    ).toMatchObject({ id: "thinking", options: [{ id: "off" }, { id: "high" }] });
+  });
   it("keeps ignored models out of agent bindings while preserving their configuration", () => {
     const config = {
       ...service,

@@ -1,4 +1,34 @@
 export const en = {
+  "Path to the OMO Native binary.": "Path to the OMO Native binary.",
+  "OMO provider ID. Leave empty to use the native configuration.":
+    "OMO provider ID. Leave empty to use the native configuration.",
+  "OMO model ID or provider/model. Leave empty to inherit the native default.":
+    "OMO model ID or provider/model. Leave empty to inherit the native default.",
+  "Stored separately on this computer. Leave empty to use existing OMO credentials.":
+    "Stored separately on this computer. Leave empty to use existing OMO credentials.",
+  "OMO configuration directory": "OMO configuration directory",
+  "Optional absolute path for OMO credentials, models.json and native settings.":
+    "Optional absolute path for OMO credentials, models.json and native settings.",
+  "Additional CLI arguments passed to OMO Native on session start.":
+    "Additional CLI arguments passed to OMO Native on session start.",
+  "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.":
+    "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.",
+  "Enable OMO Native": "Enable OMO Native",
+  "OMO native roles": "OMO native roles",
+  "Assign models to native agents and categories. Empty assignments inherit the main model.":
+    "Assign models to native agents and categories. Empty assignments inherit the main model.",
+  "Inherit main model": "Inherit main model",
+  "Unavailable model: {model}": "Unavailable model: {model}",
+  "{group} role name": "{group} role name",
+  "Custom role name": "Custom role name",
+  "Add role": "Add role",
+  "Use a unique role name starting with a letter, followed by letters, digits, underscores or hyphens (up to 64 characters).":
+    "Use a unique role name starting with a letter, followed by letters, digits, underscores or hyphens (up to 64 characters).",
+  Categories: "Categories",
+  "Clear or reassign unavailable role models before saving.":
+    "Clear or reassign unavailable role models before saving.",
+  "Apply OMO models": "Apply OMO models",
+  "Use binding default": "Use binding default",
   "Old history is cleaned up automatically, but these databases still hold the freed space. Reclaim on an idle managed instance, or run the command locally after stopping Cox.":
     "Old history is cleaned up automatically, but these databases still hold the freed space. Reclaim on an idle managed instance, or run the command locally after stopping Cox.",
   "Cox there restarts and is back in about {minutes} min.":

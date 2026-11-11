@@ -1,4 +1,34 @@
 export const zh = {
+  "Path to the OMO Native binary.": "OMO Native 可执行文件的路径。",
+  "OMO provider ID. Leave empty to use the native configuration.":
+    "OMO 模型提供商 ID。留空使用原生配置。",
+  "OMO model ID or provider/model. Leave empty to inherit the native default.":
+    "OMO 模型 ID 或 provider/model。留空继承原生默认模型。",
+  "Stored separately on this computer. Leave empty to use existing OMO credentials.":
+    "单独存储在此计算机上。留空使用已有的 OMO 凭据。",
+  "OMO configuration directory": "OMO 配置目录",
+  "Optional absolute path for OMO credentials, models.json and native settings.":
+    "OMO 凭据、models.json 和原生设置的可选绝对路径。",
+  "Additional CLI arguments passed to OMO Native on session start.":
+    "启动会话时传给 OMO Native 的额外命令行参数。",
+  "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.":
+    "安装 OMO Native 并在下方设置可执行文件路径。此实例的模型服务凭据和角色模型单独管理。",
+  "Enable OMO Native": "启用 OMO Native",
+  "OMO native roles": "OMO 原生角色",
+  "Assign models to native agents and categories. Empty assignments inherit the main model.":
+    "为原生智能体和类别分配模型。空值继承主模型。",
+  "Inherit main model": "继承主模型",
+  "Unavailable model: {model}": "不可用模型：{model}",
+  "{group} role name": "{group}角色名称",
+  "Custom role name": "自定义角色名称",
+  "Add role": "添加角色",
+  "Use a unique role name starting with a letter, followed by letters, digits, underscores or hyphens (up to 64 characters).":
+    "使用不重复的角色名称，以字母开头，后接字母、数字、下划线或连字符（最多 64 个字符）。",
+  Categories: "类别",
+  "Clear or reassign unavailable role models before saving.":
+    "保存前请清空或重新分配不可用的角色模型。",
+  "Apply OMO models": "应用 OMO 模型",
+  "Use binding default": "使用绑定默认模型",
   "Cox service updates": "Cox 服务更新",
   "Current service": "当前服务",
   "Update the local Cox service from its official npm release.":

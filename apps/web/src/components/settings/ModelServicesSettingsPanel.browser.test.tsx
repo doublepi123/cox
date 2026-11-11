@@ -766,6 +766,40 @@ describe("model services settings", () => {
     expect(state.save).not.toHaveBeenCalled();
   });
 
+  it.each(["agentModels", "categoryModels"])(
+    "blocks deletion for OMO %s references",
+    async (field) => {
+      setup({
+        [id]: {
+          ...configured,
+          models: [...configured.models, { id: "Vendor/Keep", capabilities: null }],
+        },
+      });
+      state.settings = {
+        ...state.settings,
+        providerInstances: {
+          [ProviderInstanceId.make("omo-work")]: {
+            driver: ProviderDriverKind.make("omo"),
+            displayName: "Work OMO",
+            modelService: { serviceId: id, modelIds: [] },
+            config: { [field]: { custom_role: "cox/Vendor/Exact" } },
+          },
+        },
+      };
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await requestModelDeletion(screen);
+      await expect
+        .element(page.getByRole("alert"))
+        .toHaveTextContent(
+          "This model is selected or required by these agents: Work OMO. Change their model bindings before deleting it.",
+        );
+      await expect
+        .element(page.getByRole("button", { name: "Delete", exact: true }))
+        .toBeDisabled();
+      expect(state.save).not.toHaveBeenCalled();
+    },
+  );
+
   it("rechecks bindings and access while the deletion confirmation is open", async () => {
     setup({ [id]: configured });
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);

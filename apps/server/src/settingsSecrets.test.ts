@@ -43,6 +43,32 @@ const settings: ServerSettings = {
 };
 
 describe("removed secret provider references", () => {
+  it("handles OMO API keys through the same secret mapping and removal flow", () => {
+    const current = {
+      ...settings,
+      providerInstances: {
+        [instanceId]: {
+          ...settings.providerInstances[instanceId]!,
+          driver: ProviderDriverKind.make("omo"),
+        },
+      },
+    };
+    const mapped = mapSettingsSecretValues(current, (value) =>
+      typeof value === "string" ? value : "replaced",
+    );
+    expect(mapped.providerInstances[instanceId]?.config).toEqual({
+      apiKey: "replaced",
+      agentDir: "/configured",
+    });
+    const cleaned = withoutRemovedSecretProviderReferences(current, {
+      ...current,
+      secretProviders: { [kept]: provider },
+    });
+    expect(cleaned.providerInstances[instanceId]?.config).toEqual({
+      apiKey: "",
+      agentDir: "/configured",
+    });
+  });
   it("clears only credentials referencing a removed provider, without mutating saved settings", () => {
     const next = { ...settings, secretProviders: { [kept]: provider } };
     const cleaned = withoutRemovedSecretProviderReferences(settings, next);

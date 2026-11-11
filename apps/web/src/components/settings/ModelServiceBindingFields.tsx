@@ -35,7 +35,9 @@ export function ModelServiceBindingFields({
   const models = compatible.filter((model) => allModels || selected.includes(model.id));
   const effectiveDefault = models.some((model) => model.id === binding?.defaultModel)
     ? binding!.defaultModel!
-    : (models[0]?.id ?? "");
+    : driver === "omo"
+      ? (binding?.defaultModel ?? "")
+      : (models[0]?.id ?? "");
   const target = service ? modelServiceAgentProtocol(driver, service) : null;
   const update = (nextServiceId: string, modelIds: ReadonlyArray<string>, defaultModel: string) => {
     if (!nextServiceId) {
@@ -52,9 +54,12 @@ export function ModelServiceBindingFields({
     const nextModels = nextCompatible.filter(
       (model) => modelIds.length === 0 || modelIds.includes(model.id),
     );
-    const nextDefault = nextModels.some((model) => model.id === defaultModel)
-      ? defaultModel
-      : (nextModels[0]?.id ?? "");
+    const nextDefault =
+      driver === "omo"
+        ? defaultModel
+        : nextModels.some((model) => model.id === defaultModel)
+          ? defaultModel
+          : (nextModels[0]?.id ?? "");
     onChange({
       serviceId: ModelServiceId.make(nextServiceId),
       modelIds,
@@ -142,6 +147,14 @@ export function ModelServiceBindingFields({
               disabled={readOnly || !models.length}
               onChange={(event) => update(serviceId, selected, event.target.value)}
             >
+              {driver === "omo" ? <option value="">{t("Use binding default")}</option> : null}
+              {driver === "omo" &&
+              effectiveDefault &&
+              !models.some((model) => model.id === effectiveDefault) ? (
+                <option value={effectiveDefault} disabled>
+                  {t("Unavailable model: {model}", { model: effectiveDefault })}
+                </option>
+              ) : null}
               {models.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.name ?? model.id}

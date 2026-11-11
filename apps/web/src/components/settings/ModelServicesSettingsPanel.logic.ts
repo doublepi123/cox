@@ -4,7 +4,7 @@ import type {
   ModelServiceModel,
   ProviderInstanceConfigMap,
 } from "@t3tools/contracts";
-import { boundModelServiceModels } from "@t3tools/shared/modelServices";
+import { boundModelServiceModels, modelServiceRoleReferences } from "@t3tools/shared/modelServices";
 
 export function modelRemovalBlockingAgents(
   serviceId: ModelServiceId,
@@ -34,6 +34,9 @@ function modelsRemovalBlockingAgents(
     );
     if (
       binding.modelIds.some((modelId) => modelIds.has(modelId)) ||
+      [...modelIds].some((modelId) =>
+        modelServiceRoleReferences(instance).includes(`cox/${modelId}`),
+      ) ||
       (binding.defaultModel !== undefined && modelIds.has(binding.defaultModel)) ||
       remaining.models.length === 0 ||
       (removesAvailableModel &&
@@ -60,7 +63,13 @@ export function unlistedModelRemovalPlan(
     Object.values(instances).flatMap((instance) => {
       const binding = instance.modelService;
       return binding?.serviceId === serviceId
-        ? [...binding.modelIds, ...(binding.defaultModel ? [binding.defaultModel] : [])]
+        ? [
+            ...binding.modelIds,
+            ...(binding.defaultModel ? [binding.defaultModel] : []),
+            ...modelServiceRoleReferences(instance)
+              .filter((slug) => slug.startsWith("cox/"))
+              .map((slug) => slug.slice(4)),
+          ]
         : [];
     }),
   );

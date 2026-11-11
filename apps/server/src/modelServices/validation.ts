@@ -4,7 +4,15 @@ import {
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import { MODEL_SERVICE_AGENT_DRIVERS } from "@t3tools/shared/modelServices";
+import {
+  MODEL_SERVICE_AGENT_DRIVERS,
+  boundModelServiceModels,
+  modelServiceRoleReferences,
+} from "@t3tools/shared/modelServices";
+import { OmoSettings } from "@t3tools/provider-omo/settings";
+import * as Schema from "effect/Schema";
+
+const decodeOmoSettings = Schema.decodeUnknownExit(OmoSettings);
 
 export function validateModelServiceBindings(settings: ServerSettings): string | null {
   for (const service of Object.values(settings.modelServices)) {
@@ -20,6 +28,8 @@ export function validateModelServiceBindings(settings: ServerSettings): string |
     }
   }
   for (const instance of Object.values(settings.providerInstances)) {
+    if (instance.driver === "omo" && decodeOmoSettings(instance.config ?? {})._tag === "Failure")
+      return "OMO settings are invalid. Role names must start with a letter and contain only letters, digits, underscores or hyphens (up to 64 characters).";
     const binding = instance.modelService;
     if (!binding) continue;
     if (!(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver))
@@ -34,6 +44,19 @@ export function validateModelServiceBindings(settings: ServerSettings): string |
       return "The agent binding contains a missing or incompatible model.";
     if (binding.defaultModel && !models.some((model) => model.id === binding.defaultModel))
       return "The default model must be included in the agent binding.";
+    if (instance.driver === "omo") {
+      const available = boundModelServiceModels(service, binding).filter(
+        (model) => model.available !== false,
+      );
+      if (
+        modelServiceRoleReferences(instance).some(
+          (slug) => !available.some((model) => `cox/${model.id}` === slug),
+        )
+      )
+        return "OMO role models must be available models in the bound model service. Clear or reassign roles before removing their models.";
+      if (binding.defaultModel && !available.some((model) => model.id === binding.defaultModel))
+        return "The OMO default model must be available in the agent binding.";
+    }
   }
   return null;
 }

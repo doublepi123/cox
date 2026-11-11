@@ -4286,6 +4286,104 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("isolates OMO native configuration and preserves role settings and exact IDs", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "omo", protocol: "openai-responses" });
+      const fs = yield* FileSystem.FileSystem;
+      const original = h.instances[instanceId]!;
+      const agentModels = { oracle: "cox/Vendor/Exact", custom_role: "" };
+      const categoryModels = { deep: "cox/Vendor/Exact" };
+      const instances = {
+        [instanceId]: {
+          ...original,
+          config: {
+            ...record(original.config),
+            agentModels,
+            categoryModels,
+            agentDir: "/independent/omo",
+            sessionDir: "/independent/sessions",
+            apiKey: "independent-secret",
+          },
+        },
+      };
+      const before = structuredClone(instances);
+      const result = yield* h.gateway.materialize(yield* h.settings.getSettings, instances);
+      const config = record(result[instanceId]!.config);
+      expect(config).toMatchObject({
+        provider: "cox",
+        model: "Vendor/Exact",
+        apiKey: "",
+        modelServiceManaged: true,
+        agentModels,
+        categoryModels,
+        customModels: [{ slug: "cox/Vendor/Exact" }],
+      });
+      expect(String(config.agentDir)).toContain("/model-services/runtime/bound-test/omo");
+      expect(config.sessionDir).toBe(String(config.agentDir) + "/sessions");
+      const models = JSON.parse(yield* fs.readFileString(String(config.agentDir) + "/models.json"));
+      expect(models.providers.cox).toMatchObject({
+        api: "openai-responses",
+        apiKey: "$COX_MODEL_SERVICE_KEY",
+        compat: { supportsStrictMode: true },
+        models: [{ id: "Vendor/Exact", contextWindow: 64000, maxTokens: 4000 }],
+      });
+      expect(JSON.stringify(models)).not.toContain("private-upstream-key");
+      expect(instances).toEqual(before);
+      const { modelService: _binding, ...independent } = instances[instanceId]!;
+      expect(
+        (yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: independent,
+        }))[instanceId],
+      ).toEqual(independent);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["agentModels", "categoryModels"])(
+    "rejects missing explicit OMO %s without model fallback",
+    (field) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo" });
+        for (const slug of ["cox/missing", "Vendor/Exact", "cox/hidden"]) {
+          const result = yield* h.gateway
+            .materialize(yield* h.settings.getSettings, {
+              [instanceId]: { ...h.instances[instanceId]!, config: { [field]: { oracle: slug } } },
+            })
+            .pipe(Effect.flip);
+          expect(result.detail).toContain("explicitly selected OMO role model");
+        }
+        expect(h.calls).toEqual([]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "rejects OMO role models that become unavailable and inherits only an empty main default",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo" });
+        const current = yield* h.settings.getSettings;
+        const changed = {
+          ...current,
+          modelServices: {
+            [serviceId]: {
+              ...current.modelServices[serviceId]!,
+              models: [{ ...service.models[0]!, available: false }, service.models[1]!],
+            },
+          },
+        };
+        const instance = { ...h.instances[instanceId]!, modelService: { serviceId, modelIds: [] } };
+        const result = yield* h.gateway
+          .materialize(changed, {
+            [instanceId]: { ...instance, config: { agentModels: { oracle: "cox/Vendor/Exact" } } },
+          })
+          .pipe(Effect.flip);
+        expect(result.detail).toContain("explicitly selected OMO role model");
+        const mainResult = yield* h.gateway.materialize(changed, h.instances).pipe(Effect.flip);
+        expect(mainResult.detail).toContain("explicitly selected OMO default model");
+        const inherited = yield* h.gateway.materialize(changed, { [instanceId]: instance });
+        expect(record(inherited[instanceId]!.config).model).toBe("hidden");
+      }).pipe(Effect.scoped),
+  );
+
   it.effect.each([
     ["openai-responses", "openai-responses"],
     ["openai-chat", "openai-completions"],

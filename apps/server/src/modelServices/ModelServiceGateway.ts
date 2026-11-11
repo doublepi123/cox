@@ -178,7 +178,34 @@ export const make = Effect.gen(function* () {
           });
         const models = boundModelServiceModels(service, binding);
         const activeModels = models.filter((model) => model.available !== false);
-        if (models.length === 0) {
+        if (instance.driver === "omo") {
+          const roles = [
+            record(instance.config).agentModels,
+            record(instance.config).categoryModels,
+          ];
+          for (const roleModels of roles) {
+            for (const slug of Object.values(record(roleModels))) {
+              if (
+                slug !== "" &&
+                (typeof slug !== "string" ||
+                  !activeModels.some((model) => `cox/${model.id}` === slug))
+              )
+                return yield* new ModelServiceError({
+                  detail:
+                    "An explicitly selected OMO role model is unavailable in the bound model service. Clear or reassign the role before continuing.",
+                });
+            }
+          }
+          if (
+            binding.defaultModel &&
+            !activeModels.some((model) => model.id === binding.defaultModel)
+          )
+            return yield* new ModelServiceError({
+              detail:
+                "The explicitly selected OMO default model is unavailable in the bound model service.",
+            });
+        }
+        if (models.length === 0 || (instance.driver === "omo" && activeModels.length === 0)) {
           bindings.delete(id);
           next[id] = {
             ...instance,
@@ -188,7 +215,8 @@ export const make = Effect.gen(function* () {
           continue;
         }
         const selected =
-          models.find((model) => model.id === binding.defaultModel)?.id ?? models[0]!.id;
+          models.find((model) => model.id === binding.defaultModel)?.id ??
+          (instance.driver === "omo" ? activeModels[0]!.id : models[0]!.id);
         const prior = bindings.get(id);
         const token =
           prior?.binding.serviceId === binding.serviceId
@@ -310,8 +338,8 @@ export const make = Effect.gen(function* () {
           ])
             environment.push({ name, value: selected, sensitive: false });
         }
-        if (instance.driver === "pi") {
-          const agentDir = path.join(directory, "pi");
+        if (instance.driver === "pi" || instance.driver === "omo") {
+          const agentDir = path.join(directory, instance.driver);
           yield* write(path.join(agentDir, "models.json"), {
             providers: {
               cox: {
@@ -322,8 +350,10 @@ export const make = Effect.gen(function* () {
                   ? { compat: { supportsStrictMode: true } }
                   : {}),
                 models: activeModels.map((model) => {
-                  const thinking = modelServiceAgentCapabilities("pi", model.capabilities)
-                    ?.optionDescriptors?.[0];
+                  const thinking = modelServiceAgentCapabilities(
+                    instance.driver,
+                    model.capabilities,
+                  )?.optionDescriptors?.[0];
                   const levels = thinking?.type === "select" ? thinking.options : [];
                   return {
                     id: model.id,
@@ -361,6 +391,7 @@ export const make = Effect.gen(function* () {
             provider: "cox",
             model: selected,
             apiKey: "",
+            ...(instance.driver === "omo" ? { modelServiceManaged: true } : {}),
           });
         }
         if (instance.driver === "opencode") {
