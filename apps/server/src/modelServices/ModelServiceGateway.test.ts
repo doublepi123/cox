@@ -174,6 +174,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
     readonly driver?: string;
     readonly protocol?: ModelServiceConfig["protocols"][number];
+    readonly maxOutputTokens?: number | null;
     readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
     readonly encryptedReasoningReplay?: ModelServiceConfig["encryptedReasoningReplay"];
     readonly modelReplay?: ModelServiceConfig["encryptedReasoningReplay"];
@@ -195,11 +196,17 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
         ...(options.encryptedReasoningReplay
           ? { encryptedReasoningReplay: options.encryptedReasoningReplay }
           : {}),
-        models: service.models.map((model) =>
-          model.id === "Vendor/Exact" && options.modelReplay
-            ? { ...model, encryptedReasoningReplay: options.modelReplay }
-            : model,
-        ),
+        models: service.models.map((model) => {
+          if (model.id !== "Vendor/Exact") return model;
+          const { maxOutputTokens: defaultBudget, ...rest } = model;
+          return {
+            ...rest,
+            ...(options.modelReplay ? { encryptedReasoningReplay: options.modelReplay } : {}),
+            ...(options.maxOutputTokens === null
+              ? {}
+              : { maxOutputTokens: options.maxOutputTokens ?? defaultBudget }),
+          };
+        }),
         recovery: {
           ...DEFAULT_MODEL_SERVICE_RECOVERY,
           retryEnabled: false,
@@ -372,6 +379,7 @@ it.layer(layer)("model service gateway", (it) => {
       Effect.gen(function* () {
         const h = yield* harness({
           protocol: "openai-responses",
+          maxOutputTokens: null,
           respond: () => Response.json(responsesAnswer),
         });
         const original = {
@@ -1251,6 +1259,7 @@ it.layer(layer)("model service gateway", (it) => {
         for (const request of h.calls)
           expect(sentBody(request)).toEqual({
             ...encryptedReasoningInput,
+            max_output_tokens: 4000,
             input: [
               encryptedReasoningInput.input[0],
               {
@@ -1297,7 +1306,10 @@ it.layer(layer)("model service gateway", (it) => {
         },
       });
       yield* h.invoke("/v1/responses", encryptedReasoningInput);
-      expect(sentBody(h.calls[1]!)).toEqual(encryptedReasoningInput);
+      expect(sentBody(h.calls[1]!)).toEqual({
+        ...encryptedReasoningInput,
+        max_output_tokens: 4000,
+      });
     }).pipe(Effect.scoped),
   );
 
@@ -1313,6 +1325,7 @@ it.layer(layer)("model service gateway", (it) => {
       });
       yield* h.invoke("/v1/responses", { ...encryptedReasoningInput, model: "hidden" });
       expect(sentBody(h.calls[0]!)).toEqual({ ...encryptedReasoningInput, model: "hidden" });
+      expect(h.calls).toHaveLength(1);
     }).pipe(Effect.scoped),
   );
 
@@ -1398,6 +1411,7 @@ it.layer(layer)("model service gateway", (it) => {
       const h = yield* harness({
         driver: "pi",
         protocol: "openai-chat",
+        maxOutputTokens: null,
         encryptedReasoningReplay: "omit",
       });
       const body = {
@@ -1419,6 +1433,7 @@ it.layer(layer)("model service gateway", (it) => {
     Effect.gen(function* () {
       const h = yield* harness({
         protocol: "openai-responses",
+        maxOutputTokens: null,
         recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 100 },
         respond: () =>
           Response.json(
@@ -1452,6 +1467,7 @@ it.layer(layer)("model service gateway", (it) => {
         driver: "pi",
         protocol: "openai-responses",
         headersDelayMs: (attempt) => (attempt === 2 ? 10000 : 150),
+        maxOutputTokens: null,
         recovery: {
           retryEnabled: true,
           retryNonTransientErrors: true,
@@ -1654,9 +1670,14 @@ it.layer(layer)("model service gateway", (it) => {
         expect(result.text).not.toContain("opaque-private-ciphertext");
         expect(result.text).not.toContain("invalid_encrypted_content");
         expect(h.calls).toHaveLength(2);
-        expect(sentBody(h.calls[0]!)).toEqual({ ...encryptedReasoningInput, stream });
+        expect(sentBody(h.calls[0]!)).toEqual({
+          ...encryptedReasoningInput,
+          max_output_tokens: 4000,
+          stream,
+        });
         expect(sentBody(h.calls[1]!)).toEqual({
           ...encryptedReasoningInput,
+          max_output_tokens: 4000,
           stream,
           input: [
             encryptedReasoningInput.input[0],
@@ -1681,6 +1702,7 @@ it.layer(layer)("model service gateway", (it) => {
       const h = yield* harness({
         driver: "pi",
         protocol: "openai-responses",
+        maxOutputTokens: null,
         recovery: { retryEnabled: true },
         respond: () =>
           ++calls === 1
@@ -1701,6 +1723,7 @@ it.layer(layer)("model service gateway", (it) => {
       const h = yield* harness({
         driver: "pi",
         protocol: "openai-chat",
+        maxOutputTokens: null,
         recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 100 },
         respond: () => Response.json({ error: invalidEncryptedError }, { status: 400 }),
       });
@@ -1769,6 +1792,7 @@ it.layer(layer)("model service gateway", (it) => {
         const h = yield* harness({
           driver: "pi",
           protocol: "openai-responses",
+          maxOutputTokens: null,
           recovery: {
             retryEnabled: scenario.retryEnabled,
             maxAttempts: scenario.maxAttempts,
@@ -1792,6 +1816,7 @@ it.layer(layer)("model service gateway", (it) => {
         const h = yield* harness({
           driver: "pi",
           protocol: "openai-responses",
+          maxOutputTokens: null,
           recovery: { retryEnabled: true },
           respond: () =>
             ++calls === 1 && kind !== "success"
@@ -1826,6 +1851,7 @@ it.layer(layer)("model service gateway", (it) => {
       const h = yield* harness({
         driver: "pi",
         protocol: "openai-responses",
+        maxOutputTokens: null,
         recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 100 },
         respond: () =>
           new Response(
@@ -3106,11 +3132,317 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect("fills only a missing output budget from the selected model on every retry", () =>
+    withGatewayDiagnostics((messages) =>
+      Effect.gen(function* () {
+        let attempts = 0;
+        const h = yield* harness({
+          maxOutputTokens: 128000,
+          recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 2 },
+          respond: (request): Response => {
+            const body = sentBody(request);
+            expect(body).toMatchObject({
+              max_tokens: 128000,
+              reasoning_effort: "max",
+              messages: [{ role: "user", content: "hello" }],
+            });
+            expect(body.max_completion_tokens).toBeUndefined();
+            return ++attempts === 1
+              ? Response.json({ error: { message: "temporary" } }, { status: 500 })
+              : Response.json({
+                  id: "chat-budget",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "answer" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 1, completion_tokens: 1 },
+                });
+          },
+        });
+        const fiber = yield* h
+          .invoke("/v1/chat/completions", {
+            model: "Vendor/Exact",
+            messages: [{ role: "user", content: "hello" }],
+            reasoning_effort: "max",
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        const response = yield* Fiber.join(fiber);
+        expect(response.status).toBe(200);
+        expect(h.calls).toHaveLength(2);
+        expect(messages).toContainEqual(
+          expect.objectContaining({
+            event: "request_compatibility",
+            action: "output_budget_defaulted",
+            model: "Vendor/Exact",
+            field: "max_tokens",
+            value: 128000,
+            source: "model_metadata",
+          }),
+        );
+      }),
+    ),
+  );
+
+  it.effect.each([
+    { field: "max_tokens", value: 1024 },
+    { field: "max_completion_tokens", value: 8192 },
+    { field: "max_tokens", value: null },
+  ])("keeps the agent's explicit Chat budget %j", ({ field, value }) =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "pi", maxOutputTokens: 128000 });
+      const response = yield* h.invoke("/v1/chat/completions", {
+        model: "Vendor/Exact",
+        messages: [{ role: "user", content: "hello" }],
+        [field]: value,
+      });
+      expect(response.status).toBe(200);
+      expect(sentBody(h.calls[0]!)[field]).toBe(value);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([undefined, 1024, 8192, 256000])(
+    "keeps the original Responses budget through Chat conversion (%s)",
+    (value) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ maxOutputTokens: 128000 });
+        const response = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "hello",
+          ...(value === undefined ? {} : { max_output_tokens: value }),
+        });
+        expect(response.status).toBe(200);
+        expect(sentBody(h.calls[0]!).max_tokens).toBe(value ?? 128000);
+        expect(sentBody(h.calls[0]!).max_completion_tokens).toBeUndefined();
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([null, 0, -1, "8192"])(
+    "does not replace invalid explicit Responses budgets during conversion (%s)",
+    (value) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ maxOutputTokens: 128000 });
+        const response = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "hello",
+          max_output_tokens: value,
+        });
+        expect(response.status).toBe(400);
+        expect(h.calls).toHaveLength(0);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["max_tokens", "max_completion_tokens"])(
+    "keeps explicit Chat %s through Responses conversion",
+    (field) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol: "openai-responses",
+          maxOutputTokens: 128000,
+          respond: () => Response.json(responsesAnswer),
+        });
+        const response = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [{ role: "user", content: "hello" }],
+          [field]: 8192,
+        });
+        expect(response.status).toBe(200);
+        expect(sentBody(h.calls[0]!).max_output_tokens).toBe(8192);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("supports a configured six-minute wait with the metadata budget", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "openai-responses",
+        maxOutputTokens: 128000,
+        recovery: { responseHeadersTimeoutMs: 420000, budgetMs: 600000 },
+        headersDelayMs: 385000,
+        respond: () => Response.json(responsesAnswer),
+      });
+      const fiber = yield* h
+        .invoke("/v1/responses", { model: "Vendor/Exact", input: "hello" })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("386 seconds");
+      const response = yield* Fiber.join(fiber);
+      expect(response.status).toBe(200);
+      expect(sentBody(h.calls[0]!).max_output_tokens).toBe(128000);
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    {
+      protocol: "openai-responses" as const,
+      path: "/v1/responses",
+      body: { input: "hello" },
+    },
+    {
+      protocol: "openai-chat" as const,
+      path: "/v1/chat/completions",
+      body: { messages: [{ role: "user", content: "hello" }] },
+    },
+    {
+      protocol: "anthropic-messages" as const,
+      path: "/v1/messages",
+      body: {
+        messages: [{ role: "user", content: "hello" }],
+        thinking: { type: "enabled", budget_tokens: 16000 },
+      },
+    },
+    {
+      protocol: "gemini" as const,
+      path: "/v1beta/models/Vendor%2FExact:generateContent",
+      body: {
+        contents: [{ role: "user", parts: [{ text: "hello" }] }],
+        generationConfig: { temperature: 0.2 },
+      },
+    },
+  ])(
+    "adds the selected model budget to a native $protocol upstream request",
+    ({ protocol, path, body }) =>
+      Effect.gen(function* () {
+        const responseBody =
+          protocol === "openai-responses"
+            ? responsesAnswer
+            : protocol === "anthropic-messages"
+              ? {
+                  id: "message-budget",
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "text", text: "answer" }],
+                  stop_reason: "end_turn",
+                }
+              : protocol === "gemini"
+                ? { candidates: [{ content: { role: "model", parts: [{ text: "answer" }] } }] }
+                : undefined;
+        const h = yield* harness({
+          protocol,
+          maxOutputTokens: 128000,
+          ...(responseBody ? { respond: () => Response.json(responseBody) } : {}),
+        });
+        const response = yield* h.invoke(path, { ...body, model: "Vendor/Exact" });
+        expect(response.status).toBe(200);
+        const sent = sentBody(h.calls[0]!);
+        expect(
+          protocol === "openai-responses"
+            ? sent.max_output_tokens
+            : protocol === "openai-chat"
+              ? sent.max_tokens
+              : protocol === "anthropic-messages"
+                ? sent.max_tokens
+                : sent.generationConfig.maxOutputTokens,
+        ).toBe(128000);
+        if (protocol === "anthropic-messages")
+          expect(sent.thinking).toEqual({ type: "enabled", budget_tokens: 16000 });
+        if (protocol === "gemini") expect(sent.generationConfig.temperature).toBe(0.2);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not add a model budget to token counting or unknown metadata", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ protocol: "anthropic-messages" });
+      const response = yield* h.invoke("/v1/messages/count_tokens", {
+        model: "Vendor/Exact",
+        messages: [{ role: "user", content: "hello" }],
+      });
+      expect(sentBody(h.calls[0]!).max_tokens).toBeUndefined();
+      const unknown = yield* harness({ driver: "pi", maxOutputTokens: null });
+      expect(
+        (yield* unknown.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+        })).status,
+      ).toBe(200);
+      expect(sentBody(unknown.calls[0]!).max_tokens).toBeUndefined();
+      expect(response.status).not.toBe(401);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("uses the actual requested model's metadata, not the binding default", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "openai-responses",
+        respond: () => Response.json(responsesAnswer),
+      });
+      const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+      yield* h.settings.updateSettings({
+        modelServices: {
+          [serviceId]: {
+            ...current,
+            models: current.models.map((model) => ({
+              ...model,
+              maxOutputTokens: model.id === "Vendor/Exact" ? 16384 : 128000,
+            })),
+          },
+        },
+      });
+      yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        [instanceId]: {
+          ...h.instances[instanceId]!,
+          modelService: { serviceId, modelIds: [], defaultModel: "hidden" },
+        },
+      });
+      const response = yield* h.invoke("/v1/responses", {
+        model: "Vendor/Exact",
+        input: "hello",
+      });
+      expect(response.status).toBe(200);
+      expect(sentBody(h.calls[0]!).max_output_tokens).toBe(16384);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["anthropic-messages", "gemini"] as const)(
+    "normalizes Responses budgets after conversion to %s without changing independent settings",
+    (protocol) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol,
+          maxOutputTokens: 128000,
+          respond: () =>
+            Response.json(
+              protocol === "gemini"
+                ? {
+                    candidates: [
+                      {
+                        content: { role: "model", parts: [{ text: "answer" }] },
+                        finishReason: "STOP",
+                      },
+                    ],
+                  }
+                : {
+                    id: "budget-message",
+                    type: "message",
+                    role: "assistant",
+                    content: [{ type: "text", text: "answer" }],
+                    stop_reason: "end_turn",
+                    usage: { input_tokens: 1, output_tokens: 1 },
+                  },
+            ),
+        });
+        for (const value of [undefined, 1024]) {
+          const response = yield* h.invoke("/v1/responses", {
+            model: "Vendor/Exact",
+            input: "hello",
+            ...(value === undefined ? {} : { max_output_tokens: value }),
+          });
+          expect(response.status).toBe(200);
+          const sent = sentBody(h.calls.at(-1)!);
+          expect(
+            protocol === "gemini" ? sent.generationConfig.maxOutputTokens : sent.max_tokens,
+          ).toBe(value ?? 128000);
+        }
+      }).pipe(Effect.scoped),
+  );
+
   it.effect(
     "forwards native requests without changing tools, exact IDs, or extra request fields",
     () =>
       Effect.gen(function* () {
-        const h = yield* harness({ driver: "pi" });
+        const h = yield* harness({ driver: "pi", maxOutputTokens: null });
         const body = {
           model: "Vendor/Exact",
           messages: [{ role: "user", content: "hello" }],
@@ -4010,6 +4342,7 @@ it.layer(layer)("model service gateway", (it) => {
       const h = yield* harness({
         driver: "pi",
         protocol: "openai-responses",
+        maxOutputTokens: null,
         respond: () => Response.json({ id: "offline", status: "completed", output: [] }),
       });
       const parameters = {

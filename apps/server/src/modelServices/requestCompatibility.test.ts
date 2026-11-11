@@ -1,7 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { ModelServiceProtocol } from "@t3tools/contracts";
 
-import { modelServiceRequestBody, withoutEncryptedReasoning } from "./requestCompatibility.ts";
+import {
+  modelServiceRequestBody,
+  modelServiceRequestOutputBudget,
+  withoutEncryptedReasoning,
+} from "./requestCompatibility.ts";
 
 describe("encrypted Responses reasoning compatibility", () => {
   it("removes only reasoning ciphertext and leaves messages and tool history untouched", () => {
@@ -64,6 +68,168 @@ describe("encrypted Responses reasoning compatibility", () => {
     { input: [null, "test", 1, ["nested"], { role: "user", content: "test" }] },
   ])("does not change requests without encrypted reasoning: %j", (body) => {
     expect(withoutEncryptedReasoning(body)).toBe(body);
+  });
+});
+
+describe("model metadata output budgets", () => {
+  it.each([
+    {
+      protocol: "openai-responses" as const,
+      body: { input: "hello", reasoning: { effort: "max" } },
+      field: "max_output_tokens",
+    },
+    {
+      protocol: "openai-chat" as const,
+      body: { messages: [], reasoning_effort: "high" },
+      field: "max_tokens",
+    },
+    {
+      protocol: "openai-chat" as const,
+      body: { messages: [], reasoning_effort: "max" },
+      field: "max_completion_tokens",
+      model: "vendor/o3",
+    },
+    {
+      protocol: "anthropic-messages" as const,
+      body: { messages: [], thinking: { type: "enabled", budget_tokens: 16000 } },
+      field: "max_tokens",
+    },
+    {
+      protocol: "gemini" as const,
+      body: { contents: [], generationConfig: { temperature: 0.2, candidateCount: 1 } },
+      field: "generationConfig.maxOutputTokens",
+    },
+  ])("uses the selected model's output budget for $protocol", ({ protocol, body, ...options }) => {
+    const model = "model" in options ? options.model : "claude-opus-5-5";
+    const result = modelServiceRequestOutputBudget(protocol, model, body, 128000);
+    expect(result.field).toBe(options.field);
+    const value = options.field.includes(".")
+      ? (result.body.generationConfig as Record<string, unknown>).maxOutputTokens
+      : result.body[options.field];
+    expect(value).toBe(128000);
+    expect(result.body).toMatchObject(body);
+    expect(result.body).not.toBe(body);
+    if (protocol === "openai-chat" && options.field === "max_completion_tokens") {
+      expect(result.body.max_tokens).toBeUndefined();
+    }
+    if (protocol === "anthropic-messages") expect(body.thinking.budget_tokens).toBe(16000);
+  });
+
+  it.each([
+    { protocol: "openai-responses" as const, body: { max_output_tokens: 1024 } },
+    { protocol: "openai-chat" as const, body: { max_tokens: 8192 } },
+    { protocol: "openai-chat" as const, body: { max_completion_tokens: 1024 } },
+    { protocol: "anthropic-messages" as const, body: { max_tokens: null } },
+    { protocol: "gemini" as const, body: { generationConfig: { maxOutputTokens: 8192 } } },
+    { protocol: "gemini" as const, body: { generationConfig: { maxOutputTokens: "bad" } } },
+  ])("does not replace an explicit budget: $protocol $body", ({ protocol, body }) => {
+    const result = modelServiceRequestOutputBudget(protocol, "model", body, 128000);
+    expect(result).toEqual({ body });
+    expect(result.body).toBe(body);
+  });
+
+  it.each([undefined, null, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "does not guess when model metadata is invalid: %s",
+    (maxOutputTokens) => {
+      const body = { messages: [] };
+      expect(
+        modelServiceRequestOutputBudget(
+          "openai-chat",
+          "model",
+          body,
+          maxOutputTokens as number | undefined,
+        ),
+      ).toEqual({ body });
+    },
+  );
+
+  it("keeps malformed generation configuration unchanged", () => {
+    for (const generationConfig of [null, "invalid", []]) {
+      const body = { generationConfig };
+      expect(modelServiceRequestOutputBudget("gemini", "model", body, 128000)).toEqual({ body });
+    }
+  });
+
+  it.each([1024, 8192, 256000])("preserves an explicit budget across conversion: %s", (value) => {
+    for (const [protocol, body] of [
+      ["openai-responses", { max_output_tokens: value }],
+      ["openai-chat", { max_completion_tokens: value }],
+      ["anthropic-messages", { max_tokens: value }],
+      ["gemini", { generationConfig: { maxOutputTokens: value } }],
+    ] as const) {
+      const converted = { max_tokens: 4096, reasoning_effort: "max" };
+      if (protocol === "openai-chat") continue;
+      const result = modelServiceRequestOutputBudget(
+        "openai-chat",
+        "vendor/o3",
+        converted,
+        128000,
+        {
+          protocol,
+          body,
+        },
+      );
+      expect(result.body).toEqual({ max_completion_tokens: value, reasoning_effort: "max" });
+      expect(converted.max_tokens).toBe(4096);
+      expect(result.field).toBeUndefined();
+    }
+  });
+
+  it.each([null, 0, -1, "8192", 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects an unrepresentable explicit budget during conversion: %s",
+    (value) => {
+      const converted = { max_tokens: 4096 };
+      const result = modelServiceRequestOutputBudget("openai-chat", "model", converted, 128000, {
+        protocol: "openai-responses",
+        body: { max_output_tokens: value },
+      });
+      expect(result.body).toBe(converted);
+      expect(result.error).toContain("explicit output token budget");
+    },
+  );
+
+  it("uses model metadata instead of a converter default only when the agent omitted its budget", () => {
+    const converted = { max_tokens: 4096, thinking: { budget_tokens: 1000 } };
+    expect(
+      modelServiceRequestOutputBudget("anthropic-messages", "model", converted, 128000, {
+        protocol: "openai-responses",
+        body: { input: "hello" },
+      }),
+    ).toMatchObject({
+      body: { max_tokens: 128000, thinking: { budget_tokens: 1000 } },
+      field: "max_tokens",
+    });
+    expect(
+      modelServiceRequestOutputBudget("anthropic-messages", "model", converted, undefined, {
+        protocol: "openai-responses",
+        body: { input: "hello" },
+      }),
+    ).toEqual({ body: converted });
+  });
+
+  it("rejects conflicting Chat fields rather than choosing one during conversion", () => {
+    const result = modelServiceRequestOutputBudget("openai-responses", "model", {}, 128000, {
+      protocol: "openai-chat",
+      body: { max_tokens: 1024, max_completion_tokens: 8192 },
+    });
+    expect(result.error).toContain("Conflicting");
+  });
+
+  it("does not inject metadata outside Gemini's integer range", () => {
+    const body = { generationConfig: { temperature: 0.2 } };
+    expect(modelServiceRequestOutputBudget("gemini", "model", body, 2147483648)).toEqual({ body });
+    expect(
+      modelServiceRequestOutputBudget("gemini", "model", body, 2147483648, {
+        protocol: "openai-responses",
+        body: {},
+      }),
+    ).toEqual({ body });
+    expect(
+      modelServiceRequestOutputBudget("gemini", "model", body, 128000, {
+        protocol: "openai-responses",
+        body: { max_output_tokens: 2147483648 },
+      }).error,
+    ).toBeDefined();
   });
 });
 

@@ -1,6 +1,115 @@
 import type { ModelServiceProtocol } from "@t3tools/contracts";
 
 const GPT_REASONING_MODEL = /^gpt-[5-9](?:[.-]|$)/i;
+const CHAT_COMPLETION_BUDGET_MODEL = /^(?:gpt-[5-9]|o[1-9])(?:[.-]|$)/i;
+
+function outputBudgetFields(
+  protocol: ModelServiceProtocol,
+  body: Readonly<Record<string, unknown>>,
+): ReadonlyArray<readonly [string, unknown]> {
+  if (protocol === "gemini") {
+    const config = body.generationConfig;
+    return config !== null && typeof config === "object" && "maxOutputTokens" in config
+      ? [["generationConfig.maxOutputTokens", config.maxOutputTokens]]
+      : [];
+  }
+  const fields =
+    protocol === "openai-chat"
+      ? ["max_tokens", "max_completion_tokens"]
+      : [protocol === "openai-responses" ? "max_output_tokens" : "max_tokens"];
+  return fields.filter((field) => field in body).map((field) => [field, body[field]] as const);
+}
+
+export function modelServiceRequestOutputBudget(
+  protocol: ModelServiceProtocol,
+  model: string,
+  body: Readonly<Record<string, unknown>>,
+  maxOutputTokens: number | undefined,
+  original?: {
+    readonly protocol: ModelServiceProtocol;
+    readonly body: Readonly<Record<string, unknown>>;
+  },
+): {
+  readonly body: Readonly<Record<string, unknown>>;
+  readonly field?: string;
+  readonly error?: string;
+} {
+  if (original && original.protocol !== protocol) {
+    const fields = outputBudgetFields(original.protocol, original.body);
+    if (fields.length > 1)
+      return { body, error: "Conflicting output token budget fields cannot be converted." };
+    const explicit = fields[0];
+    const value = explicit ? explicit[1] : maxOutputTokens;
+    if (
+      explicit &&
+      (typeof value !== "number" ||
+        !Number.isSafeInteger(value) ||
+        value <= 0 ||
+        ((protocol === "gemini" || original.protocol === "gemini") && value > 2147483647))
+    )
+      return {
+        body,
+        error: "The explicit output token budget cannot be represented by the upstream protocol.",
+      };
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) return { body };
+    if (protocol === "gemini" && value > 2147483647) return { body };
+    const converted = { ...body };
+    if (protocol === "gemini") {
+      const config = converted.generationConfig;
+      if (config !== null && typeof config === "object" && !Array.isArray(config)) {
+        const { maxOutputTokens: _budget, ...rest } = config as Record<string, unknown>;
+        converted.generationConfig = rest;
+      }
+    } else {
+      for (const [field] of outputBudgetFields(protocol, converted)) delete converted[field];
+    }
+    const result = modelServiceRequestOutputBudget(protocol, model, converted, value);
+    return explicit ? { body: result.body } : result;
+  }
+  if (
+    maxOutputTokens === undefined ||
+    !Number.isSafeInteger(maxOutputTokens) ||
+    maxOutputTokens <= 0
+  )
+    return { body };
+  if (protocol === "gemini" && maxOutputTokens > 2147483647) return { body };
+  switch (protocol) {
+    case "openai-responses":
+      return "max_output_tokens" in body
+        ? { body }
+        : { body: { ...body, max_output_tokens: maxOutputTokens }, field: "max_output_tokens" };
+    case "openai-chat": {
+      if ("max_tokens" in body || "max_completion_tokens" in body) return { body };
+      const field = CHAT_COMPLETION_BUDGET_MODEL.test(model.slice(model.lastIndexOf("/") + 1))
+        ? "max_completion_tokens"
+        : "max_tokens";
+      return { body: { ...body, [field]: maxOutputTokens }, field };
+    }
+    case "anthropic-messages":
+      return "max_tokens" in body
+        ? { body }
+        : { body: { ...body, max_tokens: maxOutputTokens }, field: "max_tokens" };
+    case "gemini": {
+      const generationConfig = body.generationConfig;
+      if (generationConfig !== undefined) {
+        if (
+          generationConfig === null ||
+          typeof generationConfig !== "object" ||
+          Array.isArray(generationConfig)
+        )
+          return { body };
+        if ("maxOutputTokens" in generationConfig) return { body };
+      }
+      return {
+        body: {
+          ...body,
+          generationConfig: { ...generationConfig, maxOutputTokens },
+        },
+        field: "generationConfig.maxOutputTokens",
+      };
+    }
+  }
+}
 
 export function withoutEncryptedReasoning(
   body: Readonly<Record<string, unknown>>,

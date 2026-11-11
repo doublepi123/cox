@@ -33,7 +33,11 @@ import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
 import { makeModelServiceStreamMonitor, ModelServiceStreamError } from "./streamIntegrity.ts";
 import { chatResponseOutput } from "./responseOutput.ts";
-import { modelServiceRequestBody, withoutEncryptedReasoning } from "./requestCompatibility.ts";
+import {
+  modelServiceRequestBody,
+  modelServiceRequestOutputBudget,
+  withoutEncryptedReasoning,
+} from "./requestCompatibility.ts";
 import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
 import {
   modelServiceHasReasoning,
@@ -624,11 +628,28 @@ export const make = Effect.gen(function* () {
         const headers = modelServiceHeaders(service, protocol);
         if (protocol === "anthropic-messages" && request.headers["anthropic-beta"])
           headers["anthropic-beta"] = request.headers["anthropic-beta"];
-        let requestBody = modelServiceRequestBody(
-          protocol,
-          selected.id,
-          bridge ? record(bridge.body) : body,
-        );
+        const budget = countTokens
+          ? { body }
+          : modelServiceRequestOutputBudget(
+              protocol,
+              selected.id,
+              bridge ? record(bridge.body) : body,
+              selected.maxOutputTokens,
+              bridge ? { protocol: incoming, body } : undefined,
+            );
+        if (budget.error)
+          return yield* new ModelServiceError({ detail: budget.error, status: 400 });
+        if (budget.field)
+          yield* diagnostic({
+            event: "request_compatibility",
+            attempt: attemptId,
+            action: "output_budget_defaulted",
+            model: selected.id,
+            field: budget.field,
+            value: selected.maxOutputTokens,
+            source: "model_metadata",
+          });
+        let requestBody = modelServiceRequestBody(protocol, selected.id, budget.body);
         if (protocol === "openai-responses") {
           const cleaned = withoutEncryptedReasoning(requestBody);
           hasEncryptedReasoning ||= cleaned !== requestBody;
