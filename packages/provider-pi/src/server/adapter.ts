@@ -94,7 +94,7 @@ const PI_UNSOLICITED_ACTIVITY_ERROR =
 const SETTLE_PROBE_MAX_ATTEMPTS = 3;
 const SETTLE_PROBE_RETRY_DELAY = Duration.millis(100);
 
-const PiProviderCapabilitiesV2 = {
+export const PiProviderCapabilitiesV2 = {
   runtimePolicy: { enforcement: "client-boundary" },
   sessions: {
     supportsMultipleProviderThreadsPerSession: false,
@@ -192,6 +192,14 @@ export interface PiAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
   readonly settings: PiSettings;
   readonly environment: NodeJS.ProcessEnv;
+  readonly runtime?: {
+    readonly driver: ProviderDriverKind;
+    readonly label: string;
+    readonly connect: typeof makePiRpcConnection;
+    readonly materializeExtension: typeof materializePiT3McpExtension;
+    readonly buildLaunch: typeof buildPiRpcLaunch;
+    readonly capabilities?: OrchestrationV2ProviderCapabilities;
+  };
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -302,13 +310,6 @@ function piToolOutput(result: unknown, toolName: string): unknown {
     content,
     ...(structured === undefined ? {} : { structuredContent: structured }),
   };
-}
-
-function providerRef(
-  nativeId: string,
-  strength: "strong" | "weak" = "strong",
-): OrchestrationV2ProviderRef {
-  return { driver: PI_PROVIDER, nativeId, strength };
 }
 
 const PI_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
@@ -429,6 +430,14 @@ interface PiWake {
 export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
   options: PiAdapterV2Options,
 ) {
+  const PI_PROVIDER = options.runtime?.driver ?? ProviderDriverKind.make("pi");
+  const providerRef = (
+    nativeId: string,
+    strength: "strong" | "weak" = "strong",
+  ): OrchestrationV2ProviderRef => ({ driver: PI_PROVIDER, nativeId, strength });
+  const connect = options.runtime?.connect ?? makePiRpcConnection;
+  const materializeExtension = options.runtime?.materializeExtension ?? materializePiT3McpExtension;
+  const buildLaunch = options.runtime?.buildLaunch ?? buildPiRpcLaunch;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const agentScope = yield* AgentScope;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -448,7 +457,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
     instanceId: options.instanceId,
     driver: PI_PROVIDER,
     getCapabilities: Effect.fn("PiAdapter.getCapabilities")(function () {
-      return Effect.succeed(PiProviderCapabilitiesV2);
+      return Effect.succeed(options.runtime?.capabilities ?? PiProviderCapabilitiesV2);
     }),
     planSelectionTransition: Effect.fn("PiAdapter.planSelectionTransition")(function () {
       return Effect.succeed(turnScopedSelectionTransition());
@@ -473,7 +482,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         );
       // Always inject the permission hook even without MCP credentials; otherwise Supervised becomes unrestricted.
       const extensionPath = yield* provideCacheFs(
-        materializePiT3McpExtension(host.paths.providerStatusCacheDir),
+        materializeExtension(host.paths.providerStatusCacheDir),
       );
       const resolvedLaunchArgs = configuredPiLaunchArgs(options.settings);
       if (!resolvedLaunchArgs.ok) {
@@ -483,7 +492,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         piEnvironment(options.settings, options.environment),
         input.providerSessionId,
       );
-      const launch = buildPiRpcLaunch({
+      const launch = buildLaunch({
         launchArgs: resolvedLaunchArgs.args,
         environment: sessionEnvironment,
         mcpSession,
@@ -491,9 +500,9 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         runtimeMode: input.runtimePolicy.runtimeMode,
       });
       const scopedLaunch = yield* agentScope.wrap({
-        command: options.settings.binaryPath || "pi",
+        command: options.settings.binaryPath || options.runtime?.label.toLowerCase() || "pi",
         args: launch.args,
-        name: "pi",
+        name: options.runtime?.label.toLowerCase() ?? "pi",
         threadId: input.threadId,
         env: launch.env,
       });
@@ -502,7 +511,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       const stopScope =
         scopeUnit === undefined ? Effect.void : yield* Effect.cached(agentScope.stop(scopeUnit));
       yield* Effect.addFinalizer(() => stopScope);
-      const connection: PiRpcConnection = yield* makePiRpcConnection({
+      const connection: PiRpcConnection = yield* connect({
         command: scopedLaunch.command,
         args: scopedLaunch.args,
         cwd,
@@ -1284,20 +1293,28 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         const results = recordField(recordField(resultRecord, "details"), "results");
         if (!Array.isArray(results)) return;
         const emittedAt = yield* DateTime.now;
-        const parentNodeId = idAllocator.derive.nodeFromProviderItem({
-          driver: PI_PROVIDER,
-          nativeItemId: toolCallId,
-        });
+        const parentNodeId =
+          toolCallId.length === 0
+            ? turn.turnInput.rootNodeId
+            : idAllocator.derive.nodeFromProviderItem({
+                driver: PI_PROVIDER,
+                nativeItemId: toolCallId,
+              });
         for (const [index, result] of results.entries()) {
           const agent = recordString(result, "agent");
           const task = recordString(result, "task");
           if (agent === undefined || task === undefined) continue;
-          const nativeTaskId = `${toolCallId}:subagent:${recordNumber(result, "step") ?? index}`;
+          const nativeTaskId =
+            recordString(result, "nativeTaskId") ??
+            `${toolCallId}:subagent:${recordNumber(result, "step") ?? index}`;
           const subagentId = idAllocator.derive.nodeFromProviderItem({
             driver: PI_PROVIDER,
             nativeItemId: nativeTaskId,
           });
-          const startedAt = turn.toolStartedAt.get(nativeTaskId) ?? emittedAt;
+          const nativeStartedAt = Date.parse(recordString(result, "startedAt") ?? "");
+          const startedAt =
+            turn.toolStartedAt.get(nativeTaskId) ??
+            (Number.isFinite(nativeStartedAt) ? DateTime.makeUnsafe(nativeStartedAt) : emittedAt);
           turn.toolStartedAt.set(nativeTaskId, startedAt);
           const finished = completed || recordField(result, "finished") === true;
           const stopReason = recordString(result, "stopReason");
@@ -1331,7 +1348,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               providerInstanceId: options.instanceId,
               providerThreadId: turn.turnInput.providerThread.id,
               childThreadId: null,
-              nativeTaskRef: providerRef(nativeTaskId),
+              nativeTaskRef: providerRef(recordString(result, "taskRef") ?? nativeTaskId),
               prompt: task,
               title: agent,
               model: recordString(result, "model") ?? null,
@@ -1897,6 +1914,10 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         const state = threadState;
         const turn = state?.activeTurn ?? null;
         switch (event["type"]) {
+          case "t3.native_subagents": {
+            if (turn !== null) yield* emitSubagentTasks(turn, "", event, false);
+            return;
+          }
           case "agent_start": {
             if (
               turn === null &&
@@ -3322,7 +3343,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                   });
             // CLI --fork uses Pi's own session format and sets the destination cwd. RPC
             // switch_session/clone alone would retain the source cwd.
-            const forkLaunch = buildPiRpcLaunch({
+            const forkLaunch = buildLaunch({
               launchArgs: resolvedLaunchArgs.args,
               environment: sessionEnvironment,
               mcpSession: undefined,
@@ -3333,8 +3354,9 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             });
             const nativeId = yield* Effect.scoped(
               Effect.gen(function* () {
-                const forkConnection = yield* makePiRpcConnection({
-                  command: options.settings.binaryPath || "pi",
+                const forkConnection = yield* connect({
+                  command:
+                    options.settings.binaryPath || options.runtime?.label.toLowerCase() || "pi",
                   args: [...forkLaunch.args, "--fork", sourceFile],
                   cwd,
                   env: forkLaunch.env,

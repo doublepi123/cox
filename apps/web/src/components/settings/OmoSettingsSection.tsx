@@ -21,6 +21,7 @@ const AGENTS = [
   "metis",
   "momus",
   "atlas",
+  "multimodal-looker",
 ];
 const CATEGORIES = [
   "visual-engineering",

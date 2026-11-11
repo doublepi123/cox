@@ -225,9 +225,11 @@ native model settings. Cox does not advertise Fast when neither catalog reports 
 
 ### OMO Native
 
-OMO Native is an independent, disabled-by-default provider. Install the OMO Native CLI,
-then enable it in **Settings → Providers** and set **Binary path** to `omo` or its absolute
-path. Independent instances can use native credentials and configuration.
+OMO Native is an independent, disabled-by-default provider. Enable it in **Settings →
+Providers** and use **Install** to install the tested `omo-ai 5.1.69` release into Cox's
+tools directory. An existing official `omo` binary can also be selected by absolute path.
+Independent instances keep credentials, native settings, sessions and tasks under Cox's
+state directory; an explicit OMO configuration directory can use existing credentials.
 
 Bind OMO Native to one model service to share its available tool-capable models. Cox writes
 an isolated `model-services/runtime/<instance>/omo/models.json` and session directory under
@@ -242,6 +244,15 @@ Managed roles can select only available models from that instance's service bind
 Before removing or ignoring a referenced model, clear or reassign its roles. If an explicitly
 selected role or main model becomes unavailable, Cox reports an error and preserves the
 selection so it can be repaired in settings. It does not silently choose another role model.
+
+OMO owns its native tasks, task results, bundled skills and continuation loops. Cox waits
+for the root lifecycle to finish, including children and background work. Stop pauses the
+root and cancels its unfinished tasks; a new message continues the saved conversation.
+Native child approvals are presented through Cox. Managed sessions use only bound models,
+including explicit task model overrides, and keep upstream credentials in the Cox gateway.
+Native terminal onboarding, terminal side panels, telemetry, device services, remote thread
+tools and automatic global memory are not enabled in Cox sessions. Cox injects its own
+role configuration without writing the user's global or project `omo.json`.
 
 ## Development
 

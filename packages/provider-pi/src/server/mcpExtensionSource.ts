@@ -349,6 +349,8 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
   };
 
   pi.on("tool_call", async (event, ctx) => {
+    const native = pi as unknown as { getPermissionPreset?: () => string | undefined };
+    if (env("COX_NATIVE_PERMISSIONS") === "1" && native.getPermissionPreset?.() !== undefined) return;
     const mode = runtimeMode();
     if (mode === "full-access") return;
     if ((event.toolName === "tool_search" ? hasBuiltinToolSearch() : READ_ONLY_TOOLS.has(event.toolName)) || isReadOnlyMcpTool(event.toolName)) {

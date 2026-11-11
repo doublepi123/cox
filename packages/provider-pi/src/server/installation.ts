@@ -33,7 +33,23 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
   readonly binaryPath?: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly onChanged: Effect.Effect<void>;
+  readonly runtime?: {
+    readonly driver: string;
+    readonly command: string;
+    readonly label: string;
+    readonly packageName: string;
+    readonly version: string;
+    readonly minimumVersion: string;
+  };
 }) {
+  const runtime = options.runtime ?? {
+    driver: "pi",
+    command: "pi",
+    label: "Pi",
+    packageName: "@earendil-works/pi-coding-agent",
+    version: "latest",
+    minimumVersion: MINIMUM_PI_VERSION,
+  };
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
@@ -44,12 +60,15 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
   const directory = path.join(
     options.baseDir,
     "tools",
-    "pi",
+    runtime.driver,
     encodeURIComponent(options.instanceId),
   );
   const current = path.join(directory, "current");
   const bin = path.join(current, "node_modules", ".bin");
-  const executablePath = path.join(bin, platform === "win32" ? "pi.cmd" : "pi");
+  const executablePath = path.join(
+    bin,
+    platform === "win32" ? `${runtime.command}.cmd` : runtime.command,
+  );
   const pathKey =
     Object.keys(options.environment).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
   const environment = {
@@ -58,13 +77,13 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
       .filter(Boolean)
       .join(platform === "win32" ? ";" : ":"),
   };
-  const customBinary = Boolean(options.binaryPath && options.binaryPath !== "pi");
+  const customBinary = Boolean(options.binaryPath && options.binaryPath !== runtime.command);
   const error = (operation: string, detail: string) =>
     new ProviderSetupError({ instanceId: options.instanceId, operation, detail });
   const lock = yield* Semaphore.make(1);
   let running: { readonly id: string; readonly fiber: Fiber.Fiber<void> } | undefined;
   const state = yield* SubscriptionRef.make<ProviderInstallState>({
-    driver: ProviderDriverKind.make("pi"),
+    driver: ProviderDriverKind.make(runtime.driver),
     operationId: null,
     phase: "idle",
     downloadedBytes: 0,
@@ -97,14 +116,14 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
     if (code !== 0)
       return yield* error(
         "install",
-        "Could not install Pi. Check your connection and Node.js/npm installation, then retry.",
+        `Could not install ${runtime.label}. Check your connection and Node.js/npm installation, then retry.`,
       );
     return stdout.text;
   }, Effect.scoped);
   const inspect = Effect.gen(function* () {
     if (running) return;
     const operationId = (yield* SubscriptionRef.get(state)).operationId;
-    const resolved = yield* resolveCommandPath(options.binaryPath || "pi", {
+    const resolved = yield* resolveCommandPath(options.binaryPath || runtime.command, {
       env: environment,
     }).pipe(Effect.provideService(CommandResolutionCache, new Map()));
     if (!resolved) return;
@@ -132,7 +151,11 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
     const npm = yield* resolveCommandPath(platform === "win32" ? "npm.cmd" : "npm", {
       env: environment,
     });
-    if (!npm) return yield* error("install", "Installing Pi requires Node.js and npm on PATH.");
+    if (!npm)
+      return yield* error(
+        "install",
+        `Installing ${runtime.label} requires Node.js and npm on PATH.`,
+      );
     yield* command(npm, [
       "install",
       "--prefix",
@@ -143,7 +166,7 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
       "--include=optional",
       "--global=false",
       "--workspaces=false",
-      "@earendil-works/pi-coding-agent@latest",
+      `${runtime.packageName}@${runtime.version}`,
     ]);
     yield* SubscriptionRef.update(state, (value): ProviderInstallState => ({
       ...value,
@@ -151,10 +174,10 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
     }));
     const stagedBinary = path.join(staging, "node_modules", ".bin", path.basename(executablePath));
     const version = parseGenericCliVersion(yield* command(stagedBinary, ["--version"]));
-    if (!version || compareSemverVersions(version, MINIMUM_PI_VERSION) < 0)
+    if (!version || compareSemverVersions(version, runtime.minimumVersion) < 0)
       return yield* error(
         "install",
-        "The downloaded Pi CLI did not report a supported version. Retry installation.",
+        `The downloaded ${runtime.label} CLI did not report a supported version. Retry installation.`,
       );
     const id = yield* crypto.randomUUIDv4();
     const release = path.join(directory, "releases", id);
@@ -203,8 +226,8 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
               ...value,
               phase: Cause.hasInterruptsOnly(result.cause) ? "cancelled" : "failed",
               message: Cause.hasInterruptsOnly(result.cause)
-                ? "Pi installation cancelled."
-                : "Could not install Pi. Check your connection and Node.js/npm installation, then retry.",
+                ? `${runtime.label} installation cancelled.`
+                : `Could not install ${runtime.label}. Check your connection and Node.js/npm installation, then retry.`,
             },
       );
     }),
@@ -216,7 +239,7 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
         if (customBinary)
           return yield* error(
             "install",
-            "Clear the custom binary path before installing Pi in Cox.",
+            `Clear the custom binary path before installing ${runtime.label} in Cox.`,
           );
         const id = yield* crypto.randomUUIDv4();
         yield* SubscriptionRef.update(state, (value): ProviderInstallState => ({
@@ -233,7 +256,7 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
       Effect.mapError((cause) =>
         cause._tag === "ProviderSetupError"
           ? cause
-          : error("install", "Could not start Pi installation. Try again."),
+          : error("install", `Could not start ${runtime.label} installation. Try again.`),
       ),
     );
   const cancel = (operationId: string) =>

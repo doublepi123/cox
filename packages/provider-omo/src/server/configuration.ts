@@ -1,0 +1,191 @@
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+import { resolveCommandPath } from "@t3tools/shared/shell";
+import { piEnvironment } from "@t3tools/provider-pi/server";
+import type { OmoSettings } from "../settings.ts";
+
+export const OMO_VERSION = "5.1.69";
+const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodePackageManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ name: Schema.optional(Schema.String) })),
+);
+
+const agents = [
+  "sisyphus",
+  "atlas",
+  "hephaestus",
+  "prometheus",
+  "metis",
+  "momus",
+  "oracle",
+  "librarian",
+  "explore",
+  "multimodal-looker",
+];
+const categories = [
+  "visual-engineering",
+  "ultrabrain",
+  "deep",
+  "artistry",
+  "quick",
+  "unspecified-low",
+  "unspecified-high",
+  "writing",
+];
+
+export function omoEnvironment(
+  settings: OmoSettings,
+  environment: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const next = piEnvironment(settings, environment);
+  if (settings.modelServiceManaged) {
+    for (const key of Object.keys(next)) {
+      if (
+        !key.startsWith("COX_") &&
+        (/(?:_API_KEY|_AUTH_TOKEN|_OAUTH_TOKEN)(?:_\d+)?$/.test(key) ||
+          [
+            "HF_TOKEN",
+            "COPILOT_GITHUB_TOKEN",
+            "GITHUB_COPILOT_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_BEARER_TOKEN_BEDROCK",
+          ].includes(key))
+      )
+        delete next[key];
+    }
+  }
+  if (settings.agentDir?.trim()) {
+    next.OMO_CODING_AGENT_DIR = settings.agentDir.trim();
+    next.SENPI_CODING_AGENT_DIR = settings.agentDir.trim();
+  }
+  next.COX_NATIVE_PERMISSIONS = "1";
+  next.OMO_MEMORY_PUSH_SYNC = "0";
+  delete next.SENPI_RPC_CLIENT_CAPABILITIES;
+  delete next.OMO_RPC_CLIENT_CAPABILITIES;
+  return next;
+}
+
+export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
+  const selected =
+    settings.provider && settings.model && !settings.model.startsWith(`${settings.provider}/`)
+      ? `${settings.provider}/${settings.model}`
+      : settings.model;
+  const available = new Set(
+    settings.customModels.map((model) => (typeof model === "string" ? model : model.slug)),
+  );
+  const resolve = (model: string | undefined): string | undefined => {
+    const result = model || selected;
+    if (settings.modelServiceManaged && (result === undefined || !available.has(result)))
+      throw new Error(
+        `OMO role model '${result ?? ""}' is not available in this model service binding.`,
+      );
+    return result;
+  };
+  const assign = (names: ReadonlyArray<string>, overrides: Readonly<Record<string, string>>) =>
+    Object.fromEntries(
+      [...new Set([...names, ...Object.keys(overrides)])].map((name) => {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name))
+          throw new Error("OMO role names must use letters, numbers, underscores or hyphens.");
+        const model = resolve(overrides[name]);
+        return [
+          name,
+          model === undefined ? {} : { models: [model], models_distribution: "round_robin" },
+        ];
+      }),
+    );
+  return {
+    agents: assign(agents, settings.agentModels),
+    categories: assign(categories, settings.categoryModels),
+    task: {
+      state_dir: stateDir,
+      isolation: {
+        enabled: false,
+        backend: "auto",
+        apply: true,
+        merge: "patch",
+        commits: "generic",
+      },
+      default_execution_mode: "in-process",
+      process_runner: "child-process",
+      host_engine_policy: "fallback",
+      host_shard_prewarm: "off",
+      default_concurrency: 5,
+      global_concurrency: 8,
+      max_depth: 1,
+      residency_max_children: "unlimited",
+      resident_idle_timeout_ms: 900_000,
+      ttl_ms: 86_400_000,
+      resume_children: false,
+      warnings: { unavailable_categories: true },
+      wait: { min_ms: 5_000, default_ms: 60_000, max_ms: 600_000 },
+      team: { max_members: 8, max_parallel_members: 4, max_wall_clock_minutes: 120 },
+    },
+    teams: {},
+  };
+}
+
+export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(function* (
+  settings: OmoSettings,
+  environment: NodeJS.ProcessEnv,
+  baseDir: string,
+  instanceId: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const agentDir =
+    settings.agentDir ||
+    path.join(baseDir, "providers", "omo", encodeURIComponent(instanceId), "agent");
+  const configured: OmoSettings = {
+    ...settings,
+    binaryPath: settings.binaryPath || "omo",
+    agentDir,
+    sessionDir: settings.sessionDir || path.join(agentDir, "sessions"),
+  };
+  const env = omoEnvironment(configured, environment);
+  const executable = yield* resolveCommandPath(configured.binaryPath!, { env });
+  if (executable) {
+    const resolved = yield* fs.realPath(executable).pipe(Effect.orElseSucceed(() => executable));
+    let directory = path.dirname(resolved);
+    for (let index = 0; index < 7; index++) {
+      const candidate = path.join(directory, "package.json");
+      const manifest = yield* fs.readFileString(candidate).pipe(
+        Effect.flatMap(decodePackageManifest),
+        Effect.orElseSucceed(() => undefined),
+      );
+      if (manifest?.name === "omo-ai") {
+        env.COX_OMO_PACKAGE_ROOT = directory;
+        break;
+      }
+      const nested = path.join(directory, "node_modules", "omo-ai");
+      if (yield* fs.exists(path.join(nested, "plugin", "extensions", "omo.js"))) {
+        env.COX_OMO_PACKAGE_ROOT = nested;
+        break;
+      }
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+  }
+  const stateDir = path.join(agentDir, "tasks");
+  const config = yield* Effect.try(() => omoTaskConfiguration(configured, stateDir));
+  env.COX_OMO_TASK_CONFIG = yield* encodeJson(config);
+  env.COX_OMO_FIXED_ROLES = yield* encodeJson({
+    agents: Object.entries(settings.agentModels)
+      .filter(([, model]) => model !== "")
+      .map(([name]) => name),
+    categories: Object.entries(settings.categoryModels)
+      .filter(([, model]) => model !== "")
+      .map(([name]) => name),
+  });
+  env.COX_OMO_MANAGED_MODELS = configured.modelServiceManaged ? "1" : "0";
+  env.COX_OMO_ALLOWED_MODELS = yield* encodeJson(
+    configured.customModels.map((model) => (typeof model === "string" ? model : model.slug)),
+  );
+  yield* fs.makeDirectory(agentDir, { recursive: true });
+  return { settings: configured, environment: env };
+});

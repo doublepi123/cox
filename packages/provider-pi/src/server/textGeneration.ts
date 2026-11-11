@@ -18,18 +18,24 @@ const isTextGenerationError = Schema.is(TextGenerationError);
 
 // Pi's `errorMessage` is the provider's raw response text and can echo
 // credentials, so only a leading HTTP status reaches the error detail.
-const piTurnErrorDetail = (errorMessage: string | undefined) => {
+const piTurnErrorDetail = (errorMessage: string | undefined, label = "Pi") => {
   const status = errorMessage?.match(/^([45]\d\d)\b/)?.[1];
   return status === undefined
-    ? "Pi could not generate text: the model provider reported an error."
-    : `Pi could not generate text: the model provider returned HTTP ${status}.`;
+    ? `${label} could not generate text: the model provider reported an error.`
+    : `${label} could not generate text: the model provider returned HTTP ${status}.`;
 };
 
 export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* (
   piSettings: PiSettings,
   environment: NodeJS.ProcessEnv = process.env,
+  runtime?: {
+    readonly label: string;
+    readonly connect: typeof makePiRpcConnection;
+    readonly buildLaunch: typeof buildPiRpcLaunch;
+  },
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const label = runtime?.label ?? "Pi";
 
   const runPiJson: TextGenerationOperations.Runner = Effect.fn("PiTextGeneration.runPiJson")(
     function* (request) {
@@ -42,7 +48,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
           detail: resolvedLaunchArgs.message,
         });
       }
-      const launch = buildPiRpcLaunch({
+      const launch = (runtime?.buildLaunch ?? buildPiRpcLaunch)({
         launchArgs: resolvedLaunchArgs.args,
         environment: piEnvironment(piSettings, environment),
         mcpSession: undefined,
@@ -53,7 +59,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
         // Background naming/content helpers must never mutate the workspace.
         disableTools: true,
       });
-      const connection = yield* makePiRpcConnection({
+      const connection = yield* (runtime?.connect ?? makePiRpcConnection)({
         command: piSettings.binaryPath || "pi",
         args: launch.args,
         cwd,
@@ -69,7 +75,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
         if (parsed === null) {
           return yield* new TextGenerationError({
             operation,
-            detail: `Pi model '${modelSelection.model}' must use provider/model format.`,
+            detail: `${label} model '${modelSelection.model}' must use provider/model format.`,
           });
         }
         yield* connection
@@ -81,10 +87,10 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
                 ? new TextGenerationError({
                     operation,
                     detail:
-                      `Pi rejected model '${modelSelection.model}': ${error.detail ?? "unknown error"}. ` +
-                      "If the model comes from a Pi extension or package, text generation cannot use it " +
-                      "because it runs Pi with --no-extensions. Pick a built-in Pi model or one defined " +
-                      "in Pi's models.json.",
+                      `${label} rejected model '${modelSelection.model}': ${error.detail ?? "unknown error"}. ` +
+                      `If the model comes from a ${label} extension or package, text generation cannot use it ` +
+                      `because it runs ${label} with --no-extensions. Pick a built-in ${label} model or one defined ` +
+                      `in ${label}'s models.json.`,
                     cause: error,
                   })
                 : error,
@@ -104,7 +110,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
           if (event["type"] === "message_end" && piRecordString(message, "role") === "assistant") {
             turnError =
               piRecordString(message, "stopReason") === "error"
-                ? piTurnErrorDetail(piRecordString(message, "errorMessage"))
+                ? piTurnErrorDetail(piRecordString(message, "errorMessage"), label)
                 : undefined;
           }
         }
@@ -119,10 +125,10 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
       if (!text) {
         return yield* new TextGenerationError({
           operation,
-          detail: turnError ?? "Pi returned empty output.",
+          detail: turnError ?? `${label} returned empty output.`,
         });
       }
-      return yield* TextGenerationOperations.decodeJsonReply(request, "Pi", text);
+      return yield* TextGenerationOperations.decodeJsonReply(request, label, text);
     },
     (effect, request) => {
       const { operation } = request;
@@ -131,7 +137,9 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
         Effect.flatMap(
           Option.match({
             onNone: () =>
-              Effect.fail(new TextGenerationError({ operation, detail: "Pi request timed out." })),
+              Effect.fail(
+                new TextGenerationError({ operation, detail: `${label} request timed out.` }),
+              ),
             onSome: (value) => Effect.succeed(value),
           }),
         ),
@@ -140,7 +148,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
             ? cause
             : new TextGenerationError({
                 operation,
-                detail: "Pi text generation failed.",
+                detail: `${label} text generation failed.`,
                 cause,
               }),
         ),
@@ -151,6 +159,6 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
 
   return TextGenerationOperations.fromRunner(
     "PiTextGeneration",
-    TextGenerationOperations.withoutInvestigation("Pi", runPiJson),
+    TextGenerationOperations.withoutInvestigation(label, runPiJson),
   );
 });
