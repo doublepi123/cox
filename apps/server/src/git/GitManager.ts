@@ -113,6 +113,7 @@ export type GitBranchPullRequest = NonNullable<VcsStatusResult["pr"]> & {
 
 interface SourceControlTextGenerationSettings {
   readonly modelSelection: ModelSelection;
+  readonly projectId: ProjectId | null;
   readonly style: SourceControlWritingStyleSettings;
 }
 
@@ -2104,6 +2105,7 @@ export const make = Effect.gen(function* () {
           ...(input.includeBranch ? { includeBranch: true } : {}),
           ...(policy ? { policy } : {}),
           modelSelection: input.settings.modelSelection,
+          projectId: input.settings.projectId,
         })
         .pipe(Effect.map((result) => sanitizeCommitMessage(result)));
 
@@ -2230,6 +2232,34 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  const ensurePrHeadIsNotBase = Effect.fn("ensurePrHeadIsNotBase")(function* (
+    cwd: string,
+    status: { branch: string; upstreamRef: string | null; hasUpstream: boolean },
+    changeRequestLabel: string,
+  ) {
+    const target = yield* gitCore.resolvePushTarget(cwd, status);
+    if (!target) return;
+    const headContext = yield* resolveBranchHeadContext(cwd, {
+      branch: status.branch,
+      upstreamRef: `${target.remoteName}/${target.branchName}`,
+      remoteName: target.remoteName,
+    });
+    if (headContext.isCrossRepository) return;
+    const { baseBranch } = yield* resolvePrBase(
+      cwd,
+      status.branch,
+      status.upstreamRef,
+      headContext,
+    );
+    if (baseBranch !== target.branchName) return;
+    if (yield* findOpenPr(cwd, headContext)) return;
+    return yield* new GitManagerError({
+      operation: "runStackedAction",
+      cwd,
+      detail: `${baseBranch} is the base branch. Check out a feature branch to create ${changeRequestLabel}.`,
+    });
+  });
+
   const runPrStep = Effect.fn("runPrStep")(function* (
     settings: SourceControlTextGenerationSettings,
     cwd: string,
@@ -2306,6 +2336,7 @@ export const make = Effect.gen(function* () {
       ...(threadContext ? { threadContext } : {}),
       ...(policy ? { policy } : {}),
       modelSelection: settings.modelSelection,
+      projectId: settings.projectId,
     });
 
     const bodyFile = path.join(
@@ -3091,6 +3122,7 @@ export const make = Effect.gen(function* () {
             settings.sourceControlWriterModelSelection === null
               ? Effect.succeed({
                   modelSelection: settings.textGenerationModelSelection,
+                  projectId,
                   style: settings.sourceControlWritingStyle,
                 })
               : providerRegistry.getProviders.pipe(
@@ -3100,6 +3132,7 @@ export const make = Effect.gen(function* () {
                       providers,
                       projectId,
                     ),
+                    projectId,
                     style: settings.sourceControlWritingStyle,
                   })),
                 ),
@@ -3139,6 +3172,13 @@ export const make = Effect.gen(function* () {
         const currentBranch = branchStep.name ?? initialStatus.branch;
         const commitAction = isCommitAction(input.action) ? input.action : null;
         const changeRequestTerms = wantsPr ? yield* changeRequestTermsFor(input.cwd) : null;
+        if (changeRequestTerms && !input.featureBranch && initialStatus.branch) {
+          yield* ensurePrHeadIsNotBase(
+            input.cwd,
+            { ...initialStatus, branch: initialStatus.branch },
+            changeRequestTerms.shortLabelWithArticle,
+          );
+        }
 
         const commit = commitAction
           ? yield* Ref.set(currentPhase, Option.some("commit")).pipe(

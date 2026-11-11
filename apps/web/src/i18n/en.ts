@@ -2806,6 +2806,8 @@ export const en = {
   Automation: "Automation",
   "Copy prompt link": "Copy prompt link",
   Steer: "Steer",
+  "Image attachment": "Image attachment",
+  "Steer · waiting to be read": "Steer · waiting to be read",
   "Edit from here": "Edit from here",
   Setup: "Setup",
   Details: "Details",

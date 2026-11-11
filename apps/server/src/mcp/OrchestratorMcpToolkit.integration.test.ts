@@ -209,13 +209,33 @@ describe("orchestrator MCP toolkit", () => {
           },
           CodexOrchestratorReplayHarness,
         );
+        const threadRecordReads: Array<{
+          readonly threadId: ThreadId;
+          readonly fields: ReadonlyArray<string>;
+        }> = [];
         const layerOrchestration = Layer.merge(
           layerOrchestrator,
-          ThreadManagementService.layer.pipe(
-            Layer.provide(layerOrchestrator),
-            Layer.provide(ServerSettings.layerTest()),
+          Layer.effect(
+            ThreadManagementService.ThreadManagementService,
+            Effect.gen(function* () {
+              const service = yield* ThreadManagementService.ThreadManagementService;
+              return ThreadManagementService.ThreadManagementService.of({
+                ...service,
+                getThreadRecords: (threadId, fields, filter) =>
+                  Effect.sync(() => threadRecordReads.push({ threadId, fields })).pipe(
+                    Effect.andThen(service.getThreadRecords(threadId, fields, filter)),
+                  ),
+              });
+            }),
+          ).pipe(
             Layer.provide(
-              CommandReceiptStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
+              ThreadManagementService.layer.pipe(
+                Layer.provide(layerOrchestrator),
+                Layer.provide(ServerSettings.layerTest()),
+                Layer.provide(
+                  CommandReceiptStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
+                ),
+              ),
             ),
           ),
         );
@@ -591,6 +611,10 @@ describe("orchestrator MCP toolkit", () => {
             delegated.resultContextTransferId,
           );
           const transferReads: Array<string> = [];
+          const messageReads: Array<string> = [];
+          const runReads: Array<string> = [];
+          const projectionTableReads: Array<string> = [];
+          const acknowledgementReads: Array<string> = [];
           const tracer = Tracer.make({
             span(options) {
               const span = new Tracer.NativeSpan(options);
@@ -598,11 +622,35 @@ describe("orchestrator MCP toolkit", () => {
               span.end = (endTime, exit) => {
                 end(endTime, exit);
                 const query = span.attributes.get("db.query.text");
+                if (typeof query !== "string") return;
+                let parent = Option.getOrUndefined(span.parent);
+                while (parent?._tag === "Span") {
+                  if (
+                    parent.name === "Orchestrator.dispatchDelegatedTaskCompletionDeliveryResolution"
+                  ) {
+                    acknowledgementReads.push(query);
+                    break;
+                  }
+                  parent = Option.getOrUndefined(parent.parent);
+                }
+                for (const [, table] of query.matchAll(
+                  /FROM orchestration_v2_projection_(\w+)/gi,
+                )) {
+                  projectionTableReads.push(table!);
+                }
                 if (
                   typeof query === "string" &&
                   /SELECT[\s\S]*FROM orchestration_v2_projection_context_transfers/i.test(query)
                 ) {
                   transferReads.push(query);
+                }
+                if (/SELECT\s+payload_json\s+FROM orchestration_v2_projection_runs/i.test(query)) {
+                  runReads.push(query);
+                }
+                if (
+                  /SELECT\s+payload_json\s+FROM orchestration_v2_projection_messages/i.test(query)
+                ) {
+                  messageReads.push(query);
                 }
               };
               return span;
@@ -628,11 +676,50 @@ describe("orchestrator MCP toolkit", () => {
           expect(read.isError).not.toBe(true);
           expect(transferReads.length).toBeGreaterThan(0);
           expect(read.structuredContent).toEqual(parentlessRead.structuredContent);
+          expect(acknowledgementReads.length).toBeGreaterThan(0);
+          expect(
+            acknowledgementReads.filter(
+              (query) =>
+                /FROM orchestration_v2_projection_(nodes|run_attempts)\b/.test(query) ||
+                (/FROM orchestration_v2_projection_runs\b/.test(query) &&
+                  !query.includes("AND run_id IN")) ||
+                (/FROM orchestration_v2_projection_subagents\b/.test(query) &&
+                  !query.includes("AND subagent_id IN")),
+            ),
+          ).toEqual([]);
           const afterRead = yield* orchestrator.getThreadProjection(parentThreadId);
           expect(
             afterRead.subagents.find((task) => task.id === queuedFollowup.taskId)
               ?.completionDelivery?.state,
           ).toBe("acknowledged");
+
+          const messageReadsBeforeCapabilities = messageReads.length;
+          const tableReadsBeforeCapabilities = projectionTableReads.length;
+          const capabilities = yield* invoke("orchestrator_capabilities", {}).pipe(
+            Effect.withTracer(tracer),
+          );
+          expect(capabilities.isError).not.toBe(true);
+          expect(messageReads).toHaveLength(messageReadsBeforeCapabilities);
+          expect(new Set(projectionTableReads.slice(tableReadsBeforeCapabilities))).toEqual(
+            new Set(["threads"]),
+          );
+          const runReadsBeforeStatus = runReads.length;
+          const transferReadsBeforeStatus = transferReads.length;
+          const threadRecordReadsBeforeStatus = threadRecordReads.length;
+          const statusAgain = yield* invoke("task_status", { taskId: delegated.taskId }).pipe(
+            Effect.withTracer(tracer),
+          );
+          expect(statusAgain.isError).not.toBe(true);
+          expect(runReads).toHaveLength(runReadsBeforeStatus + 1);
+          expect(transferReads).toHaveLength(transferReadsBeforeStatus + 1);
+          expect(
+            threadRecordReads
+              .slice(threadRecordReadsBeforeStatus)
+              .filter(
+                ({ fields }) => fields.includes("runs") || fields.includes("contextTransfers"),
+              )
+              .map(({ threadId }) => threadId),
+          ).toEqual([delegated.childThreadId]);
         }).pipe(Effect.provide(layerTest));
       }),
     ),

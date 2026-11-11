@@ -14,6 +14,8 @@ describe("isMarkdownFileLinkLabel", () => {
     ["validates the input", "/repo/src/example.ts:12", false],
     ["example.ts:12", "/repo/src/example.ts:12", true],
     ["example.ts:99", "/repo/src/example.ts:12", false],
+    ["example.ts:12-20", "/repo/src/example.ts:12-20", true],
+    ["example.ts:12-20", "/repo/src/example.ts:12", false],
   ])("classifies %s for %s", (label, href, expected) => {
     expect(isMarkdownFileLinkLabel(label, href)).toBe(expected);
   });
@@ -24,6 +26,8 @@ describe("inlineCodeFilePathCandidate", () => {
   it.each([
     ["src\\main.ts", "src/main.ts"],
     ["allocator.cc:217", "allocator.cc:217"],
+    ["src/http.ts:42-64", "src/http.ts:42-64"],
+    ["http.ts:42-64", "http.ts:42-64"],
     ["origin/main", null],
     ["z-ai/glm-5.3", null],
     ["share/man/ls.1", "share/man/ls.1"],
@@ -75,6 +79,19 @@ describe("parseMarkdownFileLink", () => {
     expect(parseMarkdownFileLink("/srv/app/Makefile")).toEqual({ path: "/srv/app/Makefile" });
   });
 
+  it("reads line ranges and opens them at their first line", () => {
+    expect(parseMarkdownFileLink("/repo/src/http.ts:42-64")).toEqual({
+      path: "/repo/src/http.ts",
+      line: 42,
+      endLine: 64,
+    });
+    expect(parseMarkdownFileLink("/repo/src/http.ts#L42-L64")).toEqual({
+      path: "/repo/src/http.ts",
+      line: 42,
+      endLine: 64,
+    });
+  });
+
   it("reads positions from suffixes and line anchors", () => {
     expect(parseMarkdownFileLink("/Users/julius/project/src/main.ts#L42C7")).toEqual({
       path: "/Users/julius/project/src/main.ts",
@@ -116,6 +133,19 @@ describe("resolveMarkdownFileLinkTarget", () => {
       "/repo/project/patches/",
     );
     expect(resolveMarkdownFileLinkTarget("patches", "/repo/project")).toBeNull();
+  });
+
+  it.each([
+    ["src/Example.cs", "C:\\repo\\src\\Example.cs"],
+    ["src\\Example.cs", "C:\\repo\\src\\Example.cs"],
+    ["src%5CExample.cs", "C:\\repo\\src\\Example.cs"],
+    ["src\\Example.cs:3", "C:\\repo\\src\\Example.cs:3"],
+  ])("resolves the relative link %s against a windows cwd", (href, target) => {
+    expect(resolveMarkdownFileLinkTarget(href, "C:\\repo")).toBe(target);
+  });
+
+  it("keeps a backslash in a relative link that already names a file", () => {
+    expect(resolveMarkdownFileLinkTarget("./foo%5Cbar.ts", "/repo")).toBe("/repo/./foo\\bar.ts");
   });
 
   it("does not treat filename line references as external schemes", () => {

@@ -6,7 +6,17 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
-import { createContext, memo, type ReactNode, useRef, useState } from "react";
+import { RegistryContext } from "@effect/atom-react";
+import {
+  createContext,
+  memo,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -19,6 +29,8 @@ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../provi
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { useHistoryBackDismiss } from "~/lib/historyBackDismiss";
 import {
@@ -128,6 +140,20 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+  const registry = useContext(RegistryContext);
+  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
+  });
+  const refreshModelCatalog = useEffectEvent(() => {
+    const environmentId = props.environmentId;
+    if (environmentId === null) return;
+    const config = registry.get(serverEnvironment.configValueAtom(environmentId));
+    if (config?.environment.capabilities.modelCatalogRefresh !== true) return;
+    void refreshProviders({ environmentId, input: { modelCatalogOnly: true } });
+  });
+  useEffect(() => {
+    if (isMenuOpen) refreshModelCatalog();
+  }, [isMenuOpen]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);

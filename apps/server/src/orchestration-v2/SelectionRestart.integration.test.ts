@@ -527,12 +527,22 @@ it.live("Stop during a restart interrupts the turn the restart could not stop", 
           modelSelection: initialSelection,
           dispatchMode: { type: "restart_active", targetRunId: runId },
         });
+        const interrupted = yield* orchestrator.streamDomainEvents.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "provider-turn.updated" && event.payload.status === "interrupted",
+          ),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped({ startImmediately: true }),
+        );
         yield* orchestrator.dispatch({
           type: "run.interrupt",
           commandId: CommandId.make("command:selection-restart-stop:stop"),
           threadId,
           runId,
         });
+        yield* Fiber.join(interrupted);
         yield* worker.drain();
         return {
           projection: yield* orchestrator.getThreadProjection(threadId),

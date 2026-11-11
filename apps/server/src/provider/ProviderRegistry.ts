@@ -82,6 +82,14 @@ export class ProviderRegistry extends Context.Service<
       readonly fresh?: boolean;
     }) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
+    readonly invalidateModelCaches: (input: {
+      readonly instanceId?: ProviderInstanceId | undefined;
+      readonly cwd?: string | undefined;
+      readonly fresh?: boolean | undefined;
+    }) => Effect.Effect<void>;
+
+    readonly refreshModelCatalog: Effect.Effect<void>;
+
     readonly getProviderMaintenanceCapabilitiesForInstance: (
       instanceId: ProviderInstanceId,
       provider: ProviderDriverKind,
@@ -663,6 +671,8 @@ export const layer = Layer.effect(
       Option.none(),
     );
 
+    const probedManifestUpdatedAt = yield* Ref.make(initialManifest.updatedAt);
+
     const refreshAll = Effect.fn("refreshAll")(function* () {
       const claimed = yield* Ref.modify(
         refreshAllInFlightRef,
@@ -682,15 +692,20 @@ export const layer = Layer.effect(
       if (claimed.owner) {
         // Detach shared passes so the first caller's interruption cannot cancel other callers' work.
         // Syncing first keeps a refresh right after a rebuild from probing the replaced instance.
-        yield* syncLiveSourcesAndContinue.pipe(
-          Effect.andThen(Ref.get(liveSubsRef)),
-          Effect.flatMap((instances) =>
-            Effect.forEach(instances.values(), (instance) => refreshOneSource(instance), {
-              concurrency: "unbounded",
-              discard: true,
-            }),
+        yield* manifestService.current.pipe(
+          Effect.flatMap(({ updatedAt }) =>
+            syncLiveSourcesAndContinue.pipe(
+              Effect.andThen(Ref.get(liveSubsRef)),
+              Effect.flatMap((instances) =>
+                Effect.forEach(instances.values(), (instance) => refreshOneSource(instance), {
+                  concurrency: "unbounded",
+                  discard: true,
+                }),
+              ),
+              Effect.andThen(Ref.get(providersRef)),
+              Effect.tap(() => Ref.set(probedManifestUpdatedAt, updatedAt)),
+            ),
           ),
-          Effect.andThen(Ref.get(providersRef)),
           Effect.onExit((exit) =>
             Ref.set(refreshAllInFlightRef, Option.none()).pipe(
               Effect.andThen(Deferred.done(claimed.completion, exit)),
@@ -1081,6 +1096,41 @@ export const layer = Layer.effect(
       return yield* Fiber.join(claim.scan);
     });
 
+    const invalidateModelCaches = Effect.fn("ProviderRegistry.invalidateModelCaches")(function* (
+      input: Parameters<ProviderRegistry["Service"]["invalidateModelCaches"]>[0],
+    ) {
+      yield* manifestService.forceRefresh;
+      const instances = yield* instanceRegistry.listInstances;
+      yield* Effect.forEach(
+        instances.filter(
+          (instance) => input.instanceId === undefined || input.instanceId === instance.instanceId,
+        ),
+        (instance) =>
+          Effect.gen(function* () {
+            yield* instance.invalidateCaches ?? Effect.void;
+            const maintenance = yield* instance.snapshot.resolveMaintenance({
+              fresh:
+                input.instanceId !== undefined && input.cwd !== undefined && input.fresh !== true,
+            });
+            yield* Effect.forEach(
+              latestProviderVersionCacheKeys(maintenance),
+              latestVersions.invalidate,
+              { discard: true },
+            );
+          }),
+        { concurrency: "unbounded", discard: true },
+      );
+    });
+
+    const refreshModelCatalog = Effect.fn("ProviderRegistry.refreshModelCatalog")(function* () {
+      const { updatedAt } = yield* manifestService.refreshOnDemand;
+      for (let pass = 0; pass < 2; pass++) {
+        if ((yield* Ref.get(probedManifestUpdatedAt)) === updatedAt) return;
+        yield* latestVersions.invalidateAll;
+        yield* refreshAll();
+      }
+    });
+
     return {
       getProviders: Ref.get(providersRef),
       refresh: (provider?: ProviderDriverKind) =>
@@ -1092,6 +1142,11 @@ export const layer = Layer.effect(
       refreshWorkspaceSnapshot: (input) =>
         refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshAfterUpdate,
+      invalidateModelCaches,
+      refreshModelCatalog: refreshModelCatalog().pipe(
+        Effect.catchCause(recoverRefreshFailure),
+        Effect.asVoid,
+      ),
       getProviderMaintenanceCapabilitiesForInstance,
       setProviderMaintenanceActionState,
       get streamChanges() {

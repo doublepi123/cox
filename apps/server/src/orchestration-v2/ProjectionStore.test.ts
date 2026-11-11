@@ -1,9 +1,13 @@
+import * as NodeSqlite from "node:sqlite";
+import * as Statement from "effect/sql/Statement";
+
 import { assert, it, vi } from "@effect/vitest";
 import {
   EnvironmentId,
   EventId,
   CommandId,
   CheckpointId,
+  ContextTransferId,
   CheckpointRef,
   CheckpointScopeId,
   MessageId,
@@ -48,6 +52,12 @@ import {
   THREAD_HISTORY_TURN_SNAPSHOT_ROW_LIMIT,
 } from "./threadHistoryPaging.ts";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
+
+declare module "node:sqlite" {
+  interface StatementSync {
+    stat(counter: "vmStep"): number;
+  }
+}
 
 const layerTest = Layer.mergeAll(
   ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory)),
@@ -215,6 +225,238 @@ const addRolledBackRecoveryCandidate = Effect.fn("addRolledBackRecoveryCandidate
 
   return threadId;
 });
+
+it.effect("idle compaction filters keep the latest run, live work and the newest usage", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = yield* addRolledBackRecoveryCandidate("idle-compaction");
+    const now = yield* DateTime.now;
+    const minutes = (count: number) => DateTime.add(now, { minutes: count });
+    const selected = ProviderThreadId.make("provider-thread:idle-selected");
+    const nodeId = NodeId.make("node:idle-compaction");
+    for (const [ordinal, status] of [
+      [2, "completed"],
+      [3, "completed"],
+      [4, "failed"],
+      [5, "cancelled"],
+    ] as const) {
+      const runId = RunId.make(`run:idle-compaction:${ordinal}`);
+      yield* store.apply({
+        id: EventId.make(`event:idle-compaction:run-${ordinal}`),
+        type: "run.created",
+        threadId,
+        runId,
+        nodeId,
+        driver,
+        providerInstanceId,
+        occurredAt: now,
+        payload: {
+          id: runId,
+          threadId,
+          ordinal,
+          providerInstanceId,
+          modelSelection,
+          providerThreadId: selected,
+          userMessageId: MessageId.make(`message:idle-compaction:${ordinal}`),
+          rootNodeId: nodeId,
+          activeAttemptId: null,
+          status,
+          requestedAt: now,
+          startedAt: status === "cancelled" ? null : now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        },
+      });
+    }
+    for (const [id, providerThreadId, ordinal, usageAt] of [
+      ["turn:idle-old", selected, 1, minutes(1)],
+      ["turn:idle-newest", selected, 2, minutes(3)],
+      ["turn:idle-later-ordinal", selected, 3, minutes(2)],
+      ["turn:idle-no-usage", selected, 4, null],
+      [
+        "turn:idle-other-thread",
+        ProviderThreadId.make("provider-thread:idle-other"),
+        1,
+        minutes(9),
+      ],
+    ] as const) {
+      yield* store.apply({
+        id: EventId.make(`event:${id}`),
+        type: "provider-turn.updated",
+        threadId,
+        nodeId,
+        driver,
+        occurredAt: now,
+        payload: {
+          id: ProviderTurnId.make(id),
+          providerThreadId,
+          nodeId,
+          runAttemptId: null,
+          nativeTurnRef: null,
+          ordinal,
+          status: "completed",
+          startedAt: now,
+          completedAt: now,
+          ...(usageAt === null
+            ? {}
+            : { tokenUsage: { usedTokens: 150_000, updatedAt: DateTime.formatIso(usageAt) } }),
+        },
+      });
+    }
+    for (const status of ["pending", "resolved"] as const) {
+      yield* store.apply({
+        id: EventId.make(`event:idle-compaction:request-${status}`),
+        type: "runtime-request.updated",
+        threadId,
+        nodeId,
+        occurredAt: now,
+        payload: {
+          id: RuntimeRequestId.make(`request:idle-compaction:${status}`),
+          nodeId,
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status,
+          responseCapability: { type: "message" },
+          createdAt: now,
+          resolvedAt: status === "pending" ? null : now,
+        },
+      });
+    }
+    for (const status of ["pending", "consumed"] as const) {
+      yield* store.apply({
+        id: EventId.make(`event:idle-compaction:transfer-${status}`),
+        type: "context-transfer.created",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: ContextTransferId.make(`transfer:idle-compaction:${status}`),
+          type: "merge_back",
+          sourceThreadId: ThreadId.make("thread:idle-compaction:side"),
+          targetThreadId: threadId,
+          sourcePoint: { threadId: ThreadId.make("thread:idle-compaction:side") },
+          basePoint: null,
+          sourceProviderInstanceId: providerInstanceId,
+          targetProviderInstanceId: providerInstanceId,
+          targetRunId: null,
+          status,
+          resolution: null,
+          createdBy: "user",
+          error: null,
+          createdAt: now,
+          updatedAt: now,
+          consumedAt: status === "pending" ? null : now,
+        },
+      });
+    }
+
+    const records = yield* store.getThreadRecords(
+      threadId,
+      ["runs", "providerTurns", "runtimeRequests", "contextTransfers"],
+      {
+        runStatuses: ["preparing", "starting", "running", "rolled_back"],
+        includeLatestRun: true,
+        providerTurnThreadIds: [selected],
+        latestProviderTurnUsageOnly: true,
+        runtimeRequestStatuses: ["pending"],
+        contextTransferStatuses: ["pending"],
+      },
+    );
+    assert.deepEqual(
+      records.runs.map((run) => run.id),
+      ["run:idle-compaction:rolled-back", "run:idle-compaction:4"],
+    );
+    const { statements, tracer } = traceSqlStatements();
+    const statusOnly = yield* store
+      .getThreadRecords(threadId, ["runs"], {
+        runStatuses: ["preparing", "starting", "running", "rolled_back"],
+      })
+      .pipe(Effect.withTracer(tracer));
+    assert.deepEqual(
+      statusOnly.runs.map((run) => run.id),
+      ["run:idle-compaction:rolled-back"],
+    );
+    const runQuery = statements.find((statement) =>
+      statement.includes("FROM orchestration_v2_projection_runs"),
+    );
+    assert.isDefined(runQuery);
+    const sql = yield* SqlClient.SqlClient;
+    const runPlan = (yield* sql.unsafe<{ readonly detail: string }>(
+      `EXPLAIN QUERY PLAN ${runQuery}`,
+    ))
+      .map((row) => row.detail)
+      .join("\n");
+    assert.notInclude(runPlan, "orchestration_v2_projection_runs_thread_ordinal_idx");
+    assert.match(runPlan, /SEARCH orchestration_v2_projection_runs USING INDEX \w*status\w*/);
+    assert.deepEqual(
+      records.providerTurns.map((turn) => turn.id),
+      ["turn:idle-newest"],
+    );
+    assert.deepEqual(
+      records.runtimeRequests.map((request) => request.id),
+      ["request:idle-compaction:pending"],
+    );
+    assert.deepEqual(
+      records.contextTransfers.map((transfer) => transfer.id),
+      ["transfer:idle-compaction:pending"],
+    );
+    const empty = yield* store.getThreadRecords(threadId, ["runs", "providerTurns"], {
+      runStatuses: [],
+      providerTurnThreadIds: [],
+      latestProviderTurnUsageOnly: true,
+    });
+    assert.deepEqual([empty.runs, empty.providerTurns], [[], []]);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("user-only record ordering uses the partial user-message index", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const sql = yield* SqlClient.SqlClient;
+    const threadId = yield* addRolledBackRecoveryCandidate("user-order-index");
+    const now = yield* DateTime.now;
+    for (const ordinal of [2, 1]) {
+      yield* store.apply({
+        id: EventId.make(`event:user-order-index:${ordinal}`),
+        type: "message.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: MessageId.make(`message:user-order-index:${ordinal}`),
+          threadId,
+          runId: null,
+          nodeId: null,
+          createdBy: "user",
+          creationSource: "web",
+          role: "user",
+          text: String(ordinal),
+          attachments: [],
+          streaming: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+    const { statements, tracer } = traceSqlStatements();
+    const records = yield* store
+      .getThreadRecords(threadId, ["messages"], {
+        messageRoles: ["user"],
+      })
+      .pipe(Effect.withTracer(tracer));
+    assert.lengthOf(records.messages, 2);
+    const ordinalLookup = statements.find((statement) => statement.includes("MIN(ordinal)"));
+    assert.isDefined(ordinalLookup);
+    const plan = (yield* sql.unsafe<{ readonly detail: string }>(
+      `EXPLAIN QUERY PLAN ${ordinalLookup}`,
+      [threadId, "[]"],
+    )).map((row) => row.detail);
+    assert.isTrue(
+      plan.some((detail) => detail.includes("turn_items_user_message_idx")),
+      plan.join("\n"),
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
 
 it.effect("SQL queue readiness skips held runs without bypassing active work", () =>
   Effect.gen(function* () {
@@ -2400,7 +2642,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           parent_item_id, ordinal, type, status, updated_at, payload_json
         ) VALUES (
           ${`turn-item:bounded-sql-history:ordinal-${suffix}`}, ${itemThreadId}, NULL, NULL, NULL,
-          NULL, NULL, ${ordinal}, 'assistant_message', 'completed', ${nowIso},
+          NULL, NULL, ${ordinal}, 'user_message', 'completed', ${nowIso},
           ${encodeUnknownJsonString({ messageId })}
         )
       `;
@@ -2792,6 +3034,127 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       yield* sql`UPDATE orchestration_v2_projection_turn_items SET ordinal = 999,
         payload_json = json_set(payload_json, '$.ordinal', 999)
         WHERE turn_item_id = 'turn-item:bounded-sql-history:999'`;
+      yield* sql`UPDATE orchestration_v2_projection_turn_items SET type = 'assistant_message',
+        payload_json = json_set(payload_json, '$.type', 'assistant_message', '$.text', 'Working',
+          '$.messageId', turn_item_id, '$.streaming', json('false'))
+        WHERE thread_id = ${threadId} AND ordinal BETWEEN 300 AND 899`;
+      const straddledWindow = yield* projectionStore.getThreadSnapshotWindow(threadId, {
+        rowLimit: sqlPageLimit,
+        userTurnLimit: 10,
+        deferWork: true,
+      });
+      const straddledOrdinals = [
+        ...Array.from({ length: sqlPageLimit }, (_, index) => 900 - sqlPageLimit + index),
+        1000,
+      ];
+      assert.deepEqual(
+        straddledWindow.projection.turnItems.map((item) => item.ordinal),
+        straddledOrdinals,
+      );
+      const moveFirstItemToRun = (runId: string) => sql`
+        UPDATE orchestration_v2_projection_turn_items SET run_id = ${runId},
+          payload_json = json_set(payload_json, '$.runId', ${runId})
+        WHERE thread_id = ${threadId} AND ordinal = 1`;
+      yield* moveFirstItemToRun("run:bounded-sql-history:2");
+      const wakeWindow = yield* projectionStore.getThreadSnapshotWindow(threadId, {
+        rowLimit: sqlPageLimit,
+        userTurnLimit: 10,
+        deferWork: true,
+      });
+      assert.deepEqual(
+        wakeWindow.projection.turnItems.map((item) => item.ordinal),
+        straddledOrdinals,
+      );
+      yield* moveFirstItemToRun(sharedRunId);
+      const setItem = (ordinal: number, type: string, status: string) => sql`
+        UPDATE orchestration_v2_projection_turn_items SET type = ${type}, status = ${status}
+        WHERE thread_id = ${threadId} AND ordinal = ${ordinal}`;
+      yield* setItem(100, "user_message", "completed");
+      yield* setItem(2, "error", "failed");
+      const blockedWindow = yield* projectionStore.getThreadSnapshotWindow(threadId, {
+        rowLimit: sqlPageLimit,
+        userTurnLimit: 10,
+        deferWork: true,
+      });
+      assert.isFalse(
+        blockedWindow.projection.visibleTurnItems.some((row) => row.item.deferredWork),
+      );
+      assert.deepEqual(
+        blockedWindow.projection.turnItems.map((item) => item.ordinal),
+        Array.from({ length: sqlPageLimit }, (_, index) => 1001 - sqlPageLimit + index),
+      );
+      yield* setItem(2, "command_execution", "completed");
+      yield* setItem(100, "command_execution", "completed");
+      yield* sql`UPDATE orchestration_v2_projection_turn_items SET type = 'command_execution',
+        payload_json = json_set(payload_json, '$.type', 'command_execution')
+        WHERE thread_id = ${threadId} AND ordinal BETWEEN 300 AND 899`;
+
+      yield* sql`UPDATE orchestration_v2_projection_turn_items
+        SET run_id = CASE WHEN ordinal > 990 THEN 'run:bounded-sql-history:991' END,
+          type = CASE WHEN ordinal = 991 THEN 'user_message' ELSE 'assistant_message' END,
+          payload_json = CASE WHEN ordinal = 991
+            THEN json_set(payload_json, '$.type', 'user_message', '$.runId', 'run:bounded-sql-history:991',
+              '$.createdBy', 'user', '$.creationSource', 'web', '$.inputIntent', 'turn_start',
+              '$.messageId', turn_item_id, '$.text', 'Turn 991', '$.attachments', json('[]'))
+            ELSE json_set(payload_json, '$.type', 'assistant_message',
+              '$.runId', CASE WHEN ordinal > 990 THEN 'run:bounded-sql-history:991' END,
+              '$.text', 'Working', '$.messageId', turn_item_id, '$.streaming', json('false'))
+          END
+        WHERE thread_id = ${threadId} AND ordinal > 1`;
+      const windowStatements: Array<readonly [string, ReadonlyArray<unknown>]> = [];
+      const runlessWindow = yield* projectionStore
+        .getThreadSnapshotWindow(threadId, {
+          rowLimit: sqlPageLimit,
+          userTurnLimit: 10,
+          deferWork: true,
+        })
+        .pipe(
+          Effect.provideService(Statement.CurrentTransformer, (statement) => {
+            windowStatements.push(statement.compile());
+            return Effect.succeed(statement);
+          }),
+        );
+      const copyPath = "file:/thread-window-steps?vfs=memdb";
+      {
+        using copy = new NodeSqlite.DatabaseSync(copyPath);
+        yield* sql`VACUUM INTO ${copyPath}`;
+        assert.isNotEmpty(windowStatements);
+        const windowSteps = () =>
+          windowStatements.reduce((steps, [query, params]) => {
+            const statement = copy.prepare(query);
+            statement.all(...(params as ReadonlyArray<NodeSqlite.SQLInputValue>));
+            return steps + statement.stat("vmStep");
+          }, 0);
+        const fullSteps = windowSteps();
+        assert.isAbove(fullSteps, 0);
+        copy.exec(
+          "DELETE FROM orchestration_v2_projection_turn_items WHERE ordinal BETWEEN 2 AND 498",
+        );
+        assert.isAtMost(fullSteps, windowSteps() * 1.1);
+      }
+      assert.deepEqual(
+        runlessWindow.projection.turnItems.map((item) => item.ordinal),
+        Array.from({ length: THREAD_HISTORY_TURN_SNAPSHOT_ROW_LIMIT }, (_, index) => 499 + index),
+      );
+      const runlessPage = buildBoundedThreadProjection({
+        projection: runlessWindow.projection,
+        snapshotSequence: runlessWindow.snapshotSequence,
+      });
+      assert.isTrue(runlessPage.hasMoreHistory);
+      assert.isNotNull(runlessPage.historyCursor);
+      const windowOrdinalCount = (rowLimit: number) =>
+        projectionStore
+          .getThreadSnapshotWindow(threadId, { rowLimit, userTurnLimit: 10, deferWork: true })
+          .pipe(Effect.map((window) => window.projection.turnItems.length));
+      assert.strictEqual(yield* windowOrdinalCount(502.5), THREAD_HISTORY_TURN_SNAPSHOT_ROW_LIMIT);
+      yield* sql`UPDATE orchestration_v2_projection_turn_items
+        SET payload_json = json_set(payload_json, '$.inputIntent', 'steer')
+        WHERE thread_id = ${threadId} AND ordinal = 991`;
+      assert.strictEqual(yield* windowOrdinalCount(-1), 1000);
+      yield* sql`UPDATE orchestration_v2_projection_turn_items SET run_id = ${sharedRunId},
+        type = 'command_execution',
+        payload_json = json_set(payload_json, '$.type', 'command_execution', '$.runId', ${sharedRunId})
+        WHERE thread_id = ${threadId} AND ordinal > 1`;
       yield* sql`
         UPDATE orchestration_v2_projection_turn_items
         SET type = 'command_execution', payload_json = json_set(payload_json, '$.type', 'command_execution')

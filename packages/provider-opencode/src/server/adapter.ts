@@ -3005,6 +3005,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           ).pipe(
             Effect.asVoid,
             Effect.tapError((cause) =>
+              Deferred.isDoneUnsafe(receipt) ||
               abortController.signal.aborted ||
               turn.finalized ||
               turn.admissionGeneration !== generation

@@ -103,6 +103,7 @@ const make = Effect.gen(function* () {
   );
   yield* Effect.addFinalizer(() => awaitPersisted);
 
+  const refreshLock = yield* Semaphore.make(2);
   const refreshAccount = Effect.fn("CursorUsageAccounts.refreshAccount")(function* (
     credential: CursorCredentialSource,
     credentialKey: string,
@@ -148,7 +149,7 @@ const make = Effect.gen(function* () {
     failures.delete(credentialKey);
     if (merged.changed) cacheDirty = true;
     yield* schedulePersist;
-  });
+  }, refreshLock.withPermit);
 
   const startRefresh = (
     credential: CursorCredentialSource,
@@ -252,6 +253,7 @@ const make = Effect.gen(function* () {
               retentionCutoffMs,
               awaitRefresh,
             ),
+          { concurrency: 2 },
         );
         const rank = (source: ProviderUsageScan) =>
           source.status === "ok" ? 2 : source.refreshing ? 1 : 0;

@@ -2677,6 +2677,8 @@ export const zh = {
   Automation: "自动化",
   "Copy prompt link": "复制提示词链接",
   Steer: "引导",
+  "Image attachment": "图片附件",
+  "Steer · waiting to be read": "引导 · 等待读取",
   "Edit from here": "从此处编辑",
   Setup: "设置",
   Details: "详情",

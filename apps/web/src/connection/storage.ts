@@ -1,10 +1,11 @@
 import {
   ORCHESTRATION_CACHE_SCHEMA_VERSION,
-  ORCHESTRATION_THREAD_CACHE_SCHEMA_VERSION,
   StoredOrchestrationShellSnapshot,
   StoredOrchestrationThreadSnapshot,
   decodeOrDiscardOrchestrationCache,
   Persistence,
+  makeStoredThreadSnapshotEncoder,
+  makeThreadCacheWriteOrder,
 } from "@t3tools/client-runtime/platform";
 import { ConnectionTransientError } from "@t3tools/client-runtime/connection";
 import { EnvironmentQueryStore } from "@t3tools/client-runtime/state/query-persistence";
@@ -58,7 +59,6 @@ const isQueryBatch = Schema.is(Schema.Struct({ rows: Schema.Number, bytes: Schem
 const encodeStoredShellSnapshot = Schema.encodeEffect(StoredShellSnapshotJson);
 const decodeStoredShellSnapshot = Schema.decodeUnknownEffect(StoredShellSnapshotJson);
 const decodeStoredThreadSnapshot = Schema.decodeUnknownEffect(StoredThreadSnapshotJson);
-const encodeStoredThreadSnapshot = Schema.encodeEffect(StoredThreadSnapshotJson);
 const decodeStoredServerConfig = Schema.decodeUnknownEffect(StoredServerConfigJson);
 const encodeStoredServerConfig = Schema.encodeEffect(StoredServerConfigJson);
 const decodeStoredVcsRefs = Schema.decodeUnknownEffect(StoredVcsRefsJson);
@@ -426,12 +426,36 @@ function vcsRefsCacheKey(environmentId: EnvironmentId, cwd: string) {
 
 // MessageChannel yields without nested-timer clamping or background throttling.
 
+const yieldToBrowserTask = Effect.callback<void>((resume) => {
+  const { port1, port2 } = new MessageChannel();
+  const close = () => {
+    port1.close();
+    port2.close();
+  };
+  port1.addEventListener(
+    "message",
+    () => {
+      close();
+      resume(Effect.void);
+    },
+    { once: true },
+  );
+  port1.start();
+  port2.postMessage(null);
+  return Effect.sync(close);
+});
+
 export const layer = Layer.effectContext(
   Effect.gen(function* () {
     const { handle: database } = yield* Effect.acquireRelease(
       makeDatabaseHandle(),
       (owned) => owned.close,
     );
+    const encodeStoredThreadSnapshot = makeStoredThreadSnapshotEncoder({
+      format: "full",
+      yieldToHost: yieldToBrowserTask,
+    });
+    const threadWriteOrder = makeThreadCacheWriteOrder();
     const cacheStore = Persistence.EnvironmentCacheStore.of({
       loadShell: Effect.fn("Persistence.EnvironmentCacheStore.loadShell")(function (environmentId) {
         return readDatabaseValue(database, SHELL_STORE_NAME, environmentId).pipe(
@@ -542,18 +566,18 @@ export const layer = Layer.effectContext(
       ),
       saveThread: Effect.fn("storage.saveThread")(
         function* (environmentId, snapshot) {
+          const key = threadCacheKey(environmentId, snapshot.projection.thread.id);
+          const isLatest = threadWriteOrder.beginSave(environmentId, snapshot.projection.thread.id);
           const encoded = yield* encodeStoredThreadSnapshot({
-            schemaVersion: ORCHESTRATION_THREAD_CACHE_SCHEMA_VERSION,
             environmentId,
             threadId: snapshot.projection.thread.id,
             snapshot,
           }).pipe(Effect.mapError((cause) => persistenceError("save-thread", cause)));
-          yield* writeDatabaseValue(
-            database,
-            THREAD_STORE_NAME,
-            threadCacheKey(environmentId, snapshot.projection.thread.id),
-            encoded,
-          );
+          if (!isLatest()) return;
+          yield* Option.match(encoded, {
+            onNone: () => removeDatabaseValue(database, THREAD_STORE_NAME, key),
+            onSome: (payload) => writeDatabaseValue(database, THREAD_STORE_NAME, key, payload),
+          });
         },
         Effect.mapError((cause) =>
           cause._tag === "ConnectionPersistenceError"
@@ -630,6 +654,7 @@ export const layer = Layer.effectContext(
       ),
       removeThread: Effect.fn("Persistence.EnvironmentCacheStore.removeThread")(
         function (environmentId, threadId) {
+          threadWriteOrder.removeThread(environmentId, threadId);
           return removeDatabaseValue(
             database,
             THREAD_STORE_NAME,
@@ -638,6 +663,7 @@ export const layer = Layer.effectContext(
         },
       ),
       clear: Effect.fn("Persistence.EnvironmentCacheStore.clear")(function (environmentId) {
+        threadWriteOrder.clearEnvironment(environmentId);
         return Effect.all(
           [
             Effect.promise(() => projectFaviconCache.clearEnvironment(environmentId)),

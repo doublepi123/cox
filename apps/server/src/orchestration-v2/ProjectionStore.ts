@@ -98,6 +98,7 @@ import {
   isConversationHistoryItem,
   THREAD_HISTORY_MAX_RAW_TURNS,
   missingInterruptRequests,
+  DEFERRED_WORK_ITEM_TYPES,
   deferWorkHistoryRows,
   selectDeferredWorkPage,
   encodeThreadHistoryCursor,
@@ -338,6 +339,14 @@ export interface ProjectionRecordFilter {
   readonly turnItemRunIds?: ReadonlyArray<RunId | null>;
   readonly turnItemNodeIds?: ReadonlyArray<NodeId>;
   readonly runIds?: ReadonlyArray<RunId>;
+  readonly runStatuses?: ReadonlyArray<OrchestrationV2Run["status"]>;
+  readonly includeLatestRun?: true;
+  readonly providerTurnThreadIds?: ReadonlyArray<ProviderThreadId>;
+  readonly latestProviderTurnUsageOnly?: true;
+  readonly contextTransferStatuses?: ReadonlyArray<
+    OrchestrationV2ThreadProjection["contextTransfers"][number]["status"]
+  >;
+  readonly providerTurnAttemptIds?: ReadonlyArray<RunAttemptId>;
   readonly subagentIds?: ReadonlyArray<NodeId>;
   readonly subagentRunIds?: ReadonlyArray<RunId>;
   readonly nodeIds?: ReadonlyArray<NodeId>;
@@ -2930,6 +2939,43 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 SELECT ordinal, (SELECT MAX(ordinal) FROM user_anchors) AS latest FROM boundary
               `;
       const boundary = anchors[0]!;
+      const tailRows = Math.max(window.rowLimit, THREAD_HISTORY_TURN_SNAPSHOT_ROW_LIMIT);
+      const tailWorkStart = sql<{ readonly ordinal: number | null }>`
+                ${eligible}, visible_tail AS (
+                  SELECT ordinal FROM eligible
+                  WHERE ordinal >= ${boundary.ordinal}
+                    AND type NOT IN ${sql.in(DEFERRED_WORK_ITEM_TYPES)}
+                  ORDER BY ordinal DESC
+                  LIMIT ${tailRows}
+                ), tail AS (
+                  SELECT MIN(ordinal) AS ordinal FROM visible_tail HAVING COUNT(*) >= ${tailRows}
+                ), tail_runs AS (
+                  SELECT DISTINCT item.run_id
+                  FROM tail CROSS JOIN eligible AS item
+                  WHERE item.ordinal >= tail.ordinal AND item.run_id IS NOT NULL
+                )
+                SELECT MIN(MIN(COALESCE(
+                  (
+                    SELECT start.ordinal FROM eligible AS start
+                    WHERE start.run_id = tail_runs.run_id AND start.type = 'user_message'
+                      AND start.ordinal <= tail.ordinal
+                    ORDER BY start.ordinal DESC LIMIT 1
+                  ),
+                  (
+                    SELECT MIN(first.ordinal) FROM orchestration_v2_projection_turn_items AS first
+                    WHERE first.thread_id = ${threadId} AND first.run_id = tail_runs.run_id
+                  ),
+                  tail.ordinal
+                ), tail.ordinal)) AS ordinal
+                FROM tail LEFT JOIN tail_runs
+              `;
+      const workStart =
+        window.deferWork === true &&
+        boundary.latest !== null &&
+        Number.isSafeInteger(window.rowLimit) &&
+        window.rowLimit >= 0
+          ? Math.max(boundary.ordinal, (yield* tailWorkStart)[0]?.ordinal ?? 0)
+          : boundary.ordinal;
       return sql`
                 ${eligible}, blocked_runs AS MATERIALIZED (
                   SELECT DISTINCT run_id FROM orchestration_v2_projection_turn_items
@@ -2937,7 +2983,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     AND ${window.deferWork ? 1 : 0} = 1
                     AND run_id IN (
                       SELECT run_id FROM eligible
-                      WHERE ordinal >= ${boundary.ordinal} AND run_id IS NOT NULL
+                      WHERE ordinal >= ${workStart} AND run_id IS NOT NULL
                     )
                     AND (type IN ('run_interrupt_request', 'run_interrupt_result')
                       OR (type = 'error' AND status = 'failed' AND parent_item_id IS NULL))
@@ -2946,14 +2992,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     MAX(CASE WHEN type = 'user_message' THEN ordinal ELSE 0 END)
                       OVER (PARTITION BY run_id ORDER BY ordinal) AS segment,
                     CASE WHEN status = 'completed' AND (run_status = 'completed' OR attempt_status = 'superseded')
-                      AND type IN ('command_execution', 'reasoning', 'file_change', 'file_search', 'web_search', 'dynamic_tool')
+                      AND type IN ${sql.in(DEFERRED_WORK_ITEM_TYPES)}
                       AND NOT (${inlineWorkOutput})
                       AND run_id NOT IN (SELECT run_id FROM blocked_runs)
                       THEN 1 ELSE 0 END AS can_defer
                   FROM eligible AS item
                   WHERE ${window.deferWork ? 1 : 0} = 1
                     AND ${boundary.latest === null ? 0 : 1} = 1
-                    AND ordinal >= ${boundary.ordinal}
+                    AND ordinal >= ${workStart}
                 ), deferred_work AS (
                   SELECT run_id, segment, attempt_id, MIN(ordinal) AS first_ordinal,
                     MAX(ordinal) AS last_ordinal, COUNT(*) AS item_count
@@ -3020,6 +3066,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 )
               `;
     });
+
+    const threadColumn = (ids: ReadonlyArray<unknown> | undefined, column = "thread_id") =>
+      sql.literal(ids === undefined ? column : `+${column}`);
 
     const readCanonicalProjection = Effect.fn("ProjectionStore.readCanonicalProjection")(
       function* (
@@ -3270,9 +3319,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_runs
-            WHERE thread_id = ${threadId}
+            WHERE ${threadColumn(filter?.runIds)} = ${threadId}
               ${filter?.runIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.runIds)}))`}
-            ORDER BY ordinal ASC
+              ${
+                filter?.runStatuses === undefined
+                  ? sql`ORDER BY ordinal ASC`
+                  : filter.includeLatestRun !== true
+                    ? sql`AND status IN (SELECT value FROM json_each(${encodeIdList(filter.runStatuses)}))
+                    ORDER BY +ordinal ASC`
+                    : sql`AND (status IN (SELECT value FROM json_each(${encodeIdList(filter.runStatuses)}))
+                    OR run_id = (
+                      SELECT run_id FROM orchestration_v2_projection_runs
+                      WHERE thread_id = ${threadId}
+                        AND (status <> 'cancelled' OR json_extract(payload_json, '$.startedAt') IS NOT NULL)
+                      ORDER BY ordinal DESC
+                      LIMIT 1
+                    ))
+                    ORDER BY ordinal ASC`
+              }
           `
               : sql<PayloadRow>`
             SELECT payload_json FROM orchestration_v2_projection_runs
@@ -3316,7 +3380,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_nodes AS node
-            WHERE node.thread_id = ${threadId}
+            WHERE ${threadColumn(filter?.nodeIds, "node.thread_id")} = ${threadId}
               ${filter?.nodeIds === undefined ? sql`` : sql`AND node.node_id IN (SELECT value FROM json_each(${encodeIdList(filter.nodeIds)}))`}
               ${
                 filter?.omitSettledLeafNodes === true
@@ -3355,7 +3419,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_subagents AS subagent
-            WHERE thread_id = ${threadId}
+            WHERE ${threadColumn(filter?.subagentIds)} = ${threadId}
               ${filter?.subagentIds === undefined ? sql`` : sql`AND subagent_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentIds)}))`}
               ${filter?.subagentRunIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentRunIds)}))`}
               ${
@@ -3434,14 +3498,25 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 AND provider_thread_id = ${latestTodoList?.provider_thread_id ?? null})
             ORDER BY COALESCE(first_run_ordinal, 0), provider_thread_id ASC
           `,
-          fields !== undefined && !fields.includes("providerTurns")
+          (fields !== undefined && !fields.includes("providerTurns")) ||
+          (window === undefined &&
+            matchesNothing(filter?.providerTurnAttemptIds, filter?.providerTurnThreadIds))
             ? Effect.succeed([])
             : window === undefined
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_provider_turns
             WHERE thread_id = ${threadId}
-            ORDER BY provider_thread_id ASC, ordinal ASC
+              ${filter?.providerTurnAttemptIds === undefined ? sql`` : sql`AND run_attempt_id IN (SELECT value FROM json_each(${encodeIdList(filter.providerTurnAttemptIds)}))`}
+              ${filter?.providerTurnThreadIds === undefined ? sql`` : sql`AND provider_thread_id IN (SELECT value FROM json_each(${encodeIdList(filter.providerTurnThreadIds)}))`}
+              ${
+                filter?.latestProviderTurnUsageOnly === true
+                  ? sql`AND json_extract(payload_json, '$.tokenUsage') IS NOT NULL
+            ORDER BY julianday(json_extract(payload_json, '$.tokenUsage.updatedAt')) DESC,
+              provider_thread_id ASC, ordinal ASC
+            LIMIT 1`
+                  : sql`ORDER BY provider_thread_id ASC, ordinal ASC`
+              }
           `
               : sql<PayloadRow>`
             SELECT payload_json FROM orchestration_v2_projection_provider_turns
@@ -3476,7 +3551,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             : window === undefined
               ? sql<PayloadRow>`
                 SELECT payload_json FROM orchestration_v2_projection_messages
-                WHERE thread_id = ${threadId}
+                WHERE ${threadColumn(filter?.messageIds)} = ${threadId}
                   ${filter?.messageIds === undefined ? sql`` : sql`AND message_id IN (SELECT value FROM json_each(${encodeIdList(filter.messageIds)}))`}
                   ${filter?.messageRoles === undefined ? sql`` : sql`AND role IN (SELECT value FROM json_each(${encodeIdList(filter.messageRoles)}))`}
                   ${filter?.messageRunIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.messageRunIds)}))`}
@@ -3572,13 +3647,15 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   )
                 ORDER BY rowid ASC
               `,
-          fields !== undefined && !fields.includes("contextTransfers")
+          (fields !== undefined && !fields.includes("contextTransfers")) ||
+          (window === undefined && matchesNothing(filter?.contextTransferStatuses))
             ? Effect.succeed([])
             : window === undefined
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_context_transfers
-            WHERE source_thread_id = ${threadId} OR target_thread_id = ${threadId}
+            WHERE (source_thread_id = ${threadId} OR target_thread_id = ${threadId})
+              ${filter?.contextTransferStatuses === undefined ? sql`` : sql`AND status IN (SELECT value FROM json_each(${encodeIdList(filter.contextTransferStatuses)}))`}
             ORDER BY rowid ASC
           `
               : sql<PayloadRow>`
@@ -3633,10 +3710,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               (filter.messageRoles.includes("user") && filter.messageRoles.includes("assistant")))
               ? undefined
               : messages.map((message) => message.id);
+          const userOnly = messages.every((message) => message.role === "user");
           const rows = yield* sql<{ message_id: string; ordinal: number }>`
             SELECT json_extract(payload_json, '$.messageId') AS message_id, MIN(ordinal) AS ordinal
             FROM orchestration_v2_projection_turn_items
-            WHERE thread_id = ${threadId} AND type IN ('user_message', 'assistant_message')
+            WHERE thread_id = ${threadId}
+              AND ${userOnly ? sql`type = 'user_message'` : sql`type IN ('user_message', 'assistant_message')`}
               ${loadedMessageIds === undefined ? sql`` : sql`AND json_extract(payload_json, '$.messageId') IN (SELECT value FROM json_each(${encodeIdList(loadedMessageIds)}))`}
             GROUP BY json_extract(payload_json, '$.messageId')
           `;

@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
+  ContextTransferId,
   EnvironmentId,
   MessageId,
   NodeId,
@@ -115,8 +116,26 @@ describe("OrchestratorMcpService", () => {
             completedAt: DateTime.makeUnsafe("2026-10-03T10:05:00Z"),
           },
         ],
-        contextTransfers: [],
-        messages: [],
+        contextTransfers: [
+          {
+            id: ContextTransferId.make("transfer:mcp-ack-result"),
+            type: "subagent_result",
+            sourceThreadId: childThreadId,
+            targetThreadId: parentThreadId,
+            sourcePoint: { runId: childRunId },
+          },
+        ],
+        messages: [
+          {
+            id: MessageId.make("message:mcp-ack-result"),
+            runId: childRunId,
+            role: "assistant",
+            text: "terminal result",
+            createdAt: DateTime.makeUnsafe("2026-10-03T10:10:00Z"),
+            updatedAt: DateTime.makeUnsafe("2026-10-03T10:10:00Z"),
+          },
+        ],
+        turnItems: [],
         subagents: [],
         providerThreads: [],
         providerTurns: [],
@@ -142,6 +161,7 @@ describe("OrchestratorMcpService", () => {
                 : hasNestedWork
                   ? {
                       ...childProjection,
+                      contextTransfers: [],
                       subagents: [
                         { ...parentProjection.subagents[0]!, status: "running" as const },
                       ],
