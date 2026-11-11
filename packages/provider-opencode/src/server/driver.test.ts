@@ -5,10 +5,16 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ProviderInstanceId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ProviderSessionId,
+  ThreadId,
+  DEFAULT_SERVER_SETTINGS,
+} from "@t3tools/contracts";
 import type { OpenCodeSettings } from "../settings.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -52,7 +58,9 @@ const layer = Layer.mergeAll(
   IdAllocator.layer,
   McpProviderSessions.layer,
   ProviderLatestVersions.layer,
-  TestProviderHost.layer(),
+  TestProviderHost.layer({
+    settings: { ...DEFAULT_SERVER_SETTINGS, providerHealthRefreshInterval: Duration.minutes(5) },
+  }),
   Layer.succeed(
     ProviderEventLoggers.ProviderEventLoggers,
     ProviderEventLoggers.NoOpProviderEventLoggers,
@@ -201,6 +209,13 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
         const snapshot = yield* instance.snapshotForCwd!(cwd);
         assert.strictEqual(snapshot.status, "ready");
         assert.isNotEmpty(snapshot.models);
+        assert.deepEqual(snapshot.optionDescriptors?.[0], {
+          id: "agent",
+          label: "Agent",
+          type: "select",
+          options: [{ id: expected, label: expected, isDefault: true }],
+          currentValue: expected,
+        });
         for (const model of snapshot.models) {
           const descriptor = model.capabilities?.optionDescriptors?.find(
             (option) => option.id === "agent",

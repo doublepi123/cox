@@ -129,7 +129,7 @@ function getSelectedTraits(
     ? buildUnavailableModelOptionDescriptors(
         planModeEnabled
           ? modelOptions
-          : modelOptions?.filter((option) => option.id !== "agent" || option.value !== "plan"),
+          : modelOptions?.filter((option) => option.id !== "interactionMode"),
       )
     : getProviderOptionDescriptors({
         caps,

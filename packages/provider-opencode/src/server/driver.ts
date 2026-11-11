@@ -341,10 +341,11 @@ export const OpenCodeDriver: ProviderDriver<
       openCode2Server
         .withConnection(({ client }) => loadOpenCode2Agents(client, cwd))
         .pipe(
-          Effect.catch(() =>
-            Effect.logWarning("Could not discover OpenCode agents.").pipe(
-              Effect.as({ agents: [] }),
-            ),
+          Effect.option,
+          Effect.tap((inventory) =>
+            inventory._tag === "None"
+              ? Effect.logWarning("Could not discover OpenCode agents.")
+              : Effect.void,
           ),
         );
     const listOpenCode2Workspace = (cwd: string) =>
@@ -403,7 +404,9 @@ export const OpenCodeDriver: ProviderDriver<
           host.paths.cwd,
           runtimeProbe.refresh,
           loadOpenCode2Models,
-          listOpenCode2Agents(host.paths.cwd),
+          listOpenCode2Agents(host.paths.cwd).pipe(
+            Effect.map(Option.getOrElse(() => ({ agents: [] }))),
+          ),
         ).pipe(
           Effect.annotateLogs({ providerInstanceId: instanceId }),
           Effect.annotateSpans({ providerInstanceId: instanceId }),
@@ -560,10 +563,19 @@ export const OpenCodeDriver: ProviderDriver<
               ]).pipe(
                 Effect.map(([machineSnapshot, agents, { skills, commands }]) => ({
                   ...machineSnapshot,
-                  models: machineSnapshot.models.map((model) => ({
-                    ...model,
-                    capabilities: withOpenCode2Agents(model.capabilities, agents),
-                  })),
+                  models:
+                    agents._tag === "None"
+                      ? machineSnapshot.models
+                      : machineSnapshot.models.map((model) => ({
+                          ...model,
+                          capabilities: withOpenCode2Agents(model.capabilities, agents.value),
+                        })),
+                  ...(agents._tag === "None"
+                    ? {}
+                    : {
+                        optionDescriptors: withOpenCode2Agents(null, agents.value)
+                          .optionDescriptors,
+                      }),
                   skills: openCode2SkillsToServerProviderSkills(skills),
                   slashCommands: openCode2CommandsToServerProviderSlashCommands(commands),
                   // A finished scan lists at least the built-ins. None means it

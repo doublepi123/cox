@@ -14,6 +14,7 @@ import {
   hasCompleteProviderWorkspaceSnapshot,
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
+  resolveProviderModelsForCwd,
 } from "./providerSkills.ts";
 
 const provider = {
@@ -102,6 +103,59 @@ describe("workspace provider snapshots", () => {
     expect(resolveProviderSlashCommandsForCwd(provider, "/workspace/project-a")).toEqual([
       { name: "project" },
     ]);
+  });
+
+  it("overlays directory-scoped agent descriptors without changing model identity", () => {
+    const models = [
+      {
+        slug: "opencode/model",
+        name: "Model",
+        isCustom: false,
+        capabilities: {
+          contextWindow: 64000,
+          optionDescriptors: [
+            {
+              id: "variant",
+              label: "Reasoning",
+              type: "select",
+              options: [{ id: "high", label: "High" }],
+              currentValue: "high",
+            },
+          ],
+        },
+      },
+    ] satisfies ServerProvider["models"];
+    const scoped = {
+      ...provider,
+      models,
+      workspaceSnapshots: [
+        {
+          ...provider.workspaceSnapshots[0]!,
+          optionDescriptors: [
+            {
+              id: "agent",
+              label: "Agent",
+              type: "select",
+              options: [
+                { id: "build", label: "Build", isDefault: true },
+                { id: "plan", label: "Plan" },
+                { id: "review", label: "Review" },
+              ],
+              currentValue: "build",
+            },
+          ],
+        },
+      ],
+    } satisfies ServerProvider;
+    const resolved = resolveProviderModelsForCwd(scoped, "/workspace/project-a");
+    expect(resolved[0]?.slug).toBe("opencode/model");
+    expect(resolved[0]?.capabilities?.contextWindow).toBe(64000);
+    expect(resolved[0]?.capabilities?.optionDescriptors).toEqual([
+      models[0]!.capabilities.optionDescriptors![0],
+      scoped.workspaceSnapshots[0]!.optionDescriptors![0],
+    ]);
+    expect(models[0]!.capabilities.optionDescriptors).toHaveLength(1);
+    expect(resolveProviderModelsForCwd(scoped, "/workspace/project-b")).toBe(models);
   });
 
   it("keeps the machine snapshot before this cwd has a provider snapshot", () => {

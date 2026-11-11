@@ -58,29 +58,18 @@ export function getProviderModelCapabilities(
   const slug = resolveSelectableModel(provider, model, models);
   const selectedModel = models.find((candidate) => candidate.slug === slug);
   const caps = selectedModel?.capabilities ?? EMPTY_CAPABILITIES;
-  if (planModeEnabled) {
+  if (planModeEnabled || provider !== "opencode") {
     return caps;
   }
-  return withoutPlanAgentOption(caps);
+  return withoutLegacyPlanOption(caps);
 }
 
-function withoutPlanAgentOption(caps: ModelCapabilities): ModelCapabilities {
+function withoutLegacyPlanOption(caps: ModelCapabilities): ModelCapabilities {
   return {
     ...caps,
-    optionDescriptors: (caps.optionDescriptors ?? []).flatMap((descriptor) => {
-      if (descriptor.type !== "select" || descriptor.id !== "agent") {
-        return [descriptor];
-      }
-      const options = descriptor.options.filter((option) => option.id !== "plan");
-      if (options.length === 0) {
-        return [];
-      }
-      const currentValue =
-        descriptor.currentValue && options.some((option) => option.id === descriptor.currentValue)
-          ? descriptor.currentValue
-          : (options.find((option) => option.isDefault)?.id ?? options[0]?.id);
-      return [{ ...descriptor, options, ...(currentValue ? { currentValue } : {}) }];
-    }),
+    optionDescriptors: (caps.optionDescriptors ?? []).filter(
+      (descriptor) => descriptor.id !== "interactionMode",
+    ),
   };
 }
 

@@ -223,6 +223,123 @@ it.each([
   },
 );
 
+it.each([320, 1024])(
+  "selects OpenCode Build and Plan without legacy plan mode at %s px",
+  async (width) => {
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    await using _viewport = {
+      async [Symbol.asyncDispose]() {
+        await page.viewport(viewport.width, viewport.height);
+      },
+    };
+    await page.viewport(width, 812);
+    const instanceId = ProviderInstanceId.make("opencode");
+    const driver = ProviderDriverKind.make("opencode");
+    const models = [
+      {
+        slug: "opencode/model",
+        name: "OpenCode model",
+        isCustom: false,
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "agent",
+              label: "Agent",
+              type: "select" as const,
+              options: [
+                { id: "build", label: "Build", isDefault: true },
+                { id: "plan", label: "Plan" },
+              ],
+              currentValue: "build",
+            },
+          ],
+        },
+      },
+    ];
+    const entries = deriveProviderInstanceEntries([
+      {
+        instanceId,
+        driver,
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-01-01T00:00:00Z",
+        models,
+        skills: [],
+        slashCommands: [],
+      },
+    ]);
+    function Picker() {
+      const [modelOptions, setModelOptions] = useState<
+        ReadonlyArray<ProviderOptionSelection> | undefined
+      >();
+      const traits = {
+        provider: driver,
+        instanceId,
+        models,
+        model: "opencode/model",
+        modelOptions,
+        planModeEnabled: false,
+        onModelOptionsChange: setModelOptions,
+      };
+      return (
+        <>
+          <output aria-label="Selected OpenCode agent">
+            {modelOptions?.find((option) => option.id === "agent")?.value ?? "build"}
+          </output>
+          <ProviderModelPicker
+            environmentId={null}
+            activeInstanceId={instanceId}
+            model="opencode/model"
+            lockedProvider={null}
+            instanceEntries={entries}
+            modelOptionsByInstance={new Map([[instanceId, models]])}
+            triggerAriaLabel="Choose model"
+            onInstanceModelChange={() => {}}
+            effortColumn={<ComposerEffortColumn traits={traits} />}
+            footer={
+              <DockedPickerContext
+                value={{
+                  modelLabel: "OpenCode model",
+                  layout: width === 320 ? "sheet" : "popover",
+                }}
+              >
+                <ComposerPickerFooter
+                  traits={traits}
+                  runtimeMode="full-access"
+                  runtimeModeOptions={[
+                    { mode: "full-access", ...runtimeModeConfig["full-access"] },
+                  ]}
+                  onRuntimeModeChange={() => {}}
+                />
+              </DockedPickerContext>
+            }
+          />
+        </>
+      );
+    }
+    await using screen = await render(<Picker />);
+    await screen.getByRole("button", { name: "Choose model" }).click();
+    await expect
+      .element(page.getByRole("radio", { name: "Build Default", exact: true }))
+      .toBeVisible();
+    await page.getByRole("radio", { name: "Plan", exact: true }).click();
+    await expect
+      .element(screen.getByRole("status", { name: "Selected OpenCode agent" }))
+      .toHaveTextContent("plan");
+    await expect
+      .element(page.getByRole("radio", { name: "Plan", exact: true }))
+      .toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radio", { name: "Build Default", exact: true }).click();
+    await expect
+      .element(screen.getByRole("status", { name: "Selected OpenCode agent" }))
+      .toHaveTextContent("build");
+    await userEvent.keyboard("{Escape}");
+  },
+);
+
 it("keeps each registry image when adding a model from another ACP agent", async () => {
   const icons = [
     "https://cdn.agentclientprotocol.com/registry/icons/picker-explicit.svg",

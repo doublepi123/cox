@@ -17,6 +17,7 @@ import {
 } from "../../providerInstances";
 import { type UnifiedSettings } from "@t3tools/contracts/settings";
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
+import { resolveProviderModelsForCwd } from "@t3tools/client-runtime/providerSkills";
 import { resolveComposerProviderSelection } from "../ChatView.logic";
 
 const NO_PROVIDER_MODELS: ServerProvider["models"] = [];
@@ -35,6 +36,7 @@ export function useComposerProviderModel(
     readonly threadModelSelection: ModelSelection | null | undefined;
     readonly projectModelSelection: ModelSelection | null | undefined;
     readonly promptInjectionState: ReturnType<typeof getComposerPromptInjectionState>;
+    readonly cwd: string | null;
   },
 ) {
   const {
@@ -45,6 +47,7 @@ export function useComposerProviderModel(
     threadModelSelection,
     projectModelSelection,
     promptInjectionState,
+    cwd,
     candidateInstanceIds,
     lockedProvider,
     lockedInstanceId,
@@ -75,7 +78,9 @@ export function useComposerProviderModel(
     projectModelSelection,
     settings,
   });
-  const selectedProviderModels = selection.selectedProviderEntry?.models ?? NO_PROVIDER_MODELS;
+  const selectedProviderModels = selection.selectedProviderEntry
+    ? resolveProviderModelsForCwd(selection.selectedProviderEntry.snapshot, cwd)
+    : NO_PROVIDER_MODELS;
   const composerProviderState = getComposerProviderState({
     provider: selectedProvider,
     model: modelState.selectedModel,

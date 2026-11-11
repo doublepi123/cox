@@ -10,7 +10,7 @@ import { loadOpenCode2Agents, withOpenCode2Agents } from "./openCode2Agents.ts";
 
 const agent = (id: string, mode: "primary" | "all" | "subagent" = "primary", hidden = false) => ({
   id,
-  name: id === "orchestrator" ? "Orchestrator" : id,
+  name: id === "plan" ? "Orchestrator" : id,
   mode,
   hidden,
   request: { settings: {}, headers: {}, body: {} },
@@ -34,7 +34,7 @@ const discover = (input?: {
             {
               type: "document",
               path: "/project/opencode.json",
-              info: { default_agent: "orchestrator" },
+              info: { default_agent: "plan" },
             },
           ])
         : {
@@ -44,7 +44,7 @@ const discover = (input?: {
                 ? []
                 : [
                     agent("build"),
-                    agent("orchestrator"),
+                    agent("plan"),
                     agent("review", "all"),
                     agent("hidden", "primary", true),
                     agent("worker", "subagent"),
@@ -70,19 +70,19 @@ describe("OpenCode 2 agents", () => {
       const inventory = yield* discover();
       assert.deepEqual(
         inventory.agents.map((entry) => entry.id),
-        ["build", "orchestrator", "review"],
+        ["build", "plan", "review"],
       );
-      assert.strictEqual(inventory.defaultAgent, "orchestrator");
+      assert.strictEqual(inventory.defaultAgent, "plan");
       const capabilities = withOpenCode2Agents({ contextWindow: 64000 }, inventory);
       assert.strictEqual(capabilities.contextWindow, 64000);
       const descriptor = capabilities.optionDescriptors?.[0];
       assert.isTrue(descriptor?.type === "select");
       if (descriptor?.type !== "select") return;
-      assert.strictEqual(descriptor.currentValue, "orchestrator");
+      assert.strictEqual(descriptor.currentValue, "plan");
       assert.deepEqual(
         descriptor.options.find((option) => option.isDefault),
         {
-          id: "orchestrator",
+          id: "plan",
           label: "Orchestrator",
           isDefault: true,
         },
@@ -94,7 +94,7 @@ describe("OpenCode 2 agents", () => {
     Effect.gen(function* () {
       const load = yield* discover({ emptyFirst: true }).pipe(Effect.forkChild);
       yield* TestClock.adjust("250 millis");
-      assert.strictEqual((yield* Fiber.join(load)).defaultAgent, "orchestrator");
+      assert.strictEqual((yield* Fiber.join(load)).defaultAgent, "plan");
     }),
   );
 

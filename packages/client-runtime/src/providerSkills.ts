@@ -132,6 +132,30 @@ export function resolveProviderSlashCommandsForCwd(
   return resolveProviderWorkspaceSnapshot(provider, cwd)?.slashCommands ?? provider.slashCommands;
 }
 
+export function resolveProviderModelsForCwd(
+  provider: ServerProvider,
+  cwd: string | null | undefined,
+): ServerProvider["models"] {
+  const workspace = resolveProviderWorkspaceSnapshot(provider, cwd);
+  if (!workspace?.optionDescriptors) return provider.models;
+  const descriptors = new Map(
+    workspace.optionDescriptors.map((descriptor) => [descriptor.id, descriptor]),
+  );
+  return provider.models.map((model) => {
+    const capabilities = model.capabilities;
+    if (capabilities === null) return model;
+    const optionDescriptors = (capabilities.optionDescriptors ?? []).map(
+      (descriptor) => descriptors.get(descriptor.id) ?? descriptor,
+    );
+    for (const descriptor of descriptors.values()) {
+      if (!optionDescriptors.some((candidate) => candidate.id === descriptor.id)) {
+        optionDescriptors.push(descriptor);
+      }
+    }
+    return { ...model, capabilities: { ...capabilities, optionDescriptors } };
+  });
+}
+
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 // A cwd that never scans, such as a deleted worktree, would otherwise retry forever.
 const WORKSPACE_SNAPSHOT_MAX_ATTEMPTS = 3;

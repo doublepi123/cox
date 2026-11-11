@@ -46,6 +46,55 @@ describe("getProviderModelCapabilities", () => {
     );
   });
 
+  it("keeps native OpenCode agents selectable without legacy plan mode", () => {
+    const opencode = ProviderDriverKind.make("opencode");
+    const agentCapabilities: ModelCapabilities = {
+      optionDescriptors: [
+        {
+          id: "agent",
+          label: "Agent",
+          type: "select",
+          options: [
+            { id: "build", label: "Build", isDefault: true },
+            { id: "plan", label: "Plan" },
+          ],
+          currentValue: "build",
+        },
+      ],
+    };
+    expect(
+      getProviderModelCapabilities(
+        [model({ slug: "opencode/model", capabilities: agentCapabilities })],
+        "opencode/model",
+        opencode,
+        false,
+      ),
+    ).toEqual(agentCapabilities);
+  });
+
+  it("hides the legacy interaction mode without filtering native agent choices", () => {
+    const models = [
+      model({
+        slug: "test-model",
+        capabilities: {
+          optionDescriptors: [
+            { id: "interactionMode", label: "Mode", type: "boolean", currentValue: true },
+          ],
+        },
+      }),
+    ];
+    expect(
+      getProviderModelCapabilities(
+        models,
+        "test-model",
+        ProviderDriverKind.make("opencode"),
+        false,
+      ),
+    ).toEqual({
+      optionDescriptors: [],
+    });
+  });
+
   it("prefers an exact custom slug over a built-in model alias", () => {
     const customCapabilities = capabilities("custom-option");
     const models = [
