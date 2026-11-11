@@ -30,6 +30,7 @@ import {
   forkThreadFromRun,
   markThreadUnread,
   mergeThreadBack,
+  moveThreadToProject,
   promoteQueuedRun,
   reorderQueuedRun,
   resumeThreadQueue,
@@ -213,6 +214,12 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:set-model-selection",
       execute: (input: UpdateThreadMetadataInput & { readonly modelSelection: ModelSelection }) =>
         updateThreadMetadata(input),
+      scheduler,
+      concurrency,
+    }),
+    moveToProject: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:move-to-project",
+      execute: moveThreadToProject,
       scheduler,
       concurrency,
     }),

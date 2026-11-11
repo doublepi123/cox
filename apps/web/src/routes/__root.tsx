@@ -17,6 +17,7 @@ import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
+import { ThreadProjectMoveDialogHost } from "../components/ThreadProjectMoveDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { DevReplayHost } from "../components/DevReplayHost";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
@@ -114,6 +115,7 @@ function RootRouteBranch() {
       <SidebarProvider>
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />
+        <ThreadProjectMoveDialogHost />
         <ThemeEditorHost />
         <Outlet />
       </SidebarProvider>
@@ -147,6 +149,7 @@ function RootRouteBranch() {
         <ReopenClosedViewShortcut />
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />
+        <ThreadProjectMoveDialogHost />
 
         <ProjectCloneToastCoordinator />
 

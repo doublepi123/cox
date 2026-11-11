@@ -168,6 +168,7 @@ import {
   formatSnoozePresetMenuLabel,
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
+import { openThreadProjectMoveDialog } from "./ThreadProjectMoveDialog";
 import {
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
@@ -2646,6 +2647,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 isRegeneratingTitle,
                 isRunning: !threadRuntimeCanArchive(thread.runtime),
                 canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+                canMoveToProject:
+                  serverConfigs.get(thread.environmentId)?.environment.capabilities
+                    .threadProjectMove === true &&
+                  projects.some(
+                    (project) =>
+                      project.environmentId === thread.environmentId &&
+                      project.id !== thread.projectId &&
+                      !project.isScratch,
+                  ),
                 supports: {
                   settlement: configLoaded,
                   autoSettleOptOut: supportsAutoSettleOptOut,
@@ -2748,6 +2758,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             }
             return;
           }
+          case "move-to-project":
+            openThreadProjectMoveDialog(threadRef);
+            return;
           case "auto-settle:enabled":
           case "auto-settle:disabled": {
             const result = await setThreadAutoSettle(

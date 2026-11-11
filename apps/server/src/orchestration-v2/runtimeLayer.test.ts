@@ -7845,6 +7845,193 @@ it.layer(layerSharedApplicationDataPlaneTest)("snooze projection", (it) => {
       assert.equal(stayed?.projectId, scratchProjectId);
     }),
   );
+
+  it.effect("moves only conversation content into another project", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const sourceProjectId = ProjectId.make("runtime-layer-move-source");
+      const targetProjectId = ProjectId.make("runtime-layer-move-target");
+      const threadId = ThreadId.make("runtime-layer-move-thread");
+      yield* projects.create({
+        commandId: CommandId.make("runtime-layer-move-source-create"),
+        projectId: sourceProjectId,
+        title: "Source",
+        workspaceRoot: "/tmp/runtime-layer-move-source",
+      });
+      yield* projects.create({
+        commandId: CommandId.make("runtime-layer-move-target-create"),
+        projectId: targetProjectId,
+        title: "Target",
+        workspaceRoot: "/tmp/runtime-layer-move-target",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-move-thread-create"),
+        threadId,
+        projectId: sourceProjectId,
+        title: "Move this conversation",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: "feature/source-only",
+        worktreePath: "/tmp/runtime-layer-move-source-worktree",
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-move-message"),
+        threadId,
+        messageId: MessageId.make("runtime-layer-move-message"),
+        text: "Keep this history.",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+      });
+      const before = yield* orchestrator.getThreadProjection(threadId);
+      const run = before.runs[0]!;
+      const providerThread = before.providerThreads[0]!;
+      const now = yield* DateTime.now;
+      const providerSessionId = providerThread.providerSessionId!;
+      yield* eventSink.write({
+        events: [
+          {
+            id: EventId.make("runtime-layer-move-run-complete"),
+            type: "run.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, status: "completed", startedAt: now, completedAt: now },
+          },
+          {
+            id: EventId.make("runtime-layer-move-session-attached"),
+            type: "provider-session.attached",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: providerSessionId,
+              driver,
+              providerInstanceId: modelSelection.instanceId,
+              status: "running",
+              cwd: "/tmp/runtime-layer-move-source-worktree",
+              model: modelSelection.model,
+              capabilities: CodexProviderCapabilitiesV2,
+              createdAt: now,
+              updatedAt: now,
+              lastError: null,
+            },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.link",
+        commandId: CommandId.make("runtime-layer-move-pr-link"),
+        threadId,
+        host: "github.com",
+        repository: "example/source",
+        number: 7,
+        url: "https://github.com/example/source/pull/7",
+        source: "manual",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.watch",
+        commandId: CommandId.make("runtime-layer-move-pr-watch"),
+        threadId,
+        host: "github.com",
+        repository: "example/source",
+        number: 7,
+        watching: true,
+      });
+
+      const command = {
+        type: "thread.project.move" as const,
+        commandId: CommandId.make("runtime-layer-move-command"),
+        threadId,
+        projectId: targetProjectId,
+        expectedProjectId: sourceProjectId,
+      };
+      const moved = yield* threads.dispatch(command);
+      assert.deepEqual(
+        moved.storedEvents.map((stored) => stored.event.type),
+        ["thread.metadata-updated", "provider-session.detached"],
+      );
+      const replay = yield* threads.dispatch(command);
+      assert.equal(replay.sequence, moved.sequence);
+      assert.equal(replay.replayed, true);
+
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(after.thread.projectId, targetProjectId);
+      assert.isNull(after.thread.worktreePath);
+      assert.isNull(after.thread.branch);
+      assert.deepEqual(
+        after.messages.map((message) => message.text),
+        ["Keep this history."],
+      );
+      assert.deepEqual(
+        after.runs.map((candidate) => candidate.id),
+        [run.id],
+      );
+      assert.isUndefined(after.thread.pullRequests?.[0]?.watch);
+      assert.isDefined(after.thread.pullRequests?.[0]?.endedWatch);
+      const detached = moved.storedEvents.flatMap((stored) =>
+        stored.event.type === "provider-session.detached" ? [stored.event] : [],
+      )[0];
+      assert.equal(detached?.payload.providerSessionId, providerSessionId);
+
+      const stale = yield* threads
+        .dispatch({ ...command, commandId: CommandId.make("runtime-layer-move-stale") })
+        .pipe(Effect.flip);
+      assert.equal(
+        stale.cause,
+        `Thread ${threadId} moved before this project change could be applied.`,
+      );
+
+      const busyThreadId = ThreadId.make("runtime-layer-move-busy");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-move-busy-create"),
+        threadId: busyThreadId,
+        projectId: sourceProjectId,
+        title: "Busy",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-move-busy-message"),
+        threadId: busyThreadId,
+        messageId: MessageId.make("runtime-layer-move-busy-message"),
+        text: "Still working.",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+      });
+      const busy = yield* threads
+        .dispatch({
+          type: "thread.project.move",
+          commandId: CommandId.make("runtime-layer-move-busy-command"),
+          threadId: busyThreadId,
+          projectId: targetProjectId,
+          expectedProjectId: sourceProjectId,
+        })
+        .pipe(Effect.flip);
+      assert.equal(
+        busy.cause,
+        `Thread ${busyThreadId} still has work in progress. Finish or stop it first.`,
+      );
+      assert.equal((yield* orchestrator.getThreadShell(busyThreadId))?.projectId, sourceProjectId);
+    }),
+  );
 });
 
 it.layer(layerSharedApplicationDataPlaneTest)("visited projection", (it) => {

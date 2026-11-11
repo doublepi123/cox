@@ -2513,6 +2513,13 @@ export const zh = {
   "Archive thread": "存档对话",
   "Show all projects": "显示所有项目",
   "Turn into project": "转换为项目",
+  "Move to project…": "移动到项目…",
+  "Move thread to project": "移动对话到项目",
+  "Only conversation content is moved. Code and uncommitted changes stay in the original project; future work uses the target project.":
+    "仅移动对话内容。代码和未提交变更保留在原项目中；后续工作将在目标项目中进行。",
+  "No other projects are available.": "没有可移动到的其他项目。",
+  "Failed to move thread": "移动对话失败",
+  "Thread moved": "对话已移动",
   "Filter by {project}": "仅显示项目 {project}",
   "New thread on {branch}": "在分支 {branch} 上新建对话",
   "Thread ID": "对话 ID",

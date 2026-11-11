@@ -35,6 +35,25 @@ const decodeOrchestrationV2ProviderCapabilities = Schema.decodeUnknownSync(
 );
 
 describe("orchestration V2 contracts", () => {
+  it("decodes project move commands", () => {
+    const decode = Schema.decodeUnknownSync(OrchestrationV2RpcSchemas.dispatchCommand.input);
+    expect(
+      decode({
+        type: "thread.project.move",
+        commandId: "move-command",
+        threadId: "thread-1",
+        projectId: "project-b",
+        expectedProjectId: "project-a",
+      }),
+    ).toEqual({
+      type: "thread.project.move",
+      commandId: "move-command",
+      threadId: "thread-1",
+      projectId: "project-b",
+      expectedProjectId: "project-a",
+    });
+  });
+
   it("decodes thread event types from a newer server as skippable items", () => {
     const decodeWireItems = Schema.decodeUnknownSync(
       Schema.toCodecJson(Schema.Array(OrchestrationV2RpcSchemas.subscribeThread.output)),

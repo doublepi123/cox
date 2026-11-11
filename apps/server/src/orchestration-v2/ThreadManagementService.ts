@@ -723,6 +723,18 @@ const make = Effect.gen(function* () {
             }),
           ),
         );
+      case "thread.project.move":
+        return orchestrator.getThreadRecords(command.threadId, []).pipe(
+          Effect.flatMap((projection) =>
+            projection.thread.projectId === command.projectId
+              ? Effect.void
+              : assertProviderInstanceEnabled({
+                  projectId: command.projectId,
+                  commandId: command.commandId,
+                  instanceId: projection.thread.modelSelection.instanceId,
+                }),
+          ),
+        );
       case "prepared-run.release":
       case "prepared-run.retry":
         return orchestrator

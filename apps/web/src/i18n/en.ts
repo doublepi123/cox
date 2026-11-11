@@ -2641,6 +2641,13 @@ export const en = {
   "Archive thread": "Archive thread",
   "Show all projects": "Show all projects",
   "Turn into project": "Turn into project",
+  "Move to project…": "Move to project…",
+  "Move thread to project": "Move thread to project",
+  "Only conversation content is moved. Code and uncommitted changes stay in the original project; future work uses the target project.":
+    "Only conversation content is moved. Code and uncommitted changes stay in the original project; future work uses the target project.",
+  "No other projects are available.": "No other projects are available.",
+  "Failed to move thread": "Failed to move thread",
+  "Thread moved": "Thread moved",
   "Filter by {project}": "Filter by {project}",
   "New thread on {branch}": "New thread on {branch}",
   "Thread ID": "Thread ID",

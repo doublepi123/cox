@@ -38,6 +38,7 @@ import { v2Now, v2Projection, v2ThreadId } from "../state/orchestrationV2TestFix
 import {
   archiveThread,
   interruptThreadTurn,
+  moveThreadToProject,
   revertThreadCheckpoint,
   resumeThreadQueue,
   reorderQueuedRun,
@@ -200,6 +201,29 @@ describe("V2 environment commands", () => {
 
       expect(commands).toEqual([
         { type: "thread.archive", commandId: "queued-command", threadId: "thread-1" },
+      ]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("moves a thread with an explicit source project guard", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationV2Command[] = [];
+      const supervisor = yield* makeSupervisor({ commands, projects: [] });
+      yield* moveThreadToProject({
+        commandId: CommandId.make("move-project"),
+        threadId: ThreadId.make("thread-1"),
+        projectId: ProjectId.make("project-b"),
+        expectedProjectId: ProjectId.make("project-a"),
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      expect(commands).toEqual([
+        {
+          type: "thread.project.move",
+          commandId: "move-project",
+          threadId: "thread-1",
+          projectId: "project-b",
+          expectedProjectId: "project-a",
+        },
       ]);
     }).pipe(Effect.provide(layerTestCrypto)),
   );

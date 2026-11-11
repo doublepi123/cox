@@ -30,6 +30,7 @@ import { readEnvironmentScope } from "../state/session";
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsProjectMove,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -46,6 +47,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
+import { openThreadProjectMoveDialog } from "../components/ThreadProjectMoveDialog";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -147,6 +149,14 @@ export function useThreadActionMenu(input: {
           supports,
           snoozePresets,
           canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+          canMoveToProject:
+            readEnvironmentSupportsProjectMove(threadRef.environmentId) &&
+            projects.some(
+              (project) =>
+                project.environmentId === thread.environmentId &&
+                project.id !== thread.projectId &&
+                !project.isScratch,
+            ),
         },
         getLanguage(),
       );
@@ -246,6 +256,9 @@ export function useThreadActionMenu(input: {
           return;
         case "rename":
           onStartRename();
+          return;
+        case "move-to-project":
+          openThreadProjectMoveDialog(threadRef);
           return;
         case "regenerate-title":
           if (isRegeneratingTitle) return;

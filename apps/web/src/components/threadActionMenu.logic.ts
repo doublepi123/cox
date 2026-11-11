@@ -25,6 +25,7 @@ export type ThreadActionMenuId =
   | "find"
   | "new-thread-on-branch"
   | "filter-by-project"
+  | "move-to-project"
   | "turn-into-project"
   | "project-settings"
   | "pin"
@@ -120,6 +121,7 @@ export interface ThreadActionMenuState {
   /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  readonly canMoveToProject?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -193,6 +195,16 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
+    ...(state.canMoveToProject
+      ? [
+          {
+            id: "move-to-project" as const,
+            label: "Move to project…",
+            icon: "folder-tree",
+            disabled: state.isRunning,
+          },
+        ]
+      : []),
     ...(state.supports.titleRegeneration
       ? [
           {

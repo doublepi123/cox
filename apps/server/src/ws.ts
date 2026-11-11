@@ -1897,6 +1897,14 @@ export const layerWsRpc = (
                   ).pipe(Effect.provide(intakeContext)),
                 )
                 .pipe(
+                  Effect.tap(() =>
+                    command.type === "thread.project.move"
+                      ? scheduledTasks.moveThreadTasks({
+                          threadIds: [command.threadId],
+                          projectId: command.projectId,
+                        })
+                      : Effect.void,
+                  ),
                   Effect.tap((result) =>
                     result.replayed ? Effect.void : recordClientCommandAnalytics(command),
                   ),

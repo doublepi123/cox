@@ -39,6 +39,7 @@ describe("buildThreadActionMenuItems", () => {
         projectFilter: { label: "Settings", isActive: false },
         canFind: true,
         canTurnIntoProject: true,
+        canMoveToProject: true,
       },
       "zh",
     );
@@ -49,6 +50,7 @@ describe("buildThreadActionMenuItems", () => {
       "归档对话",
       "暂缓",
       "重命名对话",
+      "移动到项目…",
       "重新生成标题",
       "标为未读",
       "仅显示项目 Settings",
@@ -140,9 +142,20 @@ describe("buildThreadActionMenuItems", () => {
       ...baseState,
       isRunning: true,
       canTurnIntoProject: true,
+      canMoveToProject: true,
     });
     expect(items.find((item) => item.id === "archive")?.disabled).toBe(true);
     expect(items.find((item) => item.id === "turn-into-project")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "move-to-project")?.disabled).toBe(true);
+  });
+
+  it("requires operate permission to move a thread", () => {
+    const items = buildThreadActionMenuItems({
+      ...baseState,
+      canOperate: false,
+      canMoveToProject: true,
+    });
+    expect(items.find((item) => item.id === "move-to-project")?.disabled).toBe(true);
   });
 });
 
