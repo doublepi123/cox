@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { ModelCapabilities } from "./model.ts";
 
-import { ModelServiceId } from "./modelServiceBinding.ts";
+import { ModelServiceId, ModelServiceBinding } from "./modelServiceBinding.ts";
 export { ModelServiceId, ModelServiceBinding } from "./modelServiceBinding.ts";
 
 export const ModelServiceProtocol = Schema.Literals([
@@ -124,6 +124,30 @@ export const ModelServiceTestResult = Schema.Struct({
   message: Schema.NullOr(Schema.String),
 });
 export type ModelServiceTestResult = typeof ModelServiceTestResult.Type;
+
+export const OmoRoleName = Schema.String.check(
+  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
+  Schema.makeFilter((name) => !["__proto__", "prototype", "constructor"].includes(name)),
+);
+const isOmoRoleName = Schema.is(OmoRoleName);
+const OmoRecommendedRoleModels = Schema.Record(Schema.String, TrimmedNonEmptyString).check(
+  Schema.makeFilter((roles) => Object.keys(roles).every(isOmoRoleName)),
+);
+export const ModelServiceRecommendOmoModelsInput = Schema.Struct({
+  serviceId: ModelServiceId,
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  modelId: TrimmedNonEmptyString,
+  binding: ModelServiceBinding,
+  agents: Schema.Array(OmoRoleName),
+  categories: Schema.Array(OmoRoleName),
+});
+export type ModelServiceRecommendOmoModelsInput = typeof ModelServiceRecommendOmoModelsInput.Type;
+export const ModelServiceRecommendOmoModelsResult = Schema.Struct({
+  agentModels: OmoRecommendedRoleModels,
+  categoryModels: OmoRecommendedRoleModels,
+  explanation: TrimmedNonEmptyString,
+});
+export type ModelServiceRecommendOmoModelsResult = typeof ModelServiceRecommendOmoModelsResult.Type;
 export class ModelServiceError extends Schema.TaggedError<ModelServiceError>()(
   "ModelServiceError",
   {

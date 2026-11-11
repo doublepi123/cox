@@ -708,6 +708,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:model-service:test",
       tag: WS_METHODS.modelServiceTest,
     }),
+    recommendOmoModels: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:model-service:recommend-omo-models",
+      tag: WS_METHODS.modelServiceRecommendOmoModels,
+    }),
     cancelProviderInstall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:provider:install-cancel",
       tag: WS_METHODS.providerInstallCancel,

@@ -237,6 +237,16 @@ its state directory. Models keep their exact upstream IDs with a `cox/` slug pre
 **OMO native roles** assigns models to agents and categories; empty assignments inherit the
 main model. The binding default can also be left empty to use the first available model.
 Use **Apply OMO models** to save the binding, main default and role assignments together.
+With a model service binding, choose a **Recommendation model** and use **Generate recommendation
+draft** to ask it to assign the bound catalog to every agent and category, including
+custom roles. This sends a model request through the saved service connection. The result
+and explanation form an editable draft; review individual assignments and use **Apply OMO
+models** to save it. Generation never saves settings automatically. Responses referencing
+models outside the binding are rejected, and a response generated for an older draft cannot
+overwrite edits made while the request was running.
+Agents and categories can be searched and collapsed. Unapplied changes are marked explicitly;
+generating over an edited draft requires confirmation, and a failed save preserves the draft
+for retry. The provider setup section supports one-click OMO installation, progress and retry.
 Custom role names start with a letter and contain only letters, digits, underscores or
 hyphens, up to 64 characters. Reserved object property names are rejected.
 

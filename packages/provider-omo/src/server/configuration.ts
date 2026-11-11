@@ -4,10 +4,11 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { resolveCommandPath } from "@t3tools/shared/shell";
 import { piEnvironment } from "@t3tools/provider-pi/server";
-import type { OmoSettings } from "../settings.ts";
+import { OmoRoleName, type OmoSettings } from "../settings.ts";
 
 export const OMO_VERSION = "5.1.69";
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const isOmoRoleName = Schema.is(OmoRoleName);
 const decodePackageManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ name: Schema.optional(Schema.String) })),
 );
@@ -72,7 +73,9 @@ export function omoEnvironment(
 
 export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
   const selected =
-    settings.provider && settings.model && !settings.model.startsWith(`${settings.provider}/`)
+    settings.provider &&
+    settings.model &&
+    (settings.modelServiceManaged || !settings.model.startsWith(`${settings.provider}/`))
       ? `${settings.provider}/${settings.model}`
       : settings.model;
   const available = new Set(
@@ -89,12 +92,14 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
   const assign = (names: ReadonlyArray<string>, overrides: Readonly<Record<string, string>>) =>
     Object.fromEntries(
       [...new Set([...names, ...Object.keys(overrides)])].map((name) => {
-        if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name))
-          throw new Error("OMO role names must use letters, numbers, underscores or hyphens.");
+        if (!isOmoRoleName(name))
+          throw new Error(
+            "OMO role names must start with a letter and use letters, numbers, underscores or hyphens; reserved names are not allowed.",
+          );
         const model = resolve(overrides[name]);
         return [
           name,
-          model === undefined ? {} : { models: [model], models_distribution: "round_robin" },
+          { models: model === undefined ? [] : [model], models_distribution: "round_robin" },
         ];
       }),
     );

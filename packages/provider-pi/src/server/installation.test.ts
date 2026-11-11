@@ -19,6 +19,7 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
     readonly blocked?: boolean;
     readonly fail?: boolean;
     readonly version?: string;
+    readonly omo?: boolean;
   } = {},
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -36,7 +37,8 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
   const calls: ReadonlyArray<string>[] = [];
   let fail = options.fail ?? false;
   let blocked = options.blocked ?? false;
-  let version = options.version ?? "1.5.0";
+  const commandName = options.omo ? "omo" : "pi";
+  let version = options.version ?? (options.omo ? "5.1.69" : "1.5.0");
   const commandCache = new Map<
     string,
     { readonly resolvedPath: string | null; readonly expiresAtNanos: bigint }
@@ -50,8 +52,11 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
         const staging = command.args[command.args.indexOf("--prefix") + 1]!;
         const stagedBin = path.join(staging, "node_modules", ".bin");
         yield* fs.makeDirectory(stagedBin, { recursive: true });
-        const executable = path.join(stagedBin, platform === "win32" ? "pi.cmd" : "pi");
-        yield* fs.writeFileString(executable, "installed-pi-" + version);
+        const executable = path.join(
+          stagedBin,
+          platform === "win32" ? `${commandName}.cmd` : commandName,
+        );
+        yield* fs.writeFileString(executable, `installed-${commandName}-` + version);
         yield* fs.chmod(executable, 0o755);
         yield* fs.writeFileString(path.join(staging, "node_modules", "fixture.json"), "dependency");
         yield* Deferred.succeed(downloading, undefined);
@@ -68,7 +73,7 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
         stdin: Sink.drain,
         stdout:
           command.args[0] === "--version"
-            ? Stream.encodeText(Stream.make("pi " + version + "\n"))
+            ? Stream.encodeText(Stream.make(commandName + " " + version + "\n"))
             : Stream.empty,
         stderr: Stream.empty,
         all: Stream.empty,
@@ -83,6 +88,18 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
     ...(options.customBinary ? { binaryPath: "/custom/pi" } : {}),
     environment: { PATH: bin, HOME: path.join(root, "user-home") },
     onChanged: Effect.void,
+    ...(options.omo
+      ? {
+          runtime: {
+            driver: "omo",
+            command: "omo",
+            label: "OMO Native",
+            packageName: "omo-ai",
+            version: "5.1.69",
+            minimumVersion: "5.1.69",
+          },
+        }
+      : {}),
   }).pipe(
     Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     Effect.provideService(CommandResolutionCache, commandCache),
@@ -109,6 +126,23 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
 });
 
 it.layer(NodeServices.layer)("Pi installation", (it) => {
+  it.effect("installs the pinned OMO package in its own tools directory and resolves its CLI", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const h = yield* makeHarness({ omo: true });
+      yield* h.installation.start;
+      const state = yield* h.terminal;
+      assert.equal(state.driver, "omo");
+      assert.equal(state.phase, "succeeded");
+      assert.equal(state.installedVersion, "5.1.69");
+      assert.isTrue(h.calls.some((args) => args.includes("omo-ai@5.1.69")));
+      assert.isTrue(h.installation.executablePath.startsWith(path.join(h.root, "tools", "omo")));
+      const resolved = yield* resolveCommandPath("omo", { env: h.installation.environment }).pipe(
+        Effect.provideService(CommandResolutionCache, h.commandCache),
+      );
+      assert.equal(resolved, h.installation.executablePath);
+    }),
+  );
   it.effect(
     "installs the complete package tree in Cox and invalidates a cached missing command",
     () =>

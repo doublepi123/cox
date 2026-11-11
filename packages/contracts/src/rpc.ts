@@ -30,6 +30,8 @@ import {
   ModelServiceError,
   ModelServiceTestInput,
   ModelServiceTestResult,
+  ModelServiceRecommendOmoModelsInput,
+  ModelServiceRecommendOmoModelsResult,
 } from "./modelService.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -407,6 +409,7 @@ export const WS_METHODS = {
   providerInstallStart: "provider.install.start",
   modelServiceDiscover: "modelService.discover",
   modelServiceTest: "modelService.test",
+  modelServiceRecommendOmoModels: "modelService.recommendOmoModels",
   providerInstallCancel: "provider.install.cancel",
   providerInstallSubscribe: "provider.install.subscribe",
   providerInstallRemove: "provider.install.remove",
@@ -584,6 +587,12 @@ const WsModelServiceDiscoverRpc = Rpc.make(WS_METHODS.modelServiceDiscover, {
 const WsModelServiceTestRpc = Rpc.make(WS_METHODS.modelServiceTest, {
   payload: ModelServiceTestInput,
   success: ModelServiceTestResult,
+  error: Schema.Union([ModelServiceError, EnvironmentAuthorizationError]),
+});
+
+const WsModelServiceRecommendOmoModelsRpc = Rpc.make(WS_METHODS.modelServiceRecommendOmoModels, {
+  payload: ModelServiceRecommendOmoModelsInput,
+  success: ModelServiceRecommendOmoModelsResult,
   error: Schema.Union([ModelServiceError, EnvironmentAuthorizationError]),
 });
 
@@ -1841,6 +1850,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProviderInstallStartRpc,
   WsModelServiceDiscoverRpc,
   WsModelServiceTestRpc,
+  WsModelServiceRecommendOmoModelsRpc,
   WsProviderInstallCancelRpc,
   WsProviderInstallSubscribeRpc,
   WsProviderInstallRemoveRpc,

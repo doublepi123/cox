@@ -2,15 +2,13 @@ import {
   makeBinaryPathSetting,
   makeProviderSettingsSchema,
   TrimmedString,
+  OmoRoleName,
 } from "@t3tools/contracts";
 import { PiSettings } from "@t3tools/provider-pi/settings";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export const OmoRoleName = Schema.String.check(
-  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
-  Schema.makeFilter((name) => !["__proto__", "prototype", "constructor"].includes(name)),
-);
+export { OmoRoleName } from "@t3tools/contracts";
 const isOmoRoleName = Schema.is(OmoRoleName);
 
 const OmoRoleModels = Schema.Record(Schema.String, TrimmedString)

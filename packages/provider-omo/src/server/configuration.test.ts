@@ -6,6 +6,24 @@ import { omoEnvironment, omoTaskConfiguration } from "./configuration.ts";
 const settings = Schema.decodeSync(OmoSettings);
 
 describe("OMO model configuration", () => {
+  it("keeps mutable inheritance arrays before an independent main model is selected", () => {
+    const native = omoTaskConfiguration(settings({}), "/tasks");
+    expect(native.agents.explore).toEqual({ models: [], models_distribution: "round_robin" });
+    expect(native.categories.quick).toEqual({ models: [], models_distribution: "round_robin" });
+  });
+
+  it("preserves managed upstream IDs that already start with the Cox provider name", () => {
+    const native = omoTaskConfiguration(
+      settings({
+        modelServiceManaged: true,
+        provider: "cox",
+        model: "cox/model",
+        customModels: [{ slug: "cox/cox/model" }],
+      }),
+      "/tasks",
+    );
+    expect(native.agents.explore?.models).toEqual(["cox/cox/model"]);
+  });
   it("restricts native role assignments to exact models in the managed binding", () => {
     const config = settings({
       modelServiceManaged: true,
@@ -39,6 +57,10 @@ describe("OMO model configuration", () => {
     });
     expect(() => settings({ agentModels: { "../outside": "cox/model" } })).toThrow();
     expect(() => settings({ agentModels: { constructor: "cox/model" } })).toThrow();
+    expect(() => settings({ agentModels: { "1invalid": "cox/model" } })).toThrow();
+    expect(() =>
+      omoTaskConfiguration({ ...config, agentModels: { "1invalid": "cox/model" } }, "/tasks"),
+    ).toThrow("start with a letter");
   });
 
   it("isolates engine state and keeps human client capabilities off descendants", () => {

@@ -19,12 +19,19 @@ export function PiSetupSection(props: {
   readonly enabled: boolean;
   readonly readOnly: boolean;
   readonly onEnable: () => void;
+  readonly runtime?: "pi" | "omo";
 }) {
   const { t } = useTranslation();
+  const title = props.runtime === "omo" ? "OMO Native" : "Pi";
   if (props.readOnly)
-    return <SettingsRow title="Pi" description={t("Provider setup is read-only.")} />;
+    return <SettingsRow title={title} description={t("Provider setup is read-only.")} />;
   if (!props.provider?.setup)
-    return <SettingsRow title="Pi" description={t("Preparing Pi setup…")} />;
+    return (
+      <SettingsRow
+        title={title}
+        description={t(props.runtime === "omo" ? "Preparing OMO setup…" : "Preparing Pi setup…")}
+      />
+    );
   return (
     <PiSetupActions
       key={`${props.environmentId}:${props.instanceId}`}
@@ -34,18 +41,24 @@ export function PiSetupSection(props: {
   );
 }
 
+export function OmoSetupSection(props: Parameters<typeof PiSetupSection>[0]) {
+  return <PiSetupSection {...props} runtime="omo" />;
+}
+
 function PiSetupActions({
   environmentId,
   instanceId,
   provider,
   enabled,
   onEnable,
+  runtime = "pi",
 }: {
   readonly environmentId: EnvironmentId;
   readonly instanceId: ProviderInstanceId;
   readonly provider: ServerProvider;
   readonly enabled: boolean;
   readonly onEnable: () => void;
+  readonly runtime?: "pi" | "omo";
 }) {
   const { t } = useTranslation();
   const target = { environmentId, input: { instanceId } };
@@ -86,20 +99,34 @@ function PiSetupActions({
     setPending(false);
   }
   return (
-    <section aria-label={t("Pi setup")} className="divide-y divide-border/50 text-xs">
+    <section
+      aria-label={t(runtime === "omo" ? "OMO setup" : "Pi setup")}
+      className="divide-y divide-border/50 text-xs"
+    >
       <SettingsRow
-        title={t("Pi CLI")}
+        title={runtime === "omo" ? "OMO Native" : t("Pi CLI")}
         description={
           <span role="status">
             {installing
               ? t(
                   installation?.phase === "verifying"
                     ? "Checking the downloaded runtime."
-                    : "Installing Pi…",
+                    : runtime === "omo"
+                      ? "Installing OMO Native…"
+                      : "Installing Pi…",
                 )
               : installed
-                ? t("Pi {version} is installed.", { version: version ?? "" })
-                : t("Install the official Pi coding agent.")}
+                ? t(
+                    runtime === "omo"
+                      ? "OMO Native {version} is installed."
+                      : "Pi {version} is installed.",
+                    { version: version ?? "" },
+                  )
+                : t(
+                    runtime === "omo"
+                      ? "Install the tested OMO Native runtime (omo-ai 5.1.69)."
+                      : "Install the official Pi coding agent.",
+                  )}
           </span>
         }
         status={
@@ -121,7 +148,7 @@ function PiSetupActions({
                 disabled={pending || installing}
                 onClick={onEnable}
               >
-                {t("Enable Pi")}
+                {t(runtime === "omo" ? "Enable OMO Native" : "Enable Pi")}
               </Button>
             ) : null}
             {installing && installation?.operationId ? (
@@ -147,13 +174,33 @@ function PiSetupActions({
                 disabled={pending || query.error !== null}
                 onClick={() => void run(() => start(target))}
               >
-                {t(retry ? "Retry installation" : installed ? "Update Pi" : "Install Pi")}
+                {t(
+                  retry
+                    ? "Retry installation"
+                    : installed
+                      ? runtime === "omo"
+                        ? "Update OMO Native"
+                        : "Update Pi"
+                      : runtime === "omo"
+                        ? "Install OMO Native"
+                        : "Install Pi",
+                )}
               </Button>
             ) : null}
             <Button
               size="sm"
               variant="ghost-muted"
-              render={<a href="https://pi.dev" target="_blank" rel="noreferrer" />}
+              render={
+                <a
+                  href={
+                    runtime === "omo"
+                      ? "https://github.com/doublepi123/cox#omo-native"
+                      : "https://pi.dev"
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
             >
               {t("Open docs")}
             </Button>
@@ -163,10 +210,16 @@ function PiSetupActions({
         <p className="text-muted-foreground [overflow-wrap:anywhere]">
           {t(
             provider.setup?.canInstall === false
-              ? "Uses the custom Pi binary path below."
+              ? runtime === "omo"
+                ? "Uses the custom OMO binary path below."
+                : "Uses the custom Pi binary path below."
               : installation?.source === "local"
-                ? "Using your existing Pi CLI."
-                : "Cox installs Pi in its own tools directory.",
+                ? runtime === "omo"
+                  ? "Using your existing OMO CLI."
+                  : "Using your existing Pi CLI."
+                : runtime === "omo"
+                  ? "Cox installs OMO Native in its own tools directory."
+                  : "Cox installs Pi in its own tools directory.",
           )}
         </p>
         {installation?.executablePath ? (
@@ -176,9 +229,11 @@ function PiSetupActions({
         ) : null}
       </SettingsRow>
       <SettingsRow
-        title={t("Pi credentials")}
+        title={t(runtime === "omo" ? "OMO model access" : "Pi credentials")}
         description={t(
-          "Configure a model provider and API key below, or keep using your existing Pi login. To sign in with a subscription, run /login in Pi using the same configuration directory.",
+          runtime === "omo"
+            ? "Bind a model service above, or configure independent OMO credentials below. Installing does not start an agent turn."
+            : "Configure a model provider and API key below, or keep using your existing Pi login. To sign in with a subscription, run /login in Pi using the same configuration directory.",
         )}
       />
     </section>

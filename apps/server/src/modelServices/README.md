@@ -1,4 +1,28 @@
-# Model service reasoning replay compatibility
+# Model services
+
+## OMO role recommendations
+
+`modelService.recommendOmoModels` takes `{ serviceId, revision, modelId, binding,
+agents, categories }`, where `binding` is a `ModelServiceBinding`. It returns
+`{ agentModels, categoryModels, explanation }` without saving settings. The
+client-runtime command is `recommendOmoModels`. Calling it explicitly may incur
+LLM charges and requires provider-management permission.
+
+The generator and every returned `cox/<raw model id>` assignment must belong to
+the saved, enabled service's eligible bound catalog. Role names use 1–64 letters,
+digits, hyphens or underscores, starting with a letter; `constructor`, `prototype`
+and `__proto__` are forbidden. Custom names are
+allowed; each requested role must appear exactly once in its corresponding map.
+
+The server sends catalog metadata and standard OMO role descriptions directly
+to the first configured protocol compatible with the generator, with no tools,
+streaming, agent sessions, discovery or protocol retries. OpenAI Responses,
+OpenAI Chat, Anthropic Messages and Gemini are supported. Requests time out after
+120 seconds; responses are capped at 1 MiB. Invalid, incomplete or stale results
+fail instead of returning partial assignments. Recommendations must be reviewed
+and saved separately by the caller.
+
+## Model service reasoning replay compatibility
 
 Model services preserve encrypted reasoning replay by default. A repair after an
 explicit `invalid_encrypted_content` error applies only to that logical request;

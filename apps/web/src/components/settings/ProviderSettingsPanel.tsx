@@ -96,7 +96,7 @@ import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { GrokSetupSection } from "./GrokSetupSection";
-import { PiSetupSection } from "./PiSetupSection";
+import { PiSetupSection, OmoSetupSection } from "./PiSetupSection";
 import { OpenCodeSetupSection } from "./OpenCodeSetupSection";
 import { ClaudeSetupSection } from "./ClaudeSetupSection";
 import { ModelServiceBindingSection } from "./ModelServiceBindingSection";
@@ -801,6 +801,7 @@ export function EnvironmentProviderSettings({
         description: error instanceof Error ? error.message : t("The settings update failed."),
       });
     }
+    return result._tag === "Success";
   };
 
   const updateInstance = useStableCallback(
@@ -814,7 +815,7 @@ export function EnvironmentProviderSettings({
         isDisabling &&
         resolveAppModelSelectionState(settings, serverProviders).instanceId === instanceId &&
         readEnvironmentScope(environmentId, AuthSettingsWriteScope);
-      void persistInstance(
+      return persistInstance(
         instanceId,
         next,
         shouldClearTextGen ? DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection : undefined,
@@ -823,8 +824,9 @@ export function EnvironmentProviderSettings({
   );
 
   const enableInstance = useStableCallback(
-    (instanceId: ProviderInstanceId, next: ProviderInstanceConfig) =>
-      persistInstance(instanceId, next),
+    async (instanceId: ProviderInstanceId, next: ProviderInstanceConfig) => {
+      await persistInstance(instanceId, next);
+    },
   );
 
   const deleteInstance = useStableCallback(
@@ -1189,7 +1191,7 @@ interface ProviderInstanceRowActions {
     instanceId: ProviderInstanceId,
     previous: ProviderInstanceConfig,
     next: ProviderInstanceConfig,
-  ) => void;
+  ) => Promise<boolean>;
   readonly enableInstance: (
     instanceId: ProviderInstanceId,
     next: ProviderInstanceConfig,
@@ -1323,7 +1325,7 @@ function ProviderInstanceRow({
         <>
           {mode === "editor" ? (
             <ModelServiceBindingSection
-              key={`${instanceId}:${instance.modelService?.serviceId ?? "independent"}`}
+              key={instanceId}
               environmentId={environmentId}
               instance={instance}
               readOnly={readOnly}
@@ -1362,34 +1364,14 @@ function ProviderInstanceRow({
               onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
             />
           ) : mode === "editor" && driver === "omo" ? (
-            <SettingsRow
-              title="OMO Native"
-              description={translateUi(
-                "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.",
-              )}
-              control={
-                !readOnly && !resolveProviderInstanceEnabled(instance) ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      actions.enableInstance(instanceId, { ...instance, enabled: true })
-                    }
-                  >
-                    {translateUi("Enable OMO Native")}
-                  </Button>
-                ) : undefined
-              }
-            >
-              <a
-                className="text-primary underline"
-                href="https://github.com/doublepi123/cox#omo-native"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {translateUi("Open docs")}
-              </a>
-            </SettingsRow>
+            <OmoSetupSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              provider={liveProvider}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
           ) : mode === "editor" && driver === "pi" ? (
             <PiSetupSection
               environmentId={environmentId}

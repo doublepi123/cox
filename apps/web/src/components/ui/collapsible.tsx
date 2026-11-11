@@ -33,6 +33,8 @@ const collapsibleTriggerVariants = {
     "flex min-h-7 items-center gap-2 rounded-md text-sm font-normal text-foreground/70 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
   "settings-inside":
     "flex min-h-11 min-w-0 flex-1 items-center gap-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring rounded-md",
+  "omo-roles":
+    "flex min-h-11 w-full min-w-0 flex-wrap items-center gap-2 rounded-md py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
 } as const;
 
 function CollapsibleTrigger({

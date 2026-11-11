@@ -147,7 +147,13 @@ export function ModelServiceBindingFields({
               disabled={readOnly || !models.length}
               onChange={(event) => update(serviceId, selected, event.target.value)}
             >
-              {driver === "omo" ? <option value="">{t("Use binding default")}</option> : null}
+              {driver === "omo" ? (
+                <option value="">
+                  {models[0]
+                    ? t("Automatic (current: {model})", { model: models[0].name ?? models[0].id })
+                    : t("Automatic")}
+                </option>
+              ) : null}
               {driver === "omo" &&
               effectiveDefault &&
               !models.some((model) => model.id === effectiveDefault) ? (

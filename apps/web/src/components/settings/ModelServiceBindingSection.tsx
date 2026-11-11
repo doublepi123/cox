@@ -25,11 +25,19 @@ export function ModelServiceBindingSection({
   readonly environmentId: EnvironmentId;
   readonly instance: ProviderInstanceConfig;
   readonly readOnly: boolean;
-  readonly onUpdate: (next: ProviderInstanceConfig) => void;
+  readonly onUpdate: (next: ProviderInstanceConfig) => Promise<boolean> | void;
 }) {
   const { t } = useTranslation();
   const services = useEnvironmentSettings(environmentId, (settings) => settings.modelServices);
   const [binding, setBinding] = useState<ModelServiceBinding | undefined>(instance.modelService);
+  const savedBindingKey = JSON.stringify(instance.modelService ?? null);
+  const [previousSavedBindingKey, setPreviousSavedBindingKey] = useState(savedBindingKey);
+  if (previousSavedBindingKey !== savedBindingKey) {
+    setPreviousSavedBindingKey(savedBindingKey);
+    if (JSON.stringify(binding ?? null) === previousSavedBindingKey)
+      setBinding(instance.modelService);
+  }
+  const [saving, setSaving] = useState(false);
   if (!(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver))
     return null;
   const service = binding ? services[binding.serviceId] : undefined;
@@ -56,7 +64,7 @@ export function ModelServiceBindingSection({
           driver={instance.driver}
           services={services}
           binding={binding}
-          readOnly={readOnly}
+          readOnly={readOnly || saving}
           onChange={setBinding}
         />
         {!readOnly && instance.driver !== "omo" ? (
@@ -77,6 +85,13 @@ export function ModelServiceBindingSection({
       </SettingsRow>
       {instance.driver === "omo" ? (
         <OmoSettingsSection
+          environmentId={environmentId}
+          serviceRevision={service?.revision}
+          serviceName={service?.name}
+          serviceEnabled={service?.enabled ?? false}
+          savedInstance={instance}
+          onSavingChange={setSaving}
+          onReset={() => setBinding(instance.modelService)}
           instance={candidate}
           models={omoBoundRoleModels(models)}
           canSave={

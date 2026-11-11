@@ -14,6 +14,72 @@ export const en = {
   "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.":
     "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.",
   "Enable OMO Native": "Enable OMO Native",
+  "Recommendation model": "Recommendation model",
+  "{count} roles · {assigned} assigned": "{count} roles · {assigned} assigned",
+  "{count} unavailable": "{count} unavailable",
+  "Search {group}": "Search {group}",
+  "Search roles": "Search roles",
+  "Inherit main model ({model})": "Inherit main model ({model})",
+  "No matching roles": "No matching roles",
+  "Bind a model service to use AI recommendations.":
+    "Bind a model service to use AI recommendations.",
+  "These settings are read-only.": "These settings are read-only.",
+  "Saving configuration…": "Saving configuration…",
+  "Configuration saved": "Configuration saved",
+  "Unapplied changes · service binding, main model and roles save together.":
+    "Unapplied changes · service binding, main model and roles save together.",
+  "Service binding, main model and roles save together.":
+    "Service binding, main model and roles save together.",
+  "Configuration was not saved. Your draft is preserved.":
+    "Configuration was not saved. Your draft is preserved.",
+  "Retry saving": "Retry saving",
+  "AI recommendation": "AI recommendation",
+  "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.":
+    "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.",
+  "Keep my draft for review": "Keep my draft for review",
+  "Preparing OMO setup…": "Preparing OMO setup…",
+  "OMO setup": "OMO setup",
+  "Installing OMO Native…": "Installing OMO Native…",
+  "OMO Native {version} is installed.": "OMO Native {version} is installed.",
+  "Install the tested OMO Native runtime (omo-ai 5.1.69).":
+    "Install the tested OMO Native runtime (omo-ai 5.1.69).",
+  "Update OMO Native": "Update OMO Native",
+  "Install OMO Native": "Install OMO Native",
+  "Uses the custom OMO binary path below.": "Uses the custom OMO binary path below.",
+  "Using your existing OMO CLI.": "Using your existing OMO CLI.",
+  "Cox installs OMO Native in its own tools directory.":
+    "Cox installs OMO Native in its own tools directory.",
+  "OMO model access": "OMO model access",
+  "Bind a model service above, or configure independent OMO credentials below. Installing does not start an agent turn.":
+    "Bind a model service above, or configure independent OMO credentials below. Installing does not start an agent turn.",
+  "Assign only from {count} available models in {service}.":
+    "Assign only from {count} available models in {service}.",
+  "This model service is disabled. Enable it before generating recommendations.":
+    "This model service is disabled. Enable it before generating recommendations.",
+  "This binding has no available models. Select models first.":
+    "This binding has no available models. Select models first.",
+  "Generate recommendation draft": "Generate recommendation draft",
+  "Generating will replace all agent and category assignments in the current draft. Saved settings stay unchanged until you apply.":
+    "Generating will replace all agent and category assignments in the current draft. Saved settings stay unchanged until you apply.",
+  "Generate and replace current draft": "Generate and replace current draft",
+  "Keep current draft": "Keep current draft",
+  "Generating may take a while. You can still edit the draft below; edits will be kept.":
+    "Generating may take a while. You can still edit the draft below; edits will be kept.",
+  "AI recommendation draft · not saved": "AI recommendation draft · not saved",
+  "Recommendation draft edited · not saved": "Recommendation draft edited · not saved",
+  "Recommendation generated": "Recommendation generated",
+  "Original recommendation explanation": "Original recommendation explanation",
+  "Show recommendation explanation": "Show recommendation explanation",
+  "Automatic (current: {model})": "Automatic (current: {model})",
+  "Use this model to recommend agent and category assignments from the current model service. This sends a model request and may incur usage costs. Review and edit the draft before applying.":
+    "Use this model to recommend agent and category assignments from the current model service. This sends a model request and may incur usage costs. Review and edit the draft before applying.",
+  "The configuration changed during generation. Generate again for the current draft.":
+    "The configuration changed during generation. Generate again for the current draft.",
+  "Recommendation generation failed. Try again.": "Recommendation generation failed. Try again.",
+  "Generating recommendations…": "Generating recommendations…",
+  "Generate recommended configuration": "Generate recommended configuration",
+  "Recommendation draft ready. Edit any assignment, then apply OMO models.":
+    "Recommendation draft ready. Edit any assignment, then apply OMO models.",
   "OMO native roles": "OMO native roles",
   "Assign models to native agents and categories. Empty assignments inherit the main model.":
     "Assign models to native agents and categories. Empty assignments inherit the main model.",

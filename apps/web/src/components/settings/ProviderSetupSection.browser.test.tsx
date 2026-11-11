@@ -80,7 +80,7 @@ vi.mock(import("../../localApi"), async (original) => ({
 
 import { ProviderSetupSection } from "./ProviderSetupSection";
 import { GrokSetupSection } from "./GrokSetupSection";
-import { PiSetupSection } from "./PiSetupSection";
+import { PiSetupSection, OmoSetupSection } from "./PiSetupSection";
 import { OpenCodeSetupSection } from "./OpenCodeSetupSection";
 import { ClaudeSetupSection } from "./ClaudeSetupSection";
 import { setLanguagePreference } from "../../i18n";
@@ -475,6 +475,84 @@ function piSection(patch: Partial<ServerProvider> = {}, readOnly = false) {
     />
   );
 }
+
+function omoSection(patch: Partial<ServerProvider> = {}, readOnly = false) {
+  return (
+    <OmoSetupSection
+      environmentId={environmentId}
+      instanceId={instanceId}
+      provider={{
+        ...provider,
+        driver: ProviderDriverKind.make("omo"),
+        setup: { canInstall: true, canAuthenticate: false },
+        ...patch,
+      }}
+      enabled
+      readOnly={readOnly}
+      onEnable={vi.fn()}
+    />
+  );
+}
+
+describe("OMO setup", () => {
+  it("installs OMO for the selected instance without requiring an existing runtime", async () => {
+    resetSetup();
+    setup.installation = null;
+    await using screen = await render(omoSection({ installed: false }));
+    await screen.getByRole("button", { name: "Install OMO Native", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledExactlyOnceWith({
+      environmentId,
+      input: { instanceId },
+    });
+    expect(setup.authState).not.toHaveBeenCalled();
+    expect(screen.container.textContent).toContain("omo-ai 5.1.69");
+  });
+
+  it("shows installation progress, cancellation and retry after failure", async () => {
+    resetSetup();
+    setup.installation = {
+      ...setup.installation!,
+      driver: ProviderDriverKind.make("omo"),
+      phase: "downloading",
+      operationId: "omo-install-1",
+    };
+    await using screen = await render(omoSection({ installed: false }));
+    expect(screen.container.textContent).toContain("Installing OMO Native…");
+    await screen.getByRole("button", { name: "Cancel installation", exact: true }).click();
+    expect(setup.cancelInstall).toHaveBeenCalledWith({
+      environmentId,
+      input: { instanceId, operationId: "omo-install-1" },
+    });
+    setup.installation = { ...setup.installation, phase: "failed", message: "OMO install failed" };
+    await publish();
+    await expect.element(screen.getByRole("alert")).toHaveTextContent("OMO install failed");
+    await screen.getByRole("button", { name: "Retry installation", exact: true }).click();
+    expect(setup.startInstall).toHaveBeenCalledOnce();
+  });
+
+  it("recognizes the installed OMO version and preserves custom binary and read-only boundaries", async () => {
+    resetSetup();
+    setup.installation = {
+      ...setup.installation!,
+      driver: ProviderDriverKind.make("omo"),
+      installedVersion: "5.1.69",
+      phase: "succeeded",
+      source: "managed",
+    };
+    await using screen = await render(omoSection({ installed: true, version: "5.1.69" }));
+    expect(screen.container.textContent).toContain("OMO Native 5.1.69 is installed.");
+    await expect
+      .element(screen.getByRole("button", { name: "Install OMO Native", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.rerender(
+      omoSection({ installed: false, setup: { canInstall: false, canAuthenticate: false } }),
+    );
+    expect(screen.container.textContent).toContain("custom OMO binary path");
+    await screen.rerender(omoSection({}, true));
+    expect(screen.container.textContent).toContain("Provider setup is read-only.");
+    expect(setup.startInstall).not.toHaveBeenCalled();
+  });
+});
 
 describe("Pi setup", () => {
   it("installs Pi for the selected instance before installation state arrives", async () => {
