@@ -14,6 +14,13 @@ interface CoxHealth {
   readonly tools: ReadonlyArray<{ readonly name: string; readonly status: string }>;
 }
 
+interface PermissionParent {
+  readonly sessionManager: object;
+  readonly namedPreset: () => string | undefined;
+  readonly launchFlagNamed: () => boolean;
+  readonly recordedPreset: () => string | undefined;
+}
+
 const healthyCox: CoxHealth = {
   connected: true,
   searchReady: true,
@@ -38,6 +45,13 @@ async function loadReady(
     readonly taskExposure?: string;
     readonly toolsRequired?: boolean;
     readonly mcpRequired?: boolean;
+    readonly readPermissionPreset?: () => string | undefined;
+    readonly boundPermissionParents?: PermissionParent[];
+    readonly releasedPermissionParents?: object[];
+    readonly hooks?: Map<
+      string,
+      Array<(event: unknown, ctx: { readonly sessionManager?: object }) => unknown>
+    >;
     readonly onBridgeOptions?: (options: {
       readonly orchestrationInstructions: string;
       readonly bridgeInstructions: string;
@@ -56,6 +70,10 @@ async function loadReady(
       .replace(
         'await import(pathToFileURL(join(root, "plugin", "extensions", "omo-task.js")).href)',
         "omoTasks",
+      )
+      .replace(
+        'await import(pathToFileURL(join(engineRoot, "core", "permission-decision.js")).href)',
+        "mockChildPermissions",
       ),
   );
   await NodeVM.runInNewContext(`${source}\ncoxOmo(pi)`, {
@@ -69,6 +87,13 @@ async function loadReady(
       },
     },
     crypto,
+    createRequire: () => ({ resolve: { paths: () => ["/fixture"] } }),
+    existsSync: () => true,
+    mockChildPermissions: {
+      bindDecisionPreset: (parent: PermissionParent) =>
+        options.boundPermissionParents?.push(parent),
+      releaseDecisionPreset: (parent: object) => options.releasedPermissionParents?.push(parent),
+    },
     join: NodePath.join,
     coxBridge: async (
       _pi: unknown,
@@ -102,8 +127,12 @@ async function loadReady(
       },
       getAllTools: () => tools,
       getFlag: () => (options.taskDisabled ? false : undefined),
+      getPermissionPreset: () => options.readPermissionPreset?.(),
       getActiveTools: () => (options.taskActive === false ? [] : ["task"]),
-      on: () => undefined,
+      on: (
+        name: string,
+        handler: (event: unknown, ctx: { readonly sessionManager?: object }) => unknown,
+      ) => options.hooks?.set(name, [...(options.hooks.get(name) ?? []), handler]),
       rpc: { handle: (name: string, handler: () => unknown) => requests.set(name, handler) },
     },
   });
@@ -118,6 +147,38 @@ async function loadReady(
 }
 
 describe("OMO readiness separates native tasks from Cox orchestration", () => {
+  it("binds the SDK child registry to the live parent's permission and retires it before switch/shutdown", async () => {
+    const hooks = new Map<
+      string,
+      Array<(event: unknown, ctx: { readonly sessionManager?: object }) => unknown>
+    >();
+    const boundPermissionParents: PermissionParent[] = [];
+    const releasedPermissionParents: object[] = [];
+    let preset: string | undefined = "full-access";
+    await loadReady({
+      hooks,
+      boundPermissionParents,
+      releasedPermissionParents,
+      readPermissionPreset: () => preset,
+    });
+    const parent = {};
+    hooks.get("session_start")![0]!({}, { sessionManager: parent });
+    expect(boundPermissionParents).toHaveLength(1);
+    expect(boundPermissionParents[0]?.sessionManager).toBe(parent);
+    expect(boundPermissionParents[0]?.namedPreset()).toBe("full-access");
+    preset = "accept-edits";
+    expect(boundPermissionParents[0]?.namedPreset()).toBe("accept-edits");
+    preset = "ask";
+    expect(boundPermissionParents[0]?.namedPreset()).toBe("ask");
+    preset = undefined;
+    expect(boundPermissionParents[0]?.namedPreset()).toBe("ask");
+    hooks.get("session_before_switch")![0]!({}, {});
+    expect(releasedPermissionParents).toEqual([parent]);
+    const replacement = {};
+    hooks.get("session_start")![0]!({}, { sessionManager: replacement });
+    hooks.get("session_shutdown")![0]!({}, {});
+    expect(releasedPermissionParents).toEqual([parent, replacement]);
+  });
   it("installs native-first routing even when Cox delegation tools are available", async () => {
     let installed:
       | { readonly orchestrationInstructions: string; readonly bridgeInstructions: string }

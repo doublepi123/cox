@@ -3,11 +3,13 @@ import * as FileSystem from "effect/FileSystem";
 import { buildPiRpcLaunch, materializePiT3McpExtension } from "@t3tools/provider-pi/server";
 import { OMO_TODO_BRIDGE_SOURCE } from "./todo.ts";
 import { OMO_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { omoPermissionPreset } from "./permissions.ts";
 
 export const OMO_EXTENSION_SOURCE = `
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import coxBridge from "./pi-t3-mcp-extension.ts";
 
 const excluded = new Set([
@@ -21,6 +23,31 @@ export default async function coxOmo(pi) {
   if (!root) throw new Error("Cox could not locate the omo-ai package. Use the Cox-managed installation or the official omo binary.");
   const entry = await import(pathToFileURL(join(root, "plugin", "extensions", "omo.js")).href);
   const tasks = await import(pathToFileURL(join(root, "plugin", "extensions", "omo-task.js")).href);
+  const engineDirectory = createRequire(join(root, "package.json")).resolve.paths("@code-yeongyu/senpi")
+    ?.map(directory => join(directory, "@code-yeongyu", "senpi"))
+    .find(directory => existsSync(join(directory, "package.json")));
+  if (!engineDirectory) throw new Error("Cox could not locate the OMO Native child engine.");
+  const engineRoot = join(engineDirectory, "dist");
+  const childPermissions = await import(pathToFileURL(join(engineRoot, "core", "permission-decision.js")).href);
+  if (typeof childPermissions.bindDecisionPreset !== "function" || typeof childPermissions.releaseDecisionPreset !== "function")
+    throw new Error("This OMO Native engine does not expose its child permission inheritance interface.");
+  let permissionParent;
+  const detachPermissionParent = () => {
+    if (permissionParent) childPermissions.releaseDecisionPreset(permissionParent);
+    permissionParent = undefined;
+  };
+  const bindPermissionParent = (_event, ctx) => {
+    detachPermissionParent();
+    if (!ctx?.sessionManager) return;
+    permissionParent = ctx.sessionManager;
+    childPermissions.bindDecisionPreset({ sessionManager: permissionParent,
+      namedPreset: () => pi.getPermissionPreset?.() ?? "ask", launchFlagNamed: () => false,
+      recordedPreset: () => undefined });
+  };
+  pi.on("session_start", bindPermissionParent);
+  pi.on("before_agent_start", bindPermissionParent);
+  pi.on("session_before_switch", detachPermissionParent);
+  pi.on("session_shutdown", detachPermissionParent);
   if (typeof entry.composeOmoSenpiExtension !== "function" || !Array.isArray(entry.omoSenpiComponents) || typeof tasks.createTaskComponent !== "function")
     throw new Error("This OMO Native version does not expose the required Cox integration interfaces.");
   const config = JSON.parse(process.env.COX_OMO_TASK_CONFIG || "{}");
@@ -149,9 +176,7 @@ export const materializeOmoExtension: typeof materializePiT3McpExtension = Effec
 
 export const buildOmoLaunch: typeof buildPiRpcLaunch = (input) => {
   const launch = buildPiRpcLaunch(input);
-  const mode = input.runtimeMode;
-  const preset =
-    mode === "full-access" ? "full-access" : mode === "auto-accept-edits" ? "accept-edits" : "ask";
+  const preset = omoPermissionPreset(input.runtimeMode ?? "approval-required");
   return {
     args: [
       ...launch.args,

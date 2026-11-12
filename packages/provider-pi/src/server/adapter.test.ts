@@ -57,6 +57,7 @@ import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts
 import { turnItemOutputText } from "../../../client-runtime/src/work-log/itemDetail.ts";
 import { omoTodoSnapshot } from "../../../provider-omo/src/server/todo.ts";
 import { omoTaskEvent } from "../../../provider-omo/src/server/runtime.ts";
+import { applyOmoRuntimePolicy } from "../../../provider-omo/src/server/permissions.ts";
 
 const layerTest = Layer.mergeAll(
   NodeServices.layer,
@@ -245,6 +246,7 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
   let currentModel = "default";
   let todoSnapshot: unknown;
   let nativeSubagents: unknown;
+  let permissionPreset = "ask";
 
   const emit = (record: PiRpcRecord, chunkBytes?: number) =>
     Effect.gen(function* () {
@@ -278,6 +280,10 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
           data: {
             ...recordedIdleState(sessionFile),
             isStreaming: isStreaming ?? false,
+            permissionPreset,
+            permissionPresetSource: "client",
+            permissionPresetStatus: "applied",
+            effectivePermissionPreset: permissionPreset,
             ...stateQueue.shift(),
           },
         };
@@ -285,6 +291,16 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
         thinkingLevel = "low";
         currentModel = `${String(record["provider"])}/${String(record["modelId"])}`;
         return base;
+      case "set_permission_preset":
+        permissionPreset = String(record.permissionPreset);
+        return {
+          ...base,
+          data: {
+            permissionPreset,
+            permissionPresetSource: "client",
+            permissionPresetStatus: "applied",
+          },
+        };
       case "set_thinking_level":
         if (failThinking) {
           failThinking = false;
@@ -603,6 +619,7 @@ const startTurn = Effect.fnUntraced(function* (
   runOrdinal = 1,
   threadId = THREAD_ID,
   continuation = false,
+  policy = runtimePolicy,
 ) {
   const appThread = yield* makeAppThread(model, threadId);
   const runId = RunId.make(`run:${threadId}:${runOrdinal}`);
@@ -623,11 +640,118 @@ const startTurn = Effect.fnUntraced(function* (
       creationSource: continuation ? "provider" : "web",
     },
     modelSelection: selection ?? modelSelection(model),
-    runtimePolicy,
+    runtimePolicy: policy,
   });
 });
 
 describe("PiAdapterV2", () => {
+  it.effect(
+    "synchronizes OMO permission modes on reuse and restores without sending prompts under the old policy",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const native: NonNullable<PiAdapterV2Options["runtime"]> = {
+          driver: "omo" as NonNullable<PiAdapterV2Options["runtime"]>["driver"],
+          label: "OMO",
+          connect: makePiRpcConnection,
+          buildLaunch: buildPiRpcLaunch,
+          materializeExtension: materializePiT3McpExtension,
+          applyRuntimePolicy: applyOmoRuntimePolicy,
+        };
+        const { runtime, takeEvent } = yield* openRuntime(
+          fake,
+          "default",
+          THREAD_ID,
+          SESSION_ID,
+          undefined,
+          undefined,
+          native,
+        );
+        const supervised = { ...runtimePolicy, runtimeMode: "approval-required" as const };
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy: supervised,
+        });
+        assert.equal(
+          fake.allRequests().findLast((request) => request.type === "set_permission_preset")
+            ?.permissionPreset,
+          "ask",
+        );
+        for (const [index, mode] of [
+          "full-access",
+          "auto-accept-edits",
+          "approval-required",
+          "auto",
+        ].entries()) {
+          const policy = {
+            ...runtimePolicy,
+            runtimeMode: mode as typeof runtimePolicy.runtimeMode,
+          };
+          const before = fake.allRequests().length;
+          yield* startTurn(
+            runtime,
+            providerThread,
+            "default",
+            [],
+            "Use this mode",
+            undefined,
+            index + 1,
+            THREAD_ID,
+            false,
+            policy,
+          );
+          yield* fake.takeRequest("prompt");
+          const sent = fake.allRequests().slice(before);
+          assert.equal(
+            sent.find((request) => request.type === "set_permission_preset")?.permissionPreset,
+            mode === "full-access"
+              ? "full-access"
+              : mode === "auto-accept-edits"
+                ? "accept-edits"
+                : "ask",
+          );
+          assert.isBelow(
+            sent.findIndex((request) => request.type === "set_permission_preset"),
+            sent.findIndex((request) => request.type === "prompt"),
+          );
+          yield* fake.emit({ type: "agent_settled" });
+          yield* takeEvent((event) => event.type === "turn.terminal");
+        }
+        yield* runtime.resumeThread({
+          providerThread,
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy: supervised,
+        });
+        assert.equal(
+          fake.allRequests().findLast((request) => request.type === "set_permission_preset")
+            ?.permissionPreset,
+          "ask",
+        );
+        fake.queueState({ effectivePermissionPreset: "full-access" });
+        const before = fake.allRequests().filter((request) => request.type === "prompt").length;
+        const refused = yield* Effect.exit(
+          startTurn(
+            runtime,
+            providerThread,
+            "default",
+            [],
+            "Must not run",
+            undefined,
+            5,
+            THREAD_ID,
+            false,
+            supervised,
+          ),
+        );
+        assert.isTrue(Exit.isFailure(refused));
+        assert.equal(
+          fake.allRequests().filter((request) => request.type === "prompt").length,
+          before,
+        );
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect(
     "projects scoped OMO native tasks once, restores completed tasks, and preserves their run while updating outside a turn",
     () =>

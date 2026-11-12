@@ -322,6 +322,12 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
         detail:
           "OMO Native requires the session_lifecycle capability. Install omo-ai 5.1.69 or newer.",
       });
+    if (!info.capabilities.includes("set_permission_preset_v1"))
+      return yield* new PiRpcError({
+        operation: "startup",
+        detail:
+          "OMO Native must support set_permission_preset_v1 to synchronize Cox permission modes safely.",
+      });
     if (options.env.COX_OMO_EXTENSION_REQUIRED === "1") {
       const initialized = record(
         yield* connection.request({ type: "extension_request", name: "cox.omo.ready", data: {} }),

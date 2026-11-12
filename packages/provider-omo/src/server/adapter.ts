@@ -20,6 +20,7 @@ import { prepareOmoConfiguration } from "./configuration.ts";
 import { buildOmoLaunch, materializeOmoExtension } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
 import { omoTodoSnapshot } from "./todo.ts";
+import { applyOmoRuntimePolicy } from "./permissions.ts";
 
 export const OMO_DRIVER = ProviderDriverKind.make("omo");
 const decodeOmoSettings = Schema.decodeSync(OmoSettings);
@@ -55,6 +56,7 @@ export const OmoAdapterDriver: ProviderAdapterDriver<OmoSettings, OmoAdapterEnv>
           materializeExtension: materializeOmoExtension,
           buildLaunch: buildOmoLaunch,
           nativeSubagents: { requestName: "cox.omo.tasks" },
+          applyRuntimePolicy: applyOmoRuntimePolicy,
           todo: {
             requestName: "cox.omo.todo",
             eventName: "cox.omo.todo.updated",
@@ -63,6 +65,7 @@ export const OmoAdapterDriver: ProviderAdapterDriver<OmoSettings, OmoAdapterEnv>
           },
           capabilities: {
             ...PiProviderCapabilitiesV2,
+            runtimePolicy: { enforcement: "native" },
             planning: {
               ...PiProviderCapabilitiesV2.planning,
               emitsPlanUpdated: true,

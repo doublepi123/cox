@@ -271,6 +271,10 @@ for the root lifecycle to finish, including children and background work. Stop p
 root and cancels its unfinished tasks; a new message continues the saved conversation.
 Native child approvals are presented through Cox. Managed sessions use only bound models,
 including explicit task model overrides, and keep upstream credentials in the Cox gateway.
+OMO receives and reports Cox's permission mode when its session is restored and before each turn;
+unconfirmed permission changes stop the session. In-process native children follow the live parent
+mode: workspace edits are accepted in Auto-accept edits, while supervised changes, commands and
+out-of-workspace requests retain their native approval checks. Full access must be chosen explicitly.
 OMO native `task` children are shown in Cox's subagent list with their role, actual model,
 task, status and output. Recent completed or failed native tasks remain expandable; restoring
 the session refreshes their snapshots without spawning replacement agents.

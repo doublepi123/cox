@@ -73,6 +73,8 @@ import {
   piRecordString as recordString,
   type PiRpcConnection,
   type PiRpcRecord,
+  type PiRpcError,
+  type PiRpcTimeoutError,
 } from "./rpc.ts";
 import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts";
 import { configuredPiLaunchArgs, piEnvironment } from "./configuration.ts";
@@ -215,6 +217,10 @@ export interface PiAdapterV2Options {
     readonly buildLaunch: typeof buildPiRpcLaunch;
     readonly capabilities?: OrchestrationV2ProviderCapabilities;
     readonly nativeSubagents?: { readonly requestName: string };
+    readonly applyRuntimePolicy?: (
+      connection: PiRpcConnection,
+      policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+    ) => Effect.Effect<void, PiRpcError | PiRpcTimeoutError>;
     readonly todo?: {
       readonly requestName: string;
       readonly eventName: string;
@@ -793,6 +799,9 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
 
       const request = (record: PiRpcRecord, timeoutMs = PI_REQUEST_TIMEOUT_MS) =>
         connection.request(record, timeoutMs);
+
+      const applyRuntimePolicy = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) =>
+        options.runtime?.applyRuntimePolicy?.(connection, policy) ?? Effect.void;
 
       const nonNegativeInteger = (input: unknown, key: string): number | undefined => {
         const value = recordNumber(input, key);
@@ -2797,6 +2806,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           }
         }
         const stateData = yield* request({ type: "get_state" });
+        yield* applyRuntimePolicy(threadInput.runtimePolicy);
         if (discoveredModels === null) yield* discoverModels();
         contextWindow = rememberModelContextWindow(recordField(stateData, "model"));
         // Capture each baseline before applying selections so our own choices cannot become Pi defaults.
@@ -3051,6 +3061,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             ) {
               return yield* protocolError("Pi turn requested for a different native session");
             }
+            yield* applyRuntimePolicy(turnInput.runtimePolicy);
             // Fork adoption uses the orchestrator-allocated row; preserve that identity in later updates.
             const continuation =
               turnInput.message.createdBy === "agent" &&
