@@ -2,6 +2,7 @@ import {
   MAX_OMO_RECOMMENDATION_PROMPT_LENGTH,
   type EnvironmentId,
   type ModelServiceBinding,
+  type ModelServiceRecommendOmoModelsResult,
 } from "@t3tools/contracts";
 import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -49,10 +50,7 @@ export function OmoRecommendationControl({
   readonly saving: boolean;
   readonly serviceEnabled: boolean;
   readonly serviceName: string | undefined;
-  readonly onGenerated: (result: {
-    readonly agentModels: Readonly<Record<string, string>>;
-    readonly categoryModels: Readonly<Record<string, string>>;
-  }) => void;
+  readonly onGenerated: (result: ModelServiceRecommendOmoModelsResult) => void;
 }) {
   const { t } = useTranslation();
   const generate = useAtomCommand(serverEnvironment.recommendOmoModels, { reportFailure: false });
@@ -130,7 +128,14 @@ export function OmoRecommendationControl({
         onGenerated(result.value);
         setMessage(result.value.explanation);
         setMessageScope(scope);
-        setGeneratedDraft(JSON.stringify([result.value.agentModels, result.value.categoryModels]));
+        setGeneratedDraft(
+          JSON.stringify([
+            result.value.agentModels,
+            result.value.categoryModels,
+            result.value.agentReasoning,
+            result.value.categoryReasoning,
+          ]),
+        );
       }
     } catch (cause) {
       if (mounted.current)

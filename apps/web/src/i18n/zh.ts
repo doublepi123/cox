@@ -16,6 +16,13 @@ export const zh = {
   "Enable OMO Native": "启用 OMO Native",
   "Recommendation model": "用于生成推荐的模型",
   "Recommendation prompt": "推荐提示词",
+  "Thinking strength": "思考强度",
+  "{role} thinking strength": "{role} 思考强度",
+  "Default thinking strength": "默认思考强度",
+  "Unavailable thinking strength: {level}": "不可用的思考强度：{level}",
+  "This thinking strength is not supported by the selected model.": "所选模型不支持此思考强度。",
+  "Clear or reassign unsupported thinking strengths before saving.":
+    "保存前请清空或重新选择不受支持的思考强度。",
   "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.":
     "可编辑模型选配要求，点击“应用 OMO 模型”保存。清空提示词可恢复默认。系统会自动附加可用模型、角色说明和输出格式要求。",
   "{count} roles · {assigned} assigned": "{count} 个角色 · {assigned} 个已指定",

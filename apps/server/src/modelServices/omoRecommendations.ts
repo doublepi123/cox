@@ -10,6 +10,7 @@ import {
   DEFAULT_OMO_RECOMMENDATION_PROMPT,
   OMO_AGENT_DESCRIPTIONS,
   OMO_CATEGORY_DESCRIPTIONS,
+  omoModelReasoningLevels,
 } from "@t3tools/shared/omoRecommendations";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -177,14 +178,22 @@ export const recommendOmoModels = Effect.fn("recommendOmoModels")(
         detail: "No compatible protocol is configured for this model.",
       });
     const allowed = new Set(models.map((model) => `cox/${model.id}`));
+    const allowedReasoning = new Map(
+      models.map((model) => [`cox/${model.id}`, new Set<string>(omoModelReasoningLevels(model))]),
+    );
     const prompt = [
       input.prompt?.trim() ? input.prompt : DEFAULT_OMO_RECOMMENDATION_PROMPT,
-      "Return ONLY one strict JSON object with exactly agentModels, categoryModels, explanation.",
+      "Return ONLY one strict JSON object with exactly agentModels, categoryModels, agentReasoning, categoryReasoning, explanation.",
       "agentModels and categoryModels must contain exactly their requested role keys, all assigned.",
       "Every assignment must be an allowed catalog slug cox/<raw id>, preserving the raw id exactly.",
+      "agentReasoning and categoryReasoning must contain exactly their requested role keys. Each value must be a reasoningLevels value supported by the model assigned to that role, or an empty string for the model default. Missing capability metadata does not authorize inventing a thinking strength.",
       "explanation must be a nonempty, concise string justifying the role-to-model matches, quality/efficiency tradeoffs and any uncertainty. Group roles sharing the same rationale when useful, and distinguish catalog facts from prior-knowledge judgments. No markdown.",
       yield* encodeJson({
-        catalog: models.map((model) => ({ ...model, slug: `cox/${model.id}` })),
+        catalog: models.map((model) => ({
+          ...model,
+          slug: `cox/${model.id}`,
+          reasoningLevels: omoModelReasoningLevels(model),
+        })),
         standardAgentDescriptions: OMO_AGENT_DESCRIPTIONS,
         standardCategoryDescriptions: OMO_CATEGORY_DESCRIPTIONS,
         requestedAgents: input.agents,
@@ -234,13 +243,36 @@ export const recommendOmoModels = Effect.fn("recommendOmoModels")(
     const responseObject = record(parsed);
     const agentModels = record(responseObject.agentModels);
     const categoryModels = record(responseObject.categoryModels);
+    const agentReasoning = record(responseObject.agentReasoning);
+    const categoryReasoning = record(responseObject.categoryReasoning);
     const exactKeys = (actual: object, expected: readonly string[]) =>
       Object.keys(actual).length === expected.length &&
       expected.every((key) => Object.hasOwn(actual, key));
+    const validReasoning = (
+      assignments: Record<string, unknown>,
+      reasoning: Record<string, unknown>,
+    ) =>
+      Object.entries(reasoning).every(
+        ([role, level]) =>
+          level === "" ||
+          (typeof level === "string" &&
+            typeof assignments[role] === "string" &&
+            allowedReasoning.get(assignments[role])?.has(level)),
+      );
     if (
-      !exactKeys(responseObject, ["agentModels", "categoryModels", "explanation"]) ||
+      !exactKeys(responseObject, [
+        "agentModels",
+        "categoryModels",
+        "agentReasoning",
+        "categoryReasoning",
+        "explanation",
+      ]) ||
       !exactKeys(agentModels, input.agents) ||
       !exactKeys(categoryModels, input.categories) ||
+      !exactKeys(agentReasoning, input.agents) ||
+      !exactKeys(categoryReasoning, input.categories) ||
+      !validReasoning(agentModels, agentReasoning) ||
+      !validReasoning(categoryModels, categoryReasoning) ||
       ![...Object.values(agentModels), ...Object.values(categoryModels)].every(
         (slug) => typeof slug === "string" && allowed.has(slug),
       )

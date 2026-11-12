@@ -29,6 +29,8 @@ const input: ModelServiceRecommendOmoModelsInput = {
 const assignments = {
   agentModels: { sisyphus: "cox/vendor/generator", "custom-agent": "cox/fast" },
   categoryModels: { quick: "cox/fast" },
+  agentReasoning: { sisyphus: "high", "custom-agent": "" },
+  categoryReasoning: { quick: "" },
   explanation: "Use the reasoning model to orchestrate and the fast model for simple work.",
 };
 const config = (
@@ -42,7 +44,25 @@ const config = (
     headers: { "x-custom": "custom-value" },
     protocols,
     models: [
-      { id: "vendor/generator", name: "Generator", supportsReasoning: true, maxOutputTokens: 4096 },
+      {
+        id: "vendor/generator",
+        name: "Generator",
+        supportsReasoning: true,
+        maxOutputTokens: 4096,
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select",
+              options: [
+                { id: "low", label: "Low" },
+                { id: "high", label: "High" },
+              ],
+            },
+          ],
+        },
+      },
       { id: "fast", maxOutputTokens: 4096 },
       { id: "outside" },
       { id: "ignored", ignored: true },
@@ -147,6 +167,8 @@ describe("OMO model recommendations", () => {
               "cox/fast",
             ]);
             expect(data.catalog[0]).toMatchObject({ name: "Generator", supportsReasoning: true });
+            expect(data.catalog[0].reasoningLevels).toEqual(["low", "high"]);
+            expect(data.catalog[1].reasoningLevels).toEqual([]);
             expect(data.standardAgentDescriptions.oracle).toContain("reasoning");
             expect(data.standardCategoryDescriptions.quick).toContain("speed");
             expect(data.requestedAgents).toEqual(input.agents);
@@ -185,6 +207,13 @@ describe("OMO model recommendations", () => {
   );
 
   it.effect.each([
+    { ...assignments, agentReasoning: {} },
+    { ...assignments, categoryReasoning: {} },
+    { ...assignments, agentReasoning: { ...assignments.agentReasoning, oracle: "high" } },
+    { ...assignments, agentReasoning: { ...assignments.agentReasoning, sisyphus: "max" } },
+    { ...assignments, agentReasoning: { ...assignments.agentReasoning, sisyphus: " high " } },
+    { ...assignments, categoryReasoning: { quick: "low" } },
+    { ...assignments, categoryReasoning: { quick: "ultra" } },
     { ...assignments, agentModels: { ...assignments.agentModels, oracle: "cox/fast" } },
     { ...assignments, agentModels: { sisyphus: "cox/fast" } },
     { ...assignments, categoryModels: {} },
@@ -299,6 +328,7 @@ describe("OMO model recommendations", () => {
                   ...assignments,
                   agentModels: {},
                   categoryModels: { quick: "cox/outside" },
+                  agentReasoning: {},
                 }),
               ),
             ),

@@ -47,6 +47,8 @@ describe("OMO recommendation command", () => {
           const result = {
             agentModels: { sisyphus: "cox/generator" },
             categoryModels: { quick: "cox/generator" },
+            agentReasoning: { sisyphus: "high" },
+            categoryReasoning: { quick: "low" },
             explanation: "Use the available bound model.",
           };
           const calls: unknown[] = [];

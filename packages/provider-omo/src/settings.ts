@@ -4,6 +4,7 @@ import {
   TrimmedString,
   OmoRoleName,
   OmoRecommendationPrompt,
+  OmoRoleReasoning,
 } from "@t3tools/contracts";
 import { PiSettings } from "@t3tools/provider-pi/settings";
 import * as Effect from "effect/Effect";
@@ -68,6 +69,14 @@ export const OmoSettings = makeProviderSettingsSchema(
     ),
     agentModels: OmoRoleModels,
     categoryModels: OmoRoleModels,
+    agentReasoning: OmoRoleReasoning.pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    categoryReasoning: OmoRoleReasoning.pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
     recommendationPrompt: OmoRecommendationPrompt.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),

@@ -16,6 +16,14 @@ export const en = {
   "Enable OMO Native": "Enable OMO Native",
   "Recommendation model": "Recommendation model",
   "Recommendation prompt": "Recommendation prompt",
+  "Thinking strength": "Thinking strength",
+  "{role} thinking strength": "{role} thinking strength",
+  "Default thinking strength": "Default thinking strength",
+  "Unavailable thinking strength: {level}": "Unavailable thinking strength: {level}",
+  "This thinking strength is not supported by the selected model.":
+    "This thinking strength is not supported by the selected model.",
+  "Clear or reassign unsupported thinking strengths before saving.":
+    "Clear or reassign unsupported thinking strengths before saving.",
   "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.":
     "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.",
   "{count} roles · {assigned} assigned": "{count} roles · {assigned} assigned",

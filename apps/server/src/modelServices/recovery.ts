@@ -345,7 +345,12 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       retryAt = Infinity;
       continue;
     }
-    if (lastFailure.code === "invalid_encrypted_content" && lastFailure.source === "upstream") {
+    if (
+      ["invalid_encrypted_content", "incompatible_tool_choice_thinking"].includes(
+        lastFailure.code ?? "",
+      ) &&
+      lastFailure.source === "upstream"
+    ) {
       const canRepair =
         !repaired &&
         !permanentFailure &&
@@ -357,7 +362,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
         repaired = true;
         for (const id of active.keys()) yield* close(id, "request_repaired");
         retryAt = yield* Clock.currentTimeMillis;
-        yield* report("retrying", 0, "invalid_encrypted_content");
+        yield* report("retrying", 0, lastFailure.code);
       } else {
         permanentFailure ??= lastFailure;
         retryAt = Infinity;

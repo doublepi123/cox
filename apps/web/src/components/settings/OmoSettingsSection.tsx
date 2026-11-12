@@ -1,11 +1,15 @@
-import type {
-  ModelServiceModel,
-  EnvironmentId,
-  ProviderInstanceConfig,
-  ServerProviderModel,
+import {
+  OMO_REASONING_LEVELS,
+  type OmoReasoningLevel,
+  type ModelServiceModel,
+  type EnvironmentId,
+  type ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import { OmoRoleName } from "@t3tools/provider-omo/settings";
-import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
+import {
+  DEFAULT_OMO_RECOMMENDATION_PROMPT,
+  omoModelReasoningLevels,
+} from "@t3tools/shared/omoRecommendations";
 import * as Schema from "effect/Schema";
 import { useId, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
@@ -39,6 +43,21 @@ const CATEGORIES = [
   "writing",
 ];
 const isOmoRoleName = Schema.is(OmoRoleName);
+type RoleModel = {
+  readonly slug: string;
+  readonly name: string;
+  readonly reasoningLevels?: ReadonlyArray<OmoReasoningLevel>;
+};
+
+function reasoningLevelsForRole(
+  models: readonly RoleModel[],
+  managed: boolean,
+  slug: string | undefined,
+): ReadonlyArray<OmoReasoningLevel> {
+  return managed
+    ? (models.find((model) => model.slug === slug)?.reasoningLevels ?? [])
+    : OMO_REASONING_LEVELS;
+}
 
 function roleModels(config: unknown, key: string): Record<string, string> {
   if (!config || typeof config !== "object") return {};
@@ -57,12 +76,16 @@ function configurationKey(
   agents: Record<string, string>,
   categories: Record<string, string>,
   prompt = recommendationPrompt(instance.config),
+  agentReasoning = roleModels(instance.config, "agentReasoning"),
+  categoryReasoning = roleModels(instance.config, "categoryReasoning"),
 ) {
   return JSON.stringify([
     instance.modelService ?? null,
     Object.entries(agents).sort(),
     Object.entries(categories).sort(),
     prompt.trim() && prompt !== DEFAULT_OMO_RECOMMENDATION_PROMPT ? prompt : "",
+    Object.entries(agentReasoning).sort(),
+    Object.entries(categoryReasoning).sort(),
   ]);
 }
 
@@ -76,32 +99,42 @@ function RoleModelFields({
   title,
   defaults,
   value,
+  reasoning,
   models,
   managed,
   readOnly,
   onChange,
+  onReasoningChange,
   inheritedModel,
+  inheritedSlug,
   expandVersion,
 }: {
   readonly title: string;
   readonly defaults: readonly string[];
   readonly value: Record<string, string>;
-  readonly models: readonly { readonly slug: string; readonly name: string }[];
+  readonly reasoning: Record<string, string>;
+  readonly models: readonly RoleModel[];
   readonly managed: boolean;
   readonly readOnly: boolean;
   readonly onChange: (next: Record<string, string>) => void;
+  readonly onReasoningChange: (next: Record<string, string>) => void;
   readonly inheritedModel: string | undefined;
+  readonly inheritedSlug: string | undefined;
   readonly expandVersion: number;
 }) {
   const { t } = useTranslation();
   const id = useId();
   const [name, setName] = useState("");
   const [search, setSearch] = useState("");
-  const roles = [...new Set([...defaults, ...Object.keys(value)])];
-  const invalidCount = managed
-    ? Object.values(value).filter((slug) => slug && !models.some((model) => model.slug === slug))
-        .length
-    : 0;
+  const roles = [...new Set([...defaults, ...Object.keys(value), ...Object.keys(reasoning)])];
+  const invalidCount = roles.filter(
+    (role) =>
+      (managed && value[role] && !models.some((model) => model.slug === value[role])) ||
+      (reasoning[role] &&
+        !reasoningLevelsForRole(models, managed, value[role] || inheritedSlug).some(
+          (level) => level === reasoning[role],
+        )),
+  ).length;
   const [disclosure, setDisclosure] = useState({
     open: defaults === AGENTS || Object.keys(value).length > 0 || invalidCount > 0,
     version: expandVersion,
@@ -155,6 +188,10 @@ function RoleModelFields({
                 const slug = value[role] ?? "";
                 const unavailable =
                   managed && Boolean(slug) && !models.some((model) => model.slug === slug);
+                const levels = reasoningLevelsForRole(models, managed, slug || inheritedSlug);
+                const level = reasoning[role] ?? "";
+                const unsupported =
+                  Boolean(level) && !levels.some((candidate) => candidate === level);
                 return (
                   <label
                     key={role}
@@ -162,7 +199,7 @@ function RoleModelFields({
                     htmlFor={`${id}-${index}`}
                   >
                     <span className="[overflow-wrap:anywhere]">{role}</span>
-                    <span className="min-w-0">
+                    <span className="grid min-w-0 gap-1.5">
                       {managed ? (
                         <select
                           id={`${id}-${index}`}
@@ -204,6 +241,36 @@ function RoleModelFields({
                           className="block text-xs text-destructive [overflow-wrap:anywhere]"
                         >
                           {t("Unavailable model: {model}", { model: slug })}
+                        </span>
+                      ) : null}
+                      <span className="text-xs text-muted-foreground">
+                        {t("Thinking strength")}
+                      </span>
+                      <select
+                        aria-label={t("{role} thinking strength", { role })}
+                        className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
+                        aria-invalid={unsupported || undefined}
+                        value={level}
+                        disabled={levels.length === 0 && !level}
+                        onChange={(event) =>
+                          onReasoningChange({ ...reasoning, [role]: event.target.value })
+                        }
+                      >
+                        <option value="">{t("Default thinking strength")}</option>
+                        {unsupported ? (
+                          <option value={level} disabled>
+                            {t("Unavailable thinking strength: {level}", { level })}
+                          </option>
+                        ) : null}
+                        {levels.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      {unsupported ? (
+                        <span className="text-xs text-destructive">
+                          {t("This thinking strength is not supported by the selected model.")}
                         </span>
                       ) : null}
                     </span>
@@ -270,7 +337,7 @@ export function OmoSettingsSection({
   readonly savedInstance?: ProviderInstanceConfig;
   readonly onReset?: () => void;
   readonly onSavingChange?: (saving: boolean) => void;
-  readonly models: readonly Pick<ServerProviderModel, "slug" | "name">[];
+  readonly models: readonly RoleModel[];
   readonly readOnly: boolean;
   readonly canSave?: boolean;
   readonly onUpdate: (next: ProviderInstanceConfig) => Promise<boolean> | void;
@@ -281,6 +348,12 @@ export function OmoSettingsSection({
     roleModels(instance.config, "categoryModels"),
   );
   const [prompt, setPrompt] = useState(() => recommendationPrompt(instance.config));
+  const [agentReasoning, setAgentReasoning] = useState(() =>
+    roleModels(instance.config, "agentReasoning"),
+  );
+  const [categoryReasoning, setCategoryReasoning] = useState(() =>
+    roleModels(instance.config, "categoryReasoning"),
+  );
   const managed = instance.modelService !== undefined;
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -295,7 +368,14 @@ export function OmoSettingsSection({
   const [baseline, setBaseline] = useState(sourceKey);
   const [source, setSource] = useState(sourceKey);
   const [snapshot, setSnapshot] = useState(savedInstance);
-  const currentKey = configurationKey(instance, agentModels, categoryModels, prompt);
+  const currentKey = configurationKey(
+    instance,
+    agentModels,
+    categoryModels,
+    prompt,
+    agentReasoning,
+    categoryReasoning,
+  );
   const dirty = currentKey !== baseline;
   if (source !== sourceKey) {
     setSource(sourceKey);
@@ -306,6 +386,8 @@ export function OmoSettingsSection({
       setAgentModels(roleModels(savedInstance.config, "agentModels"));
       setCategoryModels(roleModels(savedInstance.config, "categoryModels"));
       setPrompt(recommendationPrompt(savedInstance.config));
+      setAgentReasoning(roleModels(savedInstance.config, "agentReasoning"));
+      setCategoryReasoning(roleModels(savedInstance.config, "categoryReasoning"));
     }
   }
   const independentModel: unknown =
@@ -319,11 +401,30 @@ export function OmoSettingsSection({
     : typeof independentModel === "string" && independentModel.trim()
       ? independentModel
       : undefined;
+  const inheritedSlug = managed
+    ? instance.modelService?.defaultModel
+      ? models.find((model) => model.slug === `cox/${instance.modelService?.defaultModel}`)?.slug
+      : models[0]?.slug
+    : undefined;
   const invalid =
     managed &&
     [...Object.values(agentModels), ...Object.values(categoryModels)].some(
       (slug) => slug !== "" && !models.some((model) => model.slug === slug),
     );
+  const invalidReasoning = (
+    [
+      [agentModels, agentReasoning],
+      [categoryModels, categoryReasoning],
+    ] as const
+  ).some(([assignments, reasoning]) =>
+    Object.entries(reasoning).some(
+      ([role, level]) =>
+        level &&
+        !reasoningLevelsForRole(models, managed, assignments[role] || inheritedSlug).some(
+          (candidate) => candidate === level,
+        ),
+    ),
+  );
   return (
     <SettingsRow
       title={t("OMO native roles")}
@@ -338,9 +439,22 @@ export function OmoSettingsSection({
             binding={instance.modelService}
             revision={serviceRevision}
             models={models}
-            agents={[...new Set([...AGENTS, ...Object.keys(agentModels)])]}
-            categories={[...new Set([...CATEGORIES, ...Object.keys(categoryModels)])]}
-            draftKey={JSON.stringify([agentModels, categoryModels])}
+            agents={[
+              ...new Set([...AGENTS, ...Object.keys(agentModels), ...Object.keys(agentReasoning)]),
+            ]}
+            categories={[
+              ...new Set([
+                ...CATEGORIES,
+                ...Object.keys(categoryModels),
+                ...Object.keys(categoryReasoning),
+              ]),
+            ]}
+            draftKey={JSON.stringify([
+              agentModels,
+              categoryModels,
+              agentReasoning,
+              categoryReasoning,
+            ])}
             configurationVersion={sourceKey}
             prompt={prompt}
             onPromptChange={(next) => {
@@ -356,6 +470,8 @@ export function OmoSettingsSection({
             onGenerated={(result) => {
               setAgentModels({ ...result.agentModels });
               setCategoryModels({ ...result.categoryModels });
+              setAgentReasoning({ ...result.agentReasoning });
+              setCategoryReasoning({ ...result.categoryReasoning });
               setExpandVersion((version) => version + 1);
               setSaveStatus("idle");
             }}
@@ -372,6 +488,7 @@ export function OmoSettingsSection({
           title={t("Agents")}
           defaults={AGENTS}
           value={agentModels}
+          reasoning={agentReasoning}
           models={models}
           managed={managed}
           readOnly={readOnly || saving}
@@ -380,12 +497,18 @@ export function OmoSettingsSection({
             setSaveStatus("idle");
           }}
           inheritedModel={inheritedModel}
+          inheritedSlug={inheritedSlug}
+          onReasoningChange={(next) => {
+            setAgentReasoning(next);
+            setSaveStatus("idle");
+          }}
           expandVersion={expandVersion}
         />
         <RoleModelFields
           title={t("Categories")}
           defaults={CATEGORIES}
           value={categoryModels}
+          reasoning={categoryReasoning}
           models={models}
           managed={managed}
           readOnly={readOnly || saving}
@@ -394,11 +517,21 @@ export function OmoSettingsSection({
             setSaveStatus("idle");
           }}
           inheritedModel={inheritedModel}
+          inheritedSlug={inheritedSlug}
+          onReasoningChange={(next) => {
+            setCategoryReasoning(next);
+            setSaveStatus("idle");
+          }}
           expandVersion={expandVersion}
         />
         {invalid ? (
           <p role="alert" className="text-xs text-destructive">
             {t("Clear or reassign unavailable role models before saving.")}
+          </p>
+        ) : null}
+        {invalidReasoning ? (
+          <p role="alert" className="text-xs text-destructive">
+            {t("Clear or reassign unsupported thinking strengths before saving.")}
           </p>
         ) : null}
         {!readOnly ? (
@@ -450,6 +583,8 @@ export function OmoSettingsSection({
                   setAgentModels(roleModels(snapshot.config, "agentModels"));
                   setCategoryModels(roleModels(snapshot.config, "categoryModels"));
                   setPrompt(recommendationPrompt(snapshot.config));
+                  setAgentReasoning(roleModels(snapshot.config, "agentReasoning"));
+                  setCategoryReasoning(roleModels(snapshot.config, "categoryReasoning"));
                   setSaveStatus("idle");
                   setConflict(false);
                   onReset?.();
@@ -459,7 +594,15 @@ export function OmoSettingsSection({
               </Button>
               <Button
                 size="sm"
-                disabled={invalid || !canSave || saving || generating || !dirty || conflict}
+                disabled={
+                  invalid ||
+                  invalidReasoning ||
+                  !canSave ||
+                  saving ||
+                  generating ||
+                  !dirty ||
+                  conflict
+                }
                 onClick={async () => {
                   setSaving(true);
                   onSavingChange?.(true);
@@ -472,6 +615,8 @@ export function OmoSettingsSection({
                         : {}),
                       agentModels,
                       categoryModels,
+                      agentReasoning,
+                      categoryReasoning,
                       recommendationPrompt:
                         prompt.trim() && prompt !== DEFAULT_OMO_RECOMMENDATION_PROMPT ? prompt : "",
                     },
@@ -507,5 +652,9 @@ export function OmoSettingsSection({
 export function omoBoundRoleModels(models: readonly ModelServiceModel[]) {
   return models
     .filter((model) => model.available !== false)
-    .map((model) => ({ slug: `cox/${model.id}`, name: model.name ?? model.id }));
+    .map((model) => ({
+      slug: `cox/${model.id}`,
+      name: model.name ?? model.id,
+      reasoningLevels: omoModelReasoningLevels(model),
+    }));
 }

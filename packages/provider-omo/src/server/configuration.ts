@@ -3,12 +3,15 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { resolveCommandPath } from "@t3tools/shared/shell";
+import { omoModelReasoningLevels } from "@t3tools/shared/omoRecommendations";
 import { piEnvironment } from "@t3tools/provider-pi/server";
+import { OmoReasoningLevel } from "@t3tools/contracts";
 import { OmoRoleName, type OmoSettings } from "../settings.ts";
 
 export const OMO_VERSION = "5.1.69";
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const isOmoRoleName = Schema.is(OmoRoleName);
+const isOmoReasoningLevel = Schema.is(OmoReasoningLevel);
 const decodePackageManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ name: Schema.optional(Schema.String) })),
 );
@@ -89,23 +92,46 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
       );
     return result;
   };
-  const assign = (names: ReadonlyArray<string>, overrides: Readonly<Record<string, string>>) =>
+  const assign = (
+    names: ReadonlyArray<string>,
+    overrides: Readonly<Record<string, string>>,
+    reasoning: Readonly<Record<string, string>>,
+  ) =>
     Object.fromEntries(
-      [...new Set([...names, ...Object.keys(overrides)])].map((name) => {
+      [...new Set([...names, ...Object.keys(overrides), ...Object.keys(reasoning)])].map((name) => {
         if (!isOmoRoleName(name))
           throw new Error(
             "OMO role names must start with a letter and use letters, numbers, underscores or hyphens; reserved names are not allowed.",
           );
         const model = resolve(overrides[name]);
+        const level = reasoning[name];
+        if (level && !isOmoReasoningLevel(level))
+          throw new Error("Unsupported OMO thinking strength.");
+        if (level && settings.modelServiceManaged) {
+          const metadata = settings.customModels.find(
+            (candidate) => typeof candidate !== "string" && candidate.slug === model,
+          );
+          const levels = omoModelReasoningLevels({
+            capabilities: typeof metadata === "object" ? (metadata.capabilities ?? null) : null,
+          });
+          if (!levels.some((candidate) => candidate === level))
+            throw new Error(
+              `OMO thinking strength '${level}' is not supported by model '${model}'.`,
+            );
+        }
         return [
           name,
-          { models: model === undefined ? [] : [model], models_distribution: "round_robin" },
+          {
+            models: model === undefined ? [] : [model],
+            models_distribution: "round_robin",
+            ...(level ? { reasoning: level } : {}),
+          },
         ];
       }),
     );
   return {
-    agents: assign(agents, settings.agentModels),
-    categories: assign(categories, settings.categoryModels),
+    agents: assign(agents, settings.agentModels, settings.agentReasoning),
+    categories: assign(categories, settings.categoryModels, settings.categoryReasoning),
     task: {
       state_dir: stateDir,
       isolation: {

@@ -3,6 +3,30 @@ import type { ModelServiceProtocol } from "@t3tools/contracts";
 const GPT_REASONING_MODEL = /^gpt-[5-9](?:[.-]|$)/i;
 const CHAT_COMPLETION_BUDGET_MODEL = /^(?:gpt-[5-9]|o[1-9])(?:[.-]|$)/i;
 
+export function withoutForcedToolThinking(
+  body: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const choice = body.tool_choice;
+  const forced =
+    choice === "required" ||
+    (choice !== null &&
+      typeof choice === "object" &&
+      "type" in choice &&
+      choice.type === "function");
+  const thinking = body.thinking;
+  const enabledThinking =
+    thinking !== null &&
+    typeof thinking === "object" &&
+    "type" in thinking &&
+    thinking.type === "enabled";
+  if (!forced || (body.reasoning_effort === "none" && !enabledThinking)) return body;
+  return {
+    ...body,
+    reasoning_effort: "none",
+    ...(thinking === undefined ? {} : { thinking: { type: "disabled" } }),
+  };
+}
+
 function outputBudgetFields(
   protocol: ModelServiceProtocol,
   body: Readonly<Record<string, unknown>>,

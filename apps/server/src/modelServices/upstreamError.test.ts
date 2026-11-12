@@ -11,6 +11,20 @@ const error = {
 const requestId = "4171489b-838f-4e4c-9366-18cf20dadc55";
 
 describe("upstream model error diagnostics", () => {
+  it("classifies the exact forced-tool/thinking conflict without exposing arbitrary messages", () => {
+    const safe = upstreamErrorDetails({
+      type: "invalid_request_error",
+      message: "tool_choice 'specified' is incompatible with thinking enabled",
+    });
+    expect(safe.code).toBe("incompatible_tool_choice_thinking");
+    expect(safe.detail).toContain("Forced tool choice is incompatible with enabled thinking");
+    const unsafe = upstreamErrorDetails({
+      type: "invalid_request_error",
+      message: "tool_choice 'specified' is incompatible with thinking enabled private-upstream-key",
+    });
+    expect(unsafe.code).toBe("invalid_request_error");
+    expect(unsafe.detail).not.toContain("private-upstream-key");
+  });
   const embedded =
     "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.";
   it.each([

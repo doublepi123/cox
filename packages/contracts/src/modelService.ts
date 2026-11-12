@@ -134,6 +134,21 @@ export const OmoRecommendationPrompt = Schema.String.check(
   Schema.isMaxLength(MAX_OMO_RECOMMENDATION_PROMPT_LENGTH),
 );
 const isOmoRoleName = Schema.is(OmoRoleName);
+export const OMO_REASONING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+export const OmoReasoningLevel = Schema.Literals(OMO_REASONING_LEVELS);
+export type OmoReasoningLevel = typeof OmoReasoningLevel.Type;
+export const OmoRoleReasoning = Schema.Record(
+  Schema.String,
+  Schema.Union([Schema.Literal(""), OmoReasoningLevel]),
+).check(Schema.makeFilter((roles) => Object.keys(roles).every(isOmoRoleName)));
 const OmoRecommendedRoleModels = Schema.Record(Schema.String, TrimmedNonEmptyString).check(
   Schema.makeFilter((roles) => Object.keys(roles).every(isOmoRoleName)),
 );
@@ -150,6 +165,8 @@ export type ModelServiceRecommendOmoModelsInput = typeof ModelServiceRecommendOm
 export const ModelServiceRecommendOmoModelsResult = Schema.Struct({
   agentModels: OmoRecommendedRoleModels,
   categoryModels: OmoRecommendedRoleModels,
+  agentReasoning: OmoRoleReasoning,
+  categoryReasoning: OmoRoleReasoning,
   explanation: TrimmedNonEmptyString,
 });
 export type ModelServiceRecommendOmoModelsResult = typeof ModelServiceRecommendOmoModelsResult.Type;

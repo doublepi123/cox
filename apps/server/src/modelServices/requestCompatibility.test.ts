@@ -5,7 +5,36 @@ import {
   modelServiceRequestBody,
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
+  withoutForcedToolThinking,
 } from "./requestCompatibility.ts";
+
+describe("forced tool thinking compatibility", () => {
+  it("preserves forced tool selection and other request fields when disabling thinking", () => {
+    const body = {
+      model: "reasoning-model",
+      tool_choice: { type: "function", function: { name: "todo" } },
+      tools: [{ type: "function", function: { name: "todo" } }],
+      messages: [{ role: "user", content: "Do the task" }],
+      reasoning_effort: "max",
+      thinking: { type: "enabled", budget_tokens: 8192 },
+    };
+    expect(withoutForcedToolThinking(body)).toEqual({
+      ...body,
+      reasoning_effort: "none",
+      thinking: { type: "disabled" },
+    });
+    expect(body.reasoning_effort).toBe("max");
+  });
+
+  it("leaves automatic tool selection and already disabled reasoning unchanged", () => {
+    for (const tool_choice of [undefined, "auto", "none"]) {
+      const body = { tool_choice, reasoning_effort: "max" };
+      expect(withoutForcedToolThinking(body)).toBe(body);
+    }
+    const disabled = { tool_choice: "required", reasoning_effort: "none" };
+    expect(withoutForcedToolThinking(disabled)).toBe(disabled);
+  });
+});
 
 describe("encrypted Responses reasoning compatibility", () => {
   it("removes only reasoning ciphertext and leaves messages and tool history untouched", () => {

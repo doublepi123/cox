@@ -8,6 +8,7 @@ const codes = new Set([
   "unsupported_parameter",
   "unsupported_value",
   "invalid_request_error",
+  "incompatible_tool_choice_thinking",
   "invalid_parameter",
   "context_length_exceeded",
   "no_available_channel",
@@ -78,6 +79,11 @@ export function upstreamErrorDetails(
       ? "invalid_encrypted_content"
       : candidates.find((value): value is string => typeof value === "string" && codes.has(value));
   const encrypted = code === "invalid_encrypted_content";
+  const forcedToolThinking =
+    typeof error.message === "string" &&
+    /^tool_choice 'specified' is incompatible with thinking enabled(?:\s*\(request id: [A-Za-z0-9_-]+\))?\s*$/.test(
+      error.message,
+    );
   const unsupportedUltra =
     typeof error.message === "string" &&
     /^Invalid value: 'ultra'\. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'\.(?: \(request id: [A-Za-z0-9_-]+\))?$/.test(
@@ -109,13 +115,14 @@ export function upstreamErrorDetails(
     parameter ? `parameter: ${parameter}` : undefined,
     code ? `code: ${code}` : undefined,
     unsupportedUltra ? "unsupported effort; allowed maximum: max" : undefined,
+    forcedToolThinking ? "Forced tool choice is incompatible with enabled thinking." : undefined,
     encrypted
       ? "Encrypted reasoning content could not be verified, decrypted or parsed."
       : undefined,
     upstreamRequestId ? `request ID: ${upstreamRequestId}` : undefined,
   ].filter(Boolean);
   return {
-    code,
+    code: forcedToolThinking ? "incompatible_tool_choice_thinking" : code,
     requestId: upstreamRequestId,
     detail: details.length ? ` Rejected request (${details.join(", ")}).` : "",
   };

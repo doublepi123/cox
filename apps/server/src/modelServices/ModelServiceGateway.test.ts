@@ -295,6 +295,160 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each([false, true])(
+    "repairs the proven forced-tool/thinking conflict once before delivery (stream: %s)",
+    (stream) =>
+      Effect.gen(function* () {
+        let calls = 0;
+        const h = yield* harness({
+          driver: "omo",
+          recovery: { retryEnabled: true, maxAttempts: 5 },
+          respond: () => {
+            calls++;
+            if (calls % 2 === 1)
+              return Response.json(
+                {
+                  error: {
+                    type: "invalid_request_error",
+                    message: "tool_choice 'specified' is incompatible with thinking enabled",
+                  },
+                },
+                { status: 400 },
+              );
+            return stream
+              ? new Response(
+                  chatStreamFrame({ role: "assistant", content: "done" }) +
+                    chatStreamFrame({}, "stop") +
+                    "data: [DONE]\n\n",
+                  { headers: { "content-type": "text/event-stream" } },
+                )
+              : Response.json({
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "done" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                });
+          },
+        });
+        const body = {
+          model: "Vendor/Exact",
+          messages: [{ role: "user", content: "ping" }],
+          tools: [
+            {
+              type: "function",
+              function: { name: "todo", parameters: { type: "object", properties: {} } },
+            },
+          ],
+          tool_choice: { type: "function", function: { name: "todo" } },
+          reasoning_effort: "max",
+          stream,
+        };
+        for (const offset of [0, 2]) {
+          const response = yield* h.invoke("/v1/chat/completions", body);
+          expect(response.status).toBe(200);
+          expect(response.text).toContain("done");
+          expect(sentBody(h.calls[offset]!)).toMatchObject({
+            reasoning_effort: "max",
+            tool_choice: body.tool_choice,
+          });
+          expect(sentBody(h.calls[offset + 1]!)).toMatchObject({
+            reasoning_effort: "none",
+            tool_choice: body.tool_choice,
+            tools: body.tools,
+            messages: body.messages,
+          });
+        }
+        expect(h.calls).toHaveLength(4);
+        expect(body.reasoning_effort).toBe("max");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { retryEnabled: false, maxAttempts: 5, tool_choice: "required" },
+    { retryEnabled: true, maxAttempts: 1, tool_choice: "required" },
+    { retryEnabled: true, maxAttempts: 5, tool_choice: "auto" },
+  ])(
+    "does not bypass retry limits or change automatic tool choice for thinking conflicts: %j",
+    (test) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          recovery: { retryEnabled: test.retryEnabled, maxAttempts: test.maxAttempts },
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  type: "invalid_request_error",
+                  message: "tool_choice 'specified' is incompatible with thinking enabled",
+                },
+              },
+              { status: 400 },
+            ),
+        });
+        const response = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+          reasoning_effort: "max",
+          tool_choice: test.tool_choice,
+        });
+        expect(response.status).toBe(400);
+        expect(h.calls).toHaveLength(1);
+        expect(sentBody(h.calls[0]!)).toMatchObject({
+          reasoning_effort: "max",
+          tool_choice: test.tool_choice,
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not replay a thinking conflict after streamed text was delivered", () =>
+    Effect.gen(function* () {
+      let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+      const h = yield* harness({
+        recovery: { retryEnabled: true },
+        respond: () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(output) {
+                controller = output;
+                output.enqueue(
+                  new TextEncoder().encode(
+                    chatStreamFrame({ role: "assistant", content: "already delivered" }),
+                  ),
+                );
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+          reasoning_effort: "max",
+          tool_choice: "required",
+          stream: true,
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      controller!.enqueue(
+        new TextEncoder().encode(
+          sseFrame({
+            error: {
+              type: "invalid_request_error",
+              message: "tool_choice 'specified' is incompatible with thinking enabled",
+            },
+          }),
+        ),
+      );
+      controller!.close();
+      const response = yield* Fiber.join(fiber);
+      expect(response.text).toContain("already delivered");
+      expect(h.calls).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect(
     "omits opaque reasoning replay without changing visible history, tools or the effort",
     () =>

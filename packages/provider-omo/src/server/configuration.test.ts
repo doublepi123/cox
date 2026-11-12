@@ -4,6 +4,7 @@ import { OmoSettings } from "../settings.ts";
 import { omoEnvironment, omoTaskConfiguration } from "./configuration.ts";
 
 const settings = Schema.decodeSync(OmoSettings);
+const unknownSettings = Schema.decodeUnknownSync(OmoSettings);
 
 it("retains a custom recommendation prompt and supports clearing it", () => {
   expect(settings({}).recommendationPrompt).toBe("");
@@ -15,6 +16,54 @@ it("retains a custom recommendation prompt and supports clearing it", () => {
 });
 
 describe("OMO model configuration", () => {
+  it("rejects a role thinking strength outside its managed model's catalog choices", () => {
+    const config = settings({
+      modelServiceManaged: true,
+      provider: "cox",
+      model: "main",
+      customModels: [
+        {
+          slug: "cox/main",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "thinking",
+                label: "Thinking",
+                type: "select",
+                options: [{ id: "high", label: "High" }],
+              },
+            ],
+          },
+        },
+      ],
+      agentReasoning: { oracle: "high" },
+    });
+    expect(omoTaskConfiguration(config, "/tasks").agents.oracle).toMatchObject({
+      reasoning: "high",
+    });
+    expect(() =>
+      omoTaskConfiguration({ ...config, agentReasoning: { oracle: "max" } }, "/tasks"),
+    ).toThrow("not supported");
+  });
+  it("passes per-role thinking strengths to native agents, categories and custom roles", () => {
+    const native = omoTaskConfiguration(
+      settings({
+        provider: "cox",
+        model: "main",
+        agentModels: { oracle: "cox/expert" },
+        agentReasoning: { oracle: "high", explore: "", custom_role: "max" },
+        categoryReasoning: { quick: "off", deep: "xhigh" },
+      }),
+      "/tasks",
+    );
+    expect(native.agents.oracle).toMatchObject({ models: ["cox/expert"], reasoning: "high" });
+    expect(native.agents.explore).not.toHaveProperty("reasoning");
+    expect(native.agents.custom_role).toMatchObject({ models: ["cox/main"], reasoning: "max" });
+    expect(native.categories.quick).toMatchObject({ reasoning: "off" });
+    expect(native.categories.deep).toMatchObject({ reasoning: "xhigh" });
+    expect(() => unknownSettings({ agentReasoning: { oracle: "ultra" } })).toThrow();
+    expect(() => unknownSettings({ categoryReasoning: { constructor: "high" } })).toThrow();
+  });
   it("keeps mutable inheritance arrays before an independent main model is selected", () => {
     const native = omoTaskConfiguration(settings({}), "/tasks");
     expect(native.agents.explore).toEqual({ models: [], models_distribution: "round_robin" });

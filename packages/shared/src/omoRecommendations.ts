@@ -1,3 +1,28 @@
+import { OmoReasoningLevel, type ModelServiceModel } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+
+const isOmoReasoningLevel = Schema.is(OmoReasoningLevel);
+
+export function omoModelReasoningLevels(
+  model: Pick<ModelServiceModel, "capabilities" | "supportsReasoning">,
+): ReadonlyArray<OmoReasoningLevel> {
+  if (model.supportsReasoning === false) return [];
+  const descriptor = model.capabilities?.optionDescriptors?.find(
+    (option) =>
+      option.type === "select" && ["reasoningEffort", "effort", "thinking"].includes(option.id),
+  );
+  return descriptor?.type === "select"
+    ? [
+        ...new Set(
+          descriptor.options.flatMap((option) => {
+            const level = option.id === "none" ? "off" : option.id;
+            return isOmoReasoningLevel(level) ? [level] : [];
+          }),
+        ),
+      ]
+    : [];
+}
+
 export const OMO_AGENT_DESCRIPTIONS = {
   sisyphus:
     "Primary orchestrator for complex coding work. Prioritize strong coding judgment, long-horizon reasoning, reliable tool use, delegation and coordination over low latency.",
@@ -48,4 +73,5 @@ export const DEFAULT_OMO_RECOMMENDATION_PROMPT = [
   "For multimodal-looker, prefer models with explicit image input support in inputModalities; exclude models explicitly limited to text input from visual-capable choices. If no visual-capable model can be identified, still fill the role with the best available fallback and clearly state that visual capability is unverified or unavailable.",
   "Choose independently for each role. Reuse a model when it is the best fit for multiple roles; do not force diversity or favor the recommendation-generating model or catalog order. A single-model catalog must still fill every role and explain its limitations.",
   "Use the supplied standard role descriptions. For custom roles, infer only from the role name, make a conservative assignment and disclose missing task context.",
+  "Recommend a thinking strength for each role as well as its model. Use deeper reasoning for difficult planning, implementation and review, and lighter reasoning for search and simple work when the selected model supports it. Choose only from that model's supplied reasoningLevels; use an empty string for the model default or when supported levels are unknown. Explain important quality/latency tradeoffs instead of maximizing every role.",
 ].join("\n");

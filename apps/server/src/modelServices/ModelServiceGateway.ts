@@ -37,6 +37,7 @@ import {
   modelServiceRequestBody,
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
+  withoutForcedToolThinking,
 } from "./requestCompatibility.ts";
 import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
 import {
@@ -588,6 +589,8 @@ export const make = Effect.gen(function* () {
     const replayPolicy =
       selected.encryptedReasoningReplay ?? service.encryptedReasoningReplay ?? "preserve";
     let omitEncryptedReasoning = replayPolicy === "omit";
+    let disableForcedToolThinking = false;
+    let canRepairForcedToolThinking = false;
     const rejectedFailure = (
       status: number,
       value: unknown,
@@ -618,6 +621,7 @@ export const make = Effect.gen(function* () {
     const attempt = Effect.fn("ModelServiceGateway.attempt")(
       function* (attemptId: number) {
         const stripEncryptedReasoning = omitEncryptedReasoning;
+        const stripForcedToolThinking = disableForcedToolThinking;
         const started = yield* Clock.currentTimeMillis;
         yield* Effect.annotateCurrentSpan({ requestId, attempt: attemptId, incoming, protocol });
         const bridge =
@@ -681,6 +685,19 @@ export const make = Effect.gen(function* () {
             source: "model_metadata",
           });
         let requestBody = modelServiceRequestBody(protocol, selected.id, budget.body);
+        if (protocol === "openai-chat") {
+          const repaired = withoutForcedToolThinking(requestBody);
+          canRepairForcedToolThinking ||= repaired !== requestBody;
+          if (stripForcedToolThinking) {
+            requestBody = repaired;
+            yield* diagnostic({
+              event: "request_compatibility",
+              attempt: attemptId,
+              action: "disabled_thinking_for_forced_tool",
+              reason: "incompatible_tool_choice_thinking",
+            });
+          }
+        }
         if (protocol === "openai-responses") {
           const cleaned = withoutEncryptedReasoning(requestBody);
           hasEncryptedReasoning ||= cleaned !== requestBody;
@@ -1263,7 +1280,24 @@ export const make = Effect.gen(function* () {
       enabled,
       cancelled: tracking.cancelled,
       attempt,
-      repair: Effect.fn("ModelServiceGateway.repair")(function* () {
+      repair: Effect.fn("ModelServiceGateway.repair")(function* (
+        error: ModelServiceRequestFailure,
+      ) {
+        if (error.code === "incompatible_tool_choice_thinking") {
+          if (
+            protocol !== "openai-chat" ||
+            !canRepairForcedToolThinking ||
+            disableForcedToolThinking
+          )
+            return false;
+          disableForcedToolThinking = true;
+          yield* diagnostic({
+            event: "request_repaired",
+            reason: error.code,
+            repair: "disabled_thinking_for_forced_tool",
+          });
+          return true;
+        }
         if (protocol !== "openai-responses" || !hasEncryptedReasoning || omitEncryptedReasoning)
           return false;
         omitEncryptedReasoning = true;

@@ -40,6 +40,8 @@ describe("WebSocket RPC contracts", () => {
           decodeResult({
             agentModels: { [name]: "cox/generator" },
             categoryModels: {},
+            agentReasoning: {},
+            categoryReasoning: {},
             explanation: "Explanation.",
           }),
         ),

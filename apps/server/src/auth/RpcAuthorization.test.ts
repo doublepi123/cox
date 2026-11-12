@@ -141,6 +141,8 @@ describe("OMO recommendation authorization", () => {
           const result = {
             agentModels: { sisyphus: "cox/model" },
             categoryModels: {},
+            agentReasoning: { sisyphus: "" as const },
+            categoryReasoning: {},
             explanation: "Recommended.",
           };
           const client = yield* RpcTest.makeClient(group).pipe(

@@ -37,6 +37,8 @@ const instanceConfig = {
   binaryPath: "custom-omo",
   agentModels: { oracle: "cox/Vendor/Exact" },
   categoryModels: {},
+  agentReasoning: {},
+  categoryReasoning: {},
 };
 const instance: ProviderInstanceConfig = {
   driver: ProviderDriverKind.make("omo"),
@@ -44,11 +46,145 @@ const instance: ProviderInstanceConfig = {
   config: instanceConfig,
 };
 const models = [
-  { slug: "cox/Vendor/Exact", name: "Vendor/Exact" },
-  { slug: "cox/other", name: "Other model" },
+  {
+    slug: "cox/Vendor/Exact",
+    name: "Vendor/Exact",
+    reasoningLevels: ["low", "high", "max"] as const,
+  },
+  { slug: "cox/other", name: "Other model", reasoningLevels: ["off", "low"] as const },
 ];
 
 describe("OMO native roles", () => {
+  it("applies recommended thinking strengths and keeps manual strength edits", async () => {
+    setLanguagePreference("en");
+    const save = vi.fn();
+    state.recommend.mockReset().mockResolvedValue({
+      _tag: "Success",
+      value: {
+        agentModels: { oracle: "cox/Vendor/Exact" },
+        categoryModels: { quick: "cox/other" },
+        agentReasoning: { oracle: "high" },
+        categoryReasoning: { quick: "off" },
+        explanation: "Use deeper review and quick simple work.",
+      },
+    });
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly={false}
+        onUpdate={save}
+        environmentId={EnvironmentId.make("test")}
+        serviceRevision={3}
+      />,
+    );
+    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
+    await expect
+      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .toHaveValue("high");
+    await expect
+      .element(screen.getByRole("combobox", { name: "quick thinking strength" }))
+      .toHaveValue("off");
+    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("max");
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          agentReasoning: { oracle: "max" },
+          categoryReasoning: { quick: "off" },
+        }),
+      }),
+    );
+  });
+  it("saves agent and category thinking strengths and rejects an incompatible model change", async () => {
+    setLanguagePreference("en");
+    let echoed = instance;
+    const save = vi.fn(async (next: ProviderInstanceConfig) => {
+      echoed = next;
+      return true;
+    });
+    const section = (key: string) => (
+      <OmoSettingsSection
+        key={key}
+        instance={echoed}
+        models={models}
+        readOnly={false}
+        onUpdate={save}
+      />
+    );
+    await using screen = await render(section("initial"));
+    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("high");
+    await screen.getByRole("button", { name: /Categories/ }).click();
+    await screen.getByRole("combobox", { name: "quick thinking strength" }).selectOptions("low");
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          agentReasoning: { oracle: "high" },
+          categoryReasoning: { quick: "low" },
+        }),
+      }),
+    );
+    await screen.rerender(section("reopened"));
+    await expect
+      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .toHaveValue("high");
+    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("Clear or reassign unsupported thinking strengths before saving.");
+    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("low");
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ agentReasoning: { oracle: "low" } }),
+      }),
+    );
+  });
+
+  it("keeps a thinking-strength edit made while recommendations are pending", async () => {
+    setLanguagePreference("en");
+    let finish: (result: unknown) => void = () => {};
+    state.recommend.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly={false}
+        onUpdate={vi.fn()}
+        environmentId={EnvironmentId.make("test")}
+        serviceRevision={3}
+      />,
+    );
+    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
+    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("max");
+    await act(() =>
+      finish({
+        _tag: "Success",
+        value: {
+          agentModels: { oracle: "cox/other" },
+          categoryModels: {},
+          agentReasoning: { oracle: "low" },
+          categoryReasoning: {},
+          explanation: "Stale strengths",
+        },
+      }),
+    );
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent(
+        "The configuration changed during generation. Generate again for the current draft.",
+      );
+    await expect
+      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .toHaveValue("max");
+  });
   it.each(["", " \n\t "])(
     "saves a custom prompt across reopening and clears it to the default: %j",
     async (cleared) => {
@@ -106,6 +242,8 @@ describe("OMO native roles", () => {
       value: {
         agentModels: { oracle: "cox/other" },
         categoryModels: {},
+        agentReasoning: {},
+        categoryReasoning: {},
         explanation: "Custom prompt result",
       },
     });
@@ -162,6 +300,8 @@ describe("OMO native roles", () => {
         value: {
           agentModels: { oracle: "cox/other" },
           categoryModels: {},
+          agentReasoning: {},
+          categoryReasoning: {},
           explanation: "Old prompt result",
         },
       }),
@@ -293,6 +433,8 @@ describe("OMO native roles", () => {
         binaryPath: "new-binary",
         agentModels: { oracle: "cox/other" },
         categoryModels: {},
+        agentReasoning: {},
+        categoryReasoning: {},
         recommendationPrompt: "",
       },
     });
@@ -336,6 +478,8 @@ describe("OMO native roles", () => {
         value: {
           agentModels: { oracle: "cox/other" },
           categoryModels: {},
+          agentReasoning: {},
+          categoryReasoning: {},
           explanation: "Old instance explanation",
         },
       }),
@@ -359,7 +503,9 @@ describe("OMO native roles", () => {
         onUpdate={vi.fn()}
       />,
     );
-    const explore = screen.container.querySelector<HTMLSelectElement>("select");
+    const explore = screen.container.querySelector<HTMLSelectElement>(
+      'select[aria-label="oracle"]',
+    );
     expect(explore).toBeNull();
     expect(screen.container.textContent).toContain(
       "Bind a model service to use AI recommendations.",
@@ -386,6 +532,8 @@ describe("OMO native roles", () => {
       value: {
         agentModels: { oracle: "cox/Vendor/Exact" },
         categoryModels: {},
+        agentReasoning: {},
+        categoryReasoning: {},
         explanation: "New recommendation",
       },
     });
@@ -443,7 +591,13 @@ describe("OMO native roles", () => {
     await act(() =>
       finish({
         _tag: "Success",
-        value: { agentModels: {}, categoryModels: {}, explanation: "Stale" },
+        value: {
+          agentModels: {},
+          categoryModels: {},
+          agentReasoning: {},
+          categoryReasoning: {},
+          explanation: "Stale",
+        },
       }),
     );
     await expect
@@ -488,6 +642,8 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "cox/other" },
         categoryModels: {},
+        agentReasoning: {},
+        categoryReasoning: {},
       },
     };
     await screen.rerender(
@@ -591,6 +747,8 @@ describe("OMO native roles", () => {
       value: {
         agentModels: { oracle: "cox/other", explore: "cox/other" },
         categoryModels: { deep: "cox/Vendor/Exact" },
+        agentReasoning: {},
+        categoryReasoning: {},
         explanation: "Use the stronger model for deep work.",
       },
     });
@@ -637,6 +795,8 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "cox/Vendor/Exact", explore: "cox/other" },
         categoryModels: { deep: "cox/Vendor/Exact" },
+        agentReasoning: {},
+        categoryReasoning: {},
         recommendationPrompt: "",
       },
     });
@@ -670,6 +830,8 @@ describe("OMO native roles", () => {
         value: {
           agentModels: { oracle: "cox/Vendor/Exact" },
           categoryModels: {},
+          agentReasoning: {},
+          categoryReasoning: {},
           explanation: "Old draft",
         },
       }),
@@ -737,6 +899,8 @@ describe("OMO native roles", () => {
         value: {
           agentModels: { oracle: "cox/other" },
           categoryModels: {},
+          agentReasoning: {},
+          categoryReasoning: {},
           explanation: "Old binding",
         },
       }),
@@ -809,6 +973,8 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "" },
         categoryModels: {},
+        agentReasoning: {},
+        categoryReasoning: {},
         recommendationPrompt: "",
       },
     });
@@ -834,6 +1000,8 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "", custom_agent: "cox/Vendor/Exact" },
         categoryModels: { deep: "cox/other" },
+        agentReasoning: {},
+        categoryReasoning: {},
         recommendationPrompt: "",
       },
     });
@@ -895,6 +1063,8 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "" },
         categoryModels: {},
+        agentReasoning: {},
+        categoryReasoning: {},
         recommendationPrompt: "",
       },
     });
