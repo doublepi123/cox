@@ -22,6 +22,7 @@ export interface ComposerBannerStackItem {
   readonly description?: ReactNode;
   readonly children?: ReactNode;
   readonly actions?: ReactNode;
+  readonly row?: ReactNode;
   readonly dismissLabel?: string;
   readonly onDismiss?: () => void;
 }
@@ -179,48 +180,51 @@ function NoticeCard({
       variant={item.variant}
       detached={detached}
       density="comfortable"
+      width={item.row ? "content" : "fill"}
       data-chat-composer-collapsed-controls="true"
     >
-      <ComposerBanner.Row layout="wrap-actions">
-        <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
-          {item.icon}
-        </ComposerBanner.Icon>
-        <ComposerBanner.Content className="whitespace-nowrap">
-          <NoticeText
-            detailsLabel={
-              typeof item.title === "string"
-                ? `Show full title: ${item.title}`
-                : "Show title details"
-            }
-            className="min-w-0 truncate font-medium leading-7 sm:leading-6"
-          >
-            {item.title}
-          </NoticeText>
-          {item.description ? (
+      {item.row ?? (
+        <ComposerBanner.Row layout="wrap-actions">
+          <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
+            {item.icon}
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content className="whitespace-nowrap">
             <NoticeText
               detailsLabel={
                 typeof item.title === "string"
-                  ? `Show details: ${item.title}`
-                  : "Show notice details"
+                  ? `Show full title: ${item.title}`
+                  : "Show title details"
               }
-              className="w-0 min-w-0 grow truncate text-muted-foreground @max-[400px]:sr-only"
+              className="min-w-0 truncate font-medium leading-7 sm:leading-6"
             >
-              {item.description}
+              {item.title}
             </NoticeText>
-          ) : null}
-        </ComposerBanner.Content>
-        {item.actions || item.onDismiss ? (
-          <ComposerBanner.Actions className="min-w-14 sm:min-w-12">
-            {item.actions}
-            {item.onDismiss ? (
-              <ComposerBanner.Dismiss
-                aria-label={item.dismissLabel ?? "Dismiss warning"}
-                onClick={item.onDismiss}
-              />
+            {item.description ? (
+              <NoticeText
+                detailsLabel={
+                  typeof item.title === "string"
+                    ? `Show details: ${item.title}`
+                    : "Show notice details"
+                }
+                className="w-0 min-w-0 grow truncate text-muted-foreground @max-[400px]:sr-only"
+              >
+                {item.description}
+              </NoticeText>
             ) : null}
-          </ComposerBanner.Actions>
-        ) : null}
-      </ComposerBanner.Row>
+          </ComposerBanner.Content>
+          {item.actions || item.onDismiss ? (
+            <ComposerBanner.Actions className="min-w-14 sm:min-w-12">
+              {item.actions}
+              {item.onDismiss ? (
+                <ComposerBanner.Dismiss
+                  aria-label={item.dismissLabel ?? "Dismiss warning"}
+                  onClick={item.onDismiss}
+                />
+              ) : null}
+            </ComposerBanner.Actions>
+          ) : null}
+        </ComposerBanner.Row>
+      )}
       {item.children ? <ComposerBanner.Children>{item.children}</ComposerBanner.Children> : null}
     </ComposerBanner.Root>
   );

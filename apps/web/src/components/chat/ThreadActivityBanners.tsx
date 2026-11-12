@@ -14,9 +14,11 @@ import { childThreadInputsTitle } from "@t3tools/client-runtime/state/threads";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
 import {
+  ChevronDownIcon,
   CircleDashedIcon,
   CircleStopIcon,
   GitBranchIcon,
+  LoaderCircleIcon,
   MessageCircleIcon,
   ShieldQuestionIcon,
   TargetIcon,
@@ -24,25 +26,102 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import { Fragment } from "react";
+import { useTranslation } from "../../i18n";
 import { tickTextContent } from "~/lib/tickTextContent";
 import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ComposerBanner } from "./ComposerBanner";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import type { ThreadNowItem } from "./ThreadNow";
 
+type ExtensionStatuses = NonNullable<OrchestrationV2ProviderSession["extensionStatuses"]>;
+
+type MemoryStatusText = "Memory reflecting" | "Memory sync blocked" | "Memory sync held";
+
+export type VisibleExtensionStatus =
+  | { readonly kind: "memory"; readonly key: string; readonly text: MemoryStatusText }
+  | { readonly kind: "raw"; readonly key: string; readonly text: string };
+
+function memoryStatusText(text: string): MemoryStatusText | null {
+  if (text.includes("reflecting")) return "Memory reflecting";
+  if (text.includes(" sync blocked")) return "Memory sync blocked";
+  if (text.includes(" sync held")) return "Memory sync held";
+  return null;
+}
+
+export function visibleExtensionStatuses(
+  statuses: ExtensionStatuses,
+): ReadonlyArray<VisibleExtensionStatus> {
+  return statuses.flatMap((status): ReadonlyArray<VisibleExtensionStatus> => {
+    if (status.key.trim() === "omo-native") return [];
+    if (status.key !== "memory") return [{ kind: "raw", key: status.key, text: status.text }];
+    const text = memoryStatusText(status.text);
+    return text === null ? [] : [{ kind: "memory", key: status.key, text }];
+  });
+}
+
+function ExtensionStatusDisclosure({
+  statuses,
+  providerLabel,
+}: {
+  readonly statuses: ReadonlyArray<VisibleExtensionStatus>;
+  readonly providerLabel: string;
+}) {
+  const { t: translateUi } = useTranslation();
+  const label = translateUi("{provider} extension status", { provider: providerLabel });
+  const texts = statuses.map((status) =>
+    status.kind === "memory" ? translateUi(status.text) : status.text,
+  );
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={<ComposerBanner.Row render={<button type="button" />} />}
+        aria-label={label}
+        className="pe-2 sm:pe-1.5"
+      >
+        <ComposerBanner.Icon>
+          <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+        </ComposerBanner.Icon>
+        <ComposerBanner.Content className="whitespace-nowrap leading-7 sm:leading-6">
+          <span className="min-w-0 truncate font-medium">{texts[0]}</span>
+          {texts.length > 1 ? (
+            <span className="flex-none text-muted-foreground tabular-nums">
+              +{texts.length - 1}
+            </span>
+          ) : null}
+          <ChevronDownIcon className="size-3 flex-none text-muted-foreground transition-transform duration-150 group-data-popup-open/banner-row:rotate-180 motion-reduce:transition-none" />
+        </ComposerBanner.Content>
+      </PopoverTrigger>
+      <PopoverPopup side="top" align="start" presentation="banner" padding="compact" touchBackdrop>
+        <div className="grid gap-2">
+          <PopoverTitle>{label}</PopoverTitle>
+          <ComposerBanner.Scroll className="max-h-[min(var(--available-height),24rem,40dvh)]">
+            <ul className="grid gap-1 text-xs break-words select-text">
+              {statuses.map((status, index) => (
+                <li key={status.key}>{texts[index]}</li>
+              ))}
+            </ul>
+          </ComposerBanner.Scroll>
+        </div>
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
 export function extensionStatusBannerItem(
-  statuses: NonNullable<OrchestrationV2ProviderSession["extensionStatuses"]>,
+  statuses: ExtensionStatuses,
   providerLabel = "Pi",
 ): ComposerBannerStackItem | null {
-  if (statuses.length === 0) return null;
+  const visible = visibleExtensionStatuses(statuses);
+  if (visible.length === 0) return null;
   return {
     id: "provider-extension-status",
     variant: "default",
-    icon: <span>▸</span>,
-    title: (
-      <output>{`${providerLabel} · ${statuses.map((status) => status.text).join(" · ")}`}</output>
-    ),
+    icon: <LoaderCircleIcon />,
+    title: providerLabel,
+    row: <ExtensionStatusDisclosure statuses={visible} providerLabel={providerLabel} />,
   };
 }
 

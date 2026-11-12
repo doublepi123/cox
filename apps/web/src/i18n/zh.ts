@@ -2215,6 +2215,10 @@ export const zh = {
   "Created thread": "已创建对话",
   "Using ChatGPT plan": "正在使用 ChatGPT 订阅",
   "Notice details": "提示详情",
+  "{provider} extension status": "{provider} 扩展状态",
+  "Memory reflecting": "记忆整理中",
+  "Memory sync blocked": "记忆同步受阻",
+  "Memory sync held": "记忆同步暂缓",
   "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts. Click to stop.":
     "正在关注：检查完成、出现新评论或分支冲突时会唤醒代理。点击停止关注。",
   "Draft attachment may not persist": "草稿附件可能无法保留",

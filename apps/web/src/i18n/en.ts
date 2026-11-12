@@ -2329,6 +2329,10 @@ export const en = {
   "Created thread": "Created thread",
   "Using ChatGPT plan": "Using ChatGPT plan",
   "Notice details": "Notice details",
+  "{provider} extension status": "{provider} extension status",
+  "Memory reflecting": "Memory reflecting",
+  "Memory sync blocked": "Memory sync blocked",
+  "Memory sync held": "Memory sync held",
   "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts. Click to stop.":
     "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts. Click to stop.",
   "Draft attachment may not persist": "Draft attachment may not persist",
