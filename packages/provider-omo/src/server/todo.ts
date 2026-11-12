@@ -80,8 +80,13 @@ export const OMO_TODO_BRIDGE_SOURCE = `
       const payload = entry.type === "custom" && entry.customType === "senpi.todo-state" ? entry.data :
         message?.role === "toolResult" && ["todo", "todowrite"].includes(message.toolName) && !message.isError ? message.details : undefined;
       if (!payload || typeof payload !== "object") continue;
-      if (validPhases(payload.phases)) { phases = payload.phases; hasList = true; }
-      else if (Array.isArray(payload.todos) && payload.todos.every(task => task && typeof task.content === "string")) {
+      if (payload.schema === "v2" || Array.isArray(payload.phases)) {
+        if (validPhases(payload.phases)) {
+          phases = payload.phases.map(phase => ({ name: phase.name,
+            tasks: phase.tasks.map(task => ({ content: task.content, status: task.status })) }));
+          hasList = true;
+        }
+      } else if (Array.isArray(payload.todos) && payload.todos.every(task => task && typeof task.content === "string")) {
         phases = [{ name: "Tasks", tasks: payload.todos.map(task => ({ content: task.content,
           status: ["pending", "in_progress", "completed", "abandoned", "cancelled"].includes(task.status) ? task.status : "pending" })) }];
         hasList = true;

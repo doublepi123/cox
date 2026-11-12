@@ -120,6 +120,44 @@ function bridge() {
 }
 
 describe("OMO Todo extension bridge", () => {
+  it("detaches snapshots from native entries and does not reinterpret malformed v2 state as legacy", () => {
+    const test = bridge();
+    const phases = [{ name: "Build", tasks: [{ content: "Implement", status: "pending" }] }];
+    test.setEntries([
+      { type: "custom", customType: "senpi.todo-state", data: { schema: "v2", phases } },
+      {
+        type: "custom",
+        customType: "senpi.todo-state",
+        data: {
+          schema: "v2",
+          phases: [{ name: "Malformed", tasks: [null] }],
+          todos: [{ content: "Not legacy", status: "completed" }],
+        },
+      },
+    ]);
+    test.handlers.get("session_start")!({}, test.ctx);
+    const emitted = test.updates.at(-1)?.data;
+    const read = test.rpc.get("cox.omo.todo")!({ nativeThreadId: "/fixture/root.jsonl" });
+    phases[0]!.tasks[0]!.status = "completed";
+    phases.push({ name: "Later", tasks: [] });
+    expect(emitted).toMatchObject({
+      phases: [{ name: "Build", tasks: [{ content: "Implement", status: "pending" }] }],
+      revision: 0,
+    });
+    expect(read).toMatchObject({
+      phases: [{ name: "Build", tasks: [{ content: "Implement", status: "pending" }] }],
+      revision: 0,
+    });
+    const refreshed = test.rpc.get("cox.omo.todo")!({ nativeThreadId: "/fixture/root.jsonl" });
+    expect(refreshed).toMatchObject({
+      phases: [
+        { name: "Build", tasks: [{ content: "Implement", status: "completed" }] },
+        { name: "Later", tasks: [] },
+      ],
+      revision: 1,
+    });
+  });
+
   it("reads only structured branch state, publishes updates and exposes a session-scoped snapshot", () => {
     const test = bridge();
     test.setEntries([
