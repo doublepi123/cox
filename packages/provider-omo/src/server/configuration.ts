@@ -4,6 +4,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { resolveCommandPath } from "@t3tools/shared/shell";
 import { omoModelReasoningLevels } from "@t3tools/shared/omoRecommendations";
+import { OMO_NATIVE_AGENT_ROLES, OMO_NATIVE_CATEGORY_ROLES } from "@t3tools/shared/omoRoles";
 import { piEnvironment } from "@t3tools/provider-pi/server";
 import { OmoReasoningLevel } from "@t3tools/contracts";
 import { OmoRoleName, type OmoSettings } from "../settings.ts";
@@ -16,30 +17,8 @@ const decodePackageManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ name: Schema.optional(Schema.String) })),
 );
 
-const agents = [
-  "sisyphus",
-  "atlas",
-  "hephaestus",
-  "prometheus",
-  "metis",
-  "momus",
-  "oracle",
-  "librarian",
-  "explore",
-  "multimodal-looker",
-];
-const categories = [
-  "visual-engineering",
-  "ultrabrain",
-  "deep",
-  "deep-low",
-  "deep-high",
-  "artistry",
-  "quick",
-  "unspecified-low",
-  "unspecified-high",
-  "writing",
-];
+const agents = OMO_NATIVE_AGENT_ROLES.map((role) => role.name);
+const categories = [...OMO_NATIVE_CATEGORY_ROLES.map((role) => role.name), "deep"];
 
 export function omoEnvironment(
   settings: OmoSettings,

@@ -10,6 +10,14 @@ import {
   DEFAULT_OMO_RECOMMENDATION_PROMPT,
   omoModelReasoningLevels,
 } from "@t3tools/shared/omoRecommendations";
+import {
+  OMO_LEGACY_AGENT_NAMES,
+  OMO_NATIVE_AGENT_ROLES,
+  OMO_NATIVE_CATEGORY_ROLES,
+  officialOmoAssignment,
+  omoRoleInfo,
+  type OmoRoleKind,
+} from "@t3tools/shared/omoRoles";
 import * as Schema from "effect/Schema";
 import { useId, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
@@ -17,39 +25,14 @@ import { useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SettingsRow } from "./settingsLayout";
-import { OmoRecommendationControl } from "./OmoRecommendationControl";
+import { OmoOfficialRecommendations, OmoRecommendationControl } from "./OmoRecommendationControl";
+import { OmoLegacyRoles, OmoRoleCard, type OmoRoleModel } from "./OmoRoleCard";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 
-const AGENTS = [
-  "sisyphus",
-  "hephaestus",
-  "oracle",
-  "librarian",
-  "explore",
-  "prometheus",
-  "metis",
-  "momus",
-  "atlas",
-  "multimodal-looker",
-];
-const CATEGORIES = [
-  "visual-engineering",
-  "ultrabrain",
-  "deep",
-  "deep-low",
-  "deep-high",
-  "artistry",
-  "quick",
-  "unspecified-low",
-  "unspecified-high",
-  "writing",
-];
+const AGENT_ROLES = OMO_NATIVE_AGENT_ROLES.map((role) => role.name);
+const CATEGORY_ROLES = OMO_NATIVE_CATEGORY_ROLES.map((role) => role.name);
 const isOmoRoleName = Schema.is(OmoRoleName);
-type RoleModel = {
-  readonly slug: string;
-  readonly name: string;
-  readonly reasoningLevels?: ReadonlyArray<OmoReasoningLevel>;
-};
+type RoleModel = OmoRoleModel;
 
 function categoryAssignments(value: Record<string, string>): Record<string, string> {
   return Object.hasOwn(value, "deep-low")
@@ -105,9 +88,55 @@ function recommendationPrompt(config: unknown): string {
   return typeof prompt === "string" && prompt.trim() ? prompt : DEFAULT_OMO_RECOMMENDATION_PROMPT;
 }
 
+function hiddenRoleNames(kind: OmoRoleKind): ReadonlyArray<string> {
+  return kind === "agent" ? OMO_LEGACY_AGENT_NAMES : ["deep"];
+}
+
+function visibleRoles(
+  kind: OmoRoleKind,
+  value: Record<string, string>,
+  reasoning: Record<string, string>,
+): string[] {
+  const hidden = hiddenRoleNames(kind);
+  return [
+    ...new Set([
+      ...(kind === "agent" ? AGENT_ROLES : CATEGORY_ROLES),
+      ...Object.keys(value),
+      ...Object.keys(reasoning),
+    ]),
+  ].filter((role) => !hidden.includes(role));
+}
+
+function updateAssignment(
+  kind: OmoRoleKind,
+  assignments: Record<string, string>,
+  role: string,
+  selected: string,
+): Record<string, string> {
+  const next = { ...assignments, [role]: selected };
+  if (kind === "category" && ["deep", "deep-low"].includes(role)) {
+    const alias = role === "deep" ? "deep-low" : "deep";
+    if (Object.hasOwn(assignments, alias)) next[alias] = selected;
+  }
+  return next;
+}
+
+function legacyRoleNames(
+  value: Record<string, string>,
+  reasoning: Record<string, string>,
+): string[] {
+  return OMO_LEGACY_AGENT_NAMES.filter(
+    (name) => Object.hasOwn(value, name) || Object.hasOwn(reasoning, name),
+  );
+}
+
+function withoutRole(assignments: Record<string, string>, role: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(assignments).filter(([name]) => name !== role));
+}
+
 function RoleModelFields({
   title,
-  defaults,
+  kind,
   value,
   reasoning,
   models,
@@ -120,7 +149,7 @@ function RoleModelFields({
   expandVersion,
 }: {
   readonly title: string;
-  readonly defaults: readonly string[];
+  readonly kind: OmoRoleKind;
   readonly value: Record<string, string>;
   readonly reasoning: Record<string, string>;
   readonly models: readonly RoleModel[];
@@ -136,9 +165,9 @@ function RoleModelFields({
   const id = useId();
   const [name, setName] = useState("");
   const [search, setSearch] = useState("");
-  const effectiveValue = defaults === CATEGORIES ? categoryAssignments(value) : value;
-  const effectiveReasoning = defaults === CATEGORIES ? categoryAssignments(reasoning) : reasoning;
-  const roles = [...new Set([...defaults, ...Object.keys(value), ...Object.keys(reasoning)])];
+  const effectiveValue = kind === "category" ? categoryAssignments(value) : value;
+  const effectiveReasoning = kind === "category" ? categoryAssignments(reasoning) : reasoning;
+  const roles = visibleRoles(kind, value, reasoning);
   const invalidCount = roles.filter(
     (role) =>
       (managed &&
@@ -150,7 +179,7 @@ function RoleModelFields({
         )),
   ).length;
   const [disclosure, setDisclosure] = useState({
-    open: defaults === AGENTS || Object.keys(value).length > 0 || invalidCount > 0,
+    open: kind === "agent" || Object.keys(value).length > 0 || invalidCount > 0,
     version: expandVersion,
     invalidCount,
   });
@@ -162,19 +191,18 @@ function RoleModelFields({
     });
   }
   const open = disclosure.open;
-  const updateAssignment = (
-    assignments: Record<string, string>,
-    role: string,
-    selected: string,
-  ) => {
-    const next = { ...assignments, [role]: selected };
-    if (defaults === CATEGORIES && ["deep", "deep-low"].includes(role)) {
-      const alias = role === "deep" ? "deep-low" : "deep";
-      if (Object.hasOwn(assignments, alias)) next[alias] = selected;
-    }
-    return next;
-  };
-  const validName = isOmoRoleName(name) && !defaults.includes(name) && !Object.hasOwn(value, name);
+  const query = search.trim().toLowerCase();
+  const matchingRoles = roles.filter((role) => {
+    const info = omoRoleInfo(kind, role);
+    return [role, ...(info ? [t(info.title), t(info.summary)] : [])].some((text) =>
+      text.toLowerCase().includes(query),
+    );
+  });
+  const validName =
+    isOmoRoleName(name) &&
+    !roles.includes(name) &&
+    !hiddenRoleNames(kind).includes(name) &&
+    !Object.hasOwn(value, name);
   return (
     <div className="min-w-0 border-b border-border/60 pb-3">
       <Collapsible
@@ -190,7 +218,7 @@ function RoleModelFields({
           <span className="ml-auto text-xs text-muted-foreground">
             {t("{count} roles · {assigned} assigned", {
               count: roles.length,
-              assigned: Object.values(value).filter(Boolean).length,
+              assigned: roles.filter((role) => effectiveValue[role]).length,
             })}
           </span>
           {invalidCount > 0 ? (
@@ -200,7 +228,7 @@ function RoleModelFields({
           ) : null}
         </CollapsibleTrigger>
         <CollapsiblePanel>
-          <fieldset className="@container min-w-0 space-y-2 pt-2" disabled={readOnly}>
+          <fieldset className="min-w-0 space-y-2 pt-2" disabled={readOnly}>
             <legend className="sr-only">{title}</legend>
             <label className="flex min-h-11 min-w-0 items-center">
               <Input
@@ -212,145 +240,42 @@ function RoleModelFields({
               />
             </label>
             <div className="grid min-w-0 gap-3">
-              <div
-                aria-hidden="true"
-                className="hidden min-w-0 grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)] gap-3 border border-transparent px-3 py-2 text-xs font-medium text-muted-foreground @min-[36rem]:grid"
-              >
-                <span>{t("Role")}</span>
-                <span>{t("Model")}</span>
-                <span>{t("Thinking strength")}</span>
-              </div>
-              {roles
-                .filter((role) => role.toLowerCase().includes(search.toLowerCase()))
-                .map((role, index) => {
-                  const slug = effectiveValue[role] ?? "";
-                  const unavailable =
-                    managed && Boolean(slug) && !models.some((model) => model.slug === slug);
-                  const levels = reasoningLevelsForRole(models, managed, slug || inheritedSlug);
-                  const level = effectiveReasoning[role] ?? "";
-                  const unsupported =
-                    Boolean(level) && !levels.some((candidate) => candidate === level);
-                  return (
-                    <div
-                      key={role}
-                      role="group"
-                      aria-labelledby={`${id}-${index}-role`}
-                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm @min-[36rem]:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)]"
-                    >
-                      <span
-                        id={`${id}-${index}-role`}
-                        className="col-span-2 min-w-0 border-b border-border/60 pb-2 font-semibold text-foreground [overflow-wrap:anywhere] @min-[36rem]:col-span-1 @min-[36rem]:border-0 @min-[36rem]:pt-3 @min-[36rem]:pb-0"
-                      >
-                        {role}
-                      </span>
-                      <div className="grid min-w-0 gap-1.5">
-                        <label
-                          htmlFor={`${id}-${index}`}
-                          className="text-xs text-muted-foreground @min-[36rem]:sr-only"
-                        >
-                          {t("Model")}
-                        </label>
-                        {managed ? (
-                          <select
-                            id={`${id}-${index}`}
-                            aria-label={role}
-                            className="min-h-11 w-full min-w-0 max-w-full truncate rounded-md border border-input bg-background px-2"
-                            aria-invalid={unavailable || undefined}
-                            aria-describedby={unavailable ? `${id}-${index}-error` : undefined}
-                            value={slug}
-                            onChange={(event) =>
-                              onChange(updateAssignment(value, role, event.target.value))
-                            }
-                          >
-                            <option value="">
-                              {inheritedModel
-                                ? t("Inherit main model ({model})", { model: inheritedModel })
-                                : t("Inherit main model")}
-                            </option>
-                            {slug && !models.some((model) => model.slug === slug) ? (
-                              <option value={slug} disabled>
-                                {t("Unavailable model: {model}", { model: slug })}
-                              </option>
-                            ) : null}
-                            {models.map((model) => (
-                              <option key={model.slug} value={model.slug}>
-                                {model.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <label
-                            htmlFor={`${id}-${index}`}
-                            className="flex min-h-11 min-w-0 items-center"
-                          >
-                            <Input
-                              size="lg"
-                              id={`${id}-${index}`}
-                              aria-label={role}
-                              value={slug}
-                              placeholder={t("Inherit main model")}
-                              onChange={(event) =>
-                                onChange(updateAssignment(value, role, event.target.value))
-                              }
-                            />
-                          </label>
-                        )}
-                        {unavailable ? (
-                          <span
-                            id={`${id}-${index}-error`}
-                            className="block text-xs text-destructive [overflow-wrap:anywhere]"
-                          >
-                            {t("Unavailable model: {model}", { model: slug })}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="grid min-w-0 gap-1.5">
-                        <label
-                          htmlFor={`${id}-${index}-reasoning`}
-                          className="text-xs text-muted-foreground @min-[36rem]:sr-only"
-                        >
-                          {t("Thinking strength")}
-                        </label>
-                        <select
-                          id={`${id}-${index}-reasoning`}
-                          aria-label={t("{role} thinking strength", { role })}
-                          className="min-h-11 w-full min-w-0 max-w-full truncate rounded-md border border-input bg-background px-2"
-                          aria-invalid={unsupported || undefined}
-                          aria-describedby={
-                            unsupported ? `${id}-${index}-reasoning-error` : undefined
-                          }
-                          value={level}
-                          disabled={levels.length === 0 && !level}
-                          onChange={(event) =>
-                            onReasoningChange(updateAssignment(reasoning, role, event.target.value))
-                          }
-                        >
-                          <option value="">{t("Default thinking strength")}</option>
-                          {unsupported ? (
-                            <option value={level} disabled>
-                              {t("Unavailable thinking strength: {level}", { level })}
-                            </option>
-                          ) : null}
-                          {levels.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                        {unsupported ? (
-                          <span
-                            id={`${id}-${index}-reasoning-error`}
-                            className="text-xs text-destructive [overflow-wrap:anywhere]"
-                          >
-                            {t("This thinking strength is not supported by the selected model.")}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
+              {matchingRoles.map((role) => {
+                const info = omoRoleInfo(kind, role);
+                const slug = effectiveValue[role] ?? "";
+                const official = managed && info ? officialOmoAssignment(info, models) : undefined;
+                return (
+                  <OmoRoleCard
+                    key={role}
+                    id={`${id}-${role}`}
+                    role={role}
+                    info={info}
+                    slug={slug}
+                    level={effectiveReasoning[role] ?? ""}
+                    levels={reasoningLevelsForRole(models, managed, slug || inheritedSlug)}
+                    models={models}
+                    managed={managed}
+                    readOnly={readOnly}
+                    inheritedModel={inheritedModel}
+                    official={official}
+                    onModelChange={(selected) =>
+                      onChange(updateAssignment(kind, value, role, selected))
+                    }
+                    onReasoningChange={(selected) =>
+                      onReasoningChange(updateAssignment(kind, reasoning, role, selected))
+                    }
+                    onUseOfficial={() => {
+                      if (!official) return;
+                      onChange(updateAssignment(kind, value, role, official.model));
+                      onReasoningChange(
+                        updateAssignment(kind, reasoning, role, official.reasoning),
+                      );
+                    }}
+                  />
+                );
+              })}
             </div>
-            {roles.every((role) => !role.toLowerCase().includes(search.toLowerCase())) ? (
+            {matchingRoles.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("No matching roles")}</p>
             ) : null}
             {!readOnly ? (
@@ -515,12 +440,10 @@ export function OmoSettingsSection({
             binding={instance.modelService}
             revision={serviceRevision}
             models={models}
-            agents={[
-              ...new Set([...AGENTS, ...Object.keys(agentModels), ...Object.keys(agentReasoning)]),
-            ]}
+            agents={visibleRoles("agent", agentModels, agentReasoning)}
             categories={[
               ...new Set([
-                ...CATEGORIES,
+                ...CATEGORY_ROLES,
                 ...Object.keys(categoryModels),
                 ...Object.keys(categoryReasoning),
               ]),
@@ -560,9 +483,56 @@ export function OmoSettingsSection({
         {readOnly ? (
           <p className="text-xs text-muted-foreground">{t("These settings are read-only.")}</p>
         ) : null}
+        {managed && !readOnly ? (
+          <OmoOfficialRecommendations
+            dirty={dirty}
+            disabled={saving || generating || models.length === 0}
+            onApply={() => {
+              const unmatched: string[] = [];
+              let nextAgents = agentModels;
+              let nextAgentReasoning = agentReasoning;
+              let nextCategories = categoryModels;
+              let nextCategoryReasoning = categoryReasoning;
+              for (const info of [...OMO_NATIVE_AGENT_ROLES, ...OMO_NATIVE_CATEGORY_ROLES]) {
+                const official = officialOmoAssignment(info, models);
+                if (!official) {
+                  unmatched.push(info.name);
+                } else if (info.kind === "agent") {
+                  nextAgents = updateAssignment("agent", nextAgents, info.name, official.model);
+                  nextAgentReasoning = updateAssignment(
+                    "agent",
+                    nextAgentReasoning,
+                    info.name,
+                    official.reasoning,
+                  );
+                } else {
+                  nextCategories = updateAssignment(
+                    "category",
+                    nextCategories,
+                    info.name,
+                    official.model,
+                  );
+                  nextCategoryReasoning = updateAssignment(
+                    "category",
+                    nextCategoryReasoning,
+                    info.name,
+                    official.reasoning,
+                  );
+                }
+              }
+              setAgentModels(nextAgents);
+              setAgentReasoning(nextAgentReasoning);
+              setCategoryModels(nextCategories);
+              setCategoryReasoning(nextCategoryReasoning);
+              setExpandVersion((version) => version + 1);
+              setSaveStatus("idle");
+              return unmatched;
+            }}
+          />
+        ) : null}
         <RoleModelFields
           title={t("Agents")}
-          defaults={AGENTS}
+          kind="agent"
           value={agentModels}
           reasoning={agentReasoning}
           models={models}
@@ -582,7 +552,7 @@ export function OmoSettingsSection({
         />
         <RoleModelFields
           title={t("Categories")}
-          defaults={CATEGORIES}
+          kind="category"
           value={categoryModels}
           reasoning={categoryReasoning}
           models={models}
@@ -600,6 +570,33 @@ export function OmoSettingsSection({
           }}
           expandVersion={expandVersion}
         />
+        {legacyRoleNames(agentModels, agentReasoning).length > 0 ? (
+          <OmoLegacyRoles
+            readOnly={readOnly || saving}
+            roles={legacyRoleNames(agentModels, agentReasoning).map((name) => {
+              const slug = agentModels[name] ?? "";
+              const level = agentReasoning[name] ?? "";
+              return {
+                name,
+                summary: [slug || t("Inherit main model"), level].filter(Boolean).join(" · "),
+                error:
+                  managed && slug && !models.some((model) => model.slug === slug)
+                    ? t("Unavailable model: {model}", { model: slug })
+                    : level &&
+                        !reasoningLevelsForRole(models, managed, slug || inheritedSlug).some(
+                          (candidate) => candidate === level,
+                        )
+                      ? t("This thinking strength is not supported by the selected model.")
+                      : undefined,
+              };
+            })}
+            onRemove={(name) => {
+              setAgentModels(withoutRole(agentModels, name));
+              setAgentReasoning(withoutRole(agentReasoning, name));
+              setSaveStatus("idle");
+            }}
+          />
+        ) : null}
         {invalid ? (
           <p role="alert" className="text-xs text-destructive">
             {t("Clear or reassign unavailable role models before saving.")}

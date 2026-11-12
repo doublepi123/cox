@@ -7,6 +7,10 @@
       "types": "./src/omoRecommendations.ts",
       "import": "./src/omoRecommendations.ts"
     },
+    "./omoRoles": {
+      "types": "./src/omoRoles.ts",
+      "import": "./src/omoRoles.ts"
+    },
     "./modelServices": {
       "types": "./src/modelServices.ts",
       "import": "./src/modelServices.ts"

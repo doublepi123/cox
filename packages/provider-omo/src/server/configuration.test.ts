@@ -124,13 +124,16 @@ describe("OMO model configuration", () => {
       settings({
         provider: "cox",
         model: "main",
-        agentModels: { oracle: "cox/expert" },
-        agentReasoning: { oracle: "high", explore: "", custom_role: "max" },
+        agentModels: { "plan-reviewer": "cox/expert" },
+        agentReasoning: { "plan-reviewer": "high", explore: "", custom_role: "max" },
         categoryReasoning: { quick: "off", deep: "xhigh" },
       }),
       "/tasks",
     );
-    expect(native.agents.oracle).toMatchObject({ models: ["cox/expert"], reasoning: "high" });
+    expect(native.agents["plan-reviewer"]).toMatchObject({
+      models: ["cox/expert"],
+      reasoning: "high",
+    });
     expect(native.agents.explore).not.toHaveProperty("reasoning");
     expect(native.agents.custom_role).toMatchObject({ models: ["cox/main"], reasoning: "max" });
     expect(native.categories.quick).toMatchObject({ reasoning: "off" });
@@ -142,6 +145,37 @@ describe("OMO model configuration", () => {
     const native = omoTaskConfiguration(settings({}), "/tasks");
     expect(native.agents.explore).toEqual({ models: [], models_distribution: "round_robin" });
     expect(native.categories.quick).toEqual({ models: [], models_distribution: "round_robin" });
+  });
+
+  it("defaults to OMO Native roles and still writes saved legacy entries", () => {
+    expect(Object.keys(omoTaskConfiguration(settings({}), "/tasks").agents)).toEqual([
+      "explore",
+      "librarian",
+      "plan-consultant",
+      "plan-reviewer",
+    ]);
+    expect(Object.keys(omoTaskConfiguration(settings({}), "/tasks").categories)).toEqual([
+      "visual-engineering",
+      "architect",
+      "ultrabrain",
+      "deep-low",
+      "deep-high",
+      "artistry",
+      "quick",
+      "unspecified-low",
+      "unspecified-high",
+      "writing",
+      "deep",
+    ]);
+    const legacy = omoTaskConfiguration(
+      settings({ agentModels: { sisyphus: "cox/expert" }, agentReasoning: { sisyphus: "high" } }),
+      "/tasks",
+    );
+    expect(legacy.agents.sisyphus).toEqual({
+      models: ["cox/expert"],
+      models_distribution: "round_robin",
+      reasoning: "high",
+    });
   });
 
   it("assigns both native deep lanes and preserves saved deep selections through the alias", () => {

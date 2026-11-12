@@ -36,6 +36,93 @@ export const en = {
   "Search roles": "Search roles",
   "Inherit main model ({model})": "Inherit main model ({model})",
   "No matching roles": "No matching roles",
+  "Runs often": "Runs often",
+  "Model advice": "Model advice",
+  "Recommended: {model} · {level}": "Recommended: {model} · {level}",
+  "Recommended: {model}": "Recommended: {model}",
+  Use: "Use",
+  "Use recommended model for {role}": "Use recommended model for {role}",
+  "No official match in this service": "No official match in this service",
+  "Apply official recommendations": "Apply official recommendations",
+  "Fills each role with OMO's official model for this service. Free and offline; nothing is saved until you apply OMO models.":
+    "Fills each role with OMO's official model for this service. Free and offline; nothing is saved until you apply OMO models.",
+  "Official recommendations will replace the model and thinking strength of every role that has a match. Saved settings stay unchanged until you apply.":
+    "Official recommendations will replace the model and thinking strength of every role that has a match. Saved settings stay unchanged until you apply.",
+  "Replace with official recommendations": "Replace with official recommendations",
+  "Official recommendations added to the draft. Left unchanged, no official match in this service: {roles}":
+    "Official recommendations added to the draft. Left unchanged, no official match in this service: {roles}",
+  "Official recommendations added to the draft.": "Official recommendations added to the draft.",
+  "Not used by OMO Native": "Not used by OMO Native",
+  "OMO Native has no agents with these names, so these settings have no effect. Remove them when you no longer need them.":
+    "OMO Native has no agents with these names, so these settings have no effect. Remove them when you no longer need them.",
+  "Codebase search": "Codebase search",
+  "Finds where things live in a codebase and which file holds a given behavior.":
+    "Finds where things live in a codebase and which file holds a given behavior.",
+  "Needs speed more than intelligence; a small fast model fits, and large flagship models waste cost.":
+    "Needs speed more than intelligence; a small fast model fits, and large flagship models waste cost.",
+  "External research": "External research",
+  "Researches multiple repositories, remote codebases, official documentation and implementation examples.":
+    "Researches multiple repositories, remote codebases, official documentation and implementation examples.",
+  "Pre-planning consultant": "Pre-planning consultant",
+  "Identifies hidden intentions, ambiguities and likely AI failure points before planning; runs once per plan.":
+    "Identifies hidden intentions, ambiguities and likely AI failure points before planning; runs once per plan.",
+  "Needs strong reasoning; use a top-tier reasoning model, since weak reasoning misses hidden requirements.":
+    "Needs strong reasoning; use a top-tier reasoning model, since weak reasoning misses hidden requirements.",
+  "Plan review": "Plan review",
+  "Reviews work plans for clarity, verifiability and completeness; runs once per review round.":
+    "Reviews work plans for clarity, verifiability and completeness; runs once per review round.",
+  "Must not be a small model; use a strong reasoning model that can spot gaps and unverifiable steps.":
+    "Must not be a small model; use a strong reasoning model that can spot gaps and unverifiable steps.",
+  "Visual engineering": "Visual engineering",
+  "Handles visual design, UI and UX, frontend work, styling, animation and design systems.":
+    "Handles visual design, UI and UX, frontend work, styling, animation and design systems.",
+  "Needs strong frontend and design judgment; must not be a utility or search model.":
+    "Needs strong frontend and design judgment; must not be a utility or search model.",
+  Architecture: "Architecture",
+  "Handles big-picture system design and broad debugging across many sources; implements when needed.":
+    "Handles big-picture system design and broad debugging across many sources; implements when needed.",
+  "Needs top-tier reasoning across many sources; use the strongest available model.":
+    "Needs top-tier reasoning across many sources; use the strongest available model.",
+  "Hard logic tasks": "Hard logic tasks",
+  "Used only for genuinely hard, logic-heavy tasks with clear goals.":
+    "Used only for genuinely hard, logic-heavy tasks with clear goals.",
+  "Use the strongest reasoning model; this lane is built for GPT-style autonomous work.":
+    "Use the strongest reasoning model; this lane is built for GPT-style autonomous work.",
+  "Deep work": "Deep work",
+  "The default deep lane for one goal and one deliverable, with decisions settled from evidence; covers backend, algorithms and browser or computer use.":
+    "The default deep lane for one goal and one deliverable, with decisions settled from evidence; covers backend, algorithms and browser or computer use.",
+  "Built for GPT-style autonomous work; use a capable coding model with sustained reasoning.":
+    "Built for GPT-style autonomous work; use a capable coding model with sustained reasoning.",
+  "Deep escalation": "Deep escalation",
+  "The escalation deep lane for a central decision that evidence alone cannot settle.":
+    "The escalation deep lane for a central decision that evidence alone cannot settle.",
+  "Use the strongest GPT-style autonomous model for a difficult central decision.":
+    "Use the strongest GPT-style autonomous model for a difficult central decision.",
+  "Creative problem solving": "Creative problem solving",
+  "Handles unconventional, creative problem solving and design.":
+    "Handles unconventional, creative problem solving and design.",
+  "Use a model with flexible thinking that can still implement the result practically.":
+    "Use a model with flexible thinking that can still implement the result practically.",
+  "Quick edits": "Quick edits",
+  "Handles trivial tasks such as single-file changes and typo fixes.":
+    "Handles trivial tasks such as single-file changes and typo fixes.",
+  "Use a small, fast model; avoid heavyweight reasoning models for simple edits.":
+    "Use a small, fast model; avoid heavyweight reasoning models for simple edits.",
+  "General low effort": "General low effort",
+  "Handles general low-complexity work that fits no other category.":
+    "Handles general low-complexity work that fits no other category.",
+  "Use an efficient model with adequate instruction following and coding ability; keep heavyweight reasoning for harder tasks.":
+    "Use an efficient model with adequate instruction following and coding ability; keep heavyweight reasoning for harder tasks.",
+  "General high effort": "General high effort",
+  "Handles general high-complexity work that fits no other category.":
+    "Handles general high-complexity work that fits no other category.",
+  "Use a strong reasoning and coding model that executes reliably on unfamiliar tasks.":
+    "Use a strong reasoning and coding model that executes reliably on unfamiliar tasks.",
+  Writing: "Writing",
+  "Handles documentation, technical writing and prose editing.":
+    "Handles documentation, technical writing and prose editing.",
+  "Use a model with strong clarity and structure; coding strength alone is not enough.":
+    "Use a model with strong clarity and structure; coding strength alone is not enough.",
   "Bind a model service to use AI recommendations.":
     "Bind a model service to use AI recommendations.",
   "These settings are read-only.": "These settings are read-only.",

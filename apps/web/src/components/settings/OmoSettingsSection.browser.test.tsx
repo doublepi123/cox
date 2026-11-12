@@ -47,7 +47,7 @@ vi.mock(import("../../hooks/useSettings"), async (original) => ({
 
 const instanceConfig = {
   binaryPath: "custom-omo",
-  agentModels: { oracle: "cox/Vendor/Exact" },
+  agentModels: { explore: "cox/Vendor/Exact" },
   categoryModels: {},
   agentReasoning: {},
   categoryReasoning: {},
@@ -77,14 +77,18 @@ async function sizedViewport(width: number) {
   };
 }
 
+function cardHeader(card: Element) {
+  return document.getElementById(card.getAttribute("aria-labelledby")!.split(" ")[0]!)!;
+}
+
 function expectSeparatedRoleCards(group: Element) {
   const cards = Array.from(group.querySelectorAll<HTMLElement>('[role="group"]'));
   for (const [index, card] of cards.entries()) {
     const style = getComputedStyle(card);
     const box = card.getBoundingClientRect();
-    const header = document.getElementById(card.getAttribute("aria-labelledby")!)!;
+    const header = cardHeader(card);
     expect(header.textContent).not.toBe("");
-    expect(Number.parseFloat(getComputedStyle(header).fontWeight)).toBeGreaterThanOrEqual(600);
+    expect(Number.parseFloat(getComputedStyle(header).fontWeight)).toBeGreaterThanOrEqual(500);
     expect(Number.parseFloat(style.borderTopWidth)).toBe(1);
     expect(Number.parseFloat(style.borderRightWidth)).toBe(1);
     expect(Number.parseFloat(style.borderBottomWidth)).toBe(1);
@@ -104,7 +108,7 @@ function expectSeparatedRoleCards(group: Element) {
 
 describe("OMO native roles", () => {
   it.each([640, 900])(
-    "separates agent and category cards with aligned three-column controls at %spx",
+    "separates agent and category cards with aligned model and strength controls at %spx",
     async (width) => {
       setLanguagePreference("en");
       await using _viewport = await sizedViewport(1280);
@@ -121,52 +125,36 @@ describe("OMO native roles", () => {
       );
       await screen.getByRole("button", { name: /Categories/ }).click();
       for (const [title, count] of [
-        ["Agents", 10],
+        ["Agents", 4],
         ["Categories", 10],
       ] as const) {
         const group = screen.getByRole("group", { name: title, exact: true }).element();
         const rows = expectSeparatedRoleCards(group);
         expect(rows).toHaveLength(count);
-        const heading = rows[0]!.previousElementSibling!;
-        expect(getComputedStyle(heading).display).toBe("grid");
-        expect(Array.from(heading.children, (element) => element.textContent)).toEqual([
-          "Role",
-          "Model",
-          "Thinking strength",
-        ]);
-        const columns = Array.from(heading.children, (element) => element.getBoundingClientRect());
+        const modelLeft = rows[0]!.querySelector("select")!.getBoundingClientRect().left;
         for (const row of rows) {
-          const label = row.querySelector<HTMLElement>(":scope > span")!;
+          const header = cardHeader(row);
           const model = row.querySelector<HTMLSelectElement>("select")!;
           const strength = row.querySelector<HTMLSelectElement>(
             'select[aria-label$="thinking strength"]',
           )!;
-          const rowBox = row.getBoundingClientRect();
-          const roleBox = label.getBoundingClientRect();
           const modelBox = model.getBoundingClientRect();
           const strengthBox = strength.getBoundingClientRect();
-          expect(getComputedStyle(row).gridTemplateColumns.split(" ")).toHaveLength(3);
-          expect(roleBox.width).toBeLessThanOrEqual(160);
-          expect(roleBox.width / rowBox.width).toBeLessThan(0.3);
-          expect(Math.abs(roleBox.left - columns[0]!.left)).toBeLessThan(1);
-          expect(Math.abs(modelBox.left - columns[1]!.left)).toBeLessThan(1);
-          expect(Math.abs(strengthBox.left - columns[2]!.left)).toBeLessThan(1);
-          expect(modelBox.left).toBeGreaterThan(roleBox.right);
+          expect(header.getBoundingClientRect().bottom).toBeLessThan(modelBox.top);
+          expect(Math.abs(modelBox.left - modelLeft)).toBeLessThan(1);
           expect(strengthBox.left).toBeGreaterThan(modelBox.right);
           expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
           expect(modelBox.height).toBeGreaterThanOrEqual(44);
           expect(strengthBox.height).toBeGreaterThanOrEqual(44);
-          expect(rowBox.height).toBeLessThanOrEqual(72);
         }
-        expect(
-          rows.at(-1)!.getBoundingClientRect().bottom - rows[0]!.getBoundingClientRect().top,
-        ).toBeLessThanOrEqual(840);
       }
       expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
       await screen
-        .getByRole("combobox", { name: "oracle", exact: true })
+        .getByRole("combobox", { name: "explore", exact: true })
         .selectOptions("cox/other");
-      await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("low");
+      await screen
+        .getByRole("combobox", { name: "explore thinking strength" })
+        .selectOptions("low");
       await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeEnabled();
     },
   );
@@ -194,9 +182,11 @@ describe("OMO native roles", () => {
             screen.getByRole("group", { name: title, exact: true }).element(),
           );
         }
-        const card = screen.getByRole("group", { name: "sisyphus", exact: true }).element();
+        const card = screen
+          .getByRole("group", { name: "Codebase search explore", exact: true })
+          .element();
         const style = getComputedStyle(card);
-        const header = card.querySelector<HTMLElement>(":scope > span")!;
+        const header = cardHeader(card);
         colors.push({
           border: style.borderTopColor,
           background: style.backgroundColor,
@@ -247,20 +237,20 @@ describe("OMO native roles", () => {
         .getByRole("group", { name: language === "zh" ? "Agent" : "Agents", exact: true })
         .element();
       const rows = expectSeparatedRoleCards(agents);
-      expect(rows).toHaveLength(11);
-      expect(getComputedStyle(rows[0]!.previousElementSibling!).display).toBe("none");
+      expect(rows).toHaveLength(5);
       for (const row of rows) {
-        const label = row.querySelector<HTMLElement>(":scope > span")!;
+        const label = cardHeader(row);
         const fields = Array.from(row.querySelectorAll("select"));
         const labels = Array.from(row.querySelectorAll("label"));
         const rowBox = row.getBoundingClientRect();
         const modelBox = fields[0]!.getBoundingClientRect();
         const strengthBox = fields[1]!.getBoundingClientRect();
-        expect(getComputedStyle(row).gridTemplateColumns.split(" ")).toHaveLength(2);
+        expect(
+          getComputedStyle(fields[0]!.parentElement!.parentElement!).gridTemplateColumns.split(" "),
+        ).toHaveLength(2);
         expect(labels.map((element) => element.textContent)).toEqual(
           language === "zh" ? ["模型", "思考强度"] : ["Model", "Thinking strength"],
         );
-        expect(Number.parseFloat(getComputedStyle(label).borderBottomWidth)).toBe(1);
         expect(label.getBoundingClientRect().bottom).toBeLessThan(modelBox.top);
         expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
         expect(strengthBox.left).toBeGreaterThan(modelBox.right);
@@ -298,16 +288,16 @@ describe("OMO native roles", () => {
       const search = screen.getByRole("textbox", {
         name: language === "zh" ? "搜索Agent" : "Search Agents",
       });
-      await search.fill("oracle");
+      await search.fill("explore");
       await expect
         .element(screen.getByRole("group", { name: customRole, exact: true }))
         .not.toBeInTheDocument();
       await screen
-        .getByRole("combobox", { name: "oracle", exact: true })
+        .getByRole("combobox", { name: "explore", exact: true })
         .selectOptions("cox/other");
       await screen
         .getByRole("combobox", {
-          name: language === "zh" ? "oracle 思考强度" : "oracle thinking strength",
+          name: language === "zh" ? "explore 思考强度" : "explore thinking strength",
         })
         .selectOptions("low");
       await screen
@@ -326,12 +316,10 @@ describe("OMO native roles", () => {
       const categoryCards = expectSeparatedRoleCards(categories.element());
       expect(categoryCards).toHaveLength(11);
       for (const card of categoryCards) {
-        const header = card.querySelector<HTMLElement>(":scope > span")!;
         const model = card.querySelector("select")!;
-        expect(header.getBoundingClientRect().bottom).toBeLessThan(
+        expect(cardHeader(card).getBoundingClientRect().bottom).toBeLessThan(
           model.getBoundingClientRect().top,
         );
-        expect(Number.parseFloat(getComputedStyle(header).borderBottomWidth)).toBe(1);
       }
       await screen
         .getByRole("combobox", { name: customCategory, exact: true })
@@ -344,8 +332,8 @@ describe("OMO native roles", () => {
       expect(save).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           config: expect.objectContaining({
-            agentModels: { oracle: "cox/other", [customRole]: "cox/other" },
-            agentReasoning: { oracle: "low" },
+            agentModels: { explore: "cox/other", [customRole]: "cox/other" },
+            agentReasoning: { explore: "low" },
             categoryModels: { quick: "cox/other", [customCategory]: "cox/other" },
           }),
         }),
@@ -365,8 +353,8 @@ describe("OMO native roles", () => {
           ...instance,
           config: {
             ...instanceConfig,
-            agentModels: { oracle: missingModel },
-            agentReasoning: { oracle: "max" },
+            agentModels: { explore: missingModel },
+            agentReasoning: { explore: "max" },
             categoryReasoning: { deep: "max" },
           },
         }}
@@ -375,14 +363,14 @@ describe("OMO native roles", () => {
         onUpdate={save}
       />,
     );
-    const oracle = screen.getByRole("combobox", { name: "oracle", exact: true });
-    const strength = screen.getByRole("combobox", { name: "oracle thinking strength" });
-    const deepStrength = screen.getByRole("combobox", { name: "deep thinking strength" });
-    await expect.element(oracle).toHaveAttribute("aria-invalid", "true");
+    const explore = screen.getByRole("combobox", { name: "explore", exact: true });
+    const strength = screen.getByRole("combobox", { name: "explore thinking strength" });
+    const deepStrength = screen.getByRole("combobox", { name: "deep-low thinking strength" });
+    await expect.element(explore).toHaveAttribute("aria-invalid", "true");
     await expect.element(strength).toHaveAttribute("aria-invalid", "true");
     await expect.element(deepStrength).toHaveAttribute("aria-invalid", "true");
     expect(
-      document.getElementById(oracle.element().getAttribute("aria-describedby")!)?.textContent,
+      document.getElementById(explore.element().getAttribute("aria-describedby")!)?.textContent,
     ).toBe(`Unavailable model: ${missingModel}`);
     for (const field of [strength, deepStrength]) {
       expect(
@@ -391,7 +379,7 @@ describe("OMO native roles", () => {
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
     await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
-    await oracle.selectOptions("cox/other");
+    await explore.selectOptions("cox/other");
     await strength.selectOptions("low");
     await deepStrength.selectOptions("");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
@@ -416,9 +404,9 @@ describe("OMO native roles", () => {
       expectSeparatedRoleCards(
         screen.getByRole("group", { name: "Agents", exact: true }).element(),
       );
-      const group = screen.getByRole("group", { name: "oracle", exact: true });
-      const model = group.getByRole("textbox", { name: "oracle", exact: true });
-      const strength = group.getByRole("combobox", { name: "oracle thinking strength" });
+      const group = screen.getByRole("group", { name: "Codebase search explore", exact: true });
+      const model = group.getByRole("textbox", { name: "explore", exact: true });
+      const strength = group.getByRole("combobox", { name: "explore thinking strength" });
       const touchTarget = model.element().closest("label")!;
       const targetBox = touchTarget.getBoundingClientRect();
       const strengthBox = strength.element().getBoundingClientRect();
@@ -434,8 +422,8 @@ describe("OMO native roles", () => {
         expect.objectContaining({
           config: expect.objectContaining({
             model: "vendor/native-model",
-            agentModels: { oracle: "vendor/ExactModel" },
-            agentReasoning: { oracle: "max" },
+            agentModels: { explore: "vendor/ExactModel" },
+            agentReasoning: { explore: "max" },
           }),
         }),
       );
@@ -448,9 +436,9 @@ describe("OMO native roles", () => {
     state.recommend.mockReset().mockResolvedValue({
       _tag: "Success",
       value: {
-        agentModels: { oracle: "cox/Vendor/Exact" },
+        agentModels: { explore: "cox/Vendor/Exact" },
         categoryModels: { quick: "cox/other" },
-        agentReasoning: { oracle: "high" },
+        agentReasoning: { explore: "high" },
         categoryReasoning: { quick: "off" },
         explanation: "Use deeper review and quick simple work.",
       },
@@ -467,17 +455,17 @@ describe("OMO native roles", () => {
     );
     await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
       .toHaveValue("high");
     await expect
       .element(screen.getByRole("combobox", { name: "quick thinking strength" }))
       .toHaveValue("off");
-    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("max");
+    await screen.getByRole("combobox", { name: "explore thinking strength" }).selectOptions("max");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({
-          agentReasoning: { oracle: "max" },
+          agentReasoning: { explore: "max" },
           categoryReasoning: { quick: "off" },
         }),
       }),
@@ -500,32 +488,32 @@ describe("OMO native roles", () => {
       />
     );
     await using screen = await render(section("initial"));
-    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("high");
+    await screen.getByRole("combobox", { name: "explore thinking strength" }).selectOptions("high");
     await screen.getByRole("button", { name: /Categories/ }).click();
     await screen.getByRole("combobox", { name: "quick thinking strength" }).selectOptions("low");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenLastCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({
-          agentReasoning: { oracle: "high" },
+          agentReasoning: { explore: "high" },
           categoryReasoning: { quick: "low" },
         }),
       }),
     );
     await screen.rerender(section("reopened"));
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
       .toHaveValue("high");
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
     await expect
       .element(screen.getByRole("alert"))
       .toHaveTextContent("Clear or reassign unsupported thinking strengths before saving.");
-    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("low");
+    await screen.getByRole("combobox", { name: "explore thinking strength" }).selectOptions("low");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        config: expect.objectContaining({ agentReasoning: { oracle: "low" } }),
+        config: expect.objectContaining({ agentReasoning: { explore: "low" } }),
       }),
     );
   });
@@ -550,14 +538,14 @@ describe("OMO native roles", () => {
       />,
     );
     await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("max");
+    await screen.getByRole("combobox", { name: "explore thinking strength" }).selectOptions("max");
     await act(() =>
       finish({
         _tag: "Success",
         value: {
-          agentModels: { oracle: "cox/other" },
+          agentModels: { explore: "cox/other" },
           categoryModels: {},
-          agentReasoning: { oracle: "low" },
+          agentReasoning: { explore: "low" },
           categoryReasoning: {},
           explanation: "Stale strengths",
         },
@@ -569,7 +557,7 @@ describe("OMO native roles", () => {
         "The configuration changed during generation. Generate again for the current draft.",
       );
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
       .toHaveValue("max");
   });
   it.each(["", " \n\t "])(
@@ -627,7 +615,7 @@ describe("OMO native roles", () => {
     state.recommend.mockReset().mockResolvedValue({
       _tag: "Success",
       value: {
-        agentModels: { oracle: "cox/other" },
+        agentModels: { explore: "cox/other" },
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
@@ -685,7 +673,7 @@ describe("OMO native roles", () => {
       finish({
         _tag: "Success",
         value: {
-          agentModels: { oracle: "cox/other" },
+          agentModels: { explore: "cox/other" },
           categoryModels: {},
           agentReasoning: {},
           categoryReasoning: {},
@@ -702,7 +690,7 @@ describe("OMO native roles", () => {
       .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
       .toHaveValue("New role selection requirements.");
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/Vendor/Exact");
   });
 
@@ -777,17 +765,17 @@ describe("OMO native roles", () => {
       />
     );
     await using screen = await render(renderSection());
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     await screen.rerender(renderSection());
     await expect.element(screen.getByRole("status")).toHaveTextContent("Configuration saved");
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("");
     await screen.getByRole("button", { name: "Discard changes" }).click();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
     expect(save).toHaveBeenCalledOnce();
   });
@@ -798,10 +786,10 @@ describe("OMO native roles", () => {
     await using screen = await render(
       <OmoSettingsSection instance={instance} models={models} readOnly={false} onUpdate={save} />,
     );
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     const external = {
       ...instance,
-      config: { binaryPath: "new-binary", agentModels: { oracle: "" }, categoryModels: {} },
+      config: { binaryPath: "new-binary", agentModels: { explore: "" }, categoryModels: {} },
     };
     await screen.rerender(
       <OmoSettingsSection instance={external} models={models} readOnly={false} onUpdate={save} />,
@@ -818,7 +806,7 @@ describe("OMO native roles", () => {
       ...external,
       config: {
         binaryPath: "new-binary",
-        agentModels: { oracle: "cox/other" },
+        agentModels: { explore: "cox/other" },
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
@@ -863,7 +851,7 @@ describe("OMO native roles", () => {
       finish({
         _tag: "Success",
         value: {
-          agentModels: { oracle: "cox/other" },
+          agentModels: { explore: "cox/other" },
           categoryModels: {},
           agentReasoning: {},
           categoryReasoning: {},
@@ -875,7 +863,7 @@ describe("OMO native roles", () => {
       .element(screen.getByText("Old instance explanation", { exact: true }))
       .not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/Vendor/Exact");
   });
 
@@ -891,7 +879,7 @@ describe("OMO native roles", () => {
       />,
     );
     const explore = screen.container.querySelector<HTMLSelectElement>(
-      'select[aria-label="oracle"]',
+      'select[aria-label="explore"]',
     );
     expect(explore).toBeNull();
     expect(screen.container.textContent).toContain(
@@ -917,7 +905,7 @@ describe("OMO native roles", () => {
     state.recommend.mockReset().mockResolvedValue({
       _tag: "Success",
       value: {
-        agentModels: { oracle: "cox/Vendor/Exact" },
+        agentModels: { explore: "cox/Vendor/Exact" },
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
@@ -934,18 +922,18 @@ describe("OMO native roles", () => {
         serviceRevision={3}
       />,
     );
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
     expect(state.recommend).not.toHaveBeenCalled();
     await screen.getByRole("button", { name: "Keep current draft" }).click();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
     await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
     await screen.getByRole("button", { name: "Generate and replace current draft" }).click();
     expect(state.recommend).toHaveBeenCalledOnce();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/Vendor/Exact");
   });
 
@@ -1003,13 +991,13 @@ describe("OMO native roles", () => {
     await using screen = await render(
       <OmoSettingsSection instance={instance} models={models} readOnly={false} onUpdate={save} />,
     );
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     await expect
       .element(screen.getByRole("alert"))
       .toHaveTextContent("Configuration was not saved. Your draft is preserved.");
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
     await screen.getByRole("button", { name: "Retry saving" }).click();
     await expect.element(screen.getByRole("status")).toHaveTextContent("Configuration saved");
@@ -1027,7 +1015,7 @@ describe("OMO native roles", () => {
       ...instance,
       config: {
         binaryPath: "custom-omo",
-        agentModels: { oracle: "cox/other" },
+        agentModels: { explore: "cox/other" },
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
@@ -1037,19 +1025,19 @@ describe("OMO native roles", () => {
       <OmoSettingsSection instance={external} models={models} readOnly={false} onUpdate={save} />,
     );
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
     await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("");
     await screen.rerender(
       <OmoSettingsSection instance={instance} models={models} readOnly={false} onUpdate={save} />,
     );
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("");
     await screen.getByRole("button", { name: "Discard changes" }).click();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/Vendor/Exact");
     expect(save).not.toHaveBeenCalled();
   });
@@ -1064,14 +1052,14 @@ describe("OMO native roles", () => {
         onUpdate={vi.fn()}
       />,
     );
-    await screen.getByRole("textbox", { name: "Search Agents" }).fill("oracle");
+    await screen.getByRole("textbox", { name: "Search Agents" }).fill("codebase search");
     await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
+      .element(screen.getByRole("combobox", { name: "librarian", exact: true }))
       .not.toBeInTheDocument();
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     await screen.getByRole("button", { name: "Discard changes" }).click();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/Vendor/Exact");
     await screen.getByRole("button", { name: /Agents/ }).click();
     await expect
@@ -1132,8 +1120,8 @@ describe("OMO native roles", () => {
     state.recommend.mockReset().mockResolvedValue({
       _tag: "Success",
       value: {
-        agentModels: { oracle: "cox/other", explore: "cox/other" },
-        categoryModels: { deep: "cox/Vendor/Exact" },
+        agentModels: { explore: "cox/other", librarian: "cox/other" },
+        categoryModels: { "deep-low": "cox/Vendor/Exact" },
         agentReasoning: {},
         categoryReasoning: {},
         explanation: "Use the stronger model for deep work.",
@@ -1163,25 +1151,25 @@ describe("OMO native roles", () => {
         revision: 3,
         modelId: "other",
         binding: instance.modelService,
-        agents: expect.arrayContaining(["oracle", "explore"]),
-        categories: expect.arrayContaining(["deep", "quick"]),
+        agents: ["explore", "librarian", "plan-consultant", "plan-reviewer"],
+        categories: expect.arrayContaining(["deep-low", "architect", "quick"]),
         prompt: DEFAULT_OMO_RECOMMENDATION_PROMPT,
       },
     });
     expect(save).not.toHaveBeenCalled();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
     await screen
-      .getByRole("combobox", { name: "oracle", exact: true })
+      .getByRole("combobox", { name: "explore", exact: true })
       .selectOptions("cox/Vendor/Exact");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenCalledWith({
       ...instance,
       config: {
         binaryPath: "custom-omo",
-        agentModels: { oracle: "cox/Vendor/Exact", explore: "cox/other" },
-        categoryModels: { deep: "cox/Vendor/Exact" },
+        agentModels: { explore: "cox/Vendor/Exact", librarian: "cox/other" },
+        categoryModels: { "deep-low": "cox/Vendor/Exact" },
         agentReasoning: {},
         categoryReasoning: {},
         recommendationPrompt: "",
@@ -1210,12 +1198,12 @@ describe("OMO native roles", () => {
       />,
     );
     await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("cox/other");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
     await act(() =>
       finish({
         _tag: "Success",
         value: {
-          agentModels: { oracle: "cox/Vendor/Exact" },
+          agentModels: { explore: "cox/Vendor/Exact" },
           categoryModels: {},
           agentReasoning: {},
           categoryReasoning: {},
@@ -1229,7 +1217,7 @@ describe("OMO native roles", () => {
         "The configuration changed during generation. Generate again for the current draft.",
       );
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/other");
     expect(save).not.toHaveBeenCalled();
   });
@@ -1250,7 +1238,7 @@ describe("OMO native roles", () => {
     await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
     await expect.element(screen.getByRole("alert")).toHaveTextContent("Upstream unavailable");
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toHaveValue("cox/Vendor/Exact");
   });
 
@@ -1284,7 +1272,7 @@ describe("OMO native roles", () => {
       finish({
         _tag: "Success",
         value: {
-          agentModels: { oracle: "cox/other" },
+          agentModels: { explore: "cox/other" },
           categoryModels: {},
           agentReasoning: {},
           categoryReasoning: {},
@@ -1350,7 +1338,7 @@ describe("OMO native roles", () => {
       .toHaveValue("Vendor/Exact");
     await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
     await screen.getByRole("combobox", { name: "Default model", exact: true }).selectOptions("");
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("");
     expect(save).not.toHaveBeenCalled();
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenCalledExactlyOnceWith({
@@ -1358,7 +1346,7 @@ describe("OMO native roles", () => {
       modelService: { serviceId, modelIds: [] },
       config: {
         binaryPath: "custom-omo",
-        agentModels: { oracle: "" },
+        agentModels: { explore: "" },
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
@@ -1372,9 +1360,11 @@ describe("OMO native roles", () => {
     await using screen = await render(
       <OmoSettingsSection instance={instance} models={models} readOnly={false} onUpdate={save} />,
     );
-    await screen.getByRole("combobox", { name: "oracle", exact: true }).selectOptions("");
+    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("");
     await screen.getByRole("button", { name: /Categories/ }).click();
-    await screen.getByRole("combobox", { name: "deep", exact: true }).selectOptions("cox/other");
+    await screen
+      .getByRole("combobox", { name: "deep-low", exact: true })
+      .selectOptions("cox/other");
     await screen.getByRole("textbox", { name: "Agents role name" }).fill("custom_agent");
     await screen.getByRole("button", { name: "Add role", exact: true }).first().click();
     await screen
@@ -1385,8 +1375,8 @@ describe("OMO native roles", () => {
       ...instance,
       config: {
         binaryPath: "custom-omo",
-        agentModels: { oracle: "", custom_agent: "cox/Vendor/Exact" },
-        categoryModels: { deep: "cox/other" },
+        agentModels: { explore: "", custom_agent: "cox/Vendor/Exact" },
+        categoryModels: { "deep-low": "cox/other" },
         agentReasoning: {},
         categoryReasoning: {},
         recommendationPrompt: "",
@@ -1406,7 +1396,7 @@ describe("OMO native roles", () => {
     await using screen = await render(
       <OmoSettingsSection instance={instance} models={models} readOnly={false} onUpdate={save} />,
     );
-    await screen.getByRole("textbox", { name: "Agents role name" }).fill("../oracle");
+    await screen.getByRole("textbox", { name: "Agents role name" }).fill("../explore");
     await expect
       .element(screen.getByRole("button", { name: "Add role", exact: true }).first())
       .toBeDisabled();
@@ -1415,14 +1405,14 @@ describe("OMO native roles", () => {
       .toHaveTextContent(
         "Use a unique role name starting with a letter, followed by letters, digits, underscores or hyphens (up to 64 characters).",
       );
-    await screen.getByRole("textbox", { name: "Agents role name" }).fill("oracle");
+    await screen.getByRole("textbox", { name: "Agents role name" }).fill("explore");
     await expect
       .element(screen.getByRole("button", { name: "Add role", exact: true }).first())
       .toBeDisabled();
     await act(() => setLanguagePreference("zh"));
     await expect.element(screen.getByRole("button", { name: "应用 OMO 模型" })).toBeVisible();
     expect(screen.container.textContent).toContain("Vendor/Exact");
-    expect(screen.container.textContent).toContain("oracle");
+    expect(screen.container.textContent).toContain("explore");
     await act(() => setLanguagePreference("en"));
     expect(save).not.toHaveBeenCalled();
   });
@@ -1438,17 +1428,17 @@ describe("OMO native roles", () => {
         onUpdate={save}
       />,
     );
-    const oracle = screen.getByRole("combobox", { name: "oracle", exact: true });
-    await expect.element(oracle).toHaveValue("cox/Vendor/Exact");
+    const explore = screen.getByRole("combobox", { name: "explore", exact: true });
+    await expect.element(explore).toHaveValue("cox/Vendor/Exact");
     await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
     expect(save).not.toHaveBeenCalled();
-    await oracle.selectOptions("");
+    await explore.selectOptions("");
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenCalledWith({
       ...instance,
       config: {
         binaryPath: "custom-omo",
-        agentModels: { oracle: "" },
+        agentModels: { explore: "" },
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
@@ -1463,10 +1453,10 @@ describe("OMO native roles", () => {
       <OmoSettingsSection instance={instance} models={models} readOnly onUpdate={vi.fn()} />,
     );
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
       .toBeDisabled();
     await expect
-      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
+      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
       .toBeDisabled();
     await expect
       .element(screen.getByRole("textbox", { name: "Agents role name" }))
@@ -1474,5 +1464,168 @@ describe("OMO native roles", () => {
     await expect
       .element(screen.getByRole("button", { name: "Apply OMO models" }))
       .not.toBeInTheDocument();
+  });
+  it("explains each native role with its title, summary and model advice", async () => {
+    setLanguagePreference("en");
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly={false}
+        onUpdate={vi.fn()}
+      />,
+    );
+    const explore = screen.getByRole("group", { name: "Codebase search explore", exact: true });
+    await expect
+      .element(
+        explore.getByText(
+          "Finds where things live in a codebase and which file holds a given behavior.",
+          { exact: true },
+        ),
+      )
+      .toBeVisible();
+    await expect.element(explore.getByText("Runs often", { exact: true })).toBeVisible();
+    await expect
+      .element(explore.getByText("No official match in this service", { exact: true }))
+      .toBeVisible();
+    await explore.getByRole("button", { name: "Model advice" }).click();
+    await expect
+      .element(
+        explore.getByText(
+          "Needs speed more than intelligence; a small fast model fits, and large flagship models waste cost.",
+        ),
+      )
+      .toBeVisible();
+    await act(() => setLanguagePreference("zh"));
+    await expect
+      .element(screen.getByRole("group", { name: "代码库搜索 explore", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("textbox", { name: "搜索Agent" }).fill("远程代码库");
+    await expect
+      .element(screen.getByRole("combobox", { name: "librarian", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
+      .not.toBeInTheDocument();
+    await act(() => setLanguagePreference("en"));
+  });
+
+  it("fills native roles from official recommendations after confirming a dirty draft", async () => {
+    setLanguagePreference("en");
+    const save = vi.fn();
+    const catalog = [
+      {
+        slug: "cox/gpt-6-astra",
+        name: "GPT-6 Astra",
+        reasoningLevels: ["low", "medium", "high", "xhigh"] as const,
+      },
+      {
+        slug: "cox/claude-haiku-5-5",
+        name: "Claude Haiku 5.5",
+        reasoningLevels: ["off", "low", "medium", "high"] as const,
+      },
+    ];
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={{
+          ...instance,
+          config: { ...instanceConfig, agentModels: { explore: "cox/gpt-6-astra" } },
+        }}
+        models={catalog}
+        readOnly={false}
+        onUpdate={save}
+      />,
+    );
+    await expect
+      .element(
+        screen
+          .getByRole("group", { name: "Plan review plan-reviewer", exact: true })
+          .getByText("Recommended: GPT-6 Astra · xhigh", { exact: true }),
+      )
+      .toBeVisible();
+    await screen
+      .getByRole("combobox", { name: "librarian", exact: true })
+      .selectOptions("cox/gpt-6-astra");
+    await screen.getByRole("button", { name: "Apply official recommendations" }).click();
+    await expect
+      .element(screen.getByRole("combobox", { name: "librarian", exact: true }))
+      .toHaveValue("cox/gpt-6-astra");
+    await screen.getByRole("button", { name: "Replace with official recommendations" }).click();
+    await expect
+      .element(screen.getByRole("combobox", { name: "plan-reviewer", exact: true }))
+      .toHaveValue("cox/gpt-6-astra");
+    await expect
+      .element(screen.getByRole("combobox", { name: "plan-reviewer thinking strength" }))
+      .toHaveValue("xhigh");
+    await expect
+      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
+      .toHaveValue("cox/claude-haiku-5-5");
+    await expect
+      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
+      .toHaveValue("medium");
+    await expect
+      .element(screen.getByText(/Left unchanged, no official match in this service:/))
+      .toHaveTextContent(
+        "Official recommendations added to the draft. Left unchanged, no official match in this service: " +
+          "plan-consultant, visual-engineering, architect, deep-low, artistry, unspecified-low, unspecified-high, writing",
+      );
+    await expect
+      .element(screen.getByRole("button", { name: "Use recommended model for explore" }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("combobox", { name: "plan-consultant", exact: true }))
+      .toHaveValue("");
+    expect(save).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(save).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          agentModels: {
+            explore: "cox/claude-haiku-5-5",
+            librarian: "cox/claude-haiku-5-5",
+            "plan-reviewer": "cox/gpt-6-astra",
+          },
+          agentReasoning: { explore: "medium", librarian: "medium", "plan-reviewer": "xhigh" },
+        }),
+      }),
+    );
+  });
+
+  it("lists saved legacy agents separately and removes them only from the draft", async () => {
+    setLanguagePreference("en");
+    const save = vi.fn();
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={{
+          ...instance,
+          config: {
+            ...instanceConfig,
+            agentModels: { ...instanceConfig.agentModels, sisyphus: "cox/other" },
+            agentReasoning: { sisyphus: "low" },
+          },
+        }}
+        models={models}
+        readOnly={false}
+        onUpdate={save}
+      />,
+    );
+    const legacy = screen.getByRole("group", { name: "Not used by OMO Native", exact: true });
+    await expect.element(legacy.getByText("sisyphus", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByRole("combobox", { name: "sisyphus", exact: true }))
+      .not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
+    await legacy.getByRole("button", { name: "Remove sisyphus" }).click();
+    await expect.element(legacy).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(save).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          agentModels: { explore: "cox/Vendor/Exact" },
+          agentReasoning: {},
+        }),
+      }),
+    );
   });
 });

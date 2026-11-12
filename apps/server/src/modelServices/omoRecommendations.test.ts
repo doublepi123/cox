@@ -74,6 +74,16 @@ const config = (
 const chatResponse = (value: unknown = assignments) => ({
   choices: [{ finish_reason: "stop", message: { content: JSON.stringify(value) } }],
 });
+const reasoningCapabilities = (levels: ReadonlyArray<string>) => ({
+  optionDescriptors: [
+    {
+      id: "reasoningEffort",
+      label: "Reasoning",
+      type: "select" as const,
+      options: levels.map((id) => ({ id, label: id })),
+    },
+  ],
+});
 const settingsLayer = (service = config()) =>
   ServerSettingsService.layerTest({ modelServices: { [serviceId]: service } });
 
@@ -169,8 +179,26 @@ describe("OMO model recommendations", () => {
             expect(data.catalog[0]).toMatchObject({ name: "Generator", supportsReasoning: true });
             expect(data.catalog[0].reasoningLevels).toEqual(["low", "high"]);
             expect(data.catalog[1].reasoningLevels).toEqual([]);
-            expect(data.standardAgentDescriptions.oracle).toContain("reasoning");
-            expect(data.standardCategoryDescriptions.quick).toContain("speed");
+            expect(data.roles.agents).toEqual({
+              sisyphus: {
+                title: "sisyphus",
+                summary: "Custom role",
+                modelGuidance: "",
+                officialRecommendation: null,
+              },
+              "custom-agent": {
+                title: "custom-agent",
+                summary: "Custom role",
+                modelGuidance: "",
+                officialRecommendation: null,
+              },
+            });
+            expect(data.roles.categories.quick).toMatchObject({
+              title: "Quick edits",
+              officialRecommendation: null,
+            });
+            expect(data.roles.categories.quick.summary).not.toBe("");
+            expect(data.roles.categories.quick.modelGuidance).not.toBe("");
             expect(data.requestedAgents).toEqual(input.agents);
             expect(data.requestedCategories).toEqual(input.categories);
             return HttpClientResponse.fromWeb(request, Response.json(response));
@@ -184,6 +212,82 @@ describe("OMO model recommendations", () => {
         expect(calls).toBe(1);
         expect(yield* (yield* ServerSettingsService).getSettings).toEqual(before);
       }).pipe(Effect.provide(settingsLayer(config([protocol])))),
+  );
+
+  it.effect("sends OMO official recommendations for roles matched in the bound catalog", () =>
+    Effect.gen(function* () {
+      const officialInput = {
+        ...input,
+        modelId: "gpt-6-astra",
+        binding: { serviceId, modelIds: ["gpt-6-astra", "claude-haiku-5-5"] },
+        agents: ["plan-reviewer", "explore"],
+        categories: ["quick"],
+      };
+      const official = {
+        agentModels: { "plan-reviewer": "cox/gpt-6-astra", explore: "cox/claude-haiku-5-5" },
+        categoryModels: { quick: "cox/claude-haiku-5-5" },
+        agentReasoning: { "plan-reviewer": "xhigh", explore: "medium" },
+        categoryReasoning: { quick: "medium" },
+        explanation: "All roles follow the official recommendations.",
+      };
+      const payloads: unknown[] = [];
+      const http = HttpClient.make((request) =>
+        Effect.sync(() => {
+          if (request.body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+          const body = JSON.parse(new TextDecoder().decode(request.body.body));
+          payloads.push(JSON.parse(body.messages[0].content.split("\n").at(-1)));
+          return HttpClientResponse.fromWeb(request, Response.json(chatResponse(official)));
+        }),
+      );
+      expect(
+        yield* recommendOmoModels(officialInput).pipe(
+          Effect.provideService(HttpClient.HttpClient, http),
+        ),
+      ).toEqual(official);
+      expect(payloads).toMatchObject([
+        {
+          roles: {
+            agents: {
+              "plan-reviewer": {
+                title: "Plan review",
+                officialRecommendation: { model: "cox/gpt-6-astra", reasoning: "xhigh" },
+              },
+              explore: {
+                title: "Codebase search",
+                officialRecommendation: { model: "cox/claude-haiku-5-5", reasoning: "medium" },
+              },
+            },
+            categories: {
+              quick: {
+                officialRecommendation: { model: "cox/claude-haiku-5-5", reasoning: "medium" },
+              },
+            },
+          },
+        },
+      ]);
+    }).pipe(
+      Effect.provide(
+        settingsLayer(
+          decodeConfig({
+            name: "Test",
+            revision: 3,
+            baseUrl: "https://models.test/custom",
+            apiKey: "private-key",
+            protocols: ["openai-chat"],
+            models: [
+              {
+                id: "gpt-6-astra",
+                capabilities: reasoningCapabilities(["low", "medium", "high", "xhigh"]),
+              },
+              {
+                id: "claude-haiku-5-5",
+                capabilities: reasoningCapabilities(["low", "medium", "high"]),
+              },
+            ],
+          }),
+        ),
+      ),
+    ),
   );
 
   it.effect.each([undefined, "", " \n\t "])(

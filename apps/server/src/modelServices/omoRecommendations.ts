@@ -8,10 +8,9 @@ import {
 import { boundModelServiceModels } from "@t3tools/shared/modelServices";
 import {
   DEFAULT_OMO_RECOMMENDATION_PROMPT,
-  OMO_AGENT_DESCRIPTIONS,
-  OMO_CATEGORY_DESCRIPTIONS,
   omoModelReasoningLevels,
 } from "@t3tools/shared/omoRecommendations";
+import { officialOmoAssignment, omoRoleInfo, type OmoRoleKind } from "@t3tools/shared/omoRoles";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
@@ -181,6 +180,33 @@ export const recommendOmoModels = Effect.fn("recommendOmoModels")(
     const allowedReasoning = new Map(
       models.map((model) => [`cox/${model.id}`, new Set<string>(omoModelReasoningLevels(model))]),
     );
+    const catalog = models.map((model) => ({
+      ...model,
+      slug: `cox/${model.id}`,
+      reasoningLevels: omoModelReasoningLevels(model),
+    }));
+    const roles = (kind: OmoRoleKind, names: ReadonlyArray<string>) =>
+      Object.fromEntries(
+        names.map((name) => {
+          const info = omoRoleInfo(kind, name);
+          return [
+            name,
+            info
+              ? {
+                  title: info.title,
+                  summary: info.summary,
+                  modelGuidance: info.modelGuidance,
+                  officialRecommendation: officialOmoAssignment(info, catalog) ?? null,
+                }
+              : {
+                  title: name,
+                  summary: "Custom role",
+                  modelGuidance: "",
+                  officialRecommendation: null,
+                },
+          ];
+        }),
+      );
     const prompt = [
       input.prompt?.trim() ? input.prompt : DEFAULT_OMO_RECOMMENDATION_PROMPT,
       "Return ONLY one strict JSON object with exactly agentModels, categoryModels, agentReasoning, categoryReasoning, explanation.",
@@ -189,13 +215,11 @@ export const recommendOmoModels = Effect.fn("recommendOmoModels")(
       "agentReasoning and categoryReasoning must contain exactly their requested role keys. Each value must be a reasoningLevels value supported by the model assigned to that role, or an empty string for the model default. Missing capability metadata does not authorize inventing a thinking strength.",
       "explanation must be a nonempty, concise string justifying the role-to-model matches, quality/efficiency tradeoffs and any uncertainty. Group roles sharing the same rationale when useful, and distinguish catalog facts from prior-knowledge judgments. No markdown.",
       yield* encodeJson({
-        catalog: models.map((model) => ({
-          ...model,
-          slug: `cox/${model.id}`,
-          reasoningLevels: omoModelReasoningLevels(model),
-        })),
-        standardAgentDescriptions: OMO_AGENT_DESCRIPTIONS,
-        standardCategoryDescriptions: OMO_CATEGORY_DESCRIPTIONS,
+        catalog,
+        roles: {
+          agents: roles("agent", input.agents),
+          categories: roles("category", input.categories),
+        },
         requestedAgents: input.agents,
         requestedCategories: input.categories,
       }),

@@ -35,6 +35,92 @@ export const zh = {
   "Search roles": "搜索角色",
   "Inherit main model ({model})": "继承主模型（{model}）",
   "No matching roles": "没有匹配的角色",
+  "Runs often": "经常运行",
+  "Model advice": "模型建议",
+  "Recommended: {model} · {level}": "推荐：{model} · {level}",
+  "Recommended: {model}": "推荐：{model}",
+  Use: "使用",
+  "Use recommended model for {role}": "为 {role} 使用推荐模型",
+  "No official match in this service": "此服务中没有官方推荐的模型",
+  "Apply official recommendations": "应用官方推荐",
+  "Fills each role with OMO's official model for this service. Free and offline; nothing is saved until you apply OMO models.":
+    "按此服务中可用的模型，为每个角色填入 OMO 官方推荐。免费且离线完成；点击“应用 OMO 模型”前不会保存。",
+  "Official recommendations will replace the model and thinking strength of every role that has a match. Saved settings stay unchanged until you apply.":
+    "官方推荐将替换所有有匹配模型的角色的模型和思考强度。应用前，已保存的设置保持不变。",
+  "Replace with official recommendations": "替换为官方推荐",
+  "Official recommendations added to the draft. Left unchanged, no official match in this service: {roles}":
+    "已将官方推荐填入草稿。以下角色在此服务中没有官方推荐的模型，保持不变：{roles}",
+  "Official recommendations added to the draft.": "已将官方推荐填入草稿。",
+  "Not used by OMO Native": "OMO Native 不使用",
+  "OMO Native has no agents with these names, so these settings have no effect. Remove them when you no longer need them.":
+    "OMO Native 没有这些名称的 Agent，因此这些设置不会生效。不再需要时可将其移除。",
+  "Codebase search": "代码库搜索",
+  "Finds where things live in a codebase and which file holds a given behavior.":
+    "查找代码在代码库中的位置，以及哪个文件实现了某个行为。",
+  "Needs speed more than intelligence; a small fast model fits, and large flagship models waste cost.":
+    "速度比智能更重要；适合小而快的模型，大型旗舰模型只会浪费成本。",
+  "External research": "外部资料研究",
+  "Researches multiple repositories, remote codebases, official documentation and implementation examples.":
+    "研究多个仓库、远程代码库、官方文档和实现示例。",
+  "Pre-planning consultant": "规划前顾问",
+  "Identifies hidden intentions, ambiguities and likely AI failure points before planning; runs once per plan.":
+    "在规划前找出隐含意图、歧义和 AI 可能出错的地方；每个计划运行一次。",
+  "Needs strong reasoning; use a top-tier reasoning model, since weak reasoning misses hidden requirements.":
+    "需要强推理能力；请使用顶级推理模型，推理较弱会漏掉隐含需求。",
+  "Plan review": "计划审查",
+  "Reviews work plans for clarity, verifiability and completeness; runs once per review round.":
+    "审查工作计划是否清晰、可验证且完整；每轮审查运行一次。",
+  "Must not be a small model; use a strong reasoning model that can spot gaps and unverifiable steps.":
+    "不能使用小模型；请使用能发现遗漏和无法验证步骤的强推理模型。",
+  "Visual engineering": "视觉工程",
+  "Handles visual design, UI and UX, frontend work, styling, animation and design systems.":
+    "负责视觉设计、UI 与 UX、前端开发、样式、动画和设计系统。",
+  "Needs strong frontend and design judgment; must not be a utility or search model.":
+    "需要较强的前端和设计判断力；不能使用工具类或搜索类模型。",
+  Architecture: "架构",
+  "Handles big-picture system design and broad debugging across many sources; implements when needed.":
+    "负责宏观系统设计以及跨多个来源的大范围调试；必要时也会动手实现。",
+  "Needs top-tier reasoning across many sources; use the strongest available model.":
+    "需要跨多个来源的顶级推理能力；请使用可用的最强模型。",
+  "Hard logic tasks": "高难度逻辑任务",
+  "Used only for genuinely hard, logic-heavy tasks with clear goals.":
+    "仅用于目标明确、真正困难且逻辑密集的任务。",
+  "Use the strongest reasoning model; this lane is built for GPT-style autonomous work.":
+    "请使用最强的推理模型；此通道为 GPT 风格的自主工作而设计。",
+  "Deep work": "深度工作",
+  "The default deep lane for one goal and one deliverable, with decisions settled from evidence; covers backend, algorithms and browser or computer use.":
+    "默认深度通道：一个目标、一个交付物，依据证据做出决策；涵盖后端、算法以及浏览器或电脑操作。",
+  "Built for GPT-style autonomous work; use a capable coding model with sustained reasoning.":
+    "为 GPT 风格的自主工作而设计；请使用具备持续推理能力的强编码模型。",
+  "Deep escalation": "深度升级",
+  "The escalation deep lane for a central decision that evidence alone cannot settle.":
+    "升级用深度通道，处理仅凭证据无法确定的核心决策。",
+  "Use the strongest GPT-style autonomous model for a difficult central decision.":
+    "请使用最强的 GPT 风格自主模型来处理困难的核心决策。",
+  "Creative problem solving": "创造性问题解决",
+  "Handles unconventional, creative problem solving and design.":
+    "负责非常规、富有创意的问题解决和设计。",
+  "Use a model with flexible thinking that can still implement the result practically.":
+    "请使用思维灵活、同时能把结果切实落地的模型。",
+  "Quick edits": "快速修改",
+  "Handles trivial tasks such as single-file changes and typo fixes.":
+    "处理简单任务，例如单文件修改和错别字修正。",
+  "Use a small, fast model; avoid heavyweight reasoning models for simple edits.":
+    "请使用小而快的模型；简单修改不要用重量级推理模型。",
+  "General low effort": "通用低强度",
+  "Handles general low-complexity work that fits no other category.":
+    "处理不属于其他类别的一般低复杂度工作。",
+  "Use an efficient model with adequate instruction following and coding ability; keep heavyweight reasoning for harder tasks.":
+    "请使用高效且指令遵循和编码能力足够的模型；重量级推理留给更难的任务。",
+  "General high effort": "通用高强度",
+  "Handles general high-complexity work that fits no other category.":
+    "处理不属于其他类别的一般高复杂度工作。",
+  "Use a strong reasoning and coding model that executes reliably on unfamiliar tasks.":
+    "请使用能在陌生任务上稳定执行的强推理与编码模型。",
+  Writing: "写作",
+  "Handles documentation, technical writing and prose editing.": "负责文档、技术写作和文字编辑。",
+  "Use a model with strong clarity and structure; coding strength alone is not enough.":
+    "请使用表达清晰、结构性强的模型；仅有编码能力还不够。",
   "Bind a model service to use AI recommendations.": "绑定模型服务后可使用 AI 推荐。",
   "These settings are read-only.": "当前设置为只读。",
   "Saving configuration…": "正在保存配置…",
