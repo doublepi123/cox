@@ -16,6 +16,9 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ProviderSessionId,
+  NodeId,
+  RunId,
+  TurnItemId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -3655,6 +3658,145 @@ it.effect(
           layerTest({ state, idleTimeoutMs: 60_000, capabilities: ExclusiveCapabilities }),
         ),
       );
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 restores OMO native subagents and results without launching or losing original run linkage",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const sink = yield* EventSink.EventSinkV2;
+        const ids = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("omo-native-restore");
+        const providerSessionId = yield* ids.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        const providerThread = makeProviderThread({
+          idAllocator: ids,
+          threadId,
+          providerSessionId,
+          now,
+        });
+        yield* sink.write({
+          events: [yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now })],
+        });
+        yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+        const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId))!;
+        const roles = ["atlas", "explore", "oracle"];
+        const originalRun = RunId.make("run:omo-original");
+        const send = (restoring: boolean) =>
+          Effect.gen(function* () {
+            const afterSequence = yield* sink.latestSequence({ threadId });
+            const persisted = yield* sink.stream({ threadId, afterSequence }).pipe(
+              Stream.filter(
+                (stored) =>
+                  stored.event.type === "subagent.updated" ||
+                  stored.event.type === "turn-item.updated",
+              ),
+              Stream.take(6),
+              Stream.runCollect,
+              Effect.forkScoped,
+            );
+            for (const [index, role] of roles.entries()) {
+              const subagentId = NodeId.make("native:" + role);
+              yield* Queue.offer(queue, {
+                type: "subagent.updated",
+                driver: ProviderDriverKind.make("omo"),
+                subagent: {
+                  id: subagentId,
+                  threadId,
+                  runId: restoring ? null : originalRun,
+                  parentNodeId: NodeId.make(restoring ? "restored-parent" : "original-parent"),
+                  origin: "provider_native",
+                  createdBy: "agent",
+                  driver: ProviderDriverKind.make("omo"),
+                  providerInstanceId: modelSelection.instanceId,
+                  providerThreadId: providerThread.id,
+                  childThreadId: null,
+                  nativeTaskRef: {
+                    driver: ProviderDriverKind.make("omo"),
+                    nativeId: "st_" + role,
+                    strength: "strong",
+                  },
+                  prompt: "Inspect " + role,
+                  title: role,
+                  model: "actual-" + role,
+                  status: role === "oracle" ? "failed" : "completed",
+                  result: role === "oracle" ? "original native error" : role + " result",
+                  startedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                },
+              });
+              yield* Queue.offer(queue, {
+                type: "turn_item.updated",
+                driver: ProviderDriverKind.make("omo"),
+                turnItem: {
+                  id: TurnItemId.make("native-item:" + role),
+                  threadId,
+                  runId: restoring ? null : originalRun,
+                  nodeId: subagentId,
+                  providerThreadId: providerThread.id,
+                  providerTurnId: null,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: restoring ? 1 : index + 10,
+                  type: "subagent",
+                  subagentId,
+                  origin: "provider_native",
+                  driver: ProviderDriverKind.make("omo"),
+                  providerInstanceId: modelSelection.instanceId,
+                  childThreadId: null,
+                  prompt: "Inspect " + role,
+                  title: role,
+                  status: role === "oracle" ? "failed" : "completed",
+                  result: role === "oracle" ? "original native error" : role + " result",
+                  startedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                },
+              });
+            }
+            yield* Fiber.join(persisted);
+          });
+        yield* send(false);
+        const beforeRestore = yield* projections.getThreadProjection(threadId);
+        yield* send(true);
+        const projection = yield* projections.getThreadProjection(threadId);
+        assert.lengthOf(projection.subagents, 3);
+        assert.sameMembers(
+          projection.subagents.map((task) => task.title),
+          roles,
+        );
+        assert.isTrue(
+          projection.subagents.every(
+            (task) =>
+              task.runId === originalRun &&
+              task.parentNodeId === "original-parent" &&
+              task.childThreadId === null,
+          ),
+        );
+        assert.equal(
+          projection.subagents.find((task) => task.title === "oracle")?.result,
+          "original native error",
+        );
+        assert.deepEqual(
+          projection.turnItems
+            .filter((item) => item.type === "subagent")
+            .map((item) => [item.id, item.ordinal, item.runId]),
+          beforeRestore.turnItems
+            .filter((item) => item.type === "subagent")
+            .map((item) => [item.id, item.ordinal, item.runId]),
+        );
+        assert.lengthOf((yield* projections.getShellSnapshot()).threads, 1);
+        assert.equal((yield* Ref.get(state)).openCount, 1);
+      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 1000 })));
     }),
 );
 

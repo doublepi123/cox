@@ -10,6 +10,7 @@ import * as DateTime from "effect/DateTime";
 
 import {
   deriveActiveSubagentInstances,
+  deriveVisibleSubagentInstances,
   deriveWorkflowGroups,
   isWorkflowScriptMessage,
   projectedSubagentsToRuntime,
@@ -19,6 +20,7 @@ import {
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 
 type ProjectedSubagent = Parameters<typeof projectedSubagentsToRuntime>[0][number];
+type ProjectedSubagentInstance = Parameters<typeof deriveActiveSubagentInstances>[0][number];
 
 function subagent(overrides: Partial<ProjectedSubagent> = {}): ProjectedSubagent {
   return {
@@ -49,14 +51,17 @@ const member = (
 const groupsOf = (subagents: ReadonlyArray<ProjectedSubagent>) =>
   deriveWorkflowGroups(projectedSubagentsToRuntime(subagents));
 
-describe("deriveActiveSubagentInstances", () => {
-  const instance = (overrides: Partial<ProjectedSubagent> = {}) => ({
+function instance(overrides: Partial<ProjectedSubagentInstance> = {}): ProjectedSubagentInstance {
+  return {
     ...subagent(overrides),
     driver: ProviderDriverKind.make("codex"),
     providerInstanceId: ProviderInstanceId.make("review"),
-    origin: "app_owned" as const,
-  });
+    origin: "app_owned",
+    ...overrides,
+  };
+}
 
+describe("deriveActiveSubagentInstances", () => {
   it("retains only queued, running and waiting instances with provider identity", () => {
     const statuses = [
       "idle",
@@ -106,6 +111,169 @@ describe("deriveActiveSubagentInstances", () => {
         instance({ status: "completed", workflow: { phases: [], agents: [member()] } }),
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("deriveVisibleSubagentInstances", () => {
+  const native = (overrides: Partial<ProjectedSubagentInstance> = {}) =>
+    instance({
+      driver: ProviderDriverKind.make("omo"),
+      origin: "provider_native",
+      childThreadId: null,
+      ...overrides,
+    });
+
+  it("retains terminal OMO native tasks without changing active or app-owned visibility", () => {
+    const statuses = [
+      "idle",
+      "pending",
+      "running",
+      "waiting",
+      "completed",
+      "failed",
+      "cancelled",
+      "interrupted",
+    ] as const;
+    const sources = statuses.flatMap((status) => [
+      instance({ id: `app-${status}`, status }),
+      native({ id: `native-${status}`, status }),
+      native({ id: `other-${status}`, driver: ProviderDriverKind.make("pi"), status }),
+      native({ id: `omo-app-${status}`, origin: "app_owned", status }),
+    ]);
+    const visible = deriveVisibleSubagentInstances(sources);
+    const active = deriveActiveSubagentInstances(sources);
+    expect(visible.slice(0, active.length)).toEqual(active);
+    expect(visible.slice(active.length).map((agent) => agent.id)).toEqual([
+      "native-cancelled",
+      "native-completed",
+      "native-failed",
+      "native-interrupted",
+    ]);
+    expect(visible.some((agent) => agent.status === "idle")).toBe(false);
+    expect(deriveVisibleSubagentInstances([])).toEqual([]);
+  });
+
+  it("bounds only recent terminal native rows to the newest 20 without mutating sources", () => {
+    const sources = [
+      ...Array.from({ length: 25 }, (_, index) =>
+        native({
+          id: `settled-${index}`,
+          status: "completed",
+          completedAt: DateTime.makeUnsafe(Date.UTC(2026, 7, 1, 10, 0, index)),
+        }),
+      ),
+      ...Array.from({ length: 24 }, (_, index) => native({ id: `active-${index}` })),
+      instance({ id: "app-active" }),
+    ];
+    const sourceIds = sources.map((source) => source.id);
+    const visible = deriveVisibleSubagentInstances(sources);
+    expect(visible).toHaveLength(45);
+    expect(visible.slice(0, 25).map((agent) => agent.id)).toEqual([
+      ...Array.from({ length: 24 }, (_, index) => `active-${index}`),
+      "app-active",
+    ]);
+    expect(visible.slice(25).map((agent) => agent.id)).toEqual(
+      Array.from({ length: 20 }, (_, index) => `settled-${24 - index}`),
+    );
+    expect(sources.map((source) => source.id)).toEqual(sourceIds);
+  });
+
+  it("orders recent rows by completion or update time with a stable identity tiebreak", () => {
+    const visible = deriveVisibleSubagentInstances([
+      native({
+        id: "old-completion",
+        status: "completed",
+        completedAt: at("2026-08-01T10:00:02.000Z"),
+        updatedAt: at("2026-08-01T10:01:00.000Z"),
+      }),
+      native({ id: "updated-b", status: "cancelled" }),
+      native({ id: "updated-a", status: "interrupted" }),
+      native({
+        id: "new-completion",
+        status: "failed",
+        completedAt: at("2026-08-01T10:00:07.000Z"),
+      }),
+    ]);
+    expect(visible.map((agent) => agent.id)).toEqual([
+      "new-completion",
+      "updated-a",
+      "updated-b",
+      "old-completion",
+    ]);
+  });
+
+  it("preserves native names, models, tasks, progress, results and reported failures", () => {
+    const visible = deriveVisibleSubagentInstances([
+      native({
+        id: "explore",
+        title: "explore",
+        prompt: "Find all call sites\nand report paths unchanged.",
+        progress: "Read packages/client-runtime",
+        model: "cox/raw-model-name",
+        status: "completed",
+        result: "Found src/state/subagentRuntime.ts",
+        completedAt: at("2026-08-01T10:00:07.000Z"),
+      }),
+      native({ id: "oracle", title: "oracle", status: "failed", result: "Native tool failed" }),
+    ]);
+    expect(visible[0]).toMatchObject({
+      id: "explore",
+      title: "explore",
+      prompt: "Find all call sites\nand report paths unchanged.",
+      progress: "Read packages/client-runtime",
+      model: "cox/raw-model-name",
+      driver: "omo",
+      providerInstanceId: "review",
+      origin: "provider_native",
+      childThreadId: null,
+      status: "completed",
+      result: "Found src/state/subagentRuntime.ts",
+      error: null,
+      startedAt: "2026-08-01T10:00:00.000Z",
+      completedAt: "2026-08-01T10:00:07.000Z",
+    });
+    expect(visible[1]).toMatchObject({
+      title: "oracle",
+      status: "failed",
+      error: "Native tool failed",
+    });
+  });
+
+  it("keeps workflow workers instead of coordinators and bounds expanded terminal rows", () => {
+    const visible = deriveVisibleSubagentInstances([
+      native({
+        id: "live-workflow",
+        workflow: {
+          phases: [],
+          agents: [
+            member({ prompt: "Review the active changes" }),
+            member({ index: 2, state: "completed" }),
+          ],
+        },
+      }),
+      native({
+        id: "settled-workflow",
+        status: "completed",
+        workflow: {
+          phases: [],
+          agents: Array.from({ length: 25 }, (_, index) =>
+            member({ index, state: "completed", prompt: `Native task ${index}` }),
+          ),
+        },
+      }),
+    ]);
+    expect(visible).toHaveLength(21);
+    expect(visible.every((agent) => agent.kind === "workflow_agent")).toBe(true);
+    expect(visible[0]).toMatchObject({
+      id: "live-workflow:agent:1",
+      prompt: "Review the active changes",
+      status: "running",
+    });
+    expect(visible[1]).toMatchObject({
+      id: "settled-workflow:agent:0",
+      prompt: "Native task 0",
+      status: "completed",
+    });
   });
 });
 

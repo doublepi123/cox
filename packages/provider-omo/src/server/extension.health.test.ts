@@ -38,6 +38,10 @@ async function loadReady(
     readonly taskExposure?: string;
     readonly toolsRequired?: boolean;
     readonly mcpRequired?: boolean;
+    readonly onBridgeOptions?: (options: {
+      readonly orchestrationInstructions: string;
+      readonly bridgeInstructions: string;
+    }) => void;
   } = {},
 ) {
   const requests = new Map<string, () => unknown>();
@@ -66,10 +70,19 @@ async function loadReady(
     },
     crypto,
     join: NodePath.join,
-    coxBridge: async () => ({
-      ensureReady: async () => undefined,
-      getHealth: () => options.cox ?? healthyCox,
-    }),
+    coxBridge: async (
+      _pi: unknown,
+      bridgeOptions: {
+        readonly orchestrationInstructions: string;
+        readonly bridgeInstructions: string;
+      },
+    ) => {
+      options.onBridgeOptions?.(bridgeOptions);
+      return {
+        ensureReady: async () => undefined,
+        getHealth: () => options.cox ?? healthyCox,
+      };
+    },
     omoEntry: {
       omoSenpiComponents: [{ name: "task" }],
       composeOmoSenpiExtension:
@@ -105,6 +118,21 @@ async function loadReady(
 }
 
 describe("OMO readiness separates native tasks from Cox orchestration", () => {
+  it("installs native-first routing even when Cox delegation tools are available", async () => {
+    let installed:
+      | { readonly orchestrationInstructions: string; readonly bridgeInstructions: string }
+      | undefined;
+    await loadReady({
+      onBridgeOptions: (value) => {
+        installed = value;
+      },
+    });
+    expect(installed?.orchestrationInstructions).toContain("OMO's native `task`");
+    expect(installed?.bridgeInstructions).toContain(
+      "Generic subagent or parallel requests use OMO native task",
+    );
+    expect(installed?.orchestrationInstructions).not.toContain("it finishes in this turn");
+  });
   it("reports both tool surfaces only after they are usable", async () => {
     expect(await loadReady()).toMatchObject({
       ready: true,

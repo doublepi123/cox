@@ -56,6 +56,7 @@ import { loadMcpBridge } from "./mcpBridge.testkit.ts";
 import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts";
 import { turnItemOutputText } from "../../../client-runtime/src/work-log/itemDetail.ts";
 import { omoTodoSnapshot } from "../../../provider-omo/src/server/todo.ts";
+import { omoTaskEvent } from "../../../provider-omo/src/server/runtime.ts";
 
 const layerTest = Layer.mergeAll(
   NodeServices.layer,
@@ -174,6 +175,7 @@ interface FakePi {
   readonly vetoNextNewSession: () => void;
   readonly allRequests: () => ReadonlyArray<PiRpcRecord>;
   readonly setTodoSnapshot: (value: unknown) => void;
+  readonly setNativeSubagents: (value: unknown) => void;
   readonly promptThinkingLevels: ReadonlyArray<string>;
   readonly promptModels: ReadonlyArray<string>;
   readonly promptServiceTiers: ReadonlyArray<string | null>;
@@ -242,6 +244,7 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
   const serviceTierCommand = "/t3-service-tier";
   let currentModel = "default";
   let todoSnapshot: unknown;
+  let nativeSubagents: unknown;
 
   const emit = (record: PiRpcRecord, chunkBytes?: number) =>
     Effect.gen(function* () {
@@ -324,7 +327,11 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
       case "get_entries":
         return { ...base, data: entriesQueue.shift() ?? { entries: [], leafId: null } };
       case "extension_request":
-        return record.name === "cox.omo.todo" ? { ...base, data: todoSnapshot } : base;
+        return record.name === "cox.omo.todo"
+          ? { ...base, data: todoSnapshot }
+          : record.name === "cox.omo.tasks"
+            ? { ...base, data: nativeSubagents }
+            : base;
       case "get_messages":
         return { ...base, data: messagesQueue.shift() ?? { messages: [] } };
       case "get_session_stats":
@@ -462,6 +469,9 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
     allRequests: () => allRequests,
     setTodoSnapshot: (value) => {
       todoSnapshot = value;
+    },
+    setNativeSubagents: (value) => {
+      nativeSubagents = value;
     },
     vetoNextSwitch: () => {
       vetoSwitch = true;
@@ -618,6 +628,178 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("PiAdapterV2", () => {
+  it.effect(
+    "projects scoped OMO native tasks once, restores completed tasks, and preserves their run while updating outside a turn",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const nativeRuntime: NonNullable<PiAdapterV2Options["runtime"]> = {
+          driver: "omo" as NonNullable<PiAdapterV2Options["runtime"]>["driver"],
+          label: "OMO",
+          connect: makePiRpcConnection,
+          buildLaunch: buildPiRpcLaunch,
+          materializeExtension: materializePiT3McpExtension,
+          nativeSubagents: { requestName: "cox.omo.tasks" },
+        };
+        const tasks = (
+          status = "running",
+          updated = "2026-11-12T09:00:01Z",
+          sessionFile = FAKE_SESSION_FILE,
+        ) =>
+          omoTaskEvent(
+            {
+              parent_session_id: "parent",
+              tasks: [
+                {
+                  task_id: "st_atlas",
+                  agent_type: "atlas",
+                  description: "Inspect atlas",
+                  status,
+                  model: "requested",
+                  effective_model: { display: "actual-atlas" },
+                  created_at: "2026-11-12T09:00:00Z",
+                  updated_at: updated,
+                  final_response: status === "completed" ? "atlas result" : undefined,
+                  live_progress: { last_assistant_line: "atlas progress" },
+                },
+                {
+                  task_id: "st_explore",
+                  agent_type: "explore",
+                  description: "Inspect explore",
+                  status: "completed",
+                  model: "actual-explore",
+                  final_response: "explore result",
+                  created_at: "2026-11-12T09:00:00Z",
+                  updated_at: "2026-11-12T09:00:01Z",
+                },
+                {
+                  task_id: "st_oracle",
+                  agent_type: "oracle",
+                  description: "Inspect oracle",
+                  status: "error",
+                  model: "actual-oracle",
+                  error_message: "native oracle error",
+                  created_at: "2026-11-12T09:00:00Z",
+                  updated_at: "2026-11-12T09:00:01Z",
+                },
+              ],
+            },
+            sessionFile,
+          )!;
+        const { runtime, takeEvent, observed } = yield* openRuntime(
+          fake,
+          "default",
+          THREAD_ID,
+          SESSION_ID,
+          undefined,
+          undefined,
+          nativeRuntime,
+        );
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        yield* startTurn(runtime, providerThread);
+        yield* fake.takeRequest("prompt");
+        yield* fake.emit({ type: "agent_start" });
+        const first = tasks();
+        yield* fake.emit(first);
+        yield* takeEvent(
+          (event) => event.type === "subagent.updated" && event.subagent.title === "oracle",
+        );
+        yield* fake.emit(first);
+        yield* fake.emit(tasks("completed", "2026-11-12T09:00:02Z", "/other-session.jsonl"));
+        yield* fake.emit({
+          type: "tool_execution_end",
+          toolCallId: "barrier",
+          toolName: "marker",
+          result: {},
+        });
+        yield* takeEvent(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "dynamic_tool" &&
+            event.turnItem.toolName === "marker",
+        );
+        const initial = observed
+          .filter((event) => event.type === "subagent.updated")
+          .map((event) => event.subagent);
+        assert.lengthOf(initial, 3);
+        assert.equal(new Set(initial.map((task) => task.id)).size, 3);
+        assert.equal(initial[0]?.model, "actual-atlas");
+        assert.equal(initial[2]?.status, "failed");
+        assert.equal(initial[2]?.result, "native oracle error");
+        assert.isTrue(
+          initial.every(
+            (task) =>
+              task.driver === "omo" &&
+              task.childThreadId === null &&
+              task.origin === "provider_native",
+          ),
+        );
+        fake.setNativeSubagents(first);
+        yield* fake.emit({ type: "agent_settled" });
+        yield* takeEvent((event) => event.type === "turn.terminal");
+        yield* fake.emit(tasks("completed", "2026-11-12T09:00:03Z"));
+        const completed = yield* takeEvent(
+          (event) =>
+            event.type === "subagent.updated" &&
+            event.subagent.title === "atlas" &&
+            event.subagent.status === "completed",
+        );
+        if (completed.type !== "subagent.updated") return;
+        assert.equal(completed.subagent.id, initial[0]?.id);
+        assert.equal(completed.subagent.runId, initial[0]?.runId);
+        assert.equal(completed.subagent.result, "atlas result");
+        assert.equal(
+          DateTime.formatIso(completed.subagent.completedAt!),
+          "2026-11-12T09:00:03.000Z",
+        );
+        const completedItem = yield* takeEvent(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "subagent" &&
+            event.turnItem.title === "atlas" &&
+            event.turnItem.status === "completed",
+        );
+        assert.isTrue(
+          completedItem.type === "turn_item.updated" &&
+            completedItem.turnItem.type === "subagent" &&
+            completedItem.turnItem.progress === undefined,
+        );
+        yield* fake.emit(tasks("running", "2026-11-12T09:00:02Z"));
+        yield* fake.emit({
+          type: "tool_execution_end",
+          toolCallId: "barrier-late",
+          toolName: "marker",
+          result: {},
+        });
+        fake.setNativeSubagents(tasks("completed", "2026-11-12T09:00:03Z"));
+        const other = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+          existingProviderThread: providerThread,
+        });
+        yield* takeEvent(
+          (event) => event.type === "subagent.updated" && event.subagent.title === "oracle",
+        );
+        const restored = observed
+          .filter((event) => event.type === "subagent.updated")
+          .slice(-3)
+          .map((event) => event.subagent);
+        assert.equal(other.id, providerThread.id);
+        assert.deepEqual(
+          restored.map((task) => task.id),
+          initial.map((task) => task.id),
+        );
+        assert.isTrue(
+          restored.every((task) => task.status === "completed" || task.status === "failed"),
+        );
+        assert.isFalse(fake.allRequests().some((request) => request.name === "delegate_task"));
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect(
     "projects OMO Todo snapshots with stable plan identity, restores open work and clears removed tasks",
     () =>

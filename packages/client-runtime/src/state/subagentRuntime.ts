@@ -261,12 +261,16 @@ export interface ActiveSubagentInstance extends RuntimeSubagent {
   readonly origin: OrchestrationV2Subagent["origin"];
 }
 
+export interface VisibleSubagentInstance extends ActiveSubagentInstance {
+  readonly prompt: string;
+}
+
 type ProjectedSubagentInstance = Parameters<typeof projectedSubagentsToRuntime>[0][number] &
   Pick<OrchestrationV2Subagent, "driver" | "providerInstanceId" | "origin">;
 
 export function deriveActiveSubagentInstances(
   subagents: ReadonlyArray<ProjectedSubagentInstance>,
-): ReadonlyArray<ActiveSubagentInstance> {
+): ReadonlyArray<VisibleSubagentInstance> {
   return subagents.flatMap((source) => {
     if (!isActiveSubagentStatus(source.status)) return [];
     const active = projectedSubagentsToRuntime([source]).filter((agent) =>
@@ -279,8 +283,45 @@ export function deriveActiveSubagentInstances(
       driver: source.driver,
       providerInstanceId: source.providerInstanceId,
       origin: source.origin,
+      prompt:
+        source.workflow?.agents.find((member) => member.index === agent.agentIndex)?.prompt ??
+        source.prompt,
     }));
   });
+}
+
+export function deriveVisibleSubagentInstances(
+  subagents: ReadonlyArray<ProjectedSubagentInstance>,
+): ReadonlyArray<VisibleSubagentInstance> {
+  const recentNative = subagents
+    .filter(
+      (source) =>
+        source.driver === "omo" &&
+        source.origin === "provider_native" &&
+        isTerminalSubagentStatus(source.status),
+    )
+    .toSorted(
+      (a, b) =>
+        DateTime.toEpochMillis(b.completedAt ?? b.updatedAt) -
+          DateTime.toEpochMillis(a.completedAt ?? a.updatedAt) || a.id.localeCompare(b.id),
+    )
+    .slice(0, 20)
+    .flatMap((source) => {
+      const runtime = projectedSubagentsToRuntime([source]);
+      const members = runtime.filter((agent) => agent.kind === "workflow_agent");
+      return (members.length > 0 ? members : runtime).map((agent) => ({
+        ...agent,
+        model: agent.model ?? source.model,
+        driver: source.driver,
+        providerInstanceId: source.providerInstanceId,
+        origin: source.origin,
+        prompt:
+          source.workflow?.agents.find((member) => member.index === agent.agentIndex)?.prompt ??
+          source.prompt,
+      }));
+    })
+    .slice(0, 20);
+  return [...deriveActiveSubagentInstances(subagents), ...recentNative];
 }
 
 export function deriveWorkflowGroups(

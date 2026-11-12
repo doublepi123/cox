@@ -24,6 +24,7 @@ import {
   type MessageId,
   type OrchestrationV2ProviderTurnTokenUsage,
   OrchestrationV2PlanStep,
+  type OrchestrationV2Subagent,
   type PlanId,
 } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
@@ -98,6 +99,7 @@ const SETTLE_PROBE_RETRY_DELAY = Duration.millis(100);
 const encodeTodoSteps = Schema.encodeSync(
   Schema.fromJsonString(Schema.Array(OrchestrationV2PlanStep)),
 );
+const encodeNativeSubagent = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 export const PiProviderCapabilitiesV2 = {
   runtimePolicy: { enforcement: "client-boundary" },
@@ -212,6 +214,7 @@ export interface PiAdapterV2Options {
     readonly materializeExtension: typeof materializePiT3McpExtension;
     readonly buildLaunch: typeof buildPiRpcLaunch;
     readonly capabilities?: OrchestrationV2ProviderCapabilities;
+    readonly nativeSubagents?: { readonly requestName: string };
     readonly todo?: {
       readonly requestName: string;
       readonly eventName: string;
@@ -444,6 +447,14 @@ interface PiThreadState {
   todoPublished?: boolean;
   todoPublishedSignature?: string;
   todoGenerations?: Set<string>;
+  nativeSubagents?: Map<
+    string,
+    {
+      readonly signature: string;
+      readonly subagent: OrchestrationV2Subagent;
+      readonly turnItem: Extract<OrchestrationV2TurnItem, { readonly type: "subagent" }>;
+    }
+  >;
 }
 
 interface PiWake {
@@ -1406,17 +1417,24 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       });
 
       const emitSubagentTasks = Effect.fnUntraced(function* (
-        turn: ActivePiTurn,
+        turn: ActivePiTurn | null,
         toolCallId: string,
         resultRecord: unknown,
         completed: boolean,
+        state?: PiThreadState,
       ) {
         const results = recordField(recordField(resultRecord, "details"), "results");
         if (!Array.isArray(results)) return;
+        const threadId = turn?.turnInput.threadId ?? state?.providerThread.appThreadId;
+        if (threadId == null) return;
         const emittedAt = yield* DateTime.now;
         const parentNodeId =
           toolCallId.length === 0
-            ? turn.turnInput.rootNodeId
+            ? (turn?.turnInput.rootNodeId ??
+              idAllocator.derive.nodeFromProviderItem({
+                driver: PI_PROVIDER,
+                nativeItemId: `${state?.providerThread.id}:native-subagents`,
+              }))
             : idAllocator.derive.nodeFromProviderItem({
                 driver: PI_PROVIDER,
                 nativeItemId: toolCallId,
@@ -1432,11 +1450,30 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             driver: PI_PROVIDER,
             nativeItemId: nativeTaskId,
           });
+          const previous = state?.nativeSubagents?.get(nativeTaskId);
+          const signature = encodeNativeSubagent(result);
+          if (previous?.signature === signature) continue;
+          const nativeUpdatedAt = Date.parse(recordString(result, "updatedAt") ?? "");
+          if (
+            previous !== undefined &&
+            Number.isFinite(nativeUpdatedAt) &&
+            nativeUpdatedAt < DateTime.toEpochMillis(previous.subagent.updatedAt)
+          )
+            continue;
+          if (
+            previous?.subagent.completedAt !== null &&
+            previous?.subagent.completedAt !== undefined &&
+            recordField(result, "finished") !== true &&
+            Number.isFinite(nativeUpdatedAt) &&
+            nativeUpdatedAt <= DateTime.toEpochMillis(previous.subagent.updatedAt)
+          )
+            continue;
           const nativeStartedAt = Date.parse(recordString(result, "startedAt") ?? "");
           const startedAt =
-            turn.toolStartedAt.get(nativeTaskId) ??
+            previous?.subagent.startedAt ??
+            turn?.toolStartedAt.get(nativeTaskId) ??
             (Number.isFinite(nativeStartedAt) ? DateTime.makeUnsafe(nativeStartedAt) : emittedAt);
-          turn.toolStartedAt.set(nativeTaskId, startedAt);
+          turn?.toolStartedAt.set(nativeTaskId, startedAt);
           const finished = completed || recordField(result, "finished") === true;
           const stopReason = recordString(result, "stopReason");
           const interrupted = finished && stopReason === "aborted";
@@ -1444,63 +1481,144 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             finished &&
             !interrupted &&
             ((recordNumber(result, "exitCode") ?? 0) !== 0 || stopReason === "error");
-          const status = interrupted
-            ? "interrupted"
-            : failed
-              ? "failed"
-              : finished
-                ? "completed"
-                : "running";
+          const reportedStatus = recordString(result, "status");
+          const status: OrchestrationV2Subagent["status"] =
+            state !== undefined &&
+            (reportedStatus === "pending" ||
+              reportedStatus === "running" ||
+              reportedStatus === "waiting" ||
+              reportedStatus === "completed" ||
+              reportedStatus === "failed" ||
+              reportedStatus === "cancelled" ||
+              reportedStatus === "interrupted")
+              ? reportedStatus
+              : interrupted
+                ? "interrupted"
+                : failed
+                  ? "failed"
+                  : finished
+                    ? "completed"
+                    : "running";
           const outputText = piSubagentOutput(result);
           const progress =
             !finished && outputText.length > 0 ? { progress: outputText.slice(0, 200) } : {};
-          const resultText = finished && outputText.length > 0 ? outputText.slice(0, 10_000) : null;
-          yield* emit({
-            type: "subagent.updated",
+          const resultText =
+            finished && outputText.length > 0
+              ? outputText.slice(0, state === undefined ? 10_000 : 64_000)
+              : null;
+          const nativeCompletedAt = Date.parse(recordString(result, "completedAt") ?? "");
+          const completedAt = finished
+            ? Number.isFinite(nativeCompletedAt)
+              ? DateTime.makeUnsafe(Math.max(DateTime.toEpochMillis(startedAt), nativeCompletedAt))
+              : (previous?.subagent.completedAt ?? emittedAt)
+            : null;
+          const updatedAt = Number.isFinite(nativeUpdatedAt)
+            ? DateTime.makeUnsafe(Math.max(DateTime.toEpochMillis(startedAt), nativeUpdatedAt))
+            : emittedAt;
+          const subagent: OrchestrationV2Subagent = {
+            id: subagentId,
+            threadId,
+            runId:
+              previous === undefined ? (turn?.turnInput.runId ?? null) : previous.subagent.runId,
+            parentNodeId: previous?.subagent.parentNodeId ?? parentNodeId,
+            origin: "provider_native",
+            createdBy: "agent",
             driver: PI_PROVIDER,
-            subagent: {
-              id: subagentId,
-              threadId: turn.turnInput.threadId,
-              runId: turn.turnInput.runId,
-              parentNodeId,
-              origin: "provider_native",
-              createdBy: "agent",
-              driver: PI_PROVIDER,
-              providerInstanceId: options.instanceId,
-              providerThreadId: turn.turnInput.providerThread.id,
-              childThreadId: null,
-              nativeTaskRef: providerRef(recordString(result, "taskRef") ?? nativeTaskId),
-              prompt: task,
-              title: agent,
-              model: recordString(result, "model") ?? null,
-              status,
-              ...progress,
-              result: resultText,
-              startedAt,
-              completedAt: finished ? emittedAt : null,
-              updatedAt: emittedAt,
-            },
-          });
-          yield* emit({
-            type: "turn_item.updated",
+            providerInstanceId: options.instanceId,
+            providerThreadId:
+              previous?.subagent.providerThreadId ??
+              turn?.turnInput.providerThread.id ??
+              state?.providerThread.id ??
+              null,
+            childThreadId: null,
+            nativeTaskRef: providerRef(recordString(result, "taskRef") ?? nativeTaskId),
+            prompt: task,
+            title: agent,
+            model: recordString(result, "model") ?? null,
+            status,
+            ...progress,
+            result: resultText,
+            startedAt,
+            completedAt,
+            updatedAt,
+          };
+          const itemBase =
+            previous === undefined
+              ? turn === null
+                ? {
+                    id: idAllocator.derive.turnItemFromProviderItem({
+                      driver: PI_PROVIDER,
+                      nativeItemId: nativeTaskId,
+                    }),
+                    threadId,
+                    runId: null,
+                    nodeId: subagentId,
+                    providerThreadId: state?.providerThread.id ?? null,
+                    providerTurnId: null,
+                    nativeItemRef: providerRef(nativeTaskId),
+                    parentItemId: null,
+                    ordinal: index + 1,
+                    startedAt,
+                    updatedAt,
+                  }
+                : baseItemFields(turn, nativeTaskId, startedAt, updatedAt)
+              : {
+                  id: previous.turnItem.id,
+                  threadId: previous.turnItem.threadId,
+                  runId: previous.turnItem.runId,
+                  nodeId: previous.turnItem.nodeId,
+                  providerThreadId: previous.turnItem.providerThreadId,
+                  providerTurnId: previous.turnItem.providerTurnId,
+                  nativeItemRef: previous.turnItem.nativeItemRef,
+                  parentItemId: previous.turnItem.parentItemId,
+                  ordinal: previous.turnItem.ordinal,
+                  startedAt,
+                };
+          const turnItem: Extract<OrchestrationV2TurnItem, { readonly type: "subagent" }> = {
+            ...itemBase,
+            status,
+            title: agent,
+            completedAt,
+            updatedAt,
+            type: "subagent",
+            subagentId,
+            origin: "provider_native",
             driver: PI_PROVIDER,
-            turnItem: {
-              ...baseItemFields(turn, nativeTaskId, startedAt, emittedAt),
-              status,
-              title: agent,
-              completedAt: finished ? emittedAt : null,
-              type: "subagent",
-              subagentId,
-              origin: "provider_native",
-              driver: PI_PROVIDER,
-              providerInstanceId: options.instanceId,
-              childThreadId: null,
-              prompt: task,
-              ...progress,
-              result: resultText,
-            },
-          });
+            providerInstanceId: options.instanceId,
+            childThreadId: null,
+            prompt: task,
+            ...progress,
+            result: resultText,
+          };
+          if (state !== undefined) {
+            state.nativeSubagents ??= new Map();
+            state.nativeSubagents.set(nativeTaskId, { signature, subagent, turnItem });
+            if (state.nativeSubagents.size > 512)
+              state.nativeSubagents.delete(state.nativeSubagents.keys().next().value!);
+          }
+          yield* emit({ type: "subagent.updated", driver: PI_PROVIDER, subagent });
+          yield* emit({ type: "turn_item.updated", driver: PI_PROVIDER, turnItem });
         }
+      });
+
+      const refreshNativeSubagents = Effect.fnUntraced(function* (state: PiThreadState) {
+        const native = options.runtime?.nativeSubagents;
+        if (native === undefined || closed || stopRequested) return;
+        const snapshot = yield* request(
+          {
+            type: "extension_request",
+            name: native.requestName,
+            data: { nativeThreadId: state.providerThread.nativeThreadRef?.nativeId },
+          },
+          2_000,
+        ).pipe(Effect.orElseSucceed(() => undefined));
+        if (
+          threadState !== state ||
+          recordString(snapshot, "nativeThreadId") !==
+            state.providerThread.nativeThreadRef?.nativeId
+        )
+          return;
+        yield* emitSubagentTasks(state.activeTurn, "", snapshot, false, state);
       });
 
       const cancelPrompt = Effect.fn("PiAdapter.cancelPrompt")(function* (
@@ -1846,7 +1964,10 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       const finalizeTurn = Effect.fnUntraced(function* (state: PiThreadState, readUsage = true) {
         const turn = state.activeTurn;
         if (turn === null) return;
-        if (readUsage) yield* refreshTodoSnapshot(state);
+        if (readUsage) {
+          yield* refreshTodoSnapshot(state);
+          yield* refreshNativeSubagents(state);
+        }
         state.activeTurn = null;
         const interrupted = turn.interrupted || turn.nativeAborted;
         const completedAt = yield* DateTime.now;
@@ -2045,7 +2166,15 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         const turn = state?.activeTurn ?? null;
         switch (event["type"]) {
           case "t3.native_subagents": {
-            if (turn !== null) yield* emitSubagentTasks(turn, "", event, false);
+            if (options.runtime?.nativeSubagents === undefined) {
+              if (turn !== null) yield* emitSubagentTasks(turn, "", event, false);
+            } else if (
+              state !== null &&
+              recordString(event, "nativeThreadId") ===
+                state.providerThread.nativeThreadRef?.nativeId
+            ) {
+              yield* emitSubagentTasks(turn, "", event, false, state);
+            }
             return;
           }
           case "agent_start": {
@@ -2725,6 +2854,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 updatedAt: createdAt,
               };
         threadState = { providerThread, activeTurn: null };
+        if (options.runtime?.nativeSubagents !== undefined)
+          yield* refreshNativeSubagents(threadState);
         const baselineEntries = yield* request({ type: "get_entries" }).pipe(
           Effect.orElseSucceed(() => undefined),
         );

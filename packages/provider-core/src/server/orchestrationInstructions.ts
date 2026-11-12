@@ -6,7 +6,8 @@ export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = [
 
 Ordinary coding tasks need no Cox tools. Cox controls this local machine only; remote machine linking, cloud relays and native app devices are not available.
 
-- Subagents: use your native tool when the child uses your provider, a model it offers, and no settings beyond yours, and it finishes in this turn (Claude \`Agent\` always with \`run_in_background:false\`; Codex \`spawn_agent\`, then wait). Use \`delegate_task\` for another provider's model, user-asked settings, a separate checkout (\`isolation:"worktree"\`), background work, or \`delegate_task\` by name. A native type running another provider's model counts too. Workflow only when asked.
+- Subagents: prefer your own available native subagent tools for delegation, reviews and parallel work. Generic requests to "use subagents" or "work in parallel" do not ask for another Cox agent or provider. Keep native roles, model settings, workspace isolation and background execution when supported; a different child model or native background task alone does not require Cox delegation. Use \`delegate_task\` only for an explicitly requested Cox agent/provider or Cox delegation, when no native subagent capability exists (for example Pi without a subagent extension), or for a required capability native tasks cannot support. Never invent a native tool. Workflow only when asked.
+- Native subagent failure, exclusion or denial: report the original error; never silently switch to Cox delegation, another provider or another tool. Keep an explicitly requested Cox target and report its failure too. Cox's display of native tasks does not launch or re-run them.
 - Call \`orchestrator_capabilities\` once per thread, before the first \`delegate_task\`. Again only after an error or a user-named provider change. Settings go in \`target.options\`. Provider or model unavailable: say so. Never switch unasked, or fall back to native tools, Workflow, or CLIs. Never make a child's checkout in the shell or in \`task\`.
 - Every new delegate review or re-check is a new \`delegate_task\` (brief, findings, objections), never a \`cox_thread_send\`. Fix small review findings yourself; start no delegate for them. When told to proceed without a delegate, or to run fewer, \`task_cancel\` the extras. Start no replacement.
 - Follow a running delegate's \`next\`. Do not poll it (\`task_status\`, \`sleep\`, watchers, Monitor, ScheduleWakeup). Stop a delegate run you replace or no longer need with \`task_cancel\`, never \`cox_thread_interrupt\` on a \`childThreadId\`.
@@ -26,6 +27,17 @@ Ordinary coding tasks need no Cox tools. Cox controls this local machine only; r
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
 
 ${T3_CODE_ORCHESTRATION_SECTIONS.join("\n\n")}
+`;
+
+export const OMO_NATIVE_SUBAGENT_INSTRUCTIONS = `- OMO subagents: when the user asks to use subagents, delegate work, or work in parallel without naming a Cox agent/provider, prefer OMO's native \`task\` and its configured roles such as \`atlas\`, \`explore\`, and \`oracle\`. Keep their native role/model configuration and execution, including native background work; Cox observes those tasks without launching another agent. Do not select another Cox agent merely because its model differs from the main model.
+- Use Cox \`delegate_task\` only when the user explicitly requests a Cox agent, another provider, or Cox delegation by name, or the work requires a capability OMO native tasks do not support. Query Cox capabilities only for that explicit or unsupported-capability case. A generic request to parallelize is not a request for cross-provider delegation. Keep an explicitly requested Cox target; never replace it silently.
+- If native \`task\` fails, is unavailable, is excluded, or is denied, report its original error and stop that delegation attempt. Never silently retry it as a Cox delegate or change provider. A native task already observed by Cox must not be launched again for display. Workflow only when asked.`;
+
+export const OMO_CODE_ORCHESTRATION_INSTRUCTIONS = `
+
+${T3_CODE_ORCHESTRATION_SECTIONS.map((section, index) =>
+  index === 0 ? section.replace(/^- Subagents:.*$/m, OMO_NATIVE_SUBAGENT_INSTRUCTIONS) : section,
+).join("\n\n")}
 `;
 
 export const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `

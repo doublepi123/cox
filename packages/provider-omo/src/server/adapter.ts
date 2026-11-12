@@ -54,6 +54,7 @@ export const OmoAdapterDriver: ProviderAdapterDriver<OmoSettings, OmoAdapterEnv>
           connect: makeOmoRpcConnection,
           materializeExtension: materializeOmoExtension,
           buildLaunch: buildOmoLaunch,
+          nativeSubagents: { requestName: "cox.omo.tasks" },
           todo: {
             requestName: "cox.omo.todo",
             eventName: "cox.omo.todo.updated",

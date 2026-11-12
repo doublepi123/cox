@@ -8,6 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 
 import { PI_T3_MCP_EXTENSION_SOURCE } from "./mcpExtensionSource.ts";
 import { loadMcpBridge } from "./mcpBridge.testkit.ts";
+import { OMO_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 
 type RequestHook = (
   event: { payload: unknown },
@@ -50,6 +51,35 @@ async function loadHooks(
 }
 
 describe("Pi orchestration prompt section", () => {
+  it("keeps OMO's native-first override in both sectioned and forced prompts", async () => {
+    const bridge = await loadMcpBridge({
+      orchestrationInstructions: OMO_CODE_ORCHESTRATION_INSTRUCTIONS,
+      bridgeInstructions: "OMO native tools first; Cox only when explicitly requested.",
+    });
+    const hook = bridge.handlers.get("before_agent_start")!;
+    const sections: Record<string, string> = {};
+    await hook(
+      { systemPrompt: "base", systemPromptOptions: { sections } },
+      { ui: { notify: assert.fail } },
+    );
+    assert.include(sections.cox_orchestration!, "OMO's native `task`");
+    assert.include(sections.cox_orchestration!, "OMO native tools first");
+    assert.notInclude(sections.cox_orchestration!, "Pi without one uses Cox delegation");
+    const forced = await hook({ systemPrompt: "base" }, { ui: { notify: assert.fail } });
+    assert.include(forced!.systemPrompt, "report its original error");
+  });
+  it("appends native runtime guidance when its full prompt replacement bypasses section rendering", async () => {
+    const bridge = await loadMcpBridge({
+      orchestrationInstructions: OMO_CODE_ORCHESTRATION_INSTRUCTIONS,
+      appendSystemPrompt: true,
+    });
+    const result = await bridge.handlers.get("before_agent_start")!(
+      { systemPrompt: "OMO full prompt", systemPromptOptions: { sections: {} } },
+      { ui: { notify: assert.fail } },
+    );
+    assert.include(result!.systemPrompt, "OMO full prompt");
+    assert.include(result!.systemPrompt, "OMO's native `task`");
+  });
   it.each([
     {
       name: "on Pi builds without prompt sections",
@@ -78,7 +108,10 @@ describe("Pi orchestration prompt section", () => {
       assert.include(result!.systemPrompt, "orchestrator_capabilities");
       assert.include(result!.systemPrompt, "mcp__cox__delegate_task");
       assert.include(result!.systemPrompt, "task, not prompt");
-      assert.include(result!.systemPrompt, "Native task is not a fallback");
+      assert.include(
+        result!.systemPrompt,
+        "Never invent native task or silently switch delegation tools",
+      );
     }
   });
 });

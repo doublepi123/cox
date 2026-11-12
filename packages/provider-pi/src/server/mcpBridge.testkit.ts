@@ -67,6 +67,9 @@ export async function loadMcpBridge(
     readonly catalogNames?: ReadonlyArray<string>;
     readonly runtimeMode?: string;
     readonly inputSchema?: Record<string, unknown>;
+    readonly orchestrationInstructions?: string;
+    readonly bridgeInstructions?: string;
+    readonly appendSystemPrompt?: boolean;
   } = {},
 ) {
   const handlers = new Map<string, AgentStartHook>();
@@ -115,7 +118,12 @@ export async function loadMcpBridge(
     ),
   );
   const bridge: { ensureReady: () => Promise<void>; getHealth: () => BridgeHealth } =
-    await NodeVM.runInNewContext(`${source}\nt3McpExtension(pi)`, {
+    await NodeVM.runInNewContext(`${source}\nt3McpExtension(pi, bridgeOptions)`, {
+      bridgeOptions: {
+        orchestrationInstructions: options.orchestrationInstructions,
+        bridgeInstructions: options.bridgeInstructions,
+        appendSystemPrompt: options.appendSystemPrompt,
+      },
       process: {
         env: {
           T3_MCP_URL: "http://fixture.invalid/mcp",

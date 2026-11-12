@@ -271,6 +271,13 @@ for the root lifecycle to finish, including children and background work. Stop p
 root and cancels its unfinished tasks; a new message continues the saved conversation.
 Native child approvals are presented through Cox. Managed sessions use only bound models,
 including explicit task model overrides, and keep upstream credentials in the Cox gateway.
+OMO native `task` children are shown in Cox's subagent list with their role, actual model,
+task, status and output. Recent completed or failed native tasks remain expandable; restoring
+the session refreshes their snapshots without spawning replacement agents.
+All providers prefer their available native subagent tools for ordinary delegation and parallel work.
+Cox delegation is reserved for an explicit Cox agent/provider request or a required capability the
+native tool does not support, including Pi instances without a native subagent extension. Native
+errors are reported without silently switching tools or providers.
 OMO's structured Todo list is mirrored into Cox's Tasks panel separately from native child tasks.
 Phase names and task progress follow the current session branch; continuing or restoring a session
 refreshes its Todo snapshot. Dropped tasks and explicit clears are reflected without parsing chat text.

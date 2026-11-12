@@ -24,7 +24,7 @@ const RUNTIME_MODE_ENV = ${JSON.stringify(T3_PI_RUNTIME_MODE_ENV)};
 const EXTENSION_PATH_ENV = ${JSON.stringify(T3_PI_MCP_EXTENSION_PATH_ENV)};
 const SERVICE_TIER_COMMAND = ${JSON.stringify(PI_T3_SERVICE_TIER_COMMAND)};
 const ORCHESTRATION_INSTRUCTIONS = ${JSON.stringify(T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim())};
-const BRIDGE_INSTRUCTIONS = "In Pi and OMO, every Cox tool named in these instructions maps only to mcp__cox__<name>. Use mcp__cox__orchestrator_capabilities, mcp__cox__delegate_task, and mcp__cox__task_status, never a same-named native tool. mcp__cox__delegate_task takes the work in task, not prompt. Discover optional tools with tool_search using their full mcp__cox__ names (source: extension, not mcp); if search is unavailable, use the declared full names. Native task is not a fallback for unavailable, excluded, or declined Cox delegation. Use native task only when the native-subagent conditions above are satisfied.";
+const BRIDGE_INSTRUCTIONS = "Every Cox tool named in these instructions maps only to mcp__cox__<name>. Use full names such as mcp__cox__orchestrator_capabilities, mcp__cox__delegate_task, and mcp__cox__task_status, never a same-named native tool. mcp__cox__delegate_task takes the work in task, not prompt. Discover optional tools with tool_search using their full mcp__cox__ names (source: extension, not mcp); if search is unavailable, use the declared full names. Prefer an available native subagent extension; Pi without one uses Cox delegation. Never invent native task or silently switch delegation tools after an error, exclusion, or denial.";
 const PROTOCOL = "2025-06-18";
 const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_CHANGE_TOOLS = new Set(${JSON.stringify(PI_FILE_CHANGE_TOOLS)});
@@ -244,7 +244,7 @@ function createMcpClient(endpoint: string, token: string) {
   };
 }
 
-export default async function t3McpExtension(pi: ExtensionAPI) {
+export default async function t3McpExtension(pi: ExtensionAPI, options?: { readonly orchestrationInstructions?: string; readonly bridgeInstructions?: string; readonly appendSystemPrompt?: boolean }) {
   // RPC has no trust prompt, so Pi skips an untrusted folder's protected resources. Session
   // replacement reruns this factory without project_trust, and T3 drops notices outside a turn,
   // so check each session's first turn. An explicit --no-approve is deliberate and stays quiet.
@@ -374,7 +374,20 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
 
   const endpoint = env(URL_ENV);
   const token = env(TOKEN_ENV);
+  const installGuidance = (reconcile?: (ctx: ExtensionContext) => Promise<void>) => {
+    pi.on("before_agent_start", async (event, ctx) => {
+      await reconcile?.(ctx);
+      const instructions = (options?.orchestrationInstructions ?? ORCHESTRATION_INSTRUCTIONS) + "\\n\\n" + (options?.bridgeInstructions ?? BRIDGE_INSTRUCTIONS);
+      const sections = event.systemPromptOptions?.sections;
+      if (!options?.appendSystemPrompt && sections && typeof sections === "object" && event.systemPromptOptions?.forceSystemPrompt === undefined) {
+        sections.cox_orchestration = instructions;
+        return undefined;
+      }
+      return { systemPrompt: event.systemPrompt + "\\n\\n" + instructions };
+    }, options?.appendSystemPrompt ? { runLast: true } : undefined);
+  };
   if (endpoint === undefined || token === undefined) {
+    if (options?.orchestrationInstructions !== undefined) installGuidance();
     pi.on("session_start", async (_event, ctx) => {
       ctx.ui.notify(
         "cox MCP unavailable: T3_MCP_URL or T3_MCP_BEARER_TOKEN is missing.",
@@ -511,17 +524,7 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
   });
 
   // Keep guidance in the system prompt so leading slash commands still expand.
-  pi.on("before_agent_start", async (event, ctx) => {
-    await startAndReconcile(ctx);
-    const instructions = ORCHESTRATION_INSTRUCTIONS + "\\n\\n" + BRIDGE_INSTRUCTIONS;
-    const sections = event.systemPromptOptions?.sections;
-    if (sections && typeof sections === "object" && event.systemPromptOptions?.forceSystemPrompt === undefined) {
-      // A full prompt override bypasses Pi's later section rendering.
-      sections.cox_orchestration = instructions;
-      return undefined;
-    }
-    return { systemPrompt: event.systemPrompt + "\\n\\n" + instructions };
-  });
+  installGuidance(startAndReconcile);
 
   return {
     async ensureReady() {

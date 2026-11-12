@@ -61,9 +61,14 @@ describe("Codex orchestration context", () => {
       .map(([, entry]) => entry.value)
       .join("\n");
 
-    NodeAssert.ok(orchestration.includes("use your native tool when the child uses your provider"));
-    NodeAssert.ok(orchestration.includes("`run_in_background:false`"));
-    NodeAssert.ok(orchestration.includes("A native type running another provider's model"));
+    NodeAssert.ok(orchestration.includes("prefer your own available native subagent tools"));
+    NodeAssert.ok(
+      orchestration.includes(
+        "a different child model or native background task alone does not require Cox delegation",
+      ),
+    );
+    NodeAssert.ok(orchestration.includes("when no native subagent capability exists"));
+    NodeAssert.ok(orchestration.includes("never silently switch to Cox delegation"));
     NodeAssert.ok(
       orchestration.includes("Every new delegate review or re-check is a new `delegate_task`"),
     );

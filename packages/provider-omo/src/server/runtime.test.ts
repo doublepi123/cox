@@ -3,6 +3,7 @@ import {
   OmoLifecycle,
   omoSessionState,
   omoTaskEvent,
+  OmoTaskUpdates,
   omoPermissionRequest,
   omoStartupFailure,
 } from "./runtime.ts";
@@ -149,6 +150,65 @@ describe("OMO root work lifecycle", () => {
 });
 
 describe("OMO native task snapshots", () => {
+  it("binds snapshots to the active native session, resets on switch and rejects late foreign events", () => {
+    const updates = new OmoTaskUpdates();
+    const snapshot = {
+      parent_session_id: "parent",
+      tasks: [{ task_id: "st_1", status: "running" }],
+    };
+    expect(updates.observe(snapshot)).toBeUndefined();
+    updates.bind({ sessionId: "parent", sessionFile: "/parent.jsonl" });
+    expect(updates.observe(snapshot)).toMatchObject({
+      type: "t3.native_subagents",
+      nativeThreadId: "/parent.jsonl",
+    });
+    expect(updates.observe({ ...snapshot, parent_session_id: "other" })).toBeUndefined();
+    updates.reset();
+    expect(updates.observe(snapshot)).toBeUndefined();
+    updates.bind({ sessionId: "other", sessionFile: "/other.jsonl" });
+    expect(updates.observe(snapshot)).toBeUndefined();
+  });
+
+  it("reports actual effective models, native status and completion times without restarting tasks", () => {
+    expect(
+      omoTaskEvent(
+        {
+          parent_session_id: "p",
+          tasks: [
+            {
+              task_id: "a",
+              agent_type: "atlas",
+              status: "pending",
+              model: "requested",
+              effective_model: { display: "actual" },
+              created_at: "2026-11-12T00:00:00Z",
+              updated_at: "2026-11-12T00:01:00Z",
+            },
+            { task_id: "e", agent_type: "explore", status: "paused" },
+            {
+              task_id: "o",
+              agent_type: "oracle",
+              status: "running",
+              awaiting_input: { reason: "permission" },
+            },
+            { task_id: "c", status: "cancelled", updated_at: "2026-11-12T00:02:00Z" },
+            { task_id: "x", status: "unknown" },
+          ],
+        },
+        "/parent.jsonl",
+      ),
+    ).toMatchObject({
+      nativeThreadId: "/parent.jsonl",
+      details: {
+        results: [
+          { agent: "atlas", model: "actual", status: "pending", startedAt: "2026-11-12T00:00:00Z" },
+          { agent: "explore", status: "waiting" },
+          { agent: "oracle", status: "waiting" },
+          { status: "cancelled", completedAt: "2026-11-12T00:02:00Z" },
+        ],
+      },
+    });
+  });
   it.each([
     "Permission required: edit\n\nFile: fixture",
     "st_worker: Permission required: edit\n\nFile: fixture",

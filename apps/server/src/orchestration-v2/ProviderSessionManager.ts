@@ -276,9 +276,12 @@ function sessionKey(providerSessionId: ProviderSessionId): string {
   return String(providerSessionId);
 }
 
-function sessionScopedRuntimeRequestThreadId(
+function sessionScopedArtifactThreadId(
   event: ProviderAdapter.ProviderAdapterV2Event,
+  busyTurns: ReadonlySet<string>,
 ): ThreadId | undefined {
+  const threadBusy = (id: ProviderThreadId | null) =>
+    id !== null && [...busyTurns].some((key) => key.startsWith(busyTurnPrefix(id)));
   switch (event.type) {
     case "runtime_request.updated":
       return event.runtimeRequest.providerTurnId === null ? event.threadId : undefined;
@@ -287,9 +290,26 @@ function sessionScopedRuntimeRequestThreadId(
         ? event.node.threadId
         : undefined;
     case "turn_item.updated":
+      if (
+        event.driver === "omo" &&
+        event.turnItem.type === "subagent" &&
+        event.turnItem.origin === "provider_native" &&
+        (event.turnItem.runId === null ||
+          (event.turnItem.providerThreadId !== null &&
+            !threadBusy(event.turnItem.providerThreadId)))
+      )
+        return event.turnItem.threadId;
       return event.turnItem.runId === null &&
         (event.turnItem.type === "approval_request" || event.turnItem.type === "user_input_request")
         ? event.turnItem.threadId
+        : undefined;
+    case "subagent.updated":
+      return event.driver === "omo" &&
+        event.subagent.origin === "provider_native" &&
+        (event.subagent.runId === null ||
+          (event.subagent.providerThreadId !== null &&
+            !threadBusy(event.subagent.providerThreadId)))
+        ? event.subagent.threadId
         : undefined;
     default:
       return undefined;
@@ -2064,31 +2084,136 @@ export const layerWithOptions = (
                   // (project trust, login, or session-switch hooks). Persist
                   // their runless request artifacts directly so the normal T3
                   // request UI can answer them and unblock session setup.
-                  const threadId = sessionScopedRuntimeRequestThreadId(event);
+                  const currentActivity = (yield* Ref.get(sessions)).get(
+                    sessionKey(entry.runtime.providerSessionId),
+                  );
+                  let threadId = sessionScopedArtifactThreadId(
+                    event,
+                    currentActivity?.busyTurns ?? new Set(),
+                  );
+                  const nativeTask =
+                    event.driver === "omo"
+                      ? event.type === "subagent.updated"
+                        ? event.subagent
+                        : event.type === "turn_item.updated" && event.turnItem.type === "subagent"
+                          ? event.turnItem
+                          : undefined
+                      : undefined;
+                  if (
+                    threadId === undefined &&
+                    nativeTask?.origin === "provider_native" &&
+                    nativeTask.runId !== null &&
+                    nativeTask.providerThreadId !== null
+                  ) {
+                    const recorded = yield* projectionStore
+                      .getThreadRecords(nativeTask.threadId, ["runs"], {
+                        runIds: [nativeTask.runId],
+                      })
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new ProviderAdapter.ProviderAdapterEventStreamError({
+                              driver: entry.runtime.driver,
+                              providerSessionId: entry.runtime.providerSessionId,
+                              cause,
+                            }),
+                        ),
+                      );
+                    const run = recorded.runs[0];
+                    if (
+                      run !== undefined &&
+                      !currentActivity?.busyTurns.has(
+                        busyTurnKey(nativeTask.providerThreadId, run.ordinal),
+                      )
+                    )
+                      threadId = nativeTask.threadId;
+                  }
                   if (threadId !== undefined) {
                     yield* Effect.gen(function* () {
                       const current = (yield* Ref.get(sessions)).get(
                         sessionKey(entry.runtime.providerSessionId),
                       );
                       if (current?.runtime !== entry.runtime) return;
-                      yield* providerEventIngestor
-                        .ingestNormalized({
-                          providerSessionId: entry.runtime.providerSessionId,
-                          providerInstanceId: entry.runtime.instanceId,
+                      if (
+                        event.driver === "omo" &&
+                        (event.type === "subagent.updated" ||
+                          (event.type === "turn_item.updated" &&
+                            event.turnItem.type === "subagent")) &&
+                        !current.attachedThreadIds.has(threadId)
+                      )
+                        return;
+                      let persistedEvent = event;
+                      if (
+                        event.driver === "omo" &&
+                        event.type === "subagent.updated" &&
+                        event.subagent.runId === null
+                      ) {
+                        const previous = (yield* projectionStore.getThreadRecords(
                           threadId,
-                          event,
-                        })
-                        .pipe(
-                          Effect.mapError(
-                            (cause) =>
-                              new ProviderAdapter.ProviderAdapterEventStreamError({
-                                driver: entry.runtime.driver,
-                                providerSessionId: entry.runtime.providerSessionId,
-                                cause,
-                              }),
-                          ),
-                        );
-                    }).pipe(entry.requestEventPermit.withPermits(1));
+                          ["subagents"],
+                          { subagentIds: [event.subagent.id] },
+                        )).subagents[0];
+                        if (previous !== undefined) {
+                          if (
+                            DateTime.toEpochMillis(previous.updatedAt) >
+                            DateTime.toEpochMillis(event.subagent.updatedAt)
+                          )
+                            return;
+                          persistedEvent = {
+                            ...event,
+                            subagent: {
+                              ...event.subagent,
+                              runId: previous.runId,
+                              parentNodeId: previous.parentNodeId,
+                              startedAt: previous.startedAt ?? event.subagent.startedAt,
+                            },
+                          };
+                        }
+                      } else if (
+                        event.driver === "omo" &&
+                        event.type === "turn_item.updated" &&
+                        event.turnItem.type === "subagent" &&
+                        event.turnItem.runId === null
+                      ) {
+                        const previous = yield* projectionStore.getTurnItem({
+                          threadId,
+                          itemId: event.turnItem.id,
+                        });
+                        if (previous?.type === "subagent") {
+                          if (
+                            DateTime.toEpochMillis(previous.updatedAt) >
+                            DateTime.toEpochMillis(event.turnItem.updatedAt)
+                          )
+                            return;
+                          persistedEvent = {
+                            ...event,
+                            turnItem: {
+                              ...event.turnItem,
+                              runId: previous.runId,
+                              providerTurnId: previous.providerTurnId,
+                              ordinal: previous.ordinal,
+                              startedAt: previous.startedAt ?? event.turnItem.startedAt,
+                            },
+                          };
+                        }
+                      }
+                      yield* providerEventIngestor.ingestNormalized({
+                        providerSessionId: entry.runtime.providerSessionId,
+                        providerInstanceId: entry.runtime.instanceId,
+                        threadId,
+                        event: persistedEvent,
+                      });
+                    }).pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new ProviderAdapter.ProviderAdapterEventStreamError({
+                            driver: entry.runtime.driver,
+                            providerSessionId: entry.runtime.providerSessionId,
+                            cause,
+                          }),
+                      ),
+                      entry.requestEventPermit.withPermits(1),
+                    );
                     return;
                   }
                   yield* publishToSubscribers(entry.eventSubscribers, { type: "event", event });

@@ -98,11 +98,12 @@ export function omoSessionState(value: unknown, ephemeral = false): unknown {
     : { ...state, isStreaming: true };
 }
 
-export function omoTaskEvent(value: unknown): PiRpcRecord | undefined {
+export function omoTaskEvent(value: unknown, nativeThreadId?: string): PiRpcRecord | undefined {
   const data = record(value);
   if (!Array.isArray(data.tasks)) return undefined;
   return {
     type: "t3.native_subagents",
+    ...(nativeThreadId === undefined ? {} : { nativeThreadId }),
     details: {
       results: data.tasks.flatMap((value) => {
         const task = record(value);
@@ -110,6 +111,18 @@ export function omoTaskEvent(value: unknown): PiRpcRecord | undefined {
         const finished = ["completed", "error", "cancelled", "interrupted", "lost"].includes(
           task.status,
         );
+        const status =
+          task.status === "pending"
+            ? "pending"
+            : task.status === "paused" ||
+                (task.status === "running" && task.awaiting_input !== undefined)
+              ? "waiting"
+              : task.status === "error" || task.status === "lost"
+                ? "failed"
+                : ["running", "completed", "cancelled", "interrupted"].includes(task.status)
+                  ? task.status
+                  : undefined;
+        if (status === undefined) return [];
         const output =
           task.final_response ??
           task.error_message ??
@@ -123,12 +136,18 @@ export function omoTaskEvent(value: unknown): PiRpcRecord | undefined {
                 : task.task_id,
             taskRef: task.task_id,
             startedAt: task.created_at,
+            updatedAt: task.updated_at,
+            ...(finished ? { completedAt: task.updated_at } : {}),
+            status,
             agent:
               task.name !== task.task_id
                 ? (task.name ?? task.agent_type ?? task.category ?? "OMO task")
                 : (task.agent_type ?? task.category ?? "OMO task"),
             task: task.description ?? task.task_summary ?? task.task_id,
-            model: task.model,
+            model:
+              record(task.effective_model).display ??
+              record(task.resolved_model).display ??
+              task.model,
             finished,
             stopReason:
               task.status === "cancelled" || task.status === "interrupted"
@@ -148,6 +167,32 @@ export function omoTaskEvent(value: unknown): PiRpcRecord | undefined {
       }),
     },
   };
+}
+
+export class OmoTaskUpdates {
+  private sessionId: string | undefined;
+  private sessionFile: string | undefined;
+
+  reset() {
+    this.sessionId = undefined;
+    this.sessionFile = undefined;
+  }
+
+  bind(value: unknown) {
+    const state = record(value);
+    this.sessionId = typeof state.sessionId === "string" ? state.sessionId : undefined;
+    this.sessionFile = typeof state.sessionFile === "string" ? state.sessionFile : undefined;
+  }
+
+  observe(value: unknown): PiRpcRecord | undefined {
+    if (
+      this.sessionId === undefined ||
+      this.sessionFile === undefined ||
+      record(value).parent_session_id !== this.sessionId
+    )
+      return undefined;
+    return omoTaskEvent(value, this.sessionFile);
+  }
 }
 
 export function omoPermissionRequest(event: PiRpcRecord): PiRpcRecord | undefined {
@@ -210,6 +255,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
     const events = yield* Queue.unbounded<PiRpcRecord, PiRpcError>();
     const ephemeral = options.env.COX_OMO_EPHEMERAL === "1";
     const lifecycle = new OmoLifecycle(ephemeral);
+    const taskUpdates = new OmoTaskUpdates();
     const permissions = new Set<string>();
     const snapshotTasks = (sessionId: string) =>
       connection.request(
@@ -243,7 +289,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           event = permission;
         }
         if (event.type === "extension_event" && event.name === "omo.task.updated") {
-          const taskEvent = omoTaskEvent(event.data);
+          const taskEvent = taskUpdates.observe(event.data);
           if (taskEvent !== undefined) yield* Queue.offer(events, taskEvent);
           continue;
         }
@@ -255,7 +301,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           const root = record(event.lifecycle).rootSessionId;
           if (typeof root === "string") {
             const snapshot = yield* snapshotTasks(root).pipe(Effect.orElseSucceed(() => undefined));
-            const taskEvent = omoTaskEvent(snapshot);
+            const taskEvent = taskUpdates.observe(snapshot);
             if (taskEvent !== undefined) yield* Queue.offer(events, taskEvent);
           }
         }
@@ -303,7 +349,20 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
             operation: "set_model",
             detail: "The requested model is outside this Cox model service binding.",
           });
-        if (["new_session", "switch_session"].includes(String(input.type))) lifecycle.reset();
+        if (["new_session", "switch_session"].includes(String(input.type))) {
+          lifecycle.reset();
+          taskUpdates.reset();
+        }
+        if (input.type === "extension_request" && input.name === "cox.omo.tasks") {
+          const state = record(yield* connection.request({ type: "get_state" }, timeoutMs));
+          taskUpdates.bind(state);
+          if (
+            typeof state.sessionId !== "string" ||
+            record(input.data).nativeThreadId !== state.sessionFile
+          )
+            return undefined;
+          return taskUpdates.observe(yield* snapshotTasks(state.sessionId));
+        }
         const response = yield* connection.request(
           input.type === "abort"
             ? { ...input, intent: "stop", awaitIdle: true, clearQueue: true, graceMs: 2_000 }
@@ -342,7 +401,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
                 { concurrency: 4, discard: true },
               );
               const final = record(yield* snapshotTasks(root));
-              const taskEvent = omoTaskEvent(final);
+              const taskEvent = taskUpdates.observe(final);
               if (taskEvent !== undefined) yield* Queue.offer(events, taskEvent);
               if (
                 !Array.isArray(final.tasks) ||
@@ -370,6 +429,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           };
         }
         if (input.type !== "get_state") return response;
+        taskUpdates.bind(response);
         return yield* Effect.try({
           try: () => omoSessionState(response, ephemeral),
           catch: (cause) => new PiRpcError({ operation: "get_state", cause }),
