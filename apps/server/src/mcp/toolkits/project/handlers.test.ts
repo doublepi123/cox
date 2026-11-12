@@ -185,7 +185,7 @@ it.effect(
           ),
         );
         const result = yield* toolkit
-          .handle("t3_thread_launch", targeted === false ? input : { ...input, projectId })
+          .handle("cox_thread_launch", targeted === false ? input : { ...input, projectId })
           .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
         return { result: result.at(-1)?.result, launched, projectId, modelSelection };
       });
@@ -276,7 +276,7 @@ it.effect("a launch steps an inherited mode down to the provider's, and refuses 
         ),
       );
       const result = yield* toolkit
-        .handle("t3_thread_launch", {
+        .handle("cox_thread_launch", {
           projectId,
           title: "Fix",
           modelSelection: { instanceId: pi, model: "pi-model" },
@@ -312,7 +312,7 @@ it.effect("a launch retried with the same clientRequestId replays the first one"
     );
     const launch = (clientRequestId: string | undefined) =>
       toolkit
-        .handle("t3_thread_launch", {
+        .handle("cox_thread_launch", {
           title: "Fix",
           projectId,
           message: "Fix the bug",
@@ -350,7 +350,7 @@ it.effect("a launch key of any length or content gives a short id and never a de
     );
     const launch = (clientRequestId: string) =>
       toolkit
-        .handle("t3_thread_launch", { title: "Fix", projectId, clientRequestId })
+        .handle("cox_thread_launch", { title: "Fix", projectId, clientRequestId })
         .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
     // Percent-encoding would grow this six times; scratch folders are named from the id.
@@ -378,7 +378,7 @@ it.effect("a retried launch replays after the project loses its default model", 
       ),
     );
     const launch = toolkit
-      .handle("t3_thread_launch", { title: "Fix", projectId, clientRequestId: "fix-1" })
+      .handle("cox_thread_launch", { title: "Fix", projectId, clientRequestId: "fix-1" })
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
     yield* launch;
@@ -424,7 +424,7 @@ it.effect("a launch binds only an existing checkout that is one of the project's
     );
     const launchInto = (worktreePath: string) =>
       toolkit
-        .handle("t3_thread_launch", {
+        .handle("cox_thread_launch", {
           title: "Fix",
           projectId,
           workspaceStrategy: { type: "existing_worktree", worktreePath },
@@ -476,7 +476,7 @@ it.effect("a launch into a new worktree creates nothing when its base ref has no
     );
     const launchFrom = (baseRef: string) =>
       toolkit
-        .handle("t3_thread_launch", {
+        .handle("cox_thread_launch", {
           title: "Fix",
           projectId,
           workspaceStrategy: { type: "worktree", baseRef, startFromOrigin: false },
@@ -520,7 +520,7 @@ it.effect("a retried worktree launch replays after its base ref is gone", () =>
       ),
     );
     const launch = toolkit
-      .handle("t3_thread_launch", {
+      .handle("cox_thread_launch", {
         title: "Fix",
         projectId,
         clientRequestId: "fix-worktree",
@@ -575,7 +575,7 @@ it.effect("a client launches with the fallback for an exhausted default", () =>
       ),
     );
     const result = yield* toolkit
-      .handle("t3_thread_launch", {
+      .handle("cox_thread_launch", {
         projectId,
         title: "Fallback",
       })
@@ -624,7 +624,7 @@ it.effect("deleting a project through MCP also discards its clone record", () =>
     );
 
     yield* toolkit
-      .handle("t3_project_delete", { projectId: harness.projectId })
+      .handle("cox_project_delete", { projectId: harness.projectId })
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
     expect(discarded).toEqual([harness.projectId]);
@@ -649,7 +649,7 @@ it.effect("an update the project refuses tells the agent why", () =>
     );
 
     const refused = yield* toolkit
-      .handle("t3_project_update", {
+      .handle("cox_project_update", {
         projectId: harness.projectId,
         projectIcon: { kind: "monogram", text: "ABC", color: "blue" },
       })

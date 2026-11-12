@@ -206,7 +206,7 @@ export function cursorMcpServers(
     return undefined;
   }
   return {
-    "t3-code": {
+    cox: {
       type: "http",
       url: session.endpoint,
       headers: {

@@ -80,7 +80,7 @@ const claudeSystemAppend = () => {
     nativeThreadId: "context-budget",
     resume: false,
     cwd: null,
-    mcpServers: { "t3-code": { type: "http", url: "http://127.0.0.1/mcp" } },
+    mcpServers: { cox: { type: "http", url: "http://127.0.0.1/mcp" } },
   });
   return typeof systemPrompt === "object" && "append" in systemPrompt ? systemPrompt.append : "";
 };
@@ -98,6 +98,14 @@ const codexAdditionalContext = () =>
 it.effect("agent context matches the committed budget", () =>
   Effect.gen(function* () {
     const mcp = yield* McpServer.McpServer;
+    const names = mcp.tools.map(({ tool }) => tool.name);
+    expect(names.filter((name) => name.startsWith("t3_"))).toEqual([]);
+    expect(names).toContain("cox_thread_move");
+    expect(names).toContain("cox_thread_read");
+    expect(names).toContain("cox_project_create");
+    for (const { tool } of mcp.tools) {
+      expect(tool.description, tool.name).not.toMatch(/\bt3_[a-z_]+/);
+    }
     const measured = {
       claudeSystemAppendBytes: utf8Bytes(claudeSystemAppend()),
       codexAdditionalContextBytes: utf8Bytes(codexAdditionalContext()),

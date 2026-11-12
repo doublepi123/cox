@@ -1,5 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import type { SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
 import { expect, it } from "@effect/vitest";
+import * as NodeModule from "node:module";
 import {
   ModelServiceConfig,
   DEFAULT_MODEL_SERVICE_RECOVERY,
@@ -39,6 +41,33 @@ const serviceId = ModelServiceId.make("shared-test");
 const instanceId = ProviderInstanceId.make("bound-test");
 const decodeService = Schema.decodeSync(ModelServiceConfig);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
+const requireCjs = NodeModule.createRequire(import.meta.url);
+const {
+  default: Anthropic,
+}: {
+  default: new (options: {
+    baseURL: string;
+    apiKey: string;
+    authToken: null;
+    maxRetries: number;
+    fetch: typeof globalThis.fetch;
+  }) => {
+    beta: {
+      messages: {
+        create: (
+          body: {
+            model: string;
+            max_tokens: number;
+            messages: { role: "user"; content: string }[];
+          },
+          options?: { query?: { beta: string } },
+        ) => Promise<SDKAssistantMessage["message"]>;
+      };
+    };
+  };
+} = NodeModule.createRequire(requireCjs.resolve("@anthropic-ai/claude-agent-sdk"))(
+  "@anthropic-ai/sdk",
+);
 const service = decodeService({
   name: "Shared test",
   baseUrl: "https://upstream.test/v1",
@@ -290,8 +319,37 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
         ? fresh.apiKey
         : current[instanceId]!.environment?.find((item) => item.name === "COX_MODEL_SERVICE_KEY")
             ?.value;
+    return current;
   });
-  return { gateway, instances, materialized, config, token, calls, invoke, settings, restart };
+  const context = yield* Effect.context<never>();
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    expect(new URL(request.url).origin).toBe("http://127.0.0.1:0");
+    return Effect.runPromiseWith(context)(
+      Effect.gen(function* () {
+        const response = yield* gateway.handle.pipe(
+          Effect.provideService(
+            HttpServerRequest.HttpServerRequest,
+            HttpServerRequest.fromWeb(request),
+          ),
+        );
+        const body = yield* Effect.promise(() => HttpServerResponse.toWeb(response).arrayBuffer());
+        return new Response(body, { status: response.status, headers: response.headers });
+      }).pipe(Effect.scoped),
+    );
+  };
+  return {
+    gateway,
+    instances,
+    materialized,
+    config,
+    token,
+    calls,
+    invoke,
+    settings,
+    restart,
+    fetch,
+  };
 });
 
 it.layer(layer)("model service gateway", (it) => {
@@ -363,6 +421,185 @@ it.layer(layer)("model service gateway", (it) => {
         }
         expect(h.calls).toHaveLength(4);
         expect(body.reasoning_effort).toBe("max");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["pi", "omo"] as const)(
+    "routes %s Anthropic SDK requests without a duplicate /v1 after regeneration and restart",
+    (driver) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver,
+          protocol: "anthropic-messages",
+          respond: () =>
+            Response.json({
+              id: "msg-local-test",
+              type: "message",
+              role: "assistant",
+              model: "Vendor/Exact",
+              content: [{ type: "text", text: "local gateway answer" }],
+              stop_reason: "end_turn",
+              stop_sequence: null,
+              usage: { input_tokens: 5, output_tokens: 2 },
+            }),
+        });
+        const fs = yield* FileSystem.FileSystem;
+        const file = String(h.config.agentDir) + "/models.json";
+        const requests: Request[] = [];
+        let materialized = h.materialized;
+        const body = {
+          model: "Vendor/Exact",
+          max_tokens: 128,
+          messages: [{ role: "user" as const, content: "hello" }],
+        };
+        for (const phase of ["generated", "regenerated", "restarted"]) {
+          if (phase !== "generated") {
+            const stale = record(JSON.parse(yield* fs.readFileString(file)));
+            record(record(stale.providers).cox).baseUrl = "http://127.0.0.1:0/api/model-gateway/v1";
+            yield* fs.writeFileString(file, JSON.stringify(stale));
+            materialized =
+              phase === "restarted"
+                ? yield* h.restart()
+                : yield* h.gateway.materialize(yield* h.settings.getSettings, materialized);
+          }
+          const generated = record(JSON.parse(yield* fs.readFileString(file)));
+          const provider = record(record(generated.providers).cox);
+          const key = materialized[instanceId]!.environment?.find(
+            (entry) => entry.name === "COX_MODEL_SERVICE_KEY",
+          )?.value;
+          if (typeof key !== "string") throw new Error("Expected a local gateway key");
+          const client = new Anthropic({
+            baseURL: String(provider.baseUrl),
+            apiKey: key,
+            authToken: null,
+            maxRetries: 0,
+            fetch: (input, init) => {
+              const request = new Request(input, init);
+              requests.push(request);
+              return h.fetch(request);
+            },
+          });
+          expect(provider.baseUrl).toBe("http://127.0.0.1:0/api/model-gateway");
+          expect(provider.api).toBe("anthropic-messages");
+          expect(provider.apiKey).toBe("$COX_MODEL_SERVICE_KEY");
+          for (const query of [undefined, { beta: "true" }]) {
+            const response = yield* Effect.promise(() =>
+              client.beta.messages.create(body, query ? { query } : undefined),
+            );
+            expect(response.content).toEqual([{ type: "text", text: "local gateway answer" }]);
+            const request = requests.at(-1)!;
+            expect(new URL(request.url).pathname).toBe("/api/model-gateway/v1/messages");
+            if (query) expect(new URL(request.url).searchParams.get("beta")).toBe("true");
+            expect(
+              request.headers.get("x-api-key") ??
+                request.headers.get("authorization")?.replace(/^Bearer /i, ""),
+            ).toBe(key);
+            expect(h.calls.at(-1)?.url).toBe("https://upstream.test/v1/messages");
+            expect(sentBody(h.calls.at(-1)!)).toMatchObject(body);
+          }
+        }
+        expect(requests).toHaveLength(6);
+        expect(h.calls).toHaveLength(6);
+        expect((yield* h.invoke("/v1/v1/messages", body)).status).toBe(404);
+        expect(h.calls).toHaveLength(6);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(
+    (["pi", "omo"] as const).flatMap((driver) => [
+      {
+        driver,
+        protocol: "openai-responses" as const,
+        api: "openai-responses",
+        suffix: "/v1",
+        endpoint: "/responses",
+        body: { input: "hello" },
+        response: responsesAnswer,
+      },
+      {
+        driver,
+        protocol: "openai-chat" as const,
+        api: "openai-completions",
+        suffix: "/v1",
+        endpoint: "/chat/completions",
+        body: { messages: [{ role: "user", content: "hello" }] },
+        response: {
+          choices: [{ message: { role: "assistant", content: "answer" }, finish_reason: "stop" }],
+        },
+      },
+      {
+        driver,
+        protocol: "anthropic-messages" as const,
+        api: "anthropic-messages",
+        suffix: "",
+        endpoint: "/v1/messages",
+        body: { messages: [{ role: "user", content: "hello" }], max_tokens: 128 },
+        response: {
+          type: "message",
+          content: [{ type: "text", text: "answer" }],
+          stop_reason: "end_turn",
+        },
+      },
+      {
+        driver,
+        protocol: "gemini" as const,
+        api: "google-generative-ai",
+        suffix: "/v1beta",
+        endpoint: "/models/Vendor%2FExact:generateContent",
+        body: { contents: [{ role: "user", parts: [{ text: "hello" }] }] },
+        response: { candidates: [{ content: { role: "model", parts: [{ text: "answer" }] } }] },
+      },
+    ]),
+  )(
+    "generates the native $driver endpoint and strict-field support for $protocol",
+    ({ driver, protocol, api, suffix, endpoint, body, response }) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver, protocol, respond: () => Response.json(response) });
+        const fs = yield* FileSystem.FileSystem;
+        const file = String(h.config.agentDir) + "/models.json";
+        let materialized = h.materialized;
+        for (const phase of ["generated", "regenerated", "restarted"]) {
+          if (phase === "regenerated")
+            materialized = yield* h.gateway.materialize(
+              yield* h.settings.getSettings,
+              materialized,
+            );
+          if (phase === "restarted") materialized = yield* h.restart();
+          const generated = JSON.parse(yield* fs.readFileString(file));
+          const provider = generated.providers.cox;
+          expect(provider.baseUrl).toBe("http://127.0.0.1:0/api/model-gateway" + suffix);
+          expect(provider.api).toBe(api);
+          expect(provider.apiKey).toBe("$COX_MODEL_SERVICE_KEY");
+          expect(provider.models[0]).toMatchObject({
+            id: "Vendor/Exact",
+            name: "Exact",
+            contextWindow: 64000,
+            maxTokens: 4000,
+          });
+          if (protocol === "openai-responses") {
+            expect(provider.compat).toEqual({ supportsStrictMode: true });
+          } else {
+            expect(Object.hasOwn(provider, "compat")).toBe(false);
+          }
+          const key = materialized[instanceId]!.environment?.find(
+            (entry) => entry.name === "COX_MODEL_SERVICE_KEY",
+          )?.value;
+          if (typeof key !== "string") throw new Error("Expected a local gateway key");
+          const result = yield* Effect.promise(() =>
+            h.fetch(String(provider.baseUrl) + endpoint, {
+              method: "POST",
+              headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+              body: JSON.stringify({ model: "Vendor/Exact", ...body }),
+            }),
+          );
+          expect(result.status).toBe(200);
+          expect(h.calls.at(-1)?.url).toBe(
+            "https://upstream.test/v1" +
+              (protocol === "anthropic-messages" ? "/messages" : endpoint),
+          );
+        }
+        expect(h.calls).toHaveLength(3);
+        expect(record(h.instances[instanceId]!.config)).toEqual({ launchArgs: "", retained: true });
       }).pipe(Effect.scoped),
   );
 
@@ -4538,38 +4775,6 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect.each([
-    ["openai-responses", "openai-responses"],
-    ["openai-chat", "openai-completions"],
-    ["anthropic-messages", "anthropic-messages"],
-    ["gemini", "google-generative-ai"],
-  ] as const)(
-    "only declares explicit strict-field support for Pi Responses (%s)",
-    ([protocol, api]) =>
-      Effect.gen(function* () {
-        const h = yield* harness({ driver: "pi", protocol });
-        const fs = yield* FileSystem.FileSystem;
-        const generated = JSON.parse(
-          yield* fs.readFileString(String(h.config.agentDir) + "/models.json"),
-        );
-        const provider = generated.providers.cox;
-        expect(provider.api).toBe(api);
-        expect(provider.apiKey).toBe("$COX_MODEL_SERVICE_KEY");
-        expect(provider.models[0]).toMatchObject({
-          id: "Vendor/Exact",
-          name: "Exact",
-          contextWindow: 64000,
-          maxTokens: 4000,
-        });
-        if (protocol === "openai-responses") {
-          expect(provider.compat).toEqual({ supportsStrictMode: true });
-        } else {
-          expect(Object.hasOwn(provider, "compat")).toBe(false);
-        }
-        expect(record(h.instances[instanceId]!.config)).toEqual({ launchArgs: "", retained: true });
-      }).pipe(Effect.scoped),
-  );
-
   it.effect("removes Pi Responses compatibility when the service switches protocols", () =>
     Effect.gen(function* () {
       const h = yield* harness({ driver: "pi", protocol: "openai-responses" });
@@ -4607,7 +4812,7 @@ it.layer(layer)("model service gateway", (it) => {
         model: "Vendor/Exact",
         input: "Read the current environment without specifying optional arguments.",
         tools: [
-          { type: "function", name: "t3_environment_read", parameters, strict: false },
+          { type: "function", name: "cox_environment_read", parameters, strict: false },
           {
             type: "function",
             name: "strict_tool",

@@ -125,49 +125,51 @@ function ThreadProjectMoveDialog(props: {
             )}
           </DialogDescription>
         </DialogHeader>
-        <DialogPanel className="flex min-h-0 flex-col gap-3">
-          <Input
-            ref={inputRef}
-            aria-label={t("Search projects")}
-            placeholder={t("Search projects...")}
-            value={query}
-            disabled={pending}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <div className="max-h-80 min-h-20 overflow-y-auto" aria-label={props.threadTitle}>
-            {visibleProjects.map((project) => (
-              <Button
-                key={project.id}
-                variant="ghost"
-                size="multiline"
-                align="start"
-                fill
-                aria-label={`${project.title} ${project.workspaceRoot}`}
-                disabled={pending}
-                onClick={() => void selectProject(project)}
-              >
-                <ProjectFavicon project={project} className="size-5 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{project.title}</span>
-                  <span className="block truncate text-muted-foreground text-xs font-normal">
-                    {project.workspaceRoot}
+        <DialogPanel>
+          <div className="flex min-h-0 flex-col gap-3">
+            <Input
+              ref={inputRef}
+              aria-label={t("Search projects")}
+              placeholder={t("Search projects...")}
+              value={query}
+              disabled={pending}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <div className="max-h-80 min-h-20 overflow-y-auto" aria-label={props.threadTitle}>
+              {visibleProjects.map((project) => (
+                <Button
+                  key={project.id}
+                  variant="ghost"
+                  size="multiline"
+                  align="start"
+                  fill
+                  aria-label={`${project.title} ${project.workspaceRoot}`}
+                  disabled={pending}
+                  onClick={() => void selectProject(project)}
+                >
+                  <ProjectFavicon project={project} className="size-5 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{project.title}</span>
+                    <span className="block truncate text-muted-foreground text-xs font-normal">
+                      {project.workspaceRoot}
+                    </span>
                   </span>
-                </span>
-              </Button>
-            ))}
-            {visibleProjects.length === 0 ? (
-              <p className="px-3 py-8 text-center text-muted-foreground text-sm">
-                {candidates.length === 0
-                  ? t("No other projects are available.")
-                  : t("No matching projects.")}
+                </Button>
+              ))}
+              {visibleProjects.length === 0 ? (
+                <p className="px-3 py-8 text-center text-muted-foreground text-sm">
+                  {candidates.length === 0
+                    ? t("No other projects are available.")
+                    : t("No matching projects.")}
+                </p>
+              ) : null}
+            </div>
+            {error ? (
+              <p role="alert" className="text-destructive text-xs">
+                {error}
               </p>
             ) : null}
           </div>
-          {error ? (
-            <p role="alert" className="text-destructive text-xs">
-              {error}
-            </p>
-          ) : null}
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={pending} onClick={close}>

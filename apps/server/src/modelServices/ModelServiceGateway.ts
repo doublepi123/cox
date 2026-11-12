@@ -344,7 +344,10 @@ export const make = Effect.gen(function* () {
           yield* write(path.join(agentDir, "models.json"), {
             providers: {
               cox: {
-                baseUrl: baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
+                baseUrl:
+                  protocol === "anthropic-messages"
+                    ? baseUrl
+                    : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
                 api: API_NAMES[protocol],
                 apiKey: "$COX_MODEL_SERVICE_KEY",
                 ...(protocol === "openai-responses"

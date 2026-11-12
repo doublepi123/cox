@@ -180,7 +180,7 @@ it("caps the side chat context block, keeping the newest parent items", () => {
   assert.isAtMost(context.length, 8_000);
   assert.isTrue(
     context.endsWith(
-      `Use t3_thread_read on thread ${parentThreadId} to see the main thread's live state.`,
+      `Use cox_thread_read on thread ${parentThreadId} to see the main thread's live state.`,
     ),
   );
 

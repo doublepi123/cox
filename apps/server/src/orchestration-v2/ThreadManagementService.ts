@@ -724,6 +724,7 @@ const make = Effect.gen(function* () {
           ),
         );
       case "thread.project.move":
+      case "thread.project.move-agent":
         return orchestrator.getThreadRecords(command.threadId, []).pipe(
           Effect.flatMap((projection) =>
             projection.thread.projectId === command.projectId

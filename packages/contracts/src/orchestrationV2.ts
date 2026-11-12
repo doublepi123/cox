@@ -3372,6 +3372,16 @@ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
 
 // Excluded from dispatchCommand so only the server can send these.
 const OrchestrationV2InternalCommand = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("thread.project.move-agent"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    projectId: ProjectId,
+    expectedProjectId: ProjectId,
+    runId: RunId,
+    providerSessionId: ProviderSessionId,
+    continuationPrompt: TrimmedNonEmptyString.check(Schema.isMaxLength(120_000)),
+  }),
   /** Moves a thread to a project rooted at the folder it already works in, so its cwd never changes. */
   Schema.Struct({
     type: Schema.Literal("thread.project.adopt-folder"),

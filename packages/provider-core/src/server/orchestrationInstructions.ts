@@ -8,11 +8,12 @@ Ordinary coding tasks need no Cox tools. Cox controls this local machine only; r
 
 - Subagents: use your native tool when the child uses your provider, a model it offers, and no settings beyond yours, and it finishes in this turn (Claude \`Agent\` always with \`run_in_background:false\`; Codex \`spawn_agent\`, then wait). Use \`delegate_task\` for another provider's model, user-asked settings, a separate checkout (\`isolation:"worktree"\`), background work, or \`delegate_task\` by name. A native type running another provider's model counts too. Workflow only when asked.
 - Call \`orchestrator_capabilities\` once per thread, before the first \`delegate_task\`. Again only after an error or a user-named provider change. Settings go in \`target.options\`. Provider or model unavailable: say so. Never switch unasked, or fall back to native tools, Workflow, or CLIs. Never make a child's checkout in the shell or in \`task\`.
-- Every new delegate review or re-check is a new \`delegate_task\` (brief, findings, objections), never a \`t3_thread_send\`. Fix small review findings yourself; start no delegate for them. When told to proceed without a delegate, or to run fewer, \`task_cancel\` the extras. Start no replacement.
-- Follow a running delegate's \`next\`. Do not poll it (\`task_status\`, \`sleep\`, watchers, Monitor, ScheduleWakeup). Stop a delegate run you replace or no longer need with \`task_cancel\`, never \`t3_thread_interrupt\` on a \`childThreadId\`.
+- Every new delegate review or re-check is a new \`delegate_task\` (brief, findings, objections), never a \`cox_thread_send\`. Fix small review findings yourself; start no delegate for them. When told to proceed without a delegate, or to run fewer, \`task_cancel\` the extras. Start no replacement.
+- Follow a running delegate's \`next\`. Do not poll it (\`task_status\`, \`sleep\`, watchers, Monitor, ScheduleWakeup). Stop a delegate run you replace or no longer need with \`task_cancel\`, never \`cox_thread_interrupt\` on a \`childThreadId\`.
 - If you are a subagent or child, do the work yourself. Start no subagents unless your task says to.`,
-  `- \`t3_thread_launch\` and \`create_threads\` make new top-level threads, only when the user asks for a new thread. "Subagent", "delegate", and "parallel" never mean one. Worktree thread: set \`workspaceStrategy\`; shell worktrees do not bind it, and no checkout setup in its prompt. No \`workspaceStrategy\`: project root, not your worktree.
-- Given a thread id, \`t3_thread_read\` it before you answer about it.
+  `- \`cox_thread_launch\` and \`create_threads\` make new top-level threads, only when the user asks for a new thread. "Subagent", "delegate", and "parallel" never mean one. Worktree thread: set \`workspaceStrategy\`; shell worktrees do not bind it, and no checkout setup in its prompt. No \`workspaceStrategy\`: project root, not your worktree.
+- Given a thread id, \`cox_thread_read\` it before you answer about it.
+- Moving a conversation to another project: \`cox_thread_move\` preserves its ID and history and changes the workspace. Do not use launch, fork, or context transfer. When moving yourself, call it last; the agent restarts in the target workspace. Pass \`continuationPrompt\` for work to resume, and reuse \`clientRequestId\` if retrying.
 - In your reply, mention a thread by its \`link\`, verbatim. Never a plain title or bare id.
 - A secret, including a sudo password: call \`request_secret\` yourself. Pass its \`secretRef\` to a Cox tool, or use \`delivery: "file"\` for a shell command. If \`sudo -n <cmd>\` requires a password, run \`sudo -S -p '' <cmd> < "$file"\`; give other input as a file argument because the password takes stdin. Never ask in chat or invent one. When asked only to schedule, \`schedule_task\` without running its prompt.
 - Cox tools may load late. Try the name once before you call it absent.`,
@@ -75,11 +76,11 @@ export function t3AcpPromptWithInstructions(input: {
         ]
       : []),
   ];
-  return `<t3_code_instructions>\n${instructions.join("\n\n")}\n</t3_code_instructions>\n\n<user_request>\n${input.prompt}\n</user_request>`;
+  return `<cox_instructions>\n${instructions.join("\n\n")}\n</cox_instructions>\n\n<user_request>\n${input.prompt}\n</user_request>`;
 }
 
 function prependT3OrchestrationInstructions(prompt: string, instructions: string): string {
-  return `<t3_code_orchestration_instructions>${instructions.trim()}</t3_code_orchestration_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
+  return `<cox_orchestration_instructions>${instructions.trim()}</cox_orchestration_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
 }
 
 /** For providers whose instructions ride on the prompt, so a compacted conversation loses them. */

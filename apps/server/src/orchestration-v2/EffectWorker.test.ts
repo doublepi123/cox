@@ -4,6 +4,7 @@ import {
   CheckpointScopeId,
   CommandId,
   NodeId,
+  ProjectId,
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
@@ -35,6 +36,40 @@ import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as ResourceCleanup from "./ResourceCleanupService.ts";
+import { liveThreadShell } from "../mcp/McpToolAccess.testkit.ts";
+
+it.effect(
+  "replays scheduled-task moves against the thread's latest project, not a stale target",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const events = yield* Ref.make<ReadonlyArray<string>>([]);
+      const currentProjectId = ProjectId.make("project:latest-move");
+      const cleanup = yield* ResourceCleanup.ResourceCleanupService;
+      const executor = yield* EffectWorker.OrchestrationEffectExecutorV2.pipe(
+        Effect.provide(
+          layerExecutorFor({
+            events,
+            threads: {
+              getThreadShell: () =>
+                Effect.succeed({ ...liveThreadShell(threadId), projectId: currentProjectId }),
+            },
+          }),
+        ),
+        Effect.provideService(ResourceCleanup.ResourceCleanupService, {
+          ...cleanup,
+          moveScheduledTasks: (id, projectId) =>
+            Ref.update(events, (current) => [...current, `${id}:${projectId}`]),
+        }),
+      );
+      yield* executor.execute({
+        ...restartEffect(now, { type: "detach" }),
+        request: { type: "scheduled-tasks.move", projectId: ProjectId.make("project:stale-move") },
+      });
+      assert.deepEqual(yield* Ref.get(events), [`${threadId}:${currentProjectId}`]);
+    }),
+);
 
 const threadId = ThreadId.make("thread:effect-worker-restart");
 const oldSessionId = ProviderSessionId.make("provider-session:effect-worker-restart:old");

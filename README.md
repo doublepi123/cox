@@ -146,6 +146,17 @@ is preserved; steering is unavailable while the agent cannot accept it.
 Move queued messages up or down to change the order in which they are sent. A dot beside a
 thread title marks a completed result you have not viewed yet.
 
+**Move to project** keeps the original thread ID and chat history while changing project ownership
+and the workspace for future turns. Agents can use `cox_thread_move` with a target `projectId`;
+omit `threadId` to move the current conversation. Moving the calling agent restarts it in the
+target project's root with context preserved. Use `continuationPrompt` for follow-up work,
+`clientRequestId` for safe retries, and `expectedProjectId` to reject a stale move. Other threads
+must be idle. Code, uncommitted changes and existing worktrees stay in their original locations.
+
+Agent MCP connections use the `cox` server name. Cox-specific tools use the `cox_` prefix
+(for example, `cox_thread_read`, `cox_project_create`, and `cox_worktree_handoff`). Existing
+chat records with legacy tool names remain readable; refresh the MCP tool list after upgrading.
+
 Styled inline Markdown markers in the composer are editable: move into formatted text to
 edit its delimiters, then move outside to restore the formatted view. PR description task
 checkboxes save when the connected account and local connection both permit editing.

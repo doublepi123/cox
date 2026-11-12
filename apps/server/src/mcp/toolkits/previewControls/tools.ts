@@ -22,7 +22,7 @@ const shared = {
     PreviewAutomationBroker.PreviewAutomationBroker,
   ],
 };
-const PreviewListTool = Tool.make("t3_preview_list", {
+const PreviewListTool = Tool.make("cox_preview_list", {
   ...shared,
   description: "List this thread's local server browser preview tabs.",
   parameters: Schema.Struct({
@@ -36,7 +36,7 @@ const PreviewListTool = Tool.make("t3_preview_list", {
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
-const PreviewCloseTool = Tool.make("t3_preview_close", {
+const PreviewCloseTool = Tool.make("cox_preview_close", {
   ...shared,
   description:
     "Close one preview tab this thread owns. Use it on a tab you opened for your own check when you finish.",

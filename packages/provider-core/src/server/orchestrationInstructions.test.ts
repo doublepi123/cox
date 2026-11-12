@@ -10,8 +10,10 @@ describe("local agent instructions", () => {
   it("advertises only the available local tool surface", () => {
     assert.equal(t3OrchestrationSystemPrompt(true), T3_CODE_ORCHESTRATION_INSTRUCTIONS);
     assert.isUndefined(t3OrchestrationSystemPrompt(false));
-    assert.notInclude(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "t3_environment_link");
+    assert.notInclude(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "cox_environment_link");
     assert.notInclude(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "device_open");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "cox_thread_move");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "preserves its ID and history");
     const first = t3OrchestrationPrompt({
       prompt: "Inspect this project.",
       hasT3Mcp: true,

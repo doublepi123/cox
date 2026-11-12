@@ -1744,7 +1744,7 @@ describe("CursorAdapterV2", () => {
     };
 
     assert.deepEqual(cursorMcpServers(mcpSession), {
-      "t3-code": {
+      cox: {
         type: "http",
         url: "http://127.0.0.1:43123/mcp",
         headers: {

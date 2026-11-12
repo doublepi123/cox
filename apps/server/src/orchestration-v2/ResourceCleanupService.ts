@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -24,6 +24,10 @@ export class ResourceCleanupError extends Schema.TaggedError<ResourceCleanupErro
 
 export class ResourceCleanupService extends Context.Reference<{
   readonly cleanupScheduledTasks: (threadId: ThreadId) => Effect.Effect<void, ResourceCleanupError>;
+  readonly moveScheduledTasks: (
+    threadId: ThreadId,
+    projectId: ProjectId,
+  ) => Effect.Effect<void, ResourceCleanupError>;
   readonly cleanupTerminals: (threadId: string) => Effect.Effect<void, ResourceCleanupError>;
   readonly cleanupPreviews: (threadId: string) => Effect.Effect<void, ResourceCleanupError>;
   readonly cleanupAttachments: (
@@ -32,6 +36,7 @@ export class ResourceCleanupService extends Context.Reference<{
 }>("cox/orchestration-v2/ResourceCleanupService", {
   defaultValue: () => ({
     cleanupScheduledTasks: () => Effect.void,
+    moveScheduledTasks: () => Effect.void,
     cleanupTerminals: () => Effect.void,
     cleanupPreviews: () => Effect.void,
     cleanupAttachments: () => Effect.void,
@@ -47,6 +52,19 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig.ServerConfig;
     const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
     return {
+      moveScheduledTasks: Effect.fn("ResourceCleanupService.moveScheduledTasks")(function (
+        threadId: ThreadId,
+        projectId: ProjectId,
+      ) {
+        return scheduledTasks
+          .moveThreadTasks({ threadIds: [threadId], projectId })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ResourceCleanupError({ operation: "scheduled-tasks", threadId, cause }),
+            ),
+          );
+      }),
       cleanupScheduledTasks: Effect.fn("ResourceCleanupService.cleanupScheduledTasks")(function (
         threadId: ThreadId,
       ) {

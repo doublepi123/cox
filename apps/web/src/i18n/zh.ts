@@ -16,6 +16,7 @@ export const zh = {
   "Enable OMO Native": "启用 OMO Native",
   "Recommendation model": "用于生成推荐的模型",
   "Recommendation prompt": "推荐提示词",
+  Role: "角色",
   "Thinking strength": "思考强度",
   "{role} thinking strength": "{role} 思考强度",
   "Default thinking strength": "默认思考强度",

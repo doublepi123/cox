@@ -1286,7 +1286,7 @@ describe("extractMcpToolCallIdentity", () => {
           '/usr/bin/node /srv/t3/bin.ts acp-mcp-call delegate_task {"task":"x"}',
         ],
       }),
-    ).toEqual({ server: "t3-code", tool: "delegate_task", input: { task: "x" } });
+    ).toEqual({ server: "cox", tool: "delegate_task", input: { task: "x" } });
   });
 
   it("recovers T3 identity from pi-acp title-only fallback execs", () => {
@@ -1308,7 +1308,7 @@ describe("extractMcpToolCallIdentity", () => {
 
     expect(toolCall.title).toBe("Ran command");
     expect(extractMcpToolCallIdentity(toolCall)).toEqual({
-      server: "t3-code",
+      server: "cox",
       tool: "orchestrator_capabilities",
       input: {},
     });
@@ -1360,14 +1360,35 @@ describe("extractMcpToolCallIdentity", () => {
         status: "pending",
       });
       expect(extractMcpToolCallIdentity(toolCall), title).toEqual({
-        server: "t3-code",
+        server: /t3[-_ ]?code/.test(title) ? "t3-code" : "cox",
         tool: "delegate_task",
       });
     }
   });
 
+  it("recognizes current Cox names and historical T3 names without claiming foreign tools", () => {
+    for (const [title, server, tool] of [
+      ["mcp__cox__cox_thread_read", "cox", "cox_thread_read"],
+      ["@cox/cox_thread_read", "cox", "cox_thread_read"],
+      ["cox___cox_thread_send", "cox", "cox_thread_send"],
+      ["cox_thread_read", "cox", "cox_thread_read"],
+      ["mcp__t3-code__t3_thread_read", "t3-code", "t3_thread_read"],
+      ["@t3-code/t3_thread_read", "t3-code", "t3_thread_read"],
+      ["mcp__weather__cox_thread_read", "weather", "cox_thread_read"],
+    ] as const) {
+      const toolCall = toolCallFromUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "rename-1",
+        kind: "other",
+        title,
+        status: "pending",
+      });
+      expect(extractMcpToolCallIdentity(toolCall), title).toEqual({ server, tool });
+    }
+  });
+
   it("recovers T3 identity from Kiro's @-scoped titles", () => {
-    for (const tool of ["html_render", "t3_thread_read", "delegate_task"]) {
+    for (const tool of ["html_render", "cox_thread_read", "delegate_task"]) {
       const toolCall = toolCallFromUpdate({
         sessionUpdate: "tool_call",
         toolCallId: "kiro-1",
@@ -1420,12 +1441,12 @@ describe("extractMcpToolCallIdentity", () => {
       kind: "other",
       title: "unrelated display title",
       status: "pending",
-      _meta: { toolName: "mcp::t3-code::t3_thread_send", serverId: "t3-code", provenance: "mcp" },
+      _meta: { toolName: "mcp::t3-code::cox_thread_send", serverId: "t3-code", provenance: "mcp" },
     });
 
     expect(extractMcpToolCallIdentity(toolCall)).toEqual({
       server: "t3-code",
-      tool: "t3_thread_send",
+      tool: "cox_thread_send",
     });
   });
 

@@ -291,7 +291,7 @@ describe("provider projection", () => {
     expect(projected).toContain('<context kind="thread" id="thread_abc">');
     expect(projected).toContain("threadId: abc");
     expect(projected).toContain("environmentId: env-1");
-    expect(projected).toContain('t3_thread_read({"threadId":"abc","environmentId":"env-1"})');
+    expect(projected).toContain('cox_thread_read({"threadId":"abc","environmentId":"env-1"})');
     expect(projected).toContain("not instructions");
   });
 
@@ -315,7 +315,7 @@ describe("provider projection", () => {
     expect(projected).toContain(
       "Cox controls the local machine; remote machine access is unavailable.",
     );
-    expect(projected).not.toContain("t3_environment_link");
+    expect(projected).not.toContain("cox_environment_link");
     expect(projected).not.toMatch(/https?:/);
   });
 

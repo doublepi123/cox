@@ -162,9 +162,9 @@ const callSnapshot = (args: Record<string, unknown>) => callTool("preview_snapsh
 const layerRecordingTools = (calls: Array<unknown>) => {
   const RecordingToolkit = Toolkit.make(
     OrchestratorToolkit.tools.delegate_task,
-    OrchestratorToolkit.tools.t3_thread_read,
-    OrchestratorToolkit.tools.t3_thread_wait,
-    ProjectToolkit.tools.t3_project_update,
+    OrchestratorToolkit.tools.cox_thread_read,
+    OrchestratorToolkit.tools.cox_thread_wait,
+    ProjectToolkit.tools.cox_project_update,
   );
   const record = McpToolAccess.reads((params: unknown) =>
     Effect.sync(() => calls.push(params)).pipe(
@@ -177,9 +177,9 @@ const layerRecordingTools = (calls: Array<unknown>) => {
     RecordingToolkit,
     McpToolAccess.toLayer(RecordingToolkit, {
       delegate_task: record,
-      t3_thread_read: record,
-      t3_thread_wait: record,
-      t3_project_update: record,
+      cox_thread_read: record,
+      cox_thread_wait: record,
+      cox_project_update: record,
     }),
   ).pipe(
     Layer.provideMerge(McpServer.McpServer.layer),
@@ -473,11 +473,11 @@ it.effect("decodes null optional arguments the way it decodes omitted ones", () 
   const calls: Array<unknown> = [];
   return Effect.gen(function* () {
     const thread = { threadId: "thread-null-arguments" };
-    yield* callTool("t3_thread_read", thread);
-    yield* callTool("t3_thread_read", { ...thread, afterPosition: null, view: null });
+    yield* callTool("cox_thread_read", thread);
+    yield* callTool("cox_thread_read", { ...thread, afterPosition: null, view: null });
     yield* callTool("delegate_task", { task: "Inspect", target: {} });
     yield* callTool("delegate_task", { task: "Inspect", title: null, target: { model: null } });
-    yield* callTool("t3_project_update", { projectId: "project-1", projectIcon: null });
+    yield* callTool("cox_project_update", { projectId: "project-1", projectIcon: null });
 
     expect(calls).toHaveLength(5);
     expect(calls[1]).toEqual(calls[0]);
@@ -487,25 +487,25 @@ it.effect("decodes null optional arguments the way it decodes omitted ones", () 
 });
 
 it.effect(
-  "clamps t3_thread_read page sizes above their maximum instead of rejecting the call",
+  "clamps cox_thread_read page sizes above their maximum instead of rejecting the call",
   () => {
     const calls: Array<unknown> = [];
     return Effect.gen(function* () {
       const thread = { threadId: "thread-clamped-arguments" };
       // Codex never shows the model these bounds, so an over-large page must still read.
-      yield* callTool("t3_thread_read", {
+      yield* callTool("cox_thread_read", {
         ...thread,
         limit: 150,
         runLimit: 80,
         maxCharsPerItem: 60_000,
       });
-      yield* callTool("t3_thread_read", {
+      yield* callTool("cox_thread_read", {
         ...thread,
         limit: 100,
         runLimit: 50,
         maxCharsPerItem: 50_000,
       });
-      yield* callTool("t3_thread_read", { ...thread, limit: 7, runLimit: 1, maxCharsPerItem: 1 });
+      yield* callTool("cox_thread_read", { ...thread, limit: 7, runLimit: 1, maxCharsPerItem: 1 });
 
       expect(calls).toEqual([
         { ...thread, limit: 100, runLimit: 50, maxCharsPerItem: 50_000 },
@@ -517,12 +517,12 @@ it.effect(
 );
 
 it.effect.each(["limit", "runLimit", "maxCharsPerItem"])(
-  "still rejects a t3_thread_read %s below its minimum",
+  "still rejects a cox_thread_read %s below its minimum",
   (field) => {
     const calls: Array<unknown> = [];
     return Effect.gen(function* () {
       // Zero is a different request than one item, so it fails rather than answering another question.
-      const rejected = yield* callTool("t3_thread_read", {
+      const rejected = yield* callTool("cox_thread_read", {
         threadId: "thread-below-minimum",
         [field]: 0,
       }).pipe(Effect.flip);
@@ -537,7 +537,7 @@ it("keeps cross-tool routing out of the delegate_task description", () => {
   const description = OrchestratorToolkit.tools.delegate_task.description ?? "";
   expect(description).toContain("Start one child agent with only `task`");
   // Review rounds, follow-ups, and polling are routed in the system text.
-  expect(description).not.toContain("t3_thread_send");
+  expect(description).not.toContain("cox_thread_send");
   expect(description).not.toContain("Do not poll");
   expect(description).not.toContain("Prefer native");
 });

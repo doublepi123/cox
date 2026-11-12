@@ -190,6 +190,50 @@ it.effect(
   },
 );
 
+for (const type of ["thread.project.move", "thread.project.move-agent"] as const) {
+  it.effect(`${type} refuses a provider disabled by the target project before dispatch`, () => {
+    const projectId = ProjectId.make("project:disabled-move-target");
+    const threadId = ThreadId.make("thread:thread-management:chokepoint");
+    const instanceId = ProviderInstanceId.make("codex_work");
+    const dispatched: Array<string> = [];
+    const layerTest = layerDispatchChokepointTest(
+      ServerSettings.layerTest({
+        providerInstances: { [instanceId]: { driver: "codex", enabled: true } },
+        projectSettingsOverrides: {
+          [projectId]: { providerInstances: { [instanceId]: { enabled: false } } },
+        },
+      }),
+    )(dispatched);
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const common = {
+        commandId: CommandId.make(`disabled:${type}`),
+        threadId,
+        projectId,
+        expectedProjectId: ProjectId.make("project:thread-management:chokepoint"),
+      };
+      const error = yield* threads
+        .dispatch(
+          type === "thread.project.move"
+            ? { ...common, type }
+            : {
+                ...common,
+                type,
+                runId: RunId.make("run:active"),
+                providerSessionId: ProviderSessionId.make("session:active"),
+                continuationPrompt: "Continue here.",
+              },
+        )
+        .pipe(Effect.flip);
+      expect(error).toBeInstanceOf(
+        ThreadManagementService.ThreadManagementProviderInstanceDisabledError,
+      );
+      expect(error).toMatchObject({ projectId, instanceId });
+      expect(dispatched).toEqual([]);
+    }).pipe(Effect.provide(layerTest));
+  });
+}
+
 it.effect("waitForThread follows a restart continuation instead of the cut run", () =>
   Effect.gen(function* () {
     const projectId = ProjectId.make("project:thread-management:wait-restart");

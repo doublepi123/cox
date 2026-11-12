@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { page } from "vite-plus/test/browser";
 import { render, act } from "../../../test/render";
 import { setLanguagePreference } from "../../i18n";
 import { OmoSettingsSection } from "./OmoSettingsSection";
@@ -15,6 +16,17 @@ import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommenda
 import "~/index.css";
 
 const state = vi.hoisted(() => ({ services: {}, recommend: vi.fn() }));
+vi.mock(import("../../environments/primary/httpLayer"), async () => {
+  const { layerRemoteHttpClient } = await import("@t3tools/client-runtime/rpc");
+  const Layer = await import("effect/Layer");
+  const { FetchHttpClient } = await import("effect/http");
+  return {
+    layer: Layer.merge(
+      layerRemoteHttpClient(async () => new Response(null, { status: 503 })),
+      Layer.succeed(FetchHttpClient.RequestInit, { credentials: "same-origin" }),
+    ),
+  };
+});
 vi.mock(import("../../state/server"), async (original) => ({
   ...(await original()),
   serverEnvironment: {
@@ -54,7 +66,286 @@ const models = [
   { slug: "cox/other", name: "Other model", reasoningLevels: ["off", "low"] as const },
 ];
 
+async function sizedViewport(width: number) {
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  await page.viewport(width, 900);
+  return {
+    async [Symbol.asyncDispose]() {
+      await page.viewport(originalWidth, originalHeight);
+    },
+  };
+}
+
 describe("OMO native roles", () => {
+  it.each([640, 900])(
+    "fits ten agents in compact, separated three-column rows at %spx",
+    async (width) => {
+      setLanguagePreference("en");
+      await using _viewport = await sizedViewport(1280);
+      const container = document.createElement("div");
+      container.style.width = `${width}px`;
+      await using screen = await render(
+        <OmoSettingsSection
+          instance={instance}
+          models={models}
+          readOnly={false}
+          onUpdate={vi.fn()}
+        />,
+        { container },
+      );
+      const agents = screen.getByRole("group", { name: "Agents", exact: true }).element();
+      const rows = Array.from(agents.querySelectorAll<HTMLElement>('[role="group"]'));
+      expect(rows).toHaveLength(10);
+      const heading = rows[0]!.previousElementSibling!;
+      expect(getComputedStyle(heading).display).toBe("grid");
+      expect(Array.from(heading.children, (element) => element.textContent)).toEqual([
+        "Role",
+        "Model",
+        "Thinking strength",
+      ]);
+      const columns = Array.from(heading.children, (element) => element.getBoundingClientRect());
+      for (const [index, row] of rows.entries()) {
+        const label = row.querySelector<HTMLElement>(":scope > span")!;
+        const model = row.querySelector<HTMLSelectElement>("select")!;
+        const strength = row.querySelector<HTMLSelectElement>(
+          'select[aria-label$="thinking strength"]',
+        )!;
+        const rowBox = row.getBoundingClientRect();
+        const roleBox = label.getBoundingClientRect();
+        const modelBox = model.getBoundingClientRect();
+        const strengthBox = strength.getBoundingClientRect();
+        expect(getComputedStyle(row).gridTemplateColumns.split(" ")).toHaveLength(3);
+        expect(roleBox.width).toBeLessThanOrEqual(160);
+        expect(roleBox.width / rowBox.width).toBeLessThan(0.3);
+        expect(Math.abs(roleBox.left - columns[0]!.left)).toBeLessThan(1);
+        expect(Math.abs(modelBox.left - columns[1]!.left)).toBeLessThan(1);
+        expect(Math.abs(strengthBox.left - columns[2]!.left)).toBeLessThan(1);
+        expect(modelBox.left).toBeGreaterThan(roleBox.right);
+        expect(strengthBox.left).toBeGreaterThan(modelBox.right);
+        expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
+        expect(modelBox.height).toBeGreaterThanOrEqual(44);
+        expect(strengthBox.height).toBeGreaterThanOrEqual(44);
+        expect(rowBox.height).toBeLessThanOrEqual(64);
+        if (index < rows.length - 1) {
+          expect(Number.parseFloat(getComputedStyle(row).borderBottomWidth)).toBe(1);
+        }
+      }
+      expect(
+        rows.at(-1)!.getBoundingClientRect().bottom - rows[0]!.getBoundingClientRect().top,
+      ).toBeLessThanOrEqual(640);
+      expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+      await screen
+        .getByRole("combobox", { name: "oracle", exact: true })
+        .selectOptions("cox/other");
+      await screen.getByRole("combobox", { name: "oracle thinking strength" }).selectOptions("low");
+      await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeEnabled();
+    },
+  );
+
+  it.each([
+    { width: 320, language: "en" as const },
+    { width: 360, language: "zh" as const },
+    { width: 390, language: "en" as const },
+  ])(
+    "groups touch-sized role controls without overflow at $width px in $language",
+    async ({ width, language }) => {
+      setLanguagePreference(language);
+      await using _viewport = await sizedViewport(width);
+      const save = vi.fn();
+      const customRole = `custom_${"a".repeat(57)}`;
+      const longModels = models.map((model) => ({
+        ...model,
+        name: "LongModelName".repeat(40),
+      }));
+      await using screen = await render(
+        <OmoSettingsSection
+          instance={{
+            ...instance,
+            config: {
+              ...instanceConfig,
+              agentModels: { ...instanceConfig.agentModels, [customRole]: "cox/other" },
+            },
+          }}
+          models={longModels}
+          readOnly={false}
+          onUpdate={save}
+          environmentId={EnvironmentId.make("test")}
+          serviceRevision={3}
+        />,
+      );
+      const agents = screen
+        .getByRole("group", { name: language === "zh" ? "Agent" : "Agents", exact: true })
+        .element();
+      const rows = Array.from(agents.querySelectorAll<HTMLElement>('[role="group"]'));
+      expect(rows).toHaveLength(11);
+      expect(getComputedStyle(rows[0]!.previousElementSibling!).display).toBe("none");
+      for (const row of rows) {
+        const label = row.querySelector<HTMLElement>(":scope > span")!;
+        const fields = Array.from(row.querySelectorAll("select"));
+        const labels = Array.from(row.querySelectorAll("label"));
+        const rowBox = row.getBoundingClientRect();
+        const modelBox = fields[0]!.getBoundingClientRect();
+        const strengthBox = fields[1]!.getBoundingClientRect();
+        expect(getComputedStyle(row).gridTemplateColumns.split(" ")).toHaveLength(2);
+        expect(labels.map((element) => element.textContent)).toEqual(
+          language === "zh" ? ["模型", "思考强度"] : ["Model", "Thinking strength"],
+        );
+        expect(label.getBoundingClientRect().bottom).toBeLessThan(modelBox.top);
+        expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
+        expect(strengthBox.left).toBeGreaterThan(modelBox.right);
+        for (const field of fields) {
+          const box = field.getBoundingClientRect();
+          expect(box.height).toBeGreaterThanOrEqual(44);
+          expect(box.left).toBeGreaterThanOrEqual(rowBox.left);
+          expect(box.right).toBeLessThanOrEqual(rowBox.right + 1);
+        }
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+      }
+      for (const input of agents.querySelectorAll("input")) {
+        expect(input.closest("label")!.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      }
+      const buttons = [
+        ...screen.container.querySelectorAll<HTMLButtonElement>(
+          '[data-slot="collapsible-trigger"], fieldset button',
+        ),
+        ...screen
+          .getByRole("button", {
+            name: language === "zh" ? "应用 OMO 模型" : "Apply OMO models",
+          })
+          .elements(),
+        ...screen
+          .getByRole("button", {
+            name: language === "zh" ? "丢弃更改" : "Discard changes",
+          })
+          .elements(),
+      ];
+      for (const button of buttons) {
+        expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      }
+      expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      const search = screen.getByRole("textbox", {
+        name: language === "zh" ? "搜索Agent" : "Search Agents",
+      });
+      await search.fill("oracle");
+      await expect
+        .element(screen.getByRole("group", { name: customRole, exact: true }))
+        .not.toBeInTheDocument();
+      await screen
+        .getByRole("combobox", { name: "oracle", exact: true })
+        .selectOptions("cox/other");
+      await screen
+        .getByRole("combobox", {
+          name: language === "zh" ? "oracle 思考强度" : "oracle thinking strength",
+        })
+        .selectOptions("low");
+      await screen
+        .getByRole("button", { name: language === "zh" ? "类别" : "Categories", exact: false })
+        .click();
+      await screen.getByRole("combobox", { name: "quick", exact: true }).selectOptions("cox/other");
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      await screen
+        .getByRole("button", { name: language === "zh" ? "应用 OMO 模型" : "Apply OMO models" })
+        .click();
+      expect(save).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agentModels: { oracle: "cox/other", [customRole]: "cox/other" },
+            agentReasoning: { oracle: "low" },
+            categoryModels: { quick: "cox/other" },
+          }),
+        }),
+      );
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+    },
+  );
+
+  it("keeps unavailable model and strength errors associated with their fields on narrow screens", async () => {
+    setLanguagePreference("en");
+    await using _viewport = await sizedViewport(390);
+    const missingModel = `cox/${"UnavailableModel".repeat(20)}`;
+    const save = vi.fn();
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={{
+          ...instance,
+          config: {
+            ...instanceConfig,
+            agentModels: { oracle: missingModel },
+            agentReasoning: { oracle: "max" },
+            categoryReasoning: { deep: "max" },
+          },
+        }}
+        models={[models[1]!]}
+        readOnly={false}
+        onUpdate={save}
+      />,
+    );
+    const oracle = screen.getByRole("combobox", { name: "oracle", exact: true });
+    const strength = screen.getByRole("combobox", { name: "oracle thinking strength" });
+    const deepStrength = screen.getByRole("combobox", { name: "deep thinking strength" });
+    await expect.element(oracle).toHaveAttribute("aria-invalid", "true");
+    await expect.element(strength).toHaveAttribute("aria-invalid", "true");
+    await expect.element(deepStrength).toHaveAttribute("aria-invalid", "true");
+    expect(
+      document.getElementById(oracle.element().getAttribute("aria-describedby")!)?.textContent,
+    ).toBe(`Unavailable model: ${missingModel}`);
+    for (const field of [strength, deepStrength]) {
+      expect(
+        document.getElementById(field.element().getAttribute("aria-describedby")!)?.textContent,
+      ).toBe("This thinking strength is not supported by the selected model.");
+    }
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
+    await oracle.selectOptions("cox/other");
+    await strength.selectOptions("low");
+    await deepStrength.selectOptions("");
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it.each([390, 900])(
+    "keeps independent model inputs grouped and touch-accessible at %spx",
+    async (width) => {
+      setLanguagePreference("en");
+      await using _viewport = await sizedViewport(width);
+      const save = vi.fn();
+      const { modelService: _binding, ...independent } = instance;
+      await using screen = await render(
+        <OmoSettingsSection
+          instance={{ ...independent, config: { model: "vendor/native-model" } }}
+          models={[]}
+          readOnly={false}
+          onUpdate={save}
+        />,
+      );
+      const group = screen.getByRole("group", { name: "oracle", exact: true });
+      const model = group.getByRole("textbox", { name: "oracle", exact: true });
+      const strength = group.getByRole("combobox", { name: "oracle thinking strength" });
+      const touchTarget = model.element().closest("label")!;
+      const targetBox = touchTarget.getBoundingClientRect();
+      const strengthBox = strength.element().getBoundingClientRect();
+      expect(targetBox.height).toBeGreaterThanOrEqual(44);
+      expect(Math.abs(targetBox.top - strengthBox.top)).toBeLessThan(1);
+      await page.elementLocator(touchTarget).click({ position: { x: 2, y: 2 } });
+      await expect.element(model).toHaveFocus();
+      await model.fill("vendor/ExactModel");
+      await strength.selectOptions("max");
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      await screen.getByRole("button", { name: "Apply OMO models" }).click();
+      expect(save).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            model: "vendor/native-model",
+            agentModels: { oracle: "vendor/ExactModel" },
+            agentReasoning: { oracle: "max" },
+          }),
+        }),
+      );
+    },
+  );
+
   it("applies recommended thinking strengths and keeps manual strength edits", async () => {
     setLanguagePreference("en");
     const save = vi.fn();
@@ -1077,6 +1368,9 @@ describe("OMO native roles", () => {
     );
     await expect
       .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .toBeDisabled();
+    await expect
+      .element(screen.getByRole("combobox", { name: "oracle thinking strength" }))
       .toBeDisabled();
     await expect
       .element(screen.getByRole("textbox", { name: "Agents role name" }))

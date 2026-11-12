@@ -176,120 +176,168 @@ function RoleModelFields({
         <CollapsiblePanel>
           <fieldset className="@container min-w-0 space-y-2 pt-2" disabled={readOnly}>
             <legend className="sr-only">{title}</legend>
-            <Input
-              aria-label={t("Search {group}", { group: title })}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t("Search roles")}
-            />
-            {roles
-              .filter((role) => role.toLowerCase().includes(search.toLowerCase()))
-              .map((role, index) => {
-                const slug = value[role] ?? "";
-                const unavailable =
-                  managed && Boolean(slug) && !models.some((model) => model.slug === slug);
-                const levels = reasoningLevelsForRole(models, managed, slug || inheritedSlug);
-                const level = reasoning[role] ?? "";
-                const unsupported =
-                  Boolean(level) && !levels.some((candidate) => candidate === level);
-                return (
-                  <label
-                    key={role}
-                    className="grid min-w-0 gap-1.5 text-sm @min-[32rem]:grid-cols-[minmax(0,1fr)_minmax(12rem,55%)] @min-[32rem]:items-center"
-                    htmlFor={`${id}-${index}`}
-                  >
-                    <span className="[overflow-wrap:anywhere]">{role}</span>
-                    <span className="grid min-w-0 gap-1.5">
-                      {managed ? (
-                        <select
-                          id={`${id}-${index}`}
-                          aria-label={role}
-                          className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
-                          aria-invalid={unavailable || undefined}
-                          aria-describedby={unavailable ? `${id}-${index}-error` : undefined}
-                          value={slug}
-                          onChange={(event) => onChange({ ...value, [role]: event.target.value })}
+            <label className="flex min-h-11 min-w-0 items-center">
+              <Input
+                size="lg"
+                aria-label={t("Search {group}", { group: title })}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("Search roles")}
+              />
+            </label>
+            <div className="min-w-0 divide-y divide-border/60">
+              <div
+                aria-hidden="true"
+                className="hidden min-w-0 grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)] gap-3 py-2 text-xs font-medium text-muted-foreground @min-[36rem]:grid"
+              >
+                <span>{t("Role")}</span>
+                <span>{t("Model")}</span>
+                <span>{t("Thinking strength")}</span>
+              </div>
+              {roles
+                .filter((role) => role.toLowerCase().includes(search.toLowerCase()))
+                .map((role, index) => {
+                  const slug = value[role] ?? "";
+                  const unavailable =
+                    managed && Boolean(slug) && !models.some((model) => model.slug === slug);
+                  const levels = reasoningLevelsForRole(models, managed, slug || inheritedSlug);
+                  const level = reasoning[role] ?? "";
+                  const unsupported =
+                    Boolean(level) && !levels.some((candidate) => candidate === level);
+                  return (
+                    <div
+                      key={role}
+                      role="group"
+                      aria-labelledby={`${id}-${index}-role`}
+                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-2 gap-y-1.5 py-2 text-sm @min-[36rem]:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)] @min-[36rem]:gap-x-3"
+                    >
+                      <span
+                        id={`${id}-${index}-role`}
+                        className="col-span-2 min-w-0 font-medium [overflow-wrap:anywhere] @min-[36rem]:col-span-1 @min-[36rem]:pt-3"
+                      >
+                        {role}
+                      </span>
+                      <div className="grid min-w-0 gap-1.5">
+                        <label
+                          htmlFor={`${id}-${index}`}
+                          className="text-xs text-muted-foreground @min-[36rem]:sr-only"
                         >
-                          <option value="">
-                            {inheritedModel
-                              ? t("Inherit main model ({model})", { model: inheritedModel })
-                              : t("Inherit main model")}
-                          </option>
-                          {slug && !models.some((model) => model.slug === slug) ? (
-                            <option value={slug} disabled>
-                              {t("Unavailable model: {model}", { model: slug })}
+                          {t("Model")}
+                        </label>
+                        {managed ? (
+                          <select
+                            id={`${id}-${index}`}
+                            aria-label={role}
+                            className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
+                            aria-invalid={unavailable || undefined}
+                            aria-describedby={unavailable ? `${id}-${index}-error` : undefined}
+                            value={slug}
+                            onChange={(event) => onChange({ ...value, [role]: event.target.value })}
+                          >
+                            <option value="">
+                              {inheritedModel
+                                ? t("Inherit main model ({model})", { model: inheritedModel })
+                                : t("Inherit main model")}
+                            </option>
+                            {slug && !models.some((model) => model.slug === slug) ? (
+                              <option value={slug} disabled>
+                                {t("Unavailable model: {model}", { model: slug })}
+                              </option>
+                            ) : null}
+                            {models.map((model) => (
+                              <option key={model.slug} value={model.slug}>
+                                {model.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <label
+                            htmlFor={`${id}-${index}`}
+                            className="flex min-h-11 min-w-0 items-center"
+                          >
+                            <Input
+                              size="lg"
+                              id={`${id}-${index}`}
+                              aria-label={role}
+                              value={slug}
+                              placeholder={t("Inherit main model")}
+                              onChange={(event) =>
+                                onChange({ ...value, [role]: event.target.value })
+                              }
+                            />
+                          </label>
+                        )}
+                        {unavailable ? (
+                          <span
+                            id={`${id}-${index}-error`}
+                            className="block text-xs text-destructive [overflow-wrap:anywhere]"
+                          >
+                            {t("Unavailable model: {model}", { model: slug })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="grid min-w-0 gap-1.5">
+                        <label
+                          htmlFor={`${id}-${index}-reasoning`}
+                          className="text-xs text-muted-foreground @min-[36rem]:sr-only"
+                        >
+                          {t("Thinking strength")}
+                        </label>
+                        <select
+                          id={`${id}-${index}-reasoning`}
+                          aria-label={t("{role} thinking strength", { role })}
+                          className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
+                          aria-invalid={unsupported || undefined}
+                          aria-describedby={
+                            unsupported ? `${id}-${index}-reasoning-error` : undefined
+                          }
+                          value={level}
+                          disabled={levels.length === 0 && !level}
+                          onChange={(event) =>
+                            onReasoningChange({ ...reasoning, [role]: event.target.value })
+                          }
+                        >
+                          <option value="">{t("Default thinking strength")}</option>
+                          {unsupported ? (
+                            <option value={level} disabled>
+                              {t("Unavailable thinking strength: {level}", { level })}
                             </option>
                           ) : null}
-                          {models.map((model) => (
-                            <option key={model.slug} value={model.slug}>
-                              {model.name}
+                          {levels.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
                             </option>
                           ))}
                         </select>
-                      ) : (
-                        <Input
-                          id={`${id}-${index}`}
-                          aria-label={role}
-                          value={slug}
-                          placeholder={t("Inherit main model")}
-                          onChange={(event) => onChange({ ...value, [role]: event.target.value })}
-                        />
-                      )}
-                      {unavailable ? (
-                        <span
-                          id={`${id}-${index}-error`}
-                          className="block text-xs text-destructive [overflow-wrap:anywhere]"
-                        >
-                          {t("Unavailable model: {model}", { model: slug })}
-                        </span>
-                      ) : null}
-                      <span className="text-xs text-muted-foreground">
-                        {t("Thinking strength")}
-                      </span>
-                      <select
-                        aria-label={t("{role} thinking strength", { role })}
-                        className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
-                        aria-invalid={unsupported || undefined}
-                        value={level}
-                        disabled={levels.length === 0 && !level}
-                        onChange={(event) =>
-                          onReasoningChange({ ...reasoning, [role]: event.target.value })
-                        }
-                      >
-                        <option value="">{t("Default thinking strength")}</option>
                         {unsupported ? (
-                          <option value={level} disabled>
-                            {t("Unavailable thinking strength: {level}", { level })}
-                          </option>
+                          <span
+                            id={`${id}-${index}-reasoning-error`}
+                            className="text-xs text-destructive [overflow-wrap:anywhere]"
+                          >
+                            {t("This thinking strength is not supported by the selected model.")}
+                          </span>
                         ) : null}
-                        {levels.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      {unsupported ? (
-                        <span className="text-xs text-destructive">
-                          {t("This thinking strength is not supported by the selected model.")}
-                        </span>
-                      ) : null}
-                    </span>
-                  </label>
-                );
-              })}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
             {roles.every((role) => !role.toLowerCase().includes(search.toLowerCase())) ? (
               <p className="text-xs text-muted-foreground">{t("No matching roles")}</p>
             ) : null}
             {!readOnly ? (
-              <div className="flex gap-2">
-                <Input
-                  aria-label={t("{group} role name", { group: title })}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder={t("Custom role name")}
-                />
+              <div className="flex min-w-0 gap-2">
+                <label className="flex min-h-11 min-w-0 flex-1 items-center">
+                  <Input
+                    size="lg"
+                    aria-label={t("{group} role name", { group: title })}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder={t("Custom role name")}
+                  />
+                </label>
                 <Button
-                  size="sm"
+                  size="xl"
                   variant="outline"
                   disabled={!validName}
                   onClick={() => {
@@ -562,7 +610,7 @@ export function OmoSettingsSection({
                   )}
                 </p>
                 <Button
-                  size="sm"
+                  size="xl"
                   variant="outline"
                   disabled={saving || generating}
                   onClick={() => {
@@ -576,7 +624,7 @@ export function OmoSettingsSection({
             ) : null}
             <div className="flex flex-wrap justify-between gap-2">
               <Button
-                size="sm"
+                size="xl"
                 variant="ghost-muted"
                 disabled={!dirty || saving || generating}
                 onClick={() => {
@@ -593,7 +641,7 @@ export function OmoSettingsSection({
                 {t("Discard changes")}
               </Button>
               <Button
-                size="sm"
+                size="xl"
                 disabled={
                   invalid ||
                   invalidReasoning ||

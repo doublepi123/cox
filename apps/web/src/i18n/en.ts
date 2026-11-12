@@ -16,6 +16,7 @@ export const en = {
   "Enable OMO Native": "Enable OMO Native",
   "Recommendation model": "Recommendation model",
   "Recommendation prompt": "Recommendation prompt",
+  Role: "Role",
   "Thinking strength": "Thinking strength",
   "{role} thinking strength": "{role} thinking strength",
   "Default thinking strength": "Default thinking strength",

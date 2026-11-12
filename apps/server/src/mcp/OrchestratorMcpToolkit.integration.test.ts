@@ -399,7 +399,7 @@ describe("orchestrator MCP toolkit", () => {
           const followupStartSequence = yield* orchestrator.getThreadEventSequence(
             localChild(delegated.childThreadId),
           );
-          const runningFollowupCall = yield* invoke("t3_thread_send", {
+          const runningFollowupCall = yield* invoke("cox_thread_send", {
             threadId: localChild(delegated.childThreadId),
             message: cancellationPrompt,
             clientRequestId: "delegated-child-replay-running-1",
@@ -427,7 +427,7 @@ describe("orchestrator MCP toolkit", () => {
               ),
             );
 
-          const queuedFollowupCall = yield* invoke("t3_thread_send", {
+          const queuedFollowupCall = yield* invoke("cox_thread_send", {
             threadId: localChild(delegated.childThreadId),
             message: queuedFollowupPrompt,
             mode: "queue",
@@ -492,7 +492,7 @@ describe("orchestrator MCP toolkit", () => {
           const finalSequence = yield* orchestrator.getThreadEventSequence(
             localChild(delegated.childThreadId),
           );
-          const interruptCall = yield* invoke("t3_thread_interrupt", {
+          const interruptCall = yield* invoke("cox_thread_interrupt", {
             threadId: localChild(delegated.childThreadId),
             runId: runningFollowup.runId,
             reason: "Allow the queued replay follow-up to run.",
@@ -657,7 +657,7 @@ describe("orchestrator MCP toolkit", () => {
             },
           });
           const parentlessRead = yield* invoke(
-            "t3_thread_read",
+            "cox_thread_read",
             { threadId: delegated.childThreadId, limit: 100 },
             { ...invocation, thread: undefined },
           ).pipe(Effect.withTracer(tracer));
@@ -669,7 +669,7 @@ describe("orchestrator MCP toolkit", () => {
               ?.completionDelivery?.state,
           ).toBe("claimed");
 
-          const read = yield* invoke("t3_thread_read", {
+          const read = yield* invoke("cox_thread_read", {
             threadId: delegated.childThreadId,
             limit: 100,
           }).pipe(Effect.withTracer(tracer));

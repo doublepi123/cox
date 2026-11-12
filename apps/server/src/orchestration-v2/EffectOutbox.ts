@@ -4,6 +4,7 @@ import {
   CommandId,
   MessageId,
   NodeId,
+  ProjectId,
   ProviderSessionId,
   RunAttemptId,
   ProviderApprovalDecision,
@@ -99,6 +100,10 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     type: Schema.Literal("scheduled-tasks.cleanup"),
   }),
   Schema.Struct({
+    type: Schema.Literal("scheduled-tasks.move"),
+    projectId: ProjectId,
+  }),
+  Schema.Struct({
     type: Schema.Literal("terminal.cleanup"),
   }),
   Schema.Struct({
@@ -128,6 +133,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
   "provider-thread.rollback",
   "checkpoint.capture",
   "scheduled-tasks.cleanup",
+  "scheduled-tasks.move",
   "terminal.cleanup",
   "preview.cleanup",
   "attachment.cleanup",

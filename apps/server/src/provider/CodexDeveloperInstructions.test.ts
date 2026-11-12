@@ -57,7 +57,7 @@ describe("Codex runtime context", () => {
 describe("Codex orchestration context", () => {
   it("routes subagents native first, delegate_task for the rest", () => {
     const orchestration = Object.entries(buildCodexAdditionalContext({ model: "gpt-6.1-sol" }))
-      .filter(([key]) => key.startsWith("t3_code_orchestration_"))
+      .filter(([key]) => key.startsWith("cox_orchestration_"))
       .map(([, entry]) => entry.value)
       .join("\n");
 
@@ -67,7 +67,7 @@ describe("Codex orchestration context", () => {
     NodeAssert.ok(
       orchestration.includes("Every new delegate review or re-check is a new `delegate_task`"),
     );
-    NodeAssert.ok(orchestration.includes("never a `t3_thread_send`"));
+    NodeAssert.ok(orchestration.includes("never a `cox_thread_send`"));
     NodeAssert.ok(!orchestration.includes("inheritedOptions"));
     NodeAssert.ok(!orchestration.includes("Prefer native"));
     // The ACP terminal fallback is ACP-only; Codex agents never need it.
@@ -76,5 +76,5 @@ describe("Codex orchestration context", () => {
 });
 
 function runtimeInstructions(runtime: Parameters<typeof buildCodexAdditionalContext>[0]) {
-  return buildCodexAdditionalContext(runtime).t3_code_runtime!.value;
+  return buildCodexAdditionalContext(runtime).cox_runtime!.value;
 }

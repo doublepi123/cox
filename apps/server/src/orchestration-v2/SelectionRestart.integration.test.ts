@@ -16,6 +16,7 @@ import {
   ProviderTurnId,
   type RunId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -24,6 +25,8 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as FileSystem from "effect/FileSystem";
 
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectWorker from "./EffectWorker.ts";
@@ -33,6 +36,11 @@ import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProjectStore from "./ProjectStore.ts";
+import * as RuntimePolicy from "./RuntimePolicy.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+import * as ResourceCleanup from "./ResourceCleanupService.ts";
 
 const driver = ProviderDriverKind.make("codex");
 const providerInstanceId = ProviderInstanceId.make("codex-restart-test");
@@ -86,6 +94,7 @@ function makeRestartAdapter(
   state: Ref.Ref<RestartAdapterState>,
   sessionCapabilities: OrchestrationV2ProviderCapabilities = pooledCapabilities,
   providerInstanceId = initialSelection.instanceId,
+  completeOnRestart = false,
 ): ProviderAdapter.ProviderAdapterV2["Service"] {
   return {
     instanceId: providerInstanceId,
@@ -230,7 +239,10 @@ function makeRestartAdapter(
                 input,
                 providerTurnId: ProviderTurnId.make(`provider-turn:${input.attemptId}`),
               } satisfies ActiveTurn;
-              if (input.modelSelection.model === initialSelection.model) {
+              if (
+                input.modelSelection.model === initialSelection.model &&
+                (!completeOnRestart || (yield* Ref.get(state)).started.length === 1)
+              ) {
                 const occurredAt = yield* DateTime.now;
                 yield* Ref.update(state, (current) => ({ ...current, activeTurn: active }));
                 yield* Queue.offer(events, {
@@ -282,6 +294,307 @@ function makeRestartAdapter(
         };
       }),
   };
+}
+
+for (const capabilities of [
+  pooledCapabilities,
+  {
+    ...exclusiveCapabilities,
+    turns: { ...exclusiveCapabilities.turns, supportsSteeringByInterruptRestart: false },
+  },
+]) {
+  const shared = capabilities.sessions.supportsMultipleProviderThreadsPerSession;
+  it.live(
+    `moves the active agent in place and resumes history in the target root (${shared ? "shared" : "exclusive"} runtime)`,
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const sourceCwd = yield* checkpointWorkspace("project-move-source");
+          const targetCwd = yield* checkpointWorkspace("project-move-target");
+          const fs = yield* FileSystem.FileSystem;
+          yield* fs.writeFileString(`${sourceCwd}/uncommitted.txt`, "Keep this source change.");
+          const sourceId = ProjectId.make("project:move-source");
+          const targetId = ProjectId.make("project:move-target");
+          const threadId = ThreadId.make("thread:project-move");
+          const cleanup = yield* ResourceCleanup.ResourceCleanupService;
+          const scheduleMoves: Array<{
+            readonly threadId: ThreadId;
+            readonly projectId: ProjectId;
+          }> = [];
+          const databaseLayer = SqlitePersistence.layerMemory;
+          const projectLayer = ProjectStore.layer.pipe(Layer.provide(databaseLayer));
+          const runtimePolicyLayer = RuntimePolicy.layerFromProjectStore.pipe(
+            Layer.provide(projectLayer),
+            Layer.provide(
+              Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+                getInstance: () => Effect.sync(() => undefined),
+              }),
+            ),
+            Layer.orDie,
+          );
+          const state = yield* Ref.make<RestartAdapterState>({
+            activeTurn: null,
+            opened: [],
+            started: [],
+            closedSessionCount: 0,
+            failedReplacementOpen: false,
+          });
+          const registry = ProviderAdapterRegistry.layerSingle(
+            makeRestartAdapter(state, capabilities, providerInstanceId, true),
+          );
+          const result = yield* Effect.gen(function* () {
+            const projects = yield* ProjectStore.ProjectStoreV2;
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const sink = yield* EventSink.EventSinkV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            const at = DateTime.formatIso(yield* DateTime.now);
+            for (const [id, cwd] of [
+              [sourceId, sourceCwd],
+              [targetId, targetCwd],
+            ] as const) {
+              yield* projects.apply({
+                sequence: 1,
+                eventId: EventId.make(`event:${id}`),
+                aggregateKind: "project",
+                aggregateId: id,
+                occurredAt: at,
+                commandId: null,
+                causationEventId: null,
+                correlationId: null,
+                metadata: {},
+                type: "project.created",
+                payload: {
+                  projectId: id,
+                  title: id,
+                  workspaceRoot: cwd,
+                  defaultModelSelection: null,
+                  scripts: [],
+                  createdAt: at,
+                  updatedAt: at,
+                },
+              });
+            }
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("move:create"),
+              threadId,
+              projectId: sourceId,
+              title: "Original conversation",
+              modelSelection: initialSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: "source-only",
+              worktreePath: sourceCwd,
+            });
+            const running = yield* sink
+              .stream({ threadId, afterSequence: yield* sink.latestSequence({ threadId }) })
+              .pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.type === "provider-turn.updated" && event.payload.status === "running",
+                ),
+                Stream.take(1),
+                Stream.runDrain,
+                Effect.forkScoped,
+              );
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("move:message"),
+              threadId,
+              messageId: MessageId.make("move:message"),
+              text: "Keep the original history.",
+              attachments: [],
+              dispatchMode: { type: "start_immediately" },
+            });
+            yield* Fiber.join(running);
+            yield* worker.drain();
+            const before = yield* orchestrator.getThreadProjection(threadId);
+            const run = before.runs[0]!;
+            const providerThread = before.providerThreads.find(
+              (candidate) => candidate.id === run.providerThreadId,
+            )!;
+            const command = {
+              type: "thread.project.move-agent" as const,
+              commandId: CommandId.make("move:agent"),
+              threadId,
+              projectId: targetId,
+              expectedProjectId: sourceId,
+              runId: run.id,
+              providerSessionId: providerThread.providerSessionId!,
+              continuationPrompt: "Continue in the target project.",
+            };
+            const stale = yield* orchestrator
+              .dispatch({
+                ...command,
+                commandId: CommandId.make("move:stale"),
+                expectedProjectId: targetId,
+              })
+              .pipe(Effect.flip);
+            assert.equal(stale._tag, "OrchestratorDispatchError");
+            const wrongOwner = yield* orchestrator
+              .dispatch({
+                ...command,
+                commandId: CommandId.make("move:wrong-owner"),
+                providerSessionId: ProviderSessionId.make("not-the-caller"),
+              })
+              .pipe(Effect.flip);
+            assert.equal(wrongOwner._tag, "OrchestratorDispatchError");
+            const busy = yield* orchestrator
+              .dispatch({
+                type: "thread.project.move",
+                commandId: CommandId.make("move:ui-busy"),
+                threadId,
+                projectId: targetId,
+                expectedProjectId: sourceId,
+              })
+              .pipe(Effect.flip);
+            assert.equal(busy._tag, "OrchestratorDispatchError");
+            assert.equal(
+              (yield* orchestrator.getThreadProjection(threadId)).thread.projectId,
+              sourceId,
+            );
+            assert.lengthOf((yield* Ref.get(state)).opened, 1);
+
+            const now = yield* DateTime.now;
+            const toolItem = {
+              id: TurnItemId.make("move:tool-call"),
+              threadId,
+              runId: run.id,
+              nodeId: run.rootNodeId,
+              providerThreadId: providerThread.id,
+              providerTurnId: before.providerTurns[0]!.id,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 20,
+              status: "running" as const,
+              title: null,
+              startedAt: now,
+              completedAt: null,
+              updatedAt: now,
+              type: "dynamic_tool" as const,
+              toolName: "exec_command",
+              input: { cmd: "unrelated work" },
+              output: null,
+            };
+            yield* sink.write({
+              events: [
+                {
+                  id: EventId.make("move:tool-start"),
+                  type: "turn-item.updated",
+                  threadId,
+                  runId: run.id,
+                  occurredAt: now,
+                  payload: toolItem,
+                },
+              ],
+            });
+            const working = yield* orchestrator
+              .dispatch({ ...command, commandId: CommandId.make("move:other-work") })
+              .pipe(Effect.flip);
+            assert.equal(working._tag, "OrchestratorDispatchError");
+            assert.equal(
+              (yield* orchestrator.getThreadProjection(threadId)).thread.projectId,
+              sourceId,
+            );
+            yield* sink.write({
+              events: [
+                {
+                  id: EventId.make("move:own-tool"),
+                  type: "turn-item.updated",
+                  threadId,
+                  runId: run.id,
+                  occurredAt: now,
+                  payload: { ...toolItem, toolName: "mcp__cox__cox_thread_move" },
+                },
+              ],
+            });
+
+            const completed = yield* sink
+              .stream({ threadId, afterSequence: yield* sink.latestSequence({ threadId }) })
+              .pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.type === "run.updated" && event.payload.status === "completed",
+                ),
+                Stream.take(1),
+                Stream.runDrain,
+                Effect.forkScoped,
+              );
+            const moved = yield* orchestrator.dispatch(command);
+            const replay = yield* orchestrator.dispatch(command);
+            assert.equal(replay.replayed, true);
+            assert.equal(replay.sequence, moved.sequence);
+            yield* Fiber.join(completed);
+            yield* worker.drain();
+            return {
+              before,
+              after: yield* orchestrator.getThreadProjection(threadId),
+              captured: yield* Ref.get(state),
+            };
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                projectLayer,
+                ProviderReplayHarness.layerWithRegistry(
+                  { name: `project-move-${shared ? "shared" : "exclusive"}` },
+                  registry,
+                  { databaseLayer, runtimePolicyLayer },
+                ),
+              ),
+            ),
+            Effect.provideService(ResourceCleanup.ResourceCleanupService, {
+              ...cleanup,
+              moveScheduledTasks: (threadId, projectId) =>
+                Effect.sync(() => {
+                  scheduleMoves.push({ threadId, projectId });
+                }),
+            }),
+          );
+          assert.equal(result.after.thread.id, threadId);
+          assert.deepEqual(scheduleMoves, [{ threadId, projectId: targetId }]);
+          assert.equal(result.after.thread.title, result.before.thread.title);
+          assert.equal(result.after.thread.projectId, targetId);
+          assert.isNull(result.after.thread.worktreePath);
+          assert.isNull(result.after.thread.branch);
+          assert.deepEqual(result.after.thread.modelSelection, result.before.thread.modelSelection);
+          assert.lengthOf(result.after.runs, 1);
+          assert.equal(result.after.runs[0]?.id, result.before.runs[0]?.id);
+          assert.equal(result.after.runs[0]?.status, "completed");
+          assert.deepEqual(
+            result.after.messages.map((message) => message.text),
+            ["Keep the original history.", "Continue in the target project."],
+          );
+          assert.deepEqual(
+            result.after.attempts.map((attempt) => attempt.status),
+            ["superseded", "completed"],
+          );
+          assert.deepEqual(
+            result.after.providerThreads[0]?.nativeThreadRef,
+            result.before.providerThreads[0]?.nativeThreadRef,
+          );
+          assert.deepEqual(
+            result.captured.started.map((turn) => turn.cwd),
+            [sourceCwd, targetCwd],
+          );
+          assert.deepEqual(
+            result.captured.opened.map((session) => session.cwd),
+            [sourceCwd, targetCwd],
+          );
+          assert.isFalse(
+            result.after.turnItems.some((item) => item.type === "run_interrupt_request"),
+          );
+          assert.equal(
+            yield* fs.readFileString(`${sourceCwd}/uncommitted.txt`),
+            "Keep this source change.",
+          );
+          assert.isFalse(yield* fs.exists(`${targetCwd}/uncommitted.txt`));
+        }).pipe(Effect.provide(NodeServices.layer)),
+      ),
+  );
 }
 
 it.live("retries a failed selection restart session open before completing", () =>

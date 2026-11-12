@@ -82,6 +82,7 @@ import {
   derivePendingBackgroundWork,
   pendingBackgroundTurnItems,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -513,6 +514,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.visit":
     case "thread.mark-unread":
     case "thread.project.move":
+    case "thread.project.move-agent":
     case "thread.metadata.update":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
@@ -2791,7 +2793,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       return plan.parentRun?.id;
     }
-    // task_status and t3_thread_read use distinct command IDs, so two
+    // task_status and cox_thread_read use distinct command IDs, so two
     // valid observations can race after their read preflight. Re-emit the
     // existing task row so the second dispatch is a successful idempotent
     // no-op rather than "already acknowledged/disposed" or empty-events.
@@ -3347,6 +3349,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.active.reorder"
           | "thread.mark-unread"
           | "thread.project.move"
+          | "thread.project.move-agent"
           | "thread.metadata.update"
           | "thread.pull-request.link"
           | "thread.pull-request.unlink"
@@ -3380,7 +3383,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Thread ${command.threadId} is deleted.`,
       });
     }
-    if (command.type === "thread.project.move") {
+    if (command.type === "thread.project.move" || command.type === "thread.project.move-agent") {
       if (!isListedThreadLineage(thread.lineage)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -3404,8 +3407,61 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       if (thread.projectId === command.projectId) return;
-      const projection = yield* loadProjectionForCommand(command, ["runs", "runtimeRequests"]);
-      if (threadHasUnfinishedWork(projection)) {
+      if (command.type === "thread.project.move-agent") {
+        const directory = yield* fileSystem.stat(target.value.workspaceRoot).pipe(Effect.option);
+        if (Option.isNone(directory) || directory.value.type !== "Directory") {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: "The target project's workspace directory is unavailable.",
+          });
+        }
+      }
+      const projection = yield* loadProjectionForCommand(
+        command,
+        ["runs", "runtimeRequests", "providerThreads", "subagents", "turnItems"],
+        {
+          turnItemTypes: ["command_execution", "dynamic_tool", "subagent"],
+          turnItemStatuses: ["pending", "running", "waiting"],
+        },
+      );
+      const activeRun =
+        command.type === "thread.project.move-agent"
+          ? projection.runs.find((run) => run.id === command.runId && run.status === "running")
+          : undefined;
+      if (
+        command.type === "thread.project.move-agent" &&
+        (thread.archivedAt !== null ||
+          activeRun === undefined ||
+          !projection.providerThreads.some(
+            (providerThread) =>
+              providerThread.id === activeRun.providerThreadId &&
+              providerThread.ownerNodeId === null &&
+              providerThread.providerSessionId === command.providerSessionId,
+          ))
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `The calling agent no longer owns the active run of thread ${command.threadId}.`,
+        });
+      }
+      if (
+        threadHasUnfinishedWork({
+          runs: projection.runs.filter((run) => run.id !== activeRun?.id),
+          runtimeRequests: projection.runtimeRequests,
+        }) ||
+        projection.subagents.some((task) => isOrchestrationV2WorkActive(task.status)) ||
+        (command.type === "thread.project.move-agent" &&
+          (projection.providerThreads.some(
+            (providerThread) => (providerThread.pendingBackgroundTasks?.length ?? 0) > 0,
+          ) ||
+            pendingBackgroundTurnItems(projection).some(
+              (item) =>
+                item.type !== "dynamic_tool" ||
+                resolveT3McpToolId(item.toolName) !== "cox_thread_move",
+            )))
+      ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
@@ -3696,6 +3752,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       command.type === "thread.archive" ||
       command.type === "thread.settle" ||
       command.type === "thread.project.move" ||
+      command.type === "thread.project.move-agent" ||
       (command.type === "thread.metadata.update" &&
         command.worktreePath !== undefined &&
         command.worktreePath !== thread.worktreePath);
@@ -3963,6 +4020,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           };
         }
         case "thread.project.move":
+        case "thread.project.move-agent":
           return {
             ...thread,
             projectId: command.projectId,
@@ -4333,6 +4391,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.mark-unread":
           return "thread.marked-unread" as const;
         case "thread.project.move":
+        case "thread.project.move-agent":
         case "thread.metadata.update":
         case "thread.title.regeneration.complete":
           return "thread.metadata-updated" as const;
@@ -4365,6 +4424,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
     // Archiving ends the guest share, so its waiting files go too.
     yield* releaseGuestAttachments(command, thread.guestShare, updatedThread.guestShare, effects);
+
+    if (command.type === "thread.project.move" || command.type === "thread.project.move-agent") {
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        {
+          id: `effect:${command.commandId}:scheduled-tasks.move`,
+          commandId: command.commandId,
+          threadId: command.threadId,
+          request: { type: "scheduled-tasks.move", projectId: command.projectId },
+        } satisfies PendingOrchestrationEffectV2,
+      ]);
+    }
 
     if (command.type === "thread.metadata.update" && command.regenerateTitle === true) {
       yield* Ref.update(effects, (existing) => [
@@ -5030,6 +5101,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly delegatedCompletion?: OrchestrationV2ConversationMessage["delegatedCompletion"];
     readonly notification?: OrchestrationV2ConversationMessage["notification"];
     readonly forceRestart: boolean;
+    readonly restartSession?: boolean;
   }) {
     const targetRun = input.projection.runs.find((candidate) => candidate.id === input.targetRunId);
     if (targetRun === undefined) {
@@ -5267,13 +5339,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       selectionChanged &&
       (providerInstanceChanged || selectionTransition?.type !== "apply_on_next_turn");
     const steeringPolicy = yield* mapDispatchError(input.command)(
-      commandPolicy.decideSteeringExecution({
-        commandId: input.command.commandId,
-        threadId: input.command.threadId,
-        providerInstanceId: targetRun.providerInstanceId,
-        capabilities: session.providerSession.capabilities,
-        forceRestart: input.forceRestart || selectionMustApplyNow,
-      }),
+      input.restartSession === true
+        ? commandPolicy
+            .ensureInterrupt({
+              commandId: input.command.commandId,
+              threadId: input.command.threadId,
+              providerInstanceId: targetRun.providerInstanceId,
+              capabilities: session.providerSession.capabilities,
+            })
+            .pipe(Effect.as("interrupt_restart" as const))
+        : commandPolicy.decideSteeringExecution({
+            commandId: input.command.commandId,
+            threadId: input.command.threadId,
+            providerInstanceId: targetRun.providerInstanceId,
+            capabilities: session.providerSession.capabilities,
+            forceRestart: input.forceRestart || selectionMustApplyNow,
+          }),
     );
 
     if (steeringPolicy === "active_steering") {
@@ -5368,7 +5449,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       (providerInstanceChanged && !canResumeAcrossInstances) ||
       selectionTransition?.type === "create_with_handoff";
     const requiresProviderSessionRestart =
-      canResumeAcrossInstances || selectionTransition?.type === "restart_session";
+      input.restartSession === true ||
+      canResumeAcrossInstances ||
+      selectionTransition?.type === "restart_session";
     if (requiresProviderThreadHandoff) {
       const targetAdapter = yield* providerAdapters.get(input.modelSelection.instanceId).pipe(
         Effect.mapError(
@@ -9964,7 +10047,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
 
   const loadProjectionForCommand = <K extends ProjectionRecordField>(
-    command: OrchestrationV2Command,
+    command: OrchestrationV2ServerCommand,
     fields: ReadonlyArray<K>,
     filter?: ProjectionRecordFilter,
   ) =>
@@ -13101,6 +13184,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.active.reorder":
       case "thread.mark-unread":
       case "thread.project.move":
+      case "thread.project.move-agent":
       case "thread.metadata.update":
       case "thread.pull-request.link":
       case "thread.pull-request.unlink":
@@ -13113,6 +13197,34 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.model-selection.set":
       case "provider.switch":
         yield* dispatchThreadMutation(command, events, effects);
+        if (command.type === "thread.project.move-agent") {
+          const projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+          yield* dispatchSteerIntoRun({
+            command: {
+              type: "message.dispatch",
+              commandId: command.commandId,
+              threadId: command.threadId,
+              messageId: MessageId.make(`${command.commandId}:continuation`),
+              text: command.continuationPrompt,
+              attachments: [],
+              createdBy: "agent",
+              creationSource: "mcp",
+              dispatchMode: { type: "restart_active", targetRunId: command.runId },
+            },
+            events,
+            effects,
+            projection,
+            modelSelection: projection.thread.modelSelection,
+            targetRunId: command.runId,
+            messageId: MessageId.make(`${command.commandId}:continuation`),
+            text: command.continuationPrompt,
+            attachments: [],
+            createdBy: "agent",
+            creationSource: "mcp",
+            forceRestart: true,
+            restartSession: true,
+          });
+        }
         break;
       case "thread.pull-request-watch.sync":
         yield* dispatchPullRequestWatchSync(command, events, effects);

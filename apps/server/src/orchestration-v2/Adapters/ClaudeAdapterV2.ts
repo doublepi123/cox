@@ -1718,12 +1718,12 @@ function parseClaudeInteger(text: string): number {
 }
 
 // Claude Code defers MCP tools behind ToolSearch, so the agent only finds
-// t3_background_wait when the system prompt says when to reach for it.
+// cox_background_wait when the system prompt says when to reach for it.
 const CLAUDE_BACKGROUND_WAIT_INSTRUCTIONS = `
 
 ### Background work you wait on
 
-To wait for a background command or Monitor you started (tests, a build), call \`t3_background_wait\` with its task ID before you end your turn. Do not mark work you leave running, or PRs. T3 MCP tools are deferred: load one with ToolSearch before you call it.
+To wait for a background command or Monitor you started (tests, a build), call \`cox_background_wait\` with its task ID before you end your turn. Do not mark work you leave running, or PRs. Cox MCP tools are deferred: load one with ToolSearch before you call it.
 `;
 
 export function makeClaudeQueryOptions(input: {
@@ -1995,23 +1995,23 @@ const readClaudeLaunchArgSettings = Effect.fn("ClaudeAdapterV2.readLaunchArgSett
   },
 );
 
-export const CLAUDE_T3_MCP_TOOL_WILDCARD = "mcp__t3-code__*";
+export const CLAUDE_T3_MCP_TOOL_WILDCARD = "mcp__cox__*";
 
 // Keep in sync with OrchestratorToolkit Tool.Readonly annotations; ClaudeAdapterV2.test.ts checks this.
 export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
-  "mcp__t3-code__orchestrator_capabilities",
-  "mcp__t3-code__list_scheduled_tasks",
-  "mcp__t3-code__t3_thread_list",
-  "mcp__t3-code__t3_thread_wait",
-  "mcp__t3-code__t3_worktree_status",
-  "mcp__t3-code__t3_worktree_list",
-  "mcp__t3-code__t3_project_list",
-  "mcp__t3-code__t3_project_read",
-  "mcp__t3-code__t3_thread_search",
-  "mcp__t3-code__t3_preview_list",
-  "mcp__t3-code__t3_environment_read",
-  "mcp__t3-code__html_preview",
-  "mcp__t3-code__html_render",
+  "mcp__cox__orchestrator_capabilities",
+  "mcp__cox__list_scheduled_tasks",
+  "mcp__cox__cox_thread_list",
+  "mcp__cox__cox_thread_wait",
+  "mcp__cox__cox_worktree_status",
+  "mcp__cox__cox_worktree_list",
+  "mcp__cox__cox_project_list",
+  "mcp__cox__cox_project_read",
+  "mcp__cox__cox_thread_search",
+  "mcp__cox__cox_preview_list",
+  "mcp__cox__cox_environment_read",
+  "mcp__cox__html_preview",
+  "mcp__cox__html_render",
 ];
 
 // T3 waits can block for an hour; exceed Claude's default 60 s timeout.
@@ -2038,7 +2038,7 @@ export function claudeMcpQueryOverrides(input: {
   return {
     allowedTools: Array.from(new Set([...(input.allowedTools ?? []), ...mcpAllowedTools])),
     mcpServers: {
-      "t3-code": {
+      cox: {
         type: "http",
         url: session.endpoint,
         headers: {
@@ -7477,6 +7477,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const { liveQuery, toolCall } = input;
             if (
               !toolCall.toolName.startsWith("mcp__") ||
+              toolCall.toolName.startsWith("mcp__cox__") ||
               toolCall.toolName.startsWith("mcp__t3-code__") ||
               !claudeSupportsMcpApps(liveQuery.capabilities)
             ) {

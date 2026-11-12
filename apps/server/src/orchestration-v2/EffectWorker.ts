@@ -505,6 +505,22 @@ export const layerExecutor: Layer.Layer<
                   }),
               ),
             );
+          case "scheduled-tasks.move":
+            return threads.getThreadShell(effect.threadId).pipe(
+              Effect.flatMap((shell) =>
+                shell === null || shell.deletedAt !== null
+                  ? Effect.void
+                  : resourceCleanup.moveScheduledTasks(effect.threadId, shell.projectId),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
           case "terminal.cleanup":
             return resourceCleanup.cleanupTerminals(effect.threadId).pipe(
               Effect.mapError(
