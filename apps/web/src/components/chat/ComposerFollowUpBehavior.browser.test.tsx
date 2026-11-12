@@ -352,6 +352,7 @@ describe("composer follow-up preference", () => {
         name: language === "zh" ? "引导" : "Steer",
         exact: true,
       });
+      await expect.element(choice).toBeVisible();
       const bounds = choice.element().getBoundingClientRect();
       expect(bounds.height).toBeGreaterThanOrEqual(44);
       expect(bounds.left).toBeGreaterThanOrEqual(0);
