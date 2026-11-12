@@ -1,5 +1,56 @@
 import { describe, expect, it } from "vite-plus/test";
-import { OmoLifecycle, omoSessionState, omoTaskEvent, omoPermissionRequest } from "./runtime.ts";
+import {
+  OmoLifecycle,
+  omoSessionState,
+  omoTaskEvent,
+  omoPermissionRequest,
+  omoStartupFailure,
+} from "./runtime.ts";
+
+describe("OMO startup health", () => {
+  it("does not fail startup for explicitly excluded tools", () => {
+    expect(
+      omoStartupFailure({
+        ready: false,
+        available: true,
+        nativeTaskReady: false,
+        coxOrchestrationReady: false,
+        nativeTask: { required: true, registered: true, status: "excluded" },
+        coxOrchestration: {
+          required: true,
+          connected: true,
+          tools: [{ name: "mcp__cox__delegate_task", status: "excluded" }],
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not accept the old task-only readiness signal", () => {
+    expect(omoStartupFailure({ ready: true })).toContain("did not initialize");
+  });
+
+  it("reports missing connectivity, catalog entries and inactive tools", () => {
+    const message = omoStartupFailure({
+      available: false,
+      nativeTaskReady: false,
+      nativeTask: { required: true, status: "unregistered" },
+      coxOrchestration: {
+        required: true,
+        connected: false,
+        tools: [
+          { name: "mcp__cox__orchestrator_capabilities", status: "missing-catalog" },
+          { name: "mcp__cox__delegate_task", status: "inactive" },
+          { name: "mcp__cox__task_status", status: "excluded" },
+        ],
+      },
+    });
+    expect(message).toContain("Native task: unregistered");
+    expect(message).toContain("Cox MCP is not connected");
+    expect(message).toContain("mcp__cox__orchestrator_capabilities: missing-catalog");
+    expect(message).toContain("mcp__cox__delegate_task: inactive");
+    expect(message).not.toContain("mcp__cox__task_status");
+  });
+});
 
 const lifecycle = (state: string, seq: number, extra: Record<string, unknown> = {}) => ({
   type: "session_lifecycle",

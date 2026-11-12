@@ -19,6 +19,7 @@ import * as Path from "effect/Path";
 import { prepareOmoConfiguration } from "./configuration.ts";
 import { buildOmoLaunch, materializeOmoExtension } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
+import { omoTodoSnapshot } from "./todo.ts";
 
 export const OMO_DRIVER = ProviderDriverKind.make("omo");
 const decodeOmoSettings = Schema.decodeSync(OmoSettings);
@@ -53,8 +54,20 @@ export const OmoAdapterDriver: ProviderAdapterDriver<OmoSettings, OmoAdapterEnv>
           connect: makeOmoRpcConnection,
           materializeExtension: materializeOmoExtension,
           buildLaunch: buildOmoLaunch,
+          todo: {
+            requestName: "cox.omo.todo",
+            eventName: "cox.omo.todo.updated",
+            toolNames: ["todo", "todowrite"],
+            decode: omoTodoSnapshot,
+          },
           capabilities: {
             ...PiProviderCapabilitiesV2,
+            planning: {
+              ...PiProviderCapabilitiesV2.planning,
+              emitsPlanUpdated: true,
+              emitsTodoList: true,
+              planDeltasHaveItemIds: true,
+            },
             approvals: {
               ...PiProviderCapabilitiesV2.approvals,
               approvalsCanOriginateFromSubagents: true,

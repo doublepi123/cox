@@ -48,11 +48,14 @@ import {
   makePiAdapterV2,
   PiAdapterV2Driver,
   PI_PROVIDER,
+  PiProviderCapabilitiesV2,
   type PiAdapterV2Options,
 } from "./adapter.ts";
 import { makePiRpcConnection, type PiRpcRecord } from "./rpc.ts";
 import { loadMcpBridge } from "./mcpBridge.testkit.ts";
+import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts";
 import { turnItemOutputText } from "../../../client-runtime/src/work-log/itemDetail.ts";
+import { omoTodoSnapshot } from "../../../provider-omo/src/server/todo.ts";
 
 const layerTest = Layer.mergeAll(
   NodeServices.layer,
@@ -170,6 +173,7 @@ interface FakePi {
   readonly queueModels: (models: ReadonlyArray<unknown>) => void;
   readonly vetoNextNewSession: () => void;
   readonly allRequests: () => ReadonlyArray<PiRpcRecord>;
+  readonly setTodoSnapshot: (value: unknown) => void;
   readonly promptThinkingLevels: ReadonlyArray<string>;
   readonly promptModels: ReadonlyArray<string>;
   readonly promptServiceTiers: ReadonlyArray<string | null>;
@@ -237,6 +241,7 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
   let promptDisposition = true;
   const serviceTierCommand = "/t3-service-tier";
   let currentModel = "default";
+  let todoSnapshot: unknown;
 
   const emit = (record: PiRpcRecord, chunkBytes?: number) =>
     Effect.gen(function* () {
@@ -318,6 +323,8 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
       }
       case "get_entries":
         return { ...base, data: entriesQueue.shift() ?? { entries: [], leafId: null } };
+      case "extension_request":
+        return record.name === "cox.omo.todo" ? { ...base, data: todoSnapshot } : base;
       case "get_messages":
         return { ...base, data: messagesQueue.shift() ?? { messages: [] } };
       case "get_session_stats":
@@ -453,6 +460,9 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
       vetoNewSession = true;
     },
     allRequests: () => allRequests,
+    setTodoSnapshot: (value) => {
+      todoSnapshot = value;
+    },
     vetoNextSwitch: () => {
       vetoSwitch = true;
     },
@@ -477,6 +487,7 @@ const makeAdapter = Effect.fnUntraced(function* (
   launchArgs = "",
   forkFake?: FakePi,
   continuationRequests?: PiAdapterV2Options["continuationRequests"],
+  nativeRuntime?: PiAdapterV2Options["runtime"],
 ) {
   const spawner =
     forkFake === undefined
@@ -506,6 +517,7 @@ const makeAdapter = Effect.fnUntraced(function* (
     instanceId: PI_INSTANCE_ID,
     settings: { enabled: true, binaryPath: "pi", launchArgs, customModels: [] },
     environment: {},
+    ...(nativeRuntime === undefined ? {} : { runtime: nativeRuntime }),
   }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
 });
 
@@ -516,8 +528,9 @@ const openRuntime = Effect.fnUntraced(function* (
   providerSessionId = SESSION_ID,
   forkFake?: FakePi,
   continuationRequests?: PiAdapterV2Options["continuationRequests"],
+  nativeRuntime?: PiAdapterV2Options["runtime"],
 ) {
-  const adapter = yield* makeAdapter(fake, "", forkFake, continuationRequests);
+  const adapter = yield* makeAdapter(fake, "", forkFake, continuationRequests, nativeRuntime);
   const runtime = yield* adapter.openSession({
     threadId,
     providerSessionId,
@@ -525,8 +538,12 @@ const openRuntime = Effect.fnUntraced(function* (
     runtimePolicy,
   });
   const emitted = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+  const observed: Array<ProviderAdapter.ProviderAdapterV2Event> = [];
   yield* runtime.events.pipe(
-    Stream.runForEach((event) => Queue.offer(emitted, event)),
+    Stream.runForEach((event) => {
+      observed.push(event);
+      return Queue.offer(emitted, event);
+    }),
     Effect.forkScoped,
   );
   const takeEvent = (predicate: (event: ProviderAdapter.ProviderAdapterV2Event) => boolean) =>
@@ -536,7 +553,7 @@ const openRuntime = Effect.fnUntraced(function* (
         if (predicate(event)) return event;
       }
     });
-  return { runtime, takeEvent };
+  return { runtime, takeEvent, observed };
 });
 
 const makeAppThread = Effect.fnUntraced(function* (model: string, threadId = THREAD_ID) {
@@ -601,6 +618,174 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("PiAdapterV2", () => {
+  it.effect(
+    "projects OMO Todo snapshots with stable plan identity, restores open work and clears removed tasks",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const todoRuntime: NonNullable<PiAdapterV2Options["runtime"]> = {
+          driver: "omo" as NonNullable<PiAdapterV2Options["runtime"]>["driver"],
+          label: "OMO",
+          connect: makePiRpcConnection,
+          buildLaunch: buildPiRpcLaunch,
+          materializeExtension: materializePiT3McpExtension,
+          capabilities: {
+            ...PiProviderCapabilitiesV2,
+            planning: {
+              ...PiProviderCapabilitiesV2.planning,
+              emitsTodoList: true,
+              emitsPlanUpdated: true,
+            },
+          },
+          todo: {
+            requestName: "cox.omo.todo",
+            eventName: "cox.omo.todo.updated",
+            toolNames: ["todo", "todowrite"],
+            decode: omoTodoSnapshot,
+          },
+        };
+        const todo = (
+          revision: number,
+          status = "in_progress",
+          content = "Implement",
+          sessionFile = FAKE_SESSION_FILE,
+        ) => ({
+          sessionFile,
+          generation: "generation-1",
+          hasList: true,
+          revision,
+          phases: [{ name: "Build", tasks: [{ content, status }] }],
+        });
+        const { runtime, takeEvent, observed } = yield* openRuntime(
+          fake,
+          "default",
+          THREAD_ID,
+          SESSION_ID,
+          undefined,
+          undefined,
+          todoRuntime,
+        );
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        fake.setTodoSnapshot(todo(0));
+        yield* startTurn(runtime, providerThread);
+        const initial = yield* takeEvent((event) => event.type === "plan.updated");
+        assert.isTrue(initial.type === "plan.updated" && initial.plan.kind === "todo_list");
+        if (initial.type !== "plan.updated" || initial.plan.kind !== "todo_list") return;
+        assert.equal(initial.driver, "omo");
+        assert.equal(runtime.providerSession.capabilities.planning.emitsTodoList, true);
+        assert.deepEqual(
+          initial.plan.steps.map(({ text, status }) => ({ text, status })),
+          [{ text: "Build: Implement", status: "running" }],
+        );
+        const initialPlanId = initial.plan.id;
+        const stepId = initial.plan.steps[0]!.id;
+        const publish = (data: unknown) =>
+          fake.emit({ type: "extension_event", name: "cox.omo.todo.updated", data });
+        yield* publish(todo(1, "completed"));
+        const done = yield* takeEvent((event) => event.type === "plan.updated");
+        assert.isTrue(done.type === "plan.updated" && done.plan.status === "completed");
+        if (done.type !== "plan.updated" || done.plan.kind !== "todo_list") return;
+        assert.equal(done.plan.id, initialPlanId);
+        assert.equal(done.plan.steps[0]?.id, stepId);
+        yield* publish(todo(1, "completed"));
+        yield* publish(todo(0));
+        yield* publish(todo(4, "in_progress", "Child todo", "/fake/child.jsonl"));
+        yield* publish({ ...todo(5), phases: [{ name: "Bad", tasks: [null] }] });
+        yield* publish(todo(2, "pending", "Verify"));
+        yield* takeEvent(
+          (event) =>
+            event.type === "plan.updated" &&
+            event.plan.kind === "todo_list" &&
+            event.plan.steps[0]?.text === "Build: Verify",
+        );
+        assert.lengthOf(
+          observed.filter((event) => event.type === "plan.updated"),
+          3,
+        );
+        fake.setTodoSnapshot(todo(2, "pending", "Verify"));
+        yield* fake.emit({ type: "agent_settled" });
+        yield* takeEvent((event) => event.type === "turn.terminal");
+        yield* startTurn(runtime, providerThread, "default", [], "Continue", undefined, 2);
+        const restored = yield* takeEvent(
+          (event) => event.type === "plan.updated" && event.plan.runId !== initial.plan.runId,
+        );
+        assert.isTrue(restored.type === "plan.updated" && restored.plan.kind === "todo_list");
+        if (restored.type !== "plan.updated" || restored.plan.kind !== "todo_list") return;
+        assert.notEqual(restored.plan.id, initialPlanId);
+        assert.equal(restored.plan.steps[0]?.text, "Build: Verify");
+        const cleared = { ...todo(3), phases: [] };
+        fake.setTodoSnapshot(cleared);
+        yield* fake.emit({
+          type: "tool_execution_end",
+          toolName: "todo",
+          toolCallId: "clear-todos",
+          result: { content: [], details: { phases: [] } },
+          isError: false,
+        });
+        const empty = yield* takeEvent(
+          (event) =>
+            event.type === "plan.updated" &&
+            event.plan.kind === "todo_list" &&
+            event.plan.steps.length === 0,
+        );
+        assert.isTrue(empty.type === "plan.updated" && empty.plan.id === restored.plan.id);
+        const lastRevision = { ...todo(0), generation: "reloaded-extension" };
+        yield* publish(lastRevision);
+        yield* takeEvent(
+          (event) =>
+            event.type === "plan.updated" &&
+            event.plan.kind === "todo_list" &&
+            event.plan.steps[0]?.text === "Build: Implement",
+        );
+        yield* publish(todo(99, "pending", "Retired generation"));
+        fake.setTodoSnapshot({ ...lastRevision, revision: 1, phases: [] });
+        yield* fake.emit({ type: "agent_settled" });
+        yield* takeEvent((event) => event.type === "turn.terminal");
+        assert.lengthOf(
+          observed.filter((event) => event.type === "plan.updated"),
+          7,
+        );
+        const finalPlan = observed.filter((event) => event.type === "plan.updated").at(-1);
+        assert.isTrue(
+          finalPlan?.type === "plan.updated" &&
+            finalPlan.plan.kind === "todo_list" &&
+            finalPlan.plan.steps.length === 0,
+        );
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
+  it.effect("does not enable or request OMO Todo snapshots on an ordinary Pi runtime", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent, observed } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.emit({
+        type: "extension_event",
+        name: "cox.omo.todo.updated",
+        data: {
+          sessionFile: FAKE_SESSION_FILE,
+          generation: "g",
+          hasList: true,
+          revision: 0,
+          phases: [],
+        },
+      });
+      yield* fake.emit({ type: "agent_settled" });
+      yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isFalse(observed.some((event) => event.type === "plan.updated"));
+      assert.isFalse(fake.allRequests().some((request) => request.name === "cox.omo.todo"));
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect(
     "replaces keyed extension statuses while idle without producing conversation items",
     () =>

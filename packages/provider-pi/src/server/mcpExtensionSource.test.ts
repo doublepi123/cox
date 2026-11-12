@@ -76,6 +76,9 @@ describe("Pi orchestration prompt section", () => {
       assert.isDefined(result);
       assert.isTrue(result!.systemPrompt.startsWith(`${event.systemPrompt}\n\n`));
       assert.include(result!.systemPrompt, "orchestrator_capabilities");
+      assert.include(result!.systemPrompt, "mcp__cox__delegate_task");
+      assert.include(result!.systemPrompt, "task, not prompt");
+      assert.include(result!.systemPrompt, "Native task is not a fallback");
     }
   });
 });
@@ -165,37 +168,263 @@ describe("Pi MCP tool exposure", () => {
     ui: { notify: () => undefined },
   };
 
-  it("keeps orchestration direct and optional bridge tools discoverable on modern Pi", async () => {
-    const bridge = await loadMcpBridge({ modern: true, toolSearchAvailable: true });
-    await bridge.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
-    const start = bridge.handlers.get("before_agent_start");
-    assert.isDefined(start);
-    const prompt = await start!({ systemPrompt: "Pi system prompt" }, discoveryContext);
-    assert.include(prompt?.systemPrompt ?? "", "orchestrator_capabilities");
-    assert.equal(bridge.servers.length, 0);
-    assert.equal(bridge.tools.length, 4);
-    assert.deepEqual(bridge.getActiveTools(), ["read", "tool_search"]);
-    assert.deepEqual(
-      bridge.tools
-        .filter((tool) => tool.exposure !== "hidden")
-        .map((tool) => [tool.name, tool.exposure]),
-      [
-        ["mcp__cox__orchestrator_capabilities", "direct"],
-        ["mcp__cox__delegate_task", "direct"],
-        ["mcp__cox__task_status", "direct"],
-        ["mcp__cox__preview_snapshot", "deferred"],
-      ],
-    );
-    assert.deepEqual(
-      bridge.tools.filter((tool) => tool.exposure === "hidden").map((tool) => tool.name),
-      [],
-    );
-    const result = await bridge.tools
-      .find((tool) => tool.name === "mcp__cox__preview_snapshot")!
-      .execute("call-1", { depth: 2 });
-    assert.equal(result.content[0]?.text, "browser snapshot");
-    assert.equal(bridge.requests.at(-1)?.method, "tools/call");
+  it.each(["builtin:tool-search", "<builtin:tool-search>"])(
+    "keeps orchestration active and optional tools searchable with %s",
+    async (path) => {
+      const bridge = await loadMcpBridge({
+        modern: true,
+        toolSearchAvailable: true,
+        toolSearchSource: { source: "builtin", path },
+      });
+      await bridge.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+      const start = bridge.handlers.get("before_agent_start");
+      assert.isDefined(start);
+      const prompt = await start!({ systemPrompt: "Pi system prompt" }, discoveryContext);
+      assert.include(prompt?.systemPrompt ?? "", "orchestrator_capabilities");
+      assert.equal(bridge.servers.length, 0);
+      assert.equal(bridge.tools.length, 4);
+      assert.deepEqual(bridge.getActiveTools(), [
+        "read",
+        "tool_search",
+        "mcp__cox__orchestrator_capabilities",
+        "mcp__cox__delegate_task",
+        "mcp__cox__task_status",
+      ]);
+      assert.isTrue(bridge.getHealth().coxOrchestrationReady);
+      assert.equal(
+        bridge.getHealth().tools.find((tool) => tool.name === "mcp__cox__preview_snapshot")?.status,
+        "searchable",
+      );
+      assert.deepEqual(
+        bridge.tools
+          .filter((tool) => tool.exposure !== "hidden")
+          .map((tool) => [tool.name, tool.exposure]),
+        [
+          ["mcp__cox__orchestrator_capabilities", "direct"],
+          ["mcp__cox__delegate_task", "direct"],
+          ["mcp__cox__task_status", "direct"],
+          ["mcp__cox__preview_snapshot", "deferred"],
+        ],
+      );
+      assert.deepEqual(
+        bridge.tools.filter((tool) => tool.exposure === "hidden").map((tool) => tool.name),
+        [],
+      );
+      const result = await bridge.tools
+        .find((tool) => tool.name === "mcp__cox__preview_snapshot")!
+        .execute("call-1", { depth: 2 });
+      assert.equal(result.content[0]?.text, "browser snapshot");
+      assert.equal(bridge.requests.at(-1)?.method, "tools/call");
+    },
+  );
+
+  it.each(["anthropic-messages", "openai-responses", "openai-completions"])(
+    "activates the core tools before requests using %s",
+    async (api) => {
+      const bridge = await loadMcpBridge({ modern: true, toolSearchAvailable: true });
+      await bridge.handlers.get("session_start")!(
+        { systemPrompt: "" },
+        { ...discoveryContext, model: { api } },
+      );
+      for (const name of ["orchestrator_capabilities", "delegate_task", "task_status"]) {
+        assert.include(bridge.getActiveTools(), "mcp__cox__" + name);
+      }
+      assert.equal(
+        bridge.getActiveTools().includes("mcp__cox__preview_snapshot"),
+        api === "openai-completions",
+      );
+    },
+  );
+
+  it.each(["session_start", "model_select", "session_tree", "before_agent_start"])(
+    "retries connection before reconciling at %s",
+    async (hook) => {
+      const bridge = await loadMcpBridge({
+        modern: true,
+        toolSearchAvailable: true,
+        connectFailures: 1,
+      });
+      assert.equal(bridge.tools.length, 0);
+      assert.isFalse(bridge.getHealth().connected);
+      await bridge.handlers.get(hook)!(
+        { systemPrompt: "" },
+        { ...discoveryContext, model: { api: "openai-completions" } },
+      );
+      assert.isTrue(bridge.getHealth().coxOrchestrationReady);
+      assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
+      assert.equal(bridge.requests.filter((request) => request.method === "initialize").length, 2);
+    },
+  );
+
+  it("retries a failed catalog load and reports connection warnings without claiming readiness", async () => {
+    const bridge = await loadMcpBridge({ modern: true, listFailures: 2 });
+    const notices: string[] = [];
+    const ctx = { ...discoveryContext, ui: { notify: (message: string) => notices.push(message) } };
+    await bridge.handlers.get("session_start")!({ systemPrompt: "" }, ctx);
+    assert.isFalse(bridge.getHealth().available);
+    assert.equal(notices.length, 1);
+    assert.include(notices[0]!, "Fixture catalog unavailable");
+    await bridge.handlers.get("before_agent_start")!({ systemPrompt: "" }, ctx);
+    assert.isTrue(bridge.getHealth().coxOrchestrationReady);
   });
+
+  it("restores Anthropic core tools after tree navigation and before a turn", async () => {
+    const bridge = await loadMcpBridge({ modern: true, toolSearchAvailable: true });
+    for (const hook of ["session_tree", "before_agent_start"]) {
+      bridge.restoreActiveTools(["read"]);
+      await bridge.handlers.get(hook)!({ systemPrompt: "" }, discoveryContext);
+      assert.isTrue(bridge.getHealth().coxOrchestrationReady);
+      assert.equal(bridge.getActiveTools().length, 5);
+    }
+  });
+
+  it("reconciles readiness after native post-start loadout changes using the selected model", async () => {
+    const bridge = await loadMcpBridge({ modern: true, toolSearchAvailable: true });
+    await bridge.handlers.get("model_select")!(
+      { systemPrompt: "" },
+      {
+        ...discoveryContext,
+        model: { api: "openai-completions" },
+      },
+    );
+    bridge.restoreActiveTools(["read"]);
+    assert.isFalse(bridge.getHealth().available);
+    await bridge.ensureReady();
+    assert.isTrue(bridge.getHealth().coxOrchestrationReady);
+    assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
+  });
+
+  it("restores Cox tools after native asynchronous MCP catalog refreshes without activating exclusions or replacements", async () => {
+    const bridge = await loadMcpBridge({
+      modern: true,
+      toolSearchAvailable: true,
+      allowsTool: (name) => name !== "mcp__cox__delegate_task",
+    });
+    await bridge.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    bridge.restoreActiveTools(["read", "tool_search"]);
+    await bridge.handlers.get("context")!({ systemPrompt: "" }, discoveryContext);
+    assert.include(bridge.getActiveTools(), "mcp__cox__orchestrator_capabilities");
+    bridge.restoreActiveTools(["read", "tool_search"]);
+    assert.isTrue(bridge.activateLazyTool("mcp__cox__orchestrator_capabilities"));
+    assert.isTrue(bridge.activateLazyTool("mcp__cox__preview_snapshot"));
+    assert.isFalse(bridge.activateLazyTool("mcp__cox__delegate_task"));
+    bridge.setBridgeSourcePath("/replacement.ts");
+    bridge.restoreActiveTools(["read"]);
+    assert.isFalse(bridge.activateLazyTool("mcp__cox__orchestrator_capabilities"));
+    assert.isFalse(bridge.activateLazyTool("unrelated_tool"));
+  });
+
+  it.each([
+    { source: "extension", path: "builtin:tool-search" },
+    { source: "extension", path: "<builtin:tool-search>" },
+    { source: "builtin", path: "/extension/tool-search.ts" },
+  ])("does not trust a forged search source %j", async (toolSearchSource) => {
+    const bridge = await loadMcpBridge({
+      modern: true,
+      toolSearchAvailable: true,
+      toolSearchSource,
+    });
+    await bridge.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    assert.notInclude(bridge.getActiveTools(), "tool_search");
+    assert.isTrue(bridge.tools.every((tool) => tool.exposure === "direct"));
+    assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
+    assert.isTrue(bridge.getHealth().coxOrchestrationReady);
+  });
+
+  it("falls back to explicit declarations when registered search cannot activate", async () => {
+    const bridge = await loadMcpBridge({
+      modern: true,
+      toolSearchAvailable: true,
+      allowsActivation: (name) => name !== "tool_search",
+    });
+    await bridge.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    assert.isFalse(bridge.getHealth().searchReady);
+    assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
+    assert.isTrue(bridge.tools.every((tool) => tool.exposure === "direct"));
+  });
+
+  it("reconciles when search disappears and returns without dropping selected tools", async () => {
+    const bridge = await loadMcpBridge({ modern: true, toolSearchAvailable: true });
+    const event = { systemPrompt: "" };
+    await bridge.handlers.get("session_start")!(event, discoveryContext);
+    bridge.setToolSearch(false);
+    bridge.restoreActiveTools(["read"]);
+    await bridge.handlers.get("model_select")!(event, discoveryContext);
+    assert.isTrue(bridge.tools.every((tool) => tool.exposure === "direct"));
+    assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
+    bridge.setToolSearch(true, { source: "builtin", path: "<builtin:tool-search>" });
+    await bridge.handlers.get("session_tree")!(event, discoveryContext);
+    assert.equal(
+      bridge.tools.find((tool) => tool.name === "mcp__cox__preview_snapshot")?.exposure,
+      "deferred",
+    );
+    assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
+  });
+
+  it("distinguishes explicit exclusions from missing, replaced and inactive tools", async () => {
+    const excluded = await loadMcpBridge({
+      modern: true,
+      allowsTool: (name) => name !== "mcp__cox__delegate_task",
+    });
+    await excluded.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    assert.isTrue(excluded.getHealth().available);
+    assert.isFalse(excluded.getHealth().coxOrchestrationReady);
+    assert.equal(
+      excluded.getHealth().tools.find((tool) => tool.name === "mcp__cox__delegate_task")?.status,
+      "excluded",
+    );
+    const inactive = await loadMcpBridge({
+      modern: true,
+      allowsActivation: (name) => name !== "mcp__cox__delegate_task",
+    });
+    await inactive.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    assert.isFalse(inactive.getHealth().available);
+    assert.equal(
+      inactive.getHealth().tools.find((tool) => tool.name === "mcp__cox__delegate_task")?.status,
+      "inactive",
+    );
+    inactive.setBridgeSourcePath("/replacement.ts");
+    assert.equal(inactive.getHealth().tools[0]?.status, "replaced");
+    const missing = await loadMcpBridge({ catalogNames: ["delegate_task"] });
+    await missing.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    assert.isFalse(missing.getHealth().available);
+    assert.equal(
+      missing.getHealth().tools.find((tool) => tool.name === "mcp__cox__task_status")?.status,
+      "missing-catalog",
+    );
+  });
+
+  it("reports tools hidden by native configuration as excluded without bypassing it", async () => {
+    const bridge = await loadMcpBridge({
+      modern: true,
+      allowsActivation: (name) => name !== "mcp__cox__delegate_task",
+      toolExposure: (name) => (name === "mcp__cox__delegate_task" ? "hidden" : undefined),
+    });
+    await bridge.handlers.get("session_start")!({ systemPrompt: "" }, discoveryContext);
+    assert.isTrue(bridge.getHealth().available);
+    assert.isFalse(bridge.getHealth().coxOrchestrationReady);
+    assert.equal(
+      bridge.getHealth().tools.find((tool) => tool.name === "mcp__cox__delegate_task")?.status,
+      "excluded",
+    );
+    assert.notInclude(bridge.getActiveTools(), "mcp__cox__delegate_task");
+  });
+
+  it.each(["tool_search", "mcp__cox__preview_snapshot", "mcp__cox__delegate_task"])(
+    "does not bypass user exclusions for %s",
+    async (excluded) => {
+      const bridge = await loadMcpBridge({
+        modern: true,
+        toolSearchAvailable: true,
+        allowsTool: (name) => name !== excluded,
+      });
+      for (const hook of ["session_start", "model_select", "session_tree", "before_agent_start"]) {
+        await bridge.handlers.get(hook)!({ systemPrompt: "" }, discoveryContext);
+        assert.notInclude(bridge.getActiveTools(), excluded);
+        assert.isTrue(bridge.getHealth().available);
+      }
+    },
+  );
 
   it("restores gateway declarations after model switches and older tree loadouts without excluded tools", async () => {
     const bridge = await loadMcpBridge({
@@ -232,10 +461,9 @@ describe("Pi MCP tool exposure", () => {
         toolSearchAvailable: mode === "disabled tool search",
         toolSearchDisabled: mode === "disabled tool search",
       });
-      if (mode !== "legacy Pi") {
-        const start = bridge.handlers.get("session_start");
-        await start!({ systemPrompt: "Pi system prompt" }, discoveryContext);
-      }
+      const start = bridge.handlers.get("session_start");
+      await start!({ systemPrompt: "Pi system prompt" }, discoveryContext);
+      assert.include(bridge.getActiveTools(), "mcp__cox__preview_snapshot");
       assert.equal(bridge.tools.filter((tool) => tool.exposure !== "hidden").length, 4);
       assert.isTrue(
         bridge.tools
@@ -349,6 +577,7 @@ describe("Pi tool discovery permissions", () => {
     ) => Promise<{ block: true; reason: string } | undefined>;
     let toolCall: ToolCallHook | undefined;
     let searchPath = "builtin:tool-search";
+    let searchSource = "builtin";
     const source = NodeModule.stripTypeScriptTypes(
       PI_T3_MCP_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace(
         "export default async function",
@@ -361,7 +590,9 @@ describe("Pi tool discovery permissions", () => {
         on: (name: string, handler: ToolCallHook) => {
           if (name === "tool_call") toolCall = handler;
         },
-        getAllTools: () => [{ name: "tool_search", sourceInfo: { path: searchPath } }],
+        getAllTools: () => [
+          { name: "tool_search", sourceInfo: { source: searchSource, path: searchPath } },
+        ],
       },
     });
     assert.isDefined(toolCall);
@@ -381,9 +612,14 @@ describe("Pi tool discovery permissions", () => {
       await toolCall!({ toolName: "tool_search", input: { query: "preview_snapshot" } }, ctx),
     );
     assert.equal(confirmations.length, 0);
+    searchPath = "<builtin:tool-search>";
+    assert.isUndefined(await toolCall!({ toolName: "tool_search", input: {} }, ctx));
+    searchSource = "extension";
+    assert.equal((await toolCall!({ toolName: "tool_search", input: {} }, ctx))?.block, true);
+    searchSource = "builtin";
     const result = await toolCall!({ toolName: "mcp__cox__preview_snapshot", input: {} }, ctx);
     assert.equal(result?.block, true);
-    assert.deepEqual(confirmations, ["Allow mcp__cox__preview_snapshot?"]);
+    assert.deepEqual(confirmations, ["Allow tool_search?", "Allow mcp__cox__preview_snapshot?"]);
 
     searchPath = "/extensions/custom-search.ts";
     const replaced = await toolCall!({ toolName: "tool_search", input: {} }, ctx);

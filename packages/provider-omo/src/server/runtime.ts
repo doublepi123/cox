@@ -174,6 +174,29 @@ export function omoPermissionRequest(event: PiRpcRecord): PiRpcRecord | undefine
       };
 }
 
+export function omoStartupFailure(value: unknown): string | undefined {
+  const initialized = record(value);
+  if (initialized.available === true) return undefined;
+  const native = record(initialized.nativeTask);
+  const cox = record(initialized.coxOrchestration);
+  const unavailable = Array.isArray(cox.tools)
+    ? cox.tools.flatMap((value) => {
+        const tool = record(value);
+        return ["active", "searchable", "excluded"].includes(String(tool.status))
+          ? []
+          : [`${String(tool.name)}: ${String(tool.status)}`];
+      })
+    : [];
+  return [
+    "The Cox OMO Native extension did not initialize.",
+    ...(native.required === true && initialized.nativeTaskReady !== true
+      ? [`Native task: ${String(native.status ?? "unavailable")}.`]
+      : []),
+    ...(cox.required === true && cox.connected !== true ? ["Cox MCP is not connected."] : []),
+    ...(unavailable.length > 0 ? [`Cox tools: ${unavailable.join(", ")}.`] : []),
+  ].join(" ");
+}
+
 export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeOmoRpcConnection")(
   function* (options: PiRpcSpawnOptions) {
     const scope = yield* Effect.scope;
@@ -257,10 +280,11 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
       const initialized = record(
         yield* connection.request({ type: "extension_request", name: "cox.omo.ready", data: {} }),
       );
-      if (initialized.ready !== true)
+      const failure = omoStartupFailure(initialized);
+      if (failure !== undefined)
         return yield* new PiRpcError({
           operation: "startup",
-          detail: "The Cox OMO Native extension did not initialize.",
+          detail: failure,
         });
     }
     if (options.env.COX_OMO_MANAGED_MODELS === "1")

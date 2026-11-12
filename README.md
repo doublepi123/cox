@@ -271,6 +271,13 @@ for the root lifecycle to finish, including children and background work. Stop p
 root and cancels its unfinished tasks; a new message continues the saved conversation.
 Native child approvals are presented through Cox. Managed sessions use only bound models,
 including explicit task model overrides, and keep upstream credentials in the Cox gateway.
+OMO's structured Todo list is mirrored into Cox's Tasks panel separately from native child tasks.
+Phase names and task progress follow the current session branch; continuing or restoring a session
+refreshes its Todo snapshot. Dropped tasks and explicit clears are reflected without parsing chat text.
+Pi/OMO activates the Cox orchestration tools independently of the model protocol. The native
+`tool_search` can discover optional tools; use their full `mcp__cox__...` names. Explicit tool
+allowlists and exclusions still apply. Startup checks distinguish native task availability from
+Cox orchestration availability rather than treating one as a fallback for the other.
 Native terminal onboarding, terminal side panels, telemetry, device services, remote thread
 tools and automatic global memory are not enabled in Cox sessions. Cox injects its own
 role configuration without writing the user's global or project `omo.json`.

@@ -8,6 +8,7 @@ import {
   GitCommandError,
   type ModelSelection,
   NodeId,
+  PlanId,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
@@ -50,6 +51,8 @@ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { omoTodoSnapshot } from "../../../../packages/provider-omo/src/server/todo.ts";
+import { deriveCurrentTodoList } from "../../../web/src/components/chat/threadTasks.ts";
 import {
   makeProviderEventRoutingState,
   type ProviderEventRouteIdentity,
@@ -433,6 +436,126 @@ it.effect("records accepted billed turn usage once without billing the context w
     });
   }).pipe(Effect.provide(layerTest.pipe(Layer.provide(layerAnalytics))));
 });
+
+it.effect(
+  "persists OMO Todo snapshots as the task panel's current list without mixing child tasks",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const sink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const ids = yield* IdAllocator.IdAllocatorV2;
+      const thread = yield* threadCreatedEvent(now);
+      const threadId = thread.threadId;
+      const driver = ProviderDriverKind.make("omo");
+      const sessionId = yield* ids.allocate.providerSession({
+        threadId,
+        providerInstanceId: modelSelection.instanceId,
+      });
+      const runId = RunId.make("run:omo-todo");
+      const nodeId = NodeId.make("node:omo-todo");
+      const planId = PlanId.make("plan:omo-todo");
+      yield* sink.write({
+        events: [
+          thread,
+          {
+            id: yield* ids.allocate.event({ threadId }),
+            type: "run.created",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: runId,
+              threadId,
+              ordinal: 1,
+              providerInstanceId: modelSelection.instanceId,
+              modelSelection,
+              providerThreadId: ids.derive.providerThread({ driver, nativeThreadId: "root" }),
+              userMessageId: MessageId.make("message:omo-todo"),
+              rootNodeId: nodeId,
+              activeAttemptId: RunAttemptId.make("attempt:omo-todo"),
+              status: "running",
+              requestedAt: now,
+              startedAt: now,
+              completedAt: null,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          },
+        ],
+      });
+      const update = (phases: unknown) =>
+        Effect.gen(function* () {
+          const snapshot = omoTodoSnapshot({
+            sessionFile: "/fixture/root.jsonl",
+            generation: "fixture",
+            hasList: true,
+            revision: 1,
+            phases,
+          });
+          assert.isDefined(snapshot);
+          yield* ingestor.ingestNormalized({
+            providerSessionId: sessionId,
+            providerInstanceId: modelSelection.instanceId,
+            threadId,
+            event: {
+              type: "plan.updated",
+              driver,
+              plan: {
+                id: planId,
+                threadId,
+                runId,
+                nodeId,
+                kind: "todo_list",
+                status: "active",
+                steps: snapshot!.steps,
+              },
+            },
+          });
+          return yield* projections.getThreadProjection(threadId);
+        });
+      const first = yield* update([
+        {
+          name: "Build",
+          tasks: [
+            { content: "Implement", status: "in_progress" },
+            { content: "Verify", status: "pending" },
+          ],
+        },
+      ]);
+      assert.deepEqual(
+        deriveCurrentTodoList(first)?.steps.map(({ text, status }) => ({ text, status })),
+        [
+          { text: "Build: Implement", status: "running" },
+          { text: "Build: Verify", status: "pending" },
+        ],
+      );
+      const next = yield* update([
+        {
+          name: "Build",
+          tasks: [
+            { content: "Implement", status: "completed" },
+            { content: "Verify", status: "in_progress" },
+            { content: "Dropped", status: "abandoned" },
+          ],
+        },
+      ]);
+      assert.lengthOf(next.plans, 1);
+      assert.equal(
+        deriveCurrentTodoList(next)?.steps[0]?.id,
+        deriveCurrentTodoList(first)?.steps[0]?.id,
+      );
+      assert.deepEqual(
+        deriveCurrentTodoList(next)?.steps.map((step) => step.status),
+        ["completed", "running"],
+      );
+      assert.lengthOf(next.subagents, 0);
+      const cleared = yield* update([]);
+      assert.isNull(deriveCurrentTodoList(cleared));
+      assert.lengthOf(cleared.plans, 1);
+      assert.equal((yield* projections.getPlan(threadId, planId))?.kind, "todo_list");
+    }).pipe(Effect.provide(Layer.fresh(layerTest))),
+);
 
 layer("ProviderEventIngestorV2", (it) => {
   it.effect("normalizes provider events through the real event log and projection store", () =>

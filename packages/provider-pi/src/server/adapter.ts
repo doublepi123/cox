@@ -23,6 +23,8 @@ import {
   type ProviderInstanceId,
   type MessageId,
   type OrchestrationV2ProviderTurnTokenUsage,
+  OrchestrationV2PlanStep,
+  type PlanId,
 } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
 import * as Cause from "effect/Cause";
@@ -93,6 +95,9 @@ const PI_UNSOLICITED_ACTIVITY_ERROR =
   "Pi started agent work outside an active T3 turn. The session was stopped to prevent invisible tool execution.";
 const SETTLE_PROBE_MAX_ATTEMPTS = 3;
 const SETTLE_PROBE_RETRY_DELAY = Duration.millis(100);
+const encodeTodoSteps = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Array(OrchestrationV2PlanStep)),
+);
 
 export const PiProviderCapabilitiesV2 = {
   runtimePolicy: { enforcement: "client-boundary" },
@@ -188,6 +193,14 @@ export const PiProviderCapabilitiesV2 = {
   },
 } satisfies OrchestrationV2ProviderCapabilities;
 
+export interface PiTodoSnapshot {
+  readonly nativeThreadId: string;
+  readonly generation: string;
+  readonly hasList: boolean;
+  readonly revision: number;
+  readonly steps: ReadonlyArray<OrchestrationV2PlanStep>;
+}
+
 export interface PiAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
   readonly settings: PiSettings;
@@ -199,6 +212,12 @@ export interface PiAdapterV2Options {
     readonly materializeExtension: typeof materializePiT3McpExtension;
     readonly buildLaunch: typeof buildPiRpcLaunch;
     readonly capabilities?: OrchestrationV2ProviderCapabilities;
+    readonly todo?: {
+      readonly requestName: string;
+      readonly eventName: string;
+      readonly toolNames: ReadonlyArray<string>;
+      readonly decode: (value: unknown) => PiTodoSnapshot | undefined;
+    };
   };
   readonly continuationRequests?: {
     readonly offer: (
@@ -377,6 +396,7 @@ interface ActivePiTurn {
   failure: ReturnType<typeof makeProviderFailure> | null;
   rejectedPromptFailure: ReturnType<typeof makeProviderFailure> | null;
   readonly unreadSteers: Array<MessageId>;
+  todo?: { readonly planId: PlanId; readonly startedAt: DateTime.Utc; signature: string };
   stopTreeRefs?: PiTurnTreeRefs | null;
 }
 
@@ -420,6 +440,10 @@ interface PiPromptSend {
 interface PiThreadState {
   providerThread: OrchestrationV2ProviderThread;
   activeTurn: ActivePiTurn | null;
+  todoSnapshot?: PiTodoSnapshot;
+  todoPublished?: boolean;
+  todoPublishedSignature?: string;
+  todoGenerations?: Set<string>;
 }
 
 interface PiWake {
@@ -542,7 +566,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         status: "ready",
         cwd,
         model: input.modelSelection.model,
-        capabilities: PiProviderCapabilitiesV2,
+        capabilities: options.runtime?.capabilities ?? PiProviderCapabilitiesV2,
         extensionStatuses: [],
         createdAt: now,
         updatedAt: now,
@@ -990,6 +1014,103 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             completedAt,
           },
         });
+
+      const emitTodoList = Effect.fnUntraced(function* (
+        state: PiThreadState,
+        snapshot: PiTodoSnapshot,
+      ) {
+        const turn = state.activeTurn;
+        if (turn === null) return;
+        if (!snapshot.hasList && !state.todoPublished) return;
+        const signature = encodeTodoSteps(snapshot.steps);
+        if (turn.todo?.signature === signature) return;
+        if (
+          turn.todo === undefined &&
+          state.todoPublishedSignature === signature &&
+          snapshot.steps.length > 0 &&
+          snapshot.steps.every((step) => step.status === "completed")
+        )
+          return;
+        const now = yield* DateTime.now;
+        const todo = turn.todo ?? {
+          planId: yield* idAllocator.allocate.plan({
+            threadId: turn.turnInput.threadId,
+            ...(turn.turnInput.runId === null ? {} : { runId: turn.turnInput.runId }),
+            driver: PI_PROVIDER,
+          }),
+          startedAt: now,
+          signature,
+        };
+        turn.todo = { ...todo, signature };
+        state.todoPublished = true;
+        state.todoPublishedSignature = signature;
+        const nativeItemId = `${turn.providerTurn.id}:todo`;
+        const base = baseItemFields(turn, nativeItemId, todo.startedAt, now);
+        yield* emitItemNode(turn, nativeItemId, "todo_list", "completed", todo.startedAt, now);
+        yield* emit({
+          type: "plan.updated",
+          driver: PI_PROVIDER,
+          plan: {
+            id: todo.planId,
+            threadId: turn.turnInput.threadId,
+            runId: turn.turnInput.runId,
+            nodeId: base.nodeId,
+            kind: "todo_list",
+            status: snapshot.steps.every((step) => step.status === "completed")
+              ? "completed"
+              : "active",
+            steps: snapshot.steps,
+          },
+        });
+        yield* emit({
+          type: "turn_item.updated",
+          driver: PI_PROVIDER,
+          turnItem: {
+            ...base,
+            status: "completed",
+            completedAt: now,
+            type: "todo_list",
+            title: "Todo list",
+            planId: todo.planId,
+            steps: snapshot.steps,
+          },
+        });
+      });
+
+      const acceptTodoSnapshot = Effect.fnUntraced(function* (
+        state: PiThreadState,
+        value: unknown,
+      ) {
+        const snapshot = options.runtime?.todo?.decode(value);
+        if (
+          threadState !== state ||
+          snapshot === undefined ||
+          snapshot.nativeThreadId !== state.providerThread.nativeThreadRef?.nativeId ||
+          (state.todoSnapshot?.generation !== snapshot.generation &&
+            state.todoGenerations?.has(snapshot.generation)) ||
+          (snapshot.generation === state.todoSnapshot?.generation &&
+            snapshot.revision < state.todoSnapshot.revision)
+        )
+          return;
+        state.todoGenerations ??= new Set();
+        state.todoGenerations.add(snapshot.generation);
+        state.todoSnapshot = snapshot;
+        yield* emitTodoList(state, snapshot);
+      });
+
+      const refreshTodoSnapshot = Effect.fnUntraced(function* (state: PiThreadState) {
+        const todo = options.runtime?.todo;
+        if (todo === undefined || closed || stopRequested) return;
+        const snapshot = yield* request(
+          {
+            type: "extension_request",
+            name: todo.requestName,
+            data: { nativeThreadId: state.providerThread.nativeThreadRef?.nativeId },
+          },
+          2_000,
+        ).pipe(Effect.orElseSucceed(() => undefined));
+        yield* acceptTodoSnapshot(state, snapshot);
+      });
 
       const emitProviderRetry = Effect.fnUntraced(function* (
         turn: ActivePiTurn,
@@ -1725,6 +1846,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       const finalizeTurn = Effect.fnUntraced(function* (state: PiThreadState, readUsage = true) {
         const turn = state.activeTurn;
         if (turn === null) return;
+        if (readUsage) yield* refreshTodoSnapshot(state);
         state.activeTurn = null;
         const interrupted = turn.interrupted || turn.nativeAborted;
         const completedAt = yield* DateTime.now;
@@ -1881,6 +2003,14 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       });
 
       const handleSessionEvent = Effect.fnUntraced(function* (event: PiRpcRecord) {
+        if (
+          options.runtime?.todo !== undefined &&
+          event.type === "extension_event" &&
+          event.name === options.runtime.todo.eventName
+        ) {
+          if (threadState !== null) yield* acceptTodoSnapshot(threadState, event.data);
+          return;
+        }
         if (event["type"] === "t3.extension_status_reset") {
           const reset = extensionStatusReset;
           if (reset !== null && event["reset"] === reset) {
@@ -2034,7 +2164,16 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             if (turn !== null) yield* emitToolItem(turn, event, "update");
             return;
           case "tool_execution_end":
-            if (turn !== null) yield* emitToolItem(turn, event, "end");
+            if (turn !== null) {
+              yield* emitToolItem(turn, event, "end");
+              if (
+                state !== null &&
+                event.isError !== true &&
+                options.runtime?.todo?.toolNames.includes(String(event.toolName))
+              ) {
+                yield* refreshTodoSnapshot(state);
+              }
+            }
             return;
           case "compaction_start": {
             if (turn === null) return;
@@ -2901,6 +3040,9 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 lastRunOrdinal: turnInput.runOrdinal,
               });
               yield* updateProviderSession("running", null);
+              if (options.runtime?.todo !== undefined) {
+                yield* refreshTodoSnapshot(state);
+              }
               if (wake !== null) {
                 for (const event of wake.events) {
                   if (!continuation && event["type"] === "agent_settled") {

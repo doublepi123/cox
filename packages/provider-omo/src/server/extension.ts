@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import { buildPiRpcLaunch, materializePiT3McpExtension } from "@t3tools/provider-pi/server";
+import { OMO_TODO_BRIDGE_SOURCE } from "./todo.ts";
 
 export const OMO_EXTENSION_SOURCE = `
 import { join, dirname } from "node:path";
@@ -26,6 +27,7 @@ export default async function coxOmo(pi) {
   const managed = process.env.COX_OMO_MANAGED_MODELS === "1";
   const allowed = new Set(JSON.parse(process.env.COX_OMO_ALLOWED_MODELS || "[]"));
   const registries = new WeakMap();
+  let nativeTaskRegistered = false;
   const permit = model => model && allowed.has(model.provider + "/" + model.id);
   const scopedRegistry = registry => {
     if (!managed || !registry) return registry;
@@ -53,6 +55,13 @@ export default async function coxOmo(pi) {
     c.name === "task" ? tasks.createTaskComponent({ loadConfig: () => ({ config, diagnostics: [], layers: [], sources: [] }) }) : c);
   const owned = new Proxy(pi, {
     get(target, key) {
+      if (key === "registerTool") {
+        const register = target.registerTool.bind(target);
+        return tool => {
+          register(tool);
+          if (tool.name === "task") nativeTaskRegistered = true;
+        };
+      }
       if (key === "on") return (name, handler, options) => target.on(name, (event, ctx) => {
         const scoped = !managed || !ctx ? ctx : new Proxy(ctx, {
           get(context, property) {
@@ -73,7 +82,8 @@ export default async function coxOmo(pi) {
     },
   });
   await entry.composeOmoSenpiExtension(components, { env: { ...process.env, OMO_SENPI_DISABLED: "0" } })(owned);
-  await coxBridge(pi);
+  const bridge = await coxBridge(pi);
+  ${OMO_TODO_BRIDGE_SOURCE}
   pi.on("before_agent_start", async (_event, ctx) => {
     if (!pi.getPermissionPreset?.()) throw new Error("OMO Native's permission system is not active.");
     if (process.env.COX_OMO_MANAGED_MODELS === "1" && ctx.model?.provider !== "cox")
@@ -88,7 +98,27 @@ export default async function coxOmo(pi) {
       }
     }
   });
-  pi.rpc.handle("cox.omo.ready", () => ({ ready: process.env.COX_OMO_TOOLS_REQUIRED !== "1" || pi.getAllTools().some(tool => tool.name === "task") }));
+  pi.rpc.handle("cox.omo.ready", async () => {
+    await bridge.ensureReady().catch(() => undefined);
+    const coxOrchestration = bridge.getHealth();
+    const tool = pi.getAllTools().find(tool => tool.name === "task");
+    const required = process.env.COX_OMO_TOOLS_REQUIRED === "1";
+    const nativeTaskStatus = !nativeTaskRegistered ? (pi.getFlag("omo-task") === false ? "disabled" : "unregistered") : !tool || tool.exposure === "hidden" ? "excluded" :
+      pi.getActiveTools().includes("task") ? "active" :
+      coxOrchestration.searchReady && tool.allowLazyActivation !== false && ["search", "deferred"].includes(tool.exposure) ? "searchable" : "inactive";
+    const nativeTaskReady = ["active", "searchable"].includes(nativeTaskStatus);
+    const nativeTaskAvailable = !required || nativeTaskReady || ["excluded", "disabled"].includes(nativeTaskStatus);
+    const coxRequired = !!process.env.T3_MCP_URL || !!process.env.T3_MCP_BEARER_TOKEN;
+    const coxAvailable = !coxRequired || coxOrchestration.available;
+    return {
+      ready: (!required || nativeTaskReady) && (!coxRequired || coxOrchestration.coxOrchestrationReady),
+      available: nativeTaskAvailable && coxAvailable,
+      nativeTaskReady,
+      coxOrchestrationReady: coxOrchestration.coxOrchestrationReady,
+      nativeTask: { required, registered: nativeTaskRegistered, status: nativeTaskStatus },
+      coxOrchestration: { ...coxOrchestration, required: coxRequired },
+    };
+  });
 }
 `;
 

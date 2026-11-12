@@ -24,6 +24,7 @@ const RUNTIME_MODE_ENV = ${JSON.stringify(T3_PI_RUNTIME_MODE_ENV)};
 const EXTENSION_PATH_ENV = ${JSON.stringify(T3_PI_MCP_EXTENSION_PATH_ENV)};
 const SERVICE_TIER_COMMAND = ${JSON.stringify(PI_T3_SERVICE_TIER_COMMAND)};
 const ORCHESTRATION_INSTRUCTIONS = ${JSON.stringify(T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim())};
+const BRIDGE_INSTRUCTIONS = "In Pi and OMO, every Cox tool named in these instructions maps only to mcp__cox__<name>. Use mcp__cox__orchestrator_capabilities, mcp__cox__delegate_task, and mcp__cox__task_status, never a same-named native tool. mcp__cox__delegate_task takes the work in task, not prompt. Discover optional tools with tool_search using their full mcp__cox__ names (source: extension, not mcp); if search is unavailable, use the declared full names. Native task is not a fallback for unavailable, excluded, or declined Cox delegation. Use native task only when the native-subagent conditions above are satisfied.";
 const PROTOCOL = "2025-06-18";
 const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_CHANGE_TOOLS = new Set(${JSON.stringify(PI_FILE_CHANGE_TOOLS)});
@@ -211,6 +212,7 @@ function createMcpClient(endpoint: string, token: string) {
 
   return {
     async connect(signal?: AbortSignal) {
+      sessionId = undefined;
       await request(
         "initialize",
         {
@@ -335,7 +337,8 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
   // it keeps the name, and cannot discover deferred tools either.
   const hasBuiltinToolSearch = () =>
     typeof pi.getAllTools === "function" &&
-    pi.getAllTools().some((tool) => tool.name === "tool_search" && tool.sourceInfo?.path === "builtin:tool-search");
+    pi.getAllTools().some((tool) => tool.name === "tool_search" && tool.sourceInfo?.source === "builtin" &&
+      ["builtin:tool-search", "<builtin:tool-search>"].includes(tool.sourceInfo.path));
 
   const readOnlyMcpTools = new Set<string>();
   const isReadOnlyMcpTool = (name: string) => {
@@ -378,7 +381,10 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
         "warning",
       );
     });
-    return;
+    return {
+      ensureReady: async () => undefined,
+      getHealth: () => ({ connected: false, available: false, coxOrchestrationReady: false, reason: "missing-credentials", tools: [] }),
+    };
   }
 
   // Tool exposure arrived with registerMcpServer in Pi 0.99. Keep the HTTP
@@ -387,6 +393,8 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
   const directTools = new Set(["orchestrator_capabilities", "delegate_task", "task_status"]);
   let deferOptionalTools = supportsExposure;
   let catalog: ReadonlyArray<McpTool> = [];
+  let connected = false;
+  let selectedModel: ExtensionContext["model"];
 
   const client = createMcpClient(endpoint, token);
   let started: Promise<void> | undefined;
@@ -435,6 +443,7 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
       await client.connect(signal);
       catalog = await client.listTools(signal);
       registerTools();
+      connected = true;
     })();
     started = attempt;
     void attempt.catch(() => {
@@ -449,48 +458,102 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
   await ensureStarted().catch(() => undefined);
 
   const reconcileDiscovery = (ctx: Pick<ExtensionContext, "model">) => {
-    if (!supportsExposure) return;
-    // A disabled or replaced search builtin cannot discover deferred tools.
-    const hasToolSearch = hasBuiltinToolSearch();
+    selectedModel = ctx.model;
+    let active = pi.getActiveTools();
+    const builtinSearch = supportsExposure && hasBuiltinToolSearch();
+    if (builtinSearch && !active.includes("tool_search")) {
+      pi.setActiveTools([...active, "tool_search"]);
+      active = pi.getActiveTools();
+    }
+    const hasToolSearch = builtinSearch && active.includes("tool_search");
     const exposureChanged = deferOptionalTools !== hasToolSearch;
     deferOptionalTools = hasToolSearch;
     if (exposureChanged) registerTools();
-    const active = pi.getActiveTools();
     // Completion gateways can silently drop calls to undeclared tools named
     // in history or guidance. Eagerly load T3 schemas, including after tree
     // restores, while retaining deferred exposure for Pi's allowlist rules.
     // Pi still applies --tools/--exclude-tools to this active loadout.
     const required = [
-      ...(hasToolSearch ? ["tool_search"] : []),
-      ...(ctx.model?.api === "openai-completions" ? catalog.map((tool) => "mcp__cox__" + tool.name) : []),
+      ...catalog.filter((tool) => directTools.has(tool.name) || !hasToolSearch || ctx.model?.api === "openai-completions")
+        .map((tool) => "mcp__cox__" + tool.name),
     ];
     const missing = required.filter((name) => !active.includes(name));
     if (missing.length > 0) pi.setActiveTools([...active, ...missing]);
   };
 
-  // Tree navigation restores its saved loadout after session_start.
-  pi.on("session_tree", (_event, ctx) => reconcileDiscovery(ctx));
-  pi.on("model_select", (_event, ctx) => reconcileDiscovery(ctx));
-  pi.on("session_start", async (_event, ctx) => {
-    reconcileDiscovery(ctx);
+  const startAndReconcile = async (ctx: ExtensionContext) => {
     try {
       await ensureStarted();
+      reconcileDiscovery(ctx);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.ui.notify(\`cox MCP unavailable: \${message}\`, "warning");
     }
+  };
+
+  pi.on("session_tree", async (_event, ctx) => startAndReconcile(ctx));
+  pi.on("model_select", async (_event, ctx) => startAndReconcile(ctx));
+  pi.on("session_start", async (_event, ctx) => startAndReconcile(ctx));
+  pi.on("context", async (_event, ctx) => {
+    await startAndReconcile(ctx);
+  });
+  const nativeDiscovery = pi as unknown as {
+    registerLazyToolActivator?: (activate: (name: string) => boolean) => void;
+  };
+  nativeDiscovery.registerLazyToolActivator?.((name) => {
+    const path = env(EXTENSION_PATH_ENV);
+    if (path === undefined || !catalog.some((tool) => "mcp__cox__" + tool.name === name)) return false;
+    const tool = pi.getAllTools().find((tool) => tool.name === name);
+    if (!tool || NodePath.resolve(tool.sourceInfo.path) !== NodePath.resolve(path)) return false;
+    reconcileDiscovery({ model: selectedModel });
+    if (!pi.getActiveTools().includes(name)) pi.setActiveTools([...pi.getActiveTools(), name]);
+    return pi.getActiveTools().includes(name);
   });
 
   // Keep guidance in the system prompt so leading slash commands still expand.
-  pi.on("before_agent_start", (event, ctx) => {
-    reconcileDiscovery(ctx);
+  pi.on("before_agent_start", async (event, ctx) => {
+    await startAndReconcile(ctx);
+    const instructions = ORCHESTRATION_INSTRUCTIONS + "\\n\\n" + BRIDGE_INSTRUCTIONS;
     const sections = event.systemPromptOptions?.sections;
     if (sections && typeof sections === "object" && event.systemPromptOptions?.forceSystemPrompt === undefined) {
       // A full prompt override bypasses Pi's later section rendering.
-      sections.cox_orchestration = ORCHESTRATION_INSTRUCTIONS;
+      sections.cox_orchestration = instructions;
       return undefined;
     }
-    return { systemPrompt: event.systemPrompt + "\\n\\n" + ORCHESTRATION_INSTRUCTIONS };
+    return { systemPrompt: event.systemPrompt + "\\n\\n" + instructions };
   });
+
+  return {
+    async ensureReady() {
+      await ensureStarted();
+      reconcileDiscovery({ model: selectedModel });
+    },
+    getHealth() {
+      const registered = pi.getAllTools();
+      const active = new Set(pi.getActiveTools());
+      const searchReady = hasBuiltinToolSearch() && active.has("tool_search");
+      const names = new Set([...directTools, ...catalog.map((tool) => tool.name)]);
+      const tools = [...names].map((name) => {
+        const fullName = "mcp__cox__" + name;
+        const tool = registered.find((candidate) => candidate.name === fullName);
+        const path = env(EXTENSION_PATH_ENV);
+        const owned = tool !== undefined && path !== undefined &&
+          NodePath.resolve(tool.sourceInfo.path) === NodePath.resolve(path);
+        const exposure = tool?.exposure as string | undefined;
+        const lazy = (tool as { allowLazyActivation?: boolean } | undefined)?.allowLazyActivation !== false;
+        const status = !catalog.some((candidate) => candidate.name === name) ? "missing-catalog" :
+          tool === undefined ? "excluded" : !owned ? "replaced" : exposure === "hidden" ? "excluded" : active.has(fullName) ? "active" :
+          !directTools.has(name) && searchReady && lazy && ["deferred", "search"].includes(exposure ?? "") ? "searchable" : "inactive";
+        return { name: fullName, core: directTools.has(name), status };
+      });
+      return {
+        connected,
+        searchReady,
+        available: connected && tools.every((tool) => ["active", "searchable", "excluded"].includes(tool.status)),
+        coxOrchestrationReady: connected && tools.every((tool) => tool.core ? tool.status === "active" : ["active", "searchable", "excluded"].includes(tool.status)),
+        tools,
+      };
+    },
+  };
 }
 `;
