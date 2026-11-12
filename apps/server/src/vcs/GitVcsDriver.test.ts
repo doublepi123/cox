@@ -15,6 +15,7 @@ import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/process";
 import * as Metric from "effect/Metric";
 import { assert, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 
 import { CheckpointRef, GitCommandError, VcsProcessExitError } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -152,6 +153,34 @@ const makeCheckpointFixture = Effect.fn("makeCheckpointFixture")(function* (
   yield* fileSystem.writeFileString(path.join(cwd, "file.txt"), "unstaged\n");
   return { git, checkpointRef };
 });
+
+it.effect("captures the opened repository when the server inherited GIT_DIR", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const driver = yield* GitVcsDriver.makeVcsDriverShape();
+    const cwd = yield* fs.makeTempDirectoryScoped();
+    const other = yield* fs.makeTempDirectoryScoped();
+    const { git, checkpointRef } = yield* makeCheckpointFixture(driver, cwd);
+    yield* makeCheckpointFixture(driver, other);
+    yield* fs.writeFileString(path.join(other, "file.txt"), "other repository\n");
+    const index = yield* fs.readFile(path.join(cwd, ".git", "index"));
+    yield* Effect.addFinalizer(() => Effect.sync(() => vi.unstubAllEnvs()));
+    vi.stubEnv("GIT_DIR", path.join(other, ".git"));
+
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef });
+
+    assert.equal((yield* git(["show", `${checkpointRef}:file.txt`])).stdout, "unstaged\n");
+    assert.deepEqual(yield* fs.readFile(path.join(cwd, ".git", "index")), index);
+    const otherRef = yield* driver.execute({
+      operation: "test.otherCheckpointRef",
+      cwd: other,
+      args: ["show-ref", "--verify", "--quiet", checkpointRef],
+      allowNonZeroExit: true,
+    });
+    assert.equal(otherRef.exitCode, 1);
+  }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
+);
 
 it.effect("checkpoint capture skips untracked nested repositories without a commit", () =>
   Effect.gen(function* () {

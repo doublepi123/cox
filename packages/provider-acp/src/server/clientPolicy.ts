@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import type { ProviderRequestKind, RuntimeMode } from "@t3tools/contracts";
+import type { RuntimeMode } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/compat";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -222,7 +222,7 @@ export function acpClientExecuteDisposition(
 }
 
 export interface AcpApprovalGrantInput {
-  readonly kind: ProviderRequestKind;
+  readonly toolKind: string;
   readonly scope: "session" | "turn";
   readonly turnKey: string;
 }
@@ -232,13 +232,12 @@ export interface AcpClientPolicyGrants {
   readonly allowsExecute: (turnKey: string | null) => boolean;
 }
 
-/** ACP cannot link commands to terminals; command approvals grant execution for the turn or accepted session. */
 export function makeAcpClientPolicyGrants(): AcpClientPolicyGrants {
   let sessionExecute = false;
   let turnExecute: string | null = null;
   return {
     recordApproval: (input) => {
-      if (input.kind !== "command") return;
+      if (input.toolKind !== "execute") return;
       if (input.scope === "session") {
         sessionExecute = true;
       } else {

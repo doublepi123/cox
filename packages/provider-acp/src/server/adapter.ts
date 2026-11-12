@@ -142,6 +142,31 @@ export const ACP_PROTOCOL = "acp.ndjson-jsonrpc" as const;
 // Grok summaries can trail hydrated tools by over two seconds; shorter waits split the wake.
 const ACP_DEFERRED_FINALIZE_DEBOUNCE: Duration.Input = "3000 millis";
 
+function sendPromptWhenIdle<A>(
+  turn: { readonly interrupted: boolean; readonly finalized: boolean },
+  prompt: () => Effect.Effect<A, EffectAcpErrors.AcpError>,
+): Effect.Effect<A, EffectAcpErrors.AcpError> {
+  return prompt().pipe(
+    Effect.catchIf(
+      (error) =>
+        error._tag === "AcpRequestError" &&
+        error.errorMessage.startsWith("Agent is already processing") &&
+        !turn.interrupted &&
+        !turn.finalized,
+      (error) =>
+        Effect.sleep("1 second").pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              turn.interrupted || turn.finalized
+                ? Effect.fail(error)
+                : sendPromptWhenIdle(turn, prompt),
+            ),
+          ),
+        ),
+    ),
+  );
+}
+
 /**
  * Emit first chunks and segment-close events immediately; coalesce later chunks into full-text snapshots.
  * This avoids quadratic output; scheduled flushes can run late under host load.
@@ -6334,12 +6359,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   ).pipe(Effect.asVoid),
                 ),
               );
-              if (
-                parsedPermission.kind !== "unknown" &&
-                (decision === "accept" || decision === "acceptForSession")
-              ) {
+              if (decision === "accept" || decision === "acceptForSession") {
                 clientPolicyGrants.recordApproval({
-                  kind: providerRequestKind(parsedPermission.kind),
+                  toolKind: parsedPermission.kind,
                   scope: decision === "acceptForSession" ? "session" : "turn",
                   turnKey: String(context.providerTurnId),
                 });
@@ -7979,7 +8001,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               ).pipe(Effect.forkIn(sessionScope));
             }
             const promptOptions = { dispatched: context.promptDispatched };
-            yield* runtime.prompt({ prompt: promptParts!.prompt }, promptOptions).pipe(
+            yield* sendPromptWhenIdle(context, () =>
+              runtime.prompt({ prompt: promptParts!.prompt }, promptOptions),
+            ).pipe(
               Effect.tap(() =>
                 Ref.update(promptInstructionStates, (current) => {
                   if (promptParts?.instructionState === undefined) return current;
