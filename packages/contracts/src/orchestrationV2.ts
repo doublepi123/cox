@@ -837,11 +837,199 @@ export const OrchestrationV2WorkflowRunHandles = Schema.Struct({
 });
 export type OrchestrationV2WorkflowRunHandles = typeof OrchestrationV2WorkflowRunHandles.Type;
 
+export const ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS = {
+  nodes: 256,
+  edges: 2_048,
+  waves: 256,
+  idBytes: 512,
+  labelBytes: 1_024,
+  promptBytes: 16_384,
+  progressBytes: 4_096,
+  errorCodeBytes: 256,
+  errorMessageBytes: 4_096,
+  modelBytes: 512,
+  totalTextBytes: 1_048_576,
+} as const;
+
+const workflowGraphEncoder = new TextEncoder();
+const workflowGraphString = (maxBytes: number, nonEmpty = true) =>
+  Schema.String.check(
+    Schema.makeFilter(
+      (value) =>
+        value.length <= maxBytes &&
+        (!nonEmpty || value.trim().length > 0) &&
+        workflowGraphEncoder.encode(value).byteLength <= maxBytes,
+      { expected: `a ${nonEmpty ? "non-blank " : ""}string of at most ${maxBytes} UTF-8 bytes` },
+    ),
+  );
+const WorkflowGraphId = workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.idBytes);
+const WorkflowGraphCounter = NonNegativeInt.check(
+  Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+);
+const WorkflowGraphTime = NonNegativeInt.check(Schema.isLessThanOrEqualTo(8_640_000_000_000_000));
+
+export const OrchestrationV2WorkflowGraph = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  runId: WorkflowGraphId,
+  parentSessionId: WorkflowGraphId,
+  generation: WorkflowGraphCounter,
+  lastSeq: WorkflowGraphCounter,
+  name: workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.labelBytes),
+  status: Schema.Literals(["pending", "running", "paused", "completed", "failed", "cancelled"]),
+  createdAt: WorkflowGraphTime,
+  updatedAt: WorkflowGraphTime,
+  nodes: Schema.Array(
+    Schema.Struct({
+      id: WorkflowGraphId,
+      label: workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.labelBytes),
+      prompt: workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.promptBytes, false),
+      state: Schema.Literals([
+        "pending",
+        "blocked",
+        "scheduled",
+        "running",
+        "paused",
+        "completed",
+        "failed",
+        "cancelled",
+        "skipped",
+      ]),
+      attempt: WorkflowGraphCounter,
+      taskId: Schema.optional(WorkflowGraphId),
+      model: Schema.optional(
+        workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.modelBytes),
+      ),
+      childThreadId: Schema.optional(
+        ThreadId.check(
+          Schema.makeFilter(
+            (value) =>
+              value.length <= ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.idBytes &&
+              workflowGraphEncoder.encode(value).byteLength <=
+                ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.idBytes,
+          ),
+        ),
+      ),
+      startedAt: Schema.optional(WorkflowGraphTime),
+      completedAt: Schema.optional(WorkflowGraphTime),
+      progress: Schema.optional(
+        workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.progressBytes, false),
+      ),
+      lastError: Schema.optional(
+        Schema.Struct({
+          code: workflowGraphString(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.errorCodeBytes),
+          message: workflowGraphString(
+            ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.errorMessageBytes,
+            false,
+          ),
+        }),
+      ),
+    }),
+  ).check(Schema.isMaxLength(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.nodes)),
+  edges: Schema.Array(Schema.Struct({ from: WorkflowGraphId, to: WorkflowGraphId })).check(
+    Schema.isMaxLength(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.edges),
+  ),
+  waves: Schema.Array(
+    Schema.Struct({
+      index: WorkflowGraphCounter,
+      nodeIds: Schema.Array(WorkflowGraphId).check(
+        Schema.isMaxLength(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.nodes),
+      ),
+    }),
+  ).check(Schema.isMaxLength(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.waves)),
+  criticalPath: Schema.optional(
+    Schema.Array(WorkflowGraphId).check(
+      Schema.isMaxLength(ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.nodes),
+    ),
+  ),
+  truncated: Schema.optional(Schema.Boolean),
+}).check(
+  Schema.makeFilter((graph) => {
+    if (graph.updatedAt < graph.createdAt) return "Graph timestamps must be monotonic.";
+    const outgoing = new Map<string, Set<string>>();
+    const indegree = new Map<string, number>();
+    let textBytes = 0;
+    const countText = (text: string) => {
+      textBytes += workflowGraphEncoder.encode(text).byteLength;
+    };
+    for (const text of [graph.runId, graph.parentSessionId, graph.name]) countText(text);
+    for (const node of graph.nodes) {
+      if (outgoing.has(node.id)) return "Graph node IDs must be unique.";
+      if (
+        node.startedAt !== undefined &&
+        node.completedAt !== undefined &&
+        node.completedAt < node.startedAt
+      )
+        return "Node timestamps must be monotonic.";
+      outgoing.set(node.id, new Set());
+      indegree.set(node.id, 0);
+      for (const text of [
+        node.id,
+        node.label,
+        node.prompt,
+        node.taskId,
+        node.model,
+        node.childThreadId,
+        node.progress,
+        node.lastError?.code,
+        node.lastError?.message,
+      ])
+        if (text !== undefined) countText(text);
+    }
+    for (const edge of graph.edges) {
+      const targets = outgoing.get(edge.from);
+      const degree = indegree.get(edge.to);
+      if (targets === undefined || degree === undefined)
+        return "Graph edges must reference existing nodes.";
+      if (targets.has(edge.to)) return "Graph edges must be unique.";
+      targets.add(edge.to);
+      indegree.set(edge.to, degree + 1);
+      countText(edge.from);
+      countText(edge.to);
+    }
+    const ready = [...indegree.keys()].filter((id) => indegree.get(id) === 0);
+    for (let index = 0; index < ready.length; index++) {
+      for (const target of outgoing.get(ready[index]!)!) {
+        const degree = indegree.get(target)! - 1;
+        indegree.set(target, degree);
+        if (degree === 0) ready.push(target);
+      }
+    }
+    if (ready.length !== graph.nodes.length) return "Workflow graphs must be acyclic.";
+    const waveIndexes = new Set<number>();
+    const waveNodes = new Set<string>();
+    for (const wave of graph.waves) {
+      if (waveIndexes.has(wave.index)) return "Graph wave indexes must be unique.";
+      waveIndexes.add(wave.index);
+      for (const id of wave.nodeIds) {
+        if (!outgoing.has(id)) return "Graph waves must reference existing nodes.";
+        if (waveNodes.has(id)) return "Graph wave nodes must be unique.";
+        waveNodes.add(id);
+        countText(id);
+      }
+    }
+    const criticalNodes = new Set<string>();
+    for (const [index, id] of (graph.criticalPath ?? []).entries()) {
+      if (!outgoing.has(id)) return "Graph critical paths must reference existing nodes.";
+      if (criticalNodes.has(id)) return "Graph critical path nodes must be unique.";
+      if (index > 0 && !outgoing.get(graph.criticalPath![index - 1]!)!.has(id))
+        return "Graph critical paths must follow existing edges.";
+      criticalNodes.add(id);
+      countText(id);
+    }
+    return (
+      textBytes <= ORCHESTRATION_V2_WORKFLOW_GRAPH_LIMITS.totalTextBytes ||
+      "Graph text exceeds the total UTF-8 byte limit."
+    );
+  }),
+);
+export type OrchestrationV2WorkflowGraph = typeof OrchestrationV2WorkflowGraph.Type;
+
 export const OrchestrationV2SubagentWorkflow = Schema.Struct({
   name: Schema.optional(TrimmedNonEmptyString),
   runHandles: Schema.optional(OrchestrationV2WorkflowRunHandles),
   phases: Schema.Array(OrchestrationV2WorkflowPhase),
   agents: Schema.Array(OrchestrationV2WorkflowAgent),
+  graph: Schema.optional(OrchestrationV2WorkflowGraph),
   totalTokens: Schema.optional(NonNegativeInt),
   toolCalls: Schema.optional(NonNegativeInt),
   durationMs: Schema.optional(NonNegativeInt),

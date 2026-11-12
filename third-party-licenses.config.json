@@ -15,6 +15,14 @@
       "noticeFile": "apps/web/src/components/files/office/LICENSE.opencode"
     },
     {
+      "name": "OmO official icon",
+      "version": "5.1.69",
+      "bundles": ["web"],
+      "license": "LicenseRef-SUL-1.0",
+      "sourceUrl": "https://github.com/code-yeongyu/oh-my-openagent/blob/2c62d8b85d679e60b17b25dc722d89500fdcdedd/.github/assets/omo-icon-light.svg",
+      "noticeFile": "apps/web/src/components/OmoIcon.NOTICE.txt"
+    },
+    {
       "bundles": ["web"],
       "license": "MIT",
       "name": "Ionic keyboard assist",

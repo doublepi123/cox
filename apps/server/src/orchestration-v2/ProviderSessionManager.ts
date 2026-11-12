@@ -283,6 +283,10 @@ function sessionScopedArtifactThreadId(
   const threadBusy = (id: ProviderThreadId | null) =>
     id !== null && [...busyTurns].some((key) => key.startsWith(busyTurnPrefix(id)));
   switch (event.type) {
+    case "plan.updated":
+      return event.driver === "omo" && event.plan.kind === "todo_list" && event.plan.runId === null
+        ? event.plan.threadId
+        : undefined;
     case "runtime_request.updated":
       return event.runtimeRequest.providerTurnId === null ? event.threadId : undefined;
     case "node.updated":
@@ -2137,6 +2141,7 @@ export const layerWithOptions = (
                       if (
                         event.driver === "omo" &&
                         (event.type === "subagent.updated" ||
+                          event.type === "plan.updated" ||
                           (event.type === "turn_item.updated" &&
                             event.turnItem.type === "subagent")) &&
                         !current.attachedThreadIds.has(threadId)

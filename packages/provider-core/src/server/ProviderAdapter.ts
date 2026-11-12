@@ -75,6 +75,20 @@ export const ProviderAdapterV2SessionStatus = Schema.Literals([
 ]);
 export type ProviderAdapterV2SessionStatus = typeof ProviderAdapterV2SessionStatus.Type;
 
+export const ProviderNativeSubagentTranscript = Schema.Struct({
+  entries: Schema.Array(
+    Schema.Struct({
+      index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      kind: Schema.Literals(["assistant", "tool", "error"]),
+      text: Schema.String.check(Schema.isMaxLength(48_000)),
+      toolName: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
+      isError: Schema.optional(Schema.Boolean),
+    }),
+  ).check(Schema.isMaxLength(200)),
+  truncated: Schema.Boolean,
+});
+export type ProviderNativeSubagentTranscript = typeof ProviderNativeSubagentTranscript.Type;
+
 export const ProviderAdapterV2Event = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("prompt_suggestion.updated"),
@@ -117,6 +131,8 @@ export const ProviderAdapterV2Event = Schema.Union([
     type: Schema.Literal("subagent.updated"),
     driver: ProviderDriverKind,
     subagent: OrchestrationV2Subagent,
+    nativeChildSessionId: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
+    nativeTranscript: Schema.optional(ProviderNativeSubagentTranscript),
   }),
   Schema.Struct({
     type: Schema.Literal("message.updated"),

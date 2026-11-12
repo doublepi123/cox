@@ -25,7 +25,8 @@ import {
   type OrchestrationV2ProviderTurnTokenUsage,
   OrchestrationV2PlanStep,
   type OrchestrationV2Subagent,
-  type PlanId,
+  OrchestrationV2SubagentWorkflow,
+  PlanId,
 } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
 import * as Cause from "effect/Cause";
@@ -102,6 +103,10 @@ const encodeTodoSteps = Schema.encodeSync(
   Schema.fromJsonString(Schema.Array(OrchestrationV2PlanStep)),
 );
 const encodeNativeSubagent = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeNativeTranscript = Schema.decodeUnknownOption(
+  ProviderAdapter.ProviderNativeSubagentTranscript,
+);
+const decodeNativeWorkflow = Schema.decodeUnknownOption(OrchestrationV2SubagentWorkflow);
 
 export const PiProviderCapabilitiesV2 = {
   runtimePolicy: { enforcement: "client-boundary" },
@@ -453,6 +458,7 @@ interface PiThreadState {
   todoPublished?: boolean;
   todoPublishedSignature?: string;
   todoGenerations?: Set<string>;
+  restoredTodoSignature?: string;
   nativeSubagents?: Map<
     string,
     {
@@ -1040,7 +1046,34 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         snapshot: PiTodoSnapshot,
       ) {
         const turn = state.activeTurn;
-        if (turn === null) return;
+        if (turn === null) {
+          const threadId = state.providerThread.appThreadId;
+          if (threadId === null) return;
+          const signature = encodeTodoSteps(snapshot.steps);
+          if (state.restoredTodoSignature === signature) return;
+          state.restoredTodoSignature = signature;
+          delete state.todoPublishedSignature;
+          const key = `${options.instanceId}:${state.providerThread.id}:todo-snapshot`;
+          yield* emit({
+            type: "plan.updated",
+            driver: PI_PROVIDER,
+            plan: {
+              id: PlanId.make(`plan:provider-snapshot:${encodeURIComponent(key)}`),
+              threadId,
+              runId: null,
+              nodeId: idAllocator.derive.nodeFromProviderItem({
+                driver: PI_PROVIDER,
+                nativeItemId: key,
+              }),
+              kind: "todo_list",
+              status: snapshot.steps.every((step) => step.status === "completed")
+                ? "completed"
+                : "active",
+              steps: snapshot.steps,
+            },
+          });
+          return;
+        }
         if (!snapshot.hasList && !state.todoPublished) return;
         const signature = encodeTodoSteps(snapshot.steps);
         if (turn.todo?.signature === signature) return;
@@ -1062,6 +1095,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           signature,
         };
         turn.todo = { ...todo, signature };
+        delete state.restoredTodoSignature;
         state.todoPublished = true;
         state.todoPublishedSignature = signature;
         const nativeItemId = `${turn.providerTurn.id}:todo`;
@@ -1455,11 +1489,21 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           const nativeTaskId =
             recordString(result, "nativeTaskId") ??
             `${toolCallId}:subagent:${recordNumber(result, "step") ?? index}`;
+          const workflow = decodeNativeWorkflow(recordField(result, "workflow"));
           const subagentId = idAllocator.derive.nodeFromProviderItem({
             driver: PI_PROVIDER,
             nativeItemId: nativeTaskId,
           });
           const previous = state?.nativeSubagents?.get(nativeTaskId);
+          const graph = Option.isSome(workflow) ? workflow.value.graph : undefined;
+          const previousGraph = previous?.subagent.workflow?.graph;
+          const graphAdvanced =
+            graph !== undefined &&
+            (previousGraph === undefined ||
+              (graph.generation >= previousGraph.generation &&
+                graph.lastSeq >= previousGraph.lastSeq &&
+                (graph.generation > previousGraph.generation ||
+                  graph.lastSeq > previousGraph.lastSeq)));
           const signature = encodeNativeSubagent(result);
           if (previous?.signature === signature) continue;
           const nativeUpdatedAt = Date.parse(recordString(result, "updatedAt") ?? "");
@@ -1472,6 +1516,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           if (
             previous?.subagent.completedAt !== null &&
             previous?.subagent.completedAt !== undefined &&
+            !graphAdvanced &&
             recordField(result, "finished") !== true &&
             Number.isFinite(nativeUpdatedAt) &&
             nativeUpdatedAt <= DateTime.toEpochMillis(previous.subagent.updatedAt)
@@ -1545,6 +1590,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             title: agent,
             model: recordString(result, "model") ?? null,
             status,
+            ...(Option.isNone(workflow) ? {} : { workflow: workflow.value }),
             ...progress,
             result: resultText,
             startedAt,
@@ -1605,7 +1651,19 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             if (state.nativeSubagents.size > 512)
               state.nativeSubagents.delete(state.nativeSubagents.keys().next().value!);
           }
-          yield* emit({ type: "subagent.updated", driver: PI_PROVIDER, subagent });
+          const transcript = decodeNativeTranscript(recordField(result, "transcript"));
+          const childSessionId = recordString(result, "childSessionId");
+          yield* emit({
+            type: "subagent.updated",
+            driver: PI_PROVIDER,
+            subagent,
+            ...(state === undefined || childSessionId === undefined
+              ? {}
+              : { nativeChildSessionId: childSessionId }),
+            ...(state === undefined || Option.isNone(transcript)
+              ? {}
+              : { nativeTranscript: transcript.value }),
+          });
           yield* emit({ type: "turn_item.updated", driver: PI_PROVIDER, turnItem });
         }
       });
@@ -2864,6 +2922,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 updatedAt: createdAt,
               };
         threadState = { providerThread, activeTurn: null };
+        if (options.runtime?.todo !== undefined) yield* refreshTodoSnapshot(threadState);
         if (options.runtime?.nativeSubagents !== undefined)
           yield* refreshNativeSubagents(threadState);
         const baselineEntries = yield* request({ type: "get_entries" }).pipe(

@@ -187,6 +187,10 @@
       "types": "./src/state/orchestration.ts",
       "default": "./src/state/orchestration.ts"
     },
+    "./state/omoDag": {
+      "types": "./src/state/omoDag.ts",
+      "default": "./src/state/omoDag.ts"
+    },
     "./state/thread-history-merge": {
       "types": "./src/state/threadHistoryMerge.ts",
       "default": "./src/state/threadHistoryMerge.ts"

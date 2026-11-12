@@ -33,7 +33,21 @@ describe("OMO runtime permissions", () => {
         launch.args[launch.args.indexOf("--permission-preset") + 1],
         omoPermissionPreset(runtimeMode),
       );
+      assert.isFalse(launch.args.includes("--omo-senpi-disabled"));
+      assert.equal(launch.env.OMO_SENPI_DISABLED, "1");
     }
+  });
+  it("disables native task composition without passing npm-only extension flags", () => {
+    const launch = buildOmoLaunch({
+      launchArgs: [],
+      environment: {},
+      mcpSession: undefined,
+      extensionPath: undefined,
+      disableTools: true,
+    });
+    assert.include(launch.args, "--no-tools");
+    assert.isFalse(launch.args.some((arg) => arg.startsWith("--omo-senpi")));
+    assert.equal(launch.env.COX_OMO_TOOLS_REQUIRED, "0");
   });
 
   it.effect("sets an explicit client policy and verifies enforcement on every change", () =>

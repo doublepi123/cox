@@ -67,6 +67,14 @@ export const OmoSettings = makeProviderSettingsSchema(
         providerSettingsForm: { clearWhenEmpty: "omit" },
       }),
     ),
+    automaticMemory: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({
+        title: "Automatic global memory",
+        description:
+          "Remember and recall information across projects for this Cox instance. Stored locally in Cox; remote synchronization is disabled. Background memory models use the Cox model service binding.",
+      }),
+    ),
     agentModels: OmoRoleModels,
     categoryModels: OmoRoleModels,
     agentReasoning: OmoRoleReasoning.pipe(
@@ -86,6 +94,16 @@ export const OmoSettings = makeProviderSettingsSchema(
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
-  { order: ["provider", "model", "apiKey", "agentDir", "binaryPath", "launchArgs"] },
+  {
+    order: [
+      "provider",
+      "model",
+      "automaticMemory",
+      "apiKey",
+      "agentDir",
+      "binaryPath",
+      "launchArgs",
+    ],
+  },
 );
 export type OmoSettings = typeof OmoSettings.Type;

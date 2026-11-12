@@ -4,52 +4,50 @@ import { buildPiRpcLaunch, materializePiT3McpExtension } from "@t3tools/provider
 import { OMO_TODO_BRIDGE_SOURCE } from "./todo.ts";
 import { OMO_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { omoPermissionPreset } from "./permissions.ts";
+import { OMO_SUBAGENT_TRANSCRIPT_SOURCE } from "./subagents.ts";
+import { OMO_RUNTIME_ASSETS_SOURCE } from "./runtimeAssets.ts";
+import { OMO_MEMORY_SOURCE } from "./memory.ts";
 
 export const OMO_EXTENSION_SOURCE = `
-import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
 import coxBridge from "./pi-t3-mcp-extension.ts";
+
+${OMO_RUNTIME_ASSETS_SOURCE}
+${OMO_MEMORY_SOURCE}
 
 const excluded = new Set([
   "config-startup", "config-watch", "model-profile", "onboarding", "onboarding-scan",
-  "side-panel", "telemetry", "device-service", "memory", "feedback", "thread",
+  "side-panel", "telemetry", "device-service", "feedback", "thread",
   "browser-bridge", "desktop-toolkit",
 ]);
 
 export default async function coxOmo(pi) {
-  const root = process.env.COX_OMO_PACKAGE_ROOT || dirname(createRequire(pathToFileURL(process.argv[1])).resolve("omo-ai/package.json"));
-  if (!root) throw new Error("Cox could not locate the omo-ai package. Use the Cox-managed installation or the official omo binary.");
-  const entry = await import(pathToFileURL(join(root, "plugin", "extensions", "omo.js")).href);
-  const tasks = await import(pathToFileURL(join(root, "plugin", "extensions", "omo-task.js")).href);
-  const engineDirectory = createRequire(join(root, "package.json")).resolve.paths("@code-yeongyu/senpi")
-    ?.map(directory => join(directory, "@code-yeongyu", "senpi"))
-    .find(directory => existsSync(join(directory, "package.json")));
-  if (!engineDirectory) throw new Error("Cox could not locate the OMO Native child engine.");
-  const engineRoot = join(engineDirectory, "dist");
-  const childPermissions = await import(pathToFileURL(join(engineRoot, "core", "permission-decision.js")).href);
-  if (typeof childPermissions.bindDecisionPreset !== "function" || typeof childPermissions.releaseDecisionPreset !== "function")
-    throw new Error("This OMO Native engine does not expose its child permission inheritance interface.");
-  let permissionParent;
-  const detachPermissionParent = () => {
-    if (permissionParent) childPermissions.releaseDecisionPreset(permissionParent);
-    permissionParent = undefined;
-  };
-  const bindPermissionParent = (_event, ctx) => {
-    detachPermissionParent();
-    if (!ctx?.sessionManager) return;
-    permissionParent = ctx.sessionManager;
-    childPermissions.bindDecisionPreset({ sessionManager: permissionParent,
-      namedPreset: () => pi.getPermissionPreset?.() ?? "ask", launchFlagNamed: () => false,
-      recordedPreset: () => undefined });
-  };
-  pi.on("session_start", bindPermissionParent);
-  pi.on("before_agent_start", bindPermissionParent);
-  pi.on("session_before_switch", detachPermissionParent);
-  pi.on("session_shutdown", detachPermissionParent);
-  if (typeof entry.composeOmoSenpiExtension !== "function" || !Array.isArray(entry.omoSenpiComponents) || typeof tasks.createTaskComponent !== "function")
-    throw new Error("This OMO Native version does not expose the required Cox integration interfaces.");
+  const runtime = await loadCoxOmoRuntimeAssets();
+  const { entry, tasks } = runtime;
+  pi.on("session_start", (_event, ctx) => runtime.assertNativeSession(ctx));
+  if (runtime.kind === "npm") {
+    if (!runtime.permissions.decisionModulePath) throw new Error("The selected OMO npm engine has no child permission module.");
+    const childPermissions = await import(pathToFileURL(runtime.permissions.decisionModulePath).href);
+    if (typeof childPermissions.bindDecisionPreset !== "function" || typeof childPermissions.releaseDecisionPreset !== "function")
+      throw new Error("The selected OMO npm engine cannot synchronize native child permissions.");
+    let permissionParent;
+    const detach = () => {
+      if (permissionParent) childPermissions.releaseDecisionPreset(permissionParent);
+      permissionParent = undefined;
+    };
+    const bind = (_event, ctx) => {
+      detach();
+      if (!ctx?.sessionManager) return;
+      permissionParent = ctx.sessionManager;
+      childPermissions.bindDecisionPreset({ sessionManager: permissionParent,
+        namedPreset: () => pi.getPermissionPreset?.() ?? "ask", launchFlagNamed: () => false,
+        recordedPreset: () => undefined });
+    };
+    pi.on("session_start", bind);
+    pi.on("before_agent_start", bind);
+    pi.on("session_before_switch", detach);
+    pi.on("session_shutdown", detach);
+  }
   const config = JSON.parse(process.env.COX_OMO_TASK_CONFIG || "{}");
   const fixed = JSON.parse(process.env.COX_OMO_FIXED_ROLES || "{}");
   const managed = process.env.COX_OMO_MANAGED_MODELS === "1";
@@ -79,8 +77,14 @@ export default async function coxOmo(pi) {
     registries.set(registry, scoped);
     return scoped;
   };
-  const components = entry.omoSenpiComponents.filter(c => !excluded.has(c.name)).map(c =>
-    c.name === "task" ? tasks.createTaskComponent({ loadConfig: () => ({ config, diagnostics: [], layers: [], sources: [] }) }) : c);
+  const memory = process.env.COX_OMO_EPHEMERAL === "1" || process.env.COX_OMO_AUTOMATIC_MEMORY === "0"
+    ? { name: "memory", register() {} }
+    : await createCoxOmoMemoryComponent({ root: runtime.packageRoot, config, env: process.env,
+      resolveModule: runtime.resolveModule, resolveImport: runtime.resolveImport, loadModules: runtime.loadModules });
+  const components = entry.omoSenpiComponents.filter(c => !excluded.has(c.name) &&
+    (c.name !== "task" || process.env.COX_OMO_TOOLS_REQUIRED !== "0")).map(c =>
+    c.name === "task" ? tasks.createTaskComponent({ loadConfig: () => ({ config, diagnostics: [], layers: [], sources: [] }) }) :
+    c.name === "memory" ? memory : c);
   const owned = new Proxy(pi, {
     get(target, key) {
       if (key === "registerTool") {
@@ -116,6 +120,7 @@ export default async function coxOmo(pi) {
     bridgeInstructions: "Cox tools use their full mcp__cox__<name> names. Only when Cox delegation is explicitly requested or OMO native task cannot provide the required capability, use mcp__cox__orchestrator_capabilities then mcp__cox__delegate_task with the task field, not prompt. Discover optional Cox tools with tool_search using their full names. Generic subagent or parallel requests use OMO native task instead. Never change between native and Cox delegation silently after an error, denial, or exclusion.",
   });
   ${OMO_TODO_BRIDGE_SOURCE}
+  ${OMO_SUBAGENT_TRANSCRIPT_SOURCE}
   pi.on("before_agent_start", async (_event, ctx) => {
     if (!pi.getPermissionPreset?.()) throw new Error("OMO Native's permission system is not active.");
     if (process.env.COX_OMO_MANAGED_MODELS === "1" && ctx.model?.provider !== "cox")
@@ -178,13 +183,7 @@ export const buildOmoLaunch: typeof buildPiRpcLaunch = (input) => {
   const launch = buildPiRpcLaunch(input);
   const preset = omoPermissionPreset(input.runtimeMode ?? "approval-required");
   return {
-    args: [
-      ...launch.args,
-      "--omo-senpi-disabled",
-      "--permission-preset",
-      preset,
-      ...(input.disableTools ? ["--omo-senpi-task-disabled"] : []),
-    ],
+    args: [...launch.args, "--permission-preset", preset],
     env: {
       ...launch.env,
       COX_NATIVE_PERMISSIONS: "1",

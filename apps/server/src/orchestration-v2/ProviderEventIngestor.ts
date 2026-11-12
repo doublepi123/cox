@@ -7,6 +7,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Subagent,
+  type OrchestrationV2TurnItem,
   type OrchestrationV2ThreadProjection,
   type ModelSelection,
   type OrchestrationV2Actor,
@@ -43,6 +44,10 @@ import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failu
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { stripUnservedToolOutputImageBytes } from "./toolOutputImageBytes.ts";
 import { boundFileChangeForStorage } from "./WireProjection.ts";
+import {
+  makeSubagentChildThread,
+  makeSubagentConversationArtifacts,
+} from "@t3tools/provider-core/server/subagentProjection";
 
 export class ProviderEventNormalizeError extends Schema.TaggedError<ProviderEventNormalizeError>()(
   "ProviderEventNormalizeError",
@@ -341,6 +346,11 @@ export const layer: Layer.Layer<
     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
     const scope = yield* Effect.scope;
     const completedTurnAnalytics = new Set<string>();
+    const omoChildThreadId = (task: OrchestrationV2Subagent) =>
+      idAllocator.derive.threadFromProviderThread({
+        driver: task.driver,
+        nativeThreadId: `${task.providerInstanceId}:${task.threadId}:${task.id}:native-child`,
+      });
 
     const makeDomainEvent =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
@@ -366,8 +376,9 @@ export const layer: Layer.Layer<
             id: eventId,
             type: payloadInput.type,
             threadId,
-            runId: payloadInput.runId ?? input.runId,
-            nodeId: payloadInput.nodeId ?? input.nodeId,
+            runId: payloadInput.runId === null ? undefined : (payloadInput.runId ?? input.runId),
+            nodeId:
+              payloadInput.nodeId === null ? undefined : (payloadInput.nodeId ?? input.nodeId),
             driver: input.event.driver,
             providerInstanceId: input.providerInstanceId,
             rawEventId: input.rawEventId,
@@ -540,6 +551,296 @@ export const layer: Layer.Layer<
       return events;
     });
 
+    const normalizeOmoNativeTask = Effect.fnUntraced(function* (
+      input: ProviderEventIngestInput,
+      event: Extract<ProviderAdapter.ProviderAdapterV2Event, { readonly type: "subagent.updated" }>,
+    ) {
+      const offered = event.subagent;
+      const parent = yield* projections
+        .getThread(offered.threadId)
+        .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }));
+      if (parent === null || parent.deletedAt !== null) return [];
+      const childThreadId = omoChildThreadId(offered);
+      const child = yield* projections
+        .getThread(childThreadId)
+        .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }));
+      const previous = (yield* projections.getThreadRecords(offered.threadId, ["subagents"], {
+        subagentIds: [offered.id],
+      })).subagents[0];
+      if (
+        previous !== undefined &&
+        DateTime.toEpochMillis(previous.updatedAt) > DateTime.toEpochMillis(offered.updatedAt)
+      )
+        return [];
+      const task = {
+        ...offered,
+        runId: offered.runId ?? previous?.runId ?? null,
+        parentNodeId: previous?.parentNodeId ?? offered.parentNodeId,
+        childThreadId: child?.deletedAt == null ? childThreadId : null,
+      };
+      const events: OrchestrationV2DomainEvent[] = [];
+      const taskEvent = () =>
+        makeDomainEvent(input, {
+          type: "subagent.updated",
+          threadId: task.threadId,
+          payload: task,
+          runId: task.runId,
+          nodeId: task.id,
+          occurredAt: task.updatedAt,
+        });
+      if (child?.deletedAt != null) return [yield* taskEvent()];
+      if (child === null) {
+        events.push(
+          yield* makeDomainEvent(input, {
+            type: "thread.created",
+            threadId: childThreadId,
+            payload: makeSubagentChildThread({
+              parentThread: parent,
+              childThreadId,
+              parentNodeId: task.id,
+              activeProviderThreadId: null,
+              providerInstanceId: task.providerInstanceId,
+              modelSelection: {
+                instanceId: task.providerInstanceId,
+                model: task.model ?? parent.modelSelection.model,
+              },
+              title: task.title ?? task.nativeTaskRef?.nativeId ?? "OMO task",
+              now: task.startedAt ?? task.updatedAt,
+              createdBy: "agent",
+              creationSource: "provider",
+            }),
+            occurredAt: task.updatedAt,
+          }),
+        );
+      } else {
+        if (
+          child.lineage.parentThreadId !== parent.id ||
+          child.lineage.relationshipToParent !== "subagent" ||
+          child.createdBy !== "agent" ||
+          child.creationSource !== "provider" ||
+          child.providerInstanceId !== task.providerInstanceId ||
+          child.activeProviderThreadId !== null ||
+          child.forkedFrom?.type !== "node" ||
+          child.forkedFrom.nodeId !== task.id
+        )
+          return yield* new ProviderEventNormalizeError({
+            providerSessionId: input.providerSessionId,
+            threadId: input.threadId,
+            providerEvent: event,
+            cause: "Native subagent view belongs to another task.",
+          });
+        if (task.model !== null && task.model !== child.modelSelection.model) {
+          events.push(
+            yield* makeDomainEvent(input, {
+              type: "thread.model-selection-updated",
+              threadId: childThreadId,
+              runId: null,
+              payload: {
+                ...child,
+                modelSelection: { instanceId: task.providerInstanceId, model: task.model },
+                updatedAt: task.updatedAt,
+              },
+              occurredAt: task.updatedAt,
+            }),
+          );
+        }
+      }
+      const rootNodeId = idAllocator.derive.nodeFromProviderItem({
+        driver: event.driver,
+        nativeItemId: `${childThreadId}:root`,
+      });
+      const complete = ["completed", "failed", "cancelled", "interrupted"].includes(task.status);
+      const nativeItemRef =
+        event.nativeChildSessionId === undefined
+          ? task.nativeTaskRef
+          : {
+              driver: event.driver,
+              nativeId: event.nativeChildSessionId,
+              strength: "strong" as const,
+            };
+      events.push(
+        yield* makeDomainEvent(input, {
+          type: "node.updated",
+          threadId: childThreadId,
+          nodeId: rootNodeId,
+          runId: null,
+          payload: {
+            id: rootNodeId,
+            threadId: childThreadId,
+            runId: null,
+            parentNodeId: null,
+            rootNodeId,
+            kind: "root_turn",
+            status: task.status,
+            countsForRun: false,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef,
+            runtimeRequestId: null,
+            checkpointScopeId: null,
+            startedAt: task.startedAt,
+            completedAt: task.completedAt,
+          },
+          occurredAt: task.updatedAt,
+        }),
+      );
+      const mirrorConversation = Effect.fnUntraced(function* (
+        role: "user" | "assistant",
+        text: string,
+        suffix: string,
+        ordinal: number,
+        streaming = false,
+      ) {
+        const nativeItemId = `${childThreadId}:${suffix}`;
+        const turnItemId = idAllocator.derive.turnItemFromProviderItem({
+          driver: event.driver,
+          nativeItemId,
+        });
+        if (
+          text.length === 0 &&
+          (role === "user" ||
+            (yield* projections.getTurnItem({ threadId: childThreadId, itemId: turnItemId })) ===
+              null)
+        )
+          return;
+        const artifacts = makeSubagentConversationArtifacts({
+          messageId: idAllocator.derive.messageFromProviderItem({
+            driver: event.driver,
+            nativeItemId,
+          }),
+          senderThreadId: task.threadId,
+          turnItemId,
+          threadId: childThreadId,
+          rootNodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef,
+          role,
+          text,
+          ordinal,
+          now: task.startedAt ?? task.updatedAt,
+        });
+        events.push(
+          yield* makeDomainEvent(input, {
+            type: "message.updated",
+            threadId: childThreadId,
+            runId: null,
+            nodeId: rootNodeId,
+            payload: { ...artifacts.message, updatedAt: task.updatedAt, streaming },
+            occurredAt: task.updatedAt,
+          }),
+        );
+        events.push(
+          yield* makeDomainEvent(input, {
+            type: "turn-item.updated",
+            threadId: childThreadId,
+            runId: null,
+            nodeId: rootNodeId,
+            payload: {
+              ...artifacts.turnItem,
+              updatedAt: task.updatedAt,
+              ...(artifacts.turnItem.type === "assistant_message"
+                ? {
+                    streaming,
+                    status: streaming ? task.status : "completed",
+                    completedAt: streaming ? null : (task.completedAt ?? task.updatedAt),
+                  }
+                : {}),
+            },
+            occurredAt: task.updatedAt,
+          }),
+        );
+      });
+      yield* mirrorConversation("user", task.prompt, "child-prompt", 1);
+      const transcript = event.nativeTranscript;
+      for (const entry of transcript?.entries ?? []) {
+        const suffix = `transcript:${entry.index}`;
+        if (entry.kind === "assistant") {
+          yield* mirrorConversation("assistant", entry.text, suffix, entry.index + 2);
+          continue;
+        }
+        const base = {
+          id: idAllocator.derive.turnItemFromProviderItem({
+            driver: event.driver,
+            nativeItemId: `${childThreadId}:${suffix}`,
+          }),
+          threadId: childThreadId,
+          runId: null,
+          nodeId: rootNodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef,
+          parentItemId: null,
+          ordinal: entry.index + 2,
+          title: entry.kind === "tool" ? (entry.toolName ?? null) : "Native task error",
+          status:
+            entry.kind === "error" || entry.isError ? ("failed" as const) : ("completed" as const),
+          startedAt: task.startedAt,
+          completedAt: task.updatedAt,
+          updatedAt: task.updatedAt,
+        };
+        const item: OrchestrationV2TurnItem =
+          entry.kind === "tool"
+            ? { ...base, type: "dynamic_tool", toolName: entry.toolName ?? null, input: {} }
+            : { ...base, type: "system_notice", message: entry.text };
+        events.push(
+          yield* makeDomainEvent(input, {
+            type: "turn-item.updated",
+            threadId: childThreadId,
+            runId: null,
+            nodeId: rootNodeId,
+            payload: item,
+            occurredAt: task.updatedAt,
+          }),
+        );
+      }
+      if (transcript?.truncated) {
+        events.push(
+          yield* makeDomainEvent(input, {
+            type: "turn-item.updated",
+            threadId: childThreadId,
+            runId: null,
+            nodeId: rootNodeId,
+            payload: {
+              id: idAllocator.derive.turnItemFromProviderItem({
+                driver: event.driver,
+                nativeItemId: `${childThreadId}:transcript-truncated`,
+              }),
+              threadId: childThreadId,
+              runId: null,
+              nodeId: rootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef,
+              parentItemId: null,
+              ordinal: 1001,
+              title: null,
+              type: "system_notice",
+              message: "Native task transcript was truncated by the provider's bounded snapshot.",
+              status: "completed",
+              startedAt: task.startedAt,
+              completedAt: task.updatedAt,
+              updatedAt: task.updatedAt,
+            },
+            occurredAt: task.updatedAt,
+          }),
+        );
+      }
+      const output = complete ? (task.result ?? "") : (task.progress ?? "");
+      const assistants = transcript?.entries.filter((entry) => entry.kind === "assistant") ?? [];
+      const duplicatedOutput =
+        assistants.some((entry) => entry.text === output) || (!complete && assistants.length > 0);
+      yield* mirrorConversation(
+        "assistant",
+        duplicatedOutput ? "" : output,
+        "child-output",
+        1002,
+        !complete && !duplicatedOutput,
+      );
+      events.push(yield* taskEvent());
+      return events;
+    });
+
     const normalize: ProviderEventIngestorV2Shape["normalize"] =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(
@@ -633,7 +934,16 @@ export const layer: Layer.Layer<
                   nodeId: input.event.node.id,
                 }),
               ];
-            case "subagent.updated":
+            case "subagent.updated": {
+              const event = input.event;
+              const offered = event.subagent;
+              if (
+                event.driver === "omo" &&
+                offered.origin === "provider_native" &&
+                offered.nativeTaskRef?.nativeId != null &&
+                offered.workflow === undefined
+              )
+                return yield* normalizeOmoNativeTask(input, event);
               return [
                 yield* makeDomainEvent(input, {
                   type: "subagent.updated",
@@ -643,6 +953,7 @@ export const layer: Layer.Layer<
                   nodeId: input.event.subagent.id,
                 }),
               ];
+            }
             case "message.updated":
               return [
                 yield* makeDomainEvent(input, {
@@ -653,18 +964,38 @@ export const layer: Layer.Layer<
                   nodeId: input.event.message.nodeId,
                 }),
               ];
-            case "turn_item.updated":
+            case "turn_item.updated": {
+              const offered = input.event.turnItem;
+              const nativeTask =
+                input.event.driver === "omo" &&
+                offered.type === "subagent" &&
+                offered.origin === "provider_native"
+                  ? (yield* projections.getThreadRecords(offered.threadId, ["subagents"], {
+                      subagentIds: [offered.subagentId],
+                    })).subagents[0]
+                  : undefined;
+              if (
+                nativeTask !== undefined &&
+                DateTime.toEpochMillis(nativeTask.updatedAt) >
+                  DateTime.toEpochMillis(offered.updatedAt)
+              )
+                return [];
               return [
                 yield* makeDomainEvent(input, {
                   type: "turn-item.updated",
                   threadId: input.event.turnItem.threadId,
                   payload: boundFileChangeForStorage(
-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
+                    stripUnservedToolOutputImageBytes(
+                      nativeTask === undefined || offered.type !== "subagent"
+                        ? offered
+                        : { ...offered, childThreadId: nativeTask.childThreadId },
+                    ),
                   ),
                   runId: input.event.turnItem.runId,
                   nodeId: input.event.turnItem.nodeId,
                 }),
               ];
+            }
             case "runtime_request.updated":
               return [
                 yield* makeDomainEvent(input, {
@@ -689,7 +1020,31 @@ export const layer: Layer.Layer<
                       occurredAt,
                     )
                   : plan;
+              const superseded: OrchestrationV2DomainEvent[] = [];
+              if (plan.kind === "todo_list") {
+                const previousSnapshots = (yield* projections.getThreadRecords(plan.threadId, [
+                  "plans",
+                ])).plans.filter(
+                  (candidate) =>
+                    candidate.kind === "todo_list" &&
+                    candidate.runId === null &&
+                    candidate.id !== plan.id &&
+                    candidate.status !== "superseded",
+                );
+                for (const snapshot of previousSnapshots)
+                  superseded.push(
+                    yield* makeDomainEvent(input, {
+                      type: "plan.updated",
+                      threadId: plan.threadId,
+                      runId: null,
+                      nodeId: snapshot.nodeId,
+                      payload: { ...snapshot, status: "superseded" },
+                      occurredAt,
+                    }),
+                  );
+              }
               return [
+                ...superseded,
                 yield* makeDomainEvent(input, {
                   type: "plan.updated",
                   threadId: plan.threadId,
@@ -886,11 +1241,21 @@ export const layer: Layer.Layer<
                   ),
                 ),
               ),
-              // @effect-diagnostics-next-line flatMapConditionalToFilterOrFail:off - The predicate narrows the captured event for the subagent update.
-              Effect.flatMap((storedEvents) =>
-                storedEvents.length === 0 || input.event.type !== "subagent.updated"
+              Effect.flatMap((storedEvents) => {
+                const normalized = storedEvents.findLast(
+                  (stored) => stored.event.type === "subagent.updated",
+                );
+                return storedEvents.length === 0 || input.event.type !== "subagent.updated"
                   ? Effect.succeed(storedEvents)
-                  : syncSubagentThreadModel(input, input.event.subagent).pipe(
+                  : (input.event.driver === "omo"
+                      ? Effect.succeed([])
+                      : syncSubagentThreadModel(
+                          input,
+                          normalized?.event.type === "subagent.updated"
+                            ? normalized.event.payload
+                            : input.event.subagent,
+                        )
+                    ).pipe(
                       Effect.map((synced) => [...storedEvents, ...synced]),
                       Effect.mapError(
                         (cause) =>
@@ -900,8 +1265,8 @@ export const layer: Layer.Layer<
                             cause,
                           }),
                       ),
-                    ),
-              ),
+                    );
+              }),
               Effect.tap((storedEvents) =>
                 Effect.gen(function* () {
                   if (storedEvents.length === 0 || input.event.type !== "provider_turn.updated")
@@ -935,7 +1300,11 @@ export const layer: Layer.Layer<
               (effect) =>
                 input.event.type === "app_thread.created"
                   ? threadCommands.withLock(input.event.appThread.id, effect)
-                  : effect,
+                  : input.event.type === "subagent.updated" &&
+                      input.event.driver === "omo" &&
+                      input.event.subagent.origin === "provider_native"
+                    ? threadCommands.withLock(omoChildThreadId(input.event.subagent), effect)
+                    : effect,
             ),
         ),
     });

@@ -36,6 +36,8 @@ const CATEGORIES = [
   "visual-engineering",
   "ultrabrain",
   "deep",
+  "deep-low",
+  "deep-high",
   "artistry",
   "quick",
   "unspecified-low",
@@ -48,6 +50,14 @@ type RoleModel = {
   readonly name: string;
   readonly reasoningLevels?: ReadonlyArray<OmoReasoningLevel>;
 };
+
+function categoryAssignments(value: Record<string, string>): Record<string, string> {
+  return Object.hasOwn(value, "deep-low")
+    ? { ...value, deep: value["deep-low"]! }
+    : Object.hasOwn(value, "deep")
+      ? { ...value, "deep-low": value.deep! }
+      : value;
+}
 
 function reasoningLevelsForRole(
   models: readonly RoleModel[],
@@ -126,13 +136,17 @@ function RoleModelFields({
   const id = useId();
   const [name, setName] = useState("");
   const [search, setSearch] = useState("");
+  const effectiveValue = defaults === CATEGORIES ? categoryAssignments(value) : value;
+  const effectiveReasoning = defaults === CATEGORIES ? categoryAssignments(reasoning) : reasoning;
   const roles = [...new Set([...defaults, ...Object.keys(value), ...Object.keys(reasoning)])];
   const invalidCount = roles.filter(
     (role) =>
-      (managed && value[role] && !models.some((model) => model.slug === value[role])) ||
-      (reasoning[role] &&
-        !reasoningLevelsForRole(models, managed, value[role] || inheritedSlug).some(
-          (level) => level === reasoning[role],
+      (managed &&
+        effectiveValue[role] &&
+        !models.some((model) => model.slug === effectiveValue[role])) ||
+      (effectiveReasoning[role] &&
+        !reasoningLevelsForRole(models, managed, effectiveValue[role] || inheritedSlug).some(
+          (level) => level === effectiveReasoning[role],
         )),
   ).length;
   const [disclosure, setDisclosure] = useState({
@@ -148,6 +162,18 @@ function RoleModelFields({
     });
   }
   const open = disclosure.open;
+  const updateAssignment = (
+    assignments: Record<string, string>,
+    role: string,
+    selected: string,
+  ) => {
+    const next = { ...assignments, [role]: selected };
+    if (defaults === CATEGORIES && ["deep", "deep-low"].includes(role)) {
+      const alias = role === "deep" ? "deep-low" : "deep";
+      if (Object.hasOwn(assignments, alias)) next[alias] = selected;
+    }
+    return next;
+  };
   const validName = isOmoRoleName(name) && !defaults.includes(name) && !Object.hasOwn(value, name);
   return (
     <div className="min-w-0 border-b border-border/60 pb-3">
@@ -197,11 +223,11 @@ function RoleModelFields({
               {roles
                 .filter((role) => role.toLowerCase().includes(search.toLowerCase()))
                 .map((role, index) => {
-                  const slug = value[role] ?? "";
+                  const slug = effectiveValue[role] ?? "";
                   const unavailable =
                     managed && Boolean(slug) && !models.some((model) => model.slug === slug);
                   const levels = reasoningLevelsForRole(models, managed, slug || inheritedSlug);
-                  const level = reasoning[role] ?? "";
+                  const level = effectiveReasoning[role] ?? "";
                   const unsupported =
                     Boolean(level) && !levels.some((candidate) => candidate === level);
                   return (
@@ -232,7 +258,9 @@ function RoleModelFields({
                             aria-invalid={unavailable || undefined}
                             aria-describedby={unavailable ? `${id}-${index}-error` : undefined}
                             value={slug}
-                            onChange={(event) => onChange({ ...value, [role]: event.target.value })}
+                            onChange={(event) =>
+                              onChange(updateAssignment(value, role, event.target.value))
+                            }
                           >
                             <option value="">
                               {inheritedModel
@@ -262,7 +290,7 @@ function RoleModelFields({
                               value={slug}
                               placeholder={t("Inherit main model")}
                               onChange={(event) =>
-                                onChange({ ...value, [role]: event.target.value })
+                                onChange(updateAssignment(value, role, event.target.value))
                               }
                             />
                           </label>
@@ -294,7 +322,7 @@ function RoleModelFields({
                           value={level}
                           disabled={levels.length === 0 && !level}
                           onChange={(event) =>
-                            onReasoningChange({ ...reasoning, [role]: event.target.value })
+                            onReasoningChange(updateAssignment(reasoning, role, event.target.value))
                           }
                         >
                           <option value="">{t("Default thinking strength")}</option>
@@ -462,7 +490,7 @@ export function OmoSettingsSection({
   const invalidReasoning = (
     [
       [agentModels, agentReasoning],
-      [categoryModels, categoryReasoning],
+      [categoryAssignments(categoryModels), categoryAssignments(categoryReasoning)],
     ] as const
   ).some(([assignments, reasoning]) =>
     Object.entries(reasoning).some(

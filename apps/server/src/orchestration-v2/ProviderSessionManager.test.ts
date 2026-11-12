@@ -7,16 +7,19 @@ import {
   type ModelSelection,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
+  type OrchestrationV2PlanArtifact,
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2PromptSuggestion,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2Subagent,
   type Project,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   type ProviderSessionId,
   NodeId,
+  PlanId,
   RunId,
   TurnItemId,
   ThreadId,
@@ -57,6 +60,7 @@ import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as CommandOutputHub from "./CommandOutputHub.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { deriveCurrentTodoList } from "../../../web/src/components/chat/threadTasks.ts";
 
 const layerTestDatabase = SqlitePersistence.layerMemory;
 const layerTestStores = Layer.merge(EventStore.layer, ProjectionStore.layer).pipe(
@@ -675,6 +679,7 @@ function layerTest(input: {
     IdAllocator.layer,
     layerConfiguredMcpRegistry,
     McpProviderSessions.layer,
+    layerProviderEventIngestorTest,
     ProviderSessionManager.layerWithOptions({
       idleTimeoutMs: input.idleTimeoutMs,
       ...(input.maxIdlePinMs === undefined ? {} : { maxIdlePinMs: input.maxIdlePinMs }),
@@ -3661,11 +3666,104 @@ it.effect(
     }),
 );
 
+const makeOmoNativeViewFixture = Effect.fnUntraced(function* (
+  state: Ref.Ref<TestProviderRuntimeState>,
+  name: string,
+) {
+  const sink = yield* EventSink.EventSinkV2;
+  const ids = yield* IdAllocator.IdAllocatorV2;
+  const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const now = yield* DateTime.now;
+  const threadId = ThreadId.make(`omo-native-${name}`);
+  const driver = ProviderDriverKind.make("omo");
+  const providerSessionId = yield* ids.allocate.providerSession({
+    providerInstanceId: modelSelection.instanceId,
+    threadId,
+  });
+  yield* sink.write({
+    events: [yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now })],
+  });
+  const runtime = yield* manager.open({
+    threadId,
+    providerSessionId,
+    modelSelection,
+    runtimePolicy,
+  });
+  const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId))!;
+  const task = {
+    id: NodeId.make(`native-task:${name}`),
+    threadId,
+    runId: null,
+    parentNodeId: NodeId.make(`native-parent:${name}`),
+    origin: "provider_native",
+    createdBy: "agent",
+    driver,
+    providerInstanceId: modelSelection.instanceId,
+    providerThreadId: null,
+    childThreadId: null,
+    nativeTaskRef: { driver, nativeId: "st_1234abcd", strength: "strong" },
+    prompt: `Inspect ${name}`,
+    title: name,
+    model: null,
+    status: "running",
+    result: null,
+    startedAt: now,
+    completedAt: null,
+    updatedAt: now,
+  } satisfies OrchestrationV2Subagent;
+  const send = Effect.fnUntraced(function* (
+    events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>,
+  ) {
+    const afterSequence = yield* sink.latestSequence({ threadId });
+    const persisted = yield* sink
+      .stream({ threadId, afterSequence, eventType: "provider-session.updated" })
+      .pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped);
+    yield* Queue.offerAll(queue, [
+      ...events,
+      {
+        type: "provider_session.updated",
+        driver: CODEX_DRIVER,
+        providerSession: { ...runtime.providerSession, updatedAt: now },
+      },
+    ]);
+    yield* Fiber.join(persisted);
+  });
+  const update = (
+    changes: Partial<OrchestrationV2Subagent> = {},
+    native: Pick<
+      Extract<ProviderAdapter.ProviderAdapterV2Event, { readonly type: "subagent.updated" }>,
+      "nativeChildSessionId" | "nativeTranscript"
+    > = {},
+  ) => send([{ type: "subagent.updated", driver, subagent: { ...task, ...changes }, ...native }]);
+  const child = Effect.gen(function* () {
+    const projection = yield* projections.getThreadProjection(threadId);
+    const childThreadId = projection.subagents.find((entry) => entry.id === task.id)?.childThreadId;
+    assert.isNotNull(childThreadId);
+    assert.isDefined(childThreadId);
+    return yield* projections.getThreadProjection(childThreadId!);
+  });
+  return {
+    sink,
+    ids,
+    projections,
+    now,
+    threadId,
+    driver,
+    providerSessionId,
+    task,
+    send,
+    update,
+    child,
+  };
+});
+
 it.effect(
   "ProviderSessionManagerV2 restores OMO native subagents and results without launching or losing original run linkage",
   () =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
+      const launches = yield* Ref.make(0);
       yield* Effect.gen(function* () {
         const sink = yield* EventSink.EventSinkV2;
         const ids = yield* IdAllocator.IdAllocatorV2;
@@ -3697,7 +3795,8 @@ it.effect(
               Stream.filter(
                 (stored) =>
                   stored.event.type === "subagent.updated" ||
-                  stored.event.type === "turn-item.updated",
+                  (stored.event.type === "turn-item.updated" &&
+                    stored.event.payload.type === "subagent"),
               ),
               Stream.take(6),
               Stream.runCollect,
@@ -3768,6 +3867,7 @@ it.effect(
         yield* send(false);
         const beforeRestore = yield* projections.getThreadProjection(threadId);
         yield* send(true);
+        yield* send(true);
         const projection = yield* projections.getThreadProjection(threadId);
         assert.lengthOf(projection.subagents, 3);
         assert.sameMembers(
@@ -3779,7 +3879,7 @@ it.effect(
             (task) =>
               task.runId === originalRun &&
               task.parentNodeId === "original-parent" &&
-              task.childThreadId === null,
+              task.childThreadId !== null,
           ),
         );
         assert.equal(
@@ -3794,9 +3894,403 @@ it.effect(
             .filter((item) => item.type === "subagent")
             .map((item) => [item.id, item.ordinal, item.runId]),
         );
-        assert.lengthOf((yield* projections.getShellSnapshot()).threads, 1);
+        assert.lengthOf((yield* projections.getShellSnapshot()).threads, 4);
+        for (const task of projection.subagents) {
+          const child = yield* projections.getThreadProjection(task.childThreadId!);
+          assert.equal(child.thread.lineage.parentThreadId, threadId);
+          assert.equal(child.thread.creationSource, "provider");
+          assert.equal(child.thread.createdBy, "agent");
+          assert.isNull(child.thread.activeProviderThreadId);
+          assert.equal(
+            child.messages.find((message) => message.role === "user")?.text,
+            task.prompt,
+          );
+          assert.equal(
+            child.messages.find((message) => message.role === "assistant")?.text,
+            task.result,
+          );
+          assert.equal(child.thread.modelSelection.model, task.model);
+          assert.lengthOf(child.runs, 0);
+        }
         assert.equal((yield* Ref.get(state)).openCount, 1);
-      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 1000 })));
+        assert.equal(yield* Ref.get(launches), 0);
+        assert.lengthOf(projection.runs, 0);
+      }).pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 1000,
+            startTurn: Ref.update(launches, (count) => count + 1),
+          }),
+        ),
+      );
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 orders the OMO child prompt before persisted native transcript and output",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const fixture = yield* makeOmoNativeViewFixture(state, "transcript-order");
+        const childSessionId = "79e51000-44df-4fab-a723-e91e949a24b2";
+        yield* fixture.update(
+          { status: "completed", result: "Final native result", completedAt: fixture.now },
+          {
+            nativeChildSessionId: childSessionId,
+            nativeTranscript: {
+              entries: [
+                { index: 0, kind: "assistant", text: "Inspecting the fixture" },
+                { index: 1, kind: "tool", text: "read", toolName: "read", isError: false },
+                { index: 2, kind: "tool", text: "bash", toolName: "bash", isError: true },
+                { index: 3, kind: "error", text: "Native command failed" },
+              ],
+              truncated: true,
+            },
+          },
+        );
+        const child = yield* fixture.child;
+        const ordered = child.turnItems.toSorted((left, right) => left.ordinal - right.ordinal);
+        assert.equal(ordered[0]?.type, "user_message");
+        assert.equal(ordered[0]?.type === "user_message" && ordered[0].text, fixture.task.prompt);
+        assert.deepEqual(
+          ordered
+            .filter((item) => item.type === "dynamic_tool")
+            .map((item) => [item.toolName, item.status]),
+          [
+            ["read", "completed"],
+            ["bash", "failed"],
+          ],
+        );
+        assert.deepEqual(
+          ordered.filter((item) => item.type === "system_notice").map((item) => item.message),
+          [
+            "Native command failed",
+            "Native task transcript was truncated by the provider's bounded snapshot.",
+          ],
+        );
+        const output = ordered.at(-1);
+        assert.equal(output?.type === "assistant_message" && output.text, "Final native result");
+        assert.isTrue(
+          ordered.every((item, index) => index === 0 || item.ordinal > ordered[index - 1]!.ordinal),
+        );
+        assert.equal(
+          child.nodes.find((node) => node.kind === "root_turn")?.nativeItemRef?.nativeId,
+          childSessionId,
+        );
+        assert.isTrue(
+          child.turnItems.every((item) => item.runId === null && item.providerThreadId === null),
+        );
+        assert.lengthOf(child.runs, 0);
+        assert.lengthOf(child.providerThreads, 0);
+      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 mirrors OMO progress, final transcript, and late model updates without a provider thread",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const fixture = yield* makeOmoNativeViewFixture(state, "late-model");
+        yield* fixture.update({ progress: "Reading native files" });
+        const initial = yield* fixture.child;
+        assert.equal(initial.thread.modelSelection.model, modelSelection.model);
+        assert.equal(
+          initial.messages.find((message) => message.role === "assistant")?.streaming,
+          true,
+        );
+        const completedAt = DateTime.add(fixture.now, { seconds: 1 });
+        const nativeTranscript = {
+          entries: [{ index: 0, kind: "assistant" as const, text: "Native result" }],
+          truncated: false,
+        };
+        yield* fixture.update(
+          { status: "completed", result: "Native result", completedAt, updatedAt: completedAt },
+          { nativeTranscript },
+        );
+        const updatedAt = DateTime.add(completedAt, { seconds: 1 });
+        yield* fixture.update(
+          {
+            status: "completed",
+            result: "Native result",
+            model: "actual-native-model",
+            completedAt,
+            updatedAt,
+          },
+          { nativeTranscript },
+        );
+        const child = yield* fixture.child;
+        assert.equal(child.thread.id, initial.thread.id);
+        assert.equal(child.thread.modelSelection.model, "actual-native-model");
+        assert.isNull(child.thread.activeProviderThreadId);
+        assert.lengthOf(child.providerThreads, 0);
+        assert.lengthOf(child.runs, 0);
+        const output = child.messages.filter(
+          (message) => message.role === "assistant" && message.text.length > 0,
+        );
+        assert.deepEqual(
+          output.map((message) => [message.text, message.streaming]),
+          [["Native result", false]],
+        );
+        assert.equal(child.nodes.find((node) => node.kind === "root_turn")?.status, "completed");
+        assert.equal((yield* Ref.get(state)).openCount, 1);
+      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 rejects stale OMO restore updates without regressing child output or model",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const fixture = yield* makeOmoNativeViewFixture(state, "stale-view");
+        const latest = DateTime.add(fixture.now, { seconds: 2 });
+        yield* fixture.update({
+          status: "completed",
+          result: "Newest result",
+          model: "newest-model",
+          completedAt: latest,
+          updatedAt: latest,
+        });
+        const before = yield* fixture.child;
+        yield* fixture.update({
+          progress: "Stale progress",
+          model: "stale-model",
+          updatedAt: DateTime.add(fixture.now, { seconds: 1 }),
+        });
+        const after = yield* fixture.child;
+        assert.deepEqual(after, before);
+        const projection = yield* fixture.projections.getThreadProjection(fixture.threadId);
+        assert.equal(projection.subagents[0]?.status, "completed");
+        assert.equal(projection.subagents[0]?.result, "Newest result");
+      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
+    }),
+);
+
+it.effect("ProviderSessionManagerV2 never resurrects a deleted OMO native child on restore", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    yield* Effect.gen(function* () {
+      const fixture = yield* makeOmoNativeViewFixture(state, "deleted-view");
+      yield* fixture.update();
+      const before = yield* fixture.child;
+      const deletedAt = DateTime.add(fixture.now, { seconds: 1 });
+      yield* fixture.sink.write({
+        events: [
+          {
+            id: yield* fixture.ids.allocate.event({ threadId: before.thread.id }),
+            type: "thread.deleted",
+            threadId: before.thread.id,
+            occurredAt: deletedAt,
+            payload: { ...before.thread, deletedAt, updatedAt: deletedAt },
+          },
+        ],
+      });
+      const deleted = yield* fixture.projections.getThreadProjection(before.thread.id);
+      yield* fixture.update({
+        status: "completed",
+        result: "Late restore result",
+        updatedAt: DateTime.add(deletedAt, { seconds: 1 }),
+      });
+      assert.deepEqual(yield* fixture.projections.getThreadProjection(before.thread.id), deleted);
+      const parent = yield* fixture.projections.getThreadProjection(fixture.threadId);
+      assert.isNull(parent.subagents[0]?.childThreadId);
+      assert.lengthOf((yield* fixture.projections.getShellSnapshot()).threads, 1);
+    }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
+  }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 isolates OMO child views by instance, parent, and task while leaving DAG coordinators runless",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const fixture = yield* makeOmoNativeViewFixture(state, "isolated-view");
+        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+        const sibling = ThreadId.make("omo-native-other-parent");
+        yield* fixture.sink.write({
+          events: [
+            yield* makeThreadCreatedEvent({
+              idAllocator: fixture.ids,
+              threadId: sibling,
+              now: fixture.now,
+            }),
+          ],
+        });
+        const tasks: ReadonlyArray<OrchestrationV2Subagent> = [
+          fixture.task,
+          { ...fixture.task, providerInstanceId: ProviderInstanceId.make("omo-other-instance") },
+          { ...fixture.task, id: NodeId.make("native-task:other-task") },
+          { ...fixture.task, threadId: sibling },
+        ];
+        const children = [];
+        for (const [index, task] of tasks.entries()) {
+          const stored = yield* ingestor.ingestNormalized({
+            providerSessionId: fixture.providerSessionId,
+            providerInstanceId: task.providerInstanceId,
+            threadId: task.threadId,
+            event: {
+              type: "subagent.updated",
+              driver: fixture.driver,
+              subagent: {
+                ...task,
+                status: "completed",
+                result: `Result ${index}`,
+                completedAt: fixture.now,
+              },
+            },
+          });
+          const created = stored.find((entry) => entry.event.type === "thread.created");
+          assert.equal(created?.event.type, "thread.created");
+          if (created?.event.type !== "thread.created") return;
+          children.push(created.event.payload.id);
+          const child = yield* fixture.projections.getThreadProjection(created.event.payload.id);
+          assert.equal(child.thread.lineage.parentThreadId, task.threadId);
+          assert.equal(child.thread.providerInstanceId, task.providerInstanceId);
+          assert.equal(
+            child.messages.find((message) => message.role === "assistant")?.text,
+            `Result ${index}`,
+          );
+          assert.lengthOf(child.runs, 0);
+        }
+        assert.equal(new Set(children).size, 4);
+        const coordinator = {
+          ...fixture.task,
+          id: NodeId.make("omo-dag-coordinator"),
+          workflow: {
+            name: "Native DAG",
+            phases: [],
+            agents: [],
+            graph: {
+              schemaVersion: 1,
+              name: "Native DAG",
+              runId: "dag_local-fixture",
+              parentSessionId: "native-parent",
+              generation: 1,
+              lastSeq: 1,
+              status: "running",
+              createdAt: DateTime.toEpochMillis(fixture.now),
+              updatedAt: DateTime.toEpochMillis(fixture.now),
+              nodes: [],
+              edges: [],
+              waves: [],
+            },
+          },
+        } satisfies OrchestrationV2Subagent;
+        yield* fixture.send([
+          { type: "subagent.updated", driver: fixture.driver, subagent: coordinator },
+        ]);
+        const parent = yield* fixture.projections.getThreadProjection(fixture.threadId);
+        const stored = parent.subagents.find((task) => task.id === coordinator.id);
+        assert.isNull(stored?.childThreadId);
+        assert.deepEqual(stored?.workflow, coordinator.workflow);
+        assert.lengthOf((yield* fixture.projections.getShellSnapshot()).threads, 6);
+        assert.equal((yield* Ref.get(state)).openCount, 1);
+      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 persists runless OMO Todo restore, clears old lists, and lets a later run replace the snapshot",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const fixture = yield* makeOmoNativeViewFixture(state, "todo-restore");
+        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+        const restored = {
+          id: PlanId.make("plan:omo-restored"),
+          threadId: fixture.threadId,
+          runId: null,
+          nodeId: fixture.task.parentNodeId,
+          kind: "todo_list",
+          status: "active",
+          steps: [{ id: "restored-step", text: "Restored task", status: "running" }],
+        } satisfies OrchestrationV2PlanArtifact;
+        yield* fixture.send([{ type: "plan.updated", driver: fixture.driver, plan: restored }]);
+        yield* fixture.send([{ type: "plan.updated", driver: fixture.driver, plan: restored }]);
+        const persisted = yield* fixture.projections.getThreadProjection(fixture.threadId);
+        assert.lengthOf(persisted.plans, 1);
+        assert.lengthOf(persisted.runs, 0);
+        assert.isNull(deriveCurrentTodoList(persisted)?.runId);
+        assert.equal(deriveCurrentTodoList(persisted)?.steps[0]?.text, "Restored task");
+        const cleared = { ...restored, id: PlanId.make("plan:omo-cleared"), steps: [] };
+        yield* fixture.send([{ type: "plan.updated", driver: fixture.driver, plan: cleared }]);
+        const empty = yield* fixture.projections.getThreadProjection(fixture.threadId);
+        assert.isNull(deriveCurrentTodoList(empty));
+        assert.equal(
+          (yield* fixture.projections.getPlan(fixture.threadId, restored.id))?.status,
+          "superseded",
+        );
+        const completed = {
+          ...restored,
+          id: PlanId.make("plan:omo-completed-restore"),
+          status: "completed" as const,
+          steps: [{ ...restored.steps[0]!, status: "completed" as const }],
+        };
+        yield* fixture.send([{ type: "plan.updated", driver: fixture.driver, plan: completed }]);
+        const runId = fixture.ids.derive.run({ threadId: fixture.threadId, ordinal: 1 });
+        yield* fixture.sink.write({
+          events: [
+            {
+              id: yield* fixture.ids.allocate.event({ threadId: fixture.threadId }),
+              type: "run.created",
+              threadId: fixture.threadId,
+              occurredAt: fixture.now,
+              payload: {
+                id: runId,
+                threadId: fixture.threadId,
+                ordinal: 1,
+                providerInstanceId: modelSelection.instanceId,
+                modelSelection,
+                providerThreadId: null,
+                userMessageId: yield* fixture.ids.allocate.message({
+                  threadId: fixture.threadId,
+                  ordinal: 1,
+                }),
+                rootNodeId: fixture.task.parentNodeId,
+                activeAttemptId: fixture.ids.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+                status: "running",
+                requestedAt: fixture.now,
+                startedAt: fixture.now,
+                completedAt: null,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+          ],
+        });
+        const replacement = {
+          ...restored,
+          id: PlanId.make("plan:omo-new-run"),
+          runId,
+          steps: [{ id: "new-step", text: "New run task", status: "running" as const }],
+        };
+        yield* ingestor.ingestNormalized({
+          providerSessionId: fixture.providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId: fixture.threadId,
+          runId,
+          event: { type: "plan.updated", driver: fixture.driver, plan: replacement },
+        });
+        const latest = yield* fixture.projections.getThreadProjection(fixture.threadId);
+        assert.equal(deriveCurrentTodoList(latest)?.id, replacement.id);
+        assert.equal(deriveCurrentTodoList(latest)?.runId, runId);
+        assert.equal(deriveCurrentTodoList(latest)?.steps[0]?.text, "New run task");
+        assert.isTrue(
+          latest.plans
+            .filter((plan) => plan.runId === null)
+            .every((plan) => plan.status === "superseded"),
+        );
+        assert.lengthOf(latest.subagents, 0);
+        assert.lengthOf((yield* fixture.projections.getShellSnapshot()).threads, 1);
+        assert.equal((yield* Ref.get(state)).openCount, 1);
+      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
     }),
 );
 

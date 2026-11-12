@@ -1,9 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Executes the shipped OMO extension at its native JavaScript boundary.
 import * as NodeModule from "node:module";
-import * as NodePath from "node:path";
 import * as NodeVM from "node:vm";
 import { describe, expect, it } from "vite-plus/test";
 import { OMO_EXTENSION_SOURCE } from "./extension.ts";
+import { OMO_RUNTIME_ASSETS_SOURCE } from "./runtimeAssets.ts";
+import { OMO_MEMORY_SOURCE } from "./memory.ts";
 import { omoStartupFailure } from "./runtime.ts";
 
 interface CoxHealth {
@@ -12,13 +13,6 @@ interface CoxHealth {
   readonly available: boolean;
   readonly coxOrchestrationReady: boolean;
   readonly tools: ReadonlyArray<{ readonly name: string; readonly status: string }>;
-}
-
-interface PermissionParent {
-  readonly sessionManager: object;
-  readonly namedPreset: () => string | undefined;
-  readonly launchFlagNamed: () => boolean;
-  readonly recordedPreset: () => string | undefined;
 }
 
 const healthyCox: CoxHealth = {
@@ -46,8 +40,10 @@ async function loadReady(
     readonly toolsRequired?: boolean;
     readonly mcpRequired?: boolean;
     readonly readPermissionPreset?: () => string | undefined;
-    readonly boundPermissionParents?: PermissionParent[];
-    readonly releasedPermissionParents?: object[];
+    readonly assertNativeSession?: (context: unknown) => void;
+    readonly memoryFailure?: boolean;
+    readonly memoryEnabled?: boolean;
+    readonly onMemoryRegistered?: () => void;
     readonly hooks?: Map<
       string,
       Array<(event: unknown, ctx: { readonly sessionManager?: object }) => unknown>
@@ -61,25 +57,29 @@ async function loadReady(
   const requests = new Map<string, () => unknown>();
   const tools: Array<{ name: string; exposure: string }> = [];
   const source = NodeModule.stripTypeScriptTypes(
-    OMO_EXTENSION_SOURCE.replace(/^import .*;$/gm, "")
-      .replace("export default async function", "async function")
-      .replace(
-        'await import(pathToFileURL(join(root, "plugin", "extensions", "omo.js")).href)',
-        "omoEntry",
-      )
-      .replace(
-        'await import(pathToFileURL(join(root, "plugin", "extensions", "omo-task.js")).href)',
-        "omoTasks",
-      )
-      .replace(
-        'await import(pathToFileURL(join(engineRoot, "core", "permission-decision.js")).href)',
-        "mockChildPermissions",
-      ),
+    OMO_EXTENSION_SOURCE.replace(OMO_RUNTIME_ASSETS_SOURCE, "")
+      .replace(OMO_MEMORY_SOURCE, "")
+      .replace(/^import .*;$/gm, "")
+      .replace("export default async function", "async function"),
   );
+  const entry = {
+    omoSenpiComponents: [{ name: "task" }, { name: "memory" }],
+    composeOmoSenpiExtension:
+      (components: Array<{ name: string; register?: () => unknown }>) =>
+      async (pi: { registerTool: (tool: { name: string; exposure: string }) => void }) => {
+        if (options.captureRegistration) {
+          const register = pi.registerTool.bind(pi);
+          pi.registerTool = (tool) => register(tool);
+        }
+        if (options.taskRegistered !== false && !options.taskDisabled)
+          pi.registerTool({ name: "task", exposure: options.taskExposure ?? "direct" });
+        for (const component of components) await component.register?.();
+      },
+  };
   await NodeVM.runInNewContext(`${source}\ncoxOmo(pi)`, {
     process: {
       env: {
-        COX_OMO_PACKAGE_ROOT: "/fixture/omo",
+        COX_OMO_AUTOMATIC_MEMORY: options.memoryEnabled === false ? "0" : "1",
         COX_OMO_TOOLS_REQUIRED: options.toolsRequired === false ? "0" : "1",
         ...(options.mcpRequired === false
           ? {}
@@ -87,14 +87,16 @@ async function loadReady(
       },
     },
     crypto,
-    createRequire: () => ({ resolve: { paths: () => ["/fixture"] } }),
-    existsSync: () => true,
-    mockChildPermissions: {
-      bindDecisionPreset: (parent: PermissionParent) =>
-        options.boundPermissionParents?.push(parent),
-      releaseDecisionPreset: (parent: object) => options.releasedPermissionParents?.push(parent),
+    loadCoxOmoRuntimeAssets: async () => ({
+      packageRoot: "/fixture/omo",
+      entry,
+      tasks: { createTaskComponent: () => ({ name: "task" }) },
+      assertNativeSession: (context: unknown) => options.assertNativeSession?.(context),
+    }),
+    createCoxOmoMemoryComponent: async () => {
+      if (options.memoryFailure) throw new Error("Memory initialization refused");
+      return { name: "memory", register: () => options.onMemoryRegistered?.() };
     },
-    join: NodePath.join,
     coxBridge: async (
       _pi: unknown,
       bridgeOptions: {
@@ -108,19 +110,6 @@ async function loadReady(
         getHealth: () => options.cox ?? healthyCox,
       };
     },
-    omoEntry: {
-      omoSenpiComponents: [{ name: "task" }],
-      composeOmoSenpiExtension:
-        () => async (pi: { registerTool: (tool: { name: string; exposure: string }) => void }) => {
-          if (options.captureRegistration) {
-            const register = pi.registerTool.bind(pi);
-            pi.registerTool = (tool) => register(tool);
-          }
-          if (options.taskRegistered !== false && !options.taskDisabled)
-            pi.registerTool({ name: "task", exposure: options.taskExposure ?? "direct" });
-        },
-    },
-    omoTasks: { createTaskComponent: () => ({ name: "task" }) },
     pi: {
       registerTool: (tool: { name: string; exposure: string }) => {
         if (!options.taskExcluded) tools.push(tool);
@@ -147,37 +136,34 @@ async function loadReady(
 }
 
 describe("OMO readiness separates native tasks from Cox orchestration", () => {
-  it("binds the SDK child registry to the live parent's permission and retires it before switch/shutdown", async () => {
+  it("checks the native session registry without importing a second permission engine", async () => {
     const hooks = new Map<
       string,
       Array<(event: unknown, ctx: { readonly sessionManager?: object }) => unknown>
     >();
-    const boundPermissionParents: PermissionParent[] = [];
-    const releasedPermissionParents: object[] = [];
-    let preset: string | undefined = "full-access";
+    const manager = {};
     await loadReady({
       hooks,
-      boundPermissionParents,
-      releasedPermissionParents,
-      readPermissionPreset: () => preset,
+      assertNativeSession: (context) => {
+        if ((context as { sessionManager?: object }).sessionManager !== manager)
+          throw new Error("foreign registry");
+      },
     });
-    const parent = {};
-    hooks.get("session_start")![0]!({}, { sessionManager: parent });
-    expect(boundPermissionParents).toHaveLength(1);
-    expect(boundPermissionParents[0]?.sessionManager).toBe(parent);
-    expect(boundPermissionParents[0]?.namedPreset()).toBe("full-access");
-    preset = "accept-edits";
-    expect(boundPermissionParents[0]?.namedPreset()).toBe("accept-edits");
-    preset = "ask";
-    expect(boundPermissionParents[0]?.namedPreset()).toBe("ask");
-    preset = undefined;
-    expect(boundPermissionParents[0]?.namedPreset()).toBe("ask");
-    hooks.get("session_before_switch")![0]!({}, {});
-    expect(releasedPermissionParents).toEqual([parent]);
-    const replacement = {};
-    hooks.get("session_start")![0]!({}, { sessionManager: replacement });
-    hooks.get("session_shutdown")![0]!({}, {});
-    expect(releasedPermissionParents).toEqual([parent, replacement]);
+    expect(() => hooks.get("session_start")![0]!({}, { sessionManager: manager })).not.toThrow();
+    expect(() => hooks.get("session_start")![0]!({}, { sessionManager: {} })).toThrow(
+      "foreign registry",
+    );
+    expect(OMO_EXTENSION_SOURCE).toContain('if (runtime.kind === "npm")');
+  });
+  it("awaits safe memory startup before registration and supports explicit opt-out", async () => {
+    let registrations = 0;
+    await loadReady({ onMemoryRegistered: () => registrations++ });
+    expect(registrations).toBe(1);
+    await loadReady({ memoryEnabled: false, onMemoryRegistered: () => registrations++ });
+    expect(registrations).toBe(1);
+    await expect(loadReady({ memoryFailure: true })).rejects.toThrow(
+      "Memory initialization refused",
+    );
   });
   it("installs native-first routing even when Cox delegation tools are available", async () => {
     let installed:

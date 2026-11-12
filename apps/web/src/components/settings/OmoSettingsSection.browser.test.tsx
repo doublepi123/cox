@@ -122,7 +122,7 @@ describe("OMO native roles", () => {
       await screen.getByRole("button", { name: /Categories/ }).click();
       for (const [title, count] of [
         ["Agents", 10],
-        ["Categories", 8],
+        ["Categories", 10],
       ] as const) {
         const group = screen.getByRole("group", { name: title, exact: true }).element();
         const rows = expectSeparatedRoleCards(group);
@@ -324,7 +324,7 @@ describe("OMO native roles", () => {
         .getByRole("button", { name: language === "zh" ? "添加角色" : "Add role", exact: true })
         .click();
       const categoryCards = expectSeparatedRoleCards(categories.element());
-      expect(categoryCards).toHaveLength(9);
+      expect(categoryCards).toHaveLength(11);
       for (const card of categoryCards) {
         const header = card.querySelector<HTMLElement>(":scope > span")!;
         const model = card.querySelector("select")!;

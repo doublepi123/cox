@@ -10,6 +10,11 @@ export function deriveCurrentTodoList(
 ): ThreadTodoList | null {
   const ordinals = new Map(projection.runs.map((run) => [run.id, run.ordinal]));
   let current: ThreadTodoList | null = null;
+  const snapshot = projection.plans.findLast(
+    (plan): plan is ThreadTodoList =>
+      plan.kind === "todo_list" && plan.runId === null && plan.status !== "superseded",
+  );
+  if (snapshot !== undefined) return snapshot.steps.length === 0 ? null : snapshot;
   let currentOrdinal = -1;
   for (const plan of projection.plans) {
     if (plan.kind !== "todo_list" || plan.status === "superseded" || plan.runId === null) {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { OmoSettings } from "../settings.ts";
-import { omoEnvironment, omoTaskConfiguration } from "./configuration.ts";
+import { omoEnvironment, omoTaskConfiguration, prepareOmoConfiguration } from "./configuration.ts";
 
 const settings = Schema.decodeSync(OmoSettings);
 const unknownSettings = Schema.decodeUnknownSync(OmoSettings);
@@ -16,6 +20,76 @@ it("retains a custom recommendation prompt and supports clearing it", () => {
 });
 
 describe("OMO model configuration", () => {
+  it("preserves dotted instance paths and escapes only exact dot segments", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const base = yield* fs.makeTempDirectoryScoped({ prefix: "cox-omo-instance-path-" });
+        const config = settings({ binaryPath: path.join(base, "no-omo") });
+        for (const [instanceId, directory] of [
+          ["a.b", "a.b"],
+          [".", "%2E"],
+          ["..", "%2E%2E"],
+        ] as const) {
+          const prepared = yield* prepareOmoConfiguration(config, { PATH: "" }, base, instanceId);
+          const instanceDirectory = path.join(base, "providers", "omo", directory);
+          expect(prepared.settings.agentDir).toBe(path.join(instanceDirectory, "agent"));
+          expect(prepared.settings.sessionDir).toBe(
+            path.join(instanceDirectory, "agent", "sessions"),
+          );
+          expect(JSON.parse(prepared.environment.COX_OMO_TASK_CONFIG!).task.state_dir).toBe(
+            path.join(instanceDirectory, "agent", "tasks"),
+          );
+          expect(prepared.environment.COX_OMO_MEMORY_HOME).toBe(
+            path.join(instanceDirectory, "memory"),
+          );
+        }
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    ));
+  it("isolates global memory per Cox instance, independently of shared agent configuration and projects", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const base = yield* fs.makeTempDirectoryScoped({ prefix: "cox-omo-memory-config-" });
+        const config = settings({
+          agentDir: path.join(base, "shared-agent"),
+          binaryPath: path.join(base, "no-omo"),
+          categoryModels: { deep: "cox/expert" },
+        });
+        const first = yield* prepareOmoConfiguration(
+          config,
+          { OMO_MEMORY_HOME: "/outside", PATH: "" },
+          base,
+          "instance-a",
+        );
+        const second = yield* prepareOmoConfiguration(config, {}, base, "instance-b");
+        expect(first.settings.agentDir).toBe(second.settings.agentDir);
+        expect(first.environment.COX_OMO_MEMORY_HOME).toBe(
+          path.join(base, "providers", "omo", "instance-a", "memory"),
+        );
+        expect(second.environment.COX_OMO_MEMORY_HOME).toBe(
+          path.join(base, "providers", "omo", "instance-b", "memory"),
+        );
+        expect(first.environment.OMO_MEMORY_HOME).toBe(first.environment.COX_OMO_MEMORY_HOME);
+        expect(JSON.parse(first.environment.COX_OMO_FIXED_ROLES!).categories).toEqual([
+          "deep",
+          "deep-low",
+        ]);
+        const explicit = yield* prepareOmoConfiguration(
+          { ...config, categoryModels: { deep: "cox/expert", "deep-low": "" } },
+          {},
+          base,
+          "instance-a",
+        );
+        expect(JSON.parse(explicit.environment.COX_OMO_FIXED_ROLES!).categories).toEqual([]);
+        const traversal = yield* prepareOmoConfiguration(config, {}, base, "..");
+        expect(traversal.environment.COX_OMO_MEMORY_HOME).toBe(
+          path.join(base, "providers", "omo", "%2E%2E", "memory"),
+        );
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    ));
   it("rejects a role thinking strength outside its managed model's catalog choices", () => {
     const config = settings({
       modelServiceManaged: true,
@@ -68,6 +142,65 @@ describe("OMO model configuration", () => {
     const native = omoTaskConfiguration(settings({}), "/tasks");
     expect(native.agents.explore).toEqual({ models: [], models_distribution: "round_robin" });
     expect(native.categories.quick).toEqual({ models: [], models_distribution: "round_robin" });
+  });
+
+  it("assigns both native deep lanes and preserves saved deep selections through the alias", () => {
+    const native = omoTaskConfiguration(
+      settings({
+        provider: "cox",
+        model: "main",
+        categoryModels: { deep: "cox/expert" },
+        categoryReasoning: { deep: "high" },
+      }),
+      "/tasks",
+    );
+    expect(native.categories["deep-low"]).toEqual({
+      models: ["cox/expert"],
+      models_distribution: "round_robin",
+      reasoning: "high",
+    });
+    expect(native.categories["deep-high"]).toEqual({
+      models: ["cox/main"],
+      models_distribution: "round_robin",
+    });
+    expect(native.categories.deep).toEqual(native.categories["deep-low"]);
+    const defaults = omoTaskConfiguration(settings({ provider: "cox", model: "main" }), "/tasks");
+    expect(defaults.categories["deep-low"]?.models).toEqual(["cox/main"]);
+    expect(defaults.categories["deep-high"]?.models).toEqual(["cox/main"]);
+  });
+
+  it("gives canonical deep-low overrides precedence, including explicit main-model inheritance", () => {
+    const native = omoTaskConfiguration(
+      settings({
+        provider: "cox",
+        model: "main",
+        categoryModels: { deep: "cox/legacy", "deep-low": "", "deep-high": "cox/expert" },
+        categoryReasoning: { deep: "high", "deep-low": "", "deep-high": "max" },
+      }),
+      "/tasks",
+    );
+    expect(native.categories["deep-low"]).toEqual({
+      models: ["cox/main"],
+      models_distribution: "round_robin",
+    });
+    expect(native.categories["deep-high"]).toMatchObject({
+      models: ["cox/expert"],
+      reasoning: "max",
+    });
+  });
+
+  it("defaults global memory on, exposes a real boolean opt-out and forbids native sync", () => {
+    expect(settings({}).automaticMemory).toBe(true);
+    expect(() => unknownSettings({ automaticMemory: "false" })).toThrow();
+    expect(omoTaskConfiguration(settings({}), "/tasks").memory).toEqual({
+      enabled: true,
+      agent: "cox-global",
+      sync: { enabled: false },
+      project_scope: { nudge: false, recall: false },
+    });
+    expect(
+      omoTaskConfiguration(settings({ automaticMemory: false }), "/tasks").memory.enabled,
+    ).toBe(false);
   });
 
   it("preserves managed upstream IDs that already start with the Cox provider name", () => {
@@ -133,6 +266,17 @@ describe("OMO model configuration", () => {
     });
     expect(env.SENPI_RPC_CLIENT_CAPABILITIES).toBeUndefined();
     expect(env.OMO_RPC_CLIENT_CAPABILITIES).toBeUndefined();
+  });
+  it("does not mistake asynchronous push for disabling synchronization or inherit native memory roots", () => {
+    const env = omoEnvironment(settings({ automaticMemory: false }), {
+      OMO_MEMORY_HOME: "/outside/memory",
+      OMO_MEMORY_PUSH_SYNC: "0",
+      OMO_MEMORY_RUN_SUPERVISOR_PATH: "/outside/supervisor",
+    });
+    expect(env.OMO_MEMORY_HOME).toBeUndefined();
+    expect(env.OMO_MEMORY_PUSH_SYNC).toBeUndefined();
+    expect(env.OMO_MEMORY_RUN_SUPERVISOR_PATH).toBeUndefined();
+    expect(env.COX_OMO_AUTOMATIC_MEMORY).toBe("0");
   });
   it("keeps ambient model credentials out of a managed runtime", () => {
     const env = omoEnvironment(settings({ modelServiceManaged: true }), {

@@ -35,11 +35,13 @@ describe("ProviderSettingsForm helpers", () => {
       customModels: [],
       agentModels: {},
       categoryModels: {},
+      automaticMemory: true,
       modelServiceManaged: false,
     });
     expect(deriveProviderSettingsFields(omo!).map((field) => field.key)).toEqual([
       "provider",
       "model",
+      "automaticMemory",
       "apiKey",
       "agentDir",
       "binaryPath",

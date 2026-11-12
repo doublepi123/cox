@@ -57,6 +57,7 @@ import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts
 import { turnItemOutputText } from "../../../client-runtime/src/work-log/itemDetail.ts";
 import { omoTodoSnapshot } from "../../../provider-omo/src/server/todo.ts";
 import { omoTaskEvent } from "../../../provider-omo/src/server/runtime.ts";
+import { omoDagEvent } from "../../../provider-omo/src/server/dag.ts";
 import { applyOmoRuntimePolicy } from "../../../provider-omo/src/server/permissions.ts";
 
 const layerTest = Layer.mergeAll(
@@ -645,6 +646,137 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("PiAdapterV2", () => {
+  it.effect("accepts authoritative DAG retries at an unchanged completion timestamp", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const native: NonNullable<PiAdapterV2Options["runtime"]> = {
+        driver: "omo" as NonNullable<PiAdapterV2Options["runtime"]>["driver"],
+        label: "OMO",
+        connect: makePiRpcConnection,
+        buildLaunch: buildPiRpcLaunch,
+        materializeExtension: materializePiT3McpExtension,
+        nativeSubagents: { requestName: "cox.omo.tasks" },
+      };
+      const { runtime, takeEvent } = yield* openRuntime(
+        fake,
+        "default",
+        THREAD_ID,
+        SESSION_ID,
+        undefined,
+        undefined,
+        native,
+      );
+      yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      const graph = {
+        schemaVersion: 1 as const,
+        runId: "dag-retry",
+        parentSessionId: "native-parent",
+        generation: 1,
+        lastSeq: 4,
+        name: "Retry graph",
+        status: "completed" as const,
+        createdAt: 1000,
+        updatedAt: 2000,
+        nodes: [
+          { id: "one", label: "One", prompt: "Work", state: "completed" as const, attempt: 1 },
+        ],
+        edges: [],
+        waves: [{ index: 0, nodeIds: ["one"] }],
+      };
+      yield* fake.emit(omoDagEvent([graph], FAKE_SESSION_FILE));
+      const done = yield* takeEvent((event) => event.type === "subagent.updated");
+      assert.isTrue(done.type === "subagent.updated" && done.subagent.status === "completed");
+      yield* fake.emit(
+        omoDagEvent(
+          [
+            {
+              ...graph,
+              generation: 2,
+              lastSeq: 7,
+              status: "running",
+              nodes: [{ ...graph.nodes[0]!, state: "running", attempt: 2 }],
+            },
+          ],
+          FAKE_SESSION_FILE,
+        ),
+      );
+      const retried = yield* takeEvent((event) => event.type === "subagent.updated");
+      assert.isTrue(
+        retried.type === "subagent.updated" &&
+          retried.subagent.status === "running" &&
+          retried.subagent.workflow?.graph?.lastSeq === 7 &&
+          retried.subagent.completedAt === null,
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+  it.effect("refreshes OMO Todo immediately on restore without sending a model prompt", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      fake.setTodoSnapshot({
+        sessionFile: FAKE_SESSION_FILE,
+        generation: "restore",
+        revision: 1,
+        hasList: true,
+        phases: [{ name: "Restored", tasks: [{ content: "Verify", status: "pending" }] }],
+      });
+      const native: NonNullable<PiAdapterV2Options["runtime"]> = {
+        driver: "omo" as NonNullable<PiAdapterV2Options["runtime"]>["driver"],
+        label: "OMO",
+        connect: makePiRpcConnection,
+        buildLaunch: buildPiRpcLaunch,
+        materializeExtension: materializePiT3McpExtension,
+        todo: {
+          requestName: "cox.omo.todo",
+          eventName: "cox.omo.todo.updated",
+          toolNames: ["todo"],
+          decode: omoTodoSnapshot,
+        },
+      };
+      const { runtime, takeEvent } = yield* openRuntime(
+        fake,
+        "default",
+        THREAD_ID,
+        SESSION_ID,
+        undefined,
+        undefined,
+        native,
+      );
+      const thread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      const first = yield* takeEvent((event) => event.type === "plan.updated");
+      if (first.type !== "plan.updated" || first.plan.kind !== "todo_list") return;
+      assert.isNull(first.plan.runId);
+      assert.equal(first.plan.steps[0]?.text, "Restored: Verify");
+      fake.setTodoSnapshot({
+        sessionFile: FAKE_SESSION_FILE,
+        generation: "restore-2",
+        revision: 1,
+        hasList: false,
+        phases: [],
+      });
+      yield* runtime.resumeThread({
+        providerThread: thread,
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      const cleared = yield* takeEvent((event) => event.type === "plan.updated");
+      assert.isTrue(
+        cleared.type === "plan.updated" &&
+          cleared.plan.kind === "todo_list" &&
+          cleared.plan.id === first.plan.id &&
+          cleared.plan.steps.length === 0,
+      );
+      assert.isFalse(fake.allRequests().some((request) => request.type === "prompt"));
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect(
     "synchronizes OMO permission modes on reuse and restores without sending prompts under the old policy",
     () =>

@@ -69,15 +69,29 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
     bin,
     platform === "win32" ? `${runtime.command}.cmd` : runtime.command,
   );
-  const pathKey =
-    Object.keys(options.environment).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+  const normalizePath = (value: string) => {
+    const resolved = path.resolve(value);
+    return platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  const pathKeys = Object.keys(options.environment).filter((key) => key.toUpperCase() === "PATH");
+  const inheritedPathKey =
+    ["PATH", "Path", "path"].find((key) => options.environment[key] !== undefined) ??
+    pathKeys[0] ??
+    "PATH";
+  const pathKey = platform === "win32" ? inheritedPathKey : "PATH";
+  const customBinary = Boolean(options.binaryPath && options.binaryPath !== runtime.command);
   const environment = {
     ...options.environment,
-    [pathKey]: [options.environment[pathKey], bin]
+    [pathKey]: (customBinary
+      ? [options.environment[inheritedPathKey], bin]
+      : [bin, options.environment[inheritedPathKey]]
+    )
       .filter(Boolean)
       .join(platform === "win32" ? ";" : ":"),
   };
-  const customBinary = Boolean(options.binaryPath && options.binaryPath !== runtime.command);
+  if (platform === "win32") {
+    for (const key of pathKeys) environment[key] = environment[pathKey];
+  }
   const error = (operation: string, detail: string) =>
     new ProviderSetupError({ instanceId: options.instanceId, operation, detail });
   const lock = yield* Semaphore.make(1);
@@ -120,27 +134,57 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
       );
     return stdout.text;
   }, Effect.scoped);
+  const verify = Effect.fn("PiInstallation.verify")(function* (
+    binary: string,
+    expectedPath: string,
+  ) {
+    const resolved = yield* resolveCommandPath(binary, { env: environment }).pipe(
+      Effect.provideService(CommandResolutionCache, new Map()),
+    );
+    if (!resolved || normalizePath(resolved) !== normalizePath(expectedPath))
+      return yield* error(
+        "install",
+        `The downloaded ${runtime.label} CLI is not available on PATH. Retry installation.`,
+      );
+    const version = parseGenericCliVersion(
+      yield* command(resolved, ["--version"]).pipe(Effect.timeout("5 seconds")),
+    );
+    if (!version || compareSemverVersions(version, runtime.minimumVersion) < 0)
+      return yield* error(
+        "install",
+        `The downloaded ${runtime.label} CLI did not report a supported version. Retry installation.`,
+      );
+    return { version, executablePath: resolved };
+  });
   const inspect = Effect.gen(function* () {
     if (running) return;
-    const operationId = (yield* SubscriptionRef.get(state)).operationId;
+    const previous = yield* SubscriptionRef.get(state);
+    const operationId = previous.operationId;
     const resolved = yield* resolveCommandPath(options.binaryPath || runtime.command, {
       env: environment,
     }).pipe(Effect.provideService(CommandResolutionCache, new Map()));
-    if (!resolved) return;
-    const version = yield* command(resolved, ["--version"]).pipe(
-      Effect.map(parseGenericCliVersion),
-      Effect.timeout("5 seconds"),
-      Effect.orElseSucceed(() => null),
-    );
-    if (!version) return;
+    const version = resolved
+      ? yield* command(resolved, ["--version"]).pipe(
+          Effect.map(parseGenericCliVersion),
+          Effect.timeout("5 seconds"),
+          Effect.orElseSucceed(() => null),
+        )
+      : null;
+    if (running || (yield* SubscriptionRef.get(state)).operationId !== operationId) return;
+    const selected = version ? resolved : null;
+    commandCache.clear();
     yield* SubscriptionRef.update(state, (value): ProviderInstallState =>
       running || value.operationId !== operationId
         ? value
         : {
             ...value,
             installedVersion: version,
-            executablePath: resolved,
-            source: path.resolve(resolved) === path.resolve(executablePath) ? "managed" : "local",
+            executablePath: selected,
+            source: selected
+              ? normalizePath(selected) === normalizePath(executablePath)
+                ? "managed"
+                : "local"
+              : null,
           },
     );
   }).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.provideService(Path.Path, path));
@@ -173,19 +217,15 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
       phase: "verifying",
     }));
     const stagedBinary = path.join(staging, "node_modules", ".bin", path.basename(executablePath));
-    const version = parseGenericCliVersion(yield* command(stagedBinary, ["--version"]));
-    if (!version || compareSemverVersions(version, runtime.minimumVersion) < 0)
-      return yield* error(
-        "install",
-        `The downloaded ${runtime.label} CLI did not report a supported version. Retry installation.`,
-      );
+    yield* verify(stagedBinary, stagedBinary);
     const id = yield* crypto.randomUUIDv4();
     const release = path.join(directory, "releases", id);
     yield* fs.makeDirectory(path.dirname(release), { recursive: true });
-    yield* Effect.uninterruptible(
+    return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         yield* fs.rename(staging, release);
         const link = path.join(directory, `.current-${id}`);
+        const previous = yield* fs.readLink(current).pipe(Effect.orElseSucceed(() => null));
         const switched = yield* fs
           .symlink(release, link)
           .pipe(Effect.andThen(fs.rename(link, current)), Effect.exit);
@@ -194,9 +234,22 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
           yield* fs.remove(release, { recursive: true, force: true });
           return yield* Effect.failCause(switched.cause);
         }
+        const verified = yield* restore(
+          verify(options.binaryPath || runtime.command, executablePath),
+        ).pipe(Effect.exit);
+        if (Exit.isFailure(verified)) {
+          if (previous) {
+            yield* fs.symlink(previous, link);
+            yield* fs.rename(link, current);
+          } else {
+            yield* fs.remove(current, { force: true });
+          }
+          yield* fs.remove(release, { recursive: true, force: true });
+          return yield* Effect.failCause(verified.cause);
+        }
+        return verified.value;
       }),
     );
-    return version;
   }).pipe(
     Effect.provideService(FileSystem.FileSystem, fs),
     Effect.provideService(Path.Path, path),
@@ -206,8 +259,8 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
   const runInstallation = Effect.uninterruptibleMask((restore) =>
     Effect.gen(function* () {
       const result = yield* restore(install).pipe(Effect.exit);
+      commandCache.clear();
       if (Exit.isSuccess(result)) {
-        commandCache.clear();
         yield* options.onChanged;
       }
       running = undefined;
@@ -216,9 +269,9 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
           ? {
               ...value,
               phase: "succeeded",
-              version: result.value,
-              installedVersion: result.value,
-              executablePath,
+              version: result.value.version,
+              installedVersion: result.value.version,
+              executablePath: result.value.executablePath,
               source: "managed",
               message: null,
             }

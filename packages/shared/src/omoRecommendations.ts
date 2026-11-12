@@ -50,7 +50,11 @@ export const OMO_CATEGORY_DESCRIPTIONS = {
     "Frontend, UI/UX, styling and visual implementation. Prioritize design judgment and frontend coding; prefer image-capable models when visual references need interpretation.",
   ultrabrain:
     "Exceptionally difficult logic, algorithms and architecture. Prioritize the strongest available reasoning and correctness; efficiency is secondary.",
-  deep: "Complex autonomous investigation and implementation. Prioritize sustained coding, debugging, reliable tool use and thorough verification.",
+  deep: "Legacy alias for deep-low. Complex autonomous investigation and implementation. Prefer the same model and thinking strength as deep-low unless explicitly overridden.",
+  "deep-low":
+    "Autonomous investigation and implementation, including tasks routed from deep. Prioritize sustained coding, debugging, reliable tool use and thorough verification.",
+  "deep-high":
+    "The most demanding autonomous investigation and implementation. Prioritize strong long-horizon coding and reasoning for difficult cross-file changes and verification.",
   artistry:
     "Creative, unconventional problem solving and design. Prioritize originality and flexible thinking while retaining practical implementation ability.",
   quick:

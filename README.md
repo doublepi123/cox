@@ -276,8 +276,12 @@ unconfirmed permission changes stop the session. In-process native children foll
 mode: workspace edits are accepted in Auto-accept edits, while supervised changes, commands and
 out-of-workspace requests retain their native approval checks. Full access must be chosen explicitly.
 OMO native `task` children are shown in Cox's subagent list with their role, actual model,
-task, status and output. Recent completed or failed native tasks remain expandable; restoring
-the session refreshes their snapshots without spawning replacement agents.
+task, status and output. Each opens a read-only child conversation with the native assistant
+transcript, tool summaries and result; Cox does not launch another agent for that view.
+Restoring a session refreshes its task and Todo snapshots without sending a model request.
+`mass ulw` workflows have a live dependency graph and a list alternative, including waves,
+critical paths, retries, errors and links to the same native child conversations. Stop preserves
+paused native nodes so an explicit user Resume can continue the original workflow.
 All providers prefer their available native subagent tools for ordinary delegation and parallel work.
 Cox delegation is reserved for an explicit Cox agent/provider request or a required capability the
 native tool does not support, including Pi instances without a native subagent extension. Native
@@ -294,9 +298,18 @@ Model catalogs can be edited in place beside each model; adding a model opens it
 the catalog. Clearing a catalog requires confirmation and keeps its service connection and
 credentials. Unbind agents first before clearing models they depend on. OMO role settings use
 separate role cards on both desktop and narrow screens.
-Native terminal onboarding, terminal side panels, telemetry, device services, remote thread
-tools and automatic global memory are not enabled in Cox sessions. Cox injects its own
-role configuration without writing the user's global or project `omo.json`.
+Automatic global memory is enabled by default and can be disabled in the OMO instance settings.
+It is shared across that instance's projects, stored in Cox's own instance directory, and never
+uses the user's global `~/.omo` memory. Remote synchronization is disabled. Background memory
+models use the bound Cox catalog and gateway; Cox waits for their tracked work before settling
+the turn. Without a Cox model-service binding, local memory remains available but background
+model work is disabled. Official OMO 5.1.69 npm and standalone runtimes are supported; their
+memory source identities are checked explicitly, so unsupported upgrades fail visibly rather
+than loading unverified compatibility patches.
+Native terminal onboarding, terminal side panels, telemetry, device services and remote thread
+tools are not enabled in Cox sessions. Cox injects its own role configuration without writing
+the user's global or project `omo.json`. Saved `deep` assignments route through the native
+`deep-low` lane, while `deep-high` can be configured independently.
 
 ## Development
 
@@ -438,3 +451,8 @@ the PNG and ICO variants. This maintenance command requires Playwright's headles
 ## Attribution
 
 This project retains the upstream MIT license and third-party notices. See [LICENSE](LICENSE). Cox is a derivative project, not an official T3 release.
+
+The official OmO provider icon is separately licensed under Sustainable Use License 1.0,
+including its non-commercial redistribution restrictions; it is not covered by Cox's MIT
+license. See [the icon notice](apps/web/src/components/OmoIcon.NOTICE.txt) and the bundled
+third-party notices for the source, modifications and full terms.

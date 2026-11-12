@@ -4,7 +4,7 @@ import { deriveCurrentTodoList } from "./threadTasks";
 
 type Step = { readonly text: string; readonly status: "pending" | "running" | "completed" };
 
-function todoList(id: string, runId: string, steps: ReadonlyArray<Step>, status = "active") {
+function todoList(id: string, runId: string | null, steps: ReadonlyArray<Step>, status = "active") {
   return {
     id,
     kind: "todo_list",
@@ -32,6 +32,30 @@ const running = (text: string): Step => ({ text, status: "running" });
 const pending = (text: string): Step => ({ text, status: "pending" });
 
 describe("deriveCurrentTodoList", () => {
+  it("shows restored native snapshots immediately and clears stale projected lists without a new turn", () => {
+    const stale = todoList("stale", "run-2", [running("Stale")]);
+    const restored = todoList("restored", null, [pending("Restored")]);
+    expect(deriveCurrentTodoList(projection({ runs: 2, plans: [stale, restored] }))?.id).toBe(
+      "restored",
+    );
+    expect(
+      deriveCurrentTodoList(
+        projection({ runs: 2, plans: [stale, todoList("restored", null, [])] }),
+      ),
+    ).toBeNull();
+    expect(
+      deriveCurrentTodoList(
+        projection({
+          runs: 3,
+          plans: [
+            stale,
+            { ...restored, status: "superseded" },
+            todoList("latest", "run-3", [running("New")]),
+          ],
+        }),
+      )?.id,
+    ).toBe("latest");
+  });
   it("ignores proposed plans, superseded lists and empty lists", () => {
     expect(
       deriveCurrentTodoList(

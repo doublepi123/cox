@@ -6,6 +6,7 @@ import {
   OmoTaskUpdates,
   omoPermissionRequest,
   omoStartupFailure,
+  omoTaskIsQuiescent,
 } from "./runtime.ts";
 
 describe("OMO startup health", () => {
@@ -117,6 +118,14 @@ describe("OMO root work lifecycle", () => {
     mapper.reset();
     expect(mapper.observe(lifecycle("done", 4))).toHaveLength(1);
   });
+  it("binds restored and forked sessions instead of dropping every later completion", () => {
+    const mapper = new OmoLifecycle();
+    mapper.bind({ sessionId: "root" });
+    expect(mapper.observe(lifecycle("done", 9))).toHaveLength(1);
+    mapper.bind({ sessionId: "fork" });
+    expect(mapper.observe({ ...lifecycle("done", 1), sessionId: "fork" })).toHaveLength(1);
+    expect(mapper.observe(lifecycle("done", 10))).toEqual([]);
+  });
 
   it("reports root failures and cancellation separately from successful completion", () => {
     expect(new OmoLifecycle().observe(lifecycle("failed", 1))).toMatchObject([
@@ -150,6 +159,12 @@ describe("OMO root work lifecycle", () => {
 });
 
 describe("OMO native task snapshots", () => {
+  it("preserves paused native tasks on Stop while refusing live or unknown states", () => {
+    for (const status of ["completed", "error", "cancelled", "interrupted", "lost", "paused"])
+      expect(omoTaskIsQuiescent({ status })).toBe(true);
+    for (const status of ["running", "pending", "unknown", undefined])
+      expect(omoTaskIsQuiescent({ status })).toBe(false);
+  });
   it("binds snapshots to the active native session, resets on switch and rejects late foreign events", () => {
     const updates = new OmoTaskUpdates();
     const snapshot = {
@@ -212,6 +227,8 @@ describe("OMO native task snapshots", () => {
   it.each([
     "Permission required: edit\n\nFile: fixture",
     "st_worker: Permission required: edit\n\nFile: fixture",
+    "atlas: Permission required: edit\n\nFile: fixture",
+    "Custom: verifier: Permission required: edit\n\nFile: fixture",
   ])("maps native approval to Cox while preserving the tool call: %s", (title) => {
     expect(
       omoPermissionRequest({

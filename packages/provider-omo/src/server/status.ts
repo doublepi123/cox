@@ -1,5 +1,4 @@
 import type { ServerProviderModel } from "@t3tools/contracts";
-import { compareSemverVersions } from "@t3tools/shared/semver";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -111,8 +110,12 @@ export const checkOmoStatus = Effect.fn("checkOmoStatus")(function* (
       return fallback(
         "OMO Native is not installed. Install it in Cox or select the official omo binary.",
       );
-    if (compareSemverVersions(version, OMO_VERSION) < 0)
-      return fallback(`OMO Native ${OMO_VERSION} or newer is required.`, true, version);
+    if (version !== OMO_VERSION)
+      return fallback(
+        `Cox currently supports the verified OMO Native ${OMO_VERSION} runtime. Select that version or install it in Cox.`,
+        true,
+        version,
+      );
     const args = configuredPiLaunchArgs(settings);
     if (!args.ok) return fallback(args.message, true, version);
     const launch = buildOmoLaunch({

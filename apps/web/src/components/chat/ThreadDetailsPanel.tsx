@@ -24,6 +24,7 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
+import { OmoDagPanel } from "./OmoDagPanel";
 import { ThreadSubagentsPanel } from "./ThreadSubagentsPanel";
 import { ThreadTasksPanel } from "./ThreadTasksPanel";
 import {
@@ -239,10 +240,13 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               ) : null}
 
               {!props.draftId && visible.subagents ? (
-                <ThreadSubagentsPanel
-                  environmentId={props.environmentId}
-                  threadId={props.threadId}
-                />
+                <>
+                  <OmoDagPanel environmentId={props.environmentId} threadId={props.threadId} />
+                  <ThreadSubagentsPanel
+                    environmentId={props.environmentId}
+                    threadId={props.threadId}
+                  />
+                </>
               ) : null}
 
               {density === "full" && !props.draftId && visible.servers ? (

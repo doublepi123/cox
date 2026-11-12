@@ -32,6 +32,8 @@ const categories = [
   "visual-engineering",
   "ultrabrain",
   "deep",
+  "deep-low",
+  "deep-high",
   "artistry",
   "quick",
   "unspecified-low",
@@ -68,7 +70,10 @@ export function omoEnvironment(
     next.SENPI_CODING_AGENT_DIR = settings.agentDir.trim();
   }
   next.COX_NATIVE_PERMISSIONS = "1";
-  next.OMO_MEMORY_PUSH_SYNC = "0";
+  delete next.OMO_MEMORY_PUSH_SYNC;
+  delete next.OMO_MEMORY_HOME;
+  delete next.OMO_MEMORY_RUN_SUPERVISOR_PATH;
+  next.COX_OMO_AUTOMATIC_MEMORY = settings.automaticMemory ? "1" : "0";
   delete next.SENPI_RPC_CLIENT_CAPABILITIES;
   delete next.OMO_RPC_CLIENT_CAPABILITIES;
   return next;
@@ -129,9 +134,31 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
         ];
       }),
     );
+  const categoryModels = {
+    ...settings.categoryModels,
+    ...(Object.hasOwn(settings.categoryModels, "deep-low")
+      ? { deep: settings.categoryModels["deep-low"]! }
+      : Object.hasOwn(settings.categoryModels, "deep")
+        ? { "deep-low": settings.categoryModels.deep! }
+        : {}),
+  };
+  const categoryReasoning = {
+    ...settings.categoryReasoning,
+    ...(Object.hasOwn(settings.categoryReasoning, "deep-low")
+      ? { deep: settings.categoryReasoning["deep-low"]! }
+      : Object.hasOwn(settings.categoryReasoning, "deep")
+        ? { "deep-low": settings.categoryReasoning.deep! }
+        : {}),
+  };
   return {
     agents: assign(agents, settings.agentModels, settings.agentReasoning),
-    categories: assign(categories, settings.categoryModels, settings.categoryReasoning),
+    categories: assign(categories, categoryModels, categoryReasoning),
+    memory: {
+      enabled: settings.automaticMemory,
+      agent: "cox-global",
+      sync: { enabled: false },
+      project_scope: { nudge: false, recall: false },
+    },
     task: {
       state_dir: stateDir,
       isolation: {
@@ -168,9 +195,18 @@ export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(func
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const agentDir =
-    settings.agentDir ||
-    path.join(baseDir, "providers", "omo", encodeURIComponent(instanceId), "agent");
+  yield* Effect.try(() => {
+    if (!instanceId.trim()) throw new Error("OMO requires a Cox instance ID.");
+  });
+  const instanceDirectory = path.join(
+    baseDir,
+    "providers",
+    "omo",
+    instanceId === "." || instanceId === ".."
+      ? instanceId.replaceAll(".", "%2E")
+      : encodeURIComponent(instanceId),
+  );
+  const agentDir = settings.agentDir || path.join(instanceDirectory, "agent");
   const configured: OmoSettings = {
     ...settings,
     binaryPath: settings.binaryPath || "omo",
@@ -178,6 +214,8 @@ export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(func
     sessionDir: settings.sessionDir || path.join(agentDir, "sessions"),
   };
   const env = omoEnvironment(configured, environment);
+  env.COX_OMO_MEMORY_HOME = path.join(instanceDirectory, "memory");
+  env.OMO_MEMORY_HOME = env.COX_OMO_MEMORY_HOME;
   const executable = yield* resolveCommandPath(configured.binaryPath!, { env });
   if (executable) {
     const resolved = yield* fs.realPath(executable).pipe(Effect.orElseSucceed(() => executable));
@@ -209,7 +247,14 @@ export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(func
     agents: Object.entries(settings.agentModels)
       .filter(([, model]) => model !== "")
       .map(([name]) => name),
-    categories: Object.entries(settings.categoryModels)
+    categories: Object.entries({
+      ...settings.categoryModels,
+      ...(Object.hasOwn(settings.categoryModels, "deep-low")
+        ? { deep: settings.categoryModels["deep-low"]! }
+        : Object.hasOwn(settings.categoryModels, "deep")
+          ? { "deep-low": settings.categoryModels.deep! }
+          : {}),
+    })
       .filter(([, model]) => model !== "")
       .map(([name]) => name),
   });
