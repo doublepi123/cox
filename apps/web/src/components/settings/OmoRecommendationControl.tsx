@@ -1,4 +1,9 @@
-import type { EnvironmentId, ModelServiceBinding } from "@t3tools/contracts";
+import {
+  MAX_OMO_RECOMMENDATION_PROMPT_LENGTH,
+  type EnvironmentId,
+  type ModelServiceBinding,
+} from "@t3tools/contracts";
+import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "../../i18n";
@@ -7,6 +12,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { LoaderCircleIcon } from "lucide-react";
 import { ExpandableText } from "./ExpandableText";
+import { Textarea } from "../ui/textarea";
 
 export function OmoRecommendationControl({
   environmentId,
@@ -17,6 +23,8 @@ export function OmoRecommendationControl({
   categories,
   draftKey,
   configurationVersion,
+  prompt,
+  onPromptChange,
   readOnly,
   onGenerated,
   onBusyChange,
@@ -33,6 +41,8 @@ export function OmoRecommendationControl({
   readonly categories: readonly string[];
   readonly draftKey: string;
   readonly configurationVersion: string;
+  readonly prompt: string;
+  readonly onPromptChange: (prompt: string) => void;
   readonly readOnly: boolean;
   readonly onBusyChange: (busy: boolean) => void;
   readonly dirty: boolean;
@@ -61,6 +71,7 @@ export function OmoRecommendationControl({
     [...categories].sort(),
     serviceEnabled,
     configurationVersion,
+    prompt,
   ]);
   const context = JSON.stringify([scope, draftKey, readOnly]);
   const [messageScope, setMessageScope] = useState("");
@@ -101,6 +112,7 @@ export function OmoRecommendationControl({
           binding,
           agents: [...agents],
           categories: [...categories],
+          prompt: prompt.trim() ? prompt : DEFAULT_OMO_RECOMMENDATION_PROMPT,
         },
       });
       if (mounted.current && latest.current !== context) {
@@ -162,6 +174,24 @@ export function OmoRecommendationControl({
       <p className="text-xs text-muted-foreground">
         {t(
           "Use this model to recommend agent and category assignments from the current model service. This sends a model request and may incur usage costs. Review and edit the draft before applying.",
+        )}
+      </p>
+      <label className="grid gap-1.5 text-sm">
+        <span>{t("Recommendation prompt")}</span>
+        <Textarea
+          value={prompt}
+          rows={8}
+          maxLength={MAX_OMO_RECOMMENDATION_PROMPT_LENGTH}
+          disabled={readOnly || saving}
+          onChange={(event) => onPromptChange(event.target.value)}
+          onBlur={() => {
+            if (!prompt.trim()) onPromptChange(DEFAULT_OMO_RECOMMENDATION_PROMPT);
+          }}
+        />
+      </label>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.",
         )}
       </p>
       {!serviceEnabled ? (

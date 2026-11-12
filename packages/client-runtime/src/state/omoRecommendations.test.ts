@@ -42,6 +42,7 @@ describe("OMO recommendation command", () => {
             binding: { serviceId, modelIds: ["generator"] },
             agents: ["sisyphus"],
             categories: ["quick"],
+            prompt: "Prioritize coding reliability for complex roles.",
           };
           const result = {
             agentModels: { sisyphus: "cox/generator" },

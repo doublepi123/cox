@@ -15,6 +15,9 @@ export const zh = {
     "安装 OMO Native 并在下方设置可执行文件路径。此实例的模型服务凭据和角色模型单独管理。",
   "Enable OMO Native": "启用 OMO Native",
   "Recommendation model": "用于生成推荐的模型",
+  "Recommendation prompt": "推荐提示词",
+  "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.":
+    "可编辑模型选配要求，点击“应用 OMO 模型”保存。清空提示词可恢复默认。系统会自动附加可用模型、角色说明和输出格式要求。",
   "{count} roles · {assigned} assigned": "{count} 个角色 · {assigned} 个已指定",
   "{count} unavailable": "{count} 个模型不可用",
   "Search {group}": "搜索{group}",
@@ -25,14 +28,15 @@ export const zh = {
   "These settings are read-only.": "当前设置为只读。",
   "Saving configuration…": "正在保存配置…",
   "Configuration saved": "配置已保存",
-  "Unapplied changes · service binding, main model and roles save together.":
-    "有未应用的修改 · 将同时保存服务绑定、主模型和角色配置。",
-  "Service binding, main model and roles save together.": "服务绑定、主模型和角色配置将一起保存。",
+  "Unapplied changes · service binding, main model, roles and recommendation prompt save together.":
+    "有未应用的修改 · 将同时保存服务绑定、主模型、角色配置和推荐提示词。",
+  "Service binding, main model, roles and recommendation prompt save together.":
+    "服务绑定、主模型、角色配置和推荐提示词将一起保存。",
   "Configuration was not saved. Your draft is preserved.": "配置未保存，草稿已保留。",
   "Retry saving": "重试保存",
   "AI recommendation": "AI 推荐",
-  "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.":
-    "已保存的模型分配已在其他地方更改。可放弃草稿以加载最新配置，或保留此草稿，检查后主动应用。",
+  "Saved OMO configuration changed elsewhere. Discard to load it, or keep this draft and apply it explicitly.":
+    "已保存的 OMO 配置已在其他地方更改。可放弃草稿以加载最新配置，或保留此草稿，检查后主动应用。",
   "Keep my draft for review": "保留我的草稿并检查",
   "Preparing OMO setup…": "正在准备 OMO 设置…",
   "OMO setup": "OMO 设置",

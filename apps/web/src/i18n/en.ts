@@ -15,6 +15,9 @@ export const en = {
     "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.",
   "Enable OMO Native": "Enable OMO Native",
   "Recommendation model": "Recommendation model",
+  "Recommendation prompt": "Recommendation prompt",
+  "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.":
+    "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.",
   "{count} roles · {assigned} assigned": "{count} roles · {assigned} assigned",
   "{count} unavailable": "{count} unavailable",
   "Search {group}": "Search {group}",
@@ -26,16 +29,16 @@ export const en = {
   "These settings are read-only.": "These settings are read-only.",
   "Saving configuration…": "Saving configuration…",
   "Configuration saved": "Configuration saved",
-  "Unapplied changes · service binding, main model and roles save together.":
-    "Unapplied changes · service binding, main model and roles save together.",
-  "Service binding, main model and roles save together.":
-    "Service binding, main model and roles save together.",
+  "Unapplied changes · service binding, main model, roles and recommendation prompt save together.":
+    "Unapplied changes · service binding, main model, roles and recommendation prompt save together.",
+  "Service binding, main model, roles and recommendation prompt save together.":
+    "Service binding, main model, roles and recommendation prompt save together.",
   "Configuration was not saved. Your draft is preserved.":
     "Configuration was not saved. Your draft is preserved.",
   "Retry saving": "Retry saving",
   "AI recommendation": "AI recommendation",
-  "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.":
-    "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.",
+  "Saved OMO configuration changed elsewhere. Discard to load it, or keep this draft and apply it explicitly.":
+    "Saved OMO configuration changed elsewhere. Discard to load it, or keep this draft and apply it explicitly.",
   "Keep my draft for review": "Keep my draft for review",
   "Preparing OMO setup…": "Preparing OMO setup…",
   "OMO setup": "OMO setup",

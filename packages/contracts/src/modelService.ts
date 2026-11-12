@@ -129,6 +129,10 @@ export const OmoRoleName = Schema.String.check(
   Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
   Schema.makeFilter((name) => !["__proto__", "prototype", "constructor"].includes(name)),
 );
+export const MAX_OMO_RECOMMENDATION_PROMPT_LENGTH = 32_000;
+export const OmoRecommendationPrompt = Schema.String.check(
+  Schema.isMaxLength(MAX_OMO_RECOMMENDATION_PROMPT_LENGTH),
+);
 const isOmoRoleName = Schema.is(OmoRoleName);
 const OmoRecommendedRoleModels = Schema.Record(Schema.String, TrimmedNonEmptyString).check(
   Schema.makeFilter((roles) => Object.keys(roles).every(isOmoRoleName)),
@@ -140,6 +144,7 @@ export const ModelServiceRecommendOmoModelsInput = Schema.Struct({
   binding: ModelServiceBinding,
   agents: Schema.Array(OmoRoleName),
   categories: Schema.Array(OmoRoleName),
+  prompt: Schema.optionalKey(OmoRecommendationPrompt),
 });
 export type ModelServiceRecommendOmoModelsInput = typeof ModelServiceRecommendOmoModelsInput.Type;
 export const ModelServiceRecommendOmoModelsResult = Schema.Struct({

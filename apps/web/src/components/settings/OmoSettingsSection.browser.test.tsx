@@ -11,6 +11,7 @@ import { render, act } from "../../../test/render";
 import { setLanguagePreference } from "../../i18n";
 import { OmoSettingsSection } from "./OmoSettingsSection";
 import { ModelServiceBindingSection } from "./ModelServiceBindingSection";
+import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
 import "~/index.css";
 
 const state = vi.hoisted(() => ({ services: {}, recommend: vi.fn() }));
@@ -32,14 +33,15 @@ vi.mock(import("../../hooks/useSettings"), async (original) => ({
     selector({ modelServices: state.services })) as never,
 }));
 
+const instanceConfig = {
+  binaryPath: "custom-omo",
+  agentModels: { oracle: "cox/Vendor/Exact" },
+  categoryModels: {},
+};
 const instance: ProviderInstanceConfig = {
   driver: ProviderDriverKind.make("omo"),
   modelService: { serviceId: ModelServiceId.make("shared"), modelIds: ["Vendor/Exact", "other"] },
-  config: {
-    binaryPath: "custom-omo",
-    agentModels: { oracle: "cox/Vendor/Exact" },
-    categoryModels: {},
-  },
+  config: instanceConfig,
 };
 const models = [
   { slug: "cox/Vendor/Exact", name: "Vendor/Exact" },
@@ -47,6 +49,183 @@ const models = [
 ];
 
 describe("OMO native roles", () => {
+  it.each(["", " \n\t "])(
+    "saves a custom prompt across reopening and clears it to the default: %j",
+    async (cleared) => {
+      setLanguagePreference("en");
+      let echoed = instance;
+      const save = vi.fn(async (next: ProviderInstanceConfig) => {
+        echoed = next;
+        return true;
+      });
+      const renderSection = (key: string) => (
+        <OmoSettingsSection
+          key={key}
+          instance={echoed}
+          models={models}
+          readOnly={false}
+          onUpdate={save}
+          environmentId={EnvironmentId.make("test")}
+          serviceRevision={3}
+        />
+      );
+      await using screen = await render(renderSection("initial"));
+      const prompt = screen.getByRole("textbox", { name: "Recommendation prompt" });
+      await expect.element(prompt).toHaveValue(DEFAULT_OMO_RECOMMENDATION_PROMPT);
+      await prompt.fill("Prefer accurate coding models and efficient repository search.");
+      await screen.getByRole("button", { name: "Apply OMO models" }).click();
+      expect(save).toHaveBeenLastCalledWith({
+        ...instance,
+        config: {
+          ...instanceConfig,
+          recommendationPrompt: "Prefer accurate coding models and efficient repository search.",
+        },
+      });
+      await screen.rerender(renderSection("reopened"));
+      await expect
+        .element(prompt)
+        .toHaveValue("Prefer accurate coding models and efficient repository search.");
+      await prompt.fill(cleared);
+      await screen.getByRole("button", { name: "Apply OMO models" }).click();
+      await expect.element(prompt).toHaveValue(DEFAULT_OMO_RECOMMENDATION_PROMPT);
+      expect(save).toHaveBeenLastCalledWith({
+        ...instance,
+        config: { ...instanceConfig, recommendationPrompt: "" },
+      });
+      await screen.rerender(renderSection("reset-reopened"));
+      await expect.element(prompt).toHaveValue(DEFAULT_OMO_RECOMMENDATION_PROMPT);
+      expect(save).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("uses the edited prompt for generation without saving it automatically", async () => {
+    setLanguagePreference("en");
+    const save = vi.fn();
+    state.recommend.mockReset().mockResolvedValue({
+      _tag: "Success",
+      value: {
+        agentModels: { oracle: "cox/other" },
+        categoryModels: {},
+        explanation: "Custom prompt result",
+      },
+    });
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly={false}
+        onUpdate={save}
+        environmentId={EnvironmentId.make("test")}
+        serviceRevision={3}
+      />,
+    );
+    await screen
+      .getByRole("textbox", { name: "Recommendation prompt" })
+      .fill("Prioritize precise architecture review.");
+    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
+    await screen.getByRole("button", { name: "Generate and replace current draft" }).click();
+    expect(state.recommend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ prompt: "Prioritize precise architecture review." }),
+      }),
+    );
+    await expect.element(screen.getByText("Custom prompt result", { exact: true })).toBeVisible();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("preserves prompt edits and rejects a recommendation generated with an older prompt", async () => {
+    setLanguagePreference("en");
+    let finish: (result: unknown) => void = () => {};
+    state.recommend.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly={false}
+        onUpdate={vi.fn()}
+        environmentId={EnvironmentId.make("test")}
+        serviceRevision={3}
+      />,
+    );
+    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
+    await screen
+      .getByRole("textbox", { name: "Recommendation prompt" })
+      .fill("New role selection requirements.");
+    await act(() =>
+      finish({
+        _tag: "Success",
+        value: {
+          agentModels: { oracle: "cox/other" },
+          categoryModels: {},
+          explanation: "Old prompt result",
+        },
+      }),
+    );
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent(
+        "The configuration changed during generation. Generate again for the current draft.",
+      );
+    await expect
+      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
+      .toHaveValue("New role selection requirements.");
+    await expect
+      .element(screen.getByRole("combobox", { name: "oracle", exact: true }))
+      .toHaveValue("cox/Vendor/Exact");
+  });
+
+  it("protects a prompt draft from external saved updates and loads them on discard", async () => {
+    setLanguagePreference("en");
+    const section = (source: ProviderInstanceConfig) => (
+      <OmoSettingsSection
+        instance={source}
+        models={models}
+        readOnly={false}
+        onUpdate={vi.fn()}
+        environmentId={EnvironmentId.make("test")}
+        serviceRevision={3}
+      />
+    );
+    await using screen = await render(section(instance));
+    await screen.getByRole("textbox", { name: "Recommendation prompt" }).fill("My unsaved prompt.");
+    await screen.rerender(
+      section({
+        ...instance,
+        config: { ...instanceConfig, recommendationPrompt: "Saved elsewhere." },
+      }),
+    );
+    await expect
+      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
+      .toHaveValue("My unsaved prompt.");
+    await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
+    await screen.getByRole("button", { name: "Discard changes" }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
+      .toHaveValue("Saved elsewhere.");
+  });
+
+  it("disables prompt editing in read-only settings", async () => {
+    setLanguagePreference("en");
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly
+        onUpdate={vi.fn()}
+        environmentId={EnvironmentId.make("test")}
+        serviceRevision={3}
+      />,
+    );
+    await expect
+      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
+      .toBeDisabled();
+  });
+
   it("keeps saved role values through a real binding-section save echo and later discard", async () => {
     setLanguagePreference("en");
     state.services = {
@@ -103,7 +282,7 @@ describe("OMO native roles", () => {
     await expect
       .element(screen.getByRole("alert"))
       .toHaveTextContent(
-        "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.",
+        "Saved OMO configuration changed elsewhere. Discard to load it, or keep this draft and apply it explicitly.",
       );
     await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
     await screen.getByRole("button", { name: "Keep my draft for review" }).click();
@@ -114,6 +293,7 @@ describe("OMO native roles", () => {
         binaryPath: "new-binary",
         agentModels: { oracle: "cox/other" },
         categoryModels: {},
+        recommendationPrompt: "",
       },
     });
   });
@@ -440,6 +620,7 @@ describe("OMO native roles", () => {
         binding: instance.modelService,
         agents: expect.arrayContaining(["oracle", "explore"]),
         categories: expect.arrayContaining(["deep", "quick"]),
+        prompt: DEFAULT_OMO_RECOMMENDATION_PROMPT,
       },
     });
     expect(save).not.toHaveBeenCalled();
@@ -456,6 +637,7 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "cox/Vendor/Exact", explore: "cox/other" },
         categoryModels: { deep: "cox/Vendor/Exact" },
+        recommendationPrompt: "",
       },
     });
   });
@@ -623,7 +805,12 @@ describe("OMO native roles", () => {
     expect(save).toHaveBeenCalledExactlyOnceWith({
       ...current,
       modelService: { serviceId, modelIds: [] },
-      config: { binaryPath: "custom-omo", agentModels: { oracle: "" }, categoryModels: {} },
+      config: {
+        binaryPath: "custom-omo",
+        agentModels: { oracle: "" },
+        categoryModels: {},
+        recommendationPrompt: "",
+      },
     });
   });
   it("saves allowed agent/category models, custom names and empty inheritance", async () => {
@@ -647,6 +834,7 @@ describe("OMO native roles", () => {
         binaryPath: "custom-omo",
         agentModels: { oracle: "", custom_agent: "cox/Vendor/Exact" },
         categoryModels: { deep: "cox/other" },
+        recommendationPrompt: "",
       },
     });
     const options = screen.container.querySelector<HTMLSelectElement>("select")!.options;
@@ -703,7 +891,12 @@ describe("OMO native roles", () => {
     await screen.getByRole("button", { name: "Apply OMO models" }).click();
     expect(save).toHaveBeenCalledWith({
       ...instance,
-      config: { binaryPath: "custom-omo", agentModels: { oracle: "" }, categoryModels: {} },
+      config: {
+        binaryPath: "custom-omo",
+        agentModels: { oracle: "" },
+        categoryModels: {},
+        recommendationPrompt: "",
+      },
     });
   });
 

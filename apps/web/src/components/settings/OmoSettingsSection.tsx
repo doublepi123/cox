@@ -5,6 +5,7 @@ import type {
   ServerProviderModel,
 } from "@t3tools/contracts";
 import { OmoRoleName } from "@t3tools/provider-omo/settings";
+import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
 import * as Schema from "effect/Schema";
 import { useId, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
@@ -55,12 +56,20 @@ function configurationKey(
   instance: ProviderInstanceConfig,
   agents: Record<string, string>,
   categories: Record<string, string>,
+  prompt = recommendationPrompt(instance.config),
 ) {
   return JSON.stringify([
     instance.modelService ?? null,
     Object.entries(agents).sort(),
     Object.entries(categories).sort(),
+    prompt.trim() && prompt !== DEFAULT_OMO_RECOMMENDATION_PROMPT ? prompt : "",
   ]);
+}
+
+function recommendationPrompt(config: unknown): string {
+  const prompt: unknown =
+    config && typeof config === "object" ? Reflect.get(config, "recommendationPrompt") : undefined;
+  return typeof prompt === "string" && prompt.trim() ? prompt : DEFAULT_OMO_RECOMMENDATION_PROMPT;
 }
 
 function RoleModelFields({
@@ -271,6 +280,7 @@ export function OmoSettingsSection({
   const [categoryModels, setCategoryModels] = useState(() =>
     roleModels(instance.config, "categoryModels"),
   );
+  const [prompt, setPrompt] = useState(() => recommendationPrompt(instance.config));
   const managed = instance.modelService !== undefined;
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -285,7 +295,7 @@ export function OmoSettingsSection({
   const [baseline, setBaseline] = useState(sourceKey);
   const [source, setSource] = useState(sourceKey);
   const [snapshot, setSnapshot] = useState(savedInstance);
-  const currentKey = configurationKey(instance, agentModels, categoryModels);
+  const currentKey = configurationKey(instance, agentModels, categoryModels, prompt);
   const dirty = currentKey !== baseline;
   if (source !== sourceKey) {
     setSource(sourceKey);
@@ -295,6 +305,7 @@ export function OmoSettingsSection({
     if (!dirty) {
       setAgentModels(roleModels(savedInstance.config, "agentModels"));
       setCategoryModels(roleModels(savedInstance.config, "categoryModels"));
+      setPrompt(recommendationPrompt(savedInstance.config));
     }
   }
   const independentModel: unknown =
@@ -331,6 +342,11 @@ export function OmoSettingsSection({
             categories={[...new Set([...CATEGORIES, ...Object.keys(categoryModels)])]}
             draftKey={JSON.stringify([agentModels, categoryModels])}
             configurationVersion={sourceKey}
+            prompt={prompt}
+            onPromptChange={(next) => {
+              setPrompt(next);
+              setSaveStatus("idle");
+            }}
             readOnly={readOnly}
             serviceName={serviceName}
             serviceEnabled={serviceEnabled}
@@ -393,8 +409,12 @@ export function OmoSettingsSection({
                 : saveStatus === "saved" && !dirty
                   ? t("Configuration saved")
                   : dirty
-                    ? t("Unapplied changes · service binding, main model and roles save together.")
-                    : t("Service binding, main model and roles save together.")}
+                    ? t(
+                        "Unapplied changes · service binding, main model, roles and recommendation prompt save together.",
+                      )
+                    : t(
+                        "Service binding, main model, roles and recommendation prompt save together.",
+                      )}
             </p>
             {saveStatus === "failed" ? (
               <p role="alert" className="text-xs text-destructive">
@@ -405,7 +425,7 @@ export function OmoSettingsSection({
               <div className="space-y-2">
                 <p role="alert" className="text-xs text-destructive">
                   {t(
-                    "Saved model assignments changed elsewhere. Discard to load them, or keep this draft and apply it explicitly.",
+                    "Saved OMO configuration changed elsewhere. Discard to load it, or keep this draft and apply it explicitly.",
                   )}
                 </p>
                 <Button
@@ -429,6 +449,7 @@ export function OmoSettingsSection({
                 onClick={() => {
                   setAgentModels(roleModels(snapshot.config, "agentModels"));
                   setCategoryModels(roleModels(snapshot.config, "categoryModels"));
+                  setPrompt(recommendationPrompt(snapshot.config));
                   setSaveStatus("idle");
                   setConflict(false);
                   onReset?.();
@@ -451,6 +472,8 @@ export function OmoSettingsSection({
                         : {}),
                       agentModels,
                       categoryModels,
+                      recommendationPrompt:
+                        prompt.trim() && prompt !== DEFAULT_OMO_RECOMMENDATION_PROMPT ? prompt : "",
                     },
                   };
                   try {

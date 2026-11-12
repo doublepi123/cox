@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   ModelServiceConfig,
   ModelServiceId,
+  MAX_OMO_RECOMMENDATION_PROMPT_LENGTH,
   type ModelServiceProtocol,
   type ModelServiceRecommendOmoModelsInput,
 } from "@t3tools/contracts";
@@ -13,6 +14,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { recommendOmoModels } from "./omoRecommendations.ts";
+import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
 
 const serviceId = ModelServiceId.make("recommendations");
 const decodeConfig = Schema.decodeSync(ModelServiceConfig);
@@ -106,6 +108,8 @@ describe("OMO model recommendations", () => {
     ([protocol, path, authHeader, authValue, response]) =>
       Effect.gen(function* () {
         const before = yield* (yield* ServerSettingsService).getSettings;
+        const customPrompt =
+          "Prefer reliable coding models for planning and fast models for search.";
         let calls = 0;
         const http = HttpClient.make((request) =>
           Effect.sync(() => {
@@ -135,6 +139,9 @@ describe("OMO model recommendations", () => {
                   ? body.input
                   : body.messages[0].content;
             const data = JSON.parse(prompt.split("\n").at(-1));
+            expect(prompt).toContain(customPrompt);
+            expect(prompt).not.toContain(DEFAULT_OMO_RECOMMENDATION_PROMPT);
+            expect(prompt).toContain("Return ONLY one strict JSON object");
             expect(data.catalog.map((model: { slug: string }) => model.slug)).toEqual([
               "cox/vendor/generator",
               "cox/fast",
@@ -148,11 +155,33 @@ describe("OMO model recommendations", () => {
           }),
         );
         expect(
-          yield* recommendOmoModels(input).pipe(Effect.provideService(HttpClient.HttpClient, http)),
+          yield* recommendOmoModels({ ...input, prompt: customPrompt }).pipe(
+            Effect.provideService(HttpClient.HttpClient, http),
+          ),
         ).toEqual(assignments);
         expect(calls).toBe(1);
         expect(yield* (yield* ServerSettingsService).getSettings).toEqual(before);
       }).pipe(Effect.provide(settingsLayer(config([protocol])))),
+  );
+
+  it.effect.each([undefined, "", " \n\t "])(
+    "uses the default prompt when the override is absent or blank: %j",
+    (prompt) =>
+      Effect.gen(function* () {
+        const http = HttpClient.make((request) =>
+          Effect.sync(() => {
+            if (request.body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+            const body = JSON.parse(new TextDecoder().decode(request.body.body));
+            expect(body.messages[0].content).toContain(DEFAULT_OMO_RECOMMENDATION_PROMPT);
+            return HttpClientResponse.fromWeb(request, Response.json(chatResponse()));
+          }),
+        );
+        expect(
+          yield* recommendOmoModels({ ...input, ...(prompt === undefined ? {} : { prompt }) }).pipe(
+            Effect.provideService(HttpClient.HttpClient, http),
+          ),
+        ).toEqual(assignments);
+      }).pipe(Effect.provide(settingsLayer())),
   );
 
   it.effect.each([
@@ -191,6 +220,7 @@ describe("OMO model recommendations", () => {
 
   it.effect.each([
     { ...input, revision: 2 },
+    { ...input, prompt: "x".repeat(MAX_OMO_RECOMMENDATION_PROMPT_LENGTH + 1) },
     { ...input, binding: { ...input.binding, serviceId: ModelServiceId.make("other") } },
     { ...input, modelId: "outside" },
     ...["ignored", "unavailable", "no-tools", "incompatible"].map((modelId) => ({

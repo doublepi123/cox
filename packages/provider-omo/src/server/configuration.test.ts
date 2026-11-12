@@ -5,6 +5,15 @@ import { omoEnvironment, omoTaskConfiguration } from "./configuration.ts";
 
 const settings = Schema.decodeSync(OmoSettings);
 
+it("retains a custom recommendation prompt and supports clearing it", () => {
+  expect(settings({}).recommendationPrompt).toBe("");
+  expect(
+    settings({ recommendationPrompt: "Choose reliable coding models." }).recommendationPrompt,
+  ).toBe("Choose reliable coding models.");
+  expect(settings({ recommendationPrompt: "" }).recommendationPrompt).toBe("");
+  expect(() => settings({ recommendationPrompt: "x".repeat(32_001) })).toThrow();
+});
+
 describe("OMO model configuration", () => {
   it("keeps mutable inheritance arrays before an independent main model is selected", () => {
     const native = omoTaskConfiguration(settings({}), "/tasks");

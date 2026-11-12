@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./omoRecommendations": {
+      "types": "./src/omoRecommendations.ts",
+      "import": "./src/omoRecommendations.ts"
+    },
     "./modelServices": {
       "types": "./src/modelServices.ts",
       "import": "./src/modelServices.ts"
