@@ -20,16 +20,23 @@ import {
   type ProjectMutation,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
+import { RpcClientError } from "effect/rpc";
 
 import {
   AVAILABLE_CONNECTION_STATE,
   PrimaryConnectionTarget,
   type PreparedConnection,
+  type SupervisorConnectionState,
 } from "../connection/model.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import * as RpcSession from "../rpc/session.ts";
@@ -67,9 +74,13 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly projection?: OrchestrationV2ThreadProjection;
   readonly projectionRequests?: ThreadId[];
   readonly advertiseThreadStop?: boolean;
+  readonly dispatch?: (
+    command: OrchestrationV2Command,
+  ) => Effect.Effect<{ readonly sequence: number }, RpcClientError.RpcClientError>;
 }) {
   const client = {
     [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command: OrchestrationV2Command) =>
+      input.dispatch?.(command) ??
       Effect.sync(() => {
         input.commands.push(command);
         return { sequence: input.commands.length };
@@ -126,7 +137,11 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   };
   return EnvironmentSupervisor.EnvironmentSupervisor.of({
     target: TARGET,
-    state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+    state: yield* SubscriptionRef.make<SupervisorConnectionState>({
+      ...AVAILABLE_CONNECTION_STATE,
+      desired: true,
+      phase: "connected" as const,
+    }),
     session: yield* SubscriptionRef.make(Option.some(session)),
     prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
     connect: Effect.void,
@@ -349,6 +364,200 @@ describe("V2 environment commands", () => {
         });
       }
       expect(projectionRequests).toEqual([]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect.each(["protocol", "interrupt"] as const)(
+    "resends a message lost to %s with the same receipt id after reconnect",
+    (loss) =>
+      Effect.gen(function* () {
+        const accepted = new Map<CommandId, number>();
+        const attempts: CommandId[] = [];
+        const lost = yield* Deferred.make<void>();
+        const supervisor = yield* makeSupervisor({
+          commands: [],
+          projects: [],
+          dispatch: (
+            command,
+          ): Effect.Effect<{ readonly sequence: number }, RpcClientError.RpcClientError> =>
+            Effect.gen(function* () {
+              attempts.push(command.commandId);
+              if (!accepted.has(command.commandId))
+                accepted.set(command.commandId, accepted.size + 1);
+              if (attempts.length === 1) {
+                yield* SubscriptionRef.set(supervisor.session, Option.none());
+                yield* Deferred.succeed(lost, undefined);
+                return yield* loss === "interrupt"
+                  ? Effect.failCause(Cause.interrupt())
+                  : Effect.fail(
+                      new RpcClientError.RpcClientError({
+                        reason: new RpcClientError.RpcClientDefect({
+                          message: "socket closed",
+                          cause: new Error("socket closed"),
+                        }),
+                      }),
+                    );
+              }
+              return { sequence: accepted.get(command.commandId) ?? 0 };
+            }),
+        });
+        const session = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+        const send = yield* startThreadTurn({
+          commandId: CommandId.make("lost-ack"),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make("lost-ack-message"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        }).pipe(
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(lost);
+        yield* SubscriptionRef.set(supervisor.session, Option.some({ ...session }));
+        expect(yield* Fiber.await(send)).toEqual(Exit.succeed({ sequence: 1 }));
+        expect(attempts).toEqual(["lost-ack", "lost-ack"]);
+        expect(accepted.size).toBe(1);
+      }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("caps lost socket resends at two and leaves other commands unretried", () =>
+    Effect.gen(function* () {
+      const attempts: CommandId[] = [];
+      const supervisor = yield* makeSupervisor({
+        commands: [],
+        projects: [],
+        dispatch: (
+          command,
+        ): Effect.Effect<{ readonly sequence: number }, RpcClientError.RpcClientError> =>
+          Effect.gen(function* () {
+            attempts.push(command.commandId);
+            const session = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+            yield* SubscriptionRef.set(supervisor.session, Option.some({ ...session }));
+            return yield* new RpcClientError.RpcClientError({
+              reason: new RpcClientError.RpcClientDefect({
+                message: "socket closed",
+                cause: new Error("socket closed"),
+              }),
+            });
+          }),
+      });
+      const messageError = yield* startThreadTurn({
+        commandId: CommandId.make("socket-killer"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("socket-killer-message"),
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        dispatchMode: "start",
+      }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.flip,
+      );
+      const archiveError = yield* archiveThread({
+        commandId: CommandId.make("archive"),
+        threadId: v2ThreadId,
+      }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.flip,
+      );
+      expect(messageError._tag).toBe("RpcClientError");
+      expect(archiveError._tag).toBe("RpcClientError");
+      expect(attempts).toEqual(["socket-killer", "socket-killer", "socket-killer", "archive"]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("fails an unanswered message after one minute on a live socket", () =>
+    Effect.gen(function* () {
+      const supervisor = yield* makeSupervisor({
+        commands: [],
+        projects: [],
+        dispatch: () => Effect.never,
+      });
+      const send = yield* startThreadTurn({
+        commandId: CommandId.make("silent-host"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("silent-message"),
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.flip,
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("1 minute");
+      expect(send.pollUnsafe()).toBeDefined();
+      expect((yield* Fiber.join(send))._tag).toBe("EnvironmentRpcUnavailableError");
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("holds a lost send through backoff until disconnect and honors resend opt-out", () =>
+    Effect.gen(function* () {
+      const lost = yield* Deferred.make<void>();
+      const supervisor = yield* makeSupervisor({
+        commands: [],
+        projects: [],
+        dispatch: (): Effect.Effect<{ readonly sequence: number }, RpcClientError.RpcClientError> =>
+          SubscriptionRef.set(supervisor.session, Option.none()).pipe(
+            Effect.andThen(Deferred.succeed(lost, undefined)),
+            Effect.andThen(
+              Effect.fail(
+                new RpcClientError.RpcClientError({
+                  reason: new RpcClientError.RpcClientDefect({
+                    message: "socket closed",
+                    cause: new Error("socket closed"),
+                  }),
+                }),
+              ),
+            ),
+          ),
+      });
+      const session = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+      const input = {
+        commandId: CommandId.make("backoff"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("backoff-message"),
+          role: "user" as const,
+          text: "hello",
+          attachments: [],
+        },
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+      };
+      const optedOut = yield* startThreadTurn({ ...input, resendAfterSocketLoss: false }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.flip,
+      );
+      expect(optedOut._tag).toBe("RpcClientError");
+      yield* SubscriptionRef.set(supervisor.session, Option.some(session));
+      const send = yield* startThreadTurn(input).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.flip,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(lost);
+      yield* SubscriptionRef.update(supervisor.state, (state) => ({
+        ...state,
+        phase: "backoff" as const,
+      }));
+      yield* TestClock.adjust("2 minutes");
+      expect(send.pollUnsafe()).toBeUndefined();
+      yield* SubscriptionRef.set(supervisor.state, AVAILABLE_CONNECTION_STATE);
+      expect((yield* Fiber.join(send))._tag).toBe("RpcClientError");
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 

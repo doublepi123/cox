@@ -24,6 +24,17 @@ describe("compactDynamicToolOutput", () => {
     }
   });
 
+  it("unwraps the Grok MCP OkayOutput result envelope", () => {
+    expect(
+      compactDynamicToolOutput({
+        type: "MCP",
+        tool_name: "html_render",
+        server_name: "t3-code",
+        output: { OkayOutput: JSON.stringify({ threadId: "thread-1" }) },
+      }),
+    ).toEqual({ threadId: "thread-1" });
+  });
+
   it("keeps nested thread identity and scalar task IDs without result bodies", () => {
     const output = {
       thread: { threadId: "thread-1", messages: ["Private message"] },

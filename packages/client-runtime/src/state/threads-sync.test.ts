@@ -79,7 +79,8 @@ const BASE_PROJECTION: OrchestrationV2ThreadProjection = {
   thread: { ...v2Projection.thread, title: "Cached thread" },
 };
 
-type TestThreadInput = OrchestrationV2ThreadStreamItem | Error;
+const TEST_DEFECT = Symbol("snapshot decode defect");
+type TestThreadInput = OrchestrationV2ThreadStreamItem | Error | typeof TEST_DEFECT;
 
 function testSession(client: WsRpcProtocolClient): RpcSession.RpcSession {
   return {
@@ -112,6 +113,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     readonly latestLocalTurnOrdinal?: number | null;
   };
   readonly httpSnapshot?: ThreadSnapshotLoadResult;
+  readonly httpSnapshots?: readonly ThreadSnapshotLoadResult[];
   /** The test sends the completion marker itself instead of the fake server sending it first. */
   readonly completionMarker?: boolean;
   readonly resumeCache?: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]>;
@@ -142,7 +144,11 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   const streamFrom = (queue: Queue.Queue<TestThreadInput>) =>
     Stream.fromQueue(queue).pipe(
       Stream.mapEffect((input) =>
-        input instanceof Error ? Effect.fail(input) : Effect.succeed(input),
+        input === TEST_DEFECT
+          ? Effect.die("snapshot decode defect")
+          : input instanceof Error
+            ? Effect.fail(input)
+            : Effect.succeed(input),
       ),
     );
   const client = {
@@ -178,11 +184,12 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   );
   const snapshotLoader = ThreadSnapshotLoader.ThreadSnapshotLoader.of({
     load: (_prepared, threadId) =>
-      Ref.update(loaderCalls, (count) => count + 1).pipe(
-        Effect.as(
+      Ref.updateAndGet(loaderCalls, (count) => count + 1).pipe(
+        Effect.map((count) =>
           threadId === THREAD_ID
-            ? (options?.httpSnapshot ??
-                ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult))
+            ? (options?.httpSnapshots?.[Math.min(count, options.httpSnapshots.length) - 1] ??
+              options?.httpSnapshot ??
+              ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult))
             : ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult),
         ),
       ),
@@ -386,6 +393,86 @@ const deleted = (sequence = 3): OrchestrationV2ThreadStreamItem => {
 };
 
 describe("EnvironmentThreads", () => {
+  it.effect("retries mounted HTTP misses at 250 and 500 milliseconds until the thread exists", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        httpSnapshots: [
+          { _tag: "missing" },
+          { _tag: "missing" },
+          {
+            _tag: "present",
+            snapshot: { snapshotSequence: CACHED_SNAPSHOT_SEQUENCE, projection: BASE_PROJECTION },
+          },
+        ],
+      });
+      yield* awaitThreadState(harness.observed, (state) => state.status === "deleted");
+      yield* TestClock.adjust("250 millis");
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(2);
+      yield* TestClock.adjust("500 millis");
+      const state = yield* awaitThreadState(harness.observed, (value) => value.status === "live");
+      expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(3);
+      yield* Queue.offer(harness.inputs, deleted(CACHED_SNAPSHOT_SEQUENCE + 1));
+      yield* awaitThreadState(harness.observed, (value) => value.status === "deleted");
+      yield* harness.replaceSession;
+      yield* TestClock.adjust("60 seconds");
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(3);
+      expect((yield* SubscriptionRef.get(harness.threadState)).status).toBe("deleted");
+    }),
+  );
+
+  it.effect("resubscribes after a snapshot decode defect and recovers without reconnect", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* SubscriptionRef.changes(harness.subscriptionCount).pipe(
+        Stream.filter((count) => count === 1),
+        Stream.runHead,
+      );
+      yield* Queue.offer(harness.inputs, TEST_DEFECT);
+      yield* awaitThreadState(harness.observed, (state) => Option.isSome(state.error));
+      yield* TestClock.adjust("250 millis");
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
+      yield* Queue.offer(
+        harness.inputs,
+        snapshot({
+          ...BASE_PROJECTION,
+          thread: { ...BASE_PROJECTION.thread, title: "Recovered thread" },
+        }),
+      );
+      const recovered = yield* awaitThreadState(
+        harness.observed,
+        (state) =>
+          state.status === "live" &&
+          Option.getOrNull(state.data)?.thread.title === "Recovered thread",
+      );
+      expect(Option.isNone(recovered.error)).toBe(true);
+    }),
+  );
+
+  it.effect("resubscribes when applying a snapshot defects", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* SubscriptionRef.changes(harness.subscriptionCount).pipe(
+        Stream.filter((count) => count === 1),
+        Stream.runHead,
+      );
+      const broken = {
+        ...snapshot(BASE_PROJECTION),
+        get historyCursor(): string {
+          throw new Error("snapshot application defect");
+        },
+      };
+      yield* Queue.offer(harness.inputs, broken);
+      yield* awaitThreadState(harness.observed, (state) => Option.isSome(state.error));
+      yield* TestClock.adjust("250 millis");
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
+      yield* Queue.offer(harness.inputs, snapshot(BASE_PROJECTION));
+      const state = yield* awaitThreadState(harness.observed, (value) => value.status === "live");
+      expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
+      expect(Option.isNone(state.error)).toBe(true);
+    }),
+  );
+
   it.effect.each([
     ["disk", false],
     ["retained", false],

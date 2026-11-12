@@ -21,6 +21,22 @@ describe("injectHtmlRenderBootstrap", () => {
     expect(injected).toContain('name="viewport"');
   });
 
+  it.each([
+    "<html><head data-condition='x > 0'>",
+    '<html><head data-condition="x > 0" data-label=\'it "works"\'>',
+    "<html data-condition='x > 0'>",
+    '<html data-condition="x > 0" data-label="it \'works\'">',
+  ])("keeps the bootstrap after the complete opening tag: %s", (opening) => {
+    const prefix = `<!doctype html>${opening}`;
+    const head = opening.startsWith("<html><head") ? "" : "<head>";
+    const content = `${head ? "" : "<title>Report</title></head>"}<body><p>Report</p></body></html>`;
+    const injected = injectHtmlRenderBootstrap(prefix + content);
+    expect(injected.startsWith(`${prefix}${head}<meta charset="utf-8">`)).toBe(true);
+    expect(injected.indexOf('<style id="t3-theme">')).toBeGreaterThan(prefix.length);
+    expect(injected).toContain("<script>");
+    expect(injected.endsWith(content)).toBe(true);
+  });
+
   it("wraps fragments without a head and keeps existing meta tags", () => {
     const fragment =
       '<meta charset="utf-8"><meta name="viewport" content="width=device-width"><p>hi</p>';
@@ -127,6 +143,16 @@ describe("htmlRenderFromToolItem", () => {
       ["t3-code.html_render", { structuredContent: result, content: [] }],
       ["t3-code-thread_1_html_render", JSON.stringify(result)],
       ["html_render", result],
+      ["execute", JSON.stringify(result)],
+      [
+        "t3-code.html_render",
+        {
+          type: "MCP",
+          tool_name: "html_render",
+          server_name: "t3-code",
+          output: { OkayOutput: JSON.stringify(result) },
+        },
+      ],
     ] as const) {
       expect(htmlRenderFromToolItem({ toolName, output })).toEqual(reference);
     }
