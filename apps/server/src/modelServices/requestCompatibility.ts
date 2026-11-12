@@ -2,24 +2,38 @@ import type { ModelServiceProtocol } from "@t3tools/contracts";
 
 const GPT_REASONING_MODEL = /^gpt-[5-9](?:[.-]|$)/i;
 const CHAT_COMPLETION_BUDGET_MODEL = /^(?:gpt-[5-9]|o[1-9])(?:[.-]|$)/i;
+const FORCED_TOOL_CHOICE_TYPES = new Set(["function", "tool", "any", "custom"]);
+
+function isForcedToolChoice(choice: unknown): boolean {
+  if (choice === "required" || choice === "any") return true;
+  if (choice === null || typeof choice !== "object" || Array.isArray(choice) || !("type" in choice))
+    return false;
+  return typeof choice.type === "string" && FORCED_TOOL_CHOICE_TYPES.has(choice.type);
+}
+
+export function withoutForcedToolChoice(
+  protocol: ModelServiceProtocol,
+  body: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  if (protocol === "gemini" || !isForcedToolChoice(body.tool_choice)) return body;
+  const { tool_choice: _omitted, ...next } = body;
+  return next;
+}
 
 export function withoutForcedToolThinking(
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-  const choice = body.tool_choice;
-  const forced =
-    choice === "required" ||
-    (choice !== null &&
-      typeof choice === "object" &&
-      "type" in choice &&
-      choice.type === "function");
   const thinking = body.thinking;
   const enabledThinking =
     thinking !== null &&
     typeof thinking === "object" &&
     "type" in thinking &&
     thinking.type === "enabled";
-  if (!forced || (body.reasoning_effort === "none" && !enabledThinking)) return body;
+  if (
+    !isForcedToolChoice(body.tool_choice) ||
+    (body.reasoning_effort === "none" && !enabledThinking)
+  )
+    return body;
   return {
     ...body,
     reasoning_effort: "none",

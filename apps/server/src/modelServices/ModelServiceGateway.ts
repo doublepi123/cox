@@ -37,6 +37,7 @@ import {
   modelServiceRequestBody,
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
+  withoutForcedToolChoice,
   withoutForcedToolThinking,
 } from "./requestCompatibility.ts";
 import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
@@ -594,6 +595,8 @@ export const make = Effect.gen(function* () {
     let omitEncryptedReasoning = replayPolicy === "omit";
     let disableForcedToolThinking = false;
     let canRepairForcedToolThinking = false;
+    let omitForcedToolChoice = false;
+    let canRepairForcedToolChoice = false;
     const rejectedFailure = (
       status: number,
       value: unknown,
@@ -625,6 +628,7 @@ export const make = Effect.gen(function* () {
       function* (attemptId: number) {
         const stripEncryptedReasoning = omitEncryptedReasoning;
         const stripForcedToolThinking = disableForcedToolThinking;
+        const stripForcedToolChoice = omitForcedToolChoice;
         const started = yield* Clock.currentTimeMillis;
         yield* Effect.annotateCurrentSpan({ requestId, attempt: attemptId, incoming, protocol });
         const bridge =
@@ -688,6 +692,17 @@ export const make = Effect.gen(function* () {
             source: "model_metadata",
           });
         let requestBody = modelServiceRequestBody(protocol, selected.id, budget.body);
+        const unforced = withoutForcedToolChoice(protocol, requestBody);
+        canRepairForcedToolChoice ||= unforced !== requestBody;
+        if (stripForcedToolChoice) {
+          requestBody = unforced;
+          yield* diagnostic({
+            event: "request_compatibility",
+            attempt: attemptId,
+            action: "omitted_forced_tool_choice",
+            reason: "unsupported_forced_tool_choice",
+          });
+        }
         if (protocol === "openai-chat") {
           const repaired = withoutForcedToolThinking(requestBody);
           canRepairForcedToolThinking ||= repaired !== requestBody;
@@ -1286,6 +1301,16 @@ export const make = Effect.gen(function* () {
       repair: Effect.fn("ModelServiceGateway.repair")(function* (
         error: ModelServiceRequestFailure,
       ) {
+        if (error.code === "unsupported_forced_tool_choice") {
+          if (!canRepairForcedToolChoice || omitForcedToolChoice) return false;
+          omitForcedToolChoice = true;
+          yield* diagnostic({
+            event: "request_repaired",
+            reason: error.code,
+            repair: "omitted_forced_tool_choice",
+          });
+          return true;
+        }
         if (error.code === "incompatible_tool_choice_thinking") {
           if (
             protocol !== "openai-chat" ||

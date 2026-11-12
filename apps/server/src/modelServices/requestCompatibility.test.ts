@@ -5,8 +5,46 @@ import {
   modelServiceRequestBody,
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
+  withoutForcedToolChoice,
   withoutForcedToolThinking,
 } from "./requestCompatibility.ts";
+
+describe("forced tool choice compatibility", () => {
+  it.each([
+    {
+      protocol: "openai-chat" as const,
+      tool_choice: { type: "function", function: { name: "todo" } },
+    },
+    { protocol: "openai-chat" as const, tool_choice: "required" },
+    { protocol: "openai-responses" as const, tool_choice: { type: "function", name: "todo" } },
+    { protocol: "anthropic-messages" as const, tool_choice: { type: "tool", name: "todo" } },
+    { protocol: "anthropic-messages" as const, tool_choice: { type: "any" } },
+  ])(
+    "omits forced tool_choice while preserving tools and reasoning for %j",
+    ({ protocol, tool_choice }) => {
+      const body = {
+        model: "claude-opus-5-5",
+        tool_choice,
+        tools: [{ name: "todo" }],
+        messages: [{ role: "user", content: "Do the task" }],
+        reasoning_effort: "high",
+      };
+      const { tool_choice: _omitted, ...expected } = body;
+      expect(withoutForcedToolChoice(protocol, body)).toEqual(expected);
+      expect(body.tool_choice).toBe(tool_choice);
+    },
+  );
+
+  it("leaves non-forced tool selection and Gemini requests unchanged", () => {
+    for (const tool_choice of [undefined, "auto", "none", { type: "auto" }, { type: "none" }]) {
+      const body = { tool_choice, reasoning_effort: "high" };
+      expect(withoutForcedToolChoice("openai-chat", body)).toBe(body);
+      expect(withoutForcedToolChoice("anthropic-messages", body)).toBe(body);
+    }
+    const gemini = { tool_choice: "required" };
+    expect(withoutForcedToolChoice("gemini", gemini)).toBe(gemini);
+  });
+});
 
 describe("forced tool thinking compatibility", () => {
   it("preserves forced tool selection and other request fields when disabling thinking", () => {

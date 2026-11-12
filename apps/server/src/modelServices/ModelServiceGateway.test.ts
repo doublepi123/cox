@@ -424,6 +424,135 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect.each([
+    {
+      protocol: "openai-chat" as const,
+      endpoint: "/v1/chat/completions",
+      stream: false,
+      tool_choice: { type: "function", function: { name: "todo" } },
+      extra: { reasoning_effort: "high" },
+    },
+    {
+      protocol: "openai-chat" as const,
+      endpoint: "/v1/chat/completions",
+      stream: true,
+      tool_choice: { type: "function", function: { name: "todo" } },
+      extra: { reasoning_effort: "high" },
+    },
+    {
+      protocol: "openai-responses" as const,
+      endpoint: "/v1/responses",
+      stream: false,
+      tool_choice: { type: "function", name: "todo" },
+      extra: { input: "ping", reasoning: { effort: "high" } },
+    },
+    {
+      protocol: "anthropic-messages" as const,
+      endpoint: "/v1/messages",
+      stream: false,
+      tool_choice: { type: "tool", name: "todo" },
+      extra: { max_tokens: 256, thinking: { type: "enabled", budget_tokens: 1024 } },
+    },
+  ])(
+    "repairs unsupported forced tool_choice once before delivery while preserving reasoning (%j)",
+    ({ protocol, endpoint, stream, tool_choice, extra }) =>
+      Effect.gen(function* () {
+        let calls = 0;
+        const h = yield* harness({
+          driver: "omo",
+          protocol,
+          recovery: { retryEnabled: true, maxAttempts: 5 },
+          respond: () => {
+            calls++;
+            if (calls % 2 === 1)
+              return Response.json(
+                {
+                  error: {
+                    type: "invalid_request_error",
+                    message: "Vendor/Exact does not support forced tool_choice; use auto or none",
+                  },
+                },
+                { status: 400 },
+              );
+            if (protocol === "openai-responses") return Response.json(responsesAnswer);
+            if (protocol === "anthropic-messages")
+              return Response.json({
+                type: "message",
+                content: [{ type: "text", text: "done" }],
+                stop_reason: "end_turn",
+              });
+            return stream
+              ? new Response(
+                  chatStreamFrame({ role: "assistant", content: "done" }) +
+                    chatStreamFrame({}, "stop") +
+                    "data: [DONE]\n\n",
+                  { headers: { "content-type": "text/event-stream" } },
+                )
+              : Response.json({
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "done" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                });
+          },
+        });
+        const body = {
+          model: "Vendor/Exact",
+          messages: [{ role: "user", content: "ping" }],
+          tools: [{ type: "function", name: "todo", function: { name: "todo", parameters: {} } }],
+          tool_choice,
+          stream,
+          ...extra,
+        };
+        const response = yield* h.invoke(endpoint, body);
+        expect(response.status).toBe(200);
+        expect(h.calls).toHaveLength(2);
+        expect(sentBody(h.calls[0]!)).toMatchObject({ tool_choice, ...extra });
+        const retried = sentBody(h.calls[1]!);
+        expect(retried).not.toHaveProperty("tool_choice");
+        expect(retried).toMatchObject({ tools: body.tools, ...extra });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { retryEnabled: false, maxAttempts: 5, tool_choice: "required" },
+    { retryEnabled: true, maxAttempts: 1, tool_choice: "required" },
+    { retryEnabled: true, maxAttempts: 5, tool_choice: "auto" },
+  ])(
+    "does not bypass retry limits or strip automatic tool_choice for unsupported forced tool_choice: %j",
+    (test) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          recovery: { retryEnabled: test.retryEnabled, maxAttempts: test.maxAttempts },
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  type: "invalid_request_error",
+                  message: "Vendor/Exact does not support forced tool_choice; use auto or none",
+                },
+              },
+              { status: 400 },
+            ),
+        });
+        const response = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [],
+          reasoning_effort: "high",
+          tool_choice: test.tool_choice,
+        });
+        expect(response.status).toBe(400);
+        expect(h.calls).toHaveLength(1);
+        expect(sentBody(h.calls[0]!)).toMatchObject({
+          reasoning_effort: "high",
+          tool_choice: test.tool_choice,
+        });
+      }).pipe(Effect.scoped),
+  );
+
   it.effect.each(["pi", "omo"] as const)(
     "routes %s Anthropic SDK requests without a duplicate /v1 after regeneration and restart",
     (driver) =>

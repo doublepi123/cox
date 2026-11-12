@@ -25,6 +25,26 @@ describe("upstream model error diagnostics", () => {
     expect(unsafe.code).toBe("invalid_request_error");
     expect(unsafe.detail).not.toContain("private-upstream-key");
   });
+  it.each([
+    "claude-opus-5-5 does not support forced tool_choice; use auto or none",
+    "Vendor/claude-sonnet-5.5 does not support forced tool_choice; use auto or none (request id: req_123)",
+    "Thinking may not be enabled when tool_choice forces tool use.",
+    "tool_choice cannot force tool use",
+  ])("classifies explicit forced tool_choice rejections safely: %s", (message) => {
+    const safe = upstreamErrorDetails({
+      type: "invalid_request_error",
+      message,
+    });
+    expect(safe.code).toBe("unsupported_forced_tool_choice");
+    expect(safe.detail).toContain("Forced tool choice is not supported by this model.");
+    expect(safe.detail).not.toContain("claude-opus-5-5");
+    const unsafe = upstreamErrorDetails({
+      type: "invalid_request_error",
+      message: `${message} private-upstream-key`,
+    });
+    expect(unsafe.code).toBe("invalid_request_error");
+    expect(unsafe.detail).not.toContain("private-upstream-key");
+  });
   const embedded =
     "code: invalid_encrypted_content; message: The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.";
   it.each([
