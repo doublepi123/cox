@@ -1,6 +1,11 @@
 # Upstream port status
 
-Latest follow-up: Cox baseline `d81e698bdc`, upstream
+Latest follow-up: [November 12 follow-up](UPSTREAM_PORTING_20261112.md), comparing
+646 commits through `fc2b5de20c` and adapting 24 selected commits for Cox 0.1.77.
+The [November 11 follow-up](UPSTREAM_PORTING_20261111.md) records the preceding
+selective adaptation through `0f13d2ccbd`.
+
+November 9 follow-up: Cox baseline `d81e698bdc`, upstream
 `8e6a732305..dc7270581800518b9d7d4db6c8e13852067c8c2d` (126 reviewed commits).
 The worthwhile Cox-applicable updates are adapted; the complete disposition and
 validation are recorded in [the November 9 follow-up](UPSTREAM_PORTING_20261109.md).

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.77 — 2026-11-12
+
+- Adapt 24 selected T3 upstream commits covering ACP permission boundaries,
+  contained registry installs, Git process isolation and safe commit staging.
+- Preserve drafts across browser tabs, keep message identity across socket loss,
+  bound unanswered sends and recover transient thread synchronization failures.
+- Keep relative Markdown media on its owning server. Recognize OpenCode and Grok
+  HTML results and preserve quoted HTML attributes during bootstrap injection.
+- Prevent blocked providers from consuming every effect worker, settle unreadable
+  recovery state, preserve Stop during provider startup and bound baseline capture.
+- Recover delegated children under their own thread, retain reports preceding a
+  failure, record unsuccessful scheduled runs and return delegated-task handles
+  before the default HTTP deadline. See UPSTREAM_PORTING_20261112.md for scope.
+
 ## Desktop 0.2.24 — 2026-11-10
 
 - Always open connection management in a separate window, including first launch,
