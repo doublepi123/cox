@@ -3127,6 +3127,101 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
   );
 
   it.effect(
+    "starts another thread while four hung starts keep their durable thread ownership",
+    () =>
+      Effect.gen(function* () {
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const key = "foundation-hung-provider-starts";
+        const wedgedThreadIds = [0, 1, 2, 3].map((index) =>
+          ThreadId.make(`thread:${key}:wedged:${index}`),
+        );
+        const otherThreadId = ThreadId.make(`thread:${key}:other`);
+        const wedgedStarted = yield* Deferred.make<void>();
+        const otherSettled = yield* Deferred.make<void>();
+        const wedgedCount = yield* Ref.make(0);
+        const commandId = CommandId.make(`command:${key}`);
+        yield* outbox.enqueue(
+          wedgedThreadIds.map((threadId, index) => ({
+            id: `effect:${key}:wedged:${index}`,
+            commandId,
+            threadId,
+            request: { type: "provider-turn.start", runId: RunId.make(`run:${key}:${index}`) },
+          })),
+        );
+        const layerWorker = EffectWorker.layerWithOptions({ workerId: key }).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EffectOutbox.EffectOutboxV2, {
+                ...outbox,
+                succeed: (input) =>
+                  outbox
+                    .succeed(input)
+                    .pipe(Effect.tap(() => Deferred.succeed(otherSettled, undefined))),
+              }),
+              Layer.succeed(EffectWorker.OrchestrationEffectExecutorV2, {
+                execute: (effect) =>
+                  effect.threadId === otherThreadId
+                    ? Effect.void
+                    : Ref.updateAndGet(wedgedCount, (count) => count + 1).pipe(
+                        Effect.flatMap((count) =>
+                          count === wedgedThreadIds.length
+                            ? Deferred.succeed(wedgedStarted, undefined)
+                            : Effect.void,
+                        ),
+                        Effect.andThen(Effect.never),
+                      ),
+              }),
+            ),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          yield* EffectWorker.runDaemonWithOptions().pipe(Effect.forkScoped);
+          yield* Deferred.await(wedgedStarted);
+          yield* outbox.enqueue([
+            {
+              id: `effect:${key}:other`,
+              commandId,
+              threadId: otherThreadId,
+              request: { type: "provider-turn.start", runId: RunId.make(`run:${key}:other`) },
+            },
+            {
+              id: `effect:${key}:blocked`,
+              commandId,
+              threadId: ThreadId.make(`thread:${key}:wedged:0`),
+              request: { type: "provider-turn.start", runId: RunId.make(`run:${key}:blocked`) },
+            },
+          ]);
+          yield* outbox.notifyAvailable();
+          const other = yield* Deferred.await(otherSettled).pipe(
+            Effect.timeoutOption("1 minute"),
+            Effect.forkChild,
+          );
+          yield* TestClock.adjust("1 minute");
+          assert.isTrue(Option.isSome(yield* Fiber.join(other)), "fifth thread never settled");
+          const rows = yield* outbox.listByCommandId(commandId);
+          assert.equal(rows.find((row) => row.id.endsWith(":other"))?.status, "succeeded");
+          assert.equal(rows.find((row) => row.id.endsWith(":blocked"))?.status, "pending");
+          assert.equal(rows.filter((row) => row.status === "running").length, 4);
+        }).pipe(
+          Effect.provide(layerWorker),
+          Effect.scoped,
+          Effect.ensuring(
+            Effect.forEach(
+              [...wedgedThreadIds, otherThreadId],
+              (threadId) =>
+                outbox.cancelUnsettled({
+                  threadId,
+                  effectTypes: ["provider-turn.start"],
+                  reason: "fixture complete",
+                }),
+              { discard: true },
+            ).pipe(Effect.orDie),
+          ),
+        );
+      }),
+  );
+
+  it.effect(
     "persists shutdown continuation intent through the real event sink without domain events",
     () =>
       Effect.gen(function* () {

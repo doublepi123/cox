@@ -26,6 +26,7 @@ import {
 } from "@t3tools/contracts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -33,6 +34,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
@@ -1691,6 +1693,116 @@ describe("OrchestratorMcpService provider resolution", () => {
         assert.equal(request.modelSelection.instanceId, altInstanceId);
       }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
     }),
+  );
+
+  it.effect(
+    "delegate_task wait defaults to four minutes and an explicit timeout overrides it",
+    () =>
+      Effect.gen(function* () {
+        const tasks = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const waitStarted = yield* Queue.unbounded<void>();
+        const nextTask = yield* Ref.make(0);
+        const delegatedTask = (id: NodeId) => ({
+          id,
+          threadId: parentThreadId,
+          runId: parentRunId,
+          parentNodeId,
+          origin: "app_owned",
+          createdBy: "agent",
+          driver: ProviderDriverKind.make("codex"),
+          providerInstanceId: codexInstanceId,
+          providerThreadId: null,
+          childThreadId,
+          nativeTaskRef: null,
+          prompt: "Hold open.",
+          title: null,
+          model: "gpt-5.4",
+          status: "running",
+          result: null,
+          startedAt: null,
+          completedAt: null,
+        });
+        const layerDependencies = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            hasReceipt: () => Effect.succeed(false),
+            getThreadRecords: (threadId) =>
+              threadId === parentThreadId
+                ? Ref.get(tasks).pipe(Effect.map((current) => parentProjection(current)))
+                : Effect.succeed(childProjection),
+            getThreadEventSequence: () => Queue.offer(waitStarted, undefined).pipe(Effect.as(0)),
+            streamStoredEventsFrom: () => Stream.never,
+            delegatedTaskResultPending: () => Effect.succeed(false),
+            dispatch: (command) =>
+              command.type === "delegated_task.request"
+                ? Effect.gen(function* () {
+                    const ordinal = yield* Ref.updateAndGet(nextTask, (count) => count + 1);
+                    const task = delegatedTask(NodeId.make(`node:mcp-wait-${ordinal}`));
+                    yield* Ref.update(tasks, (current) => [...current, task]);
+                    return {
+                      sequence: ordinal,
+                      storedEvents: [
+                        {
+                          sequence: ordinal,
+                          commandId: null,
+                          event: { type: "subagent.updated", payload: task },
+                        },
+                      ],
+                    } as never;
+                  })
+                : Effect.succeed({ sequence: 100, storedEvents: [] } as never),
+          }),
+          providerRegistryLayer([
+            providerSnapshot({
+              instanceId: codexInstanceId,
+              driver: ProviderDriverKind.make("codex"),
+              model: "gpt-5.4",
+            }),
+          ]),
+          adapterRegistryLayer([codexInstanceId]),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          ServerSettings.layerTest(),
+        );
+
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          const defaultWait = yield* service
+            .delegateTask(scope, { task: "Hold open.", mode: "wait" })
+            .pipe(Effect.forkChild);
+          yield* Queue.take(waitStarted);
+          yield* TestClock.adjust(Duration.seconds(241));
+          const defaultExit = defaultWait.pollUnsafe();
+          assert.isDefined(
+            defaultExit,
+            "a default wait was still silent four minutes in, so a Node client drops the task handle",
+          );
+          assert.isTrue(defaultExit?._tag === "Success");
+          const defaultResult = defaultExit?._tag === "Success" ? defaultExit.value : undefined;
+          assert.equal(defaultResult?.taskId, "node:mcp-wait-1");
+          assert.isTrue(defaultResult?.waitTimedOut);
+
+          const explicitWait = yield* service
+            .delegateTask(scope, {
+              task: "Hold open.",
+              mode: "wait",
+              timeoutMs: 10 * 60 * 1_000,
+              clientRequestId: "delegate-wait-explicit",
+            })
+            .pipe(Effect.forkChild);
+          yield* Queue.take(waitStarted);
+          yield* TestClock.adjust(Duration.minutes(5));
+          assert.isUndefined(
+            explicitWait.pollUnsafe(),
+            "an explicit ten-minute wait was cut short at five minutes",
+          );
+          yield* TestClock.adjust(Duration.minutes(5));
+          const explicitResult = yield* Fiber.join(explicitWait);
+          assert.equal(explicitResult.taskId, "node:mcp-wait-2");
+          assert.isTrue(explicitResult.waitTimedOut);
+        }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+      }),
   );
 
   it.effect(

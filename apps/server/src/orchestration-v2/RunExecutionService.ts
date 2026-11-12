@@ -52,6 +52,7 @@ import {
   makeProviderFailureTurnItem,
 } from "@t3tools/provider-core/server/failure";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
+import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import { userFacingDatabaseErrorMessage } from "./UserFacingErrors.ts";
 
@@ -604,6 +605,7 @@ export const layer: Layer.Layer<
   | McpAppModelContext.McpAppModelContext
   | PreviewAgentActivity.PreviewAgentActivity
   | TurnItemPositionStore.TurnItemPositionStoreV2
+  | ThreadCommandExecutor.ThreadCommandExecutor
 > = Layer.effect(
   RunExecutionServiceV2,
   Effect.gen(function* () {
@@ -617,6 +619,7 @@ export const layer: Layer.Layer<
     const previewAgentActivity = yield* PreviewAgentActivity.PreviewAgentActivity;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
+    const threadCommands = yield* ThreadCommandExecutor.ThreadCommandExecutor;
 
     const writeFinalRunEvents = Effect.fn("RunExecutionService.writeFinalRunEvents")(
       function* (input: {
@@ -1046,6 +1049,7 @@ export const layer: Layer.Layer<
           ReadonlySet<OrchestrationV2TurnItem["id"]>
         >(new Set(inheritedBackgroundTurnItemsById.keys()));
         const openRunOwnedSubagents = yield* Ref.make(emptyOpenRunOwnedSubagentProjection());
+        let rootTurnOwnershipChecked = false;
         const finalizeRootRun = Effect.fn("RunExecutionService.finalizeRootRun")(function* (
           terminal: ProviderTerminalEvent,
         ) {
@@ -1398,7 +1402,7 @@ export const layer: Layer.Layer<
             const nativeChildTurn =
               event.type === "provider_turn.updated" &&
               event.providerTurn.providerThreadId !== input.providerThread.id;
-            const storedEvents = yield* providerEventIngestor.ingestNormalized({
+            const ingestDelivered = providerEventIngestor.ingestNormalized({
               analyticsContext: {
                 modelSelection: input.modelSelection,
                 runtimeMode: input.runtimePolicy.runtimeMode,
@@ -1430,7 +1434,47 @@ export const layer: Layer.Layer<
                     }
                 : {}),
             });
-            storedEventCount = storedEvents.length;
+            const startedRootTurn =
+              event.type === "provider_turn.updated" &&
+              event.providerTurn.runAttemptId === input.attempt.id &&
+              event.providerTurn.providerThreadId === input.providerThread.id &&
+              !isTerminalProviderTurnStatus(event.providerTurn.status) &&
+              !rootTurnOwnershipChecked
+                ? event.providerTurn
+                : undefined;
+            const shouldStartProviderTurn = input.shouldStartProviderTurn;
+            if (startedRootTurn !== undefined && shouldStartProviderTurn) {
+              rootTurnOwnershipChecked = true;
+              const [stored, owned] = yield* threadCommands.withLock(
+                input.run.threadId,
+                Effect.all([
+                  ingestDelivered,
+                  shouldStartProviderTurn().pipe(Effect.orElseSucceed(() => true)),
+                ]),
+              );
+              storedEventCount = stored.length;
+              if (!owned) {
+                yield* Ref.get(latestProviderThread).pipe(
+                  Effect.flatMap((providerThread) =>
+                    input.session.interruptTurn({
+                      providerThread,
+                      providerTurnId: startedRootTurn.id,
+                    }),
+                  ),
+                  Effect.catchCauseIf(
+                    (cause) => !Cause.hasInterruptsOnly(cause),
+                    (cause) =>
+                      Effect.logWarning(
+                        "orchestration V2 failed to interrupt a provider turn that started after Stop",
+                        { runId: input.run.id, cause },
+                      ),
+                  ),
+                  Effect.forkIn(scope),
+                );
+              }
+            } else {
+              storedEventCount = (yield* ingestDelivered).length;
+            }
             if (isRootProviderThreadUpdate && rootTerminalAlreadySeen && storedEventCount === 0) {
               yield* Ref.set(providerThreadOwnerLost, true);
             }

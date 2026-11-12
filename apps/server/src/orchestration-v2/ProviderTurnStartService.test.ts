@@ -197,7 +197,7 @@ function startWithMissingWorktree(
 
   const start = Effect.gen(function* () {
     return yield* (yield* ProviderTurnStart.ProviderTurnStartServiceV2)
-      .start({ threadId, runId })
+      .start({ threadId, runId, willRetry: true })
       .pipe(Effect.flip);
   }).pipe(Effect.provide(layer), Effect.runPromise);
   return {
@@ -283,6 +283,7 @@ function makeLocalCommandHarness(input: {
   readonly interruptRunBeforeOpenFailure?: boolean;
   readonly writeFailure?: unknown;
   readonly failReadsAfterRunning?: boolean;
+  readonly recoveryReadFailure?: string;
   readonly previousTurn?: {
     readonly runStatus: "failed" | "completed";
     readonly turnStatus: "running" | "completed" | "interrupted";
@@ -921,14 +922,21 @@ function makeLocalCommandHarness(input: {
           getThreadRecords,
           getTurnStartContext,
           getRuntimeRecoveryProjection: () =>
-            Effect.as(failReadIfRunning, {
-              ...projection,
-              hasConversation: projection.messages.some(
-                (m) =>
-                  m.role === "user" &&
-                  (m.text.trim().toLowerCase() !== "/compact" || m.attachments.length > 0),
-              ),
-            }),
+            input.recoveryReadFailure !== undefined
+              ? Effect.fail(
+                  new ProjectionStore.ProjectionStoreReadError({
+                    threadId,
+                    cause: input.recoveryReadFailure,
+                  }),
+                )
+              : Effect.as(failReadIfRunning, {
+                  ...projection,
+                  hasConversation: projection.messages.some(
+                    (m) =>
+                      m.role === "user" &&
+                      (m.text.trim().toLowerCase() !== "/compact" || m.attachments.length > 0),
+                  ),
+                }),
           getTurnStartHistory: () =>
             input.sideChat !== undefined
               ? Effect.succeed([])
@@ -1615,6 +1623,35 @@ effectIt.effect("terminalizes a starting run when its provider session cannot op
       },
     ]);
   }),
+);
+
+effectIt.effect.each([false, true])(
+  "settles an unreadable recovery state when retry is disabled (willRetry=%s)",
+  (willRetry) =>
+    Effect.gen(function* () {
+      const harness = makeLocalCommandHarness({
+        text: "Continue",
+        recoveryReadFailure: "stored turn item no longer decodes",
+      });
+      const result = yield* Effect.result(willRetry ? harness.startWithRetry : harness.start);
+      expect(result._tag).toBe(willRetry ? "Failure" : "Success");
+      expect(harness.open).not.toHaveBeenCalled();
+      expect(harness.startRootRun).not.toHaveBeenCalled();
+      const projection = harness.projection();
+      expect(projection.runs.at(-1)).toMatchObject({
+        status: willRetry ? "starting" : "failed",
+        startedAt: null,
+      });
+      if (willRetry) {
+        expect(harness.events).toEqual([]);
+      } else {
+        expect(projection.attempts[0]).toMatchObject({ status: "failed", startedAt: null });
+        expect(projection.nodes[0]).toMatchObject({ status: "failed", startedAt: null });
+        expect(projection.turnItems).toMatchObject([
+          { type: "error", title: "Couldn't read thread state", status: "failed" },
+        ]);
+      }
+    }),
 );
 
 effectIt.effect("leaves the run starting when a session-open failure will be retried", () =>

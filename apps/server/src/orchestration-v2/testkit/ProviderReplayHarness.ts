@@ -393,6 +393,7 @@ export function layerWithRegistry<Error>(
         layerProviderEventIngestorProvided,
         layerServerSettings,
         layerStores,
+        ThreadCommandExecutor.layer,
       ),
     ),
   );

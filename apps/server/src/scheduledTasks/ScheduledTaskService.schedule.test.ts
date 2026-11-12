@@ -6,6 +6,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -227,5 +228,166 @@ it.effect(
         yield* TestClock.adjust("60 seconds");
         expect(yield* Deferred.await(launched)).toBe(created.task.title);
       }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect("a fixed-time slot missed while the server was off shows on the task", () =>
+  Effect.gen(function* () {
+    const at = (hour: number, minute = 0, day = 1) =>
+      DateTime.makeZonedUnsafe(
+        { year: 2026, month: 7, day, hour, minute, second: 0, millisecond: 0 },
+        { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+      );
+    yield* TestClock.setTime(DateTime.toEpochMillis(at(8)));
+    const launches = yield* Ref.make(0);
+    const layerDependencies = Layer.mergeAll(
+      NodeCrypto.layer,
+      Scheduler.layer,
+      Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+        launch: () =>
+          Ref.update(launches, (count) => count + 1).pipe(
+            Effect.as({ threadId: "thread-missed-slot", resumed: false } as never),
+          ),
+      }),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      Layer.mock(SecretRequests.SecretRequests)({}),
+    );
+    const withServer = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))),
+      );
+
+    const taskId = yield* withServer(
+      Effect.gen(function* () {
+        const service = yield* ScheduledTaskService.ScheduledTaskService;
+        const { task } = yield* service.upsert(
+          yield* decodeUpsertInput({
+            title: "Morning bookkeeping",
+            prompt: "Update yesterday's notes.",
+            enabled: true,
+            schedule: { type: "fixed_time", timeOfDay: "09:00" },
+            projectId: "project-missed-slot",
+            workspaceStrategy: { type: "root" },
+            modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+          }),
+        );
+        const dispatched = yield* service.runNow({ id: task.id });
+        expect(dispatched.task.lastRunStatus).toBe("succeeded");
+        expect(dispatched.task.lastRunError).toBeNull();
+        return task.id;
+      }),
+    );
+
+    yield* TestClock.setTime(DateTime.toEpochMillis(at(9, 30)));
+    const [listed] = yield* withServer(
+      Effect.gen(function* () {
+        const service = yield* ScheduledTaskService.ScheduledTaskService;
+        yield* TestClock.adjust("6 seconds");
+        return (yield* service.list()).tasks;
+      }),
+    );
+
+    expect(listed?.id).toBe(taskId);
+    expect(yield* Ref.get(launches)).toBe(1);
+    expect(listed?.nextRunAt).toBe(DateTime.formatIso(DateTime.toUtc(at(9, 0, 2))));
+    expect(listed?.lastRunStatus).toBe("failed");
+    expect(listed?.lastRunError).toBe(
+      "Missed a scheduled run because the server was not running at that time.",
+    );
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect(
+  "a run made while the scheduler was busy is not overwritten by its stale missed slot",
+  () =>
+    Effect.gen(function* () {
+      const at = (hour: number, minute = 0, day = 1) =>
+        DateTime.makeZonedUnsafe(
+          { year: 2026, month: 7, day, hour, minute, second: 0, millisecond: 0 },
+          { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+        );
+      yield* TestClock.setTime(DateTime.toEpochMillis(at(6)));
+      const slowStarted = yield* Deferred.make<void>();
+      const releaseSlow = yield* Deferred.make<void>();
+      const lastProcessed = yield* Deferred.make<void>();
+      const layerDependencies = Layer.mergeAll(
+        NodeCrypto.layer,
+        Scheduler.layer,
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+          launch: (input) =>
+            (input.title === "Slow"
+              ? Deferred.succeed(slowStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseSlow)),
+                )
+              : input.title === "Last"
+                ? Deferred.succeed(lastProcessed, undefined)
+                : Effect.void
+            ).pipe(Effect.as({ threadId: `thread-${input.title}`, resumed: false } as never)),
+        }),
+        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+          namedProjectsRoot: "/projects",
+          isScratchProject: () => Effect.succeed(false),
+        }),
+        Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+      );
+      const withServer = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        effect.pipe(
+          Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))),
+        );
+      const upsert = (
+        title: string,
+        schedule: { type: "interval"; everyMs: number } | { type: "fixed_time"; timeOfDay: string },
+      ) =>
+        Effect.gen(function* () {
+          const service = yield* ScheduledTaskService.ScheduledTaskService;
+          const { task } = yield* service.upsert(
+            yield* decodeUpsertInput({
+              title,
+              prompt: "Update the notes.",
+              enabled: true,
+              schedule,
+              projectId: "project-stale-slot",
+              workspaceStrategy: { type: "root" },
+              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+            }),
+          );
+          return task.id;
+        });
+
+      const morningId = yield* withServer(
+        Effect.gen(function* () {
+          yield* upsert("Slow", { type: "interval", everyMs: 60 * 60 * 1000 });
+          const id = yield* upsert("Morning", { type: "fixed_time", timeOfDay: "08:00" });
+          yield* upsert("Last", { type: "interval", everyMs: 150 * 60 * 1000 });
+          return id;
+        }),
+      );
+      yield* TestClock.setTime(DateTime.toEpochMillis(at(9, 30)));
+      const morning = yield* withServer(
+        Effect.gen(function* () {
+          const service = yield* ScheduledTaskService.ScheduledTaskService;
+          yield* TestClock.adjust("6 seconds");
+          yield* Deferred.await(slowStarted);
+          yield* service.runNow({ id: morningId });
+          yield* Deferred.succeed(releaseSlow, undefined);
+          yield* Deferred.await(lastProcessed);
+          return (yield* service.list()).tasks.find((task) => task.id === morningId);
+        }),
+      );
+
+      expect({ status: morning?.lastRunStatus, error: morning?.lastRunError }).toEqual({
+        status: "succeeded",
+        error: null,
+      });
+      expect(morning?.nextRunAt).toBe(DateTime.formatIso(DateTime.toUtc(at(8, 0, 2))));
     }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
