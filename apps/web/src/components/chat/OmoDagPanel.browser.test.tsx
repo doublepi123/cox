@@ -399,6 +399,96 @@ it.each([
   },
 );
 
+it("expands the current run into a larger graph dialog", async () => {
+  using _language = languageScope();
+  state.subagents = [coordinator(graph())];
+  await using screen = await render(
+    <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
+  );
+  const sideViewport = screen.getByRole("region", { name: "Interactive dependency graph" });
+  await expect.element(sideViewport).toBeVisible();
+
+  await screen.getByRole("button", { name: "Expand graph" }).click();
+  const dialog = page.getByRole("dialog", { name: "Mass ULW implementation" });
+  await expect.element(dialog).toBeVisible();
+  const expandedViewport = dialog.getByRole("region", { name: "Interactive dependency graph" });
+  await expect.element(expandedViewport).toBeVisible();
+  const side = sideViewport.element().getBoundingClientRect();
+  await expect
+    .poll(() => expandedViewport.element().getBoundingClientRect().width)
+    .toBeGreaterThan(side.width);
+  await expect
+    .poll(() => expandedViewport.element().getBoundingClientRect().height)
+    .toBeGreaterThan(side.height);
+  expect(dialog.element().querySelectorAll("[data-omo-dag-node]")).toHaveLength(5);
+  expect(dialog.element().textContent).toContain("1/5");
+});
+
+it("shares node selection between the expanded dialog and the side panel", async () => {
+  using _language = languageScope();
+  state.subagents = [coordinator(graph())];
+  await using screen = await render(
+    <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
+  );
+  await screen.getByRole("button", { name: "Expand graph" }).click();
+  const dialog = page.getByRole("dialog", { name: "Mass ULW implementation" });
+  await expect.element(dialog).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Select graph node Audit" }).click();
+  await expect
+    .element(dialog.getByRole("button", { name: "Select graph node Audit" }))
+    .toHaveAttribute("aria-pressed", "true");
+  expect(dialog.element().querySelector("[data-omo-dag-details]")?.textContent).toContain(
+    "Raw native error\n/path/to/file.ts:9",
+  );
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect.element(dialog).not.toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Select graph node Audit" }))
+    .toHaveAttribute("aria-pressed", "true");
+  expect(screen.container.querySelector("[data-omo-dag-details]")?.textContent).toContain(
+    "Raw native error\n/path/to/file.ts:9",
+  );
+});
+
+it("closes the expanded graph with Escape and returns focus to the expand button", async () => {
+  using _language = languageScope();
+  state.subagents = [coordinator(graph())];
+  await using screen = await render(
+    <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
+  );
+  const expand = screen.getByRole("button", { name: "Expand graph" });
+  await expand.click();
+  const dialog = page.getByRole("dialog", { name: "Mass ULW implementation" });
+  await expect.element(dialog).toBeVisible();
+  const viewport = dialog.getByRole("region", { name: "Interactive dependency graph" });
+  await act(() => viewport.element().focus());
+  await userEvent.keyboard("{ArrowRight}");
+  await expect.element(dialog).toBeVisible();
+
+  await userEvent.keyboard("{Escape}");
+  await expect.element(dialog).not.toBeInTheDocument();
+  await expect.element(expand).toHaveFocus();
+});
+
+it("opens the expanded graph on double-click of empty side canvas only", async () => {
+  using _language = languageScope();
+  state.subagents = [coordinator(graph())];
+  await using screen = await render(
+    <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
+  );
+  const viewport = screen.getByRole("region", { name: "Interactive dependency graph" });
+  await expect.element(viewport).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Mass ULW implementation" });
+
+  await userEvent.dblClick(screen.getByRole("button", { name: "Select graph node Audit" }));
+  expect(document.querySelector("[data-omo-dag-expanded]")).toBeNull();
+
+  await userEvent.dblClick(viewport, { position: { x: 4, y: 4 } });
+  await expect.element(dialog).toBeVisible();
+});
+
 it("returns no panel for graph-less workflows", async () => {
   using _language = languageScope();
   const source = coordinator(graph());

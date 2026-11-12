@@ -7,6 +7,7 @@ import {
   type OmoDagRun,
   type OmoDagRunStatus,
 } from "@t3tools/client-runtime/state/omoDag";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
   ProviderDriverKind,
   type EnvironmentId,
@@ -27,8 +28,10 @@ import {
   PauseIcon,
   PlusIcon,
   RotateCcwIcon,
+  ScanIcon,
   SkipForwardIcon,
   WorkflowIcon,
+  XIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -39,12 +42,15 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { isContextMenuOpen } from "../../contextMenuFallback";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../lib/utils";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { useQuietThreadProjection } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import { Button } from "../ui/button";
+import { Dialog, DialogBackdrop, DialogClose } from "../ui/dialog";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import {
@@ -58,6 +64,20 @@ import {
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 const MIN_SCALE = 0.35;
 const MAX_SCALE = 2;
+const PANEL_FIT_SCALE = 1;
+const EXPANDED_FIT_SCALE = 1.6;
+const TOOLBAR_BUTTON_CLASS =
+  "inline-flex size-11 cursor-pointer sm:size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
+
+type GraphPresentation = "graph" | "list";
+type GraphSelection = { readonly runId: string; readonly nodeId: string } | null;
+type GraphViewPresentation =
+  | {
+      readonly kind: "panel";
+      readonly onExpand: () => void;
+      readonly expandButtonId: string;
+    }
+  | { readonly kind: "expanded" };
 
 const NODE_STATUS = {
   pending: { label: "Pending", icon: ClockIcon, tone: "text-muted-foreground" },
@@ -94,6 +114,99 @@ const NODE_CARD_STATUS = {
   cancelled: "border-border/80 bg-muted/25",
   skipped: "border-border/70 bg-muted/20",
 } as const satisfies Record<OmoDagNodeState, string>;
+
+const RUN_STATUS_TONE = {
+  pending: "bg-muted text-muted-foreground",
+  running: "bg-info/10 text-info",
+  paused: "bg-warning/10 text-warning",
+  completed: "bg-success/10 text-success",
+  failed: "bg-destructive/10 text-destructive",
+  cancelled: "bg-muted text-muted-foreground",
+} as const satisfies Record<OmoDagRunStatus, string>;
+
+function selectedGraphNode(run: OmoDagRun, selection: GraphSelection): OmoDagGraphNode | undefined {
+  const selected =
+    selection === null || selection.runId !== run.id
+      ? undefined
+      : run.nodes.find((node) => node.id === selection.nodeId);
+  return selected ?? run.nodes.find((node) => node.state === "running") ?? run.nodes[0];
+}
+
+function RunStatusPill({ status }: { readonly status: OmoDagRunStatus }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium",
+        RUN_STATUS_TONE[status],
+      )}
+    >
+      {t(RUN_STATUS[status])}
+    </span>
+  );
+}
+
+function CompletedCount({ run }: { readonly run: OmoDagRun }) {
+  const { t } = useTranslation();
+  const completed = run.nodes.filter((node) => node.state === "completed").length;
+  return (
+    <span
+      className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-2xs tabular-nums text-muted-foreground"
+      aria-label={t("{completed} of {total} graph nodes completed", {
+        completed,
+        total: run.nodes.length,
+      })}
+    >
+      {completed}/{run.nodes.length}
+    </span>
+  );
+}
+
+function GraphPresentationToggle({
+  view,
+  onChange,
+  className,
+}: {
+  readonly view: GraphPresentation;
+  readonly onChange: (view: GraphPresentation) => void;
+  readonly className?: string;
+}) {
+  const { t } = useTranslation();
+  const buttonClass =
+    "inline-flex h-6 cursor-pointer items-center gap-1 rounded px-1.5 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return (
+    <div
+      className={cn("flex shrink-0 rounded-md bg-muted/65 p-0.5", className)}
+      role="group"
+      aria-label={t("Graph presentation")}
+    >
+      <button
+        type="button"
+        className={cn(
+          buttonClass,
+          view === "graph" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground",
+        )}
+        aria-pressed={view === "graph"}
+        onClick={() => onChange("graph")}
+      >
+        <WorkflowIcon aria-hidden className="size-3" />
+        {t("Graph view")}
+      </button>
+      <button
+        type="button"
+        className={cn(
+          buttonClass,
+          view === "list" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground",
+        )}
+        aria-pressed={view === "list"}
+        onClick={() => onChange("list")}
+      >
+        <ListIcon aria-hidden className="size-3" />
+        {t("List view")}
+      </button>
+    </div>
+  );
+}
 
 function nodeDependencyLabels(run: OmoDagRun, nodeId: string): ReadonlyArray<string> {
   const labels = new Map(run.nodes.map((node) => [node.id, node.label]));
@@ -196,13 +309,17 @@ function GraphView({
   environmentId,
   selectedNodeId,
   onSelect,
+  presentation,
 }: {
   readonly run: OmoDagRun;
   readonly environmentId: EnvironmentId;
   readonly selectedNodeId: string | undefined;
   readonly onSelect: (nodeId: string) => void;
+  readonly presentation: GraphViewPresentation;
 }) {
   const { t } = useTranslation();
+  const expanded = presentation.kind === "expanded";
+  const maxFitScale = expanded ? EXPANDED_FIT_SCALE : PANEL_FIT_SCALE;
   const viewportRef = useRef<HTMLDivElement>(null);
   const layout = layoutOmoDag(run);
   const layoutRef = useRef(layout);
@@ -223,7 +340,7 @@ function GraphView({
     const height = viewport.clientHeight;
     if (width <= 0 || height <= 0) return;
     const scale = Math.min(
-      1,
+      maxFitScale,
       Math.max(MIN_SCALE, Math.min((width - 16) / current.width, (height - 16) / current.height)),
     );
     const scaledWidth = current.width * scale;
@@ -233,7 +350,7 @@ function GraphView({
       x: scaledWidth < width ? (width - scaledWidth) / 2 : 8,
       y: scaledHeight < height ? (height - scaledHeight) / 2 : 8,
     });
-  }, []);
+  }, [maxFitScale]);
 
   const resetView = useCallback(() => {
     const viewport = viewportRef.current;
@@ -324,20 +441,25 @@ function GraphView({
   };
 
   return (
-    <div className="min-w-0 px-2.5 pb-2">
+    <div
+      className={cn(
+        "min-w-0",
+        expanded ? "flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4" : "px-2.5 pb-2",
+      )}
+    >
       <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1">
         <button
           type="button"
-          className="inline-flex size-11 cursor-pointer sm:size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className={TOOLBAR_BUTTON_CLASS}
           aria-label={t("Fit graph")}
           title={t("Fit graph")}
           onClick={fitView}
         >
-          <Maximize2Icon aria-hidden className="size-3.5" />
+          <ScanIcon aria-hidden className="size-3.5" />
         </button>
         <button
           type="button"
-          className="inline-flex size-11 cursor-pointer sm:size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className={TOOLBAR_BUTTON_CLASS}
           aria-label={t("Zoom graph out")}
           title={t("Zoom graph out")}
           onClick={() => zoom(1 / 1.2)}
@@ -352,7 +474,7 @@ function GraphView({
         </span>
         <button
           type="button"
-          className="inline-flex size-11 cursor-pointer sm:size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className={TOOLBAR_BUTTON_CLASS}
           aria-label={t("Zoom graph in")}
           title={t("Zoom graph in")}
           onClick={() => zoom(1.2)}
@@ -361,13 +483,25 @@ function GraphView({
         </button>
         <button
           type="button"
-          className="inline-flex size-11 cursor-pointer sm:size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className={TOOLBAR_BUTTON_CLASS}
           aria-label={t("Reset graph view")}
           title={t("Reset graph view")}
           onClick={resetView}
         >
           <RotateCcwIcon aria-hidden className="size-3.5" />
         </button>
+        {presentation.kind === "panel" ? (
+          <button
+            id={presentation.expandButtonId}
+            type="button"
+            className={cn(TOOLBAR_BUTTON_CLASS, "ml-auto")}
+            aria-label={t("Expand graph")}
+            title={t("Expand graph")}
+            onClick={presentation.onExpand}
+          >
+            <Maximize2Icon aria-hidden className="size-3.5" />
+          </button>
+        ) : null}
       </div>
       <p id={instructionsId} className="sr-only">
         {t("Use arrow keys to pan. Use plus or minus to zoom. Press F to fit and 0 to reset.")}
@@ -382,8 +516,19 @@ function GraphView({
         data-scale={transform.scale}
         data-pan-x={transform.x}
         data-pan-y={transform.y}
-        className="relative h-72 min-w-0 cursor-grab touch-none overflow-hidden rounded-lg border border-border/70 bg-muted/15 outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing sm:h-80"
+        className={cn(
+          "relative min-w-0 cursor-grab touch-none overflow-hidden rounded-lg border border-border/70 bg-muted/15 outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
+          expanded ? "min-h-0 flex-1" : "h-72 sm:h-80",
+        )}
         onPointerDown={onPointerDown}
+        onDoubleClick={
+          presentation.kind === "panel"
+            ? (event) => {
+                if (event.target instanceof Element && event.target.closest("a, button")) return;
+                presentation.onExpand();
+              }
+            : undefined
+        }
         onPointerMove={onPointerMove}
         onPointerUp={stopPointerPan}
         onPointerCancel={stopPointerPan}
@@ -580,17 +725,22 @@ function GraphListView({
   environmentId,
   selectedNodeId,
   onSelect,
+  variant,
 }: {
   readonly run: OmoDagRun;
   readonly environmentId: EnvironmentId;
   readonly selectedNodeId: string | undefined;
   readonly onSelect: (nodeId: string) => void;
+  readonly variant: "panel" | "expanded";
 }) {
   const { t } = useTranslation();
   const layout = layoutOmoDag(run);
   return (
     <div
-      className="max-h-80 min-w-0 overflow-y-auto overscroll-contain px-2.5 pb-2"
+      className={cn(
+        "min-w-0 overflow-y-auto overscroll-contain",
+        variant === "expanded" ? "min-h-0 flex-1 px-3 pb-3 sm:px-4" : "max-h-80 px-2.5 pb-2",
+      )}
       data-omo-dag-list
     >
       {layout.waves.map((wave) => (
@@ -623,9 +773,11 @@ function GraphListView({
 function GraphNodeDetails({
   run,
   node,
+  variant,
 }: {
   readonly run: OmoDagRun;
   readonly node: OmoDagGraphNode;
+  readonly variant: "panel" | "expanded";
 }) {
   const { t } = useTranslation();
   const dependencies = nodeDependencyLabels(run, node.id);
@@ -648,7 +800,12 @@ function GraphNodeDetails({
   ];
   return (
     <div
-      className="mx-2.5 mb-1 max-h-64 min-w-0 overflow-y-auto overscroll-contain rounded-lg border border-border/65 bg-muted/15 px-2.5 py-2"
+      className={cn(
+        "min-w-0 overflow-y-auto overscroll-contain",
+        variant === "expanded"
+          ? "max-h-[45%] min-h-0 flex-none border-t border-border/70 px-4 py-3 lg:max-h-none lg:w-[22rem] lg:border-t-0 lg:border-l"
+          : "mx-2.5 mb-1 max-h-64 rounded-lg border border-border/65 bg-muted/15 px-2.5 py-2",
+      )}
       aria-label={t("Graph node details")}
       data-omo-dag-details
     >
@@ -679,6 +836,92 @@ function GraphNodeDetails({
   );
 }
 
+function ExpandedGraphContent({
+  run,
+  environmentId,
+  selectedNode,
+  onSelect,
+  onClose,
+}: {
+  readonly run: OmoDagRun;
+  readonly environmentId: EnvironmentId;
+  readonly selectedNode: OmoDagGraphNode | undefined;
+  readonly onSelect: (nodeId: string) => void;
+  readonly onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [view, setView] = useState<GraphPresentation>("graph");
+  return (
+    <>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <DialogPrimitive.Title
+            className="min-w-0 truncate text-sm font-semibold text-foreground"
+            title={run.name}
+          >
+            {run.name}
+          </DialogPrimitive.Title>
+          <RunStatusPill status={run.status} />
+          <CompletedCount run={run} />
+        </div>
+        <GraphPresentationToggle
+          view={view}
+          onChange={setView}
+          className="order-last max-sm:w-full max-sm:justify-center sm:order-none"
+        />
+        <DialogClose aria-label={t("Close")} render={<Button size="icon" variant="ghost" />}>
+          <XIcon />
+        </DialogClose>
+      </div>
+      {run.truncated ? (
+        <p className="border-b border-border/70 px-4 py-1.5 text-2xs text-warning">
+          {t("This graph is truncated. Some nodes may be omitted.")}
+        </p>
+      ) : null}
+      <div
+        className="flex min-h-0 flex-1 flex-col lg:flex-row"
+        onClick={(event) => {
+          if (
+            event.button === 0 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.shiftKey &&
+            !event.altKey &&
+            event.target instanceof Element &&
+            event.target.closest("a[href]")
+          ) {
+            onClose();
+          }
+        }}
+      >
+        <div className="flex min-h-[55%] min-w-0 flex-1 flex-col pt-3 lg:min-h-0">
+          {view === "graph" ? (
+            <GraphView
+              key={`${run.id}:${omoDagLayoutSignature(run)}`}
+              run={run}
+              environmentId={environmentId}
+              selectedNodeId={selectedNode?.id}
+              onSelect={onSelect}
+              presentation={{ kind: "expanded" }}
+            />
+          ) : (
+            <GraphListView
+              run={run}
+              environmentId={environmentId}
+              selectedNodeId={selectedNode?.id}
+              onSelect={onSelect}
+              variant="expanded"
+            />
+          )}
+        </div>
+        {selectedNode ? (
+          <GraphNodeDetails run={run} node={selectedNode} variant="expanded" />
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 function OmoDagRunsPanel({
   runs,
   environmentId,
@@ -692,38 +935,29 @@ function OmoDagRunsPanel({
 }) {
   const { t } = useTranslation();
   const [selectedRunId, setSelectedRunId] = useState(runs[0]!.id);
-  const [selection, setSelection] = useState<{ runId: string; nodeId: string } | null>(null);
-  const [view, setView] = useState<"graph" | "list">("graph");
+  const [selection, setSelection] = useState<GraphSelection>(null);
+  const [view, setView] = useState<GraphPresentation>("graph");
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const expandButtonId = useId();
   const run = runs.find((candidate) => candidate.id === selectedRunId) ?? runs[0]!;
-  const stateSelection =
-    selection === null || selection.runId !== run.id
-      ? undefined
-      : run.nodes.find((node) => node.id === selection.nodeId);
-  const selectedNode =
-    stateSelection ?? run.nodes.find((node) => node.state === "running") ?? run.nodes[0];
+  const expandedRun =
+    expandedRunId === null ? undefined : runs.find((candidate) => candidate.id === expandedRunId);
+  if (expandedRunId !== null && expandedRun === undefined) {
+    setExpandedRunId(null);
+  }
+  const selectedNode = selectedGraphNode(run, selection);
   const provider = providers.find((candidate) => candidate.instanceId === run.providerInstanceId);
   const providerEntry = deriveProviderInstanceEntries(providers).find(
     (candidate) => candidate.instanceId === run.providerInstanceId,
   );
-  const completedCount = run.nodes.filter((node) => node.state === "completed").length;
-  const statusLabel = t(RUN_STATUS[run.status]);
   const onSelect = (nodeId: string) => setSelection({ runId: run.id, nodeId });
+  const closeExpanded = () => setExpandedRunId(null);
   return (
     <ThreadDetailsSection
       headingId={`thread-details-omo-dag-${threadId}`}
       title={t("Dependency graph")}
       data-omo-dag-panel
-      actions={
-        <span
-          className="rounded-full bg-muted px-1.5 py-0.5 text-2xs tabular-nums text-muted-foreground"
-          aria-label={t("{completed} of {total} graph nodes completed", {
-            completed: completedCount,
-            total: run.nodes.length,
-          })}
-        >
-          {completedCount}/{run.nodes.length}
-        </span>
-      }
+      actions={<CompletedCount run={run} />}
     >
       <div className="min-w-0 px-2.5 pb-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -752,22 +986,7 @@ function OmoDagRunsPanel({
               </option>
             ))}
           </select>
-          <span
-            className={cn(
-              "shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium",
-              run.status === "failed"
-                ? "bg-destructive/10 text-destructive"
-                : run.status === "completed"
-                  ? "bg-success/10 text-success"
-                  : run.status === "paused"
-                    ? "bg-warning/10 text-warning"
-                    : run.status === "running"
-                      ? "bg-info/10 text-info"
-                      : "bg-muted text-muted-foreground",
-            )}
-          >
-            {statusLabel}
-          </span>
+          <RunStatusPill status={run.status} />
         </div>
         <div className="mt-1.5 flex min-w-0 flex-wrap items-center justify-between gap-1.5">
           <span
@@ -778,36 +997,7 @@ function OmoDagRunsPanel({
             {" · "}
             {t("Generation {generation}", { generation: run.generation })}
           </span>
-          <div
-            className="flex shrink-0 rounded-md bg-muted/65 p-0.5"
-            role="group"
-            aria-label={t("Graph presentation")}
-          >
-            <button
-              type="button"
-              className={cn(
-                "inline-flex h-6 cursor-pointer items-center gap-1 rounded px-1.5 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                view === "graph" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground",
-              )}
-              aria-pressed={view === "graph"}
-              onClick={() => setView("graph")}
-            >
-              <WorkflowIcon aria-hidden className="size-3" />
-              {t("Graph view")}
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "inline-flex h-6 cursor-pointer items-center gap-1 rounded px-1.5 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                view === "list" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground",
-              )}
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
-            >
-              <ListIcon aria-hidden className="size-3" />
-              {t("List view")}
-            </button>
-          </div>
+          <GraphPresentationToggle view={view} onChange={setView} />
         </div>
         {run.truncated ? (
           <p className="mt-1.5 text-2xs text-warning">
@@ -822,6 +1012,11 @@ function OmoDagRunsPanel({
           environmentId={environmentId}
           selectedNodeId={selectedNode?.id}
           onSelect={onSelect}
+          presentation={{
+            kind: "panel",
+            onExpand: () => setExpandedRunId(run.id),
+            expandButtonId,
+          }}
         />
       ) : (
         <GraphListView
@@ -829,9 +1024,43 @@ function OmoDagRunsPanel({
           environmentId={environmentId}
           selectedNodeId={selectedNode?.id}
           onSelect={onSelect}
+          variant="panel"
         />
       )}
-      {selectedNode ? <GraphNodeDetails run={run} node={selectedNode} /> : null}
+      {selectedNode ? <GraphNodeDetails run={run} node={selectedNode} variant="panel" /> : null}
+      <Dialog
+        open={expandedRun !== undefined}
+        onOpenChange={(open, eventDetails) => {
+          if (open) return;
+          if (eventDetails.reason === "escape-key" && isContextMenuOpen()) {
+            eventDetails.cancel();
+            return;
+          }
+          closeExpanded();
+        }}
+      >
+        <DialogPrimitive.Portal>
+          <DialogBackdrop />
+          <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-center justify-center">
+            <DialogPrimitive.Popup
+              finalFocus={() => document.getElementById(expandButtonId)}
+              data-slot="dialog-popup"
+              data-omo-dag-expanded
+              className="relative flex h-[90vh] w-[94vw] min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border bg-popover text-popover-foreground shadow-2xl/40 outline-none transition-[opacity,scale] duration-150 ease-out [-webkit-app-region:no-drag] data-ending-style:scale-[0.985] data-ending-style:opacity-0 data-starting-style:scale-[0.985] data-starting-style:opacity-0 max-sm:size-full max-sm:rounded-none max-sm:border-0 max-sm:pt-safe max-sm:pr-safe max-sm:pb-safe max-sm:pl-safe"
+            >
+              {expandedRun ? (
+                <ExpandedGraphContent
+                  run={expandedRun}
+                  environmentId={environmentId}
+                  selectedNode={selectedGraphNode(expandedRun, selection)}
+                  onSelect={(nodeId) => setSelection({ runId: expandedRun.id, nodeId })}
+                  onClose={closeExpanded}
+                />
+              ) : null}
+            </DialogPrimitive.Popup>
+          </DialogPrimitive.Viewport>
+        </DialogPrimitive.Portal>
+      </Dialog>
     </ThreadDetailsSection>
   );
 }

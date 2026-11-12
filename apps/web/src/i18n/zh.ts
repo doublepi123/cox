@@ -4012,4 +4012,5 @@ export const zh = {
   "Deleting the thread also deletes this task.": "删除对话也会删除此任务。",
   "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.":
     "引用 {label} 的凭据字段和 Agent 环境变量将被清除；外部凭据库中的密钥不会改动。",
+  "Expand graph": "放大查看依赖图",
 } as const;

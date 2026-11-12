@@ -4157,4 +4157,5 @@ export const en = {
   "Deleting the thread also deletes this task.": "Deleting the thread also deletes this task.",
   "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.":
     "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.",
+  "Expand graph": "Expand graph",
 } as const;
