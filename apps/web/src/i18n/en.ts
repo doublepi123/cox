@@ -535,6 +535,13 @@ export const en = {
   "Comma-separated levels supported by this channel. Leave blank if unknown.":
     "Comma-separated levels supported by this channel. Leave blank if unknown.",
   "Save model": "Save model",
+  "Edit model {model}": "Edit model {model}",
+  "Clear models": "Clear models",
+  "Clear all {count} models?": "Clear all {count} models?",
+  "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.":
+    "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.",
+  "These agents use this service: {agents}. Unbind them before clearing its models.":
+    "These agents use this service: {agents}. Unbind them before clearing its models.",
   "Image input": "Image input",
   "Tool calling": "Tool calling",
   "No longer advertised by the service": "No longer advertised by the service",

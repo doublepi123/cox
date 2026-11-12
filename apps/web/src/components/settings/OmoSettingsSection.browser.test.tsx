@@ -77,9 +77,34 @@ async function sizedViewport(width: number) {
   };
 }
 
+function expectSeparatedRoleCards(group: Element) {
+  const cards = Array.from(group.querySelectorAll<HTMLElement>('[role="group"]'));
+  for (const [index, card] of cards.entries()) {
+    const style = getComputedStyle(card);
+    const box = card.getBoundingClientRect();
+    const header = document.getElementById(card.getAttribute("aria-labelledby")!)!;
+    expect(header.textContent).not.toBe("");
+    expect(Number.parseFloat(getComputedStyle(header).fontWeight)).toBeGreaterThanOrEqual(600);
+    expect(Number.parseFloat(style.borderTopWidth)).toBe(1);
+    expect(Number.parseFloat(style.borderRightWidth)).toBe(1);
+    expect(Number.parseFloat(style.borderBottomWidth)).toBe(1);
+    expect(Number.parseFloat(style.borderLeftWidth)).toBe(1);
+    expect(style.borderTopStyle).toBe("solid");
+    expect(style.borderTopColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(style.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(Number.parseFloat(style.borderTopLeftRadius)).toBeGreaterThanOrEqual(8);
+    expect(Number.parseFloat(style.paddingLeft)).toBeGreaterThanOrEqual(12);
+    expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth);
+    if (index > 0) {
+      expect(box.top - cards[index - 1]!.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(12);
+    }
+  }
+  return cards;
+}
+
 describe("OMO native roles", () => {
   it.each([640, 900])(
-    "fits ten agents in compact, separated three-column rows at %spx",
+    "separates agent and category cards with aligned three-column controls at %spx",
     async (width) => {
       setLanguagePreference("en");
       await using _viewport = await sizedViewport(1280);
@@ -94,46 +119,49 @@ describe("OMO native roles", () => {
         />,
         { container },
       );
-      const agents = screen.getByRole("group", { name: "Agents", exact: true }).element();
-      const rows = Array.from(agents.querySelectorAll<HTMLElement>('[role="group"]'));
-      expect(rows).toHaveLength(10);
-      const heading = rows[0]!.previousElementSibling!;
-      expect(getComputedStyle(heading).display).toBe("grid");
-      expect(Array.from(heading.children, (element) => element.textContent)).toEqual([
-        "Role",
-        "Model",
-        "Thinking strength",
-      ]);
-      const columns = Array.from(heading.children, (element) => element.getBoundingClientRect());
-      for (const [index, row] of rows.entries()) {
-        const label = row.querySelector<HTMLElement>(":scope > span")!;
-        const model = row.querySelector<HTMLSelectElement>("select")!;
-        const strength = row.querySelector<HTMLSelectElement>(
-          'select[aria-label$="thinking strength"]',
-        )!;
-        const rowBox = row.getBoundingClientRect();
-        const roleBox = label.getBoundingClientRect();
-        const modelBox = model.getBoundingClientRect();
-        const strengthBox = strength.getBoundingClientRect();
-        expect(getComputedStyle(row).gridTemplateColumns.split(" ")).toHaveLength(3);
-        expect(roleBox.width).toBeLessThanOrEqual(160);
-        expect(roleBox.width / rowBox.width).toBeLessThan(0.3);
-        expect(Math.abs(roleBox.left - columns[0]!.left)).toBeLessThan(1);
-        expect(Math.abs(modelBox.left - columns[1]!.left)).toBeLessThan(1);
-        expect(Math.abs(strengthBox.left - columns[2]!.left)).toBeLessThan(1);
-        expect(modelBox.left).toBeGreaterThan(roleBox.right);
-        expect(strengthBox.left).toBeGreaterThan(modelBox.right);
-        expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
-        expect(modelBox.height).toBeGreaterThanOrEqual(44);
-        expect(strengthBox.height).toBeGreaterThanOrEqual(44);
-        expect(rowBox.height).toBeLessThanOrEqual(64);
-        if (index < rows.length - 1) {
-          expect(Number.parseFloat(getComputedStyle(row).borderBottomWidth)).toBe(1);
+      await screen.getByRole("button", { name: /Categories/ }).click();
+      for (const [title, count] of [
+        ["Agents", 10],
+        ["Categories", 8],
+      ] as const) {
+        const group = screen.getByRole("group", { name: title, exact: true }).element();
+        const rows = expectSeparatedRoleCards(group);
+        expect(rows).toHaveLength(count);
+        const heading = rows[0]!.previousElementSibling!;
+        expect(getComputedStyle(heading).display).toBe("grid");
+        expect(Array.from(heading.children, (element) => element.textContent)).toEqual([
+          "Role",
+          "Model",
+          "Thinking strength",
+        ]);
+        const columns = Array.from(heading.children, (element) => element.getBoundingClientRect());
+        for (const row of rows) {
+          const label = row.querySelector<HTMLElement>(":scope > span")!;
+          const model = row.querySelector<HTMLSelectElement>("select")!;
+          const strength = row.querySelector<HTMLSelectElement>(
+            'select[aria-label$="thinking strength"]',
+          )!;
+          const rowBox = row.getBoundingClientRect();
+          const roleBox = label.getBoundingClientRect();
+          const modelBox = model.getBoundingClientRect();
+          const strengthBox = strength.getBoundingClientRect();
+          expect(getComputedStyle(row).gridTemplateColumns.split(" ")).toHaveLength(3);
+          expect(roleBox.width).toBeLessThanOrEqual(160);
+          expect(roleBox.width / rowBox.width).toBeLessThan(0.3);
+          expect(Math.abs(roleBox.left - columns[0]!.left)).toBeLessThan(1);
+          expect(Math.abs(modelBox.left - columns[1]!.left)).toBeLessThan(1);
+          expect(Math.abs(strengthBox.left - columns[2]!.left)).toBeLessThan(1);
+          expect(modelBox.left).toBeGreaterThan(roleBox.right);
+          expect(strengthBox.left).toBeGreaterThan(modelBox.right);
+          expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
+          expect(modelBox.height).toBeGreaterThanOrEqual(44);
+          expect(strengthBox.height).toBeGreaterThanOrEqual(44);
+          expect(rowBox.height).toBeLessThanOrEqual(72);
         }
+        expect(
+          rows.at(-1)!.getBoundingClientRect().bottom - rows[0]!.getBoundingClientRect().top,
+        ).toBeLessThanOrEqual(840);
       }
-      expect(
-        rows.at(-1)!.getBoundingClientRect().bottom - rows[0]!.getBoundingClientRect().top,
-      ).toBeLessThanOrEqual(640);
       expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
       await screen
         .getByRole("combobox", { name: "oracle", exact: true })
@@ -142,6 +170,46 @@ describe("OMO native roles", () => {
       await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeEnabled();
     },
   );
+
+  it("keeps role card boundaries and headers themed in light and dark mode", async () => {
+    setLanguagePreference("en");
+    await using _viewport = await sizedViewport(390);
+    await using screen = await render(
+      <OmoSettingsSection
+        instance={instance}
+        models={models}
+        readOnly={false}
+        onUpdate={vi.fn()}
+      />,
+    );
+    await screen.getByRole("button", { name: /Categories/ }).click();
+    const root = document.documentElement;
+    const originalDark = root.classList.contains("dark");
+    const colors: { border: string; background: string; header: string }[] = [];
+    try {
+      for (const dark of [false, true]) {
+        root.classList.toggle("dark", dark);
+        for (const title of ["Agents", "Categories"]) {
+          expectSeparatedRoleCards(
+            screen.getByRole("group", { name: title, exact: true }).element(),
+          );
+        }
+        const card = screen.getByRole("group", { name: "sisyphus", exact: true }).element();
+        const style = getComputedStyle(card);
+        const header = card.querySelector<HTMLElement>(":scope > span")!;
+        colors.push({
+          border: style.borderTopColor,
+          background: style.backgroundColor,
+          header: getComputedStyle(header).color,
+        });
+      }
+      expect(colors[0]!.border).not.toBe(colors[1]!.border);
+      expect(colors[0]!.background).not.toBe(colors[1]!.background);
+      expect(colors[0]!.header).not.toBe(colors[1]!.header);
+    } finally {
+      root.classList.toggle("dark", originalDark);
+    }
+  });
 
   it.each([
     { width: 320, language: "en" as const },
@@ -154,6 +222,7 @@ describe("OMO native roles", () => {
       await using _viewport = await sizedViewport(width);
       const save = vi.fn();
       const customRole = `custom_${"a".repeat(57)}`;
+      const customCategory = `category_${"b".repeat(55)}`;
       const longModels = models.map((model) => ({
         ...model,
         name: "LongModelName".repeat(40),
@@ -177,7 +246,7 @@ describe("OMO native roles", () => {
       const agents = screen
         .getByRole("group", { name: language === "zh" ? "Agent" : "Agents", exact: true })
         .element();
-      const rows = Array.from(agents.querySelectorAll<HTMLElement>('[role="group"]'));
+      const rows = expectSeparatedRoleCards(agents);
       expect(rows).toHaveLength(11);
       expect(getComputedStyle(rows[0]!.previousElementSibling!).display).toBe("none");
       for (const row of rows) {
@@ -191,6 +260,7 @@ describe("OMO native roles", () => {
         expect(labels.map((element) => element.textContent)).toEqual(
           language === "zh" ? ["模型", "思考强度"] : ["Model", "Thinking strength"],
         );
+        expect(Number.parseFloat(getComputedStyle(label).borderBottomWidth)).toBe(1);
         expect(label.getBoundingClientRect().bottom).toBeLessThan(modelBox.top);
         expect(Math.abs(modelBox.top - strengthBox.top)).toBeLessThan(1);
         expect(strengthBox.left).toBeGreaterThan(modelBox.right);
@@ -243,6 +313,29 @@ describe("OMO native roles", () => {
       await screen
         .getByRole("button", { name: language === "zh" ? "类别" : "Categories", exact: false })
         .click();
+      const categories = screen.getByRole("group", {
+        name: language === "zh" ? "类别" : "Categories",
+        exact: true,
+      });
+      await categories
+        .getByRole("textbox", { name: language === "zh" ? "类别角色名称" : "Categories role name" })
+        .fill(customCategory);
+      await categories
+        .getByRole("button", { name: language === "zh" ? "添加角色" : "Add role", exact: true })
+        .click();
+      const categoryCards = expectSeparatedRoleCards(categories.element());
+      expect(categoryCards).toHaveLength(9);
+      for (const card of categoryCards) {
+        const header = card.querySelector<HTMLElement>(":scope > span")!;
+        const model = card.querySelector("select")!;
+        expect(header.getBoundingClientRect().bottom).toBeLessThan(
+          model.getBoundingClientRect().top,
+        );
+        expect(Number.parseFloat(getComputedStyle(header).borderBottomWidth)).toBe(1);
+      }
+      await screen
+        .getByRole("combobox", { name: customCategory, exact: true })
+        .selectOptions("cox/other");
       await screen.getByRole("combobox", { name: "quick", exact: true }).selectOptions("cox/other");
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
       await screen
@@ -253,7 +346,7 @@ describe("OMO native roles", () => {
           config: expect.objectContaining({
             agentModels: { oracle: "cox/other", [customRole]: "cox/other" },
             agentReasoning: { oracle: "low" },
-            categoryModels: { quick: "cox/other" },
+            categoryModels: { quick: "cox/other", [customCategory]: "cox/other" },
           }),
         }),
       );
@@ -319,6 +412,9 @@ describe("OMO native roles", () => {
           readOnly={false}
           onUpdate={save}
         />,
+      );
+      expectSeparatedRoleCards(
+        screen.getByRole("group", { name: "Agents", exact: true }).element(),
       );
       const group = screen.getByRole("group", { name: "oracle", exact: true });
       const model = group.getByRole("textbox", { name: "oracle", exact: true });

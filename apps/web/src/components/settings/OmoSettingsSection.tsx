@@ -185,10 +185,10 @@ function RoleModelFields({
                 placeholder={t("Search roles")}
               />
             </label>
-            <div className="min-w-0 divide-y divide-border/60">
+            <div className="grid min-w-0 gap-3">
               <div
                 aria-hidden="true"
-                className="hidden min-w-0 grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)] gap-3 py-2 text-xs font-medium text-muted-foreground @min-[36rem]:grid"
+                className="hidden min-w-0 grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)] gap-3 border border-transparent px-3 py-2 text-xs font-medium text-muted-foreground @min-[36rem]:grid"
               >
                 <span>{t("Role")}</span>
                 <span>{t("Model")}</span>
@@ -209,11 +209,11 @@ function RoleModelFields({
                       key={role}
                       role="group"
                       aria-labelledby={`${id}-${index}-role`}
-                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-2 gap-y-1.5 py-2 text-sm @min-[36rem]:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)] @min-[36rem]:gap-x-3"
+                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm @min-[36rem]:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,12rem)]"
                     >
                       <span
                         id={`${id}-${index}-role`}
-                        className="col-span-2 min-w-0 font-medium [overflow-wrap:anywhere] @min-[36rem]:col-span-1 @min-[36rem]:pt-3"
+                        className="col-span-2 min-w-0 border-b border-border/60 pb-2 font-semibold text-foreground [overflow-wrap:anywhere] @min-[36rem]:col-span-1 @min-[36rem]:border-0 @min-[36rem]:pt-3 @min-[36rem]:pb-0"
                       >
                         {role}
                       </span>
@@ -228,7 +228,7 @@ function RoleModelFields({
                           <select
                             id={`${id}-${index}`}
                             aria-label={role}
-                            className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
+                            className="min-h-11 w-full min-w-0 max-w-full truncate rounded-md border border-input bg-background px-2"
                             aria-invalid={unavailable || undefined}
                             aria-describedby={unavailable ? `${id}-${index}-error` : undefined}
                             value={slug}
@@ -286,7 +286,7 @@ function RoleModelFields({
                         <select
                           id={`${id}-${index}-reasoning`}
                           aria-label={t("{role} thinking strength", { role })}
-                          className="min-h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2"
+                          className="min-h-11 w-full min-w-0 max-w-full truncate rounded-md border border-input bg-background px-2"
                           aria-invalid={unsupported || undefined}
                           aria-describedby={
                             unsupported ? `${id}-${index}-reasoning-error` : undefined

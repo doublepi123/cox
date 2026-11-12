@@ -15,7 +15,7 @@ export function modelRemovalBlockingAgents(
   return modelsRemovalBlockingAgents(serviceId, service, new Set([modelId]), instances);
 }
 
-function modelsRemovalBlockingAgents(
+export function modelsRemovalBlockingAgents(
   serviceId: ModelServiceId,
   service: ModelServiceConfig,
   modelIds: ReadonlySet<string>,

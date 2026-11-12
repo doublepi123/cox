@@ -487,6 +487,13 @@ export const zh = {
   "Comma-separated levels supported by this channel. Leave blank if unknown.":
     "填写渠道支持的档位，以逗号分隔；不确定时留空。",
   "Save model": "保存模型",
+  "Edit model {model}": "编辑模型 {model}",
+  "Clear models": "清空模型",
+  "Clear all {count} models?": "清空全部 {count} 个模型？",
+  "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.":
+    "清空此服务本地目录中的全部模型，包括手动添加和已忽略的模型。保留服务地址、凭据及其他服务。刷新后可重新获取服务列出的模型。",
+  "These agents use this service: {agents}. Unbind them before clearing its models.":
+    "这些助手正在使用此服务：{agents}。清空模型前，请先解除它们的绑定。",
   "Image input": "图片输入",
   "Tool calling": "工具调用",
   "No longer advertised by the service": "服务已不再列出此模型",

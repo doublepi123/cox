@@ -28,6 +28,7 @@ import {
   Layers3Icon,
   MoreHorizontalIcon,
   PlusIcon,
+  PencilIcon,
   RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { ModelServiceRecoverySettings } from "./ModelServiceRecoverySettings";
 import {
   modelRemovalBlockingAgents,
+  modelsRemovalBlockingAgents,
   unlistedModelRemovalPlan,
 } from "./ModelServicesSettingsPanel.logic";
 
@@ -259,8 +261,13 @@ function ModelServiceEditor({
     readonly revision: number;
   } | null>(null);
   const [cleanupResult, setCleanupResult] = useState<number | null>(null);
+  const [clearingModels, setClearingModels] = useState<{
+    readonly revision: number;
+    readonly modelIds: readonly string[];
+  } | null>(null);
   const cancelModelRemoval = useRef<HTMLButtonElement>(null);
   const cancelUnlistedRemoval = useRef<HTMLButtonElement>(null);
+  const cancelClearModels = useRef<HTMLButtonElement>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const bound = Object.values(settings.providerInstances).filter(
     (instance) => instance.modelService?.serviceId === id,
@@ -284,6 +291,19 @@ function ModelServiceEditor({
     removingModel !== null &&
     models.some((model) => model.id === removingModel.id) &&
     removalBlockers.length === 0;
+  const clearBlockers = service
+    ? modelsRemovalBlockingAgents(
+        id,
+        service,
+        new Set(models.map((model) => model.id)),
+        settings.providerInstances,
+      )
+    : [];
+  const clearChanged =
+    clearingModels !== null &&
+    (service?.revision !== clearingModels.revision ||
+      models.length !== clearingModels.modelIds.length ||
+      models.some((model, index) => model.id !== clearingModels.modelIds[index]));
   const failed = new Set(
     [...tests.results]
       .filter(([, result]) => !result.ok && result.revision === service?.revision)
@@ -322,6 +342,26 @@ function ModelServiceEditor({
     }
     running.current = false;
     setBusy(false);
+  }
+  function saveModel(model: ModelServiceModel) {
+    if (readOnly || !service || !modelEditor) return;
+    const previousId = modelEditor === "new" ? null : modelEditor.id;
+    void run(async () => {
+      const nextModels =
+        previousId === null
+          ? [...models.filter((entry) => entry.id !== model.id), model]
+          : models
+              .filter((entry) => entry.id !== model.id || entry.id === previousId)
+              .map((entry) => (entry.id === previousId ? model : entry));
+      const problem = commandError(
+        await update({
+          environmentId,
+          input: { patch: { modelServices: { [id]: { ...service, models: nextModels } } } },
+        }),
+      );
+      if (!problem) setModelEditor(null);
+      return problem;
+    });
   }
   function configuration(): ModelServiceConfig | null {
     try {
@@ -539,7 +579,7 @@ function ModelServiceEditor({
           </div>
         ) : null}
       </form>
-      {error && !removingModel && !removingUnlisted ? (
+      {error && !removingModel && !removingUnlisted && !clearingModels && !modelEditor ? (
         <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
           {error}
         </p>
@@ -649,10 +689,28 @@ function ModelServiceEditor({
               size="sm"
               variant="outline"
               disabled={busy}
-              onClick={() => setModelEditor("new")}
+              onClick={() => {
+                setError(null);
+                setModelEditor("new");
+              }}
             >
               <PlusIcon />
               {t("Add model")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || changed || models.length === 0}
+              onClick={() => {
+                setError(null);
+                setClearingModels({
+                  revision: service.revision,
+                  modelIds: models.map((model) => model.id),
+                });
+              }}
+            >
+              <Trash2Icon />
+              {t("Clear models")}
             </Button>
           </div>
         ) : null}
@@ -723,163 +781,224 @@ function ModelServiceEditor({
             "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
           )}
         </p>
+        {modelEditor === "new" && service && !readOnly ? (
+          <ModelEditor
+            key="new"
+            model={undefined}
+            protocols={service.protocols}
+            busy={busy}
+            error={error}
+            onCancel={() => {
+              setModelEditor(null);
+              setError(null);
+            }}
+            onSave={saveModel}
+          />
+        ) : null}
         {models.length ? (
-          <div className="max-h-96 overflow-y-auto divide-y divide-border rounded-lg border border-border/60 bg-background/60 px-3">
+          <div
+            className={cn(
+              "min-w-0 divide-y divide-border rounded-lg border border-border/60 bg-background/60 px-3",
+              (modelEditor === null || modelEditor === "new") && "max-h-96 overflow-y-auto",
+            )}
+          >
             {models.map((model) => (
-              <div
-                key={model.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-3"
-              >
-                <div className="min-w-0 flex-1 space-y-1">
+              <div key={model.id} data-model-row={model.id} className="grid min-w-0 gap-3 py-3">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                   <p className="break-all text-sm">
                     {!model.name || model.name === model.id
                       ? modelServiceDisplayName(model.id)
                       : model.name}
                   </p>
-                  {model.available === false ? (
-                    <p className="text-xs text-destructive">
-                      {t("No longer advertised by the service")}
-                    </p>
-                  ) : null}
-                  {model.ignored && <p className="text-xs text-muted-foreground">{t("Ignored")}</p>}
-                  {tests.active.has(model.id) && (
-                    <p className="text-xs text-muted-foreground">{t("Testing…")}</p>
-                  )}
-                  {tests.results.get(model.id) && (
-                    <p
-                      className={
-                        tests.results.get(model.id)!.ok
-                          ? "text-xs text-muted-foreground"
-                          : "text-xs text-destructive"
-                      }
-                    >
-                      {tests.results.get(model.id)!.ok
-                        ? t("Test passed ({duration} ms)", {
-                            duration: Math.round(tests.results.get(model.id)!.durationMs),
-                          })
-                        : modelTestMessage(
-                            tests.results.get(model.id)!.message ?? "Model test failed.",
-                            t,
-                          )}
-                    </p>
-                  )}
-                  <p className="break-all font-mono text-xs text-muted-foreground">{model.id}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("Context")}:{" "}
-                    {model.capabilities?.contextWindow?.toLocaleString() ?? t("Unknown")} ·{" "}
-                    {(model.protocols ?? service?.protocols ?? [])
-                      .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
-                      .join(" / ")}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("Maximum output tokens")}:{" "}
-                    {model.maxOutputTokens?.toLocaleString() ?? t("Unknown")} · {t("Image input")}:{" "}
-                    {model.capabilities?.supportsImages === undefined
-                      ? t("Unknown")
-                      : model.capabilities.supportsImages
-                        ? t("Supported")
-                        : t("Unsupported")}{" "}
-                    · {t("Tool calling")}:{" "}
-                    {model.supportsTools === undefined
-                      ? t("Unknown")
-                      : model.supportsTools
-                        ? t("Supported")
-                        : t("Unsupported")}
-                    {model.supportsReasoning !== undefined ? (
-                      <>
-                        {" "}
-                        · {t("Reasoning")}:{" "}
-                        {model.supportsReasoning ? t("Supported") : t("Unsupported")}
-                      </>
-                    ) : null}
-                  </p>
-                  {model.inputModalities || model.outputModalities ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t("Input modalities")}: {model.inputModalities?.join(" / ") ?? t("Unknown")}{" "}
-                      · {t("Output modalities")}:{" "}
-                      {model.outputModalities?.join(" / ") ?? t("Unknown")}
-                    </p>
-                  ) : null}
-                </div>
-                {!readOnly ? (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      aria-label={t(
-                        model.ignored ? "Restore model {model}" : "Ignore model {model}",
-                        {
-                          model: model.name ?? model.id,
-                        },
-                      )}
-                      onClick={() => {
-                        if (readOnly || !service) return;
-                        void run(async () =>
-                          commandError(
-                            await update({
-                              environmentId,
-                              input: {
-                                patch: {
-                                  modelServices: {
-                                    [id]: {
-                                      ...service!,
-                                      models: models.map((entry) =>
-                                        entry.id === model.id
-                                          ? { ...entry, ignored: model.ignored !== true }
-                                          : entry,
-                                      ),
-                                    },
-                                  },
-                                },
-                              },
-                            }),
-                          ),
-                        );
-                      }}
-                    >
-                      {t(model.ignored ? "Restore model" : "Ignore model")}
-                    </Button>
-                    <Menu>
-                      <MenuTrigger
-                        render={
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
+                  {!readOnly ? (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        size="icon-xl"
+                        variant="ghost"
+                        disabled={busy}
+                        aria-label={t("Edit model {model}", { model: model.name ?? model.id })}
+                        onClick={() => {
+                          setError(null);
+                          setModelEditor(model);
+                        }}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <Menu>
+                        <MenuTrigger
+                          render={
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              disabled={busy}
+                              aria-label={t("Model actions for {model}", {
+                                model: model.name ?? model.id,
+                              })}
+                            />
+                          }
+                        >
+                          <MoreHorizontalIcon />
+                        </MenuTrigger>
+                        <MenuPopup align="end">
+                          <MenuItem
                             disabled={busy}
-                            aria-label={t("Model actions for {model}", {
+                            onClick={() => {
+                              if (!readOnly) {
+                                setError(null);
+                                setModelEditor(model);
+                              }
+                            }}
+                          >
+                            {t("Edit")}
+                          </MenuItem>
+                          <MenuItem
+                            variant="destructive"
+                            disabled={busy}
+                            aria-label={t("Delete model {model}", {
                               model: model.name ?? model.id,
                             })}
-                          />
+                            onClick={() => {
+                              if (readOnly) return;
+                              setError(null);
+                              setRemovingModel(model);
+                            }}
+                          >
+                            <Trash2Icon />
+                            {t("Delete model")}
+                          </MenuItem>
+                        </MenuPopup>
+                      </Menu>
+                    </div>
+                  ) : null}
+                  <div className="col-span-2 min-w-0 space-y-1">
+                    {model.available === false ? (
+                      <p className="text-xs text-destructive">
+                        {t("No longer advertised by the service")}
+                      </p>
+                    ) : null}
+                    {model.ignored && (
+                      <p className="text-xs text-muted-foreground">{t("Ignored")}</p>
+                    )}
+                    {tests.active.has(model.id) && (
+                      <p className="text-xs text-muted-foreground">{t("Testing…")}</p>
+                    )}
+                    {tests.results.get(model.id) && (
+                      <p
+                        className={
+                          tests.results.get(model.id)!.ok
+                            ? "text-xs text-muted-foreground"
+                            : "text-xs text-destructive"
                         }
                       >
-                        <MoreHorizontalIcon />
-                      </MenuTrigger>
-                      <MenuPopup align="end">
-                        <MenuItem
+                        {tests.results.get(model.id)!.ok
+                          ? t("Test passed ({duration} ms)", {
+                              duration: Math.round(tests.results.get(model.id)!.durationMs),
+                            })
+                          : modelTestMessage(
+                              tests.results.get(model.id)!.message ?? "Model test failed.",
+                              t,
+                            )}
+                      </p>
+                    )}
+                    <p className="break-all font-mono text-xs text-muted-foreground">{model.id}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("Context")}:{" "}
+                      {model.capabilities?.contextWindow?.toLocaleString() ?? t("Unknown")} ·{" "}
+                      {(model.protocols ?? service?.protocols ?? [])
+                        .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
+                        .join(" / ")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("Maximum output tokens")}:{" "}
+                      {model.maxOutputTokens?.toLocaleString() ?? t("Unknown")} · {t("Image input")}
+                      :{" "}
+                      {model.capabilities?.supportsImages === undefined
+                        ? t("Unknown")
+                        : model.capabilities.supportsImages
+                          ? t("Supported")
+                          : t("Unsupported")}{" "}
+                      · {t("Tool calling")}:{" "}
+                      {model.supportsTools === undefined
+                        ? t("Unknown")
+                        : model.supportsTools
+                          ? t("Supported")
+                          : t("Unsupported")}
+                      {model.supportsReasoning !== undefined ? (
+                        <>
+                          {" "}
+                          · {t("Reasoning")}:{" "}
+                          {model.supportsReasoning ? t("Supported") : t("Unsupported")}
+                        </>
+                      ) : null}
+                    </p>
+                    {model.inputModalities || model.outputModalities ? (
+                      <p className="text-xs text-muted-foreground">
+                        {t("Input modalities")}:{" "}
+                        {model.inputModalities?.join(" / ") ?? t("Unknown")} ·{" "}
+                        {t("Output modalities")}:{" "}
+                        {model.outputModalities?.join(" / ") ?? t("Unknown")}
+                      </p>
+                    ) : null}
+                    {!readOnly ? (
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           disabled={busy}
+                          aria-label={t(
+                            model.ignored ? "Restore model {model}" : "Ignore model {model}",
+                            {
+                              model: model.name ?? model.id,
+                            },
+                          )}
                           onClick={() => {
-                            if (!readOnly) setModelEditor(model);
+                            if (readOnly || !service) return;
+                            void run(async () =>
+                              commandError(
+                                await update({
+                                  environmentId,
+                                  input: {
+                                    patch: {
+                                      modelServices: {
+                                        [id]: {
+                                          ...service!,
+                                          models: models.map((entry) =>
+                                            entry.id === model.id
+                                              ? { ...entry, ignored: model.ignored !== true }
+                                              : entry,
+                                          ),
+                                        },
+                                      },
+                                    },
+                                  },
+                                }),
+                              ),
+                            );
                           }}
                         >
-                          {t("Edit")}
-                        </MenuItem>
-                        <MenuItem
-                          variant="destructive"
-                          disabled={busy}
-                          aria-label={t("Delete model {model}", { model: model.name ?? model.id })}
-                          onClick={() => {
-                            if (readOnly) return;
-                            setError(null);
-                            setRemovingModel(model);
-                          }}
-                        >
-                          <Trash2Icon />
-                          {t("Delete model")}
-                        </MenuItem>
-                      </MenuPopup>
-                    </Menu>
+                          {t(model.ignored ? "Restore model" : "Ignore model")}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
+                </div>
+                {modelEditor !== null &&
+                modelEditor !== "new" &&
+                modelEditor.id === model.id &&
+                service &&
+                !readOnly ? (
+                  <ModelEditor
+                    key={modelEditor.id}
+                    model={modelEditor}
+                    protocols={service.protocols}
+                    busy={busy}
+                    error={error}
+                    onCancel={() => {
+                      setModelEditor(null);
+                      setError(null);
+                    }}
+                    onSave={saveModel}
+                  />
                 ) : null}
               </div>
             ))}
@@ -889,42 +1008,91 @@ function ModelServiceEditor({
             {t("Fetch models or add them manually before binding an agent.")}
           </p>
         )}
-        {modelEditor && service ? (
-          <ModelEditor
-            key={modelEditor === "new" ? "new" : modelEditor.id}
-            model={modelEditor === "new" ? undefined : modelEditor}
-            protocols={service.protocols}
-            busy={busy}
-            onCancel={() => setModelEditor(null)}
-            onSave={(model) =>
-              void run(async () => {
-                const previousId = modelEditor === "new" ? null : modelEditor.id;
-                const result = await update({
-                  environmentId,
-                  input: {
-                    patch: {
-                      modelServices: {
-                        [id]: {
-                          ...service,
-                          models: [
-                            ...models.filter(
-                              (entry) => entry.id !== model.id && entry.id !== previousId,
-                            ),
-                            model,
-                          ],
-                        },
-                      },
-                    },
-                  },
-                });
-                const problem = commandError(result);
-                if (!problem) setModelEditor(null);
-                return problem;
-              })
-            }
-          />
-        ) : null}
       </div>
+      <AlertDialog
+        open={clearingModels !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setClearingModels(null);
+        }}
+      >
+        <AlertDialogPopup initialFocus={cancelClearModels} bottomStickOnMobile={false}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("Clear all {count} models?", { count: clearingModels?.modelIds.length ?? 0 })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.",
+              )}
+            </AlertDialogDescription>
+            {clearBlockers.length > 0 ? (
+              <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+                {t(
+                  "These agents use this service: {agents}. Unbind them before clearing its models.",
+                  { agents: clearBlockers.join(", ") },
+                )}
+              </p>
+            ) : null}
+            {clearChanged || changed ? (
+              <p role="alert" className="text-sm text-destructive">
+                {t(
+                  "The model catalog or connection changed. Close this dialog and review the cleanup again.",
+                )}
+              </p>
+            ) : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+                {error}
+              </p>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose
+              render={<Button ref={cancelClearModels} variant="outline" disabled={busy} />}
+            >
+              {t("Cancel")}
+            </AlertDialogClose>
+            <Button
+              variant="destructive"
+              disabled={
+                busy ||
+                readOnly ||
+                changed ||
+                clearChanged ||
+                models.length === 0 ||
+                clearBlockers.length > 0
+              }
+              onClick={() => {
+                if (
+                  !service ||
+                  readOnly ||
+                  changed ||
+                  clearChanged ||
+                  models.length === 0 ||
+                  clearBlockers.length > 0
+                )
+                  return;
+                void run(async () => {
+                  const problem = commandError(
+                    await update({
+                      environmentId,
+                      input: { patch: { modelServices: { [id]: { ...service, models: [] } } } },
+                    }),
+                  );
+                  if (!problem) {
+                    setModelEditor(null);
+                    setClearingModels(null);
+                    tester.clear();
+                  }
+                  return problem;
+                });
+              }}
+            >
+              {t(busy ? "Working…" : "Clear models")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
       <AlertDialog
         open={removingModel !== null}
         onOpenChange={(open) => {
@@ -1138,12 +1306,14 @@ function ModelEditor({
   model,
   protocols: defaults,
   busy,
+  error,
   onCancel,
   onSave,
 }: {
   readonly model: ModelServiceModel | undefined;
   readonly protocols: ReadonlyArray<ModelServiceProtocol>;
   readonly busy: boolean;
+  readonly error: string | null;
   readonly onCancel: () => void;
   readonly onSave: (model: ModelServiceModel) => void;
 }) {
@@ -1185,7 +1355,10 @@ function ModelEditor({
     value === "" || (Number.isSafeInteger(Number(value)) && Number(value) > 0);
   return (
     <form
-      className="space-y-3 rounded-md border border-border p-3"
+      aria-label={
+        model ? t("Edit model {model}", { model: model.name ?? model.id }) : t("Add model")
+      }
+      className="min-w-0 space-y-3 rounded-lg border border-primary/30 bg-muted/20 p-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (!id.trim() || !validNumber(context) || !validNumber(output) || !selected.length) return;
@@ -1267,10 +1440,19 @@ function ModelEditor({
         });
       }}
     >
+      <h4 className="break-words text-sm font-medium">
+        {model ? t("Edit model {model}", { model: model.name ?? model.id }) : t("Add model")}
+      </h4>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+          {error}
+        </p>
+      ) : null}
       <label className="grid gap-1 text-sm">
         {t("Model ID")}
         <Input
           value={id}
+          autoFocus
           onChange={(event) => setId(event.target.value)}
           required
           disabled={busy}

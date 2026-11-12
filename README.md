@@ -285,6 +285,11 @@ Pi/OMO activates the Cox orchestration tools independently of the model protocol
 `tool_search` can discover optional tools; use their full `mcp__cox__...` names. Explicit tool
 allowlists and exclusions still apply. Startup checks distinguish native task availability from
 Cox orchestration availability rather than treating one as a fallback for the other.
+
+Model catalogs can be edited in place beside each model; adding a model opens its editor above
+the catalog. Clearing a catalog requires confirmation and keeps its service connection and
+credentials. Unbind agents first before clearing models they depend on. OMO role settings use
+separate role cards on both desktop and narrow screens.
 Native terminal onboarding, terminal side panels, telemetry, device services, remote thread
 tools and automatic global memory are not enabled in Cox sessions. Cox injects its own
 role configuration without writing the user's global or project `omo.json`.

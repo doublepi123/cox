@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 import {
   modelRemovalBlockingAgents,
+  modelsRemovalBlockingAgents,
   unlistedModelRemovalPlan,
 } from "./ModelServicesSettingsPanel.logic";
 
@@ -27,6 +28,36 @@ const instance = (binding: Partial<ModelServiceBinding> = {}): ProviderInstanceC
   driver: ProviderDriverKind.make("codex"),
   displayName: "Work Agent",
   modelService: { serviceId, modelIds: [], ...binding },
+});
+
+describe("clear model catalog", () => {
+  it("allows clearing an unbound service and does not mutate its catalog", () => {
+    const original = structuredClone(service);
+    expect(
+      modelsRemovalBlockingAgents(
+        serviceId,
+        service,
+        new Set(service.models.map((model) => model.id)),
+        {},
+      ),
+    ).toEqual([]);
+    expect(service).toEqual(original);
+  });
+  it.each(MODEL_SERVICE_AGENT_DRIVERS)(
+    "protects bound %s agents even with automatic model selection",
+    (driver) => {
+      expect(
+        modelsRemovalBlockingAgents(
+          serviceId,
+          service,
+          new Set(service.models.map((model) => model.id)),
+          {
+            [instanceId]: { ...instance(), driver: ProviderDriverKind.make(driver) },
+          },
+        ),
+      ).toEqual(["Work Agent"]);
+    },
+  );
 });
 
 describe("unlisted model cleanup", () => {

@@ -614,7 +614,9 @@ describe("model services settings", () => {
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
     const ignore = screen.getByRole("button", { name: "Ignore model Exact model", exact: true });
     await expect.element(ignore).toHaveTextContent("Ignore model");
-    expect(ignore.element().parentElement?.querySelectorAll("button")).toHaveLength(2);
+    await expect
+      .element(screen.getByRole("button", { name: "Edit model Exact model", exact: true }))
+      .toBeVisible();
     await ignore.click();
     await expect
       .element(screen.getByRole("button", { name: "Restore model Exact model", exact: true }))
@@ -733,6 +735,226 @@ describe("model services settings", () => {
     await expect
       .element(screen.getByText("Fetch models or add them manually before binding an agent."))
       .toBeVisible();
+  });
+
+  it.each([360, 390, 1280])(
+    "edits beside the selected model and preserves catalog order at %spx",
+    async (width) => {
+      setup({
+        [id]: {
+          ...configured,
+          models: [configured.models[0]!, { id: "next", name: "Next model", capabilities: null }],
+        },
+      });
+      const originalWidth = window.innerWidth;
+      const originalHeight = window.innerHeight;
+      await page.viewport(width, 850);
+      try {
+        await using screen = await render(
+          <EnvironmentModelServices environmentId={environmentId} />,
+        );
+        await screen.getByRole("button", { name: "Edit model Exact model", exact: true }).click();
+        const editor = screen.getByRole("form", { name: "Edit model Exact model", exact: true });
+        await expect.element(editor).toBeVisible();
+        const row = editor.element().closest("[data-model-row]");
+        expect(row?.getAttribute("data-model-row")).toBe("Vendor/Exact");
+        expect(row?.nextElementSibling?.getAttribute("data-model-row")).toBe("next");
+        expect(
+          screen.container.querySelectorAll('form[aria-label="Edit model Exact model"]'),
+        ).toHaveLength(1);
+        expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
+        const edit = screen
+          .getByRole("button", { name: "Edit model Exact model", exact: true })
+          .element()
+          .getBoundingClientRect();
+        expect(edit.width).toBeGreaterThanOrEqual(40);
+        expect(edit.height).toBeGreaterThanOrEqual(40);
+        await screen.getByLabelText("Display name", { exact: true }).fill("Updated model");
+        await screen.getByRole("button", { name: "Save model", exact: true }).click();
+        await expect.element(editor).not.toBeInTheDocument();
+        expect(state.settings.modelServices[id]?.models.map((model) => model.id)).toEqual([
+          "Vendor/Exact",
+          "next",
+        ]);
+        expect(state.settings.modelServices[id]?.models[0]?.name).toBe("Updated model");
+        expect(state.discover).not.toHaveBeenCalled();
+        expect(state.testModel).not.toHaveBeenCalled();
+      } finally {
+        await page.viewport(originalWidth, originalHeight);
+      }
+    },
+  );
+
+  it("opens new-model fields before the catalog and keeps failed edits local", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Add model", exact: true }).click();
+    const added = screen.getByRole("form", { name: "Add model", exact: true });
+    await expect.element(added).toBeVisible();
+    expect(added.element().closest("[data-model-row]")).toBeNull();
+    expect(added.element().nextElementSibling?.querySelector("[data-model-row]")).not.toBeNull();
+    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Edit model Exact model", exact: true }).click();
+    state.save.mockResolvedValueOnce({ _tag: "Failure", cause: {} });
+    await screen.getByLabelText("Display name", { exact: true }).fill("Unsaved name");
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    const editor = screen.getByRole("form", { name: "Edit model Exact model", exact: true });
+    await expect.element(editor).toBeVisible();
+    expect(editor.element().querySelector('[role="alert"]')).not.toBeNull();
+    expect(state.settings.modelServices[id]?.models[0]?.name).toBe("Exact model");
+    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.element(editor).not.toBeInTheDocument();
+  });
+
+  it.each([390, 1280])(
+    "clears the selected service catalog only after confirmation at %spx",
+    async (width) => {
+      const other = ModelServiceId.make("other");
+      const models = [
+        { ...configured.models[0]!, source: "manual" as const },
+        { id: "discovered", ignored: true, source: "discovered" as const, capabilities: null },
+      ];
+      setup({ [id]: { ...configured, models }, [other]: { ...configured, name: "Other" } });
+      const originalWidth = window.innerWidth,
+        originalHeight = window.innerHeight;
+      await page.viewport(width, 850);
+      try {
+        await using screen = await render(
+          <EnvironmentModelServices environmentId={environmentId} />,
+        );
+        await screen.getByRole("button", { name: "Clear models", exact: true }).click();
+        const dialog = page.getByRole("alertdialog");
+        await expect.element(dialog).toBeVisible();
+        expect(state.save).not.toHaveBeenCalled();
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect.element(dialog).not.toBeInTheDocument();
+        expect(state.settings.modelServices[id]?.models).toEqual(models);
+        await screen.getByRole("button", { name: "Clear models", exact: true }).click();
+        await page
+          .getByRole("alertdialog")
+          .getByRole("button", { name: "Clear models", exact: true })
+          .click();
+        await expect.element(dialog).not.toBeInTheDocument();
+        expect(state.save).toHaveBeenCalledOnce();
+        expect(state.save.mock.calls[0]![0].input.patch.modelServices[id]).toEqual({
+          ...configured,
+          models: [],
+        });
+        expect(state.settings.modelServices[other]).toEqual({ ...configured, name: "Other" });
+        await expect
+          .element(screen.getByText("Fetch models or add them manually before binding an agent."))
+          .toBeVisible();
+        expect(state.discover).not.toHaveBeenCalled();
+        expect(state.testModel).not.toHaveBeenCalled();
+        expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
+      } finally {
+        await page.viewport(originalWidth, originalHeight);
+      }
+    },
+  );
+
+  it("protects agent bindings, stale confirmations and read-only scopes from clear-all", async () => {
+    setup({ [id]: configured });
+    state.settings = {
+      ...state.settings,
+      providerInstances: {
+        [ProviderInstanceId.make("bound")]: {
+          driver: ProviderDriverKind.make("omo"),
+          displayName: "Bound OMO",
+          modelService: { serviceId: id, modelIds: [] },
+        },
+      },
+    };
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Clear models", exact: true }).click();
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent(
+        "These agents use this service: Bound OMO. Unbind them before clearing its models.",
+      );
+    await expect
+      .element(
+        page.getByRole("alertdialog").getByRole("button", { name: "Clear models", exact: true }),
+      )
+      .toBeDisabled();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    await act(() => {
+      state.settings = { ...state.settings, providerInstances: {} };
+      notify();
+    });
+    await screen.getByRole("button", { name: "Clear models", exact: true }).click();
+    await act(() => {
+      state.settings = {
+        ...state.settings,
+        modelServices: { [id]: { ...configured, revision: configured.revision + 1 } },
+      };
+      notify();
+    });
+    await expect
+      .element(
+        page.getByRole("alertdialog").getByRole("button", { name: "Clear models", exact: true }),
+      )
+      .toBeDisabled();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    state.manage = false;
+    await screen.rerender(<EnvironmentModelServices environmentId={environmentId} />);
+    await expect
+      .element(screen.getByRole("button", { name: "Clear models", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Edit model Exact model", exact: true }))
+      .not.toBeInTheDocument();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("retains the catalog and clear dialog when saving fails", async () => {
+    setup({ [id]: configured });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    state.save.mockRejectedValueOnce(new Error("controlled clear failure"));
+    await screen.getByRole("button", { name: "Clear models", exact: true }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Clear models", exact: true })
+      .click();
+    await expect.element(page.getByRole("alertdialog")).toBeVisible();
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("The model service operation failed.");
+    expect(state.settings.modelServices[id]).toEqual(configured);
+  });
+
+  it("keeps direct editing and clear confirmation usable in Chinese with long model names at 320px", async () => {
+    const longName = "VendorModelName".repeat(12);
+    setup({ [id]: { ...configured, models: [{ ...configured.models[0]!, name: longName }] } });
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    const preference = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    await page.viewport(320, 812);
+    setLanguagePreference("zh");
+    try {
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await screen.getByRole("button", { name: `编辑模型 ${longName}`, exact: true }).click();
+      const editor = screen.getByRole("form", { name: `编辑模型 ${longName}`, exact: true });
+      await expect.element(editor).toBeVisible();
+      expect(editor.element().closest("[data-model-row]")?.getAttribute("data-model-row")).toBe(
+        "Vendor/Exact",
+      );
+      expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
+      await screen.getByRole("button", { name: "取消", exact: true }).click();
+      await screen.getByRole("button", { name: "清空模型", exact: true }).click();
+      await expect.element(page.getByRole("alertdialog")).toBeVisible();
+      await expect.element(page.getByText("清空全部 1 个模型？", { exact: true })).toBeVisible();
+      expect(
+        page.getByRole("alertdialog").element().getBoundingClientRect().width,
+      ).toBeLessThanOrEqual(320);
+      expect(state.save).not.toHaveBeenCalled();
+    } finally {
+      setLanguagePreference(parseLanguagePreference(preference));
+      if (preference === null) localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+      await page.viewport(originalWidth, originalHeight);
+    }
   });
 
   it.each([
