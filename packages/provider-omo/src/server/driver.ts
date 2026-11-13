@@ -28,6 +28,7 @@ import { prepareOmoConfiguration, OMO_VERSION } from "./configuration.ts";
 import { initialOmoSnapshot, checkOmoStatus } from "./status.ts";
 import { buildOmoLaunch, materializeOmoExtension } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
+import { omoUsageReader } from "./usage.ts";
 const decodeOmoSettings = Schema.decodeSync(OmoSettings);
 
 export type OmoDriverEnv =
@@ -38,9 +39,10 @@ export type OmoDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
   | ProviderHost.ProviderHost;
 
-export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv> = {
+export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
   driverKind: OMO_DRIVER,
   metadata: { displayName: "OMO Native", supportsMultipleInstances: true },
+  usage: omoUsageReader,
   configSchema: OmoSettings,
   defaultConfig: () => decodeOmoSettings({}),
   create: (input) =>

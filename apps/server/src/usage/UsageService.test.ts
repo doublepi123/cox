@@ -1269,6 +1269,108 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live(
+    "reads OMO and Pi history from model-service runtime directories with empty configs",
+    () =>
+      Effect.gen(function* () {
+        const { home, settings } = yield* setup;
+        const prefix = "usage-omo-model-service";
+        const runtime = NodePath.join(home, prefix, "model-services", "runtime");
+        const transcript = (session: string, input: number, output: number, cacheRead = 0) =>
+          [
+            { type: "session", id: session },
+            {
+              type: "message",
+              id: session + "-assistant",
+              timestamp: "2026-08-01T10:00:00Z",
+              message: {
+                role: "assistant",
+                provider: "cox",
+                model: "actual-model",
+                usage: { input, cacheRead, output },
+              },
+            },
+          ]
+            .map((line) => encodeUnknownJsonString(line))
+            .join("\n") + "\n";
+        yield* Effect.promise(async () => {
+          const files = [
+            [
+              NodePath.join(runtime, "omo", "omo", "sessions", "project"),
+              "root.jsonl",
+              transcript("omo-root", 100, 20, 50),
+            ],
+            [
+              NodePath.join(runtime, "omo", "omo", "tasks", "children", "st_1", "sessions", "st_1"),
+              "child.jsonl",
+              transcript("omo-child", 10, 2),
+            ],
+            [
+              NodePath.join(runtime, "pi", "pi", "sessions", "project"),
+              "pi.jsonl",
+              transcript("pi-bound", 7, 3),
+            ],
+          ] as const;
+          for (const [dir, name, contents] of files) {
+            await NodeFSP.mkdir(dir, { recursive: true });
+            await NodeFSP.writeFile(NodePath.join(dir, name), contents);
+          }
+        });
+        const binding = {
+          serviceId: ModelServiceId.make("bound-service"),
+          modelIds: ["actual-model"],
+        };
+        const summary = yield* Effect.gen(function* () {
+          const service = yield* UsageService.make;
+          return yield* service.readSummary(WINDOW);
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            layerService({
+              prefix,
+              home,
+              settings: {
+                ...settings,
+                modelServices: {
+                  [ModelServiceId.make("bound-service")]: {
+                    name: "Bound service",
+                    baseUrl: "https://models.test",
+                    protocols: ["openai-chat"],
+                    models: [{ id: "actual-model", capabilities: null }],
+                  },
+                },
+                providerInstances: {
+                  ...settings.providerInstances,
+                  [ProviderInstanceId.make("omo")]: {
+                    driver: ProviderDriverKind.make("omo"),
+                    modelService: binding,
+                    config: {},
+                  },
+                  [ProviderInstanceId.make("pi")]: {
+                    driver: ProviderDriverKind.make("pi"),
+                    modelService: binding,
+                    config: {},
+                  },
+                },
+              },
+            }),
+          ),
+        );
+        const totalsFor = (provider: string) =>
+          summary.buckets
+            .filter((bucket) => bucket.provider === provider)
+            .reduce((sum, bucket) => sum + totalTokens(bucket.totals), 0);
+        assert.strictEqual(totalsFor("omo"), 182);
+        assert.strictEqual(
+          summary.buckets
+            .filter((bucket) => bucket.provider === "omo")
+            .reduce((sum, bucket) => sum + bucket.sessions, 0),
+          2,
+        );
+        assert.strictEqual(totalsFor("pi"), 10);
+      }).pipe(Effect.scoped),
+  );
+
   it.live("reports missing Pi history and skips malformed records without losing valid usage", () =>
     Effect.gen(function* () {
       const { home, settings } = yield* setup;

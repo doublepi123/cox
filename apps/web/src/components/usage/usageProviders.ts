@@ -11,6 +11,11 @@ type UsageProviderPresentation = {
 };
 
 export const PROVIDER_PRESENTATION = {
+  omo: {
+    label: "OMO Native",
+    color: "#e2a03f",
+    driverKind: ProviderDriverKind.make("omo"),
+  },
   codex: {
     label: "Codex",
     color: "var(--contrast-foreground)",

@@ -8,6 +8,7 @@ import { OMO_NATIVE_AGENT_ROLES, OMO_NATIVE_CATEGORY_ROLES } from "@t3tools/shar
 import { piEnvironment } from "@t3tools/provider-pi/server";
 import { OmoReasoningLevel } from "@t3tools/contracts";
 import { OmoRoleName, type OmoSettings } from "../settings.ts";
+import { omoInstanceDirectory } from "./usage.ts";
 
 export const OMO_VERSION = "5.1.69";
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
@@ -177,14 +178,7 @@ export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(func
   yield* Effect.try(() => {
     if (!instanceId.trim()) throw new Error("OMO requires a Cox instance ID.");
   });
-  const instanceDirectory = path.join(
-    baseDir,
-    "providers",
-    "omo",
-    instanceId === "." || instanceId === ".."
-      ? instanceId.replaceAll(".", "%2E")
-      : encodeURIComponent(instanceId),
-  );
+  const instanceDirectory = omoInstanceDirectory(baseDir, instanceId, path);
   const agentDir = settings.agentDir || path.join(instanceDirectory, "agent");
   const configured: OmoSettings = {
     ...settings,

@@ -81,6 +81,10 @@ export interface ProviderUsageInstance<Config> {
   readonly config: Config | undefined;
   readonly environment: NodeJS.ProcessEnv;
   readonly configured: boolean;
+  /** Cox's data directory, for readers whose default history lives under it. */
+  readonly baseDir?: string;
+  /** Agent directory Cox's model-service gateway assigns to a bound instance. */
+  readonly modelServiceAgentDir?: string;
 }
 
 export interface ProviderUsageScan {

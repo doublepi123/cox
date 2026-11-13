@@ -301,7 +301,11 @@ export const make = Effect.gen(function* () {
     settings: ServerSettingsValue,
   ) {
     const entries: Array<
-      readonly [ProviderInstanceId, Pick<ProviderInstanceConfig, "config" | "environment">, boolean]
+      readonly [
+        ProviderInstanceId,
+        Pick<ProviderInstanceConfig, "config" | "environment" | "modelService">,
+        boolean,
+      ]
     > = Object.entries(settings.providerInstances)
       .filter(([, instance]) => instance.driver === driver.driverKind)
       .map(([id, instance]) => [ProviderInstanceId.make(id), instance, true] as const);
@@ -320,6 +324,18 @@ export const make = Effect.gen(function* () {
             hostEnvironment,
           ),
           configured,
+          baseDir: config.baseDir,
+          ...(instance.modelService === undefined
+            ? {}
+            : {
+                modelServiceAgentDir: path.join(
+                  config.baseDir,
+                  "model-services",
+                  "runtime",
+                  instanceId,
+                  driver.driverKind,
+                ),
+              }),
         };
         return instanceConfig;
       }),

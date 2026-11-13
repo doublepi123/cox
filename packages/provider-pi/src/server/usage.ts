@@ -52,85 +52,99 @@ const Entry = Schema.Union([
 ]);
 const decodeEntry = Schema.decodeUnknownOption(Entry);
 
-function parseRecord(parsed: unknown, state: typeof PiScanState.Type): readonly UsageRecord[] {
-  const decoded = decodeEntry(parsed);
-  if (Option.isNone(decoded)) return [];
-  const entry = decoded.value;
-  if (entry.type === "session") {
-    state.sessionId = entry.id;
-    return [];
-  }
-  const timestampMs = parseTimestampMs(entry.timestamp);
-  if (timestampMs === null) return [];
-  const source = entry.type === "message" ? entry.message : entry;
-  const usage = source.usage;
-  // Auxiliary tool/summary records lack model attribution; match Pi's breakdown.
-  const rateModel =
-    "model" in source
-      ? "responseModel" in source
-        ? (source.responseModel ?? source.model)
-        : source.model
-      : undefined;
-  const model = "provider" in source ? `${source.provider}/${rateModel}` : "Tools/summaries";
-  const outputTokens = tokenCount(usage.output);
-  const totals = {
-    // Pi's input/cache counters are already disjoint.
-    uncachedInputTokens: tokenCount(usage.input),
-    cachedInputTokens: tokenCount(usage.cacheRead),
-    cacheCreationTokens: tokenCount(usage.cacheWrite),
-    outputTokens,
-    reasoningTokens: Math.min(outputTokens, tokenCount(usage.reasoning)),
-  };
-  const cost = usage.cost?.total;
-  // Omitted Pi rates default to zero; use shared estimates without positive transcript cost.
-  const reportedCostUsd =
-    typeof cost === "number" && Number.isFinite(cost) && cost > 0 ? cost : null;
-  if (totalTokens(totals) === 0 && reportedCostUsd === null) return [];
-  return [
-    {
-      provider: "pi",
-      timestampMs,
-      model,
-      ...(rateModel === undefined ? {} : { rateModel }),
-      sessionId: state.sessionId,
-      totals,
-      reportedCostUsd,
-      speed: "standard",
-      // Forks preserve IDs/timestamps; short random IDs need timestamp/model to avoid cross-session collisions.
-      dedupeKey: JSON.stringify(["pi", entry.id, entry.timestamp, model]),
-    },
-  ];
-}
-
-export const piUsageFormat: TranscriptUsageFormat<typeof PiScanState.Type> = {
-  selectFields: {
-    type: true,
-    id: true,
-    timestamp: true,
-    provider: true,
-    model: true,
-    usage: true,
-    message: { role: true, provider: true, model: true, responseModel: true, usage: true },
-  },
-  usageMarkers: ['"usage"', '"session"'],
-  parseLine: (line, state) => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
+const parseRecord =
+  (provider: "pi" | "omo") =>
+  (parsed: unknown, state: typeof PiScanState.Type): readonly UsageRecord[] => {
+    const decoded = decodeEntry(parsed);
+    if (Option.isNone(decoded)) return [];
+    const entry = decoded.value;
+    if (entry.type === "session") {
+      state.sessionId = entry.id;
       return [];
     }
-    return parseRecord(parsed, state);
-  },
-  parseProjected: parseRecord,
-  state: { initial: () => ({ sessionId: "" }), schema: PiScanState },
+    const timestampMs = parseTimestampMs(entry.timestamp);
+    if (timestampMs === null) return [];
+    const source = entry.type === "message" ? entry.message : entry;
+    const usage = source.usage;
+    // Auxiliary tool/summary records lack model attribution; match Pi's breakdown.
+    const rateModel =
+      "model" in source
+        ? "responseModel" in source
+          ? (source.responseModel ?? source.model)
+          : source.model
+        : undefined;
+    const model = "provider" in source ? `${source.provider}/${rateModel}` : "Tools/summaries";
+    const outputTokens = tokenCount(usage.output);
+    const totals = {
+      // Pi's input/cache counters are already disjoint.
+      uncachedInputTokens: tokenCount(usage.input),
+      cachedInputTokens: tokenCount(usage.cacheRead),
+      cacheCreationTokens: tokenCount(usage.cacheWrite),
+      outputTokens,
+      reasoningTokens: Math.min(outputTokens, tokenCount(usage.reasoning)),
+    };
+    const cost = usage.cost?.total;
+    // Omitted Pi rates default to zero; use shared estimates without positive transcript cost.
+    const reportedCostUsd =
+      typeof cost === "number" && Number.isFinite(cost) && cost > 0 ? cost : null;
+    if (totalTokens(totals) === 0 && reportedCostUsd === null) return [];
+    return [
+      {
+        provider,
+        timestampMs,
+        model,
+        ...(rateModel === undefined ? {} : { rateModel }),
+        sessionId: state.sessionId,
+        totals,
+        reportedCostUsd,
+        speed: "standard",
+        // Forks preserve IDs/timestamps; short random IDs need timestamp/model to avoid cross-session collisions.
+        dedupeKey: JSON.stringify([provider, entry.id, entry.timestamp, model]),
+      },
+    ];
+  };
+
+/** Pi-format session transcripts, shared by Pi and the Pi-based OMO Native runtime. */
+export const makePiTranscriptUsageFormat = (
+  provider: "pi" | "omo",
+): TranscriptUsageFormat<typeof PiScanState.Type> => {
+  const parse = parseRecord(provider);
+  return {
+    selectFields: {
+      type: true,
+      id: true,
+      timestamp: true,
+      provider: true,
+      model: true,
+      usage: true,
+      message: { role: true, provider: true, model: true, responseModel: true, usage: true },
+    },
+    usageMarkers: ['"usage"', '"session"'],
+    parseLine: (line, state) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return [];
+      }
+      return parse(parsed, state);
+    },
+    parseProjected: parse,
+    state: { initial: () => ({ sessionId: "" }), schema: PiScanState },
+  };
 };
+
+export const piUsageFormat = makePiTranscriptUsageFormat("pi");
 
 export const piUsageReader: ProviderUsageReader<PiSettings, Path.Path> = {
   kind: "transcripts",
   provider: "pi",
   format: piUsageFormat,
-  directories: Effect.fn("piUsageReader.directories")(function* ({ environment, config }) {
+  directories: Effect.fn("piUsageReader.directories")(function* ({
+    environment,
+    config,
+    modelServiceAgentDir,
+  }) {
     const path = yield* Path.Path;
     const home = yield* HostProcess.HomeDirectory;
     const platform = yield* HostProcess.Platform;
@@ -148,6 +162,9 @@ export const piUsageReader: ProviderUsageReader<PiSettings, Path.Path> = {
       ...(resolvedConfiguredDir !== undefined && path.isAbsolute(resolvedConfiguredDir)
         ? [{ dir: path.resolve(resolvedConfiguredDir) }]
         : []),
+      ...(modelServiceAgentDir === undefined
+        ? []
+        : [{ dir: path.join(modelServiceAgentDir, "sessions") }]),
       {
         dir: resolvePiSessionsDir(
           config ? piEnvironment(config, environment) : environment,
