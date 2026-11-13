@@ -302,12 +302,13 @@ const dispatch = (command: OrchestrationV2Command) =>
 
 const MAX_LOST_TRANSPORT_RESENDS = 2;
 
-const dispatchMessage = Effect.fn("EnvironmentCommands.dispatchMessage")(function* (
-  command: Extract<OrchestrationV2Command, { type: "message.dispatch" }>,
-  resendAfterSocketLoss: boolean,
-) {
+const withTransportRecovery = Effect.fn("EnvironmentCommands.withTransportRecovery")(function* <
+  A,
+  E,
+  R,
+>(requestEffect: Effect.Effect<A, E, R>, resendAfterSocketLoss: boolean) {
   const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-  const attempt = dispatch(command).pipe(
+  const attempt = requestEffect.pipe(
     Effect.timeoutOrElse({
       duration: "60 seconds",
       orElse: () =>
@@ -720,6 +721,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
   );
   const bootstrap = input.bootstrap?.createThread;
   const prepareWorktree = input.bootstrap?.prepareWorktree;
+  const resendAfterSocketLoss = input.resendAfterSocketLoss ?? true;
   if (bootstrap !== undefined || prepareWorktree !== undefined) {
     const existingProjection =
       bootstrap === undefined ? yield* getProjection(input.threadId) : null;
@@ -746,32 +748,34 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
                 ? {}
                 : { branch: bootstrap.branch }),
             };
-    return yield* request(ORCHESTRATION_V2_WS_METHODS.launchThread, {
-      commandId,
-      creationSource: input.creationSource ?? "web",
-      threadId: input.threadId,
-      ...(bootstrap === undefined ? { reuseExistingThread: true } : {}),
-      projectId: thread.projectId,
-      title: input.titleSeed ?? thread.title,
-      generateTitle: input.titleSeed !== undefined,
-      modelSelection: input.modelSelection ?? thread.modelSelection,
-      runtimeMode: input.runtimeMode,
-      interactionMode: input.interactionMode,
-      workspaceStrategy,
-      initialMessage: {
-        messageId: input.message.messageId,
-        text: input.message.text,
-        ...(context ? { context } : {}),
-        attachments,
-      },
-    });
+    return yield* withTransportRecovery(
+      request(ORCHESTRATION_V2_WS_METHODS.launchThread, {
+        commandId,
+        creationSource: input.creationSource ?? "web",
+        threadId: input.threadId,
+        ...(bootstrap === undefined ? { reuseExistingThread: true } : {}),
+        projectId: thread.projectId,
+        title: input.titleSeed ?? thread.title,
+        generateTitle: input.titleSeed !== undefined,
+        modelSelection: input.modelSelection ?? thread.modelSelection,
+        runtimeMode: input.runtimeMode,
+        interactionMode: input.interactionMode,
+        workspaceStrategy,
+        initialMessage: {
+          messageId: input.message.messageId,
+          text: input.message.text,
+          ...(context ? { context } : {}),
+          attachments,
+        },
+      }),
+      resendAfterSocketLoss,
+    );
   }
 
   const requestedMode = input.dispatchMode ?? "auto";
-  const resendAfterSocketLoss = input.resendAfterSocketLoss ?? true;
   if (requestedMode === "start") {
-    return yield* dispatchMessage(
-      {
+    return yield* withTransportRecovery(
+      dispatch({
         type: "message.dispatch",
         commandId,
         createdBy: "user",
@@ -793,7 +797,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
           : { sourcePlanRef: input.sourceProposedPlan }),
         ...(input.freshContext ? { freshContext: true } : {}),
         dispatchMode: { type: "start_immediately" },
-      },
+      }),
       resendAfterSocketLoss,
     );
   }
@@ -802,8 +806,8 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     requestedMode === "queue"
       ? ({ type: "queue_after_active" } as const)
       : ({ type: "start_immediately" } as const);
-  return yield* dispatchMessage(
-    {
+  return yield* withTransportRecovery(
+    dispatch({
       type: "message.dispatch",
       commandId,
       createdBy: "user",
@@ -824,7 +828,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       ...(input.freshContext ? { freshContext: true } : {}),
       ...(requestedMode !== "queue" ? { deliveryIntent: requestedMode } : {}),
       dispatchMode,
-    },
+    }),
     resendAfterSocketLoss,
   );
 });

@@ -16,6 +16,7 @@ import {
   WS_METHODS,
   type OrchestrationV2Command,
   type OrchestrationV2ThreadLaunchInput,
+  type OrchestrationV2ThreadLaunchResult,
   type OrchestrationV2ThreadProjection,
   type ProjectMutation,
 } from "@t3tools/contracts";
@@ -71,6 +72,9 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly commands: OrchestrationV2Command[];
   readonly projects: ProjectMutation[];
   readonly launches?: OrchestrationV2ThreadLaunchInput[];
+  readonly launch?: (
+    launchInput: OrchestrationV2ThreadLaunchInput,
+  ) => Effect.Effect<OrchestrationV2ThreadLaunchResult, RpcClientError.RpcClientError>;
   readonly projection?: OrchestrationV2ThreadProjection;
   readonly projectionRequests?: ThreadId[];
   readonly advertiseThreadStop?: boolean;
@@ -93,13 +97,16 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
         return input.projection ?? v2Projection;
       }),
     [ORCHESTRATION_V2_WS_METHODS.launchThread]: (launchInput: OrchestrationV2ThreadLaunchInput) =>
-      Effect.sync(() => {
+      Effect.suspend(() => {
         input.launches?.push(launchInput);
-        return {
-          threadId: launchInput.threadId ?? v2ThreadId,
-          projection: input.projection ?? v2Projection,
-          resumed: false,
-        };
+        return (
+          input.launch?.(launchInput) ??
+          Effect.succeed({
+            threadId: launchInput.threadId ?? v2ThreadId,
+            projection: input.projection ?? v2Projection,
+            resumed: false,
+          })
+        );
       }),
     [WS_METHODS.projectsMutate]: (mutation: ProjectMutation) =>
       Effect.sync(() => {
@@ -328,6 +335,186 @@ describe("V2 environment commands", () => {
           branch: "feature",
         },
       });
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect.each(["bootstrap", "worktree"] as const)(
+    "recovers a %s launch on a replacement session with identical input",
+    (launchKind) =>
+      Effect.gen(function* () {
+        const launches: OrchestrationV2ThreadLaunchInput[] = [];
+        const lost = yield* Deferred.make<void>();
+        const supervisor = yield* makeSupervisor({
+          commands: [],
+          projects: [],
+          launches,
+          launch: (): Effect.Effect<
+            OrchestrationV2ThreadLaunchResult,
+            RpcClientError.RpcClientError
+          > =>
+            Effect.gen(function* () {
+              if (launches.length === 1) {
+                yield* SubscriptionRef.set(supervisor.session, Option.none());
+                yield* Deferred.succeed(lost, undefined);
+                return yield* new RpcClientError.RpcClientError({
+                  reason: new RpcClientError.RpcClientDefect({
+                    message: "socket closed",
+                    cause: new Error("socket closed"),
+                  }),
+                });
+              }
+              return { threadId: v2ThreadId, projection: v2Projection, resumed: false };
+            }),
+        });
+        const session = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+        const launch = yield* startThreadTurn({
+          commandId: CommandId.make(`launch-${launchKind}`),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make(`message-${launchKind}`),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          bootstrap:
+            launchKind === "bootstrap"
+              ? {
+                  createThread: {
+                    projectId: ProjectId.make("project-1"),
+                    title: "Thread",
+                    modelSelection: v2Projection.thread.modelSelection,
+                    runtimeMode: "full-access",
+                    interactionMode: "default",
+                    branch: null,
+                    worktreePath: null,
+                    createdAt: "2026-06-20T00:00:00.000Z",
+                  },
+                }
+              : {
+                  prepareWorktree: {
+                    projectCwd: "/workspace/project",
+                    baseBranch: "main",
+                  },
+                },
+        }).pipe(
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(lost);
+        yield* SubscriptionRef.set(supervisor.session, Option.some({ ...session }));
+
+        expect(yield* Fiber.await(launch)).toEqual(
+          Exit.succeed({ threadId: v2ThreadId, projection: v2Projection, resumed: false }),
+        );
+        expect(launches).toHaveLength(2);
+        expect(launches[1]).toEqual(launches[0]);
+        expect(launches[0]).toMatchObject({
+          commandId: `launch-${launchKind}`,
+          workspaceStrategy:
+            launchKind === "bootstrap" ? { type: "root" } : { type: "worktree", baseRef: "main" },
+        });
+      }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("fails an unanswered launch after one minute on a live socket", () =>
+    Effect.gen(function* () {
+      const supervisor = yield* makeSupervisor({
+        commands: [],
+        projects: [],
+        launch: () => Effect.never,
+      });
+      const launch = yield* startThreadTurn({
+        commandId: CommandId.make("silent-launch"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("silent-launch-message"),
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        bootstrap: {
+          createThread: {
+            projectId: ProjectId.make("project-1"),
+            title: "Thread",
+            modelSelection: v2Projection.thread.modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-06-20T00:00:00.000Z",
+          },
+        },
+      }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.flip,
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("1 minute");
+      expect(launch.pollUnsafe()).toBeDefined();
+      expect((yield* Fiber.join(launch))._tag).toBe("EnvironmentRpcUnavailableError");
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("does not resend a launch after caller cancellation", () =>
+    Effect.gen(function* () {
+      const launches: OrchestrationV2ThreadLaunchInput[] = [];
+      const lost = yield* Deferred.make<void>();
+      const supervisor = yield* makeSupervisor({
+        commands: [],
+        projects: [],
+        launches,
+        launch: (): Effect.Effect<
+          OrchestrationV2ThreadLaunchResult,
+          RpcClientError.RpcClientError
+        > =>
+          Effect.gen(function* () {
+            yield* SubscriptionRef.set(supervisor.session, Option.none());
+            yield* Deferred.succeed(lost, undefined);
+            return yield* new RpcClientError.RpcClientError({
+              reason: new RpcClientError.RpcClientDefect({
+                message: "socket closed",
+                cause: new Error("socket closed"),
+              }),
+            });
+          }),
+      });
+      const session = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+      const launch = yield* startThreadTurn({
+        commandId: CommandId.make("cancelled-launch"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("cancelled-launch-message"),
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        bootstrap: {
+          createThread: {
+            projectId: ProjectId.make("project-1"),
+            title: "Thread",
+            modelSelection: v2Projection.thread.modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-06-20T00:00:00.000Z",
+          },
+        },
+      }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(lost);
+      yield* Fiber.interrupt(launch);
+      yield* SubscriptionRef.set(supervisor.session, Option.some({ ...session }));
+
+      expect(launches).toHaveLength(1);
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 
