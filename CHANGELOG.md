@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.1.87 — 2026-11-13
+
+- Model gateway streams: accept OpenRouter's usage accounting frame after a
+  finished Chat choice instead of failing every streamed turn, and request
+  usage from converted Chat upstreams so Codex and Claude Code receive real
+  token counts.
+- Context overflow: rewrite upstream "too long" rejections into the wording each
+  agent recognizes (Claude Code "prompt is too long", OpenAI
+  context_length_exceeded, Gemini input-token limit) with HTTP 400, so agents
+  compact instead of retrying; streamed overflow and policy rejections no longer
+  return 422 or get retried.
+- Retries: Codex no longer replays a final gateway failure five times
+  (stream retries disabled for gateway-bound sessions); a Retry-After longer
+  than the recovery budget returns the upstream 429 immediately, and a disabled
+  retry policy no longer blocks later requests; hosted tools removed during
+  conversion no longer disable retries.
+- Errors use the calling protocol's envelope (Anthropic, Gemini, OpenAI),
+  oversized requests get HTTP 413 instead of a dropped connection, and a
+  non-JSON upstream reply is reported as an invalid response.
+- Protocol conversion keeps PDFs in tool results, text and URL documents,
+  sampling settings, JSON response formats, prompt cache keys and Gemini
+  thinking settings; clamps Claude thinking budgets below max_tokens; drops
+  manual thinking for forced tool use; normalizes Gemini tool schemas and
+  thinking levels; drops Claude server tools that a target cannot run; maps
+  content filters to refusals and truncation to MAX_TOKENS; and forwards the
+  upstream cause of mid-stream errors once.
+- Model catalog and agent config: use models.dev input limits for context
+  windows, resolve ambiguous catalog entries by the fields Cox uses, skip
+  non-chat Gemini models and read OpenRouter tool and output limits, append /v1
+  to vendor Anthropic base paths, keep configured anthropic-beta and
+  anthropic-version headers, cap Claude Code output to the model limit, align Pi
+  retry and timeout settings with the gateway, keep OpenCode context limits, and
+  start agents on an offered model when the default is delisted. A delisted OMO
+  role model now disables only that OMO instance instead of failing every
+  binding and server startup.
+
 ## 0.1.86 — 2026-11-13
 
 - Mark Claude Opus and Sonnet 5.5, Fable and Mythos models as not supporting
