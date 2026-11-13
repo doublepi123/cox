@@ -85,6 +85,40 @@ async function writeReceipt(directory: string, value: LocalServiceUpdateReceipt)
   await writeFile(join(directory, "local-service-update", "receipt.json"), JSON.stringify(value));
 }
 
+async function makeActivationPlan(entryContents: string | null, withDatabaseBackup: boolean) {
+  const directory = await mkdtemp(join(tmpdir(), "cox-local-service-update-activation-"));
+  directories.push(directory);
+  const baseDir = join(directory, "home");
+  const operation = join(directory, "operation");
+  const entry = join(directory, "candidate", "dist", "bin.mjs");
+  await mkdir(join(baseDir, "local-service-update"), { recursive: true });
+  await mkdir(join(operation, "backup"), { recursive: true });
+  await writeFile(join(baseDir, "local-service-update", "unit"), "original unit\n");
+  await writeFile(join(operation, "previous-unit"), "original unit\n");
+  if (entryContents !== null) {
+    await mkdir(join(directory, "candidate", "dist"), { recursive: true });
+    await writeFile(entry, entryContents);
+  }
+  if (withDatabaseBackup) await writeFile(join(operation, "backup", "statev2.sqlite"), "preserved");
+  return {
+    schema: 1,
+    fromVersion: "0.1.58",
+    targetVersion: "0.2.0",
+    pid: 123,
+    serviceUnit: "cox.service",
+    node: "/opt/node/bin/node",
+    entry,
+    packageRoot: "/srv/cox",
+    baseDir,
+    stateDir: join(directory, "userdata"),
+    databasePath: join(directory, "userdata", "statev2.sqlite"),
+    runtimeStatePath: join(directory, "userdata", "server-runtime.json"),
+    environmentId: "environment-1",
+    operation,
+    nextUnit: "__COX_ENTRY__\n",
+  } satisfies LocalServiceUpdatePlan;
+}
+
 async function makeService(initialReceipt?: LocalServiceUpdateReceipt) {
   const directory = await mkdtemp(join(tmpdir(), "cox-local-service-update-service-"));
   directories.push(directory);
@@ -295,10 +329,75 @@ describe("local service update transaction", () => {
       status: "restarting",
       message: null,
     });
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "restarting",
+      message: null,
+    });
     await writeReceipt(harness.directory, receipt("healthy"));
     expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
       status: "idle",
     });
+  });
+
+  it("returns a launch failure and allows a fresh apply retry", async () => {
+    await using harness = await makeService();
+    await harness.runtime.runPromise(harness.service.state);
+    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+      status: "ready",
+    });
+    mocks.launchUpdate.mockRejectedValueOnce(new Error("launch denied"));
+    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("launch denied"),
+    });
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("launch denied"),
+    });
+    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+      status: "restarting",
+      message: null,
+    });
+  });
+
+  it("records invalid staged entrypoints without replacing the healthy service", async () => {
+    const plan = await makeActivationPlan("invalid entrypoint\n", true);
+    await expect(Operation.activateLocalServiceUpdate(plan)).resolves.toBeUndefined();
+    expect(
+      await Operation.readLocalServiceReceipt(
+        join(plan.baseDir, "local-service-update", "receipt.json"),
+      ),
+    ).toMatchObject({
+      status: "rolled-back",
+      message: expect.stringContaining("entrypoint is invalid"),
+    });
+    expect(
+      await Operation.readLocalServiceReceipt(join(plan.operation, "receipt.json")),
+    ).toMatchObject({
+      status: "rolled-back",
+    });
+    expect(await readFile(join(plan.baseDir, "local-service-update", "unit"), "utf8")).toBe(
+      "original unit\n",
+    );
+    expect(await readFile(join(plan.operation, "backup", "statev2.sqlite"), "utf8")).toBe(
+      "preserved",
+    );
+  });
+
+  it("records a missing database backup without replacing the healthy service", async () => {
+    const plan = await makeActivationPlan("#!/usr/bin/env node\n", false);
+    await expect(Operation.activateLocalServiceUpdate(plan)).resolves.toBeUndefined();
+    expect(
+      await Operation.readLocalServiceReceipt(
+        join(plan.baseDir, "local-service-update", "receipt.json"),
+      ),
+    ).toMatchObject({
+      status: "rolled-back",
+      message: expect.stringContaining("statev2.sqlite"),
+    });
+    expect(await readFile(join(plan.baseDir, "local-service-update", "unit"), "utf8")).toBe(
+      "original unit\n",
+    );
   });
 
   it("backs up a consistent live SQLite database and static settings before handoff", async () => {

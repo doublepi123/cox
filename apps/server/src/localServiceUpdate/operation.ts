@@ -210,16 +210,21 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
     receipt("activating", null),
   );
   await Effect.runPromise(Effect.sleep("1 second"));
-  if (!(await lstat(plan.entry)).isFile()) throw new Error("The staged Cox entrypoint is missing.");
-  if (
-    await readFile(plan.entry, "utf8").then((contents) => !contents.includes("#!/usr/bin/env node"))
-  )
-    throw new Error("The staged Cox entrypoint is invalid.");
-  if (!(await lstat(join(plan.operation, "backup", "statev2.sqlite"))).isFile())
-    throw new Error("The Cox database backup is missing.");
+  let replacementStarted = false;
   try {
+    if (!(await lstat(plan.entry)).isFile())
+      throw new Error("The staged Cox entrypoint is missing.");
+    if (
+      await readFile(plan.entry, "utf8").then(
+        (contents) => !contents.includes("#!/usr/bin/env node"),
+      )
+    )
+      throw new Error("The staged Cox entrypoint is invalid.");
+    if (!(await lstat(join(plan.operation, "backup", "statev2.sqlite"))).isFile())
+      throw new Error("The Cox database backup is missing.");
     if (!plan.nextUnit.includes("__COX_ENTRY__"))
       throw new Error("The Cox update unit template is missing its entry placeholder.");
+    replacementStarted = true;
     await replaceUnit(plan, plan.nextUnit.replaceAll("__COX_ENTRY__", plan.entry));
     await waitForVersion(plan, plan.targetVersion);
     await writeJson(receiptPath, receipt("healthy", null));
@@ -229,6 +234,14 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
     );
   } catch (error) {
     try {
+      if (!replacementStarted) {
+        await writeJson(receiptPath, receipt("rolled-back", String(error)));
+        await writeJson(
+          join(plan.baseDir, "local-service-update", "receipt.json"),
+          receipt("rolled-back", String(error)),
+        );
+        return;
+      }
       await replaceUnit(plan, await readFile(join(plan.operation, "previous-unit"), "utf8"));
       await run("systemctl", ["--user", "reset-failed", plan.serviceUnit]);
       await waitForVersion(plan, plan.fromVersion);

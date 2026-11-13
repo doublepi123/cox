@@ -108,7 +108,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
     );
     if (!receipt) {
       consumedReceipt = undefined;
-      if (current.supported && current.status !== "restarting") return current;
+      if (current.supported && (current.status !== "restarting" || plan)) return current;
       current = localServiceReceiptState(packageJson.version, null);
       return current;
     }
@@ -307,7 +307,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
     function* () {
       if (!ownership) return yield* state;
       if (current.status === "restarting" && plan) return current;
-      if (current.status !== "ready" || !ready || !plan || operation)
+      if (!["ready", "error"].includes(current.status) || !ready || !plan || operation)
         return yield* Effect.fail(new LocalServiceUpdateError("The Cox update is not ready."));
       const active = yield* busyWork(sql).pipe(
         Effect.mapError((cause) => new LocalServiceUpdateError(String(cause))),
@@ -322,9 +322,10 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
         return current;
       }
       current = { ...current, status: "restarting", message: null, progress: null };
+      ready = false;
       operation = launchLocalServiceUpdate(plan).catch((error: unknown) => {
+        ready = true;
         current = { ...current, status: "error", message: String(error), progress: null };
-        throw error;
       });
       try {
         yield* Effect.promise(async () => operation);
