@@ -2,14 +2,10 @@ import {
   OMO_REASONING_LEVELS,
   type OmoReasoningLevel,
   type ModelServiceModel,
-  type EnvironmentId,
   type ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import { OmoRoleName } from "@t3tools/provider-omo/settings";
-import {
-  DEFAULT_OMO_RECOMMENDATION_PROMPT,
-  omoModelReasoningLevels,
-} from "@t3tools/shared/omoRecommendations";
+import { omoModelReasoningLevels } from "@t3tools/shared/omoRecommendations";
 import {
   OMO_LEGACY_AGENT_NAMES,
   OMO_NATIVE_AGENT_ROLES,
@@ -25,7 +21,7 @@ import { useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SettingsRow } from "./settingsLayout";
-import { OmoOfficialRecommendations, OmoRecommendationControl } from "./OmoRecommendationControl";
+import { OmoOfficialRecommendations } from "./OmoRecommendationControl";
 import { OmoLegacyRoles, OmoRoleCard, type OmoRoleModel } from "./OmoRoleCard";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 
@@ -68,7 +64,6 @@ function configurationKey(
   instance: ProviderInstanceConfig,
   agents: Record<string, string>,
   categories: Record<string, string>,
-  prompt = recommendationPrompt(instance.config),
   agentReasoning = roleModels(instance.config, "agentReasoning"),
   categoryReasoning = roleModels(instance.config, "categoryReasoning"),
 ) {
@@ -76,16 +71,9 @@ function configurationKey(
     instance.modelService ?? null,
     Object.entries(agents).sort(),
     Object.entries(categories).sort(),
-    prompt.trim() && prompt !== DEFAULT_OMO_RECOMMENDATION_PROMPT ? prompt : "",
     Object.entries(agentReasoning).sort(),
     Object.entries(categoryReasoning).sort(),
   ]);
-}
-
-function recommendationPrompt(config: unknown): string {
-  const prompt: unknown =
-    config && typeof config === "object" ? Reflect.get(config, "recommendationPrompt") : undefined;
-  return typeof prompt === "string" && prompt.trim() ? prompt : DEFAULT_OMO_RECOMMENDATION_PROMPT;
 }
 
 function hiddenRoleNames(kind: OmoRoleKind): ReadonlyArray<string> {
@@ -318,10 +306,6 @@ function RoleModelFields({
 
 export function OmoSettingsSection({
   instance,
-  environmentId,
-  serviceRevision,
-  serviceName,
-  serviceEnabled = true,
   savedInstance = instance,
   onReset,
   onSavingChange,
@@ -331,10 +315,6 @@ export function OmoSettingsSection({
   onUpdate,
 }: {
   readonly instance: ProviderInstanceConfig;
-  readonly environmentId?: EnvironmentId;
-  readonly serviceRevision?: number | undefined;
-  readonly serviceName?: string | undefined;
-  readonly serviceEnabled?: boolean;
   readonly savedInstance?: ProviderInstanceConfig;
   readonly onReset?: () => void;
   readonly onSavingChange?: (saving: boolean) => void;
@@ -348,7 +328,6 @@ export function OmoSettingsSection({
   const [categoryModels, setCategoryModels] = useState(() =>
     roleModels(instance.config, "categoryModels"),
   );
-  const [prompt, setPrompt] = useState(() => recommendationPrompt(instance.config));
   const [agentReasoning, setAgentReasoning] = useState(() =>
     roleModels(instance.config, "agentReasoning"),
   );
@@ -357,7 +336,6 @@ export function OmoSettingsSection({
   );
   const managed = instance.modelService !== undefined;
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "failed">("idle");
   const [conflict, setConflict] = useState(false);
   const [expandVersion, setExpandVersion] = useState(0);
@@ -373,7 +351,6 @@ export function OmoSettingsSection({
     instance,
     agentModels,
     categoryModels,
-    prompt,
     agentReasoning,
     categoryReasoning,
   );
@@ -386,7 +363,6 @@ export function OmoSettingsSection({
     if (!dirty) {
       setAgentModels(roleModels(savedInstance.config, "agentModels"));
       setCategoryModels(roleModels(savedInstance.config, "categoryModels"));
-      setPrompt(recommendationPrompt(savedInstance.config));
       setAgentReasoning(roleModels(savedInstance.config, "agentReasoning"));
       setCategoryReasoning(roleModels(savedInstance.config, "categoryReasoning"));
     }
@@ -434,59 +410,13 @@ export function OmoSettingsSection({
       )}
     >
       <div className="min-w-0 space-y-4">
-        {environmentId && instance.modelService && serviceRevision !== undefined ? (
-          <OmoRecommendationControl
-            environmentId={environmentId}
-            binding={instance.modelService}
-            revision={serviceRevision}
-            models={models}
-            agents={visibleRoles("agent", agentModels, agentReasoning)}
-            categories={[
-              ...new Set([
-                ...CATEGORY_ROLES,
-                ...Object.keys(categoryModels),
-                ...Object.keys(categoryReasoning),
-              ]),
-            ]}
-            draftKey={JSON.stringify([
-              agentModels,
-              categoryModels,
-              agentReasoning,
-              categoryReasoning,
-            ])}
-            configurationVersion={sourceKey}
-            prompt={prompt}
-            onPromptChange={(next) => {
-              setPrompt(next);
-              setSaveStatus("idle");
-            }}
-            readOnly={readOnly}
-            serviceName={serviceName}
-            serviceEnabled={serviceEnabled}
-            dirty={dirty}
-            saving={saving}
-            onBusyChange={setGenerating}
-            onGenerated={(result) => {
-              setAgentModels({ ...result.agentModels });
-              setCategoryModels({ ...result.categoryModels });
-              setAgentReasoning({ ...result.agentReasoning });
-              setCategoryReasoning({ ...result.categoryReasoning });
-              setExpandVersion((version) => version + 1);
-              setSaveStatus("idle");
-            }}
-          />
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {t("Bind a model service to use AI recommendations.")}
-          </p>
-        )}
         {readOnly ? (
           <p className="text-xs text-muted-foreground">{t("These settings are read-only.")}</p>
         ) : null}
         {managed && !readOnly ? (
           <OmoOfficialRecommendations
             dirty={dirty}
-            disabled={saving || generating || models.length === 0}
+            disabled={saving || models.length === 0}
             onApply={() => {
               const unmatched: string[] = [];
               let nextAgents = agentModels;
@@ -615,12 +545,8 @@ export function OmoSettingsSection({
                 : saveStatus === "saved" && !dirty
                   ? t("Configuration saved")
                   : dirty
-                    ? t(
-                        "Unapplied changes · service binding, main model, roles and recommendation prompt save together.",
-                      )
-                    : t(
-                        "Service binding, main model, roles and recommendation prompt save together.",
-                      )}
+                    ? t("Unapplied changes · service binding, main model and roles save together.")
+                    : t("Service binding, main model and roles save together.")}
             </p>
             {saveStatus === "failed" ? (
               <p role="alert" className="text-xs text-destructive">
@@ -637,7 +563,7 @@ export function OmoSettingsSection({
                 <Button
                   size="xl"
                   variant="outline"
-                  disabled={saving || generating}
+                  disabled={saving}
                   onClick={() => {
                     setConflict(false);
                     setSaveStatus("idle");
@@ -651,11 +577,10 @@ export function OmoSettingsSection({
               <Button
                 size="xl"
                 variant="ghost-muted"
-                disabled={!dirty || saving || generating}
+                disabled={!dirty || saving}
                 onClick={() => {
                   setAgentModels(roleModels(snapshot.config, "agentModels"));
                   setCategoryModels(roleModels(snapshot.config, "categoryModels"));
-                  setPrompt(recommendationPrompt(snapshot.config));
                   setAgentReasoning(roleModels(snapshot.config, "agentReasoning"));
                   setCategoryReasoning(roleModels(snapshot.config, "categoryReasoning"));
                   setSaveStatus("idle");
@@ -667,15 +592,7 @@ export function OmoSettingsSection({
               </Button>
               <Button
                 size="xl"
-                disabled={
-                  invalid ||
-                  invalidReasoning ||
-                  !canSave ||
-                  saving ||
-                  generating ||
-                  !dirty ||
-                  conflict
-                }
+                disabled={invalid || invalidReasoning || !canSave || saving || !dirty || conflict}
                 onClick={async () => {
                   setSaving(true);
                   onSavingChange?.(true);
@@ -690,8 +607,6 @@ export function OmoSettingsSection({
                       categoryModels,
                       agentReasoning,
                       categoryReasoning,
-                      recommendationPrompt:
-                        prompt.trim() && prompt !== DEFAULT_OMO_RECOMMENDATION_PROMPT ? prompt : "",
                     },
                   };
                   try {

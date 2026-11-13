@@ -76,7 +76,6 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.providerInstallStart]: AuthProvidersManageScope,
   [WS_METHODS.modelServiceDiscover]: AuthProvidersManageScope,
   [WS_METHODS.modelServiceTest]: AuthProvidersManageScope,
-  [WS_METHODS.modelServiceRecommendOmoModels]: AuthProvidersManageScope,
   [WS_METHODS.providerInstallCancel]: AuthProvidersManageScope,
   [WS_METHODS.providerInstallSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.providerInstallRemove]: AuthProvidersManageScope,

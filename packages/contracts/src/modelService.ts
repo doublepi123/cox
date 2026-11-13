@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { ModelCapabilities } from "./model.ts";
 
-import { ModelServiceId, ModelServiceBinding } from "./modelServiceBinding.ts";
+import { ModelServiceId } from "./modelServiceBinding.ts";
 export { ModelServiceId, ModelServiceBinding } from "./modelServiceBinding.ts";
 
 export const ModelServiceProtocol = Schema.Literals([
@@ -129,10 +129,6 @@ export const OmoRoleName = Schema.String.check(
   Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
   Schema.makeFilter((name) => !["__proto__", "prototype", "constructor"].includes(name)),
 );
-export const MAX_OMO_RECOMMENDATION_PROMPT_LENGTH = 32_000;
-export const OmoRecommendationPrompt = Schema.String.check(
-  Schema.isMaxLength(MAX_OMO_RECOMMENDATION_PROMPT_LENGTH),
-);
 const isOmoRoleName = Schema.is(OmoRoleName);
 export const OMO_REASONING_LEVELS = [
   "off",
@@ -149,27 +145,6 @@ export const OmoRoleReasoning = Schema.Record(
   Schema.String,
   Schema.Union([Schema.Literal(""), OmoReasoningLevel]),
 ).check(Schema.makeFilter((roles) => Object.keys(roles).every(isOmoRoleName)));
-const OmoRecommendedRoleModels = Schema.Record(Schema.String, TrimmedNonEmptyString).check(
-  Schema.makeFilter((roles) => Object.keys(roles).every(isOmoRoleName)),
-);
-export const ModelServiceRecommendOmoModelsInput = Schema.Struct({
-  serviceId: ModelServiceId,
-  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  modelId: TrimmedNonEmptyString,
-  binding: ModelServiceBinding,
-  agents: Schema.Array(OmoRoleName),
-  categories: Schema.Array(OmoRoleName),
-  prompt: Schema.optionalKey(OmoRecommendationPrompt),
-});
-export type ModelServiceRecommendOmoModelsInput = typeof ModelServiceRecommendOmoModelsInput.Type;
-export const ModelServiceRecommendOmoModelsResult = Schema.Struct({
-  agentModels: OmoRecommendedRoleModels,
-  categoryModels: OmoRecommendedRoleModels,
-  agentReasoning: OmoRoleReasoning,
-  categoryReasoning: OmoRoleReasoning,
-  explanation: TrimmedNonEmptyString,
-});
-export type ModelServiceRecommendOmoModelsResult = typeof ModelServiceRecommendOmoModelsResult.Type;
 export class ModelServiceError extends Schema.TaggedError<ModelServiceError>()(
   "ModelServiceError",
   {

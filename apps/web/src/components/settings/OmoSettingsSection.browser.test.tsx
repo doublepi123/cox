@@ -12,10 +12,9 @@ import { render, act } from "../../../test/render";
 import { setLanguagePreference } from "../../i18n";
 import { OmoSettingsSection } from "./OmoSettingsSection";
 import { ModelServiceBindingSection } from "./ModelServiceBindingSection";
-import { DEFAULT_OMO_RECOMMENDATION_PROMPT } from "@t3tools/shared/omoRecommendations";
 import "~/index.css";
 
-const state = vi.hoisted(() => ({ services: {}, recommend: vi.fn() }));
+const state = vi.hoisted(() => ({ services: {} }));
 vi.mock(import("../../environments/primary/httpLayer"), async () => {
   const { layerRemoteHttpClient } = await import("@t3tools/client-runtime/rpc");
   const Layer = await import("effect/Layer");
@@ -27,13 +26,6 @@ vi.mock(import("../../environments/primary/httpLayer"), async () => {
     ),
   };
 });
-vi.mock(import("../../state/server"), async (original) => ({
-  ...(await original()),
-  serverEnvironment: {
-    ...(await original()).serverEnvironment,
-    recommendOmoModels: state.recommend as never,
-  },
-}));
 vi.mock(import("../../state/use-atom-command"), async (original) => ({
   ...(await original()),
   useAtomCommand: ((command: unknown) => command) as never,
@@ -229,8 +221,6 @@ describe("OMO native roles", () => {
           models={longModels}
           readOnly={false}
           onUpdate={save}
-          environmentId={EnvironmentId.make("test")}
-          serviceRevision={3}
         />,
       );
       const agents = screen
@@ -430,47 +420,6 @@ describe("OMO native roles", () => {
     },
   );
 
-  it("applies recommended thinking strengths and keeps manual strength edits", async () => {
-    setLanguagePreference("en");
-    const save = vi.fn();
-    state.recommend.mockReset().mockResolvedValue({
-      _tag: "Success",
-      value: {
-        agentModels: { explore: "cox/Vendor/Exact" },
-        categoryModels: { quick: "cox/other" },
-        agentReasoning: { explore: "high" },
-        categoryReasoning: { quick: "off" },
-        explanation: "Use deeper review and quick simple work.",
-      },
-    });
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={save}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
-      .toHaveValue("high");
-    await expect
-      .element(screen.getByRole("combobox", { name: "quick thinking strength" }))
-      .toHaveValue("off");
-    await screen.getByRole("combobox", { name: "explore thinking strength" }).selectOptions("max");
-    await screen.getByRole("button", { name: "Apply OMO models" }).click();
-    expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        config: expect.objectContaining({
-          agentReasoning: { explore: "max" },
-          categoryReasoning: { quick: "off" },
-        }),
-      }),
-    );
-  });
   it("saves agent and category thinking strengths and rejects an incompatible model change", async () => {
     setLanguagePreference("en");
     let echoed = instance;
@@ -516,229 +465,6 @@ describe("OMO native roles", () => {
         config: expect.objectContaining({ agentReasoning: { explore: "low" } }),
       }),
     );
-  });
-
-  it("keeps a thinking-strength edit made while recommendations are pending", async () => {
-    setLanguagePreference("en");
-    let finish: (result: unknown) => void = () => {};
-    state.recommend.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.getByRole("combobox", { name: "explore thinking strength" }).selectOptions("max");
-    await act(() =>
-      finish({
-        _tag: "Success",
-        value: {
-          agentModels: { explore: "cox/other" },
-          categoryModels: {},
-          agentReasoning: { explore: "low" },
-          categoryReasoning: {},
-          explanation: "Stale strengths",
-        },
-      }),
-    );
-    await expect
-      .element(screen.getByRole("alert"))
-      .toHaveTextContent(
-        "The configuration changed during generation. Generate again for the current draft.",
-      );
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore thinking strength" }))
-      .toHaveValue("max");
-  });
-  it.each(["", " \n\t "])(
-    "saves a custom prompt across reopening and clears it to the default: %j",
-    async (cleared) => {
-      setLanguagePreference("en");
-      let echoed = instance;
-      const save = vi.fn(async (next: ProviderInstanceConfig) => {
-        echoed = next;
-        return true;
-      });
-      const renderSection = (key: string) => (
-        <OmoSettingsSection
-          key={key}
-          instance={echoed}
-          models={models}
-          readOnly={false}
-          onUpdate={save}
-          environmentId={EnvironmentId.make("test")}
-          serviceRevision={3}
-        />
-      );
-      await using screen = await render(renderSection("initial"));
-      const prompt = screen.getByRole("textbox", { name: "Recommendation prompt" });
-      await expect.element(prompt).toHaveValue(DEFAULT_OMO_RECOMMENDATION_PROMPT);
-      await prompt.fill("Prefer accurate coding models and efficient repository search.");
-      await screen.getByRole("button", { name: "Apply OMO models" }).click();
-      expect(save).toHaveBeenLastCalledWith({
-        ...instance,
-        config: {
-          ...instanceConfig,
-          recommendationPrompt: "Prefer accurate coding models and efficient repository search.",
-        },
-      });
-      await screen.rerender(renderSection("reopened"));
-      await expect
-        .element(prompt)
-        .toHaveValue("Prefer accurate coding models and efficient repository search.");
-      await prompt.fill(cleared);
-      await screen.getByRole("button", { name: "Apply OMO models" }).click();
-      await expect.element(prompt).toHaveValue(DEFAULT_OMO_RECOMMENDATION_PROMPT);
-      expect(save).toHaveBeenLastCalledWith({
-        ...instance,
-        config: { ...instanceConfig, recommendationPrompt: "" },
-      });
-      await screen.rerender(renderSection("reset-reopened"));
-      await expect.element(prompt).toHaveValue(DEFAULT_OMO_RECOMMENDATION_PROMPT);
-      expect(save).toHaveBeenCalledTimes(2);
-    },
-  );
-
-  it("uses the edited prompt for generation without saving it automatically", async () => {
-    setLanguagePreference("en");
-    const save = vi.fn();
-    state.recommend.mockReset().mockResolvedValue({
-      _tag: "Success",
-      value: {
-        agentModels: { explore: "cox/other" },
-        categoryModels: {},
-        agentReasoning: {},
-        categoryReasoning: {},
-        explanation: "Custom prompt result",
-      },
-    });
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={save}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen
-      .getByRole("textbox", { name: "Recommendation prompt" })
-      .fill("Prioritize precise architecture review.");
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.getByRole("button", { name: "Generate and replace current draft" }).click();
-    expect(state.recommend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        input: expect.objectContaining({ prompt: "Prioritize precise architecture review." }),
-      }),
-    );
-    await expect.element(screen.getByText("Custom prompt result", { exact: true })).toBeVisible();
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("preserves prompt edits and rejects a recommendation generated with an older prompt", async () => {
-    setLanguagePreference("en");
-    let finish: (result: unknown) => void = () => {};
-    state.recommend.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen
-      .getByRole("textbox", { name: "Recommendation prompt" })
-      .fill("New role selection requirements.");
-    await act(() =>
-      finish({
-        _tag: "Success",
-        value: {
-          agentModels: { explore: "cox/other" },
-          categoryModels: {},
-          agentReasoning: {},
-          categoryReasoning: {},
-          explanation: "Old prompt result",
-        },
-      }),
-    );
-    await expect
-      .element(screen.getByRole("alert"))
-      .toHaveTextContent(
-        "The configuration changed during generation. Generate again for the current draft.",
-      );
-    await expect
-      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
-      .toHaveValue("New role selection requirements.");
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/Vendor/Exact");
-  });
-
-  it("protects a prompt draft from external saved updates and loads them on discard", async () => {
-    setLanguagePreference("en");
-    const section = (source: ProviderInstanceConfig) => (
-      <OmoSettingsSection
-        instance={source}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />
-    );
-    await using screen = await render(section(instance));
-    await screen.getByRole("textbox", { name: "Recommendation prompt" }).fill("My unsaved prompt.");
-    await screen.rerender(
-      section({
-        ...instance,
-        config: { ...instanceConfig, recommendationPrompt: "Saved elsewhere." },
-      }),
-    );
-    await expect
-      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
-      .toHaveValue("My unsaved prompt.");
-    await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
-    await screen.getByRole("button", { name: "Discard changes" }).click();
-    await expect
-      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
-      .toHaveValue("Saved elsewhere.");
-  });
-
-  it("disables prompt editing in read-only settings", async () => {
-    setLanguagePreference("en");
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await expect
-      .element(screen.getByRole("textbox", { name: "Recommendation prompt" }))
-      .toBeDisabled();
   });
 
   it("keeps saved role values through a real binding-section save echo and later discard", async () => {
@@ -810,61 +536,8 @@ describe("OMO native roles", () => {
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
-        recommendationPrompt: "",
       },
     });
-  });
-
-  it("does not insert an old result or explanation after the edited instance is replaced", async () => {
-    setLanguagePreference("en");
-    let finish: (result: unknown) => void = () => {};
-    state.recommend.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    await using screen = await render(
-      <OmoSettingsSection
-        key="first"
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.rerender(
-      <OmoSettingsSection
-        key="second"
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("second")}
-        serviceRevision={3}
-      />,
-    );
-    await act(() =>
-      finish({
-        _tag: "Success",
-        value: {
-          agentModels: { explore: "cox/other" },
-          categoryModels: {},
-          agentReasoning: {},
-          categoryReasoning: {},
-          explanation: "Old instance explanation",
-        },
-      }),
-    );
-    await expect
-      .element(screen.getByText("Old instance explanation", { exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/Vendor/Exact");
   });
 
   it("shows the independently configured main model instead of a bound catalog fallback", async () => {
@@ -882,9 +555,6 @@ describe("OMO native roles", () => {
       'select[aria-label="explore"]',
     );
     expect(explore).toBeNull();
-    expect(screen.container.textContent).toContain(
-      "Bind a model service to use AI recommendations.",
-    );
     await screen.rerender(
       <OmoSettingsSection
         instance={{
@@ -900,91 +570,6 @@ describe("OMO native roles", () => {
       "Inherit main model",
     );
   });
-  it("confirms replacement of manual changes and can keep the current draft", async () => {
-    setLanguagePreference("en");
-    state.recommend.mockReset().mockResolvedValue({
-      _tag: "Success",
-      value: {
-        agentModels: { explore: "cox/Vendor/Exact" },
-        categoryModels: {},
-        agentReasoning: {},
-        categoryReasoning: {},
-        explanation: "New recommendation",
-      },
-    });
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    expect(state.recommend).not.toHaveBeenCalled();
-    await screen.getByRole("button", { name: "Keep current draft" }).click();
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/other");
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.getByRole("button", { name: "Generate and replace current draft" }).click();
-    expect(state.recommend).toHaveBeenCalledOnce();
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/Vendor/Exact");
-  });
-
-  it("blocks applying during generation and rejects a result if a custom role was added", async () => {
-    setLanguagePreference("en");
-    let finish: (result: unknown) => void = () => {};
-    state.recommend.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await expect
-      .element(screen.getByRole("button", { name: "Generating recommendations…" }))
-      .toBeDisabled();
-    await expect.element(screen.getByRole("button", { name: "Apply OMO models" })).toBeDisabled();
-    await screen.getByRole("textbox", { name: "Agents role name" }).fill("custom_agent");
-    await screen.getByRole("button", { name: "Add role", exact: true }).click();
-    await act(() =>
-      finish({
-        _tag: "Success",
-        value: {
-          agentModels: {},
-          categoryModels: {},
-          agentReasoning: {},
-          categoryReasoning: {},
-          explanation: "Stale",
-        },
-      }),
-    );
-    await expect
-      .element(screen.getByRole("alert"))
-      .toHaveTextContent(
-        "The configuration changed during generation. Generate again for the current draft.",
-      );
-    await expect
-      .element(screen.getByRole("combobox", { name: "custom_agent", exact: true }))
-      .toHaveValue("");
-  });
-
   it("keeps a failed save editable and marks saved only after a successful retry", async () => {
     setLanguagePreference("en");
     const save = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
@@ -1067,32 +652,6 @@ describe("OMO native roles", () => {
       .toHaveAttribute("aria-expanded", "false");
   });
 
-  it.each([false, true])(
-    "explains why generation is unavailable (disabled service: %s)",
-    async (disabled) => {
-      setLanguagePreference("en");
-      state.recommend.mockReset();
-      await using screen = await render(
-        <OmoSettingsSection
-          instance={instance}
-          models={disabled ? models : []}
-          serviceEnabled={!disabled}
-          readOnly={false}
-          onUpdate={vi.fn()}
-          environmentId={EnvironmentId.make("test")}
-          serviceRevision={3}
-        />,
-      );
-      await expect
-        .element(screen.getByRole("button", { name: "Generate recommendation draft" }))
-        .toBeDisabled();
-      expect(screen.container.textContent).toContain(
-        disabled ? "This model service is disabled." : "This binding has no available models.",
-      );
-      expect(state.recommend).not.toHaveBeenCalled();
-    },
-  );
-
   it.each([360, 900])("keeps long model names within a %spx settings container", async (width) => {
     setLanguagePreference("en");
     const container = document.createElement("div");
@@ -1105,209 +664,12 @@ describe("OMO native roles", () => {
         models={longModels}
         readOnly={false}
         onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
       />,
       { container },
     );
     expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
     await screen.getByRole("button", { name: /Agents/ }).click();
     expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
-  });
-  it("generates a draft from the bound catalog and lets the user edit it before applying", async () => {
-    setLanguagePreference("en");
-    const save = vi.fn();
-    state.recommend.mockReset().mockResolvedValue({
-      _tag: "Success",
-      value: {
-        agentModels: { explore: "cox/other", librarian: "cox/other" },
-        categoryModels: { "deep-low": "cox/Vendor/Exact" },
-        agentReasoning: {},
-        categoryReasoning: {},
-        explanation: "Use the stronger model for deep work.",
-      },
-    });
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={save}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen
-      .getByRole("combobox", { name: "Recommendation model", exact: true })
-      .selectOptions("cox/other");
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await expect
-      .element(screen.getByText("Use the stronger model for deep work.", { exact: true }))
-      .toBeVisible();
-    expect(state.recommend).toHaveBeenCalledWith({
-      environmentId: "test",
-      input: {
-        serviceId: "shared",
-        revision: 3,
-        modelId: "other",
-        binding: instance.modelService,
-        agents: ["explore", "librarian", "plan-consultant", "plan-reviewer"],
-        categories: expect.arrayContaining(["deep-low", "architect", "quick"]),
-        prompt: DEFAULT_OMO_RECOMMENDATION_PROMPT,
-      },
-    });
-    expect(save).not.toHaveBeenCalled();
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/other");
-    await screen
-      .getByRole("combobox", { name: "explore", exact: true })
-      .selectOptions("cox/Vendor/Exact");
-    await screen.getByRole("button", { name: "Apply OMO models" }).click();
-    expect(save).toHaveBeenCalledWith({
-      ...instance,
-      config: {
-        binaryPath: "custom-omo",
-        agentModels: { explore: "cox/Vendor/Exact", librarian: "cox/other" },
-        categoryModels: { "deep-low": "cox/Vendor/Exact" },
-        agentReasoning: {},
-        categoryReasoning: {},
-        recommendationPrompt: "",
-      },
-    });
-  });
-
-  it("preserves edits made while a recommendation request is pending", async () => {
-    setLanguagePreference("en");
-    let finish: (result: unknown) => void = () => {};
-    state.recommend.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const save = vi.fn();
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={save}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.getByRole("combobox", { name: "explore", exact: true }).selectOptions("cox/other");
-    await act(() =>
-      finish({
-        _tag: "Success",
-        value: {
-          agentModels: { explore: "cox/Vendor/Exact" },
-          categoryModels: {},
-          agentReasoning: {},
-          categoryReasoning: {},
-          explanation: "Old draft",
-        },
-      }),
-    );
-    await expect
-      .element(screen.getByRole("alert"))
-      .toHaveTextContent(
-        "The configuration changed during generation. Generate again for the current draft.",
-      );
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/other");
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("keeps the previous draft after generation fails", async () => {
-    setLanguagePreference("en");
-    state.recommend.mockReset().mockRejectedValue(new Error("Upstream unavailable"));
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly={false}
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await expect.element(screen.getByRole("alert")).toHaveTextContent("Upstream unavailable");
-    await expect
-      .element(screen.getByRole("combobox", { name: "explore", exact: true }))
-      .toHaveValue("cox/Vendor/Exact");
-  });
-
-  it("discards recommendations if the service binding changes during generation", async () => {
-    setLanguagePreference("en");
-    let finish: (result: unknown) => void = () => {};
-    state.recommend.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const save = vi.fn();
-    const props = {
-      models,
-      readOnly: false,
-      onUpdate: save,
-      environmentId: EnvironmentId.make("test"),
-      serviceRevision: 3,
-    };
-    await using screen = await render(<OmoSettingsSection {...props} instance={instance} />);
-    await screen.getByRole("button", { name: "Generate recommendation draft" }).click();
-    await screen.rerender(
-      <OmoSettingsSection
-        {...props}
-        instance={{ ...instance, modelService: { ...instance.modelService!, modelIds: ["other"] } }}
-        models={[models[1]!]}
-      />,
-    );
-    await act(() =>
-      finish({
-        _tag: "Success",
-        value: {
-          agentModels: { explore: "cox/other" },
-          categoryModels: {},
-          agentReasoning: {},
-          categoryReasoning: {},
-          explanation: "Old binding",
-        },
-      }),
-    );
-    await expect
-      .element(screen.getByRole("alert").first())
-      .toHaveTextContent(
-        "The configuration changed during generation. Generate again for the current draft.",
-      );
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("disables generation when settings are read-only", async () => {
-    setLanguagePreference("en");
-    state.recommend.mockReset();
-    await using screen = await render(
-      <OmoSettingsSection
-        instance={instance}
-        models={models}
-        readOnly
-        onUpdate={vi.fn()}
-        environmentId={EnvironmentId.make("test")}
-        serviceRevision={3}
-      />,
-    );
-    await expect
-      .element(screen.getByRole("button", { name: "Generate recommendation draft" }))
-      .toBeDisabled();
-    await expect
-      .element(screen.getByRole("combobox", { name: "Recommendation model", exact: true }))
-      .toBeDisabled();
-    expect(state.recommend).not.toHaveBeenCalled();
   });
   it("repairs unavailable main and role selections together in one settings update", async () => {
     setLanguagePreference("en");
@@ -1350,7 +712,6 @@ describe("OMO native roles", () => {
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
-        recommendationPrompt: "",
       },
     });
   });
@@ -1379,7 +740,6 @@ describe("OMO native roles", () => {
         categoryModels: { "deep-low": "cox/other" },
         agentReasoning: {},
         categoryReasoning: {},
-        recommendationPrompt: "",
       },
     });
     const options = screen.container.querySelector<HTMLSelectElement>("select")!.options;
@@ -1442,7 +802,6 @@ describe("OMO native roles", () => {
         categoryModels: {},
         agentReasoning: {},
         categoryReasoning: {},
-        recommendationPrompt: "",
       },
     });
   });

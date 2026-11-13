@@ -85,10 +85,6 @@ export function ModelServiceBindingSection({
       </SettingsRow>
       {instance.driver === "omo" ? (
         <OmoSettingsSection
-          environmentId={environmentId}
-          serviceRevision={service?.revision}
-          serviceName={service?.name}
-          serviceEnabled={service?.enabled ?? false}
           savedInstance={instance}
           onSavingChange={setSaving}
           onReset={() => setBinding(instance.modelService)}

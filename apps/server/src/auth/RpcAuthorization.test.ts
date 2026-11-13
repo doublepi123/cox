@@ -5,7 +5,6 @@ import {
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
-  ModelServiceId,
   ProviderDriverKind,
   ProviderInstanceId,
   SecretProviderId,
@@ -36,9 +35,6 @@ describe("RPC authorization scopes", () => {
       AuthProvidersManageScope,
     );
     expect(requiredScopeForRpcMethod(WS_METHODS.modelServiceTest)).toBe(AuthProvidersManageScope);
-    expect(requiredScopeForRpcMethod(WS_METHODS.modelServiceRecommendOmoModels)).toBe(
-      AuthProvidersManageScope,
-    );
   });
 
   it("keeps webhook delivery logs, which hold request bodies, behind operate scope", () => {
@@ -122,64 +118,6 @@ describe("RPC scope middleware", () => {
       });
       expect(handled).toEqual([]);
     }).pipe(Effect.scoped),
-  );
-});
-
-describe("OMO recommendation authorization", () => {
-  const method = WS_METHODS.modelServiceRecommendOmoModels;
-  const group = WsRpcGroup.omit(
-    ...[...WsRpcGroup.requests.keys()].filter(
-      (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, typeof method> => tag !== method,
-    ),
-  );
-  it.effect.each([true, false])(
-    "requires provider-management permission before invoking the LLM: %s",
-    (allowed) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          let calls = 0;
-          const result = {
-            agentModels: { sisyphus: "cox/model" },
-            categoryModels: {},
-            agentReasoning: { sisyphus: "" as const },
-            categoryReasoning: {},
-            explanation: "Recommended.",
-          };
-          const client = yield* RpcTest.makeClient(group).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                group.toLayerHandler(method, () =>
-                  Effect.sync(() => {
-                    calls++;
-                    return result;
-                  }),
-                ),
-                RpcAuthorization.layer(
-                  allowed ? [AuthProvidersManageScope] : [AuthSettingsWriteScope],
-                ),
-              ),
-            ),
-          );
-          const serviceId = ModelServiceId.make("models");
-          const operation = client[method]({
-            serviceId,
-            revision: 0,
-            modelId: "model",
-            binding: { serviceId, modelIds: ["model"] },
-            agents: ["sisyphus"],
-            categories: [],
-          });
-          if (allowed) {
-            expect(yield* operation).toEqual(result);
-            expect(calls).toBe(1);
-          } else {
-            expect(yield* operation.pipe(Effect.flip)).toMatchObject({
-              requiredPermission: AuthProvidersManageScope,
-            });
-            expect(calls).toBe(0);
-          }
-        }),
-      ),
   );
 });
 

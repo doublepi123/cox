@@ -17,8 +17,6 @@ export const zh = {
   "Install OMO Native and set its binary path below. Model service credentials and role models are managed separately for this instance.":
     "安装 OMO Native 并在下方设置可执行文件路径。此实例的模型服务凭据和角色模型单独管理。",
   "Enable OMO Native": "启用 OMO Native",
-  "Recommendation model": "用于生成推荐的模型",
-  "Recommendation prompt": "推荐提示词",
   Role: "角色",
   "Thinking strength": "思考强度",
   "{role} thinking strength": "{role} 思考强度",
@@ -27,8 +25,6 @@ export const zh = {
   "This thinking strength is not supported by the selected model.": "所选模型不支持此思考强度。",
   "Clear or reassign unsupported thinking strengths before saving.":
     "保存前请清空或重新选择不受支持的思考强度。",
-  "Customize how models are assigned to roles. Save with Apply OMO models. Clear the prompt to restore the default. Available models, role descriptions and the required output format are added automatically.":
-    "可编辑模型选配要求，点击“应用 OMO 模型”保存。清空提示词可恢复默认。系统会自动附加可用模型、角色说明和输出格式要求。",
   "{count} roles · {assigned} assigned": "{count} 个角色 · {assigned} 个已指定",
   "{count} unavailable": "{count} 个模型不可用",
   "Search {group}": "搜索{group}",
@@ -121,17 +117,14 @@ export const zh = {
   "Handles documentation, technical writing and prose editing.": "负责文档、技术写作和文字编辑。",
   "Use a model with strong clarity and structure; coding strength alone is not enough.":
     "请使用表达清晰、结构性强的模型；仅有编码能力还不够。",
-  "Bind a model service to use AI recommendations.": "绑定模型服务后可使用 AI 推荐。",
   "These settings are read-only.": "当前设置为只读。",
   "Saving configuration…": "正在保存配置…",
   "Configuration saved": "配置已保存",
-  "Unapplied changes · service binding, main model, roles and recommendation prompt save together.":
-    "有未应用的修改 · 将同时保存服务绑定、主模型、角色配置和推荐提示词。",
-  "Service binding, main model, roles and recommendation prompt save together.":
-    "服务绑定、主模型、角色配置和推荐提示词将一起保存。",
+  "Unapplied changes · service binding, main model and roles save together.":
+    "有未应用的修改 · 将同时保存服务绑定、主模型和角色配置。",
+  "Service binding, main model and roles save together.": "服务绑定、主模型和角色配置将一起保存。",
   "Configuration was not saved. Your draft is preserved.": "配置未保存，草稿已保留。",
   "Retry saving": "重试保存",
-  "AI recommendation": "AI 推荐",
   "Saved OMO configuration changed elsewhere. Discard to load it, or keep this draft and apply it explicitly.":
     "已保存的 OMO 配置已在其他地方更改。可放弃草稿以加载最新配置，或保留此草稿，检查后主动应用。",
   "Keep my draft for review": "保留我的草稿并检查",
@@ -149,31 +142,8 @@ export const zh = {
   "OMO model access": "OMO 模型访问",
   "Bind a model service above, or configure independent OMO credentials below. Installing does not start an agent turn.":
     "在上方绑定模型服务，或在下方配置独立的 OMO 凭据。安装不会启动 agent 对话。",
-  "Assign only from {count} available models in {service}.":
-    "仅从「{service}」当前绑定的 {count} 个可用模型中分配。",
-  "This model service is disabled. Enable it before generating recommendations.":
-    "该模型服务已停用，启用后才能生成推荐。",
-  "This binding has no available models. Select models first.":
-    "当前绑定没有可用模型，请先选择模型。",
-  "Generate recommendation draft": "生成推荐草稿",
-  "Generating will replace all agent and category assignments in the current draft. Saved settings stay unchanged until you apply.":
-    "生成结果将替换当前草稿中所有 agent 和任务类别的模型分配。点击应用前，不会修改已保存的配置。",
-  "Generate and replace current draft": "生成并替换当前草稿",
   "Keep current draft": "保留当前草稿",
-  "Generating may take a while. You can still edit the draft below; edits will be kept.":
-    "生成可能需要一些时间。仍可编辑下方草稿，人工修改会被保留。",
-  "AI recommendation draft · not saved": "AI 推荐草稿 · 未保存",
-  "Recommendation draft edited · not saved": "推荐草稿已修改 · 未保存",
-  "Recommendation generated": "推荐配置已生成",
-  "Original recommendation explanation": "原始推荐说明",
-  "Show recommendation explanation": "展开推荐说明",
   "Automatic (current: {model})": "自动选择（当前：{model}）",
-  "Use this model to recommend agent and category assignments from the current model service. This sends a model request and may incur usage costs. Review and edit the draft before applying.":
-    "使用此模型，从当前模型服务中推荐 agent 和任务类别的模型分配。此操作会发送模型请求，可能产生费用。生成后可逐项修改，确认后再应用。",
-  "The configuration changed during generation. Generate again for the current draft.":
-    "生成过程中配置已变化，请针对当前草稿重新生成。",
-  "Recommendation generation failed. Try again.": "推荐配置生成失败，请重试。",
-  "Generating recommendations…": "正在生成推荐配置…",
   "Generate recommended configuration": "一键生成推荐配置",
   "Recommendation draft ready. Edit any assignment, then apply OMO models.":
     "推荐草稿已生成。可修改任意分配，确认后点击「应用 OMO 模型」。",
