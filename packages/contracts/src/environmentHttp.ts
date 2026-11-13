@@ -143,6 +143,24 @@ export class EnvironmentAuthInvalidError extends Schema.TaggedError<EnvironmentA
   }
 }
 
+export class EnvironmentAuthRateLimitedError extends Schema.TaggedError<EnvironmentAuthRateLimitedError>()(
+  "EnvironmentAuthRateLimitedError",
+  {
+    code: Schema.Literal("auth_rate_limited"),
+    retryAfterSeconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    traceId: TrimmedNonEmptyString,
+  },
+  { httpApiStatus: 429 },
+) {
+  [HttpServerRespondable.symbol]() {
+    return HttpServerResponse.schemaJson(EnvironmentAuthRateLimitedError)(this, { status: 429 });
+  }
+
+  override get message(): string {
+    return `Too many failed sign-in attempts. Try again in ${this.retryAfterSeconds} seconds.`;
+  }
+}
+
 export class EnvironmentScopeRequiredError extends Schema.TaggedError<EnvironmentScopeRequiredError>()(
   "EnvironmentScopeRequiredError",
   {
@@ -295,6 +313,7 @@ export class EnvironmentHttpConflictError extends Schema.TaggedError<Environment
 }
 const EnvironmentSessionCreationErrors = [
   EnvironmentAuthInvalidError,
+  EnvironmentAuthRateLimitedError,
   EnvironmentInternalError,
 ] as const;
 const EnvironmentScopedOperationErrors = [

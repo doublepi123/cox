@@ -2,6 +2,7 @@ import {
   authScopeRequiredResponse,
   AuthAccessWriteScope,
   EnvironmentAuthInvalidError,
+  EnvironmentAuthRateLimitedError,
   type EnvironmentAuthInvalidReason,
   EnvironmentHttpApi,
   EnvironmentInternalError,
@@ -350,6 +351,28 @@ export const layer = HttpApiBuilder.group(
             failEnvironmentAuthInvalid(
               EnvironmentAuth.serverAuthCredentialReason(error),
               EnvironmentAuth.serverAuthDpopFailureReason(error),
+            ),
+          ),
+          Effect.catchIf(EnvironmentAuth.isServerAuthRateLimitedError, (error) =>
+            HttpEffect.appendPreResponseHandler((_request, response) =>
+              Effect.succeed(
+                HttpServerResponse.setHeader(
+                  response,
+                  "retry-after",
+                  String(error.retryAfterSeconds),
+                ),
+              ),
+            ).pipe(
+              Effect.andThen(currentEnvironmentTraceId),
+              Effect.flatMap((traceId) =>
+                Effect.fail(
+                  new EnvironmentAuthRateLimitedError({
+                    code: "auth_rate_limited",
+                    retryAfterSeconds: error.retryAfterSeconds,
+                    traceId,
+                  }),
+                ),
+              ),
             ),
           ),
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>

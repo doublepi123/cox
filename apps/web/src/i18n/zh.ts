@@ -4033,4 +4033,6 @@ export const zh = {
   "Update request failed ({status}).": "更新请求失败（{status}）。",
   "Wait for active agent turns to finish before updating Cox.":
     "请等待运行中的 Agent 任务结束后再更新 Cox。",
+  "Too many failed attempts. Try again in {minutes} min.":
+    "尝试次数过多，请在 {minutes} 分钟后重试。",
 } as const;

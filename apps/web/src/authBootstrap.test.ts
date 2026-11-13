@@ -202,6 +202,30 @@ describe("server authentication bootstrap", () => {
     expect(testApi.calls.browserSession).toEqual([{ credential: "wrong-password" }]);
   });
 
+  it("reports password throttling with its retry delay without retrying the request", async () => {
+    let requests = 0;
+    useLiveAuthFetch(() => {
+      requests += 1;
+      return Promise.resolve(
+        Response.json(
+          {
+            _tag: "EnvironmentAuthRateLimitedError",
+            code: "auth_rate_limited",
+            retryAfterSeconds: 61,
+            traceId: "trace-rate-limited",
+          },
+          { status: 429, headers: { "retry-after": "61" } },
+        ),
+      );
+    });
+
+    await expect(submitServerAuthCredential("correct-password")).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentAuthRateLimitedError",
+      retryAfterSeconds: 61,
+    });
+    expect(requests).toBe(1);
+  });
+
   it("does not fall back to a credential exchange when local session creation fails", async () => {
     const testApi = await installAuthApi({
       session: () => Effect.succeed(session(false)),

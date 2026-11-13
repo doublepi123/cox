@@ -1,5 +1,5 @@
 import type { AuthBrowserSessionResult, AuthSessionState } from "@t3tools/contracts";
-import { EnvironmentHttpCommonError } from "@t3tools/contracts";
+import { EnvironmentAuthRateLimitedError, EnvironmentHttpCommonError } from "@t3tools/contracts";
 import type { EnvironmentHttpCommonError as EnvironmentHttpCommonErrorType } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -58,6 +58,18 @@ export class PrimaryEnvironmentCredentialRejectedError extends Schema.TaggedErro
   }
 }
 
+export class PrimaryEnvironmentAuthRateLimitedError extends Schema.TaggedError<PrimaryEnvironmentAuthRateLimitedError>()(
+  "PrimaryEnvironmentAuthRateLimitedError",
+  {
+    retryAfterSeconds: Schema.Number,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return "Too many failed attempts. Try again in {minutes} min.";
+  }
+}
+
 export class PrimaryEnvironmentAuthSessionTimeoutError extends Schema.TaggedError<PrimaryEnvironmentAuthSessionTimeoutError>()(
   "PrimaryEnvironmentAuthSessionTimeoutError",
   {
@@ -82,6 +94,7 @@ export class PrimaryEnvironmentCredentialRequiredError extends Schema.TaggedErro
 }
 
 const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
+const isEnvironmentAuthRateLimitedError = Schema.is(EnvironmentAuthRateLimitedError);
 
 type ServerAuthGateState =
   | { status: "authenticated" }
@@ -152,6 +165,12 @@ async function createBrowserSession(credential?: string): Promise<AuthBrowserSes
         ),
       );
     } catch (error) {
+      if (isEnvironmentAuthRateLimitedError(error)) {
+        throw new PrimaryEnvironmentAuthRateLimitedError({
+          retryAfterSeconds: error.retryAfterSeconds,
+          cause: error,
+        });
+      }
       if (
         credential !== undefined &&
         isEnvironmentHttpCommonError(error) &&

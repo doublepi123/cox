@@ -189,10 +189,48 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       for (let attempt = 0; attempt < 10; attempt++) {
         yield* Effect.flip(auth.createBrowserSession("wrong-password", metadata));
       }
-      expect((yield* Effect.flip(auth.createBrowserSession(password, metadata)))._tag).toBe(
-        "ServerAuthInvalidCredentialError",
+      expect(yield* Effect.flip(auth.createBrowserSession(password, metadata))).toMatchObject({
+        _tag: "ServerAuthRateLimitedError",
+        retryAfterSeconds: 300,
+      });
+      yield* TestClock.adjust(Duration.minutes(2));
+      for (const credential of ["wrong-password", password]) {
+        expect(yield* Effect.flip(auth.createBrowserSession(credential, metadata))).toMatchObject({
+          _tag: "ServerAuthRateLimitedError",
+          retryAfterSeconds: 180,
+        });
+      }
+      yield* TestClock.adjust(Duration.minutes(2));
+      expect(yield* Effect.flip(auth.createBrowserSession(password, metadata))).toMatchObject({
+        _tag: "ServerAuthRateLimitedError",
+        retryAfterSeconds: 60,
+      });
+      yield* TestClock.adjust(Duration.seconds(59));
+      expect(yield* Effect.flip(auth.createBrowserSession(password, metadata))).toMatchObject({
+        _tag: "ServerAuthRateLimitedError",
+        retryAfterSeconds: 1,
+      });
+      yield* TestClock.adjust(Duration.seconds(1));
+      expect((yield* auth.createBrowserSession(password, metadata)).response.authenticated).toBe(
+        true,
       );
-      yield* TestClock.adjust(Duration.minutes(5));
+    }).pipe(Effect.provide(layerEnvironmentAuth({ authPassword: Redacted.make(password) }))),
+  );
+
+  it.effect("clears recorded password failures after a successful login", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      for (let attempt = 0; attempt < 9; attempt++) {
+        expect(
+          (yield* Effect.flip(auth.createBrowserSession("wrong-password", metadata)))._tag,
+        ).toBe("ServerAuthInvalidCredentialError");
+      }
+      yield* auth.createBrowserSession(password, metadata);
+      for (let attempt = 0; attempt < 9; attempt++) {
+        expect(
+          (yield* Effect.flip(auth.createBrowserSession("wrong-password", metadata)))._tag,
+        ).toBe("ServerAuthInvalidCredentialError");
+      }
       expect((yield* auth.createBrowserSession(password, metadata)).response.authenticated).toBe(
         true,
       );

@@ -210,6 +210,18 @@ export class ServerAuthInvalidCredentialError extends Schema.TaggedError<ServerA
   }
 }
 
+export class ServerAuthRateLimitedError extends Schema.TaggedError<ServerAuthRateLimitedError>()(
+  "ServerAuthRateLimitedError",
+  {
+    retryAfterSeconds: Schema.Number,
+  },
+) {
+  override get message(): string {
+    return `Too many failed sign-in attempts. Try again in ${this.retryAfterSeconds} seconds.`;
+  }
+}
+export const isServerAuthRateLimitedError = Schema.is(ServerAuthRateLimitedError);
+
 export const ServerAuthCredentialError = Schema.Union([
   ServerAuthMissingCredentialError,
   ServerAuthInvalidCredentialError,
@@ -256,7 +268,7 @@ export class EnvironmentAuth extends Context.Service<
         readonly cookieName?: string;
         readonly expireNormalCookie?: boolean;
       },
-      ServerAuthInvalidCredentialError | ServerAuthInternalError
+      ServerAuthInvalidCredentialError | ServerAuthRateLimitedError | ServerAuthInternalError
     >;
     readonly issueSession: (input?: {
       readonly ttl?: Duration.Duration;
@@ -594,10 +606,12 @@ export const make = Effect.gen(function* () {
     "EnvironmentAuth.createBrowserSession",
   )(function* (credential, requestMetadata, previousSessionToken) {
     if (passwordAuth !== undefined) {
-      if (credential === undefined || !(yield* passwordAuth.matches(credential))) {
-        yield* passwordAuth.recordFailure;
-        return yield* new ServerAuthInvalidCredentialError({});
-      }
+      const result = yield* passwordAuth.verify(credential);
+      if (result._tag === "Throttled")
+        return yield* new ServerAuthRateLimitedError({
+          retryAfterSeconds: result.retryAfterSeconds,
+        });
+      if (result._tag === "Rejected") return yield* new ServerAuthInvalidCredentialError({});
     } else if (credential !== undefined) {
       return yield* new ServerAuthInvalidCredentialError({});
     }

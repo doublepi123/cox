@@ -5,6 +5,7 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Etag from "effect/http/Etag";
 import * as HttpPlatform from "effect/http/HttpPlatform";
@@ -24,25 +25,36 @@ class AuthTestApi extends HttpApi.make("environment").add(EnvironmentHttpApi.gro
 
 const layerConfig = ServerConfig.layerTest(process.cwd(), { prefix: "cox-auth-http-test-" });
 
-const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
-  Layer.provide(SqlitePersistence.layerMemory),
-  Layer.provide(ServerSecretStore.layer),
-  Layer.provide(ServerEnvironment.layerIdentity),
-  Layer.provide(layerConfig),
-);
-const layerRoutes = HttpApiBuilder.layer(AuthTestApi).pipe(
-  Layer.provide(AuthHttp.layer),
-  Layer.provide(AuthHttp.layerAuthenticatedAuth),
-  Layer.provideMerge(layerEnvironmentAuth),
-  Layer.provide(layerConfig),
-  Layer.provideMerge(
-    HttpPlatform.layer.pipe(
-      Layer.provideMerge(NodeServices.layer),
-      Layer.provideMerge(Etag.layerWeak),
+const layerServerConfig = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
+  Layer.effect(
+    ServerConfig.ServerConfig,
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      return { ...config, ...overrides };
+    }),
+  ).pipe(Layer.provide(layerConfig));
+
+const layerEnvironmentAuth = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
+  EnvironmentAuth.layer.pipe(
+    Layer.provide(SqlitePersistence.layerMemory),
+    Layer.provide(ServerSecretStore.layer),
+    Layer.provide(ServerEnvironment.layerIdentity),
+    Layer.provide(layerServerConfig(overrides)),
+  );
+const layerRoutes = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
+  HttpApiBuilder.layer(AuthTestApi).pipe(
+    Layer.provide(AuthHttp.layer),
+    Layer.provide(AuthHttp.layerAuthenticatedAuth),
+    Layer.provideMerge(layerEnvironmentAuth(overrides)),
+    Layer.provide(layerServerConfig(overrides)),
+    Layer.provideMerge(
+      HttpPlatform.layer.pipe(
+        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Etag.layerWeak),
+      ),
     ),
-  ),
-  Layer.provide(NodeServices.layer),
-);
+    Layer.provide(NodeServices.layer),
+  );
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const postJson = (path: string, body: unknown, headers?: Readonly<Record<string, string>>) =>
@@ -62,7 +74,7 @@ it.effect.each(["DPoP", "dpop", "dPoP"])("challenges a refused %s request with D
     const crypto = yield* Crypto.Crypto;
     const requestContext = Context.make(Crypto.Crypto, crypto);
     return yield* Effect.acquireUseRelease(
-      Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
+      Effect.sync(() => HttpRouter.toWebHandler(layerRoutes(), { disableLogger: true })),
       (web) =>
         Effect.promise(async () => {
           const response = await web.handler(
@@ -89,7 +101,7 @@ it.effect("creates isolated local sessions, checks origin, and sets safe cookies
     const requestContext = Context.make(Crypto.Crypto, crypto);
     return yield* Effect.acquireUseRelease(
       Effect.sync(() =>
-        HttpRouter.toWebHandler(layerRoutes, {
+        HttpRouter.toWebHandler(layerRoutes(), {
           disableLogger: true,
           middleware: (effect) =>
             Effect.updateService(effect, HttpServerRequest.HttpServerRequest, (request) => {
@@ -158,6 +170,48 @@ it.effect("creates isolated local sessions, checks origin, and sets safe cookies
           expect(secure.headers.getSetCookie()[0]).toContain("Secure");
           const retired = await web.handler(postJson("/oauth/token", {}), requestContext);
           expect(retired.status).toBe(404);
+        }),
+      (web) => Effect.promise(() => web.dispose()),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("returns 429 with Retry-After while password attempts are throttled", () =>
+  Effect.gen(function* () {
+    const crypto = yield* Crypto.Crypto;
+    const requestContext = Context.make(Crypto.Crypto, crypto);
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() =>
+        HttpRouter.toWebHandler(layerRoutes({ authPassword: Redacted.make("correct-password") }), {
+          disableLogger: true,
+          middleware: (effect) =>
+            Effect.updateService(effect, HttpServerRequest.HttpServerRequest, (request) => {
+              Object.assign(request.source, { remoteAddress: "127.0.0.1" });
+              return request;
+            }),
+        }),
+      ),
+      (web) =>
+        Effect.tryPromise(async () => {
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const response = await web.handler(
+              postJson("/api/auth/browser-session", { credential: "wrong-password" }),
+              requestContext,
+            );
+            expect(response.status).toBe(401);
+          }
+          const response = await web.handler(
+            postJson("/api/auth/browser-session", { credential: "correct-password" }),
+            requestContext,
+          );
+          expect(response.status).toBe(429);
+          expect(response.headers.get("retry-after")).toBe("300");
+          expect(await response.json()).toMatchObject({
+            _tag: "EnvironmentAuthRateLimitedError",
+            code: "auth_rate_limited",
+            retryAfterSeconds: 300,
+            traceId: expect.any(String),
+          });
         }),
       (web) => Effect.promise(() => web.dispose()),
     );

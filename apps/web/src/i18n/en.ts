@@ -4182,4 +4182,6 @@ export const en = {
   "Update request failed ({status}).": "Update request failed ({status}).",
   "Wait for active agent turns to finish before updating Cox.":
     "Wait for active agent turns to finish before updating Cox.",
+  "Too many failed attempts. Try again in {minutes} min.":
+    "Too many failed attempts. Try again in {minutes} min.",
 } as const;

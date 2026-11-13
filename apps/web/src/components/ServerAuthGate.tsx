@@ -7,6 +7,7 @@ import {
   submitServerAuthCredential,
 } from "../environments/primary";
 import {
+  PrimaryEnvironmentAuthRateLimitedError,
   PrimaryEnvironmentAuthSessionTimeoutError,
   PrimaryEnvironmentCredentialRejectedError,
   PrimaryEnvironmentCredentialRequiredError,
@@ -18,6 +19,7 @@ import { Input } from "./ui/input";
 import { StandalonePage, StandalonePageHeader } from "./ui/standalone-page";
 
 const isPrimaryEnvironmentRequestError = Schema.is(PrimaryEnvironmentRequestError);
+const isPrimaryEnvironmentAuthRateLimitedError = Schema.is(PrimaryEnvironmentAuthRateLimitedError);
 const isKnownAuthError = Schema.is(
   Schema.Union([
     PrimaryEnvironmentCredentialRejectedError,
@@ -60,16 +62,20 @@ export function ServerAuthGate({
       await onAuthenticated();
     } catch (cause) {
       setError(
-        isPrimaryEnvironmentRequestError(cause)
-          ? t("Primary environment request failed during {operation} (HTTP {status}).", {
-              operation: cause.operation,
-              status: cause.status,
+        isPrimaryEnvironmentAuthRateLimitedError(cause)
+          ? t("Too many failed attempts. Try again in {minutes} min.", {
+              minutes: Math.max(1, Math.ceil(cause.retryAfterSeconds / 60)),
             })
-          : isKnownAuthError(cause)
-            ? t(cause.message)
-            : cause instanceof Error
-              ? cause.message
-              : t("Authentication failed."),
+          : isPrimaryEnvironmentRequestError(cause)
+            ? t("Primary environment request failed during {operation} (HTTP {status}).", {
+                operation: cause.operation,
+                status: cause.status,
+              })
+            : isKnownAuthError(cause)
+              ? t(cause.message)
+              : cause instanceof Error
+                ? cause.message
+                : t("Authentication failed."),
       );
     }
     setSubmitting(false);

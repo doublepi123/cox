@@ -7,6 +7,7 @@ import {
   submitServerAuthCredential,
 } from "../environments/primary";
 import {
+  PrimaryEnvironmentAuthRateLimitedError,
   PrimaryEnvironmentAuthSessionTimeoutError,
   PrimaryEnvironmentCredentialRejectedError,
   PrimaryEnvironmentCredentialRequiredError,
@@ -101,7 +102,30 @@ describe("ServerAuthGate", () => {
     expect(onAuthenticated).toHaveBeenCalledOnce();
   });
 
+  it("shows the rounded-up wait when password attempts are throttled", async () => {
+    vi.mocked(submitServerAuthCredential)
+      .mockReset()
+      .mockRejectedValueOnce(
+        new PrimaryEnvironmentAuthRateLimitedError({ retryAfterSeconds: 61, cause: null }),
+      );
+    const onAuthenticated = vi.fn(async () => {});
+    await using _screen = await render(
+      <ServerAuthGate auth={auth} onAuthenticated={onAuthenticated} />,
+    );
+
+    await page.getByLabelText("Password").fill("correct-password");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect.element(page.getByRole("alert")).toHaveTextContent(
+      "Too many failed attempts. Try again in 2 min.",
+    );
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
   it.each([
+    [
+      new PrimaryEnvironmentAuthRateLimitedError({ retryAfterSeconds: 60, cause: null }),
+      "尝试次数过多，请在 1 分钟后重试。",
+    ],
     [
       new PrimaryEnvironmentCredentialRejectedError({ providedLength: 5, cause: null }),
       "密码无效，请检查后重试。",
