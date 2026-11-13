@@ -49,6 +49,46 @@ await writeFile(join(project, ".omo", "omo.json"), hostileConfig);
 let networkCalls = 0;
 globalThis.fetch = async () => { networkCalls += 1; throw new Error("No model or cloud network is allowed in the native memory fixture."); };
 const engine = join(root, "..", "@code-yeongyu", "senpi", "dist", "core");
+const { SessionLifecycleController } = await import(pathToFileURL(join(engine, "session-lifecycle.js")).href);
+const { createLifecycleApi } = await import(pathToFileURL(join(engine, "extensions", "lifecycle-api.js")).href);
+for (const endedBy of ["provider-stop", "provider-error"]) {
+  const entries = [];
+  const sessionId = "memory-restart-" + endedBy;
+  const controllerOptions = {
+    sessionId, entries,
+    append: data => entries.push({ type: "custom", customType: "session-lifecycle", data }),
+    appendCustody: data => entries.push({ type: "custom", customType: "work-custody", data: { ...data, sessionId } }),
+    appendChild() {}, emit() {},
+    readRuntime: () => ({ activity: { isStreaming: false, isCompacting: false, isBashRunning: false, hasSessionWork: false },
+      pendingMessages: 0, holds: [], human: [], inputAdmissionPending: false }),
+  };
+  const before = new SessionLifecycleController(controllerOptions);
+  before.restoreComplete();
+  before.startRun("human");
+  before.obligations.open("cox-memory:114328:125", "background", "Local automatic memory");
+  before.obligations.open("cox-memory:114328:127", "background", "Local automatic memory");
+  const end = { endedBy, budgetSpent: false, deadlineStop: false, isChildSession: false, mode: "rpc",
+    willRetry: false, goalStopped: false, openWork: { kind: "none" }, expectations: [] };
+  before.goalFacts(null, end);
+  before.idle();
+  assert.equal(before.ledger.snapshot.state, "waiting_background");
+  const restored = new SessionLifecycleController(controllerOptions);
+  restored.obligations.retireRestoredSources();
+  restored.restoreComplete();
+  assert.equal(restored.ledger.snapshot.state, "waiting_background");
+  const handlers = new Map();
+  const recoveredMemory = await createCoxOmoMemoryComponent({ root, config: {}, env: process.env,
+    native: { parseMemorySettings: value => value, createMemoryComponent: () => ({ register() {} }) },
+  });
+  await recoveredMemory.register({ lifecycle: createLifecycleApi(() => restored),
+    on: (name, handler) => handlers.set(name, handler) }, {});
+  await handlers.get("session_start")?.({}, { sessionManager: { getSessionId: () => sessionId, getEntries: () => entries } });
+  assert.equal(restored.obligations.activeCount, 0, "Restart must retire process-local Cox memory custody");
+  assert.equal(restored.ledger.snapshot.state, endedBy === "provider-error" ? "failed" : "done");
+  assert.equal(typeof restored.ledger.snapshot.completionId, "string");
+  assert.equal(restored.ledger.snapshot.persisted, true);
+  recoveredMemory.dispose();
+}
 const { ModelRegistry } = await import(pathToFileURL(join(engine, "model-registry.js")).href);
 const { AuthStorage } = await import(pathToFileURL(join(engine, "auth-storage.js")).href);
 const registry = ModelRegistry.create(AuthStorage.inMemory(), join(agent, "models.json"));

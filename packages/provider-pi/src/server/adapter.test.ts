@@ -56,7 +56,7 @@ import { loadMcpBridge } from "./mcpBridge.testkit.ts";
 import { buildPiRpcLaunch, materializePiT3McpExtension } from "./mcpInjection.ts";
 import { turnItemOutputText } from "../../../client-runtime/src/work-log/itemDetail.ts";
 import { omoTodoSnapshot } from "../../../provider-omo/src/server/todo.ts";
-import { omoTaskEvent } from "../../../provider-omo/src/server/runtime.ts";
+import { OmoLifecycle, omoTaskEvent } from "../../../provider-omo/src/server/runtime.ts";
 import { omoDagEvent } from "../../../provider-omo/src/server/dag.ts";
 import { applyOmoRuntimePolicy } from "../../../provider-omo/src/server/permissions.ts";
 
@@ -754,6 +754,67 @@ describe("PiAdapterV2", () => {
       assert.isTrue(terminal.type === "turn.terminal" && terminal.status === "failed");
       assert.include(JSON.stringify(terminal), "Offline model_not_found");
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+  it.effect.each(["done", "failed"] as const)(
+    "settles restored OMO memory work as %s while retaining the original stream failure",
+    (outcome) =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const { runtime, takeEvent } = yield* openRuntime(fake);
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        yield* startTurn(runtime, providerThread);
+        yield* fake.takeRequest("prompt");
+        const lifecycle = new OmoLifecycle();
+        const send = (event: PiRpcRecord) =>
+          Effect.forEach(lifecycle.observe(event), (item) => fake.emit(item));
+        yield* send({ type: "agent_start", runId: "restored-run" });
+        const errorMessage = "The model service stream was interrupted before protocol completion.";
+        yield* send({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: outcome === "failed" ? "error" : "stop",
+            ...(outcome === "failed" ? { errorMessage } : {}),
+          },
+        });
+        const waiting = {
+          role: "root",
+          state: "waiting_background",
+          runId: "restored-run",
+          seq: 1,
+          persisted: true,
+          restoring: false,
+          runActive: false,
+          waitingOn: {
+            children: 0,
+            background: [{ source: "cox-memory:114328:125", activeCount: 1 }],
+            human: [],
+          },
+        };
+        assert.deepEqual(lifecycle.observe({ type: "session_lifecycle", lifecycle: waiting }), []);
+        yield* send({ type: "agent_idle" });
+        yield* send({
+          type: "session_lifecycle",
+          lifecycle: {
+            ...waiting,
+            seq: 2,
+            state: outcome,
+            completionId: "restored-completion",
+            waitingOn: { children: 0, background: [], human: [] },
+          },
+        });
+        const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+        assert.isTrue(terminal.type === "turn.terminal");
+        if (terminal.type !== "turn.terminal") return;
+        assert.equal(terminal.status, outcome === "failed" ? "failed" : "completed");
+        assert.equal(terminal.failure?.message ?? null, outcome === "failed" ? errorMessage : null);
+        assert.equal(runtime.providerSession.status, outcome === "failed" ? "error" : "ready");
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
   it.effect("accepts authoritative DAG retries at an unchanged completion timestamp", () =>
     Effect.gen(function* () {

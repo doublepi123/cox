@@ -290,14 +290,34 @@ async function createCoxOmoMemoryComponent(options) {
   let lifecycle;
   let custody;
   let workSequence = 0;
+  const workGeneration = crypto.randomUUID();
+  const ownedWork = new Set();
   const running = new Set();
+  const recoverWork = ctx => {
+    const sessionId = ctx?.sessionManager?.getSessionId();
+    if (!custody || typeof sessionId !== "string") return;
+    const records = new Map();
+    for (const entry of ctx.sessionManager.getEntries()) {
+      const value = entry.type === "custom" && entry.customType === "work-custody" ? entry.data : undefined;
+      if (value && value.sessionId === sessionId && typeof value.id === "string") records.set(value.id, value);
+    }
+    for (const value of records.values()) {
+      if (value.kind !== "background" || value.state !== "open" ||
+        value.detail !== "Local automatic memory" || typeof value.key !== "string" ||
+        !/^cox-memory:[1-9]\d*:[1-9]\d*(?::[0-9a-f-]{36})?$/.test(value.key) ||
+        value.ticketId !== undefined || value.payload !== undefined || ownedWork.has(value.key)) continue;
+      custody.open(value.key, "background", value.detail).close("cancelled");
+    }
+  };
   const work = {
     track(action) {
-      const token = custody?.open("cox-memory:" + process.pid + ":" + ++workSequence, "background", "Local automatic memory");
+      const key = "cox-memory:" + process.pid + ":" + ++workSequence + ":" + workGeneration;
+      const token = custody?.open(key, "background", "Local automatic memory");
+      if (token) ownedWork.add(key);
       let result;
       try { result = Promise.resolve(action()); }
-      catch (error) { token?.close("cancelled"); throw error; }
-      const tracked = result.finally(() => { running.delete(tracked); token?.close("consumed"); });
+      catch (error) { ownedWork.delete(key); token?.close("cancelled"); throw error; }
+      const tracked = result.finally(() => { running.delete(tracked); ownedWork.delete(key); token?.close("consumed"); });
       running.add(tracked);
       return tracked;
     },
@@ -362,6 +382,10 @@ async function createCoxOmoMemoryComponent(options) {
       lifecycle = pi.lifecycle;
       if (managed && !options.native && !lifecycle)
         throw new Error("Cox memory requires native background lifecycle custody.");
+      pi.on("session_start", (_event, ctx) => {
+        custody = lifecycle?.obligations;
+        recoverWork(ctx);
+      });
       const owned = new Proxy(pi, {
         get(target, key) {
           if (key === "on") return (name, handler, hookOptions) => target.on(name, (event, ctx, ...args) => {

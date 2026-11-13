@@ -2,7 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { OMO_MEMORY_SOURCE } from "./memory.ts";
 
 type Model = { readonly provider: string; readonly id: string; readonly baseUrl?: string };
-type Handler = (event: unknown, ctx?: { model?: Model; modelRegistry?: object }) => unknown;
+type Handler = (
+  event: unknown,
+  ctx?: {
+    model?: Model;
+    modelRegistry?: object;
+    sessionManager?: { getSessionId(): string; getEntries(): ReadonlyArray<unknown> };
+  },
+) => unknown;
 type NativeConfig = {
   readonly config: {
     readonly memory: {
@@ -122,6 +129,104 @@ async function fixture(
 }
 
 describe("Cox native global memory", () => {
+  it("recovers only abandoned process-local memory custody in the restored session", async () => {
+    const entry = (id: string, patch: Record<string, unknown> = {}) => ({
+      type: "custom",
+      customType: "work-custody",
+      data: {
+        id,
+        key: `cox-memory:114328:${id}`,
+        sessionId: "restored",
+        state: "open",
+        kind: "background",
+        detail: "Local automatic memory",
+        ...patch,
+      },
+    });
+    const entries = [
+      entry("125"),
+      entry("127"),
+      entry("128", { key: `cox-memory:${process.pid}:1:00000000-0000-4000-8000-000000000001` }),
+      entry("129"),
+      entry("129", { state: "settled" }),
+      entry("130", { sessionId: "other-session" }),
+      entry("131", { kind: "children" }),
+      entry("132", { key: "other-extension:1" }),
+      entry("133", { key: "cox-memory:unknown" }),
+      entry("134", { state: "queued", ticketId: "delivery", payload: {} }),
+      entry("135", { ticketId: "delivery" }),
+      entry("136", { detail: "Other work" }),
+      entry("137", { state: "consumed" }),
+    ];
+    const recovered: string[] = [];
+    const { handlers } = await fixture({
+      lifecycle: {
+        obligations: {
+          open: (key: string) => ({
+            close: (reason: string) => {
+              expect(reason).toBe("cancelled");
+              recovered.push(key);
+            },
+          }),
+        },
+      },
+    });
+    await handlers.get("session_start")?.(
+      {},
+      {
+        sessionManager: { getSessionId: () => "restored", getEntries: () => entries },
+      },
+    );
+    expect(recovered).toEqual(entries.slice(0, 3).map((value) => value.data.key));
+  });
+
+  it("preserves live memory work on repeated session starts and gives new owners distinct keys", async () => {
+    const open = new Set<string>();
+    const entries: Array<{ type: string; customType: string; data: Record<string, unknown> }> = [];
+    const lifecycle = {
+      obligations: {
+        open: (key: string, kind: string, detail: string) => {
+          open.add(key);
+          entries.push({
+            type: "custom",
+            customType: "work-custody",
+            data: {
+              id: key,
+              key,
+              kind,
+              detail,
+              state: "open",
+              sessionId: "live",
+            },
+          });
+          return { close: () => open.delete(key) };
+        },
+      },
+    };
+    const first = await fixture({ lifecycle });
+    const ctx = { sessionManager: { getSessionId: () => "live", getEntries: () => entries } };
+    await first.handlers.get("session_start")?.({}, ctx);
+    let finish!: () => void;
+    const pending = first.nativeOptions!.work.track(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const firstKey = [...open][0];
+    await first.handlers.get("session_start")?.({}, ctx);
+    expect([...open]).toEqual([firstKey]);
+    const second = await fixture({ lifecycle });
+    second.handlers.get("before_agent_start")?.({});
+    await second.nativeOptions!.work.track(async () => {
+      expect(open.size).toBe(2);
+    });
+    expect([...open]).toEqual([firstKey]);
+    finish();
+    await pending;
+    expect(open.size).toBe(0);
+  });
+
   it("holds native background custody until asynchronous memory finishes and releases it on failure", async () => {
     const open = new Set<string>();
     const { nativeOptions, handlers } = await fixture({
