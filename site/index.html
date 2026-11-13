@@ -3,28 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#090b0a" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#070908" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f7f3" media="(prefers-color-scheme: light)" />
     <meta
       name="description"
-      content="Cox 是面向编码智能体的本地 Web 工作台：在浏览器里连接 Codex、Claude、Cursor 等智能体，管理对话、终端与代码变更。"
+      content="Cox 是编码智能体的本地驾驶舱：在浏览器或桌面端驾驶 Codex、Claude Code、Cursor、OMO Native、OpenCode 与 Pi，管理对话、终端、代码变更与检查点。"
     />
-    <meta property="og:title" content="Cox — Your agents. One workspace. All yours." />
+    <meta property="og:title" content="Cox — Your agents. One local cockpit." />
     <meta
       property="og:description"
-      content="Cox is a local Web workspace for coding agents. Connect Codex, Claude, Cursor, and more, then manage threads, terminals, and code changes in your browser."
+      content="Cox is the local cockpit for coding agents. Drive Codex, Claude Code, Cursor, OMO Native, OpenCode, and Pi from your browser or desktop, with threads, terminals, diffs, and checkpoints on your machine."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://doublepi.dev/" />
     <meta property="og:image" content="https://doublepi.dev/assets/social.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Cox — Your agents. One workspace. All yours." />
+    <meta property="og:image:alt" content="Cox — Your agents. One local cockpit." />
     <meta name="twitter:card" content="summary_large_image" />
-    <title>Cox — 你的智能体，你的主场</title>
+    <title>Cox — 你的智能体，同一个本地驾驶舱</title>
     <link rel="canonical" href="https://doublepi.dev/" />
     <link rel="icon" href="assets/cox.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      try {
+        const theme = localStorage.getItem("cox.site.theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch {}
+    </script>
     <script type="module" src="main.js"></script>
   </head>
   <body id="top">
@@ -42,6 +49,20 @@
           d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5c-2.3-2.4-3.5-5.2-3.5-8.5s1.2-6.1 3.5-8.5Z"
         />
       </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3.75" />
+        <path
+          d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"
+        />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10Z" />
+      </symbol>
+      <symbol id="i-system" viewBox="0 0 24 24">
+        <rect x="3" y="4.5" width="18" height="12" rx="2.5" />
+        <path d="M8.5 20h7M12 16.5V20" />
+        <path fill="currentColor" stroke="none" d="M12 7a3.5 3.5 0 0 1 0 7Z" />
+      </symbol>
       <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M4.5 12h15M13.5 6l6 6-6 6" /></symbol>
       <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8" /></symbol>
       <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19.5v-15M6 10.5l6-6 6 6" /></symbol>
@@ -56,6 +77,10 @@
       <symbol id="i-lock" viewBox="0 0 24 24">
         <rect x="5" y="10.5" width="14" height="10" rx="2.5" />
         <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 3.5 19 6v5.5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6Z" />
+        <path d="m9 12 2.2 2.2L15.5 10" />
       </symbol>
       <symbol id="i-search" viewBox="0 0 24 24">
         <circle cx="11" cy="11" r="6.5" />
@@ -86,6 +111,7 @@
         <path d="M13.5 3.5v6h6" />
       </symbol>
       <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5" /></symbol>
+      <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m6.5 14.5 5.5-5.5 5.5 5.5" /></symbol>
       <symbol id="i-queue" viewBox="0 0 24 24">
         <path d="M4 6.5h11M4 12h11M4 17.5h7M18.5 14v6.5M16 18l2.5 2.5L21 18" />
       </symbol>
@@ -128,6 +154,10 @@
         <rect x="3" y="4.5" width="18" height="12" rx="2.5" />
         <path d="M8.5 20h7M12 16.5V20" />
       </symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24">
+        <rect x="6" y="2.5" width="12" height="19" rx="3" />
+        <path d="M10.5 18.5h3" />
+      </symbol>
       <symbol id="i-cloud" viewBox="0 0 24 24">
         <path d="M7.5 18.5H17a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7 9.6a4.5 4.5 0 0 0 .5 8.9Z" />
       </symbol>
@@ -139,12 +169,6 @@
         <path d="M4.5 16a8 8 0 1 1 15 0" />
         <path d="m12 13.5 4-4" />
       </symbol>
-      <symbol id="i-palette" viewBox="0 0 24 24">
-        <path
-          d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.4-1.3-1.9-1.3-3.2 0-1 .8-1.6 1.8-1.6h2.2a4 4 0 0 0 4-4c0-3.6-3.8-6.5-8.5-6.5Z"
-        />
-        <path d="M7.5 11.5h.01M10 7.5h.01M14.5 7.5h.01" />
-      </symbol>
       <symbol id="i-keyboard" viewBox="0 0 24 24">
         <rect x="2.5" y="6" width="19" height="12" rx="2.5" />
         <path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14.5h8" />
@@ -153,17 +177,31 @@
         <circle cx="8" cy="15" r="4" />
         <path d="m11 12 8.5-8.5M16.5 6.5 19 9M14 9l2 2" />
       </symbol>
-      <symbol id="i-archive" viewBox="0 0 24 24">
-        <rect x="3.5" y="4.5" width="17" height="4.5" rx="1.5" />
-        <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+      <symbol id="i-graph" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="2" />
+        <circle cx="19" cy="6" r="2" />
+        <circle cx="19" cy="18" r="2" />
+        <path d="M7 12h4m0 0 6-5.2M11 12l6 5.2" />
       </symbol>
-      <symbol id="i-package" viewBox="0 0 24 24">
-        <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z" />
-        <path d="m4 7.5 8 4.5 8-4.5M12 12v9" />
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <circle cx="9" cy="8.5" r="3" />
+        <path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.8a3 3 0 0 1 0 5.4M17.5 14.2a5.5 5.5 0 0 1 3 4.8" />
       </symbol>
-      <symbol id="i-sparkles" viewBox="0 0 24 24">
-        <path d="m11 3.5 1.8 5.2 5.2 1.8-5.2 1.8-1.8 5.2-1.8-5.2L4 10.5l5.2-1.8Z" />
-        <path d="m18.5 15.5.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z" />
+      <symbol id="i-list" viewBox="0 0 24 24">
+        <path d="m4 6.5 1.5 1.5L8 5.5M4 12.5l1.5 1.5L8 11.5M11 7h9M11 13h9M4.5 18h3.5M11 18h9" />
+      </symbol>
+      <symbol id="i-database" viewBox="0 0 24 24">
+        <ellipse cx="12" cy="6" rx="7.5" ry="2.75" />
+        <path d="M4.5 6v12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75V6M4.5 12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75" />
+      </symbol>
+      <symbol id="i-route" viewBox="0 0 24 24">
+        <circle cx="6" cy="6" r="2.25" />
+        <circle cx="18" cy="18" r="2.25" />
+        <path d="M8.25 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.75" />
+      </symbol>
+      <symbol id="i-agent-omo" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="7.5" />
+        <circle cx="12" cy="12" r="2.75" />
       </symbol>
       <symbol id="i-agent-codex" viewBox="0 0 24 24">
         <path d="m6.5 8.5 3.5 3.5-3.5 3.5M12.5 16h5" />
@@ -178,12 +216,13 @@
 
     <a class="skip-link" href="#main" data-i18n="skip">跳到内容</a>
 
-    <header class="site-header">
+    <header class="site-header" data-header>
       <div class="wrap header-inner">
         <a class="brand" href="#top" aria-label="Cox"
-          ><img src="assets/cox.svg" width="30" height="30" alt="" /><span>Cox</span></a
+          ><img src="assets/cox.svg" width="28" height="28" alt="" /><span>Cox</span></a
         >
         <nav class="site-nav" aria-label="主导航" data-i18n-aria="nav.label">
+          <a href="#capabilities" data-i18n="nav.capabilities">能力</a>
           <a href="#workflow" data-i18n="nav.workflow">工作流</a>
           <a href="#desktop" data-i18n="nav.desktop">桌面版</a>
           <a href="#local" data-i18n="nav.local">本地优先</a>
@@ -191,7 +230,7 @@
         </nav>
         <div class="header-actions">
           <button
-            class="language-button"
+            class="header-button"
             type="button"
             lang="en"
             aria-label="Switch to English"
@@ -200,30 +239,43 @@
             <svg class="icon" aria-hidden="true"><use href="#i-globe" /></svg
             ><span data-language-label>EN</span>
           </button>
-          <a class="header-github" href="https://github.com/doublepi123/cox">
-            <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg><span>GitHub</span
-            ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-          </a>
+          <button
+            class="header-button theme-button"
+            type="button"
+            aria-label="颜色主题：跟随系统"
+            title="颜色主题：跟随系统"
+            data-theme-toggle
+            data-theme-mode="system"
+          >
+            <svg class="icon icon-system" aria-hidden="true"><use href="#i-system" /></svg
+            ><svg class="icon icon-light" aria-hidden="true"><use href="#i-sun" /></svg
+            ><svg class="icon icon-dark" aria-hidden="true"><use href="#i-moon" /></svg>
+          </button>
+          <a class="header-button header-github" href="https://github.com/doublepi123/cox" aria-label="GitHub"
+            ><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg
+            ><span class="header-github-text">GitHub</span></a
+          >
         </div>
       </div>
     </header>
 
     <main id="main">
       <section class="hero" aria-labelledby="hero-title">
+        <canvas class="hero-lattice" aria-hidden="true" data-lattice></canvas>
         <div class="wrap hero-inner">
-          <div class="hero-copy">
-            <p class="hero-eyebrow" data-i18n="hero.eyebrow">面向编码智能体的本地工作台</p>
-            <p class="hero-badge">
-              <span data-i18n="hero.badge">MIT 开源</span>
+          <div class="hero-head">
+            <p class="status-pill">
+              <span class="status-dot" aria-hidden="true"></span
+              ><span data-i18n="hero.status">MIT 开源 · 运行在你的电脑上</span
+              ><code>127.0.0.1</code>
             </p>
             <h1 id="hero-title">
               <span class="title-line" data-i18n="hero.line1a">你的智能体</span>
-              <span class="title-line title-accent" data-i18n="hero.line1b">一个工作台</span>
+              <span class="title-line title-accent" data-i18n="hero.line1b">同一个​本地驾驶舱</span>
             </h1>
-            <p class="hero-lead" data-i18n="hero.description">
-              把 Codex、Claude、Cursor
-              等编码智能体带进同一个工作台。从对话、终端到代码变更，让开发回到你的电脑。
-            </p>
+          </div>
+          <div class="hero-side">
+            <p class="hero-lead" data-i18n="hero.description">在自己的电脑上运行 Cox，用一个界面驾驶 Codex、Claude Code、Cursor、OMO Native、OpenCode 与 Pi。对话、终端、差异与检查点都留在你的本地数据目录。</p>
             <div class="hero-actions">
               <a class="button button-primary" href="#desktop"
                 ><span data-i18n="hero.cta">下载桌面版</span
@@ -234,44 +286,37 @@
                 ><span data-i18n="hero.source">在 GitHub 查看</span></a
               >
             </div>
-            <div class="hero-install">
-              <div class="command">
-                <span class="command-prompt" aria-hidden="true">$</span
-                ><code>npx @doublepi123/cox@latest</code>
-                <button
-                  class="copy-button"
-                  type="button"
-                  data-copy="npx @doublepi123/cox@latest"
-                  aria-label="复制启动命令"
-                  data-i18n-aria="copy.command"
-                >
-                  <svg class="icon icon-copy" aria-hidden="true"><use href="#i-copy" /></svg
-                  ><svg class="icon icon-check" aria-hidden="true"><use href="#i-check" /></svg>
-                </button>
-              </div>
-              <p class="hero-note" data-i18n="hero.note">
-                macOS / Windows · npm 运行浏览器版 · 需自备智能体账号或 API
-              </p>
+            <div class="command">
+              <span class="command-prompt" aria-hidden="true">$</span
+              ><code>npx @doublepi123/cox@latest</code>
+              <button
+                class="copy-button"
+                type="button"
+                data-copy="npx @doublepi123/cox@latest"
+                aria-label="复制启动命令"
+                data-i18n-aria="copy.command"
+              >
+                <svg class="icon icon-copy" aria-hidden="true"><use href="#i-copy" /></svg
+                ><svg class="icon icon-check" aria-hidden="true"><use href="#i-check" /></svg>
+              </button>
             </div>
+            <p class="hero-note" data-i18n="hero.note">macOS / Windows 桌面版 · npm 运行浏览器版 · 自备智能体账号或 API</p>
           </div>
 
           <div class="hero-stage">
-            <span class="stage-note stage-note-top" aria-hidden="true"
-              ><span class="note-line"></span
-              ><span data-i18n="hero.stageNote">一个窗口，完整上下文</span></span
-            >
             <div class="demo-controls">
-              <span class="demo-switch-label" id="demo-switch-label" data-i18n="demo.switch"
-                >切换示例智能体</span
-              >
+              <span class="demo-switch-label" id="demo-switch-label" data-i18n="demo.switch">切换示例智能体</span>
               <div class="segmented" role="group" aria-labelledby="demo-switch-label">
-                <button type="button" data-provider="codex" aria-pressed="true">
+                <button type="button" data-provider="omo" aria-pressed="true">
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-omo" /></svg>OMO
+                </button>
+                <button type="button" data-provider="codex" aria-pressed="false" tabindex="-1">
                   <svg class="icon" aria-hidden="true"><use href="#i-agent-codex" /></svg>Codex
                 </button>
-                <button type="button" data-provider="claude" aria-pressed="false">
+                <button type="button" data-provider="claude" aria-pressed="false" tabindex="-1">
                   <svg class="icon" aria-hidden="true"><use href="#i-agent-claude" /></svg>Claude
                 </button>
-                <button type="button" data-provider="cursor" aria-pressed="false">
+                <button type="button" data-provider="cursor" aria-pressed="false" tabindex="-1">
                   <svg class="icon" aria-hidden="true"><use href="#i-agent-cursor" /></svg>Cursor
                 </button>
               </div>
@@ -283,14 +328,46 @@
                 aria-label="Cox 界面示意"
                 data-i18n-aria="demo.label"
                 data-demo
-                data-agent="codex"
+                data-agent="omo"
               >
                 <div class="window-bar">
                   <span class="window-dots"><i></i><i></i><i></i></span>
                   <span class="window-url"
                     ><svg class="icon"><use href="#i-lock" /></svg>127.0.0.1:4773</span
                   >
-                  <span class="window-spacer"></span>
+                  <span class="window-badge" data-i18n="demo.illustrative">示意</span>
+                </div>
+                <div class="dag" data-dag data-dag-agent="omo">
+                  <div class="dag-head">
+                    <svg class="icon"><use href="#i-graph" /></svg
+                    ><span class="dag-label" data-dag-label>OMO 任务图 · mass ulw · 第 2 波</span
+                    ><span class="dag-progress" data-dag-progress>2/5</span>
+                  </div>
+                  <div class="dag-graph">
+                    <span class="dag-node" data-dag-node="0" data-state="done"
+                      ><span class="dag-state"></span><code>plan.contracts</code></span
+                    >
+                    <svg class="dag-edges" viewBox="0 0 40 96" preserveAspectRatio="none">
+                      <path d="M0 48C20 48 20 14 40 14M0 48H40M0 48C20 48 20 82 40 82" />
+                    </svg>
+                    <span class="dag-lanes">
+                      <span class="dag-node" data-dag-node="1" data-state="running"
+                        ><span class="dag-state"></span><code>impl.i18n</code></span
+                      >
+                      <span class="dag-node" data-dag-node="2" data-state="done"
+                        ><span class="dag-state"></span><code>impl.settings</code></span
+                      >
+                      <span class="dag-node" data-dag-node="3" data-state="retry"
+                        ><span class="dag-state"></span><code>impl.tests</code></span
+                      >
+                    </span>
+                    <svg class="dag-edges" viewBox="0 0 40 96" preserveAspectRatio="none">
+                      <path d="M0 14C20 14 20 48 40 48M0 48H40M0 82C20 82 20 48 40 48" />
+                    </svg>
+                    <span class="dag-node" data-dag-node="4" data-state="wait"
+                      ><span class="dag-state"></span><code>verify</code></span
+                    >
+                  </div>
                 </div>
                 <div class="window-body">
                   <div class="app-sidebar">
@@ -332,29 +409,24 @@
                   </div>
                   <div class="app-main">
                     <div class="app-header">
-                      <svg class="icon app-menu"><use href="#i-menu" /></svg
-                      ><span class="app-title" data-i18n="demo.thread">添加中英文切换</span
+                      <span class="app-title" data-i18n="demo.thread">添加中英文切换</span
                       ><span class="chip"
                         ><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
                       ><span class="diff-stat app-stat"><b>+24</b><i>-6</i></span>
                     </div>
                     <div class="app-timeline">
-                      <p class="msg-user" data-i18n="demo.prompt">
-                        为设置页添加中英文切换，切换时保留用户草稿，并补上测试。
-                      </p>
+                      <p class="msg-user" data-i18n="demo.prompt">为设置页添加中英文切换，切换时保留用户草稿，并补上测试。</p>
                       <div class="msg-agent">
                         <div class="agent-head">
-                          <span class="agent-avatar is-live"
+                          <span class="agent-avatar"
+                            ><svg class="icon glyph-omo"><use href="#i-agent-omo" /></svg
                             ><svg class="icon glyph-codex"><use href="#i-agent-codex" /></svg
                             ><svg class="icon glyph-claude"><use href="#i-agent-claude" /></svg
-                            ><svg class="icon glyph-cursor">
-                              <use href="#i-agent-cursor" /></svg></span
-                          ><strong data-agent-name>Codex</strong
+                            ><svg class="icon glyph-cursor"><use href="#i-agent-cursor" /></svg></span
+                          ><strong data-agent-name>OMO</strong
                           ><span class="agent-time" data-i18n="demo.justnow">刚刚</span>
                         </div>
-                        <p class="agent-text" data-agent-message>
-                          先梳理现有的语言设置，再把界面文案移入语言资源。你的代码、路径和草稿保持原样。
-                        </p>
+                        <p class="agent-text" data-agent-message>我把任务拆成依赖图：先定接口契约，再分三路并行实现，最后统一验证。子任务、重试和 Todo 都会显示在 Cox 里。</p>
                         <ul class="work-log">
                           <li>
                             <svg class="icon"><use href="#i-check" /></svg
@@ -391,27 +463,23 @@
                       </div>
                     </div>
                     <div class="app-composer">
-                      <div class="composer-box">
-                        <p class="composer-placeholder" data-i18n="demo.followup">
-                          继续描述你的想法…
-                        </p>
-                        <div class="composer-row">
-                          <span class="chip chip-agent"
-                            ><span class="agent-avatar is-live is-small"
-                              ><svg class="icon glyph-codex"><use href="#i-agent-codex" /></svg
-                              ><svg class="icon glyph-claude"><use href="#i-agent-claude" /></svg
-                              ><svg class="icon glyph-cursor">
-                                <use href="#i-agent-cursor" /></svg></span
-                            ><span data-agent-name>Codex</span
-                            ><svg class="icon"><use href="#i-chevron-down" /></svg
-                          ></span>
-                          <span class="chip"
-                            ><svg class="icon"><use href="#i-queue" /></svg
-                            ><span data-i18n="demo.queue">排队</span></span
-                          ><span class="send-button"
-                            ><svg class="icon"><use href="#i-arrow-up" /></svg
-                          ></span>
-                        </div>
+                      <p class="composer-placeholder" data-i18n="demo.followup">继续描述你的想法</p>
+                      <div class="composer-row">
+                        <span class="chip chip-agent"
+                          ><span class="agent-avatar is-small"
+                            ><svg class="icon glyph-omo"><use href="#i-agent-omo" /></svg
+                            ><svg class="icon glyph-codex"><use href="#i-agent-codex" /></svg
+                            ><svg class="icon glyph-claude"><use href="#i-agent-claude" /></svg
+                            ><svg class="icon glyph-cursor"><use href="#i-agent-cursor" /></svg></span
+                          ><span data-agent-name>OMO</span
+                          ><svg class="icon"><use href="#i-chevron-down" /></svg
+                        ></span>
+                        <span class="chip"
+                          ><svg class="icon"><use href="#i-queue" /></svg
+                          ><span data-i18n="demo.queue">排队</span></span
+                        ><span class="send-button"
+                          ><svg class="icon"><use href="#i-arrow-up" /></svg
+                        ></span>
                       </div>
                     </div>
                   </div>
@@ -434,7 +502,7 @@
                         <span data-i18n="demo.terminal">终端</span
                         ><span class="panel-shell">zsh</span>
                       </div>
-                      <div class="term-lines">
+                      <div class="term-lines" data-agent-terminal>
                         <div><span class="t-prompt">$</span> pnpm test settings</div>
                         <div>
                           <svg class="icon t-ok"><use href="#i-check" /></svg> keeps the draft
@@ -443,10 +511,6 @@
                         <div>
                           <svg class="icon t-ok"><use href="#i-check" /></svg> renders zh and en
                           <span class="t-dim">18ms</span>
-                        </div>
-                        <div>
-                          <svg class="icon t-ok"><use href="#i-check" /></svg> saves the choice
-                          <span class="t-dim">11ms</span>
                         </div>
                         <div><span class="t-pass">Tests</span> 12 passed</div>
                         <div><span class="t-prompt">$</span> git status --short</div>
@@ -460,55 +524,218 @@
               </div>
               <figcaption data-i18n="demo.caption">界面示意，不会连接服务或启动任务。</figcaption>
             </figure>
-            <div class="local-stamp">
-              <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
-              ><span data-i18n="hero.localStamp">本地控制面</span><strong>127.0.0.1</strong>
-            </div>
           </div>
-        </div>
-        <div class="wrap hero-bottom">
-          <span data-i18n="hero.bottom">少切换窗口，多专注构建。</span
-          ><a href="#workflow" aria-label="探索工作流" data-i18n-aria="hero.explore"
-            ><svg class="icon" aria-hidden="true"><use href="#i-arrow-down" /></svg
-          ></a>
         </div>
       </section>
 
-      <section class="providers" aria-labelledby="providers-title">
-        <div class="wrap providers-inner">
-          <h2 class="providers-title" id="providers-title" data-i18n="providers.title">
-            带上你已经在用的智能体
-          </h2>
-          <ul class="provider-list">
-            <li>Codex</li>
-            <li>Claude</li>
-            <li>Cursor</li>
-            <li>OpenCode</li>
-            <li>Grok</li>
-            <li>Antigravity</li>
-          </ul>
-          <p class="providers-more" data-i18n="providers.more">以及 ACP 注册表中的更多智能体</p>
+      <section class="section capabilities" id="capabilities" aria-labelledby="caps-title">
+        <div class="wrap">
+          <div class="section-heading">
+            <h2 id="caps-title" data-i18n="caps.title">为同时驾驶​多个智能体​而建</h2>
+            <p class="section-lead" data-i18n="caps.description">不只是又一个聊天框。Cox 把任务图、模型网关、消息队列和检查点放进同一个本地界面。</p>
+          </div>
+          <div class="bento" data-spotlight>
+            <article class="card card-omo">
+              <div class="card-head">
+                <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-agent-omo" /></svg></span
+                ><span class="card-tag">OMO Native</span>
+              </div>
+              <h3 class="card-title-lg" data-i18n="caps.omo.title">依赖图驱动的​多智能体工作流</h3>
+              <p data-i18n="caps.omo.description">mass ulw 工作流用实时依赖图展示波次、关键路径、重试与错误；停止后保留暂停的节点，由你明确恢复。</p>
+              <div class="wave-board" aria-hidden="true">
+                <div class="wave">
+                  <span class="wave-label">wave 1</span>
+                  <span class="wave-node is-done is-critical"><code>plan.contracts</code></span>
+                </div>
+                <div class="wave">
+                  <span class="wave-label">wave 2</span>
+                  <span class="wave-node is-done"><code>impl.gateway</code></span>
+                  <span class="wave-node is-running is-critical"><code>impl.cockpit</code></span>
+                  <span class="wave-node is-retry"
+                    ><code>impl.docs</code><span class="wave-meta" data-i18n="caps.omo.retry">重试</span></span
+                  >
+                </div>
+                <div class="wave">
+                  <span class="wave-label">wave 3</span>
+                  <span class="wave-node is-critical"><code>verify.e2e</code></span>
+                </div>
+                <p class="wave-legend">
+                  <span class="legend-line"></span><span data-i18n="caps.omo.critical">关键路径</span>
+                </p>
+              </div>
+              <ul class="fact-list">
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg
+                  ><span data-i18n="caps.omo.roles">按角色分配模型：每个智能体与类别可绑定不同模型，留空则继承主模型</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg
+                  ><span data-i18n="caps.omo.subagents">原生子智能体出现在 Cox 的子智能体列表中，含角色、实际模型、任务与输出</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-list" /></svg
+                  ><span data-i18n="caps.omo.todo">结构化 Todo 同步到 Cox 的任务面板</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-database" /></svg
+                  ><span data-i18n="caps.omo.memory">按实例隔离的持久记忆，保存在 Cox 状态目录，不使用全局 ~/.omo</span>
+                </li>
+              </ul>
+            </article>
+
+            <article class="card card-gateway">
+              <div class="card-head">
+                <span class="card-icon is-cyan"><svg class="icon" aria-hidden="true"><use href="#i-route" /></svg></span
+                ><span class="card-tag">CLIProxyAPI</span>
+              </div>
+              <h3 data-i18n="caps.gateway.title">一个模型服务，连接多个智能体</h3>
+              <p data-i18n="caps.gateway.description">把 Codex、Claude Code、Pi、OMO Native 与 OpenCode 实例绑定到同一个服务。内置 MIT 许可的 CLIProxyAPI 转换器，在四种协议之间互转，支持流式输出与工具调用。</p>
+              <div class="switchboard" aria-hidden="true">
+                <div class="sb-row">
+                  <span class="sb-chip">Codex</span><span class="sb-chip">Claude Code</span
+                  ><span class="sb-chip">Pi</span><span class="sb-chip">OMO</span
+                  ><span class="sb-chip">OpenCode</span>
+                </div>
+                <span class="sb-link"></span>
+                <div class="sb-hub">
+                  <svg class="icon"><use href="#i-route" /></svg
+                  ><span data-i18n="caps.gateway.hub">Cox 本地网关</span>
+                </div>
+                <span class="sb-link"></span>
+                <div class="sb-protocols">
+                  <code>OpenAI Responses</code><code>Chat Completions</code
+                  ><code>Anthropic Messages</code><code>Gemini</code>
+                </div>
+              </div>
+              <ul class="fact-list is-compact">
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-key" /></svg
+                  ><span data-i18n="caps.gateway.keys">上游密钥只存于本地密钥库</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-restore" /></svg
+                  ><span data-i18n="caps.gateway.recovery">可配置的请求恢复与重试预算</span>
+                </li>
+              </ul>
+            </article>
+
+            <article class="card card-queue">
+              <div class="card-head">
+                <span class="card-icon is-amber"><svg class="icon" aria-hidden="true"><use href="#i-queue" /></svg></span
+                ><span class="card-tag">Queue / Steer</span>
+              </div>
+              <h3 data-i18n="caps.queue.title">排队，或立即引导</h3>
+              <p data-i18n="caps.queue.description">智能体工作时，后续消息默认排队。上下调整顺序，或从发送菜单选择立即引导。</p>
+              <div class="mini-queue" aria-hidden="true">
+                <div class="mq-running">
+                  <span class="working-indicator"><i></i><i></i><i></i></span
+                  ><span data-i18n="caps.queue.running">正在编辑 Language.tsx</span>
+                </div>
+                <div class="mq-item">
+                  <span class="mq-index">1</span><span data-i18n="caps.queue.item1">先把核心逻辑做好</span
+                  ><svg class="icon"><use href="#i-chevron-up" /></svg
+                  ><svg class="icon"><use href="#i-chevron-down" /></svg>
+                </div>
+                <div class="mq-item">
+                  <span class="mq-index">2</span><span data-i18n="caps.queue.item2">再补上测试和文档</span
+                  ><svg class="icon"><use href="#i-chevron-up" /></svg
+                  ><svg class="icon"><use href="#i-chevron-down" /></svg>
+                </div>
+                <span class="mq-steer"
+                  ><svg class="icon"><use href="#i-arrow-right" /></svg
+                  ><span data-i18n="caps.queue.steer">立即引导</span></span
+                >
+              </div>
+            </article>
+
+            <article class="card card-git">
+              <div class="card-git-copy">
+                <div class="card-head">
+                  <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-branch" /></svg></span
+                  ><span class="card-tag">Git / Checkpoints</span>
+                </div>
+                <h3 data-i18n="caps.git.title">检查点、工作树与​线程迁移</h3>
+                <p data-i18n="caps.git.description">每一轮都可以回到检查点；Git 工作树隔离并行任务；把线程移动到另一个项目时，保留原 ID 和完整历史。</p>
+              </div>
+              <div class="timeline" aria-hidden="true">
+                <div class="tl-track">
+                  <span class="tl-point is-done"><svg class="icon"><use href="#i-flag" /></svg><code>turn 1</code></span>
+                  <span class="tl-point is-done"><svg class="icon"><use href="#i-flag" /></svg><code>turn 2</code></span>
+                  <span class="tl-point is-current"><svg class="icon"><use href="#i-restore" /></svg><code>turn 3</code></span>
+                </div>
+                <div class="tl-branch">
+                  <svg class="icon"><use href="#i-branch" /></svg><code>worktree / feat-i18n</code>
+                </div>
+                <div class="tl-move">
+                  <span class="tl-chip"><svg class="icon"><use href="#i-folder" /></svg><code>atlas-app</code></span
+                  ><svg class="icon tl-arrow"><use href="#i-arrow-right" /></svg
+                  ><span class="tl-chip is-target"><svg class="icon"><use href="#i-folder" /></svg><code>docs-site</code></span
+                  ><span class="tl-note"><svg class="icon"><use href="#i-check" /></svg><span data-i18n="caps.git.kept">历史保留</span></span>
+                </div>
+              </div>
+            </article>
+
+            <article class="card card-local">
+              <div class="card-head">
+                <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg></span
+                ><code class="card-tag">127.0.0.1</code>
+              </div>
+              <h3 data-i18n="caps.local.title">默认只监听本机</h3>
+              <p data-i18n="caps.local.description">不需要 Cox 云端账号。远程访问必须设置密码，并通过 HTTPS 连接。</p>
+              <ul class="point-row">
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
+                  ><span data-i18n="caps.local.point1">默认仅监听回环地址</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-key" /></svg
+                  ><span data-i18n="caps.local.point2">远程访问：密码 + HTTPS</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-cloud" /></svg
+                  ><span data-i18n="caps.local.point3">无需 Cox 云端账号</span>
+                </li>
+              </ul>
+              <p class="card-caveat" data-i18n="caps.local.caveat">模型推理仍使用你配置的服务。</p>
+            </article>
+
+            <article class="card card-more">
+              <h3 data-i18n="caps.more.title">为长时间工作​准备的细节</h3>
+              <ul class="more-list">
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-languages" /></svg
+                  ><span data-i18n="caps.more.language">中英双语界面，切换不丢草稿</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-gauge" /></svg
+                  ><span data-i18n="caps.more.usage">订阅用量与重置时间</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg
+                  ><span data-i18n="caps.more.schedule">定时任务</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-keyboard" /></svg
+                  ><span data-i18n="caps.more.themes">主题与自定义快捷键</span>
+                </li>
+              </ul>
+            </article>
+          </div>
         </div>
       </section>
 
       <section class="section workflow" id="workflow" aria-labelledby="workflow-title">
         <div class="wrap">
-          <div class="section-heading split-heading">
-            <div>
-              <p class="eyebrow">
-                <span>01</span><span data-i18n="workflow.eyebrow">一个连贯的工作流</span>
-              </p>
-              <h2 id="workflow-title" data-i18n="workflow.title">不止对话，直到交付</h2>
-            </div>
-            <p class="section-lead" data-i18n="workflow.description">
-              把任务交给智能体，也保留对过程的判断。从一次想法到一处可审阅的变更，不必离开工作台。
-            </p>
+          <div class="section-heading">
+            <h2 id="workflow-title" data-i18n="workflow.title">从一个想法，到一处​可审阅的变更</h2>
+            <p class="section-lead" data-i18n="workflow.description">把任务交给智能体，也保留对过程的判断。选择智能体、排队引导、审阅差异、运行命令，都在同一个工作台里。</p>
           </div>
           <div class="workflow-showcase">
             <div
               class="workflow-tabs"
               role="tablist"
               aria-label="工作流功能"
+              aria-orientation="vertical"
               data-i18n-aria="workflow.tabsLabel"
             >
               <button
@@ -520,14 +747,11 @@
                 aria-controls="workflow-panel"
                 data-workflow="providers"
               >
-                <span class="workflow-number">01</span
+                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.providers.title">你的智能体，随需选择</strong
-                  ><span data-i18n="feature.providers.description"
-                    >为不同项目选择合适的智能体。订阅账号与自有 API
-                    网关独立并存，模型由你配置。</span
-                  ></span
-                ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
+                  ><span data-i18n="feature.providers.description">为不同项目选择合适的智能体。订阅账号与模型服务独立并存，模型由你配置。</span></span
+                >
               </button>
               <button
                 id="tab-queue"
@@ -539,13 +763,11 @@
                 tabindex="-1"
                 data-workflow="queue"
               >
-                <span class="workflow-number">02</span
+                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-queue" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.queue.title">不必等待，随时引导</strong
-                  ><span data-i18n="feature.queue.description"
-                    >智能体工作时，新消息先排队；需要时立即引导。调整顺序，让任务跟上思路。</span
-                  ></span
-                ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
+                  ><span data-i18n="feature.queue.description">智能体工作时，新消息先排队；需要时立即引导。调整顺序，让任务跟上思路。</span></span
+                >
               </button>
               <button
                 id="tab-review"
@@ -557,13 +779,11 @@
                 tabindex="-1"
                 data-workflow="review"
               >
-                <span class="workflow-number">03</span
+                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-diff" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.review.title">每处变更，都看得清</strong
-                  ><span data-i18n="feature.review.description"
-                    >对话旁查看代码差异，用检查点回到之前任意一轮，确认无误再继续。</span
-                  ></span
-                ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
+                  ><span data-i18n="feature.review.description">对话旁查看代码差异，用检查点回到之前任意一轮，确认无误再继续。</span></span
+                >
               </button>
               <button
                 id="tab-terminal"
@@ -575,13 +795,11 @@
                 tabindex="-1"
                 data-workflow="terminal"
               >
-                <span class="workflow-number">04</span
+                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.terminal.title">终端与 Git，就在手边</strong
-                  ><span data-i18n="feature.terminal.description"
-                    >运行命令、查看输出，用 Git 工作树隔离并行任务，不再来回切换窗口。</span
-                  ></span
-                ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
+                  ><span data-i18n="feature.terminal.description">运行命令、查看输出，用 Git 工作树隔离并行任务，不再来回切换窗口。</span></span
+                >
               </button>
             </div>
             <div
@@ -595,159 +813,141 @@
               <div class="workflow-panel-label">
                 <span class="status-dot" aria-hidden="true"></span
                 ><span data-workflow-status data-i18n="workflow.statusProviders">智能体</span
-                ><span class="panel-label-line"></span><span>Cox / workspace</span>
+                ><span class="panel-label-line"></span><code>cox / workspace</code>
               </div>
-              <div class="workflow-view is-active" data-workflow-view="providers">
-                <div class="view-heading">
-                  <span data-i18n="feature.providers.viewTitle">智能体实例</span><span>4</span>
+              <div class="workflow-views">
+                <div class="workflow-view" data-workflow-view="providers">
+                  <div class="view-heading">
+                    <span data-i18n="feature.providers.viewTitle">智能体实例</span><code>5</code>
+                  </div>
+                  <div class="instance">
+                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-omo" /></svg></span
+                    ><span class="instance-name">OMO Native</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind3">绑定模型服务</span
+                    ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
+                  </div>
+                  <div class="instance">
+                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-codex" /></svg></span
+                    ><span class="instance-name">Codex</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind1">ChatGPT 订阅</span
+                    ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
+                  </div>
+                  <div class="instance">
+                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-claude" /></svg></span
+                    ><span class="instance-name">Claude Code</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind2">Claude 订阅</span
+                    ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
+                  </div>
+                  <div class="instance">
+                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-cursor" /></svg></span
+                    ><span class="instance-name">Cursor</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind4">Cursor 账号</span
+                    ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
+                  </div>
+                  <div class="instance">
+                    <span class="agent-avatar"><svg class="icon"><use href="#i-layers" /></svg></span
+                    ><span class="instance-name">OpenCode</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind5">本地配置</span
+                    ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
+                  </div>
+                  <div class="view-footnote">
+                    <svg class="icon"><use href="#i-plus" /></svg
+                    ><span data-i18n="feature.providers.add">添加实例或自定义模型</span>
+                  </div>
                 </div>
-                <div class="instance">
-                  <span class="agent-avatar is-codex"
-                    ><svg class="icon"><use href="#i-agent-codex" /></svg></span
-                  ><span class="instance-name">Codex</span
-                  ><span class="instance-kind" data-i18n="feature.providers.kind1"
-                    >ChatGPT 订阅</span
-                  ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
-                </div>
-                <div class="instance">
-                  <span class="agent-avatar is-claude"
-                    ><svg class="icon"><use href="#i-agent-claude" /></svg></span
-                  ><span class="instance-name">Claude</span
-                  ><span class="instance-kind" data-i18n="feature.providers.kind2">Claude 订阅</span
-                  ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
-                </div>
-                <div class="instance">
-                  <span class="agent-avatar is-cursor"
-                    ><svg class="icon"><use href="#i-agent-cursor" /></svg></span
-                  ><span class="instance-name">Cursor</span
-                  ><span class="instance-kind" data-i18n="feature.providers.kind4">Cursor 账号</span
-                  ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
-                </div>
-                <div class="instance">
-                  <span class="agent-avatar is-codex"
-                    ><svg class="icon"><use href="#i-layers" /></svg></span
-                  ><span class="instance-name">OpenCode</span
-                  ><span class="instance-kind" data-i18n="feature.providers.kind5">本地配置</span
-                  ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
-                </div>
-                <div class="view-footnote">
-                  <svg class="icon"><use href="#i-plus" /></svg
-                  ><span data-i18n="feature.providers.add">添加实例或自定义模型</span>
-                </div>
-              </div>
-              <div class="workflow-view" data-workflow-view="queue" hidden>
-                <div class="queue-context">
-                  <span class="agent-avatar is-codex"
-                    ><svg class="icon"><use href="#i-agent-codex" /></svg
-                  ></span>
-                  <div>
-                    <strong>Codex</strong
-                    ><span data-i18n="feature.queue.working"
-                      >正在编辑 src/settings/Language.tsx</span
+                <div class="workflow-view" data-workflow-view="queue" hidden>
+                  <div class="queue-context">
+                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-codex" /></svg></span>
+                    <div>
+                      <strong>Codex</strong
+                      ><span data-i18n="feature.queue.working">正在编辑 src/settings/Language.tsx</span>
+                    </div>
+                    <span class="working-indicator"><i></i><i></i><i></i></span>
+                  </div>
+                  <div class="view-heading">
+                    <span data-i18n="feature.queue.pending">排队中</span><code>2</code>
+                  </div>
+                  <div class="queue-item">
+                    <svg class="icon"><use href="#i-grip" /></svg><span class="mq-index">1</span
+                    ><span data-i18n="feature.queue.item1">先把核心逻辑做好</span
+                    ><svg class="icon"><use href="#i-chevron-down" /></svg>
+                  </div>
+                  <div class="queue-item">
+                    <svg class="icon"><use href="#i-grip" /></svg><span class="mq-index">2</span
+                    ><span data-i18n="feature.queue.item2">再补上测试和文档</span
+                    ><svg class="icon"><use href="#i-chevron-down" /></svg>
+                  </div>
+                  <div class="steer-box">
+                    <span data-i18n="feature.queue.prompt">现在改变方向？</span
+                    ><span class="mq-steer"
+                      ><svg class="icon"><use href="#i-arrow-right" /></svg
+                      ><span data-i18n="feature.queue.steer">立即引导</span></span
                     >
                   </div>
-                  <span class="working-indicator"><i></i><i></i><i></i></span>
                 </div>
-                <div class="queue-head">
-                  <span data-i18n="feature.queue.pending">排队中</span><span>2</span>
-                </div>
-                <div class="queue-item">
-                  <svg class="icon"><use href="#i-grip" /></svg><span class="queue-index">1</span
-                  ><span data-i18n="feature.queue.item1">先把核心逻辑做好</span
-                  ><svg class="icon"><use href="#i-chevron-down" /></svg>
-                </div>
-                <div class="queue-item">
-                  <svg class="icon"><use href="#i-grip" /></svg><span class="queue-index">2</span
-                  ><span data-i18n="feature.queue.item2">再补上测试和文档</span
-                  ><svg class="icon"><use href="#i-chevron-down" /></svg>
-                </div>
-                <div class="steer-box">
-                  <span data-i18n="feature.queue.prompt">现在改变方向？</span
-                  ><span class="steer"
-                    ><svg class="icon"><use href="#i-arrow-right" /></svg
-                    ><span data-i18n="feature.queue.steer">立即引导</span></span
-                  >
-                </div>
-              </div>
-              <div class="workflow-view" data-workflow-view="review" hidden>
-                <div class="review-meta">
-                  <span class="chip"
-                    ><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
-                  ><span class="diff-stat"><b>+24</b><i>-6</i></span>
-                </div>
-                <div class="diff-card is-compact">
-                  <div class="diff-head">
-                    <svg class="icon"><use href="#i-file" /></svg
-                    ><span class="diff-path">src/app.tsx</span
-                    ><span class="diff-stat"><b>+18</b><i>-4</i></span>
+                <div class="workflow-view" data-workflow-view="review" hidden>
+                  <div class="review-meta">
+                    <span class="chip"><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
+                    ><span class="diff-stat"><b>+24</b><i>-6</i></span>
                   </div>
-                  <div class="diff-line is-del">
-                    <span class="ln">42</span><span class="sign">-</span
-                    ><code>return &lt;Login /&gt;;</code>
-                  </div>
-                  <div class="diff-line is-add">
-                    <span class="ln">42</span><span class="sign">+</span
-                    ><code>return &lt;Login next={path} /&gt;;</code>
-                  </div>
-                  <div class="diff-line is-add">
-                    <span class="ln">43</span><span class="sign">+</span
-                    ><code>// preserve the destination</code>
-                  </div>
-                </div>
-                <div class="checkpoint-timeline">
-                  <div class="checkpoint-line"></div>
-                  <div class="checkpoint is-done">
-                    <span>01</span>
-                    <div>
-                      <strong data-i18n="feature.review.turn1">理解需求</strong
-                      ><small data-i18n="feature.review.turn1detail">已创建检查点</small>
+                  <div class="diff-card">
+                    <div class="diff-head">
+                      <svg class="icon"><use href="#i-file" /></svg
+                      ><span class="diff-path">src/app.tsx</span
+                      ><span class="diff-stat"><b>+18</b><i>-4</i></span>
                     </div>
-                    <svg class="icon"><use href="#i-check" /></svg>
-                  </div>
-                  <div class="checkpoint is-current">
-                    <span>02</span>
-                    <div>
-                      <strong data-i18n="feature.review.turn2">实现与测试</strong
-                      ><small data-i18n="feature.review.turn2detail">当前检查点</small>
+                    <div class="diff-line is-del">
+                      <span class="ln">42</span><span class="sign">-</span
+                      ><code>return &lt;Login /&gt;;</code>
                     </div>
-                    <svg class="icon"><use href="#i-restore" /></svg>
+                    <div class="diff-line is-add">
+                      <span class="ln">42</span><span class="sign">+</span
+                      ><code>return &lt;Login next={path} /&gt;;</code>
+                    </div>
+                    <div class="diff-line is-add">
+                      <span class="ln">43</span><span class="sign">+</span
+                      ><code>// preserve the destination</code>
+                    </div>
+                  </div>
+                  <div class="checkpoints">
+                    <div class="checkpoint is-done">
+                      <svg class="icon"><use href="#i-flag" /></svg>
+                      <div>
+                        <strong data-i18n="feature.review.turn1">理解需求</strong
+                        ><small data-i18n="feature.review.turn1detail">已创建检查点</small>
+                      </div>
+                      <svg class="icon checkpoint-mark"><use href="#i-check" /></svg>
+                    </div>
+                    <div class="checkpoint is-current">
+                      <svg class="icon"><use href="#i-flag" /></svg>
+                      <div>
+                        <strong data-i18n="feature.review.turn2">实现与测试</strong
+                        ><small data-i18n="feature.review.turn2detail">当前检查点</small>
+                      </div>
+                      <svg class="icon checkpoint-mark"><use href="#i-restore" /></svg>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="workflow-view" data-workflow-view="terminal" hidden>
-                <div class="mini-terminal-head">
-                  <span class="chip"
-                    ><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
-                  ><span class="chip"
-                    ><svg class="icon"><use href="#i-folder" /></svg
-                    ><span data-i18n="feature.terminal.worktree">工作树</span></span
-                  ><span class="panel-shell">zsh</span>
-                </div>
-                <div class="full-terminal">
-                  <div>
-                    <span class="t-prompt">~/projects/atlas-app</span>
-                    <span class="t-branch">feat/i18n</span>
+                <div class="workflow-view" data-workflow-view="terminal" hidden>
+                  <div class="review-meta">
+                    <span class="chip"><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
+                    ><span class="chip"
+                      ><svg class="icon"><use href="#i-folder" /></svg
+                      ><span data-i18n="feature.terminal.worktree">工作树</span></span
+                    ><span class="panel-shell">zsh</span>
                   </div>
-                  <div><span class="t-prompt">$</span> pnpm test settings</div>
-                  <div>
-                    <svg class="icon t-ok"><use href="#i-check" /></svg> keeps the draft
-                    <span class="t-dim">42ms</span>
+                  <div class="full-terminal">
+                    <div><span class="t-path">~/projects/atlas-app</span> <span class="t-branch">feat/i18n</span></div>
+                    <div><span class="t-prompt">$</span> pnpm test settings</div>
+                    <div><svg class="icon t-ok"><use href="#i-check" /></svg> keeps the draft <span class="t-dim">42ms</span></div>
+                    <div><svg class="icon t-ok"><use href="#i-check" /></svg> renders zh and en <span class="t-dim">18ms</span></div>
+                    <div><svg class="icon t-ok"><use href="#i-check" /></svg> saves the choice <span class="t-dim">11ms</span></div>
+                    <div><span class="t-pass">Tests</span> 12 passed <span class="t-dim">(12)</span></div>
+                    <div><span class="t-prompt">$</span> git status --short</div>
+                    <div><span class="t-mod">M</span> src/settings/Language.tsx</div>
+                    <div><span class="t-new">A</span> src/i18n/zh.ts</div>
+                    <div><span class="t-prompt">$</span> <span class="t-cursor"></span></div>
                   </div>
-                  <div>
-                    <svg class="icon t-ok"><use href="#i-check" /></svg> renders zh and en
-                    <span class="t-dim">18ms</span>
-                  </div>
-                  <div>
-                    <svg class="icon t-ok"><use href="#i-check" /></svg> saves the choice
-                    <span class="t-dim">11ms</span>
-                  </div>
-                  <div class="test-summary">
-                    <span class="t-pass">Tests</span> 12 passed <span class="t-dim">(12)</span>
-                  </div>
-                  <div><span class="t-prompt">$</span> git status --short</div>
-                  <div><span class="t-mod">M</span> src/settings/Language.tsx</div>
-                  <div><span class="t-new">A</span> src/i18n/zh.ts</div>
-                  <div><span class="t-prompt">$</span> <span class="t-cursor"></span></div>
                 </div>
               </div>
             </div>
@@ -758,18 +958,9 @@
       <section class="section desktop" id="desktop" aria-labelledby="desktop-title">
         <div class="wrap desktop-grid">
           <div class="desktop-copy">
-            <a class="mobile-link" href="cocode/"
-              ><span data-i18n="desktop.mobile">在 Android 上使用 CoCode</span
-              ><svg class="icon" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
-            ></a>
-            <p class="eyebrow">
-              <span>02</span><span data-i18n="desktop.eyebrow">Cox Desktop</span>
-            </p>
-            <h2 id="desktop-title" data-i18n="desktop.title">不开终端，也有你的本地工作台</h2>
-            <p class="section-lead" data-i18n="desktop.description">
-              macOS 与 Windows 桌面客户端，内置独立 Node
-              运行时和仅限回环地址的本地后端。下载、打开，然后继续你的工作。
-            </p>
+            <span class="card-tag">Cox Desktop</span>
+            <h2 id="desktop-title" data-i18n="desktop.title">不开终端，也有你的​本地驾驶舱</h2>
+            <p class="section-lead" data-i18n="desktop.description">macOS 与 Windows 桌面客户端内置 Web 界面和独立 Node 运行时，本地后端只监听回环地址。组合安装包自带 Cox 后端；仅客户端安装包首次本地会话需联网安装最新稳定版 Cox。</p>
             <div class="desktop-downloads">
               <a
                 class="button button-primary"
@@ -778,46 +969,40 @@
                 ><span data-i18n="desktop.download">下载桌面版</span
                 ><svg class="icon" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
               ></a>
-              <span class="desktop-platforms" data-i18n="desktop.platforms"
-                >macOS Apple Silicon / Intel · Windows x64</span
-              >
+              <span class="desktop-platforms" data-i18n="desktop.platforms">macOS Apple Silicon / Intel · Windows x64</span>
             </div>
-            <p class="desktop-note" data-i18n="desktop.note">
-              智能体 CLI、账号认证和模型订阅仍需单独配置。发布签名与平台验收说明见 Release。
-            </p>
+            <p class="desktop-note" data-i18n="desktop.note">智能体 CLI、账号认证和模型订阅仍需单独配置。发布签名与平台验收说明见 Release。</p>
+            <div class="cocode-card">
+              <span class="cocode-icon"><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg></span>
+              <div>
+                <a class="mobile-link" href="cocode/"
+                  ><span data-i18n="desktop.mobile">在 Android 上使用 CoCode</span
+                  ><svg class="icon" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
+                ></a>
+                <p data-i18n="desktop.mobileDescription">CoCode 在 Android 手机上本地运行 Cox 和编码智能体，无需电脑，也不需要 root。</p>
+              </div>
+            </div>
           </div>
           <div class="desktop-features">
-            <article>
-              <span class="desktop-feature-icon"
-                ><svg class="icon" aria-hidden="true"><use href="#i-monitor" /></svg
-              ></span>
+            <article class="feature-row">
+              <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-monitor" /></svg></span>
               <div>
-                <h3 data-i18n="desktop.feature1.title">打开就用，无需先装 Node</h3>
-                <p data-i18n="desktop.feature1.description">
-                  内置界面、Node 运行时与本地后端；桌面数据与 CLI 分开保存，不影响现有工作区。
-                </p>
+                <h3 data-i18n="desktop.feature1.title">组合包或仅客户端，按需选择</h3>
+                <p data-i18n="desktop.feature1.description">两种安装包都不需要全局安装 Node 或 Cox。桌面数据保存在 ~/.cox/desktop，与 CLI 数据分开。</p>
               </div>
             </article>
-            <article>
-              <span class="desktop-feature-icon"
-                ><svg class="icon" aria-hidden="true"><use href="#i-restore" /></svg
-              ></span>
+            <article class="feature-row">
+              <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-restore" /></svg></span>
               <div>
-                <h3 data-i18n="desktop.feature2.title">更新不中断当前任务</h3>
-                <p data-i18n="desktop.feature2.description">
-                  更新下载后在下次正常启动时生效。激活前备份数据，失败时恢复旧后端及对应数据快照。
-                </p>
+                <h3 data-i18n="desktop.feature2.title">分阶段更新，失败可回滚</h3>
+                <p data-i18n="desktop.feature2.description">更新下载并校验后，在下次正常启动时激活。激活前备份数据，失败时恢复旧后端及对应的数据快照。</p>
               </div>
             </article>
-            <article>
-              <span class="desktop-feature-icon"
-                ><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
-              ></span>
+            <article class="feature-row">
+              <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg></span>
               <div>
-                <h3 data-i18n="desktop.feature3.title">桌面体验，仍然本地</h3>
-                <p data-i18n="desktop.feature3.description">
-                  保留本地认证与 Origin 校验，后端只监听 127.0.0.1；macOS 关闭窗口后，任务继续运行。
-                </p>
+                <h3 data-i18n="desktop.feature3.title">通过 HTTPS 连接远程服务器</h3>
+                <p data-i18n="desktop.feature3.description">连接你自己运营的 Cox 服务器需要 HTTPS 与密码。每个服务器使用独立的浏览器配置，远程页面无法管理本地后端或桌面更新。</p>
               </div>
             </article>
           </div>
@@ -827,175 +1012,40 @@
       <section class="section local" id="local" aria-labelledby="local-title">
         <div class="wrap local-grid">
           <div class="local-copy">
-            <p class="eyebrow">
-              <span>03</span><span data-i18n="local.eyebrow">本地优先，不是云端托管</span>
-            </p>
-            <h2 id="local-title" data-i18n="local.title">你的项目，不必搬家</h2>
-            <p class="section-lead" data-i18n="local.description">
-              Cox
-              服务运行在你的电脑上，默认只监听本机回环地址。项目、对话、凭据与检查点，留在你的本地数据目录。
-            </p>
-            <ul class="checklist">
-              <li>
-                <span class="check-badge"
-                  ><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span
-                ><span data-i18n="local.point1">无需注册 Cox 云端账号</span>
-              </li>
-              <li>
-                <span class="check-badge"
-                  ><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span
-                ><span data-i18n="local.point2">本地认证保护你的工作台</span>
-              </li>
-              <li>
-                <span class="check-badge"
-                  ><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span
-                ><span data-i18n="local.point3">MIT 开源，代码可审计</span>
-              </li>
-            </ul>
-            <p class="local-caveat" data-i18n="local.caveat">
-              本地优先不等于离线推理：智能体仍会调用你配置的模型服务，Git
-              集成也可能访问相应的代码托管平台。
-            </p>
+            <h2 id="local-title" data-i18n="local.title">本地控制面，不是云端托管</h2>
+            <p class="section-lead" data-i18n="local.description">Cox 服务运行在你的电脑上，默认只监听 127.0.0.1。项目、对话、凭据与检查点留在本地数据目录，上游密钥由本地网关保管。</p>
+            <p class="local-caveat" data-i18n="local.caveat">本地优先不等于离线推理：智能体仍会调用你配置的模型服务，Git 集成也可能访问相应的代码托管平台。</p>
           </div>
-          <div class="diagram">
+          <div class="topology" aria-hidden="true">
             <div class="machine">
               <span class="machine-label"
-                ><svg class="icon" aria-hidden="true"><use href="#i-monitor" /></svg
+                ><svg class="icon"><use href="#i-monitor" /></svg
                 ><span data-i18n="local.machine">你的电脑</span></span
               >
-              <div class="machine-row">
-                <div class="node">
-                  <span class="node-icon"
-                    ><svg class="icon" aria-hidden="true"><use href="#i-globe" /></svg
-                  ></span>
-                  <div>
-                    <strong data-i18n="local.browser">浏览器</strong
-                    ><span data-i18n="local.browser.detail">Cox 界面</span>
-                  </div>
-                </div>
-                <div class="connector"><span>127.0.0.1</span></div>
-                <div class="node node-accent">
-                  <span class="node-icon"
-                    ><img src="assets/cox.svg" width="30" height="30" alt=""
-                  /></span>
-                  <div>
-                    <strong data-i18n="local.server">Cox 本地服务</strong
-                    ><span data-i18n="local.server.detail">默认仅监听本机</span>
-                  </div>
-                </div>
+              <div class="topo-row">
+                <span class="topo-node"><svg class="icon"><use href="#i-globe" /></svg><span data-i18n="local.browser">浏览器</span></span>
+                <span class="topo-node"><svg class="icon"><use href="#i-monitor" /></svg><span data-i18n="local.desktop">Cox 桌面版</span></span>
               </div>
-              <div class="data-chips">
-                <span
-                  ><svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg
-                  >~/projects</span
-                ><span
-                  ><svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg>~/.cox</span
-                ><span
-                  ><svg class="icon" aria-hidden="true"><use href="#i-flag" /></svg
-                  ><span data-i18n="local.checkpoints">检查点</span></span
-                >
+              <span class="topo-link"><code>127.0.0.1</code></span>
+              <div class="topo-node topo-server">
+                <img src="assets/cox.svg" width="24" height="24" alt="" /><strong data-i18n="local.server">Cox 本地服务</strong>
+              </div>
+              <span class="topo-link"></span>
+              <div class="topo-row">
+                <span class="topo-node"><svg class="icon"><use href="#i-users" /></svg><span data-i18n="local.agents">智能体</span></span>
+                <span class="topo-arrow"><svg class="icon"><use href="#i-arrow-right" /></svg></span>
+                <span class="topo-node topo-gateway"><svg class="icon"><use href="#i-route" /></svg><span data-i18n="local.gateway">模型网关</span></span>
+              </div>
+              <div class="topo-data">
+                <code>~/.cox</code><code>~/projects</code
+                ><span class="topo-data-item"><svg class="icon"><use href="#i-flag" /></svg><span data-i18n="local.checkpoints">检查点</span></span>
               </div>
             </div>
-            <div class="external-connector">
-              <span class="connector-line"></span><span>HTTPS</span
-              ><span class="connector-line"></span>
+            <span class="topo-link is-external"><code>HTTPS</code></span>
+            <div class="topo-row is-external">
+              <span class="topo-node"><svg class="icon"><use href="#i-cloud" /></svg><span data-i18n="local.external">你配置的模型服务</span></span>
+              <span class="topo-node"><svg class="icon"><use href="#i-branch" /></svg><span data-i18n="local.repos">代码托管平台</span></span>
             </div>
-            <div class="node node-external">
-              <span class="node-icon"
-                ><svg class="icon" aria-hidden="true"><use href="#i-cloud" /></svg
-              ></span>
-              <div>
-                <strong data-i18n="local.external">你配置的模型服务</strong
-                ><span data-i18n="local.external.detail">由你选择与授权</span>
-              </div>
-              <svg class="icon external-arrow" aria-hidden="true">
-                <use href="#i-arrow-up-right" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="section details" aria-labelledby="details-title">
-        <div class="wrap">
-          <div class="section-heading split-heading">
-            <div>
-              <p class="eyebrow">
-                <span>04</span><span data-i18n="details.eyebrow">顺手，也合身</span>
-              </p>
-              <h2 id="details-title" data-i18n="details.title">细节，为长时间工作而生</h2>
-            </div>
-            <p class="section-lead" data-i18n="details.description">
-              语言、主题、快捷键和用量，都能按你的方式调整。工作台应该适应你，而不是相反。
-            </p>
-          </div>
-          <div class="detail-grid">
-            <article class="language-card">
-              <div class="detail-card-heading">
-                <span class="card-icon"
-                  ><svg class="icon" aria-hidden="true"><use href="#i-languages" /></svg></span
-                ><span class="detail-index">A / 02</span>
-              </div>
-              <h3 data-i18n="feature.language.title">中英双语，随时切换</h3>
-              <p data-i18n="feature.language.description">
-                界面语言即时切换，草稿不会丢失；代码、路径与智能体输出保持原样。
-              </p>
-              <div class="language-demo" aria-hidden="true">
-                <div class="language-switch">
-                  <span class="lang-zh" lang="zh-CN">简体中文</span
-                  ><span class="lang-en" lang="en">English</span>
-                </div>
-                <div class="draft">
-                  <span data-i18n="feature.language.draft">把登录页也翻译一下</span
-                  ><span class="draft-caret"></span>
-                </div>
-                <p class="draft-kept">
-                  <svg class="icon"><use href="#i-check" /></svg
-                  ><span data-i18n="feature.language.kept">切换语言后草稿仍在</span>
-                </p>
-              </div>
-            </article>
-            <article class="more-card">
-              <div class="detail-card-heading">
-                <span class="card-icon"
-                  ><svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg></span
-                ><span class="detail-index">B / 06</span>
-              </div>
-              <h3 data-i18n="feature.more.title">把工作台，调成你的样子</h3>
-              <p data-i18n="feature.more.description">实用功能就在设置里，需要时触手可及。</p>
-              <ul class="more-list">
-                <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg
-                  ><span data-i18n="feature.more.schedule">定时任务</span
-                  ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-                </li>
-                <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-gauge" /></svg
-                  ><span data-i18n="feature.more.usage">用量与额度</span
-                  ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-                </li>
-                <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-palette" /></svg
-                  ><span data-i18n="feature.more.themes">主题与字体</span
-                  ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-                </li>
-                <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-keyboard" /></svg
-                  ><span data-i18n="feature.more.keys">自定义快捷键</span
-                  ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-                </li>
-                <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-key" /></svg
-                  ><span data-i18n="feature.more.secrets">密钥管理</span
-                  ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-                </li>
-                <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-archive" /></svg
-                  ><span data-i18n="feature.more.archive">对话归档</span
-                  ><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg>
-                </li>
-              </ul>
-            </article>
           </div>
         </div>
       </section>
@@ -1003,40 +1053,28 @@
       <section class="section start" id="start" aria-labelledby="start-title">
         <div class="wrap start-grid">
           <div class="start-copy">
-            <p class="eyebrow">
-              <span>05</span><span data-i18n="start.eyebrow">也可以用命令行</span>
-            </p>
             <h2 id="start-title" data-i18n="start.title">一条命令，开始构建</h2>
-            <p class="section-lead" data-i18n="start.description">
-              无需克隆仓库，也不用安装开发依赖。npm 包已包含构建好的界面与本地服务。
-            </p>
+            <p class="section-lead" data-i18n="start.description">无需克隆仓库，也不用安装开发依赖。npm 包已包含构建好的界面与本地服务。</p>
             <ol class="steps">
               <li>
-                <span class="step-number">01</span>
+                <span class="step-number">1</span>
                 <div>
                   <h3 data-i18n="step1.title">运行 Cox</h3>
-                  <p data-i18n="step1.description">
-                    在终端运行启动命令。如果浏览器没有自动打开，按终端提示访问本地地址。
-                  </p>
+                  <p data-i18n="step1.description">在终端运行启动命令。如果浏览器没有自动打开，按终端提示访问本地地址。</p>
                 </div>
               </li>
               <li>
-                <span class="step-number">02</span>
+                <span class="step-number">2</span>
                 <div>
                   <h3 data-i18n="step2.title">连接智能体</h3>
-                  <p data-i18n="step2.description">
-                    在设置中添加智能体。CLI 型智能体需在本机安装并完成登录；也可以配置受支持的 API
-                    网关。
-                  </p>
+                  <p data-i18n="step2.description">在设置中添加智能体。CLI 型智能体需在本机安装并完成登录；也可以绑定模型服务。</p>
                 </div>
               </li>
               <li>
-                <span class="step-number">03</span>
+                <span class="step-number">3</span>
                 <div>
                   <h3 data-i18n="step3.title">打开项目，开始构建</h3>
-                  <p data-i18n="step3.description">
-                    添加本地项目目录，新建对话并选择模型，然后说出你的第一个想法。
-                  </p>
+                  <p data-i18n="step3.description">添加本地项目目录，新建对话并选择模型，然后说出你的第一个想法。</p>
                 </div>
               </li>
             </ol>
@@ -1055,14 +1093,12 @@
                 ><span class="terminal-title"
                   ><svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg
                   ><span data-i18n="start.terminal">终端</span></span
-                ><span class="terminal-node">Node.js 26.12.1</span>
+                ><code class="terminal-node">Node.js 26.12.1</code>
               </div>
               <div class="terminal-body">
                 <p class="t-comment" data-i18n="start.comment"># 直接运行最新版本</p>
                 <div class="t-command">
-                  <code
-                    ><span class="t-prompt" aria-hidden="true">$ </span>npx
-                    @doublepi123/cox@latest</code
+                  <code><span class="t-prompt" aria-hidden="true">$ </span>npx @doublepi123/cox@latest</code
                   ><button
                     class="copy-button"
                     type="button"
@@ -1076,9 +1112,7 @@
                 </div>
                 <p class="t-comment" data-i18n="start.global"># 或者全局安装</p>
                 <div class="t-command">
-                  <code
-                    ><span class="t-prompt" aria-hidden="true">$ </span>npm install --global
-                    @doublepi123/cox@latest</code
+                  <code><span class="t-prompt" aria-hidden="true">$ </span>npm install --global @doublepi123/cox@latest</code
                   ><button
                     class="copy-button"
                     type="button"
@@ -1094,31 +1128,22 @@
                   <code><span class="t-prompt" aria-hidden="true">$ </span>cox</code>
                 </div>
                 <p class="t-output">
-                  <span class="ok-dot" aria-hidden="true"></span
-                  ><span data-i18n="start.footer"
-                    >Cox 会启动仅限本机访问的服务，并自动打开浏览器。</span
-                  >
+                  <svg class="icon" aria-hidden="true"><use href="#i-check" /></svg
+                  ><span data-i18n="start.footer">Cox 会启动仅限本机访问的服务，并自动打开浏览器。</span>
                 </p>
               </div>
             </div>
-            <p class="disclaimer" data-i18n="start.disclaimer">
-              Cox 不包含模型订阅或 API
-              额度，请使用你自己的账号与凭据。如果原生依赖没有适用于你平台的预编译版本，安装时可能需要
-              C/C++ 构建工具。
-            </p>
+            <p class="disclaimer" data-i18n="start.disclaimer">Cox 不包含模型订阅或 API 额度，请使用你自己的账号与凭据。如果原生依赖没有适用于你平台的预编译版本，安装时可能需要 C/C++ 构建工具。</p>
           </div>
         </div>
       </section>
 
       <section class="closing" aria-labelledby="closing-title">
         <div class="wrap closing-inner">
-          <img class="closing-logo" src="assets/cox.svg" width="64" height="64" alt="" />
-          <p class="eyebrow" data-i18n="closing.eyebrow">你的下一件作品，从这里开始</p>
+          <img class="closing-logo" src="assets/cox.svg" width="56" height="56" alt="" />
           <h2 id="closing-title">
-            <span class="title-phrase" data-i18n="closing.title1">智能体已就位</span
-            ><span class="title-phrase title-accent" data-i18n="closing.title2"
-              >轮到你的想法了</span
-            >
+            <span class="title-line" data-i18n="closing.title1">智能体已就位</span
+            ><span class="title-line title-accent" data-i18n="closing.title2">轮到你的想法了</span>
           </h2>
           <p data-i18n="closing.description">开源、本地运行、由你掌控。</p>
           <div class="closing-actions">
@@ -1138,7 +1163,7 @@
       <div class="wrap footer-inner">
         <div class="footer-brand">
           <a class="brand" href="#top"
-            ><img src="assets/cox.svg" width="26" height="26" alt="" /><span>Cox</span></a
+            ><img src="assets/cox.svg" width="24" height="24" alt="" /><span>Cox</span></a
           >
           <p>
             <span data-i18n="footer.credit">基于</span>
@@ -1148,14 +1173,11 @@
         </div>
         <nav class="footer-links" aria-label="页脚链接" data-i18n-aria="footer.label">
           <a href="https://github.com/doublepi123/cox" data-i18n="footer.source">源码</a
-          ><a href="https://github.com/doublepi123/cox/releases" data-i18n="footer.releases"
-            >版本发布</a
+          ><a href="https://github.com/doublepi123/cox/releases" data-i18n="footer.releases">版本发布</a
           ><a href="https://www.npmjs.com/package/@doublepi123/cox">npm</a
           ><a href="https://github.com/doublepi123/cox/blob/main/LICENSE">MIT License</a>
         </nav>
-        <p class="footer-note" data-i18n="footer.note">
-          这是 Cox 的产品介绍页，不是托管的 Cox 工作空间。
-        </p>
+        <p class="footer-note" data-i18n="footer.note">这是 Cox 的产品介绍页，不是托管的 Cox 工作空间。</p>
       </div>
     </footer>
     <div class="toast" role="status" aria-live="polite" data-toast></div>

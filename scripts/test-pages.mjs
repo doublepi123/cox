@@ -95,6 +95,13 @@ test("draws icons with inline SVG instead of symbol glyphs that depend on font f
   }
 });
 
+test("draws CoCode icons with inline SVG instead of symbol glyphs", async () => {
+  for (const file of ["cocode/index.html", "cocode/main.js"]) {
+    const source = await readFile(new URL(`../site/${file}`, import.meta.url), "utf8");
+    assert.deepEqual(source.match(/[\u2190-\u2bff\u{1f300}-\u{1faff}]/gu) ?? [], [], file);
+  }
+});
+
 test("detects a supported language and respects a saved preference", () => {
   assert.equal(resolveLanguage("en", ["zh-CN"]), "en");
   assert.equal(resolveLanguage("zh", ["en-US"]), "zh");

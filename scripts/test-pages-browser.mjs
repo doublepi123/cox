@@ -81,6 +81,40 @@ test("website works under a project subpath on desktop and phones without contac
     );
     assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "claude");
     assert.match(await page.locator("[data-agent-message]").textContent(), /拆分开/);
+    const claudeDag = await page.locator("[data-dag]").textContent();
+    await page.getByRole("button", { name: "OMO", exact: true }).click();
+    assert.equal(
+      await page.getByRole("button", { name: "OMO", exact: true }).getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "omo");
+    assert.notEqual(await page.locator("[data-dag]").textContent(), claudeDag);
+    assert.equal(await page.locator("[data-dag]").getAttribute("data-dag-agent"), "omo");
+    assert.equal(
+      await page.locator("[data-dag-label]").textContent(),
+      "OMO 任务图 · mass ulw · 第 2 波",
+    );
+    assert.equal(await page.locator("[data-dag-progress]").textContent(), "2/5");
+    assert.equal(await page.locator("[data-agent-terminal]").getAttribute("data-agent-terminal"), "omo");
+    assert.match(await page.locator("[data-agent-terminal]").textContent(), /omo workflow status/);
+    await page.getByRole("button", { name: "OMO", exact: true }).press("End");
+    assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "cursor");
+    assert.equal(
+      await page.evaluate(() => document.activeElement.dataset.provider),
+      "cursor",
+    );
+    assert.match(await page.locator("[data-agent-terminal]").textContent(), /pnpm lint/);
+    await page.getByRole("button", { name: "Cursor", exact: true }).press("Home");
+    assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "omo");
+    assert.deepEqual(await page.locator("[data-dag-node] code").allTextContents(), [
+      "plan.contracts",
+      "impl.i18n",
+      "impl.settings",
+      "impl.tests",
+      "verify",
+    ]);
+    await page.getByRole("button", { name: "Claude", exact: true }).click();
+    assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "claude");
     await page.getByRole("tab", { name: /不必等待/ }).click();
     assert.equal(await page.locator("[data-workflow-view='queue']").isVisible(), true);
     assert.equal(await page.locator("[data-workflow-view='providers']").isVisible(), false);
@@ -90,6 +124,18 @@ test("website works under a project subpath on desktop and phones without contac
       "true",
     );
     assert.equal(await page.locator("[data-workflow-view='review']").isVisible(), true);
+    await page.getByRole("tab", { name: /不必等待/ }).press("End");
+    assert.equal(
+      await page.locator("[data-workflow='terminal']").getAttribute("aria-selected"),
+      "true",
+    );
+    assert.equal(await page.locator("[data-workflow-view='terminal']").isVisible(), true);
+    await page.getByRole("tab", { name: /终端与 Git/ }).press("Home");
+    assert.equal(
+      await page.locator("[data-workflow='providers']").getAttribute("aria-selected"),
+      "true",
+    );
+    assert.equal(await page.locator("[data-workflow-view='providers']").isVisible(), true);
     await page.getByRole("tab", { name: /终端与 Git/ }).click();
     assert.equal(await page.locator("[data-workflow-view='terminal']").isVisible(), true);
     await page.getByRole("tab", { name: /你的智能体/ }).click();
@@ -108,6 +154,41 @@ test("website works under a project subpath on desktop and phones without contac
     });
     await page.locator("[data-copy]").first().click();
     assert.match(await page.getByRole("status").textContent(), /手动复制/);
+    assert.equal(await page.locator("#capabilities").isVisible(), true);
+    assert.equal(
+      await page.locator("#capabilities .card-omo .card-tag").textContent(),
+      "OMO Native",
+    );
+    assert.match(
+      (await page.locator("#capabilities .card-omo .card-title-lg").textContent()).replaceAll(
+        "\u200b",
+        "",
+      ),
+      /依赖图驱动的多智能体工作流/,
+    );
+    assert.equal(
+      await page.locator("#capabilities .card-gateway .card-tag").textContent(),
+      "CLIProxyAPI",
+    );
+    assert.match(
+      (await page.locator("#capabilities .card-gateway h3").textContent()).replaceAll("\u200b", ""),
+      /一个模型服务，连接多个智能体/,
+    );
+    const themeToggle = page.locator("[data-theme-toggle]");
+    await themeToggle.click();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cox.site.theme")), "light");
+    await page.reload();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cox.site.theme")), "light");
+    await themeToggle.click();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cox.site.theme")), "dark");
+    await themeToggle.click();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), null);
+    assert.equal(await page.evaluate(() => localStorage.getItem("cox.site.theme")), null);
+    await page.getByRole("button", { name: "Claude", exact: true }).click();
+    assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "claude");
     await page.getByRole("button", { name: "Switch to English" }).click();
     assert.equal(await page.locator("html").getAttribute("lang"), "en");
     assert.match(await page.locator("h1").textContent(), /Your agents/);
@@ -165,6 +246,49 @@ test("website works under a project subpath on desktop and phones without contac
         });
       }
     }
+    for (const language of ["en", "zh"]) {
+      if (
+        (await page.locator("html").getAttribute("lang")) !== (language === "zh" ? "zh-CN" : "en")
+      ) {
+        await page.locator("[data-language-toggle]").click();
+      }
+      let themeMode = await page.locator("[data-theme-toggle]").getAttribute("data-theme-mode");
+      for (let attempt = 0; attempt < 3 && themeMode !== "light"; attempt += 1) {
+        await page.locator("[data-theme-toggle]").click();
+        themeMode = await page.locator("[data-theme-toggle]").getAttribute("data-theme-mode");
+      }
+      assert.equal(themeMode, "light");
+      for (const width of [320, 390, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const overflow = await page.evaluate(() => ({
+          width: innerWidth,
+          scroll: document.documentElement.scrollWidth,
+        }));
+        assert.ok(
+          overflow.scroll <= width,
+          `${language} light horizontal overflow: ${JSON.stringify(overflow)}`,
+        );
+        const tinyText = await page.evaluate(() =>
+          [...document.querySelectorAll("body *")]
+            .filter(
+              (element) =>
+                element.checkVisibility() &&
+                [...element.childNodes].some(
+                  (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim(),
+                ) &&
+                Number.parseFloat(getComputedStyle(element).fontSize) < 12,
+            )
+            .map((element) => `${element.tagName} ${element.textContent.trim().slice(0, 30)}`),
+        );
+        assert.deepEqual(tinyText, [], `${language} light text below 12px at ${width}px`);
+      }
+    }
+    let resetMode = await page.locator("[data-theme-toggle]").getAttribute("data-theme-mode");
+    for (let attempt = 0; attempt < 3 && resetMode !== "system"; attempt += 1) {
+      await page.locator("[data-theme-toggle]").click();
+      resetMode = await page.locator("[data-theme-toggle]").getAttribute("data-theme-mode");
+    }
+    assert.equal(resetMode, "system");
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole("link", { name: "快速开始", exact: true }).click();
     assert.match(page.url(), /#start$/);
@@ -182,6 +306,19 @@ test("website works under a project subpath on desktop and phones without contac
       await page.locator(".hero .button-primary").getAttribute("href"),
       "https://github.com/doublepi123/co_code/releases",
     );
+    const cocodeTheme = page.locator("[data-theme-toggle]");
+    await cocodeTheme.click();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cocode.site.theme")), "light");
+    await page.reload();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cocode.site.theme")), "light");
+    await cocodeTheme.click();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cocode.site.theme")), "dark");
+    await cocodeTheme.click();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), null);
+    assert.equal(await page.evaluate(() => localStorage.getItem("cocode.site.theme")), null);
     for (const language of ["en", "zh"]) {
       await page.locator("[data-language-toggle]").click();
       assert.equal(
@@ -248,6 +385,35 @@ test("website works under a project subpath on desktop and phones without contac
     await staticPage.goto(`${origin}/cox/cocode/`);
     assert.match(await staticPage.locator("h1").textContent(), /装进口袋/);
     await noScript.close();
+    const reduced = await browser.newContext({
+      locale: "zh-CN",
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    });
+    await reduced.route("**/*", (route) =>
+      route.request().url().startsWith(`${origin}/`) ? route.continue() : route.abort(),
+    );
+    const reducedPage = await reduced.newPage();
+    const reducedErrors = [];
+    reducedPage.on("pageerror", (error) => reducedErrors.push(error.message));
+    reducedPage.on("response", (response) => {
+      if (response.status() >= 400) reducedErrors.push(`${response.status()} ${response.url()}`);
+    });
+    await reducedPage.goto(`${origin}/cox/`);
+    assert.equal(
+      await reducedPage.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+      true,
+    );
+    const lattice = reducedPage.locator("canvas.hero-lattice[data-lattice]");
+    assert.equal(await lattice.count(), 1);
+    assert.equal(await lattice.isVisible(), true);
+    const latticeSize = await lattice.evaluate((canvas) => ({
+      width: canvas.width,
+      height: canvas.height,
+    }));
+    assert.ok(latticeSize.width > 0 && latticeSize.height > 0, JSON.stringify(latticeSize));
+    assert.deepEqual(reducedErrors, []);
+    await reduced.close();
   } finally {
     await browser?.close();
     if (server.listening) await new Promise((resolve) => server.close(resolve));

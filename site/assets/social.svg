@@ -1,102 +1,203 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
-    <radialGradient id="glow" cx="330" cy="-40" r="640" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#b4f769" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#b4f769" stop-opacity="0"/>
+    <radialGradient id="lime-glow" cx="300" cy="-60" r="660" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b7ed81" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#b7ed81" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="window-glow" cx="913" cy="315" r="360" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#b4f769" stop-opacity="0.11"/>
-      <stop offset="1" stop-color="#b4f769" stop-opacity="0"/>
+    <radialGradient id="emerald-glow" cx="900" cy="330" r="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6ee7b7" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#6ee7b7" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="grid-fade" cx="360" cy="0" r="720" gradientUnits="userSpaceOnUse">
+    <radialGradient id="dot-fade" cx="320" cy="40" r="700" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#fff"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
     </radialGradient>
-    <mask id="grid-mask"><rect width="1200" height="630" fill="url(#grid-fade)"/></mask>
-    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
-      <path d="M48 .5H.5V48" fill="none" stroke="#fff" stroke-opacity="0.05"/>
+    <linearGradient id="floor-fade" x1="0" x2="0" y1="380" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#fff"/>
+    </linearGradient>
+    <mask id="dot-mask"><rect width="1200" height="630" fill="url(#dot-fade)"/></mask>
+    <mask id="floor-mask"><rect y="380" width="1200" height="250" fill="url(#floor-fade)"/></mask>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#fff" fill-opacity="0.12"/>
     </pattern>
-    <linearGradient id="accent" x1="70" x2="420" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="68" x2="560" y1="0" y2="0" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#e2ffbf"/>
-      <stop offset="0.45" stop-color="#b4f769"/>
-      <stop offset="1" stop-color="#74e0a6"/>
+      <stop offset="0.45" stop-color="#b7ed81"/>
+      <stop offset="1" stop-color="#6ee7b7"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#b7ed81" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#6ee7b7" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="card-sheen" x1="0" x2="0" y1="64" y2="566" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.06"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
-      <feDropShadow dx="0" dy="30" stdDeviation="30" flood-color="#000" flood-opacity="0.75"/>
+      <feDropShadow dx="0" dy="32" stdDeviation="32" flood-color="#000" flood-opacity="0.8"/>
     </filter>
-    <clipPath id="diff-clip"><rect x="750" y="360" width="364" height="90" rx="10"/></clipPath>
+    <clipPath id="diff-clip"><rect x="682" y="352" width="432" height="88" rx="10"/></clipPath>
   </defs>
 
-  <rect width="1200" height="630" fill="#090c0b"/>
-  <rect width="1200" height="630" fill="url(#grid)" mask="url(#grid-mask)"/>
-  <rect width="1200" height="630" fill="url(#glow)"/>
-  <rect width="1200" height="630" fill="url(#window-glow)"/>
+  <rect width="1200" height="630" fill="#070908"/>
+  <rect width="1200" height="630" fill="url(#dots)" mask="url(#dot-mask)"/>
+  <g mask="url(#floor-mask)" stroke="#b7ed81" stroke-opacity="0.16" fill="none">
+    <path d="M0 404H1200M0 428H1200M0 460H1200M0 500H1200M0 552H1200M0 616H1200"/>
+    <path d="M600 384-1200 630M600 384-750 630M600 384-300 630M600 384 150 630M600 384 450 630M600 384 750 630M600 384 1050 630M600 384 1500 630M600 384 1950 630M600 384 2400 630"/>
+  </g>
+  <rect width="1200" height="630" fill="url(#lime-glow)"/>
+  <rect width="1200" height="630" fill="url(#emerald-glow)"/>
 
-  <g transform="translate(72 58) scale(0.75)">
+  <g transform="translate(72 52) scale(0.75)">
     <rect width="64" height="64" rx="15" fill="#111a16" stroke="#fff" stroke-opacity="0.16" stroke-width="1.4"/>
     <path d="M39 17a19 19 0 1 0 0 30" fill="none" stroke="#eef8f1" stroke-width="8" stroke-linecap="square"/>
-    <path d="m45 25 7 7-7 7" fill="none" stroke="#b4f769" stroke-width="5" stroke-linecap="square"/>
+    <path d="m45 25 7 7-7 7" fill="none" stroke="#b7ed81" stroke-width="5" stroke-linecap="square"/>
   </g>
-  <text x="134" y="93" fill="#eef3f0" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="700">Cox</text>
+  <text x="134" y="87" fill="#eef3f0" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="700">Cox</text>
 
-  <rect x="72.5" y="148.5" width="355" height="35" rx="17.5" fill="#fff" fill-opacity="0.04" stroke="#fff" stroke-opacity="0.14"/>
-  <circle cx="92" cy="166" r="8" fill="#b4f769" fill-opacity="0.16"/>
-  <circle cx="92" cy="166" r="4" fill="#b4f769"/>
-  <text x="108" y="171" fill="#b6c1bb" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="15">Open source · Runs locally · MIT licensed</text>
+  <rect x="72.5" y="128.5" width="335" height="31" rx="15.5" fill="#fff" fill-opacity="0.04" stroke="#fff" stroke-opacity="0.14"/>
+  <circle cx="90" cy="144" r="7" fill="#b7ed81" fill-opacity="0.18"/>
+  <circle cx="90" cy="144" r="3.5" fill="#b7ed81"/>
+  <text x="104" y="149" fill="#b6c1bb" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">MIT Open Source · <tspan fill="#eef3f0" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="13">127.0.0.1</tspan> Local-First</text>
 
-  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="72" font-weight="700" letter-spacing="-2.2">
-    <text x="68" y="272" fill="#eef3f0">Your agents.</text>
-    <text x="68" y="352" fill="#eef3f0">One workspace.</text>
-    <text x="68" y="432" fill="url(#accent)">All yours.</text>
+  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="-1.8">
+    <text x="68" y="230" fill="#eef3f0">Your agents.</text>
+    <text x="68" y="296" fill="#eef3f0">One cockpit.</text>
+    <text x="68" y="362" fill="url(#accent)">Zero cloud lock-in.</text>
   </g>
-  <text x="72" y="486" fill="#b6c1bb" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="22">A local Web workspace for coding agents.</text>
 
-  <rect x="72.5" y="516.5" width="404" height="54" rx="14" fill="#0e1311" stroke="#fff" stroke-opacity="0.14"/>
-  <text x="96" y="550" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="19"><tspan fill="#b4f769">$</tspan><tspan fill="#eef3f0"> npx @doublepi123/cox@latest</tspan></text>
+  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600">
+    <rect x="72.5" y="396.5" width="159" height="31" rx="8" fill="#b7ed81" fill-opacity="0.1" stroke="#b7ed81" stroke-opacity="0.4"/>
+    <path d="M86 412h6M92 412l5-5M92 412l5 5" fill="none" stroke="#b7ed81" stroke-width="1.6" stroke-linecap="round"/>
+    <circle cx="99" cy="406" r="2" fill="#b7ed81"/><circle cx="99" cy="418" r="2" fill="#b7ed81"/>
+    <text x="108" y="417" fill="#e2ffbf">OMO Native DAG</text>
 
+    <rect x="239.5" y="396.5" width="192" height="31" rx="8" fill="#6ee7b7" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.36"/>
+    <path d="M254 407h12M254 417h12M262 403l4 4-4 4M258 413l-4 4 4 4" fill="none" stroke="#6ee7b7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="274" y="417" fill="#c9f7e3">CLIProxyAPI Gateway</text>
+
+    <rect x="72.5" y="435.5" width="137" height="31" rx="8" fill="#fff" fill-opacity="0.04" stroke="#fff" stroke-opacity="0.16"/>
+    <path d="M89 443v16M89 451c6 0 9-3 9-7" fill="none" stroke="#b6c1bb" stroke-width="1.6" stroke-linecap="round"/>
+    <circle cx="98" cy="443" r="2.4" fill="#b6c1bb"/>
+    <text x="108" y="456" fill="#d5ddd8">Git Worktrees</text>
+
+    <rect x="217.5" y="435.5" width="206" height="31" rx="8" fill="#fff" fill-opacity="0.04" stroke="#fff" stroke-opacity="0.16"/>
+    <rect x="232" y="444" width="16" height="11" rx="2" fill="none" stroke="#b6c1bb" stroke-width="1.6"/>
+    <path d="M236 459h8" stroke="#b6c1bb" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="256" y="456" fill="#d5ddd8">macOS · Windows · Web</text>
+  </g>
+
+  <rect x="72.5" y="500.5" width="404" height="54" rx="14" fill="#0e1311" stroke="#fff" stroke-opacity="0.14"/>
+  <text x="96" y="534" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="19"><tspan fill="#b7ed81">$</tspan><tspan fill="#eef3f0"> npx @doublepi123/cox@latest</tspan></text>
+
+  <rect x="676" y="80" width="476" height="502" rx="18" fill="#0b0f0d" fill-opacity="0.5" stroke="#6ee7b7" stroke-opacity="0.1"/>
+  <rect x="668" y="72" width="476" height="502" rx="18" fill="#0b0f0d" fill-opacity="0.7" stroke="#b7ed81" stroke-opacity="0.12"/>
   <g filter="url(#shadow)">
-    <rect x="690" y="96" width="446" height="438" rx="18" fill="#0b0f0d"/>
+    <rect x="660" y="64" width="476" height="502" rx="18" fill="#0b0f0d"/>
   </g>
-  <path d="M690 136V114a18 18 0 0 1 18-18h410a18 18 0 0 1 18 18v22Z" fill="#0f1412"/>
-  <rect x="690.5" y="96.5" width="445" height="437" rx="17.5" fill="none" stroke="#fff" stroke-opacity="0.14"/>
-  <path d="M691 136.5h444M691 184.5h444" stroke="#fff" stroke-opacity="0.08"/>
-  <g fill="#2d3632"><circle cx="712" cy="116" r="5.5"/><circle cx="730" cy="116" r="5.5"/><circle cx="748" cy="116" r="5.5"/></g>
-  <rect x="853" y="104" width="120" height="24" rx="7" fill="#fff" fill-opacity="0.045"/>
-  <text x="913" y="120" fill="#8d9a93" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" text-anchor="middle">127.0.0.1:4773</text>
+  <path d="M660 104V82a18 18 0 0 1 18-18h440a18 18 0 0 1 18 18v22Z" fill="#0f1412"/>
+  <rect x="660.5" y="64.5" width="475" height="501" rx="17.5" fill="none" stroke="url(#card-sheen)"/>
+  <path d="M661 104.5h474" stroke="#fff" stroke-opacity="0.08"/>
+  <g fill="#2d3632"><circle cx="682" cy="84" r="5.5"/><circle cx="700" cy="84" r="5.5"/><circle cx="718" cy="84" r="5.5"/></g>
+  <rect x="834" y="72" width="128" height="24" rx="7" fill="#fff" fill-opacity="0.045"/>
+  <circle cx="845" cy="84" r="3" fill="#6ee7b7"/>
+  <text x="908" y="88" fill="#b6c1bb" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" text-anchor="middle">127.0.0.1:4773</text>
+  <rect x="1062" y="74" width="52" height="20" rx="10" fill="#b7ed81" fill-opacity="0.12"/>
+  <circle cx="1074" cy="84" r="3" fill="#b7ed81"/>
+  <text x="1083" y="88" fill="#b7ed81" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" font-weight="700">LIVE</text>
 
-  <text x="712" y="166" fill="#eef3f0" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600">Add language switching</text>
-  <rect x="912.5" y="147.5" width="86" height="27" rx="7.5" fill="#fff" fill-opacity="0.03" stroke="#fff" stroke-opacity="0.1"/>
-  <text x="955.5" y="166" fill="#b6c1bb" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" text-anchor="middle">feat/i18n</text>
-  <text x="1114" y="166" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end"><tspan fill="#7ddc9b">+24</tspan><tspan fill="#ff958c"> -6</tspan></text>
+  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600">
+    <rect x="682.5" y="116.5" width="101" height="31" rx="8" fill="#b7ed81" fill-opacity="0.12" stroke="#b7ed81" stroke-opacity="0.5"/>
+    <circle cx="698" cy="132" r="4" fill="#b7ed81"/>
+    <text x="710" y="137" fill="#e2ffbf">OMO</text>
+    <text x="772" y="136" fill="#b7ed81" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" text-anchor="end">lead</text>
 
-  <rect x="846" y="202" width="268" height="44" rx="14" fill="#1f2824"/>
-  <text x="861" y="229" fill="#eef3f0" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">Add Chinese and English to settings</text>
+    <rect x="792.5" y="116.5" width="101" height="31" rx="8" fill="#fff" fill-opacity="0.035" stroke="#fff" stroke-opacity="0.12"/>
+    <circle cx="808" cy="132" r="4" fill="#6ee7b7"/>
+    <text x="820" y="137" fill="#eef3f0">Codex</text>
 
-  <rect x="712" y="264" width="28" height="28" rx="8" fill="#b4f769" fill-opacity="0.14"/>
-  <path d="m6.5 8.5 3.5 3.5-3.5 3.5M12.5 16h5" transform="translate(717 269) scale(0.75)" fill="none" stroke="#b4f769" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="750" y="283" fill="#eef3f0" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600">Codex</text>
-  <text x="806" y="283" fill="#8d9a93" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">just now</text>
-  <g fill="#b6c1bb" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
-    <text x="750" y="318">I’ll map the language settings, then move</text>
-    <text x="750" y="341">the interface copy into language resources.</text>
+    <rect x="902.5" y="116.5" width="101" height="31" rx="8" fill="#fff" fill-opacity="0.035" stroke="#fff" stroke-opacity="0.12"/>
+    <circle cx="918" cy="132" r="4" fill="#6ee7b7"/>
+    <text x="930" y="137" fill="#eef3f0">Claude</text>
+
+    <rect x="1012.5" y="116.5" width="101" height="31" rx="8" fill="#fff" fill-opacity="0.035" stroke="#fff" stroke-opacity="0.12"/>
+    <circle cx="1028" cy="132" r="4" fill="#6ee7b7"/>
+    <text x="1040" y="137" fill="#eef3f0">Cursor</text>
   </g>
 
-  <rect x="750" y="360" width="364" height="90" rx="10" fill="#0d1311"/>
+  <text x="682" y="178" fill="#8d9a93" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" letter-spacing="1">OMO DAG · WAVE 1 PARALLEL</text>
+  <text x="1114" y="178" fill="#6ee7b7" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" text-anchor="end">4/4 done</text>
+
+  <g fill="none" stroke="url(#edge)" stroke-width="1.6">
+    <path d="M877 208C918 208 918 254 954 254"/>
+    <path d="M877 254H954"/>
+    <path d="M877 300C918 300 918 254 954 254"/>
+  </g>
+  <circle cx="954" cy="254" r="3" fill="#6ee7b7"/>
+
+  <g font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12">
+    <rect x="682.5" y="190.5" width="194" height="35" rx="9" fill="#121815" stroke="#fff" stroke-opacity="0.14"/>
+    <circle cx="701" cy="208" r="8" fill="#b7ed81" fill-opacity="0.16"/>
+    <path d="m697 208 3 3 5-6" fill="none" stroke="#b7ed81" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="716" y="212" fill="#eef3f0">plan.contracts</text>
+    <text x="866" y="212" fill="#8d9a93" font-size="10" text-anchor="end">codex</text>
+
+    <rect x="682.5" y="236.5" width="194" height="35" rx="9" fill="#121815" stroke="#fff" stroke-opacity="0.14"/>
+    <circle cx="701" cy="254" r="8" fill="#b7ed81" fill-opacity="0.16"/>
+    <path d="m697 254 3 3 5-6" fill="none" stroke="#b7ed81" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="716" y="258" fill="#eef3f0">impl.gateway</text>
+    <text x="866" y="258" fill="#8d9a93" font-size="10" text-anchor="end">claude</text>
+
+    <rect x="682.5" y="282.5" width="194" height="35" rx="9" fill="#121815" stroke="#fff" stroke-opacity="0.14"/>
+    <circle cx="701" cy="300" r="8" fill="#b7ed81" fill-opacity="0.16"/>
+    <path d="m697 300 3 3 5-6" fill="none" stroke="#b7ed81" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="716" y="304" fill="#eef3f0">impl.cockpit</text>
+    <text x="866" y="304" fill="#8d9a93" font-size="10" text-anchor="end">cursor</text>
+
+    <rect x="954.5" y="226.5" width="159" height="55" rx="11" fill="#6ee7b7" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.55"/>
+    <circle cx="975" cy="254" r="11" fill="#6ee7b7" fill-opacity="0.2"/>
+    <path d="m969.5 254 4 4 7-8" fill="none" stroke="#6ee7b7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="994" y="250" fill="#eef3f0" font-weight="700">verify</text>
+    <text x="994" y="267" fill="#6ee7b7" font-size="10.5">tests 128 passed</text>
+  </g>
+
+  <path d="M682 336.5h432" stroke="#fff" stroke-opacity="0.08"/>
+
+  <rect x="682" y="352" width="432" height="88" rx="10" fill="#0d1311"/>
   <g clip-path="url(#diff-clip)">
-    <rect x="750" y="395" width="364" height="27" fill="#ff786e" fill-opacity="0.09"/>
-    <rect x="750" y="422" width="364" height="28" fill="#6edc96" fill-opacity="0.09"/>
+    <rect x="682" y="386" width="432" height="26" fill="#ff786e" fill-opacity="0.09"/>
+    <rect x="682" y="412" width="432" height="28" fill="#6edc96" fill-opacity="0.1"/>
   </g>
-  <rect x="750.5" y="360.5" width="363" height="89" rx="9.5" fill="none" stroke="#fff" stroke-opacity="0.08"/>
-  <path d="M751 394.5h362" stroke="#fff" stroke-opacity="0.08"/>
+  <rect x="682.5" y="352.5" width="431" height="87" rx="9.5" fill="none" stroke="#fff" stroke-opacity="0.1"/>
+  <path d="M683 385.5h430" stroke="#fff" stroke-opacity="0.08"/>
   <g font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12.5">
-    <text x="766" y="382" fill="#b6c1bb">src/settings/Language.tsx</text>
-    <text x="1098" y="382" text-anchor="end"><tspan fill="#7ddc9b">+24</tspan><tspan fill="#ff958c"> -6</tspan></text>
-    <text x="766" y="413" fill="#ffb4ad">-  &lt;Label&gt;Language&lt;/Label&gt;</text>
-    <text x="766" y="440" fill="#a6ecbe">+  &lt;Label&gt;{t("settings.language")}&lt;/Label&gt;</text>
+    <text x="698" y="374" fill="#b6c1bb">gateway/router.ts</text>
+    <text x="1098" y="374" text-anchor="end"><tspan fill="#7ddc9b">+18</tspan><tspan fill="#ff958c"> -4</tspan></text>
+    <text x="698" y="404" fill="#ffb4ad">-  const url = CLOUD_API</text>
+    <text x="698" y="431" fill="#a6ecbe">+  const url = "http://127.0.0.1:8317/v1"</text>
   </g>
 
-  <rect x="712.5" y="466.5" width="401" height="51" rx="14" fill="#121815" stroke="#fff" stroke-opacity="0.14"/>
-  <text x="730" y="497" fill="#8d9a93" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">Describe what’s next…</text>
-  <rect x="1072" y="476" width="32" height="32" rx="9" fill="#b4f769"/>
-  <path d="M1088 499v-14M1082.5 490.5l5.5-5.5 5.5 5.5" fill="none" stroke="#0f1d08" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="682.5" y="456.5" width="231" height="31" rx="15.5" fill="#b7ed81" fill-opacity="0.1" stroke="#b7ed81" stroke-opacity="0.45"/>
+  <circle cx="699" cy="472" r="8" fill="#b7ed81"/>
+  <path d="m695 472 3 3 5-6" fill="none" stroke="#0f1d08" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="714" y="477" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600"><tspan fill="#e2ffbf">Checkpoint #7</tspan><tspan fill="#8d9a93" font-weight="400"> · restorable</tspan></text>
+  <rect x="921.5" y="456.5" width="192" height="31" rx="15.5" fill="#fff" fill-opacity="0.035" stroke="#fff" stroke-opacity="0.12"/>
+  <path d="M937 464v16M937 472c6 0 9-3 9-7" fill="none" stroke="#b6c1bb" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="946" cy="464" r="2.4" fill="#b6c1bb"/>
+  <text x="956" y="477" fill="#b6c1bb" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12">wt/omo-dag</text>
+
+  <path d="M660 504h476v44a18 18 0 0 1-18 18H678a18 18 0 0 1-18-18Z" fill="#0f1412"/>
+  <path d="M661 504.5h474" stroke="#fff" stroke-opacity="0.08"/>
+  <path d="M684 523h16M696 519l4 4-4 4M700 531h-16M688 527l-4 4 4 4" fill="none" stroke="#6ee7b7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="716" y="539" fill="#8d9a93" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5">gateway <tspan fill="#eef3f0">:8317</tspan></text>
+  <g font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11">
+    <rect x="836.5" y="522.5" width="76" height="23" rx="6" fill="#6ee7b7" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.3"/>
+    <text x="874.5" y="538" fill="#c9f7e3" text-anchor="middle">OpenAI</text>
+    <rect x="920.5" y="522.5" width="90" height="23" rx="6" fill="#6ee7b7" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.3"/>
+    <text x="965.5" y="538" fill="#c9f7e3" text-anchor="middle">Anthropic</text>
+    <rect x="1018.5" y="522.5" width="95" height="23" rx="6" fill="#6ee7b7" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.3"/>
+    <text x="1066" y="538" fill="#c9f7e3" text-anchor="middle">Gemini</text>
+  </g>
 </svg>

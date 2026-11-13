@@ -87,18 +87,24 @@ domain. The account homepage uses the custom domain `doublepi.dev`.
 
 ## Editing
 
-- `index.html`: semantic layout, the inline SVG icon sprite, and readable Chinese content
-  without JavaScript.
-- `styles.css`: dark design tokens, responsive layout, container queries for the illustrated
-  workspace, system fonts, and reduced-motion support.
+- `DESIGN.md`: the single source of truth for the shared color, type, spacing, radius,
+  elevation and motion tokens. Change a token there first, then apply it in `styles.css`;
+  component CSS must not hardcode those values.
+- `index.html`: semantic layout, the inline SVG icon sprite, the hero canvas hook, the
+  capabilities bento, and readable Chinese content without JavaScript.
+- `styles.css`: tokens derived from `DESIGN.md` for both themes (dark by default, plus
+  `[data-theme="light"]` and `prefers-color-scheme: light`), responsive layout, container
+  queries for the illustrated workspace, system fonts, and reduced-motion support.
 - `content.js`: matching Chinese/English text, per-language links and language selection.
-- `main.js`: persisted language preference, agent illustration, keyboard-accessible workflow
-  tabs, and clipboard feedback.
+- `main.js`: persisted language preference, the theme cycle and its storage key, the hero
+  canvas lattice, the agent illustration, keyboard-accessible workflow tabs, and clipboard
+  feedback.
 - `assets/cox.svg`: Cox's existing logo, shared visually with the application.
-- `assets/social.svg` / `social.png`: editable source and 1200×630 social sharing card.
-  Render the PNG from the SVG with a headless browser after editing it.
+- `assets/social.svg` / `social.png`: editable source and its 1200×630 social sharing card.
+  Render `social.png` from `social.svg` in a headless browser at 1200×630 after editing it.
 - `cox/index.html`: compatibility redirect for the old project website address.
-- `cocode/`: bilingual Android product page and its own license and attribution.
+- `cocode/`: bilingual Android product page and its own license and attribution. It keeps
+  its own `data-theme` state and `cocode.site.theme` preference.
 - `redirects/cocode.html`: legacy subdomain redirect, deployed only to the old repository.
 
 Draw icons with the SVG sprite (`<svg class="icon"><use href="#i-name" /></svg>`), not
@@ -108,7 +114,18 @@ negative letter spacing for Chinese text. The illustrated workspace adapts to it
 (sidebar from 720px, side panel from 1060px) instead of shrinking its text.
 
 The site follows a supported browser language on first visit, falling back to English.
-The language switch stores `cox.site.language` or `cocode.site.language` in the browser. Keep launch commands,
-paths, provider names, and code samples unchanged when translating.
+The language switch stores `cox.site.language` or `cocode.site.language` in the browser. The
+Cox and CoCode theme buttons cycle system → light → dark; an explicit choice is stored as
+`cox.site.theme` or `cocode.site.theme` and restored before the stylesheet paints. Each page
+keeps its own preference. Keep launch commands, paths, provider names, and code samples unchanged
+when translating.
+
+The hero lattice is a decorative canvas behind the Cox headline. Its animation loop stops while
+the hero is off screen or the document is hidden, and it draws a single static frame under
+`prefers-reduced-motion: reduce`; the canvas keeps its size and colors in both themes. The
+capabilities bento (`#capabilities`) is the layout that carries the OMO workflow and local
+gateway cards; keep its card hooks when adding sections so the showcase stays readable at every
+breakpoint.
+
 Do not add real account details, local screenshots with private content, or claims that
 local control means offline model inference. Keep the MIT license and T3 Code attribution.
