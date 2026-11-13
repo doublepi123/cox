@@ -346,9 +346,11 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       continue;
     }
     if (
-      ["invalid_encrypted_content", "incompatible_tool_choice_thinking"].includes(
-        lastFailure.code ?? "",
-      ) &&
+      [
+        "invalid_encrypted_content",
+        "incompatible_tool_choice_thinking",
+        "unsupported_forced_tool_choice",
+      ].includes(lastFailure.code ?? "") &&
       lastFailure.source === "upstream"
     ) {
       const canRepair =

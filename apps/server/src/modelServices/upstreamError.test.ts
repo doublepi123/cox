@@ -11,6 +11,27 @@ const error = {
 const requestId = "4171489b-838f-4e4c-9366-18cf20dadc55";
 
 describe("upstream model error diagnostics", () => {
+  it.each(["", "status_code=400, "])(
+    "recognizes unsupported forced choice without exposing model text: %s",
+    (prefix) => {
+      const result = upstreamErrorDetails({
+        type: "invalid_request_error",
+        message: prefix + "private-model does not support forced tool_choice; use auto or none",
+      });
+      expect(result.code).toBe("unsupported_forced_tool_choice");
+      expect(result.detail).toContain("use auto or none");
+      expect(result.detail).not.toContain("private-model");
+    },
+  );
+  it.each([
+    "User said: claude-opus-5-5 does not support forced tool_choice; use auto or none",
+    "claude-opus-5-5 does not support forced tool_choice; use auto or none secret-token",
+    "claude-opus-5-5 does not support forced tool_choice",
+  ])("does not infer forced choice rejection from unrelated prose: %s", (message) => {
+    const result = upstreamErrorDetails({ type: "invalid_request_error", message });
+    expect(result.code).toBe("invalid_request_error");
+    expect(result.detail).not.toContain(message);
+  });
   it("classifies the exact forced-tool/thinking conflict without exposing arbitrary messages", () => {
     const safe = upstreamErrorDetails({
       type: "invalid_request_error",

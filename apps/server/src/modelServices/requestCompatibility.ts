@@ -3,6 +3,23 @@ import type { ModelServiceProtocol } from "@t3tools/contracts";
 const GPT_REASONING_MODEL = /^gpt-[5-9](?:[.-]|$)/i;
 const CHAT_COMPLETION_BUDGET_MODEL = /^(?:gpt-[5-9]|o[1-9])(?:[.-]|$)/i;
 
+export function withoutForcedToolChoice(
+  body: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const choice = body.tool_choice;
+  if (
+    choice !== "required" &&
+    !(
+      choice !== null &&
+      typeof choice === "object" &&
+      "type" in choice &&
+      choice.type === "function"
+    )
+  )
+    return body;
+  return { ...body, tool_choice: "auto" };
+}
+
 export function withoutForcedToolThinking(
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {

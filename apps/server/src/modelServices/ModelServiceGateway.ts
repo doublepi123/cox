@@ -38,6 +38,7 @@ import {
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
   withoutForcedToolThinking,
+  withoutForcedToolChoice,
 } from "./requestCompatibility.ts";
 import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
 import {
@@ -594,6 +595,8 @@ export const make = Effect.gen(function* () {
     let omitEncryptedReasoning = replayPolicy === "omit";
     let disableForcedToolThinking = false;
     let canRepairForcedToolThinking = false;
+    let relaxForcedToolChoice = false;
+    let canRepairForcedToolChoice = false;
     const rejectedFailure = (
       status: number,
       value: unknown,
@@ -625,6 +628,7 @@ export const make = Effect.gen(function* () {
       function* (attemptId: number) {
         const stripEncryptedReasoning = omitEncryptedReasoning;
         const stripForcedToolThinking = disableForcedToolThinking;
+        const useAutoToolChoice = relaxForcedToolChoice;
         const started = yield* Clock.currentTimeMillis;
         yield* Effect.annotateCurrentSpan({ requestId, attempt: attemptId, incoming, protocol });
         const bridge =
@@ -689,6 +693,9 @@ export const make = Effect.gen(function* () {
           });
         let requestBody = modelServiceRequestBody(protocol, selected.id, budget.body);
         if (protocol === "openai-chat") {
+          const automatic = withoutForcedToolChoice(requestBody);
+          canRepairForcedToolChoice ||= automatic !== requestBody;
+          if (useAutoToolChoice) requestBody = automatic;
           const repaired = withoutForcedToolThinking(requestBody);
           canRepairForcedToolThinking ||= repaired !== requestBody;
           if (stripForcedToolThinking) {
@@ -1286,6 +1293,17 @@ export const make = Effect.gen(function* () {
       repair: Effect.fn("ModelServiceGateway.repair")(function* (
         error: ModelServiceRequestFailure,
       ) {
+        if (error.code === "unsupported_forced_tool_choice") {
+          if (protocol !== "openai-chat" || !canRepairForcedToolChoice || relaxForcedToolChoice)
+            return false;
+          relaxForcedToolChoice = true;
+          yield* diagnostic({
+            event: "request_repaired",
+            reason: error.code,
+            repair: "automatic_tool_choice",
+          });
+          return true;
+        }
         if (error.code === "incompatible_tool_choice_thinking") {
           if (
             protocol !== "openai-chat" ||

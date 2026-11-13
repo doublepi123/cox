@@ -354,6 +354,102 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 
 it.layer(layer)("model service gateway", (it) => {
   it.effect.each([false, true])(
+    "recovers unsupported forced tool choice while preserving thinking and tools (stream: %s)",
+    (stream) =>
+      Effect.gen(function* () {
+        for (const choice of ["required", { type: "function", function: { name: "task" } }]) {
+          let calls = 0;
+          const h = yield* harness({
+            driver: "omo",
+            recovery: { retryEnabled: true, maxAttempts: 5 },
+            respond: () =>
+              ++calls % 2 === 1
+                ? Response.json(
+                    {
+                      error: {
+                        type: "invalid_request_error",
+                        message:
+                          "claude-opus-5-5 does not support forced tool_choice; use auto or none",
+                      },
+                    },
+                    { status: 400 },
+                  )
+                : stream
+                  ? new Response(
+                      chatStreamFrame({ role: "assistant", content: "recovered" }) +
+                        chatStreamFrame({}, "stop") +
+                        "data: [DONE]\n\n",
+                      { headers: { "content-type": "text/event-stream" } },
+                    )
+                  : Response.json({
+                      choices: [
+                        {
+                          index: 0,
+                          message: { role: "assistant", content: "recovered" },
+                          finish_reason: "stop",
+                        },
+                      ],
+                    }),
+          });
+          const body = {
+            model: "Vendor/Exact",
+            stream,
+            tool_choice: choice,
+            reasoning_effort: "high",
+            messages: [{ role: "user", content: "do the task" }],
+            tools: [
+              {
+                type: "function",
+                function: { name: "task", parameters: { type: "object", properties: {} } },
+              },
+            ],
+          };
+          for (const offset of [0, 2]) {
+            const response = yield* h.invoke("/v1/chat/completions", body);
+            expect(response.status).toBe(200);
+            expect(response.text).toContain("recovered");
+            expect(sentBody(h.calls[offset]!)).toMatchObject(body);
+            expect(sentBody(h.calls[offset + 1]!)).toMatchObject({ ...body, tool_choice: "auto" });
+          }
+          expect(h.calls).toHaveLength(4);
+          expect(body.tool_choice).toEqual(choice);
+        }
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { retryEnabled: false, maxAttempts: 5, choice: "required", attempts: 1 },
+    { retryEnabled: true, maxAttempts: 1, choice: "required", attempts: 1 },
+    { retryEnabled: true, maxAttempts: 5, choice: "auto", attempts: 1 },
+    { retryEnabled: true, maxAttempts: 5, choice: "none", attempts: 1 },
+    { retryEnabled: true, maxAttempts: 5, choice: "required", attempts: 2 },
+  ])("bounds unsupported tool-choice repair and respects retry policy: %j", (test) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        recovery: { retryEnabled: test.retryEnabled, maxAttempts: test.maxAttempts },
+        respond: () =>
+          Response.json(
+            {
+              error: {
+                type: "invalid_request_error",
+                message: "claude-opus-5-5 does not support forced tool_choice; use auto or none",
+              },
+            },
+            { status: 400 },
+          ),
+      });
+      const response = yield* h.invoke("/v1/chat/completions", {
+        model: "Vendor/Exact",
+        messages: [],
+        tool_choice: test.choice,
+      });
+      expect(response.status).toBe(400);
+      expect(response.text).toContain("unsupported_forced_tool_choice");
+      expect(h.calls).toHaveLength(test.attempts);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([false, true])(
     "repairs the proven forced-tool/thinking conflict once before delivery (stream: %s)",
     (stream) =>
       Effect.gen(function* () {
@@ -639,7 +735,10 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect("does not replay a thinking conflict after streamed text was delivered", () =>
+  it.effect.each([
+    "tool_choice 'specified' is incompatible with thinking enabled",
+    "claude-opus-5-5 does not support forced tool_choice; use auto or none",
+  ])("does not replay a tool-choice conflict after streamed text was delivered: %s", (message) =>
     Effect.gen(function* () {
       let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
       const h = yield* harness({
@@ -674,7 +773,7 @@ it.layer(layer)("model service gateway", (it) => {
           sseFrame({
             error: {
               type: "invalid_request_error",
-              message: "tool_choice 'specified' is incompatible with thinking enabled",
+              message,
             },
           }),
         ),

@@ -89,6 +89,11 @@ export function upstreamErrorDetails(
     /^Invalid value: 'ultra'\. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'\.(?: \(request id: [A-Za-z0-9_-]+\))?$/.test(
       error.message,
     );
+  const unsupportedForcedTool =
+    typeof error.message === "string" &&
+    /^(?:status_code=400, )?[A-Za-z0-9_./-]{1,128} does not support forced tool_choice; use auto or none(?:\s*\(request id: [A-Za-z0-9_-]+\))?\s*$/.test(
+      error.message,
+    );
   const parameter = unsupportedUltra
     ? "reasoning_effort"
     : typeof error.param === "string"
@@ -116,13 +121,20 @@ export function upstreamErrorDetails(
     code ? `code: ${code}` : undefined,
     unsupportedUltra ? "unsupported effort; allowed maximum: max" : undefined,
     forcedToolThinking ? "Forced tool choice is incompatible with enabled thinking." : undefined,
+    unsupportedForcedTool
+      ? "This model does not support forced tool choice; use auto or none."
+      : undefined,
     encrypted
       ? "Encrypted reasoning content could not be verified, decrypted or parsed."
       : undefined,
     upstreamRequestId ? `request ID: ${upstreamRequestId}` : undefined,
   ].filter(Boolean);
   return {
-    code: forcedToolThinking ? "incompatible_tool_choice_thinking" : code,
+    code: unsupportedForcedTool
+      ? "unsupported_forced_tool_choice"
+      : forcedToolThinking
+        ? "incompatible_tool_choice_thinking"
+        : code,
     requestId: upstreamRequestId,
     detail: details.length ? ` Rejected request (${details.join(", ")}).` : "",
   };

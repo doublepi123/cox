@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.78 — 2026-11-13
+
+- Recover requests when an upstream model explicitly rejects forced tool choice
+  by retrying once with automatic tool selection, preserving messages, tools and
+  reasoning settings. This fixes OMO startup failures on affected Opus 5.5 routes.
+- Preserve retry limits and avoid replay after streamed output has been delivered.
+  Report the specific incompatibility without exposing arbitrary upstream messages.
+
 ## 0.1.77 — 2026-11-12
 
 - Adapt 24 selected T3 upstream commits covering ACP permission boundaries,
