@@ -74,6 +74,10 @@ function ExtensionStatusDisclosure({
   const texts = statuses.map((status) =>
     status.kind === "memory" ? translateUi(status.text) : status.text,
   );
+  const summaryIndex = Math.max(
+    0,
+    statuses.findIndex((status) => status.key === "goal-wait"),
+  );
   const reflecting = statuses.some(
     (status) => status.kind === "memory" && status.text === "Memory reflecting",
   );
@@ -91,8 +95,10 @@ function ExtensionStatusDisclosure({
             <CircleDashedIcon />
           )}
         </ComposerBanner.Icon>
-        <ComposerBanner.Content className="whitespace-nowrap leading-7 sm:leading-6">
-          <span className="min-w-0 truncate font-medium">{texts[0]}</span>
+        <ComposerBanner.Content className="leading-7 sm:leading-6">
+          <span className="min-w-0 flex-1 whitespace-normal break-words font-medium">
+            {texts[summaryIndex]}
+          </span>
           {texts.length > 1 ? (
             <span className="flex-none text-muted-foreground tabular-nums">
               +{texts.length - 1}
@@ -125,6 +131,7 @@ export function extensionStatusBannerItem(
   if (visible.length === 0) return null;
   return {
     id: "provider-extension-status",
+    width: "fill",
     variant: "default",
     icon: <CircleDashedIcon />,
     title: providerLabel,

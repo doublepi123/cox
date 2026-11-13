@@ -9,6 +9,40 @@ import { extensionStatusBannerItem } from "./ThreadActivityBanners";
 
 const SIGNATURE = { key: "  omo-native", text: "(OmO Native by Q Kim)" };
 
+it("shows the goal countdown in the full-width strip and falls back when it clears", async () => {
+  const goal = { key: "goal", text: "Pursuing goal (5m)" };
+  const countdown = {
+    key: "goal-wait",
+    text: "▰▰▰▰▱ goal continues in 22s · 1 wake source · 1 omo dag on duty",
+  };
+  const layout = (statuses: Parameters<typeof extensionStatusBannerItem>[0]) => (
+    <div className="w-[320px] [--chat-composer-drawer-inset:0px]">{stack(statuses)}</div>
+  );
+  await using screen = await render(layout([goal, countdown]));
+  const trigger = screen.getByRole("button", { name: "OMO Native extension status" });
+  await expect.element(trigger).toHaveTextContent(countdown.text + "+1");
+  expect(trigger.element().getBoundingClientRect().width).toBeGreaterThan(300);
+  expect(trigger.element().scrollWidth).toBeLessThanOrEqual(trigger.element().clientWidth);
+  await trigger.click();
+  await expect
+    .poll(() =>
+      page
+        .getByRole("dialog")
+        .getByRole("listitem")
+        .elements()
+        .map((element) => element.textContent),
+    )
+    .toEqual([goal.text, countdown.text]);
+  await userEvent.keyboard("{Escape}");
+  await screen.rerender(
+    layout([goal, { ...countdown, text: countdown.text.replace("22s", "21s") }]),
+  );
+  await expect.element(trigger).toHaveTextContent(countdown.text.replace("22s", "21s") + "+1");
+  await expect.element(trigger).toHaveAttribute("aria-expanded", "false");
+  await screen.rerender(layout([goal]));
+  await expect.element(trigger).toHaveTextContent(goal.text);
+});
+
 function stack(statuses: Parameters<typeof extensionStatusBannerItem>[0]) {
   const item = extensionStatusBannerItem(statuses, "OMO Native");
   return <ComposerBannerStack items={item ? [item] : []} />;

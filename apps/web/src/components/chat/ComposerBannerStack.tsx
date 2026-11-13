@@ -23,6 +23,7 @@ export interface ComposerBannerStackItem {
   readonly children?: ReactNode;
   readonly actions?: ReactNode;
   readonly row?: ReactNode;
+  readonly width?: "fill" | "content";
   readonly dismissLabel?: string;
   readonly onDismiss?: () => void;
 }
@@ -180,7 +181,7 @@ function NoticeCard({
       variant={item.variant}
       detached={detached}
       density="comfortable"
-      width={item.row ? "content" : "fill"}
+      width={item.width ?? (item.row ? "content" : "fill")}
       data-chat-composer-collapsed-controls="true"
     >
       {item.row ?? (
