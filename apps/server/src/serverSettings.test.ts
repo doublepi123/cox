@@ -101,6 +101,55 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
   });
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect.each(["openai-chat", "openai-responses"] as const)(
+    "persists service protocol changes to %s while preserving OMO selections",
+    (protocol) =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsModule.ServerSettingsService;
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const id = ModelServiceId.make("omo-protocol-change");
+        const instanceId = ProviderInstanceId.make("omo-protocol-change");
+        const service = decodeModelService({
+          name: "OMO models",
+          baseUrl: "https://models.test",
+          protocols: ["anthropic-messages"],
+          models: [{ id: "selected", protocols: ["anthropic-messages"] }],
+        });
+        yield* settings.updateSettings({ modelServices: { [id]: service } });
+        const instance = {
+          driver: ProviderDriverKind.make("omo"),
+          modelService: { serviceId: id, modelIds: ["selected"], defaultModel: "selected" },
+          config: {
+            agentModels: { librarian: "cox/selected" },
+            categoryModels: { quick: "cox/selected" },
+          },
+        };
+        yield* settings.updateProviderInstance({ operation: "upsert", instanceId, instance });
+        const current = (yield* settings.getSettings).modelServices[id]!;
+        const saved = yield* settings.updateSettings({
+          modelServices: { [id]: { ...current, protocols: [protocol] } },
+        });
+        assert.deepEqual(saved.modelServices[id]?.protocols, [protocol]);
+        assert.deepEqual(saved.providerInstances[instanceId], instance);
+        const persisted = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.deepEqual(persisted.modelServices[id]?.protocols, [protocol]);
+        assert.deepEqual(persisted.providerInstances[instanceId], instance);
+        const fresh = yield* Effect.gen(function* () {
+          const reloaded = yield* ServerSettingsModule.ServerSettingsService;
+          return yield* reloaded.getSettings;
+        }).pipe(
+          Effect.provide(
+            Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
+          ),
+        );
+        assert.deepEqual(fresh.modelServices[id], saved.modelServices[id]);
+        assert.deepEqual(fresh.providerInstances[instanceId], instance);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect(
     "persists encrypted replay policies across a fresh settings service without changing secrets",
     () =>

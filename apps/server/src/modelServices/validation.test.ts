@@ -50,19 +50,19 @@ describe("OMO model service validation", () => {
       ),
     ).toBeNull();
   });
-  it.each([
-    "Vendor/Exact",
-    "cox/missing",
-    "cox/unavailable",
-    "cox/ignored",
-    "cox/no-tools",
-    "cox/wrong-protocol",
-  ])("rejects invalid bound role model %s", (slug) => {
+  it.each(["Vendor/Exact", "cox/missing"])("rejects invalid bound role model %s", (slug) => {
     for (const field of ["agentModels", "categoryModels"])
       expect(validateModelServiceBindings(settings({ [field]: { oracle: slug } }))).toContain(
         "OMO role models",
       );
   });
+  it.each(["cox/unavailable", "cox/ignored", "cox/no-tools", "cox/wrong-protocol"])(
+    "preserves role selection when model availability changes: %s",
+    (slug) => {
+      for (const field of ["agentModels", "categoryModels"])
+        expect(validateModelServiceBindings(settings({ [field]: { oracle: slug } }))).toBeNull();
+    },
+  );
   it("rejects a role outside the binding and blocks deletion of an explicit role reference", () => {
     const current = settings({ agentModels: { oracle: "cox/Vendor/Exact" } });
     const instance = current.providerInstances[instanceId]!;
@@ -100,7 +100,7 @@ describe("OMO model service validation", () => {
       }),
     ).toContain("Role names");
   });
-  it("rejects unavailable explicit main models without changing other providers", () => {
+  it("preserves unavailable explicit main models for OMO and other providers", () => {
     const current = settings();
     const instance = current.providerInstances[instanceId]!;
     const modelService = { serviceId, modelIds: [], defaultModel: "unavailable" };
@@ -109,7 +109,7 @@ describe("OMO model service validation", () => {
         ...current,
         providerInstances: { [instanceId]: { ...instance, modelService } },
       }),
-    ).toContain("OMO default model");
+    ).toBeNull();
     expect(
       validateModelServiceBindings({
         ...current,

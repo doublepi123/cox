@@ -6,7 +6,6 @@ import {
 import * as Effect from "effect/Effect";
 import {
   MODEL_SERVICE_AGENT_DRIVERS,
-  boundModelServiceModels,
   modelServiceRoleReferences,
 } from "@t3tools/shared/modelServices";
 import { OmoSettings } from "@t3tools/provider-omo/settings";
@@ -45,17 +44,12 @@ export function validateModelServiceBindings(settings: ServerSettings): string |
     if (binding.defaultModel && !models.some((model) => model.id === binding.defaultModel))
       return "The default model must be included in the agent binding.";
     if (instance.driver === "omo") {
-      const available = boundModelServiceModels(service, binding).filter(
-        (model) => model.available !== false,
-      );
       if (
         modelServiceRoleReferences(instance).some(
-          (slug) => !available.some((model) => `cox/${model.id}` === slug),
+          (slug) => !models.some((model) => `cox/${model.id}` === slug),
         )
       )
-        return "OMO role models must be available models in the bound model service. Clear or reassign roles before removing their models.";
-      if (binding.defaultModel && !available.some((model) => model.id === binding.defaultModel))
-        return "The OMO default model must be available in the agent binding.";
+        return "OMO role models must exist in the bound model service. Clear or reassign roles before removing their models.";
     }
   }
   return null;

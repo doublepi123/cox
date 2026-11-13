@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.85 — 2026-11-13
+
+- Save model service protocol, capability and availability changes without OMO
+  role or default model availability blocking the update. Preserve existing
+  selections and check availability when starting tasks; referenced models still
+  cannot be deleted without clearing or reassigning their roles.
+- Settle OMO failures even when completion notifications remain stranded, so
+  failed turns do not remain active indefinitely.
+
 ## Desktop 0.2.27 — 2026-11-13
 
 - Connect focuses an instance's existing window instead of opening a duplicate.
