@@ -1,5 +1,19 @@
 # Changelog
 
+## Desktop 0.2.27 — 2026-11-13
+
+- Connect focuses an instance's existing window instead of opening a duplicate.
+  Connections marks open instances and can Disconnect one without clearing its
+  saved session, closing other instances, stopping the local backend or quitting.
+- Treat Connections as a healthy surface: updated macOS clients that open
+  Connections are no longer rolled back, and manual update checks work there.
+  Remote preflight errors are translated, and a failed new-window preference save
+  restores the saved choice.
+- Recover from unreadable connection settings, overlapping connection changes,
+  inactive local backend exits, failed Forget cleanup and failed backend starts.
+  Keep typed server details after a failed connection, roll back unsaved
+  connection changes and keep macOS update transactions exclusive and clean.
+
 ## 0.1.84 — 2026-11-13
 
 - Count OMO Native usage: the usage page now reads OMO session transcripts,
