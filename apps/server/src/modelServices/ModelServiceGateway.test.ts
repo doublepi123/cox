@@ -353,6 +353,97 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each([100, 600_000, 1_800_000])(
+    "aligns managed OMO timeouts to the %s ms recovery budget",
+    (budgetMs) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo", recovery: { budgetMs } });
+        const fs = yield* FileSystem.FileSystem;
+        const file = `${h.config.agentDir}/settings.json`;
+        const timeoutMs = budgetMs + 30_000;
+        const expected = {
+          httpIdleTimeoutMs: timeoutMs,
+          retry: {
+            enabled: false,
+            provider: { timeoutMs, streamStartTimeoutMs: timeoutMs, keepAliveTimeoutMs: timeoutMs },
+          },
+        };
+        expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject(expected);
+        expect(h.materialized[instanceId]?.environment).toContainEqual({
+          name: "COX_OMO_GATEWAY_TIMEOUT_MS",
+          value: String(timeoutMs),
+          sensitive: false,
+        });
+        yield* fs.writeFileString(
+          file,
+          JSON.stringify({
+            ...expected,
+            theme: "fixture",
+            retry: { ...expected.retry, maxRetries: 7 },
+          }),
+        );
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: { ...current, recovery: { ...current.recovery, budgetMs: 900_000 } },
+          },
+        });
+        const updated = yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+        expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject({
+          theme: "fixture",
+          httpIdleTimeoutMs: 930_000,
+          retry: {
+            enabled: false,
+            maxRetries: 7,
+            provider: {
+              timeoutMs: 930_000,
+              streamStartTimeoutMs: 930_000,
+              keepAliveTimeoutMs: 930_000,
+            },
+          },
+        });
+        expect(updated[instanceId]?.environment).toContainEqual({
+          name: "COX_OMO_GATEWAY_TIMEOUT_MS",
+          value: "930000",
+          sensitive: false,
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "uses updated non-transient retry settings on the next request without restarting",
+    () =>
+      withGatewayDiagnostics((messages) =>
+        Effect.gen(function* () {
+          const h = yield* harness({
+            driver: "omo",
+            recovery: { retryEnabled: true, retryNonTransientErrors: false, maxAttempts: 2 },
+            respond: () => Response.json({ error: { code: "not_acceptable" } }, { status: 406 }),
+          });
+          const body = { model: "Vendor/Exact", messages: [] };
+          expect((yield* h.invoke("/v1/chat/completions", body)).status).toBe(406);
+          expect(h.calls).toHaveLength(1);
+          const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+          yield* h.settings.updateSettings({
+            modelServices: {
+              [serviceId]: {
+                ...current,
+                recovery: { ...current.recovery, retryNonTransientErrors: true },
+              },
+            },
+          });
+          const next = yield* h.invoke("/v1/chat/completions", body).pipe(Effect.forkChild);
+          yield* TestClock.adjust("2 seconds");
+          expect((yield* Fiber.join(next)).status).toBe(406);
+          expect(h.calls).toHaveLength(3);
+          expect(
+            messages
+              .filter((message) => message.event === "policy")
+              .map((message) => record(message.effective).retryNonTransientErrors),
+          ).toEqual([false, true]);
+        }),
+      ),
+  );
   it.effect.each([false, true])(
     "recovers unsupported forced tool choice while preserving thinking and tools (stream: %s)",
     (stream) =>

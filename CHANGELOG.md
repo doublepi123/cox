@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.81 — 2026-11-13
+
+- Stop all active gateway recovery attempts immediately when an error is not
+  retryable under the configured policy, preserving the original permanent error.
+- Align managed OMO stream-start, idle and HTTP timeouts with the gateway recovery
+  budget plus 30 seconds, including native memory workers. Let the gateway own
+  retries and apply changed recovery budgets to refreshed provider runtimes.
+- Verify that the next request picks up changes to non-transient retry settings
+  without a server restart.
+
 ## 0.1.80 — 2026-11-13
 
 - Return to sign-in when the server confirms the browser session has expired or

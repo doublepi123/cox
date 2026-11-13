@@ -225,6 +225,11 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
         detail: "The model service request was cancelled.",
       });
     }
+    if (permanentFailure) {
+      lastFailure = permanentFailure;
+      terminationReason = "non_retryable_error";
+      break;
+    }
     const now = yield* Clock.currentTimeMillis;
     if (!(yield* options.enabled)) {
       lastFailure = new ModelServiceRequestFailure({

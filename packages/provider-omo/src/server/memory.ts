@@ -205,7 +205,14 @@ async function createCoxOmoMemoryComponent(options) {
       if ((await lstat(privateDirectory)).isSymbolicLink()) throw new Error("Cox memory runtime cannot be a symbolic link.");
       await chmod(privateDirectory, 0o700);
       await privateWrite("models.json", JSON.stringify({ providers: { cox: { baseUrl: provider.baseUrl, api: provider.api, apiKey: "$COX_MODEL_SERVICE_KEY", models } } }));
-      await privateWrite("settings.json", JSON.stringify({ retry: { modelFallback: false, fallbackChains: {} }, packages: [], extensions: [], skills: [] }));
+      const gatewayTimeoutMs = Number(environment.COX_OMO_GATEWAY_TIMEOUT_MS);
+      const gatewayTimeout = Number.isSafeInteger(gatewayTimeoutMs) && gatewayTimeoutMs >= 30_100 && gatewayTimeoutMs <= 1_830_000
+        ? gatewayTimeoutMs : undefined;
+      await privateWrite("settings.json", JSON.stringify({
+        ...(gatewayTimeout === undefined ? {} : { httpIdleTimeoutMs: gatewayTimeout }),
+        retry: { enabled: false, modelFallback: false, fallbackChains: {},
+          ...(gatewayTimeout === undefined ? {} : { provider: { timeoutMs: gatewayTimeout, streamStartTimeoutMs: gatewayTimeout, keepAliveTimeoutMs: gatewayTimeout } }) },
+        packages: [], extensions: [], skills: [] }));
       await privateWrite("auth.json", "{}");
       const supervisor = modules.get(resolveModule("memory-run-supervisor.mjs")).source;
       memoryEnv.OMO_MEMORY_RUN_SUPERVISOR_PATH = await privateWrite("memory-run-supervisor.mjs", replaceOne(supervisor,

@@ -29,6 +29,7 @@ Object.assign(process.env, {
   OMO_CODING_AGENT_DIR: agent, SENPI_CODING_AGENT_DIR: agent, PI_CODING_AGENT_DIR: agent,
   COX_OMO_MEMORY_HOME: memory, COX_OMO_MANAGED_MODELS: "1", COX_OMO_ALLOWED_MODELS: '["cox/main","cox/expert"]',
   COX_MODEL_SERVICE_KEY: "fixture-only-not-a-live-key",
+  COX_OMO_GATEWAY_TIMEOUT_MS: "630000",
   CI: "1", GIT_CONFIG_GLOBAL: join(temporary, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1",
 });
 await writeFile(join(agent, "models.json"), JSON.stringify({ providers: { cox: {
@@ -186,7 +187,7 @@ const { createAgentSession } = await import(pathToFileURL(join(engine, "sdk.js")
 const { SessionManager } = await import(pathToFileURL(join(engine, "session-manager.js")).href);
 const { SettingsManager } = await import(pathToFileURL(join(engine, "settings-manager.js")).href);
 const { DefaultResourceLoader } = await import(pathToFileURL(join(engine, "resource-loader.js")).href);
-const settingsManager = SettingsManager.inMemory({ retry: { modelFallback: false } });
+const settingsManager = SettingsManager.create(project, privateDir);
 const resourceLoader = new DefaultResourceLoader({ cwd: project, agentDir: privateDir, settingsManager,
   noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
 await resourceLoader.reload();
@@ -194,11 +195,17 @@ const { session: childSession } = await createAgentSession({ cwd: project, agent
   sessionManager: SessionManager.inMemory(project), settingsManager, resourceLoader,
   modelRegistry: component.scopeModelRegistry(registry), model: main, tools: [] });
 assert.equal(childSession.model.provider, "cox");
+assert.equal(childSession.agent.streamStartTimeoutMs, 630000);
+assert.equal(childSession.agent.streamKeepAliveTimeoutMs, 630000);
 childSession.dispose();
 const privateCatalog = await readFile(join(privateDir, "models.json"), "utf8");
 assert.ok(!privateCatalog.includes("forbidden"));
 assert.deepEqual(Object.keys(JSON.parse(privateCatalog).providers), ["cox"]);
-assert.deepEqual(JSON.parse(await readFile(join(privateDir, "settings.json"), "utf8")).retry, { modelFallback: false, fallbackChains: {} });
+assert.deepEqual(JSON.parse(await readFile(join(privateDir, "settings.json"), "utf8")).retry, { enabled: false, modelFallback: false, fallbackChains: {}, provider: { timeoutMs: 630000, streamStartTimeoutMs: 630000, keepAliveTimeoutMs: 630000 } });
+const managedSettings = SettingsManager.create(privateDir, privateDir);
+assert.equal(managedSettings.getAgentStreamStartTimeoutMs(), 630000);
+assert.equal(managedSettings.getAgentStreamIdleTimeoutMs(), 630000);
+assert.equal(managedSettings.getHttpIdleTimeoutMs(), 630000);
 assert.equal((await stat(join(privateDir, "auth.json"))).mode & 0o777, 0o600);
 assert.equal((await stat(privateDir)).mode & 0o777, 0o700);
 assert.equal(await readFile(join(home, ".omo", "omo.json"), "utf8"), hostileConfig);

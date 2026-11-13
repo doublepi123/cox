@@ -503,69 +503,73 @@ it.effect("cancels every stalled attempt when the recovery budget expires", () =
   }),
 );
 
-it.effect.each([1, 2])(
-  "keeps the other in-flight request alive when attempt %s fails permanently",
+it.effect.each([1, 2, 4])(
+  "cancels a hanging sibling immediately when attempt %s fails permanently",
   (failedId) =>
     Effect.gen(function* () {
-      const h = harness({ hedgeDelayMs: 100, maxConcurrent: 3 });
+      const h = harness({ hedgeDelayMs: 100, maxConcurrent: 4 });
       const fiber = yield* h
         .run((id) =>
           id === failedId
-            ? Effect.sleep(id === 1 ? 150 : 10).pipe(
+            ? Effect.sleep(350 - (id - 1) * 100).pipe(
                 Effect.andThen(
                   Effect.fail(
                     new ModelServiceRequestFailure({
                       detail: "Invalid credentials",
-                      status: 401,
+                      status: 406,
+                      source: "upstream",
                       retryable: false,
                     }),
                   ),
                 ),
               )
-            : Effect.sleep(400).pipe(Effect.as(id)),
+            : Effect.never,
         )
-        .pipe(Effect.forkChild);
-      yield* TestClock.adjust("1 second");
-      expect(yield* Fiber.join(fiber)).toBe(failedId === 1 ? 2 : 1);
-      expect(h.started).toEqual([1, 2]);
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* TestClock.adjust(400);
+      expect(yield* Fiber.join(fiber)).toMatchObject({
+        status: 406,
+        terminationReason: "non_retryable_error",
+      });
+      expect(h.started).toEqual([1, 2, 3, 4]);
       expect(h.load.inFlight).toBe(0);
+      expect(h.load.hedges).toBe(0);
+      expect(h.closed.toSorted()).toEqual([1, 2, 3, 4]);
       expect(h.diagnostics).toContainEqual(
-        expect.objectContaining({ event: "terminal", reason: "response_ready" }),
+        expect.objectContaining({ event: "terminal", reason: "non_retryable_error" }),
       );
     }),
 );
 
-it.effect(
-  "stops additional launches after a permanent failure and preserves it if the sibling fails",
-  () =>
-    Effect.gen(function* () {
-      const h = harness({ hedgeDelayMs: 100 });
-      const fiber = yield* h
-        .run((id) =>
-          Effect.sleep(id === 1 ? 400 : 10).pipe(
-            Effect.andThen(
-              Effect.fail(
-                id === 1
-                  ? failure()
-                  : new ModelServiceRequestFailure({
-                      detail: "Invalid credentials",
-                      status: 401,
-                      retryable: false,
-                    }),
-              ),
+it.effect("preserves the permanent failure while cancelling the slower transient failure", () =>
+  Effect.gen(function* () {
+    const h = harness({ hedgeDelayMs: 100 });
+    const fiber = yield* h
+      .run((id) =>
+        Effect.sleep(id === 1 ? 400 : 10).pipe(
+          Effect.andThen(
+            Effect.fail(
+              id === 1
+                ? failure()
+                : new ModelServiceRequestFailure({
+                    detail: "Invalid credentials",
+                    status: 401,
+                    retryable: false,
+                  }),
             ),
           ),
-        )
-        .pipe(Effect.flip, Effect.forkChild);
-      yield* TestClock.adjust("1 second");
-      expect(yield* Fiber.join(fiber)).toMatchObject({
-        status: 401,
-        terminationReason: "non_retryable_error",
-        attempts: 2,
-        lastAttemptFailure: { status: 503 },
-      });
-      expect(h.started).toEqual([1, 2]);
-    }),
+        ),
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    expect(yield* Fiber.join(fiber)).toMatchObject({
+      status: 401,
+      terminationReason: "non_retryable_error",
+      attempts: 2,
+      lastAttemptFailure: { status: 401 },
+    });
+    expect(h.started).toEqual([1, 2]);
+  }),
 );
 
 it.effect("reports the budget as the terminal cause after four overlapping header waits", () =>

@@ -69,6 +69,7 @@ import * as ByteSize from "effect/ByteSize";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 const encode = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decode = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 const record = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -236,7 +237,9 @@ export const make = Effect.gen(function* () {
             : {}),
         }));
         const environment = [...(instance.environment ?? [])].filter(
-          (variable) => variable.name !== "COX_MODEL_SERVICE_KEY",
+          (variable) =>
+            variable.name !== "COX_MODEL_SERVICE_KEY" &&
+            !(instance.driver === "omo" && variable.name === "COX_OMO_GATEWAY_TIMEOUT_MS"),
         );
         environment.push({ name: "COX_MODEL_SERVICE_KEY", value: token, sensitive: true });
         if (instance.driver === "claudeAgent") {
@@ -342,6 +345,34 @@ export const make = Effect.gen(function* () {
         }
         if (instance.driver === "pi" || instance.driver === "omo") {
           const agentDir = path.join(directory, instance.driver);
+          if (instance.driver === "omo") {
+            const settingsPath = path.join(agentDir, "settings.json");
+            const runtimeSettingsText = (yield* fs.exists(settingsPath))
+              ? yield* fs.readFileString(settingsPath)
+              : "{}";
+            const existing = record(yield* decode(runtimeSettingsText));
+            const retry = record(existing.retry);
+            const timeoutMs = service.recovery.budgetMs + 30_000;
+            environment.push({
+              name: "COX_OMO_GATEWAY_TIMEOUT_MS",
+              value: String(timeoutMs),
+              sensitive: false,
+            });
+            yield* write(settingsPath, {
+              ...existing,
+              httpIdleTimeoutMs: timeoutMs,
+              retry: {
+                ...retry,
+                enabled: false,
+                provider: {
+                  ...record(retry.provider),
+                  streamStartTimeoutMs: timeoutMs,
+                  timeoutMs,
+                  keepAliveTimeoutMs: timeoutMs,
+                },
+              },
+            });
+          }
           yield* write(path.join(agentDir, "models.json"), {
             providers: {
               cox: {
