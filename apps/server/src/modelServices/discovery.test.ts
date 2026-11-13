@@ -348,7 +348,10 @@ describe("model service discovery", () => {
   it("lets a configured Anthropic version override the default", () => {
     expect(
       modelServiceHeaders(
-        config({ protocols: ["anthropic-messages"], headers: { "anthropic-version": "2099-01-01" } }),
+        config({
+          protocols: ["anthropic-messages"],
+          headers: { "anthropic-version": "2099-01-01" },
+        }),
         "anthropic-messages",
       )["anthropic-version"],
     ).toBe("2099-01-01");

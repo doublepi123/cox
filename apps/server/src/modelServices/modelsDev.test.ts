@@ -104,12 +104,19 @@ describe("models.dev model metadata", () => {
     const index = parseModelsDevCatalog({
       openai: {
         models: {
-          "gpt-split": { id: "gpt-split", limit: { context: 400000, input: 272000, output: 128000 } },
+          "gpt-split": {
+            id: "gpt-split",
+            limit: { context: 400000, input: 272000, output: 128000 },
+          },
         },
       },
     });
     expect(
-      enrichModelFromModelsDev({ id: "gpt-split", capabilities: null }, index, "https://proxy.test"),
+      enrichModelFromModelsDev(
+        { id: "gpt-split", capabilities: null },
+        index,
+        "https://proxy.test",
+      ),
     ).toMatchObject({ capabilities: { contextWindow: 272000 }, maxOutputTokens: 128000 });
   });
   it("ignores unused differences and prefers the first-party entry on official hosts", () => {
