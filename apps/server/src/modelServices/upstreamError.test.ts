@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
+import {
+  parseUpstreamError,
+  upstreamContextOverflow,
+  upstreamErrorDetails,
+} from "./upstreamError.ts";
 
 const error = {
   code: "invalid_encrypted_content",
@@ -203,5 +207,65 @@ describe("upstream model error diagnostics", () => {
       upstreamErrorDetails(parseUpstreamError(Object.create({ code: "invalid_encrypted_content" })))
         .code,
     ).toBeUndefined();
+  });
+});
+
+describe("upstream policy rejections", () => {
+  it.each(["invalid_prompt", "content_policy_violation", "content_filter", "cyber_policy"])(
+    "keeps the %s code from a streamed failure",
+    (code) => {
+      const parsed = parseUpstreamError({
+        type: "response.failed",
+        response: { status: "failed" },
+        error: { code, message: "private prompt text" },
+      });
+      const details = upstreamErrorDetails(parsed);
+      expect(details.code).toBe(code);
+      expect(details.detail).not.toContain("private prompt text");
+    },
+  );
+});
+
+describe("upstream context overflow", () => {
+  it.each([
+    [{ code: "context_length_exceeded" }, {}],
+    [{ code: "string_above_max_length" }, {}],
+    [
+      {
+        type: "invalid_request_error",
+        message: "prompt is too long: 215000 tokens > 200000 maximum",
+      },
+      { tokens: 215000, limit: 200000 },
+    ],
+    [
+      {
+        status: "INVALID_ARGUMENT",
+        message:
+          "The input token count (1200000) exceeds the maximum number of tokens allowed (1048576).",
+      },
+      { tokens: 1200000, limit: 1048576 },
+    ],
+    [
+      {
+        message:
+          "This model's maximum context length is 128000 tokens. However, your messages resulted in 130500 tokens.",
+      },
+      { tokens: 130500, limit: 128000 },
+    ],
+    [{ message: "Request has too many tokens" }, {}],
+    [{ message: "Your input exceeds the context window of this model." }, {}],
+  ])("recognizes %j", (error, numbers) => {
+    const overflow = upstreamContextOverflow(parseUpstreamError({ error }));
+    expect(overflow).toEqual({ ...numbers, description: expect.any(String) });
+    expect(overflow?.description).toContain("context window");
+    if ("message" in error) expect(overflow?.description).not.toContain(error.message);
+  });
+
+  it.each([
+    { code: "invalid_request_error", message: "User said: prompt is too long" },
+    { code: "rate_limit_error", message: "too many requests" },
+    { message: "private prompt" },
+  ])("ignores unrelated errors %j", (error) => {
+    expect(upstreamContextOverflow(parseUpstreamError({ error }))).toBeUndefined();
   });
 });

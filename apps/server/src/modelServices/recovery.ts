@@ -65,6 +65,7 @@ export interface ModelServiceRecoveryLoad {
   inFlight: number;
   hedges: number;
   cooldownUntil: number;
+  cooldownFailure?: ModelServiceRequestFailure;
 }
 
 export const retryAfterMilliseconds = (value: string | undefined, now: number): number => {
@@ -107,6 +108,11 @@ export function isRetryableModelServiceError(
       "invalid_encrypted_content",
       "max_output_tokens",
       "content_filter",
+      "invalid_prompt",
+      "content_policy_violation",
+      "cyber_policy",
+      "safety_violation",
+      "string_above_max_length",
     ].includes(code)
   )
     return false;
@@ -243,6 +249,25 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       break;
     }
     if (now >= deadline) break;
+    if (
+      respectRetryAfter &&
+      active.size === 0 &&
+      load.cooldownFailure &&
+      load.cooldownUntil > now &&
+      load.cooldownUntil >= deadline
+    ) {
+      lastFailure = new ModelServiceRequestFailure({
+        detail: load.cooldownFailure.detail,
+        status: load.cooldownFailure.status,
+        retryable: false,
+        retryAfterMs: load.cooldownUntil - now,
+        code: load.cooldownFailure.code,
+        source: load.cooldownFailure.source,
+        requestId: load.cooldownFailure.requestId,
+      });
+      terminationReason = "retry_after_exceeds_budget";
+      break;
+    }
     const queued = yield* Queue.poll(events);
     const cooled = !respectRetryAfter || now >= load.cooldownUntil;
     if (policy.hedgeEnabled && active.size > 0 && now >= nextHedgeAt) {
@@ -389,8 +414,14 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       continue;
     }
     const failedAt = yield* Clock.currentTimeMillis;
-    if (respectRetryAfter && lastFailure.retryAfterMs) {
-      load.cooldownUntil = Math.max(load.cooldownUntil, failedAt + lastFailure.retryAfterMs);
+    if (
+      respectRetryAfter &&
+      policy.retryEnabled &&
+      lastFailure.retryAfterMs &&
+      failedAt + lastFailure.retryAfterMs > load.cooldownUntil
+    ) {
+      load.cooldownUntil = failedAt + lastFailure.retryAfterMs;
+      load.cooldownFailure = lastFailure;
     }
     if (!permanentFailure && policy.retryEnabled && attempts < policy.maxAttempts) {
       const ladder = [250, 500, 1000, 2000, 3000, 5000];
@@ -421,6 +452,9 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
         ? "gateway"
         : lastFailure.source,
     requestId: lastFailure.requestId,
+    ...(terminationReason === "retry_after_exceeds_budget"
+      ? { retryAfterMs: lastFailure.retryAfterMs }
+      : {}),
     terminationReason,
     budgetMs: policy.budgetMs,
     elapsedMs: (yield* Clock.currentTimeMillis) - started,

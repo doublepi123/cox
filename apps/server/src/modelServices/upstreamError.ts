@@ -27,7 +27,51 @@ const codes = new Set([
   "model_not_found",
   "max_output_tokens",
   "content_filter",
+  "invalid_prompt",
+  "content_policy_violation",
+  "cyber_policy",
+  "safety_violation",
+  "string_above_max_length",
 ]);
+
+const overflowMessages = [
+  /^prompt is too long(?::\s*(\d+) tokens\s*>\s*(\d+)(?: maximum)?)?/i,
+  /^the input token count(?: \((\d+)\))? exceeds the maximum number of tokens allowed(?: \((\d+)\))?/i,
+  /^this model's maximum context length is (\d+) tokens\. however, your messages resulted in (\d+) tokens/i,
+  /^(?:request|input|prompt)? ?(?:has|contains)? ?too many tokens/i,
+  /^[^.]{0,80}exceeds the context window/i,
+];
+
+export function upstreamContextOverflow(error: Readonly<Record<string, unknown>>):
+  | {
+      readonly description: string;
+      readonly tokens?: number;
+      readonly limit?: number;
+    }
+  | undefined {
+  const coded = [error.code, error.type, error.reason].some(
+    (value) => value === "context_length_exceeded" || value === "string_above_max_length",
+  );
+  const message =
+    typeof error.message === "string" && error.message.length <= 16384 ? error.message.trim() : "";
+  const index = overflowMessages.findIndex((pattern) => pattern.test(message));
+  if (!coded && index < 0) return undefined;
+  const match = index < 0 ? null : overflowMessages[index]!.exec(message);
+  const numbers = [match?.[1], match?.[2]].map((value) =>
+    value === undefined ? undefined : Number(value),
+  );
+  const [tokens, limit] = index === 2 ? [numbers[1], numbers[0]] : numbers;
+  return {
+    description:
+      tokens !== undefined && limit !== undefined
+        ? `The request exceeds the model's context window (${tokens} tokens > ${limit} maximum).`
+        : limit !== undefined
+          ? `The request exceeds the model's context window (${limit} maximum).`
+          : "The request exceeds the model's context window.",
+    ...(tokens === undefined ? {} : { tokens }),
+    ...(limit === undefined ? {} : { limit }),
+  };
+}
 
 export function parseUpstreamError(value: unknown): Record<string, unknown> {
   let current = value;

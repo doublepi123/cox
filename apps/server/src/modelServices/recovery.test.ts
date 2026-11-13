@@ -446,6 +446,91 @@ it.effect.each([false, true])(
     }),
 );
 
+it.effect("returns the retained 429 promptly when Retry-After outlasts the recovery budget", () =>
+  Effect.gen(function* () {
+    const h = harness({ hedgeEnabled: false, budgetMs: 3000 });
+    const quota = () =>
+      Effect.fail(
+        new ModelServiceRequestFailure({
+          detail: "Rate limited",
+          status: 429,
+          retryable: true,
+          retryAfterMs: 60000,
+          code: "rate_limit_error",
+          source: "upstream",
+        }),
+      );
+    const first = yield* h.run(quota).pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("1 millis");
+    expect(yield* Fiber.join(first)).toMatchObject({
+      status: 429,
+      code: "rate_limit_error",
+      source: "upstream",
+      retryAfterMs: 60000,
+    });
+    const second = yield* h.run(quota).pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("1 millis");
+    expect(yield* Fiber.join(second)).toMatchObject({
+      status: 429,
+      code: "rate_limit_error",
+      retryAfterMs: 60000,
+      attempts: 0,
+    });
+    expect(h.started).toEqual([1]);
+  }),
+);
+
+it.effect("waits for a shared cooldown that ends before the request deadline", () =>
+  Effect.gen(function* () {
+    const h = harness({ hedgeEnabled: false, budgetMs: 10000 });
+    const fiber = yield* h
+      .run((attempt) =>
+        attempt === 1
+          ? Effect.fail(
+              new ModelServiceRequestFailure({
+                detail: "Rate limited",
+                status: 429,
+                retryable: true,
+                retryAfterMs: 5000,
+              }),
+            )
+          : Effect.succeed(attempt),
+      )
+      .pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    const later = yield* h.run((attempt) => Effect.succeed(attempt)).pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    expect(h.started).toEqual([1]);
+    yield* TestClock.adjust("4 seconds");
+    expect(yield* Fiber.join(fiber)).toBe(2);
+    expect(yield* Fiber.join(later)).toBe(1);
+  }),
+);
+
+it.effect("does not let a retry-disabled 429 block later requests", () =>
+  Effect.gen(function* () {
+    const h = harness({ retryEnabled: false, hedgeEnabled: false, budgetMs: 3000 });
+    const first = yield* h
+      .run(() =>
+        Effect.fail(
+          new ModelServiceRequestFailure({
+            detail: "Rate limited",
+            status: 429,
+            retryable: true,
+            retryAfterMs: 60000,
+          }),
+        ),
+      )
+      .pipe(Effect.flip, Effect.forkChild);
+    yield* TestClock.adjust("1 millis");
+    expect(yield* Fiber.join(first)).toMatchObject({ status: 429 });
+    expect(h.load.cooldownUntil).toBe(0);
+    const second = yield* h.run((attempt) => Effect.succeed(attempt)).pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 millis");
+    expect(yield* Fiber.join(second)).toBe(1);
+  }),
+);
+
 it.effect.each([5, 10])("honors the configured concurrency limit of %s", (maxConcurrent) =>
   Effect.gen(function* () {
     const h = harness({ maxConcurrent, hedgeDelayMs: 100, budgetMs: 5000 });
@@ -705,5 +790,12 @@ it.effect("distinguishes channel failures from permanent quota and request error
     expect(isRetryableModelServiceError(503, { code: "invalid_encrypted_content" })).toBe(false);
     expect(isRetryableModelServiceError(401, {})).toBe(false);
     expect(isRetryableModelServiceError(529, {})).toBe(true);
+    for (const code of [
+      "invalid_prompt",
+      "content_policy_violation",
+      "cyber_policy",
+      "content_filter",
+    ])
+      expect(isRetryableModelServiceError(502, { code })).toBe(false);
   }),
 );
