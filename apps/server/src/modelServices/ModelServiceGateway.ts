@@ -86,6 +86,8 @@ const SDK_PACKAGES: Record<ModelServiceProtocol, string> = {
   "anthropic-messages": "@ai-sdk/anthropic",
   gemini: "@ai-sdk/google",
 };
+const FORCED_TOOL_CHOICE_REJECTING_MODEL_ID =
+  /^claude-(?:(?:fable|mythos)(?:-|$)|(?:opus|sonnet)-5[.-]5(?:[.-]|$))/i;
 const PREFIX = "/api/model-gateway";
 const isModelServiceError = Schema.is(ModelServiceError);
 const ZERO_TOKEN_STOP_CODE = "cox_model_service_zero_token_stop";
@@ -416,6 +418,10 @@ export const make = Effect.gen(function* () {
                       : {}),
                     ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
                     ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
+                    ...(protocol !== "gemini" &&
+                    FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
+                      ? { compat: { supportsForcedToolChoice: false } }
+                      : {}),
                   };
                 }),
               },

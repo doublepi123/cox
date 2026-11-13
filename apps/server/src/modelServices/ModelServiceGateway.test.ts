@@ -5036,6 +5036,55 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect.each(["openai-chat", "anthropic-messages", "gemini"] as const)(
+    "disables forced tool choice only for rejecting Claude models over %s",
+    (protocol) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo", protocol });
+        const fs = yield* FileSystem.FileSystem;
+        const ids = [
+          "claude-opus-5-5",
+          "Vendor/claude-sonnet-5.5",
+          "claude-fable-5-2",
+          "claude-mythos-5-1",
+          "claude-opus-5",
+          "claude-sonnet-5-55",
+          "gpt-6-luna",
+        ];
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: { ...current, models: ids.map((id) => ({ id, capabilities: null })) },
+          },
+        });
+        yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: ids, defaultModel: "gpt-6-luna" },
+          },
+        });
+        const generated = JSON.parse(
+          yield* fs.readFileString(String(h.config.agentDir) + "/models.json"),
+        );
+        const compat = Object.fromEntries(
+          generated.providers.cox.models.map((model: Record<string, unknown>) => [
+            model.id,
+            model.compat,
+          ]),
+        );
+        const rejected = protocol === "gemini" ? undefined : { supportsForcedToolChoice: false };
+        expect(compat).toEqual({
+          "claude-opus-5-5": rejected,
+          "Vendor/claude-sonnet-5.5": rejected,
+          "claude-fable-5-2": rejected,
+          "claude-mythos-5-1": rejected,
+          "claude-opus-5": undefined,
+          "claude-sonnet-5-55": undefined,
+          "gpt-6-luna": undefined,
+        });
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("preserves Pi Responses strict flags and optional tool arguments on the wire", () =>
     Effect.gen(function* () {
       const h = yield* harness({
