@@ -3212,6 +3212,8 @@ export const en = {
   Archive: "Archive",
   Agents: "Agents",
   Connections: "Connections",
+  "Could not open connections": "Could not open connections",
+  "Could not connect to this server.": "Could not connect to this server.",
   Notifications: "Notifications",
   Sidebar: "Sidebar",
   "Restore device defaults": "Restore device defaults",

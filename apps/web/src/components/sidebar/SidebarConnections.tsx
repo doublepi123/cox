@@ -2,6 +2,7 @@ import { ServerIcon } from "lucide-react";
 import { useTranslation } from "../../i18n";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
+import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function SidebarConnections() {
@@ -17,7 +18,9 @@ export function SidebarConnections() {
               aria-label={t("Connections")}
               size="utility"
               onClick={() => {
-                void window.coxDesktop?.openConnections?.();
+                void window.coxDesktop?.openConnections?.().catch(() => {
+                  toastManager.add({ type: "error", title: t("Could not open connections") });
+                });
               }}
             />
           }

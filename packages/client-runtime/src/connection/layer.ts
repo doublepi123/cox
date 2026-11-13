@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as ConnectionResolver from "./resolver.ts";
 import * as ConnectionDriver from "./driver.ts";
 import * as EnvironmentRegistry from "./registry.ts";
@@ -18,7 +19,11 @@ export function layerWithOptions(options: RpcSession.RpcSessionOptions) {
       const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
       const platformSource = yield* PlatformConnectionSource.PlatformConnectionSource;
       yield* platformSource.registrations.pipe(
-        Stream.runForEach(registry.reconcilePlatform),
+        Stream.runForEach(({ registrations, error }) =>
+          SubscriptionRef.set(platformSource.discoveryError, error).pipe(
+            Effect.andThen(registry.reconcilePlatform(registrations)),
+          ),
+        ),
         Effect.forkScoped,
       );
     }).pipe(Effect.withSpan("clientRuntime.connection.application.start")),

@@ -9,11 +9,14 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 
 import {
   AVAILABLE_CONNECTION_STATE,
+  type ConnectionAttemptError,
   ConnectionTransientError,
   type SupervisorConnectionState,
 } from "../connection/model.ts";
+import type { ConnectionCatalogEntry } from "../connection/catalog.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
+import * as PlatformConnectionSource from "../platform/source.ts";
 import type * as RpcSession from "../rpc/session.ts";
 import { createEnvironmentCatalogAtoms } from "./connections.ts";
 
@@ -44,8 +47,17 @@ const makeCatalogHarness = Effect.fn("TestCatalog.makeHarness")(function* () {
   const registry = EnvironmentRegistry.EnvironmentRegistry.of({
     followStream,
   } as unknown as EnvironmentRegistry.EnvironmentRegistry["Service"]);
+  const discoveryError = yield* SubscriptionRef.make<ConnectionAttemptError | null>(null);
+  const source = PlatformConnectionSource.PlatformConnectionSource.of({
+    discoveryError,
+  } as unknown as PlatformConnectionSource.PlatformConnectionSource["Service"]);
   const catalog = createEnvironmentCatalogAtoms(
-    Atom.runtime(Layer.succeed(EnvironmentRegistry.EnvironmentRegistry, registry)),
+    Atom.runtime(
+      Layer.merge(
+        Layer.succeed(EnvironmentRegistry.EnvironmentRegistry, registry),
+        Layer.succeed(PlatformConnectionSource.PlatformConnectionSource, source),
+      ),
+    ),
   );
   const atom = catalog.sessionGenerationAtom(ENVIRONMENT_ID);
   const atoms = AtomRegistry.make();
@@ -74,6 +86,48 @@ const lastFailure = new ConnectionTransientError({ reason: "transport", detail: 
 const newSession = () => Option.some({} as RpcSession.RpcSession);
 
 describe("environment catalog atoms", () => {
+  it.effect("distinguishes an initial discovery failure from an empty ready catalog", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const entries = yield* SubscriptionRef.make<
+          ReadonlyMap<EnvironmentId, ConnectionCatalogEntry>
+        >(new Map());
+        const discoveryError = yield* SubscriptionRef.make<ConnectionAttemptError | null>(
+          lastFailure,
+        );
+        const registry = EnvironmentRegistry.EnvironmentRegistry.of({
+          entries,
+        } as unknown as EnvironmentRegistry.EnvironmentRegistry["Service"]);
+        const source = PlatformConnectionSource.PlatformConnectionSource.of({
+          discoveryError,
+        } as unknown as PlatformConnectionSource.PlatformConnectionSource["Service"]);
+        const catalog = createEnvironmentCatalogAtoms(
+          Atom.runtime(
+            Layer.merge(
+              Layer.succeed(EnvironmentRegistry.EnvironmentRegistry, registry),
+              Layer.succeed(PlatformConnectionSource.PlatformConnectionSource, source),
+            ),
+          ),
+        );
+        const atoms = AtomRegistry.make();
+        const unmount = atoms.mount(catalog.catalogValueAtom);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            unmount();
+            atoms.dispose();
+          }),
+        );
+        yield* Effect.yieldNow;
+
+        expect(atoms.get(catalog.catalogValueAtom)).toMatchObject({
+          isReady: true,
+          entries: new Map(),
+          discoveryError: lastFailure,
+        });
+      }),
+    ),
+  );
+
   it.effect("changes the session generation only when a new session comes up", () =>
     Effect.scoped(
       Effect.gen(function* () {

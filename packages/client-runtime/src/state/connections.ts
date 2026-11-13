@@ -6,8 +6,9 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import * as EnvironmentRegistry from "../connection/registry.ts";
 import type { ConnectionCatalogEntry } from "../connection/catalog.ts";
-import { AVAILABLE_CONNECTION_STATE } from "../connection/model.ts";
+import { AVAILABLE_CONNECTION_STATE, type ConnectionAttemptError } from "../connection/model.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
+import * as PlatformConnectionSource from "../platform/source.ts";
 import {
   createAtomCommandScheduler,
   createRuntimeCommand,
@@ -18,6 +19,7 @@ import {
 export interface EnvironmentCatalogState {
   readonly isReady: boolean;
   readonly entries: ReadonlyMap<EnvironmentIdType, ConnectionCatalogEntry>;
+  readonly discoveryError?: ConnectionAttemptError | null;
 }
 
 export function* enabledEnvironmentIds(
@@ -33,25 +35,31 @@ export function* enabledEnvironmentIds(
 const EMPTY_ENVIRONMENT_CATALOG_STATE: EnvironmentCatalogState = Object.freeze({
   isReady: false,
   entries: new Map(),
+  discoveryError: null,
 });
 
 export function createEnvironmentCatalogAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, E>,
+  runtime: Atom.AtomRuntime<
+    EnvironmentRegistry.EnvironmentRegistry | PlatformConnectionSource.PlatformConnectionSource | R,
+    E
+  >,
 ) {
   const commandScheduler = createAtomCommandScheduler();
   const serial = { mode: "serial" as const, key: () => "environment-catalog" };
   const catalogAtom = runtime.atom(
     Stream.unwrap(
-      EnvironmentRegistry.EnvironmentRegistry.pipe(
-        Effect.map((registry) =>
-          SubscriptionRef.changes(registry.entries).pipe(
-            Stream.map((entries) => ({
-              isReady: true,
-              entries,
-            })),
-          ),
-        ),
-      ),
+      Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const platformSource = yield* PlatformConnectionSource.PlatformConnectionSource;
+        return SubscriptionRef.changes(registry.entries).pipe(
+          Stream.zipLatest(SubscriptionRef.changes(platformSource.discoveryError)),
+          Stream.map(([entries, discoveryError]) => ({
+            isReady: true,
+            entries,
+            discoveryError,
+          })),
+        );
+      }),
     ),
     { initialValue: EMPTY_ENVIRONMENT_CATALOG_STATE },
   );
@@ -90,6 +98,16 @@ export function createEnvironmentCatalogAtoms<R, E>(
   const sessionGenerationAtom = (environmentId: EnvironmentIdType) =>
     environmentSessionGenerationAtom(runtime, environmentId);
 
+  const retryDiscovery = createRuntimeCommand(runtime, {
+    label: "environment-catalog:retry-discovery",
+    scheduler: commandScheduler,
+    concurrency: serial,
+    execute: (_input: void) =>
+      PlatformConnectionSource.PlatformConnectionSource.pipe(
+        Effect.flatMap((platformSource) => platformSource.retry),
+      ),
+  });
+
   const retryNow = createRuntimeCommand(runtime, {
     label: "environment-catalog:retry-now",
     scheduler: commandScheduler,
@@ -107,6 +125,7 @@ export function createEnvironmentCatalogAtoms<R, E>(
     networkStatusValueAtom,
     stateAtom,
     sessionGenerationAtom,
+    retryDiscovery,
     retryNow,
   };
 }

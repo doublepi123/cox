@@ -257,6 +257,11 @@ export async function submitServerAuthCredential(credential: string): Promise<vo
   bootstrapPromise = null;
 }
 
+export function invalidateServerAuthGate(): void {
+  bootstrapPromise = null;
+  resolvedAuthenticatedGateState = null;
+}
+
 export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGateState> {
   if (typeof window !== "undefined") {
     const url = new URL(window.location.href);

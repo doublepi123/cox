@@ -3,6 +3,8 @@ import * as ConnectionDriver from "./driver.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
+import * as Exit from "effect/Exit";
 
 import * as Layer from "effect/Layer";
 
@@ -70,7 +72,6 @@ export class EnvironmentRegistry extends Context.Service<
 >()("@t3tools/client-runtime/connection/registry/EnvironmentRegistry") {}
 
 export const make = Effect.gen(function* () {
-  const registryScope = yield* Scope.Scope;
   const services = yield* Effect.context<
     | ConnectionDriver.ConnectionDriver
     | ConnectionWakeups.ConnectionWakeups
@@ -85,6 +86,7 @@ export const make = Effect.gen(function* () {
     EnvironmentId,
     EnvironmentSupervisor.EnvironmentSupervisor["Service"]
   >();
+  const supervisorScopes = new Map<EnvironmentId, Scope.Closeable>();
   const lock = yield* Semaphore.make(1);
   const acquireSupervisor = (environmentId: EnvironmentId) =>
     Effect.suspend(() => {
@@ -101,14 +103,20 @@ export const make = Effect.gen(function* () {
         );
         if (!registration || registration._tag !== "PrimaryConnectionRegistration") return;
         const environmentId = registration.target.environmentId;
-        if (supervisors.has(environmentId)) return;
+        const currentTarget = (yield* SubscriptionRef.get(entries)).get(environmentId)?.target;
+        if (currentTarget && Equal.equals(currentTarget, registration.target)) return;
         const entry = connectionRegistrationCatalogEntry(registration);
+        const supervisorScope = yield* Scope.make();
         const supervisor = yield* EnvironmentSupervisor.make(entry, {
           initiallyDesired: true,
-        }).pipe(Scope.provide(registryScope), Effect.provide(services));
-        for (const existing of supervisors.values()) yield* existing.disconnect;
-        supervisors.clear();
+        }).pipe(Scope.provide(supervisorScope), Effect.provide(services));
+        for (const [existingId, existingScope] of supervisorScopes) {
+          supervisors.delete(existingId);
+          supervisorScopes.delete(existingId);
+          yield* Scope.close(existingScope, Exit.void);
+        }
         supervisors.set(environmentId, supervisor);
+        supervisorScopes.set(environmentId, supervisorScope);
         yield* SubscriptionRef.set(entries, new Map([[environmentId, entry]]));
         yield* supervisor.connect;
       }),
@@ -155,6 +163,11 @@ export const make = Effect.gen(function* () {
   yield* connectivity.changes.pipe(
     Stream.runForEach((status) => SubscriptionRef.set(networkStatus, status)),
     Effect.forkScoped,
+  );
+  yield* Effect.addFinalizer(() =>
+    Effect.forEach(supervisorScopes.values(), (scope) => Scope.close(scope, Exit.void), {
+      discard: true,
+    }),
   );
   return EnvironmentRegistry.of({
     entries,

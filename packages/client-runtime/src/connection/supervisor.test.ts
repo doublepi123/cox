@@ -44,6 +44,27 @@ const TARGET_ENTRY: ConnectionCatalogEntry = {
   enabled: true,
 };
 
+const LOOPBACK_HTTP_BASE_URLS = [
+  "http://localhost:4773",
+  "http://127.0.0.5:4773",
+  "http://[::1]:4773",
+];
+
+function loopbackEntry(httpBaseUrl: string): ConnectionCatalogEntry {
+  const wsBaseUrl = new URL(httpBaseUrl);
+  wsBaseUrl.protocol = "ws:";
+  return {
+    target: new PrimaryConnectionTarget({
+      environmentId: EnvironmentId.make("environment-loopback"),
+      label: "Loopback server",
+      httpBaseUrl,
+      wsBaseUrl: wsBaseUrl.toString(),
+    }),
+    profile: Option.none(),
+    enabled: true,
+  };
+}
+
 const PREPARED_CONNECTION: PreparedConnection = {
   environmentId: TARGET.environmentId,
   label: TARGET.label,
@@ -269,6 +290,85 @@ describe("EnvironmentSupervisor", () => {
       });
       expect(yield* Ref.get(harness.prepareCount)).toBe(1);
     }),
+  );
+
+  it.effect("connects to loopback targets while the network reports offline", () =>
+    Effect.gen(function* () {
+      for (const httpBaseUrl of LOOPBACK_HTTP_BASE_URLS) {
+        const harness = yield* makeHarness({
+          networkStatus: "offline",
+          prepare: (_attempt, target) => Effect.succeed(preparedFor(target)),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(loopbackEntry(httpBaseUrl), {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+
+        const connected = yield* Effect.raceFirst(
+          awaitState(supervisor.state, (state) => state.phase === "connected"),
+          awaitState(supervisor.state, (state) => state.phase === "offline"),
+        );
+        expect(connected).toMatchObject({
+          desired: true,
+          network: "offline",
+          phase: "connected",
+          attempt: 1,
+          generation: 1,
+        });
+        expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+        expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+      }
+    }),
+  );
+
+  it.effect("connects a loopback target on retry while the network reports offline", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        prepare: (attempt, target) =>
+          attempt === 1 ? Effect.fail(transient()) : Effect.succeed(preparedFor(target)),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(loopbackEntry("http://127.0.0.1:4773"), {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      yield* harness.setNetworkStatus("offline");
+      yield* supervisor.retryNow;
+      const connected = yield* Effect.raceFirst(
+        awaitState(supervisor.state, (state) => state.phase === "connected"),
+        awaitState(supervisor.state, (state) => state.phase === "offline"),
+      );
+      expect(connected).toMatchObject({ phase: "connected", network: "offline" });
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("does not cancel a loopback setup when the network reports offline", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const allow = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        prepare: (_attempt, target) =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Deferred.await(allow)),
+            Effect.as(preparedFor(target)),
+          ),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(loopbackEntry("http://127.0.0.1:4773"), {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* Deferred.await(started);
+      yield* harness.setNetworkStatus("offline");
+      const connected = yield* Effect.raceFirst(
+        Deferred.succeed(allow, undefined).pipe(
+          Effect.andThen(awaitState(supervisor.state, (state) => state.phase === "connected")),
+        ),
+        awaitState(supervisor.state, (state) => state.phase === "offline"),
+      );
+      expect(connected).toMatchObject({ phase: "connected", network: "offline" });
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("keeps the latest failure visible throughout the next connection attempt", () =>

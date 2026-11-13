@@ -9,6 +9,7 @@ import {
   resolveInitialServerAuthGateState,
   submitServerAuthCredential,
 } from "./environments/primary";
+import { invalidateServerAuthGate } from "./environments/primary/auth";
 
 const LOCAL_AUTH = {
   policy: "loopback-browser",
@@ -59,6 +60,23 @@ describe("server authentication bootstrap", () => {
     await expect(resolveInitialServerAuthGateState()).resolves.toEqual({ status: "authenticated" });
     expect(testApi.calls.session).toBe(1);
     expect(testApi.calls.browserSession).toEqual([]);
+  });
+
+  it("rechecks an explicitly invalidated authenticated session", async () => {
+    let authenticated = true;
+    const testApi = await installAuthApi({
+      session: () => Effect.succeed(session(authenticated, PASSWORD_AUTH)),
+    });
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({ status: "authenticated" });
+
+    authenticated = false;
+    invalidateServerAuthGate();
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "requires-auth",
+      auth: PASSWORD_AUTH,
+    });
+    expect(testApi.calls.session).toBe(2);
   });
 
   it("automatically creates a local browser session with an empty payload after checking the session", async () => {

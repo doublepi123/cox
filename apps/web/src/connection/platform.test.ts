@@ -1,5 +1,17 @@
-import { afterEach, expect, it, vi } from "vite-plus/test";
-import { currentClientMetadata, subscribeToApplicationWakeups } from "./platform";
+import { ORCHESTRATION_PROTOCOL_VERSION } from "@t3tools/contracts";
+import { PlatformConnectionSource } from "@t3tools/client-runtime/platform";
+import { describe, expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+import { afterEach, vi } from "vite-plus/test";
+import {
+  currentClientMetadata,
+  layerPlatformConnectionSource,
+  subscribeToApplicationWakeups,
+} from "./platform";
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -183,4 +195,43 @@ it("does not drop a new network change during a rapid background-and-return", ()
   document.dispatchEvent(new Event("visibilitychange"));
   expect(wakeup.mock.calls).toEqual([["application-active"], ["network-changed"]]);
   unsubscribe();
+});
+
+describe("primary connection discovery", () => {
+  it.effect("retains the initial failure and recovers when retry is requested", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        vi.stubGlobal("window", { location: { origin: "http://127.0.0.1:4773" } });
+        const fetchDescriptor = vi
+          .fn()
+          .mockResolvedValueOnce(new Response("Unavailable", { status: 500 }))
+          .mockResolvedValue(
+            Response.json({
+              environmentId: "local",
+              label: "Local server",
+              platform: { os: "linux", arch: "x64" },
+              serverVersion: "0.1.0",
+              orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
+              capabilities: { repositoryIdentity: true },
+            }),
+          );
+        vi.stubGlobal("fetch", fetchDescriptor);
+        const context = yield* Layer.build(layerPlatformConnectionSource);
+        const source = Context.get(context, PlatformConnectionSource.PlatformConnectionSource);
+
+        const initial = Option.getOrNull(yield* Stream.runHead(source.registrations));
+        expect(initial).toMatchObject({
+          registrations: [],
+          error: { _tag: "ConnectionTransientError" },
+        });
+
+        yield* source.retry;
+        const recovered = Option.getOrNull(yield* Stream.runHead(source.registrations));
+        expect(recovered).toMatchObject({
+          registrations: [{ target: { environmentId: "local", label: "Local server" } }],
+          error: null,
+        });
+      }),
+    ),
+  );
 });

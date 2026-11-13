@@ -3075,6 +3075,8 @@ export const zh = {
   Archive: "归档",
   Agents: "Agent",
   Connections: "连接",
+  "Could not open connections": "无法打开连接",
+  "Could not connect to this server.": "无法连接到此服务器。",
   Notifications: "通知",
   Sidebar: "侧边栏",
   "Restore device defaults": "恢复设备默认设置",

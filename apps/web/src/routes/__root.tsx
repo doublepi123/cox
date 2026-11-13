@@ -1,5 +1,5 @@
 import { useTranslation } from "../i18n";
-import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { type AuthSessionState, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   Outlet,
@@ -38,9 +38,15 @@ import {
 } from "@t3tools/client-runtime/state/project-grouping";
 import { useUiStateStore } from "../uiStateStore";
 import { configureClientTracing } from "../observability/clientTracing";
-import { resolveInitialServerAuthGateState } from "../environments/primary";
+import {
+  invalidateServerAuthGate,
+  resolveInitialServerAuthGateState,
+} from "../environments/primary/auth";
+import { usePrimarySessionState } from "../environments/primary/sessionState";
 import { useAtomValue } from "@effect/atom-react";
+import { environmentCatalog } from "../connection/catalog";
 import { primaryServerConfigAtom, primaryServerWelcomeAtom } from "../state/server";
+import { useAtomCommand } from "../state/use-atom-command";
 import { readProject } from "../state/entities";
 import { ServerAuthGate } from "../components/ServerAuthGate";
 import { SidebarProvider } from "../components/ui/sidebar";
@@ -94,10 +100,24 @@ function RootRouteView() {
 }
 
 function RootRouteBranch() {
+  const { t } = useTranslation();
   const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+  const primarySession = usePrimarySessionState();
+  const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
+  const retryDiscovery = useAtomCommand(environmentCatalog.retryDiscovery);
+  const discoveryError = catalog.entries.size === 0 ? (catalog.discoveryError ?? null) : null;
+  const handledPrimarySessionRef = useRef<AuthSessionState | null>(null);
+  useEffect(() => {
+    if (primarySession.error !== null || primarySession.data?.authenticated !== false) return;
+    if (handledPrimarySessionRef.current === primarySession.data) return;
+    handledPrimarySessionRef.current = primarySession.data;
+    if (authGateState.status !== "authenticated") return;
+    invalidateServerAuthGate();
+    void router.invalidate();
+  }, [authGateState.status, primarySession.data, primarySession.error, router]);
   // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
   const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
   if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
@@ -119,6 +139,21 @@ function RootRouteBranch() {
         <ThemeEditorHost />
         <Outlet />
       </SidebarProvider>
+    );
+  }
+  if (discoveryError !== null) {
+    return (
+      <StandalonePage>
+        <StandalonePageHeader
+          title={t("Could not connect to this server.")}
+          description={discoveryError.detail}
+        />
+        <div className="mt-5">
+          <Button size="sm" onClick={() => void retryDiscovery()}>
+            {t("Try again")}
+          </Button>
+        </div>
+      </StandalonePage>
     );
   }
   if (pathname === "/welcome") {

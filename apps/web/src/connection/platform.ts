@@ -6,6 +6,7 @@ import {
 import {
   Connectivity,
   Wakeups,
+  type ConnectionAttemptError,
   PrimaryConnectionRegistration,
   PrimaryConnectionTarget,
   mapRemoteEnvironmentError,
@@ -16,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { APP_VERSION } from "../branding";
 import * as PrimaryEnvironmentHttpLayer from "../environments/primary/httpLayer";
@@ -177,21 +179,34 @@ const loadPrimaryConnectionRegistration = Effect.fn(
   });
 });
 
-const layerPlatformConnectionSource = Layer.succeed(
+export const layerPlatformConnectionSource = Layer.effect(
   PlatformConnectionSource.PlatformConnectionSource,
-  PlatformConnectionSource.PlatformConnectionSource.of({
-    registrations: Stream.tick("2 seconds").pipe(
-      Stream.mapEffect(() =>
-        loadPrimaryConnectionRegistration(readPrimaryEnvironmentTarget()).pipe(
-          Effect.map((registration) => [registration]),
-          Effect.catch((error) =>
-            Effect.logWarning("Could not discover the local server.", { error }).pipe(
-              Effect.as([] as ReadonlyArray<PrimaryConnectionRegistration>),
+  Effect.gen(function* () {
+    const retries = yield* Queue.unbounded<void>();
+    const discoveryError = yield* SubscriptionRef.make<ConnectionAttemptError | null>(null);
+    return PlatformConnectionSource.PlatformConnectionSource.of({
+      discoveryError,
+      retry: Queue.offer(retries, undefined).pipe(Effect.asVoid),
+      registrations: Stream.tick("2 seconds").pipe(
+        Stream.merge(Stream.fromQueue(retries)),
+        Stream.mapEffect(() =>
+          loadPrimaryConnectionRegistration(readPrimaryEnvironmentTarget()).pipe(
+            Effect.map((registration) => ({
+              registrations: [registration] as ReadonlyArray<PrimaryConnectionRegistration>,
+              error: null,
+            })),
+            Effect.catch((error) =>
+              Effect.logWarning("Could not discover the local server.", { error }).pipe(
+                Effect.as({
+                  registrations: [] as ReadonlyArray<PrimaryConnectionRegistration>,
+                  error,
+                }),
+              ),
             ),
           ),
         ),
       ),
-    ),
+    });
   }),
 );
 
