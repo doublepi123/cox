@@ -1,6 +1,7 @@
 import type { AuthBrowserSessionResult, AuthSessionState } from "@t3tools/contracts";
 import { EnvironmentHttpCommonError } from "@t3tools/contracts";
 import type { EnvironmentHttpCommonError as EnvironmentHttpCommonErrorType } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpClientError } from "effect/http";
@@ -94,6 +95,7 @@ let bootstrapPromise: Promise<ServerAuthGateState> | null = null;
 let resolvedAuthenticatedGateState: ServerAuthGateState | null = null;
 const AUTH_SESSION_ESTABLISH_TIMEOUT_MS = 2_000;
 const AUTH_SESSION_ESTABLISH_STEP_MS = 100;
+const BOOTSTRAP_REQUEST_TIMEOUT_MS = 5_000;
 
 export async function fetchSessionState(): Promise<AuthSessionState> {
   return retryTransientBootstrap(async () => {
@@ -101,6 +103,7 @@ export async function fetchSessionState(): Promise<AuthSessionState> {
       return await runPrimaryHttp(
         PrimaryEnvironmentHttpClient.pipe(
           Effect.flatMap((client) => client.auth.session({ headers: {} })),
+          Effect.timeout(BOOTSTRAP_REQUEST_TIMEOUT_MS),
         ),
       );
     } catch (error) {
@@ -145,6 +148,7 @@ async function createBrowserSession(credential?: string): Promise<AuthBrowserSes
           Effect.flatMap((client) =>
             client.auth.browserSession({ payload: credential === undefined ? {} : { credential } }),
           ),
+          Effect.timeout(BOOTSTRAP_REQUEST_TIMEOUT_MS),
         ),
       );
     } catch (error) {
@@ -219,7 +223,17 @@ function waitForBootstrapRetry(delayMs: number): Promise<void> {
 
 function isTransientBootstrapError(error: unknown): boolean {
   if (isPrimaryEnvironmentRequestError(error)) {
-    return TRANSIENT_BOOTSTRAP_STATUS_CODES.has(error.status);
+    return (
+      TRANSIENT_BOOTSTRAP_STATUS_CODES.has(error.status) || isTransientBootstrapError(error.cause)
+    );
+  }
+
+  if (Cause.isTimeoutError(error)) {
+    return true;
+  }
+
+  if (HttpClientError.isHttpClientError(error)) {
+    return error.response === undefined;
   }
 
   if (error instanceof TypeError) {

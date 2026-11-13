@@ -9,7 +9,11 @@ import {
   resolveInitialServerAuthGateState,
   submitServerAuthCredential,
 } from "./environments/primary";
-import { invalidateServerAuthGate } from "./environments/primary/auth";
+import {
+  invalidateServerAuthGate,
+  PrimaryEnvironmentRequestError,
+} from "./environments/primary/auth";
+import { __setPrimaryHttpRunnerForTests } from "./lib/runtime";
 
 const LOCAL_AUTH = {
   policy: "loopback-browser",
@@ -46,12 +50,19 @@ async function installAuthApi(scenario: Parameters<typeof installEnvironmentHttp
   return testApi;
 }
 
+function useLiveAuthFetch(fetch: typeof globalThis.fetch) {
+  __setPrimaryHttpRunnerForTests();
+  vi.stubGlobal("window", { location: new URL("http://localhost/") });
+  vi.stubGlobal("fetch", fetch);
+}
+
 describe("server authentication bootstrap", () => {
   afterEach(async () => {
     await disposeHttpTest?.();
     disposeHttpTest = undefined;
     __resetServerAuthBootstrapForTests();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("reuses an authenticated session without creating another one", async () => {
@@ -200,5 +211,96 @@ describe("server authentication bootstrap", () => {
     await expect(resolveInitialServerAuthGateState()).rejects.toThrow();
     expect(testApi.calls.browserSession).toEqual([{}, {}]);
     expect(testApi.calls.session).toBe(2);
+  });
+
+  it.each([
+    { operation: "fetch-session-state", stalledEndpoint: "session" },
+    { operation: "create-browser-session", stalledEndpoint: "browser-session" },
+  ] as const)(
+    "bounds and retries a stalled $stalledEndpoint request",
+    async ({ operation, stalledEndpoint }) => {
+      vi.useFakeTimers();
+      vi.setSystemTime("2026-11-05T12:00:00.000Z");
+      let requests = 0;
+      let aborts = 0;
+      useLiveAuthFetch((input, init) => {
+        const request = new Request(input, init);
+        requests += 1;
+        if (stalledEndpoint === "browser-session" && request.method === "GET") {
+          return Promise.resolve(Response.json(session(false)));
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          request.signal.addEventListener(
+            "abort",
+            () => {
+              aborts += 1;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      });
+
+      let settled = false;
+      const outcomePromise = resolveInitialServerAuthGateState().then(
+        () => {
+          settled = true;
+          return null;
+        },
+        (error: unknown) => {
+          settled = true;
+          return error;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(16_000);
+
+      expect(settled).toBe(true);
+      const error = await outcomePromise;
+      expect(error).toBeInstanceOf(PrimaryEnvironmentRequestError);
+      expect(error).toMatchObject({ operation });
+      expect(requests).toBeGreaterThan(1);
+      expect(aborts).toBe(requests - (stalledEndpoint === "browser-session" ? 1 : 0));
+    },
+  );
+
+  it.each([
+    { cause: () => new TypeError("Network unavailable"), name: "TypeError" },
+    { cause: () => new DOMException("Aborted", "AbortError"), name: "AbortError" },
+  ])("retries a response-less transport $name and recovers", async ({ cause }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-11-05T12:00:00.000Z");
+    let requests = 0;
+    useLiveAuthFetch(() => {
+      requests += 1;
+      return requests === 1
+        ? Promise.reject(cause())
+        : Promise.resolve(Response.json(session(false, PASSWORD_AUTH)));
+    });
+
+    const outcomePromise = resolveInitialServerAuthGateState().then(
+      (value) => ({ status: "resolved", value }) as const,
+      (error: unknown) => ({ status: "rejected", error }) as const,
+    );
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(outcomePromise).resolves.toEqual({
+      status: "resolved",
+      value: { status: "requires-auth", auth: PASSWORD_AUTH },
+    });
+    expect(requests).toBe(2);
+  });
+
+  it.each([401, 403, 500])("fails immediately for HTTP %i", async (status) => {
+    let requests = 0;
+    useLiveAuthFetch(() => {
+      requests += 1;
+      return Promise.resolve(new Response(null, { status }));
+    });
+
+    await expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentRequestError",
+      status,
+    });
+    expect(requests).toBe(1);
   });
 });

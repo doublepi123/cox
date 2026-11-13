@@ -1,11 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
 import * as Registry from "./registry.ts";
+import * as Supervisor from "./supervisor.ts";
 import * as Connectivity from "./connectivity.ts";
 import * as Wakeups from "./wakeups.ts";
 import * as Driver from "./driver.ts";
@@ -156,6 +159,100 @@ describe("local connection registry", () => {
       expect(yield* SubscriptionRef.get(harness.connectedEntries)).toHaveLength(1);
       expect(yield* SubscriptionRef.get(harness.wakeupReleases)).toBe(0);
     }),
+  );
+  it.effect("rebinds mounted followers after same-ID supervisor replacement", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const registry = yield* Registry.make.pipe(Effect.provide(harness.dependencies));
+      const observations = yield* SubscriptionRef.make<ReadonlyArray<string>>([]);
+      const starts = yield* SubscriptionRef.make<ReadonlyArray<string>>([]);
+      const releases = yield* SubscriptionRef.make<ReadonlyArray<string>>([]);
+      yield* registry.reconcilePlatform([new PrimaryConnectionRegistration({ target })]);
+      yield* registry
+        .followStream(
+          target.environmentId,
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const supervisor = yield* Supervisor.EnvironmentSupervisor;
+              const label = supervisor.target.label;
+              yield* Effect.acquireRelease(
+                SubscriptionRef.update(starts, (labels) => [...labels, label]),
+                () => SubscriptionRef.update(releases, (labels) => [...labels, label]),
+              );
+              return SubscriptionRef.changes(supervisor.state).pipe(
+                Stream.map((state) => `${label}:${state.phase}`),
+              );
+            }),
+          ),
+        )
+        .pipe(
+          Stream.runForEach((label) =>
+            SubscriptionRef.update(observations, (labels) => [...labels, label]),
+          ),
+          Effect.forkScoped,
+        );
+      yield* awaitRef(observations, (labels) =>
+        labels.some((label) => label.startsWith(`${target.label}:`)),
+      );
+      expect(yield* SubscriptionRef.get(starts)).toEqual([target.label]);
+      const renamed = new PrimaryConnectionTarget({ ...target, label: "Renamed server" });
+      yield* registry.reconcilePlatform([new PrimaryConnectionRegistration({ target: renamed })]);
+      yield* awaitRef(observations, (labels) =>
+        labels.some((label) => label.startsWith(`${renamed.label}:`)),
+      );
+      expect(yield* SubscriptionRef.get(starts)).toEqual([target.label, renamed.label]);
+      expect(yield* SubscriptionRef.get(releases)).toEqual([target.label]);
+      yield* registry.reconcilePlatform([new PrimaryConnectionRegistration({ target: renamed })]);
+      yield* Effect.yieldNow;
+      expect(yield* SubscriptionRef.get(starts)).toEqual([target.label, renamed.label]);
+      expect(yield* SubscriptionRef.get(releases)).toEqual([target.label]);
+    }),
+  );
+  it.effect("keeps followers silent while absent and resumes when registered again", () =>
+    Effect.gen(function* () {
+      const registry = yield* Registry.make;
+      const observations = yield* SubscriptionRef.make<ReadonlyArray<string>>([]);
+      const releases = yield* SubscriptionRef.make<ReadonlyArray<string>>([]);
+      yield* registry
+        .followStream(
+          target.environmentId,
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const supervisor = yield* Supervisor.EnvironmentSupervisor;
+              const label = supervisor.target.label;
+              yield* Effect.acquireRelease(Effect.void, () =>
+                SubscriptionRef.update(releases, (labels) => [...labels, label]),
+              );
+              return Stream.make(label).pipe(Stream.concat(Stream.never));
+            }),
+          ),
+        )
+        .pipe(
+          Stream.runForEach((label) =>
+            SubscriptionRef.update(observations, (labels) => [...labels, label]),
+          ),
+          Effect.forkScoped,
+        );
+      yield* Effect.yieldNow;
+      expect(yield* SubscriptionRef.get(observations)).toEqual([]);
+      yield* registry.reconcilePlatform([new PrimaryConnectionRegistration({ target })]);
+      yield* awaitRef(observations, (labels) => labels.length === 1);
+      const other = new PrimaryConnectionTarget({
+        ...target,
+        environmentId: EnvironmentId.make("other"),
+      });
+      yield* registry.reconcilePlatform([new PrimaryConnectionRegistration({ target: other })]);
+      const released = yield* awaitRef(releases, (labels) => labels.length === 1).pipe(
+        Effect.timeoutOption("1 second"),
+        Effect.forkScoped,
+      );
+      yield* TestClock.adjust("1 second");
+      expect(Option.isSome(yield* Fiber.join(released))).toBe(true);
+      expect(yield* SubscriptionRef.get(observations)).toEqual([target.label]);
+      yield* registry.reconcilePlatform([new PrimaryConnectionRegistration({ target })]);
+      yield* awaitRef(observations, (labels) => labels.length === 2);
+      expect(yield* SubscriptionRef.get(observations)).toEqual([target.label, target.label]);
+    }).pipe(Effect.provide(offlineDependencies)),
   );
   it.effect("finalizes superseded connectivity and wakeup subscriptions before shutdown", () =>
     Effect.gen(function* () {

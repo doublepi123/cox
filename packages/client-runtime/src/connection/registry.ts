@@ -148,16 +148,15 @@ export const make = Effect.gen(function* () {
       ),
     );
   const followStream: EnvironmentRegistry["Service"]["followStream"] = (environmentId, stream) =>
-    Stream.unwrap(
-      SubscriptionRef.changes(entries).pipe(
-        Stream.filter((current) => current.has(environmentId)),
-        Stream.take(1),
-        Stream.runHead,
-        Effect.map(() =>
-          runStream(environmentId, stream).pipe(
-            Stream.catchTags({ EnvironmentNotRegisteredError: () => Stream.empty }),
-          ),
-        ),
+    SubscriptionRef.changes(entries).pipe(
+      Stream.map((current) => current.get(environmentId)),
+      Stream.changesWith((previous, current) => previous === current),
+      Stream.switchMap((entry) =>
+        entry
+          ? runStream(environmentId, stream).pipe(
+              Stream.catchTags({ EnvironmentNotRegisteredError: () => Stream.empty }),
+            )
+          : Stream.empty,
       ),
     );
   yield* connectivity.changes.pipe(

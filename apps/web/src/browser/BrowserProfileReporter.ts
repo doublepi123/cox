@@ -33,6 +33,9 @@ const reportTargetsAtom = Atom.make((get) => {
   return targets;
 }).pipe(Atom.withLabel("browser-profile-report-targets"));
 
+const REPORT_RETRY_DELAY_MS = 5_000;
+const MAX_REPORT_ATTEMPTS = 3;
+
 /**
  * Keeps every operable server browser on this client's profiles. An environment is reported
  * again when its server config changes (a restarted server has forgotten them), when it becomes
@@ -40,6 +43,20 @@ const reportTargetsAtom = Atom.make((get) => {
  */
 export function startBrowserProfileReporting(): () => void {
   const reported: ReportedProfiles = new Map();
+  const retries = new Map<
+    EnvironmentId,
+    {
+      readonly config: EnvironmentServerConfig;
+      readonly input: ProfileReport;
+      readonly failures: number;
+    }
+  >();
+  const retryTimers = new Map<EnvironmentId, ReturnType<typeof setTimeout>>();
+  const clearRetry = (environmentId: EnvironmentId) => {
+    const timer = retryTimers.get(environmentId);
+    if (timer !== undefined) clearTimeout(timer);
+    retryTimers.delete(environmentId);
+  };
   const report = () => {
     if (!getClientSettingsHydratedSnapshot()) return;
     const settings = getClientSettings();
@@ -50,12 +67,41 @@ export function startBrowserProfileReporting(): () => void {
     };
     const targets = appAtomRegistry.get(reportTargetsAtom);
     for (const environmentId of takeDueProfileReports(reported, targets, input)) {
+      const entry = reported.get(environmentId);
+      if (entry === undefined) continue;
+      clearRetry(environmentId);
       void runAtomCommand(
         appAtomRegistry,
         previewEnvironment.reportProfiles,
         { environmentId, input },
         { reportFailure: false },
-      );
+      ).then((result) => {
+        if (reported.get(environmentId) !== entry) return;
+        if (result._tag === "Success") {
+          retries.delete(environmentId);
+          return;
+        }
+        reported.delete(environmentId);
+        const previous = retries.get(environmentId);
+        const failures =
+          previous !== undefined &&
+          previous.config === entry.config &&
+          sameReportInput(previous.input, entry.input)
+            ? previous.failures + 1
+            : 1;
+        if (failures >= MAX_REPORT_ATTEMPTS) {
+          retries.delete(environmentId);
+          return;
+        }
+        retries.set(environmentId, { config: entry.config, input: entry.input, failures });
+        retryTimers.set(
+          environmentId,
+          setTimeout(() => {
+            retryTimers.delete(environmentId);
+            report();
+          }, REPORT_RETRY_DELAY_MS),
+        );
+      });
     }
   };
   const unsubscribes = [
@@ -66,6 +112,9 @@ export function startBrowserProfileReporting(): () => void {
   report();
   return () => {
     for (const unsubscribe of unsubscribes) unsubscribe();
+    for (const timer of retryTimers.values()) clearTimeout(timer);
+    retryTimers.clear();
+    retries.clear();
   };
 }
 

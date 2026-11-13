@@ -697,7 +697,7 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.providerInstallStart,
       concurrency: {
         mode: "singleFlight",
-        key: ({ environmentId }) => environmentId,
+        key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
       },
     }),
     discoverModelService: createEnvironmentRpcCommand(runtime, {

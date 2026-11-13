@@ -2,6 +2,7 @@ import {
   EnvironmentId,
   ServerObservability,
   EnvironmentThemeId,
+  ProviderInstanceId,
   UsageLimitSourceId,
   type ServerConfig,
   type ServerConfigStreamEvent,
@@ -814,6 +815,78 @@ describe("resource telemetry history", () => {
       } finally {
         vi.useRealTimers();
       }
+    }),
+  );
+});
+
+describe("provider installation commands", () => {
+  it.effect("scopes provider installation single-flight to each instance", () =>
+    Effect.gen(function* () {
+      const release = yield* Deferred.make<void>();
+      const claude = ProviderInstanceId.make("claude");
+      const codex = ProviderInstanceId.make("codex");
+      let calls = 0;
+      const client = {
+        [WS_METHODS.providerInstallStart]: (input: { readonly instanceId: ProviderInstanceId }) =>
+          Effect.gen(function* () {
+            calls += 1;
+            yield* Deferred.await(release);
+            return { instanceId: input.instanceId };
+          }),
+      } as unknown as WsRpcProtocolClient;
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make(Option.some(session(client))),
+        prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+      });
+      const environments = EnvironmentRegistry.EnvironmentRegistry.of({
+        run: (_id, effect) =>
+          Effect.provideService(effect, EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        followStream: (_id, stream) =>
+          Stream.provideService(stream, EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+      } as EnvironmentRegistry.EnvironmentRegistry["Service"]);
+      const runtime = Atom.runtime(
+        Layer.merge(
+          Layer.succeed(EnvironmentRegistry.EnvironmentRegistry, environments),
+          Layer.succeed(Persistence.EnvironmentCacheStore, {
+            loadServerConfig: () => Effect.succeedNone,
+          } as unknown as Persistence.EnvironmentCacheStore["Service"]),
+        ),
+      );
+      const atoms = createServerEnvironmentAtoms(runtime, {
+        initialConfigValueAtom: () => Atom.make(CONFIG),
+      });
+      const registry = yield* Effect.acquireRelease(Effect.sync(AtomRegistry.make), (value) =>
+        Effect.sync(() => value.dispose()),
+      );
+      const start = (instanceId: ProviderInstanceId) =>
+        atoms.startProviderInstall.run(registry, {
+          environmentId: TARGET.environmentId,
+          input: { instanceId },
+        });
+
+      const first = start(claude);
+      const other = start(codex);
+      const duplicate = start(claude);
+      yield* Deferred.succeed(release, undefined);
+
+      expect(calls).toBe(2);
+      expect(yield* Effect.promise(() => first)).toMatchObject({
+        _tag: "Success",
+        value: { instanceId: claude },
+      });
+      expect(yield* Effect.promise(() => other)).toMatchObject({
+        _tag: "Success",
+        value: { instanceId: codex },
+      });
+      expect(yield* Effect.promise(() => duplicate)).toMatchObject({
+        _tag: "Success",
+        value: { instanceId: claude },
+      });
     }),
   );
 });
