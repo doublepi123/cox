@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.80 — 2026-11-13
+
+- Return to sign-in when the server confirms the browser session has expired or
+  was revoked, instead of offering reconnects that reuse the invalid session.
+- Show a retryable "Could not connect to this server" page when the first server
+  discovery fails, instead of the empty-project screen. Keep loopback servers
+  connecting while the browser reports no network, refresh renamed servers and
+  finalize replaced connection supervisors.
+- Bound first-thread and new-worktree launches by the same 60-second limit and
+  same-command resend used by ordinary messages, so accepted launches are not
+  reported as failed. Show thread subscription errors instead of endless syncing.
+- Let local service updates be retried after a rollback, follow activation as a
+  restart rather than a ready update, keep the staged update with a clear wait
+  message while agent turns are active and clear transient restart errors.
+- Desktop client fixes (shipped with the next desktop release): recover unreadable
+  connection settings into Connections, reject overlapping connection changes,
+  keep remote sessions when the inactive local backend exits, preserve windows when
+  Forget cleanup fails, keep typed server details after a failed connection, stop a
+  failed backend start before Retry, roll back unsaved connection changes, keep
+  live macOS update reservations exclusive and remove leftover update files.
+
 ## 0.1.79 — 2026-11-13
 
 - Apply the selected OMO model and thinking level before automatic startup or
