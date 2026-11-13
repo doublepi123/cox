@@ -17,6 +17,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 import { act, render } from "../../../test/render";
+import { setLanguagePreference } from "../../i18n";
 import { ScheduledTasksSettings } from "./ScheduledTasksSettings";
 import { makeThreadFixture } from "../../test-fixtures";
 
@@ -131,7 +132,7 @@ function environment(connected = state.connected) {
   return {
     environmentId,
     label: "Laptop",
-    connection: { phase: connected ? "connected" : "disconnected" },
+    connection: { phase: connected ? "connected" : "offline" },
     serverConfig: connected
       ? {
           environment: {
@@ -331,6 +332,18 @@ describe("ScheduledTasksSettings", () => {
     state.connected = false;
     await using screen = await render(<ScheduledTasksSettings />);
     await expect.element(screen.getByRole("button", { name: "New task" })).toBeDisabled();
+  });
+
+  it("names disconnected environments with a Chinese connection status", async () => {
+    setup();
+    state.secondary = true;
+    state.connected = false;
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    await using _screen = await render(<ScheduledTasksSettings />);
+    await expect
+      .element(page.getByRole("status"))
+      .toHaveTextContent("未连接： Laptop (离线), Secondary (离线)");
   });
 
   it("keeps a linked task's unsaved edits across a disconnect and reconnect", async () => {

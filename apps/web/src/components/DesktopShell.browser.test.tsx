@@ -125,6 +125,45 @@ describe("desktop shell", () => {
     expect(bridge.answerQuit).not.toHaveBeenCalled();
   });
 
+  it("labels the software update toast action in Chinese", async () => {
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("en") };
+    const client: DesktopClientUpdateState = {
+      currentVersion: "0.2.16",
+      latestVersion: "0.2.17",
+      status: "checking",
+      progress: null,
+      message: null,
+      installMode: "automatic",
+      automaticChecks: true,
+      ignoredVersion: null,
+    };
+    let publishClient: ((state: DesktopClientUpdateState) => void) | undefined;
+    const bridge: DesktopShellBridge = {
+      platform: "darwin",
+      ready: vi.fn(),
+      onQuitRequested: () => () => {},
+      answerQuit: vi.fn(),
+      setWindowColors: vi.fn(),
+      onWindowState: () => () => {},
+      syncWindowControls: vi.fn(),
+      openSettings: vi.fn(async () => {}),
+      getClientUpdate: async () => client,
+      onClientUpdate: (listener) => {
+        publishClient = listener;
+        return () => {};
+      },
+    };
+    using _bridge = installBridge(bridge);
+    using notices = vi.spyOn(toastManager, "add").mockReturnValue("software-updates");
+    using _closed = vi.spyOn(toastManager, "close").mockImplementation(() => {});
+    await using _screen = await render(<DesktopShell />);
+    await act(() => publishClient?.({ ...client, status: "available" }));
+    const notice = notices.mock.calls.at(-1)?.[0];
+    expect(notice?.title).toBe("软件更新");
+    expect(notice?.actionProps?.children).toBe("查看");
+  });
+
   it.each(["en", "zh"] as const)(
     "offers immediate and deferred application of a ready backend update in %s",
     async (language) => {

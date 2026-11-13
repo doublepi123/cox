@@ -562,7 +562,7 @@ function ScheduledTaskEnvironmentList({
     const label = settingsScopeEnvironmentLabel(environment, environments);
     if (!connected) {
       summaries["Not connected:"]!.push(
-        `${label} (${connectionStatusTitle(environment.connection)})`,
+        `${label} (${t(connectionStatusTitle(environment.connection))})`,
       );
     } else if (error !== null) {
       summaries["Could not load scheduled tasks:"]!.push(`${label}: ${error}`);
@@ -581,10 +581,10 @@ function ScheduledTaskEnvironmentList({
             <div className="flex items-center justify-between gap-3">
               <ConnectionStatusDot
                 dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                tooltipText={connectionStatusTitle(environment.connection)}
+                tooltipText={t(connectionStatusTitle(environment.connection))}
               />
               <span className="text-xs text-muted-foreground">
-                {connectionStatusTitle(environment.connection)}
+                {t(connectionStatusTitle(environment.connection))}
               </span>
             </div>
             {tasks?.map((task) => (

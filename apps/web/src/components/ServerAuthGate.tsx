@@ -1,14 +1,30 @@
 import type { AuthSessionState } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { useState, type FormEvent } from "react";
 
 import {
   resolveInitialServerAuthGateState,
   submitServerAuthCredential,
 } from "../environments/primary";
+import {
+  PrimaryEnvironmentAuthSessionTimeoutError,
+  PrimaryEnvironmentCredentialRejectedError,
+  PrimaryEnvironmentCredentialRequiredError,
+  PrimaryEnvironmentRequestError,
+} from "../environments/primary/auth";
 import { useTranslation } from "../i18n";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { StandalonePage, StandalonePageHeader } from "./ui/standalone-page";
+
+const isPrimaryEnvironmentRequestError = Schema.is(PrimaryEnvironmentRequestError);
+const isKnownAuthError = Schema.is(
+  Schema.Union([
+    PrimaryEnvironmentCredentialRejectedError,
+    PrimaryEnvironmentCredentialRequiredError,
+    PrimaryEnvironmentAuthSessionTimeoutError,
+  ]),
+);
 
 export function ServerAuthGate({
   auth,
@@ -43,7 +59,18 @@ export function ServerAuthGate({
       setCredential("");
       await onAuthenticated();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("Authentication failed."));
+      setError(
+        isPrimaryEnvironmentRequestError(cause)
+          ? t("Primary environment request failed during {operation} (HTTP {status}).", {
+              operation: cause.operation,
+              status: cause.status,
+            })
+          : isKnownAuthError(cause)
+            ? t(cause.message)
+            : cause instanceof Error
+              ? cause.message
+              : t("Authentication failed."),
+      );
     }
     setSubmitting(false);
   }

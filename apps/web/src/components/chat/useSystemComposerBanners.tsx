@@ -34,14 +34,14 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     const connecting = connection?.phase === "connecting";
     const reconnecting = connection?.phase === "reconnecting";
     const message = connecting
-      ? "Connecting to the local server..."
+      ? "Connecting to the server..."
       : reconnecting
         ? "Connection interrupted. Reconnecting automatically..."
         : connection?.phase === "offline"
           ? "Connection paused while the browser reports offline."
           : connection?.phase === "unsupported"
             ? "The client and server are not compatible. Reload or update Cox."
-            : "Unable to connect to the local server. Check that Cox is running.";
+            : "Unable to connect to the server. Check that Cox is running.";
     banners.push({
       id: "local-connection",
       variant: connecting ? "info" : "warning",

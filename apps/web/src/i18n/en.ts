@@ -2439,15 +2439,15 @@ export const en = {
   "Implementation actions": "Implementation actions",
   "Implement in a new thread": "Implement in a new thread",
   "The local server is unavailable.": "The local server is unavailable.",
-  "Connecting to the local server...": "Connecting to the local server...",
+  "Connecting to the server...": "Connecting to the server...",
   "Connection interrupted. Reconnecting automatically...":
     "Connection interrupted. Reconnecting automatically...",
   "Connection paused while the browser reports offline.":
     "Connection paused while the browser reports offline.",
   "The client and server are not compatible. Reload or update Cox.":
     "The client and server are not compatible. Reload or update Cox.",
-  "Unable to connect to the local server. Check that Cox is running.":
-    "Unable to connect to the local server. Check that Cox is running.",
+  "Unable to connect to the server. Check that Cox is running.":
+    "Unable to connect to the server. Check that Cox is running.",
   "Open in the browser panel.": "Open in the browser panel.",
   "This will move the thread out of your pinned section.":
     "This will move the thread out of your pinned section.",
@@ -4160,4 +4160,26 @@ export const en = {
   "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.":
     "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.",
   "Expand graph": "Expand graph",
+  View: "View",
+  "Some requests are slow": "Some requests are slow",
+  "Show requests": "Show requests",
+  "Hide requests": "Hide requests",
+  "{count} request waiting longer than {seconds}s.":
+    "{count} request waiting longer than {seconds}s.",
+  "{count} requests waiting longer than {seconds}s.":
+    "{count} requests waiting longer than {seconds}s.",
+  "Invalid password. Check the password and try again.":
+    "Invalid password. Check the password and try again.",
+  "Enter your password to continue.": "Enter your password to continue.",
+  "Timed out waiting for authenticated session after bootstrap.":
+    "Timed out waiting for authenticated session after bootstrap.",
+  "Primary environment request failed during {operation} (HTTP {status}).":
+    "Primary environment request failed during {operation} (HTTP {status}).",
+  "Reconnecting...": "Reconnecting...",
+  "Failed to connect. Reconnecting...": "Failed to connect. Reconnecting...",
+  "Connection failed": "Connection failed",
+  "Client not supported": "Client not supported",
+  "Update request failed ({status}).": "Update request failed ({status}).",
+  "Wait for active agent turns to finish before updating Cox.":
+    "Wait for active agent turns to finish before updating Cox.",
 } as const;

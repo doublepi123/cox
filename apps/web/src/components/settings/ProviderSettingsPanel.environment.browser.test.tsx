@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   canManageProviders: true,
   canWriteSettings: true,
   searchTargetId: null as string | null,
+  environments: null as unknown[] | null,
   readEnvironmentIds: [] as string[],
   updateEnvironmentIds: [] as string[],
   mutationEnvironmentIds: [] as string[],
@@ -122,6 +123,18 @@ vi.mock(import("../../state/session"), async (original) => {
     readEnvironmentScope: scope as never,
   };
 });
+vi.mock(import("../../state/environments"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    useEnvironments: (() =>
+      state.environments === null
+        ? actual.useEnvironments()
+        : { isReady: true, environments: state.environments }) as never,
+    usePrimaryEnvironmentId: (() =>
+      state.environments === null ? actual.usePrimaryEnvironmentId() : null) as never,
+  };
+});
 vi.mock(import("../../state/entities"), async (original) => ({
   ...(await original()),
   useProjects: (() => []) as never,
@@ -163,7 +176,8 @@ vi.mock(import("../ProviderUpdatesAction"), async (original) => ({
 }));
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { EnvironmentProviderSettings } from "./ProviderSettingsPanel";
+import { setLanguagePreference } from "../../i18n";
+import { EnvironmentProviderSettings, ProviderSettingsPanel } from "./ProviderSettingsPanel";
 
 const environmentId = EnvironmentId.make("remote-device");
 const codexId = ProviderInstanceId.make("codex");
@@ -225,6 +239,7 @@ async function setup() {
   state.canManageProviders = true;
   state.canWriteSettings = true;
   state.searchTargetId = null;
+  state.environments = null;
   state.providerAuth = null;
   state.readEnvironmentIds = [];
   state.updateEnvironmentIds = [];
@@ -241,6 +256,31 @@ async function setup() {
 }
 
 describe("EnvironmentProviderSettings routing", () => {
+  it.each([
+    ["error", "连接失败"],
+    ["reconnecting", "重新连接中…"],
+    ["unsupported", "客户端不受支持"],
+  ] as const)("titles an unavailable %s device in Chinese", async (phase, title) => {
+    await setup();
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    state.environments = [
+      {
+        environmentId,
+        label: "Remote device",
+        displayUrl: "https://remote.example",
+        entry: { target: { _tag: "RemoteConnectionTarget", label: "Remote device" } },
+        connection: { phase, error: null, traceId: null },
+        serverConfig: null,
+      },
+    ];
+    await using _screen = await render(<ProviderSettingsPanel />);
+    await expect.element(page.getByText(title, { exact: true })).toBeVisible();
+    await expect
+      .element(page.getByText(`https://remote.example, ${title}`, { exact: true }))
+      .toBeInTheDocument();
+  });
+
   it("does not substitute another account when the requested instance was removed", async () => {
     await setup();
     await setProviders([provider()]);

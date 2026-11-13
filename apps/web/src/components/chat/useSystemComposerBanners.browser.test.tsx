@@ -15,16 +15,18 @@ const environmentId = EnvironmentId.make("local");
 function Harness({
   phase,
   error = null,
+  label = "Local Cox",
 }: {
   phase: EnvironmentConnectionPresentation["phase"];
   error?: string | null;
+  label?: string;
 }) {
   const banners = useSystemComposerBanners({
     activeEnvironment: null,
     activeEnvironmentUnavailable: phase !== "connected",
     activeEnvironmentUnavailableState: {
       environmentId,
-      label: "Local Cox",
+      label,
       connection: { phase, error, traceId: null },
     },
     activeThreadEnvironmentId: environmentId,
@@ -52,7 +54,7 @@ function testLanguage(language: "en" | "zh") {
 it("does not mislabel the initial connection as an unavailable server", async () => {
   using _language = testLanguage("en");
   await using screen = await render(<Harness phase="connecting" />, { router: false });
-  await expect.element(screen.getByText("Connecting to the local server...")).toBeVisible();
+  await expect.element(screen.getByText("Connecting to the server...")).toBeVisible();
   expect(screen.container.querySelector("section")?.dataset.variant).toBe("info");
   expect(screen.container.querySelector("button")).toBeNull();
 });
@@ -72,7 +74,7 @@ it("localizes automatic reconnection, exposes the failure and retries the right 
 
 it.each([
   ["offline", "浏览器报告网络离线，连接已暂停。"],
-  ["error", "无法连接本地服务，请确认 Cox 正在运行。"],
+  ["error", "无法连接服务器，请确认 Cox 正在运行。"],
   ["unsupported", "客户端与服务端不兼容，请刷新页面或更新 Cox。"],
 ] as const)("distinguishes %s from automatic reconnection", async (phase, message) => {
   using _language = testLanguage("zh");
@@ -80,3 +82,20 @@ it.each([
   await expect.element(screen.getByText(message)).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "重新连接" })).toBeVisible();
 });
+
+it.each([
+  ["en", "connecting", "Connecting to the server..."],
+  ["en", "error", "Unable to connect to the server. Check that Cox is running."],
+  ["zh", "connecting", "正在连接服务器…"],
+  ["zh", "error", "无法连接服务器，请确认 Cox 正在运行。"],
+] as const)(
+  "does not call a remote server local in %s while %s",
+  async (language, phase, message) => {
+    using _language = testLanguage(language);
+    await using screen = await render(<Harness phase={phase} label="Studio Mac" />, {
+      router: false,
+    });
+    await expect.element(screen.getByText(message)).toBeVisible();
+    expect(screen.container.textContent).not.toMatch(/local|本地/i);
+  },
+);

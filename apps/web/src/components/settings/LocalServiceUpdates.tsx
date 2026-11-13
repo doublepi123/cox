@@ -29,10 +29,25 @@ export function LocalServiceUpdates() {
   const updates = useLocalServiceUpdate(supported && permitted);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const state = updates.state;
-  if (!supported || !permitted || !state) return null;
+  if (!supported || !permitted) return null;
+  if (!state)
+    return updates.error ? (
+      <SettingsSection title={t("Current service")}>
+        <SettingsRow
+          {...searchableSetting("local-service-update")}
+          title={t("Cox service updates")}
+          description={t(updates.error)}
+          control={
+            <Button size="sm" disabled={updates.busy} onClick={() => void updates.reload()}>
+              {t("Retry")}
+            </Button>
+          }
+        />
+      </SettingsSection>
+    ) : null;
   const busy = updates.busy || ["checking", "downloading", "restarting"].includes(state.status);
   const description = updates.error
-    ? updates.error
+    ? t(updates.error)
     : state.status === "checking"
       ? t("Checking for updates…")
       : state.status === "downloading"
@@ -40,10 +55,11 @@ export function LocalServiceUpdates() {
         : state.status === "restarting"
           ? t("Restarting Cox. This page will reconnect when it is ready.")
           : state.status === "ready"
-            ? (state.message ??
-              t("Cox {version} is downloaded and backed up. Restart to finish updating.", {
-                version: state.latestVersion ?? "",
-              }))
+            ? state.message !== null
+              ? t(state.message)
+              : t("Cox {version} is downloaded and backed up. Restart to finish updating.", {
+                  version: state.latestVersion ?? "",
+                })
             : state.status === "available"
               ? t("Cox {version} is available.", { version: state.latestVersion ?? "" })
               : state.status === "error"

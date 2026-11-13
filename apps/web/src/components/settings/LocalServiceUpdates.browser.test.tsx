@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     progress: null,
     backup: null,
   } as LocalServiceUpdateState,
+  reload: vi.fn(async () => {}),
   check: vi.fn(async () => {}),
   download: vi.fn(async () => {}),
   apply: vi.fn(async () => {}),
@@ -82,6 +83,7 @@ vi.mock(import("../../hooks/useLocalServiceUpdate"), async (importOriginal) => {
             state: mocks.state,
             busy: false,
             error: null,
+            reload: mocks.reload,
             check: mocks.check,
             download: mocks.download,
             apply: mocks.apply,
@@ -192,6 +194,89 @@ describe("local service update settings", () => {
     await act(() => vi.advanceTimersByTimeAsync(1_000));
     await expect.element(screen.getByText("Cox is up to date.")).toBeVisible();
     expect(screen.container.textContent).not.toContain("Service down");
+  });
+
+  it("keeps a failed initial state visible and retries the state request", async () => {
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockRejectedValueOnce(new Error("Service down"))
+      .mockResolvedValue(response({ ...mocks.state, status: "idle", latestVersion: "0.1.58" }));
+    using _fetch = stubGlobal("fetch", fetchMock);
+    await using screen = await render(<LocalServiceUpdates />);
+    await expect.element(screen.getByText("Service down")).toBeVisible();
+    await screen.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect.element(screen.getByText("Cox is up to date.")).toBeVisible();
+    expect(screen.container.textContent).not.toContain("Service down");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/local-service-update");
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("GET");
+  });
+
+  it("translates the status fallback and active-work feedback in Chinese", async () => {
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response("{}", { status: 503, headers: { "Content-Type": "application/json" } }),
+      )
+      .mockResolvedValue(
+        response({
+          ...mocks.state,
+          status: "ready",
+          latestVersion: "0.2.0",
+          message: "Wait for active agent turns to finish before updating Cox.",
+        }),
+      );
+    using _fetch = stubGlobal("fetch", fetchMock);
+    await using screen = await render(<LocalServiceUpdates />);
+    await expect.element(screen.getByText("更新请求失败（503）。")).toBeVisible();
+    await screen.getByRole("button", { name: "重试", exact: true }).click();
+    await expect
+      .element(screen.getByText("请等待运行中的 Agent 任务结束后再更新 Cox。"))
+      .toBeVisible();
+  });
+
+  it("translates a rejected active-work update in Chinese", async () => {
+    setLanguagePreference("zh");
+    using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(
+        response({ ...mocks.state, status: "ready", latestVersion: "0.2.0", message: null }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ message: "Wait for active agent turns to finish before updating Cox." }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    using _fetch = stubGlobal("fetch", fetchMock);
+    await using screen = await render(<LocalServiceUpdates />);
+    await screen.getByRole("button", { name: "重启并更新", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "重启并更新" }).click();
+    await expect
+      .element(screen.getByText("请等待运行中的 Agent 任务结束后再更新 Cox。"))
+      .toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows active-work ready feedback and permits a retry", async () => {

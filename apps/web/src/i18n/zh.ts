@@ -2324,13 +2324,13 @@ export const zh = {
   "Implementation actions": "实施选项",
   "Implement in a new thread": "在新对话中实施",
   "The local server is unavailable.": "本地服务不可用。",
-  "Connecting to the local server...": "正在连接本地服务…",
+  "Connecting to the server...": "正在连接服务器…",
   "Connection interrupted. Reconnecting automatically...": "连接已中断，正在自动重连…",
   "Connection paused while the browser reports offline.": "浏览器报告网络离线，连接已暂停。",
   "The client and server are not compatible. Reload or update Cox.":
     "客户端与服务端不兼容，请刷新页面或更新 Cox。",
-  "Unable to connect to the local server. Check that Cox is running.":
-    "无法连接本地服务，请确认 Cox 正在运行。",
+  "Unable to connect to the server. Check that Cox is running.":
+    "无法连接服务器，请确认 Cox 正在运行。",
   "Open in the browser panel.": "在浏览器面板中打开。",
   "This will move the thread out of your pinned section.": "这会将对话移出置顶区域。",
   'Unpin thread "{title}"?': "确定取消置顶对话“{title}”？",
@@ -4015,4 +4015,22 @@ export const zh = {
   "Credential fields and provider variables that read from {label} will be cleared. The secrets in the external vault are unchanged.":
     "引用 {label} 的凭据字段和 Agent 环境变量将被清除；外部凭据库中的密钥不会改动。",
   "Expand graph": "放大查看依赖图",
+  View: "查看",
+  "Some requests are slow": "部分请求响应缓慢",
+  "Show requests": "显示请求",
+  "Hide requests": "隐藏请求",
+  "{count} request waiting longer than {seconds}s.": "{count} 个请求等待超过 {seconds} 秒。",
+  "{count} requests waiting longer than {seconds}s.": "{count} 个请求等待超过 {seconds} 秒。",
+  "Invalid password. Check the password and try again.": "密码无效，请检查后重试。",
+  "Enter your password to continue.": "输入密码以继续。",
+  "Timed out waiting for authenticated session after bootstrap.": "等待登录会话建立超时。",
+  "Primary environment request failed during {operation} (HTTP {status}).":
+    "主环境请求在 {operation} 阶段失败（HTTP {status}）。",
+  "Reconnecting...": "重新连接中…",
+  "Failed to connect. Reconnecting...": "连接失败，正在重新连接…",
+  "Connection failed": "连接失败",
+  "Client not supported": "客户端不受支持",
+  "Update request failed ({status}).": "更新请求失败（{status}）。",
+  "Wait for active agent turns to finish before updating Cox.":
+    "请等待运行中的 Agent 任务结束后再更新 Cox。",
 } as const;

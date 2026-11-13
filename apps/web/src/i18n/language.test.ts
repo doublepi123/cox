@@ -1,3 +1,4 @@
+import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
 import { describe, expect, it } from "vite-plus/test";
 
 import { en } from "./en";
@@ -59,6 +60,24 @@ describe("translation resources", () => {
       ...SETTINGS_SEARCH_ITEMS.map((item) => item.title),
       ...Object.values(SETTINGS_SECTION_LABELS),
     ];
+    expect(titles.filter((title) => !Object.hasOwn(en, title))).toEqual([]);
+    expect(titles.filter((title) => !Object.hasOwn(zh, title))).toEqual([]);
+  });
+
+  it("covers every connection status title in both resources", () => {
+    const titles = (
+      [
+        "available",
+        "offline",
+        "connecting",
+        "reconnecting",
+        "connected",
+        "error",
+        "unsupported",
+      ] as const
+    ).flatMap((phase) =>
+      [null, "cause"].map((error) => connectionStatusTitle({ phase, error, traceId: null })),
+    );
     expect(titles.filter((title) => !Object.hasOwn(en, title))).toEqual([]);
     expect(titles.filter((title) => !Object.hasOwn(zh, title))).toEqual([]);
   });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServiceUpdateState } from "@t3tools/contracts";
+import { translateCurrent } from "../i18n";
 
 export function useLocalServiceUpdate(enabled: boolean) {
   const [state, setState] = useState<LocalServiceUpdateState | null>(null);
@@ -15,7 +16,10 @@ export function useLocalServiceUpdate(enabled: boolean) {
     });
     const body = (await response.json()) as LocalServiceUpdateState & { message?: string };
     if (!response.ok)
-      throw new Error(body.message ?? `Update request failed (${response.status}).`);
+      throw new Error(
+        body.message ??
+          translateCurrent("Update request failed ({status}).", { status: response.status }),
+      );
     setError(null);
     setState(body);
     return body;
@@ -56,7 +60,7 @@ export function useLocalServiceUpdate(enabled: boolean) {
     };
   }, [enabled, request, state?.status]);
 
-  const execute = async (action: "check" | "download" | "apply") => {
+  const execute = async (action: "" | "check" | "download" | "apply") => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
@@ -74,6 +78,7 @@ export function useLocalServiceUpdate(enabled: boolean) {
     state,
     busy,
     error,
+    reload: () => execute(""),
     check: () => execute("check"),
     download: () => execute("download"),
     apply: () => execute("apply"),
