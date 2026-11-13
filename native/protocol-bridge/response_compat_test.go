@@ -159,6 +159,9 @@ func TestUpstreamErrorIsTerminalAndPreservesCause(t *testing.T) {
 				if tail, err := s.finishStream(); err != nil || len(tail) != 0 {
 					t.Fatalf("finishStream added another error: %s %v", tail, err)
 				}
+				if finish := s.handle(input{Type: "finish"}); finish.Error != "" || len(finish.Chunks) != 0 {
+					t.Fatalf("finish after terminal error added output: %+v", finish)
+				}
 				if later := s.handle(input{Type: "chunk", Chunk: "data: " + upstream.frame}); later.Error == "" || len(later.Chunks) != 0 {
 					t.Fatal("accepted frame after terminal error")
 				}

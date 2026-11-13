@@ -66,7 +66,7 @@ func (s *session) handle(in input) (out output) {
 			}
 		}
 	}()
-	if s.completion.failed {
+	if s.completion.failed && !(in.Type == "finish" && s.completion.finalized) {
 		return output{Error: "The protocol stream has already failed."}
 	}
 	switch in.Type {
