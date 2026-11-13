@@ -1,4 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import * as Context from "effect/Context";
 import type { SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
 import { expect, it } from "@effect/vitest";
 import * as NodeModule from "node:module";
@@ -22,7 +24,14 @@ import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse, HttpServerRequest, HttpServerResponse } from "effect/http";
+import {
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "effect/http";
 import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
@@ -5279,6 +5288,313 @@ it.layer(layer)("model service gateway", (it) => {
       if (outgoing._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
       expect(JSON.parse(new TextDecoder().decode(outgoing.body))).toEqual(body);
       expect(parameters.required).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
+  it.effect.each([
+    {
+      protocol: "anthropic-messages",
+      path: "/v1/messages",
+      message: "prompt is too long: 70000 tokens > 64000 maximum",
+    },
+    { protocol: "openai-responses", path: "/v1/responses", message: "maximum context length" },
+    { protocol: "openai-chat", path: "/v1/chat/completions", message: "maximum context length" },
+    {
+      protocol: "gemini",
+      path: "/v1beta/models/Vendor%2FExact:generateContent",
+      message: "The input token count exceeds the maximum number of tokens allowed",
+    },
+  ] as const)(
+    "returns client-recognized context overflow for $protocol",
+    ({ protocol, path, message }) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol,
+          respond: () =>
+            Response.json(
+              {
+                error: {
+                  type: "invalid_request_error",
+                  message: "prompt is too long: 70000 tokens > 64000 maximum",
+                },
+              },
+              { status: 400 },
+            ),
+        });
+        const result = yield* h.invoke(path, {
+          model: "Vendor/Exact",
+          messages: [],
+          input: "hello",
+        });
+        expect(result.status).toBe(400);
+        const error = record(JSON.parse(result.text)).error;
+        expect(record(error).message).toContain(message);
+        if (protocol.startsWith("openai"))
+          expect(record(error).code).toBe("context_length_exceeded");
+        if (protocol === "anthropic-messages") expect(JSON.parse(result.text).type).toBe("error");
+        if (protocol === "gemini")
+          expect(record(error)).toMatchObject({ code: 400, status: "INVALID_ARGUMENT" });
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+  it.effect.each(["context_length_exceeded", "invalid_prompt", "content_policy_violation"])(
+    "returns HTTP 400 for pre-output stream error %s",
+    (code) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          protocol: "openai-responses",
+          respond: () =>
+            new Response(sseFrame({ type: "error", code, message: "private-upstream-key" }), {
+              headers: { "content-type": "text/event-stream" },
+            }),
+        });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "hello",
+          stream: true,
+        });
+        expect(result.status).toBe(400);
+        expect(result.text).not.toContain("private-upstream-key");
+      }).pipe(Effect.scoped),
+  );
+  it.effect.each([
+    { path: "/v1/messages", expected: { type: "authentication_error" }, top: "error" },
+    {
+      path: "/v1beta/models/Vendor%2FExact:generateContent",
+      expected: { code: 401, status: "UNAUTHENTICATED" },
+      top: undefined,
+    },
+  ])("uses incoming error envelope for unauthenticated $path", ({ path, expected, top }) =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      const result = yield* h.invoke(path, {}, { authorization: "Bearer invalid" });
+      expect(result.status).toBe(401);
+      expect(JSON.parse(result.text)).toMatchObject({
+        ...(top ? { type: top } : {}),
+        error: expected,
+      });
+    }).pipe(Effect.scoped),
+  );
+  it.effect("classifies successful non-JSON upstream bodies without retrying", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        respond: () =>
+          new Response("<html>private-upstream-key</html>", {
+            headers: { "content-type": "text/html" },
+          }),
+      });
+      const result = yield* h.invoke("/v1/chat/completions", {
+        model: "Vendor/Exact",
+        messages: [],
+      });
+      expect(result.status).toBe(502);
+      expect(JSON.parse(result.text).error.code).toBe("upstream_invalid_response");
+      expect(result.text).not.toContain("private-upstream-key");
+    }).pipe(Effect.scoped),
+  );
+  it.effect("retries converted requests after hosted tools are removed", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const failed = yield* Deferred.make<void>();
+      const h = yield* harness({
+        recovery: { retryEnabled: true, maxAttempts: 2 },
+        respond: () => {
+          Deferred.doneUnsafe(failed, Effect.void);
+          return ++attempts === 1
+            ? Response.json({ error: { type: "server_error" } }, { status: 503 })
+            : Response.json({
+                choices: [
+                  { message: { role: "assistant", content: "recovered" }, finish_reason: "stop" },
+                ],
+              });
+        },
+      });
+      const fiber = yield* h
+        .invoke("/v1/responses", {
+          model: "Vendor/Exact",
+          input: "hello",
+          tools: [{ type: "web_search" }],
+        })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(failed);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(200);
+      expect(h.calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+  it.effect.each(["/v1/messages", "/v1/responses"])(
+    "preserves one terminal upstream error for %s",
+    (path) =>
+      Effect.gen(function* () {
+        const ready = yield* Deferred.make<void>();
+        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+        const encoder = new TextEncoder();
+        const h = yield* harness({
+          protocol: "anthropic-messages",
+          respond: () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(output) {
+                  controller = output;
+                  Deferred.doneUnsafe(ready, Effect.void);
+                  output.enqueue(
+                    encoder.encode(
+                      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"Vendor/Exact","usage":{"input_tokens":1,"output_tokens":0}}}\n\nevent: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\nevent: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}\n\n',
+                    ),
+                  );
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const fiber = yield* h
+          .invoke(path, { model: "Vendor/Exact", messages: [], input: "hello", stream: true })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(ready);
+        yield* TestClock.adjust("1 second");
+        if (!controller) throw new Error("Missing stream controller");
+        controller.enqueue(
+          encoder.encode(
+            'event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+          ),
+        );
+        yield* TestClock.adjust("1 second");
+        if (path === "/v1/messages")
+          controller.error(new Error("upstream disconnected after its error"));
+        else controller.close();
+        const result = yield* Fiber.join(fiber);
+        expect(result.text.match(/event: error/g)).toHaveLength(1);
+        expect(result.text).toContain("overloaded_error");
+        expect(result.text).not.toContain("cox_model_service_incomplete_stream");
+      }).pipe(Effect.scoped),
+  );
+  it.effect("unions configured and incoming Anthropic betas", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "anthropic-messages",
+        respond: (request) =>
+          request.headers["anthropic-beta"] === "configured,shared,client"
+            ? Response.json({
+                type: "message",
+                stop_reason: "end_turn",
+                content: [{ type: "text", text: "ok" }],
+              })
+            : Response.json({}, { status: 400 }),
+      });
+      const current = (yield* h.settings.getSettings).modelServices[serviceId];
+      if (!current) throw new Error("Missing service");
+      yield* h.settings.updateSettings({
+        modelServices: {
+          [serviceId]: { ...current, headers: { "anthropic-beta": "configured,shared" } },
+        },
+      });
+      const result = yield* h.invoke(
+        "/v1/messages",
+        { model: "Vendor/Exact", messages: [] },
+        { "anthropic-beta": "shared,client" },
+      );
+      expect(result.status).toBe(200);
+    }).pipe(Effect.scoped),
+  );
+  it.effect("repairs native Anthropic forced-tool thinking once", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "anthropic-messages",
+        recovery: { retryEnabled: true, maxAttempts: 2 },
+        respond: (request) =>
+          sentBody(request).thinking
+            ? Response.json(
+                {
+                  error: {
+                    message: "tool_choice 'specified' is incompatible with thinking enabled",
+                  },
+                },
+                { status: 400 },
+              )
+            : Response.json({
+                type: "message",
+                stop_reason: "end_turn",
+                content: [{ type: "text", text: "repaired" }],
+              }),
+      });
+      const fiber = yield* h
+        .invoke("/v1/messages", {
+          model: "Vendor/Exact",
+          messages: [],
+          thinking: { type: "enabled", budget_tokens: 1000 },
+          tool_choice: { type: "any" },
+          tools: [{ name: "exec", input_schema: { type: "object" } }],
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(200);
+      expect(h.calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+  it.effect("returns 413 over real HTTP for oversized request bodies", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ protocol: "anthropic-messages" });
+      const routes = HttpRouter.add("POST", "/api/model-gateway/v1/messages", h.gateway.handle);
+      const services = yield* Layer.build(
+        HttpRouter.serve(routes, { disableListenLog: true, disableLogger: true }).pipe(
+          Layer.provideMerge(NodeHttpServer.layerTest),
+        ),
+      );
+      const client = Context.get(services, HttpClient.HttpClient);
+      const outgoing = yield* HttpClientRequest.bodyJson(
+        HttpClientRequest.post("/api/model-gateway/v1/messages").pipe(
+          HttpClientRequest.setHeader("authorization", `Bearer ${h.token}`),
+        ),
+        { model: "Vendor/Exact", messages: [], padding: "x".repeat(17 * 1024 * 1024) },
+      );
+      const response = yield* client.execute(outgoing);
+      expect(response.status).toBe(413);
+      expect(yield* response.json).toMatchObject({
+        type: "error",
+        error: { type: "request_too_large" },
+      });
+      expect(h.calls).toHaveLength(0);
+    }).pipe(Effect.scoped),
+  );
+  it.effect.each([
+    { status: 400, type: "invalid_request_error" },
+    { status: 401, type: "authentication_error" },
+    { status: 403, type: "permission_error" },
+    { status: 404, type: "not_found_error" },
+    { status: 413, type: "request_too_large" },
+    { status: 429, type: "rate_limit_error" },
+    { status: 529, type: "overloaded_error" },
+    { status: 500, type: "api_error" },
+  ])("preserves Anthropic HTTP error types for $status", ({ status, type }) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocol: "anthropic-messages",
+        respond: () => Response.json({ error: { message: "private-upstream-key" } }, { status }),
+      });
+      const result = yield* h.invoke("/v1/messages", { model: "Vendor/Exact", messages: [] });
+      expect(result.status).toBe(status);
+      expect(JSON.parse(result.text)).toMatchObject({
+        type: "error",
+        error: { type, source: "upstream" },
+      });
+      expect(result.text).not.toContain("private-upstream-key");
+    }).pipe(Effect.scoped),
+  );
+  it.effect("never retries context overflow when non-transient retries are enabled", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 2 },
+        respond: () =>
+          Response.json({ error: { code: "context_length_exceeded" } }, { status: 400 }),
+      });
+      const fiber = yield* h
+        .invoke("/v1/chat/completions", { model: "Vendor/Exact", messages: [] })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const result = yield* Fiber.join(fiber);
+      expect(result.status).toBe(400);
+      expect(h.calls).toHaveLength(1);
     }).pipe(Effect.scoped),
   );
 });

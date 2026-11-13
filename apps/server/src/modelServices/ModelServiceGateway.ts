@@ -40,7 +40,11 @@ import {
   withoutForcedToolThinking,
   withoutForcedToolChoice,
 } from "./requestCompatibility.ts";
-import { parseUpstreamError, upstreamErrorDetails } from "./upstreamError.ts";
+import {
+  parseUpstreamError,
+  upstreamErrorDetails,
+  upstreamContextOverflow,
+} from "./upstreamError.ts";
 import {
   modelServiceHasReasoning,
   modelServiceStreamEvent,
@@ -93,23 +97,88 @@ const isModelServiceError = Schema.is(ModelServiceError);
 const ZERO_TOKEN_STOP_CODE = "cox_model_service_zero_token_stop";
 const ZERO_TOKEN_STOP_MESSAGE =
   "The model service completed without generating any content, reasoning or tool calls and reported zero output tokens. Check the service's history reasoning replay compatibility before trying again.";
-const recoveryFailureResponse = (error: ModelServiceRequestFailure) =>
-  HttpServerResponse.jsonUnsafe(
-    {
-      error: {
-        message: error.detail,
-        code: error.code ?? "cox_model_service_recovery_exhausted",
-        source: error.source,
-        requestId: error.requestId,
-        terminationReason: error.terminationReason,
-        budgetMs: error.budgetMs,
-        elapsedMs: error.elapsedMs,
-        attempts: error.attempts,
-        lastAttemptFailure: error.lastAttemptFailure,
-      },
-    },
-    { status: error.status, headers: { "x-should-retry": "false" } },
+const incomingProtocol = (pathname: string): ModelServiceProtocol | undefined =>
+  pathname === PREFIX + "/v1/responses"
+    ? "openai-responses"
+    : pathname === PREFIX + "/v1/chat/completions"
+      ? "openai-chat"
+      : pathname === PREFIX + "/v1/messages" || pathname === PREFIX + "/v1/messages/count_tokens"
+        ? "anthropic-messages"
+        : /^\/api\/model-gateway\/v1beta\/models\/.+:(?:streamGenerateContent|generateContent)$/.test(
+              pathname,
+            )
+          ? "gemini"
+          : undefined;
+const gatewayErrorResponse = (
+  incoming: ModelServiceProtocol | undefined,
+  status: number,
+  error: Readonly<Record<string, unknown>>,
+) => {
+  const type =
+    status === 400 || status === 422
+      ? "invalid_request_error"
+      : status === 401
+        ? "authentication_error"
+        : status === 403
+          ? "permission_error"
+          : status === 404
+            ? "not_found_error"
+            : status === 413
+              ? "request_too_large"
+              : status === 429
+                ? "rate_limit_error"
+                : status === 529
+                  ? "overloaded_error"
+                  : "api_error";
+  const googleStatus =
+    status === 400 || status === 413 || status === 422
+      ? "INVALID_ARGUMENT"
+      : status === 401
+        ? "UNAUTHENTICATED"
+        : status === 403
+          ? "PERMISSION_DENIED"
+          : status === 404
+            ? "NOT_FOUND"
+            : status === 429
+              ? "RESOURCE_EXHAUSTED"
+              : status === 499
+                ? "CANCELLED"
+                : status === 503 || status === 529
+                  ? "UNAVAILABLE"
+                  : status === 504
+                    ? "DEADLINE_EXCEEDED"
+                    : "INTERNAL";
+  return HttpServerResponse.jsonUnsafe(
+    incoming === "anthropic-messages"
+      ? { type: "error", error: { ...error, type } }
+      : incoming === "gemini"
+        ? {
+            error: {
+              ...error,
+              ...(error.code ? { diagnosticCode: error.code } : {}),
+              code: status,
+              status: googleStatus,
+            },
+          }
+        : { error: { type, ...error } },
+    { status, headers: { "x-should-retry": "false" } },
   );
+};
+const recoveryFailureResponse = (
+  incoming: ModelServiceProtocol | undefined,
+  error: ModelServiceRequestFailure,
+) =>
+  gatewayErrorResponse(incoming, error.status, {
+    message: error.detail,
+    code: error.code ?? "cox_model_service_recovery_exhausted",
+    source: error.source,
+    requestId: error.requestId,
+    terminationReason: error.terminationReason,
+    budgetMs: error.budgetMs,
+    elapsedMs: error.elapsedMs,
+    attempts: error.attempts,
+    lastAttemptFailure: error.lastAttemptFailure,
+  });
 
 interface RuntimeBinding {
   readonly token: string;
@@ -491,6 +560,9 @@ export const make = Effect.gen(function* () {
 
   const handle = Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = new URL(request.url, "http://127.0.0.1");
+    const countTokens = url.pathname === PREFIX + "/v1/messages/count_tokens";
+    const incoming = incomingProtocol(url.pathname);
     const token =
       request.headers.authorization?.replace(/^Bearer /i, "") ??
       request.headers["x-api-key"] ??
@@ -499,19 +571,16 @@ export const make = Effect.gen(function* () {
       ? [...bindings.values()].find((entry) => entry.token === token.split(".")[0])
       : undefined;
     if (!runtime || request.headers.origin)
-      return HttpServerResponse.jsonUnsafe(
-        { error: { message: "Model gateway authentication required." } },
-        { status: 401 },
-      );
+      return gatewayErrorResponse(incoming, 401, {
+        message: "Model gateway authentication required.",
+      });
     const service = (yield* settings.getSettings).modelServices[runtime.binding.serviceId];
     const sessionId = token?.slice(runtime.token.length + 1);
     if (!service?.enabled)
-      return HttpServerResponse.jsonUnsafe(
-        { error: { message: "This model service is unavailable." } },
-        { status: 503 },
-      );
+      return gatewayErrorResponse(incoming, 503, {
+        message: "This model service is unavailable.",
+      });
     const models = boundModelServiceModels(service, runtime.binding);
-    const url = new URL(request.url, "http://127.0.0.1");
     if (request.method === "GET" && url.pathname === PREFIX + "/v1/models")
       return HttpServerResponse.jsonUnsafe({
         object: "list",
@@ -526,20 +595,13 @@ export const make = Effect.gen(function* () {
           })),
         has_more: false,
       });
-    const countTokens = url.pathname === PREFIX + "/v1/messages/count_tokens";
-    const incoming: ModelServiceProtocol | undefined =
-      url.pathname === PREFIX + "/v1/responses"
-        ? "openai-responses"
-        : url.pathname === PREFIX + "/v1/chat/completions"
-          ? "openai-chat"
-          : url.pathname === PREFIX + "/v1/messages" || countTokens
-            ? "anthropic-messages"
-            : /^\/api\/model-gateway\/v1beta\/models\/.+:(?:streamGenerateContent|generateContent)$/.test(
-                  url.pathname,
-                )
-              ? "gemini"
-              : undefined;
-    if (!incoming || request.method !== "POST") return HttpServerResponse.empty({ status: 404 });
+    if (!incoming || request.method !== "POST")
+      return gatewayErrorResponse(incoming, 404, { message: "Model gateway route not found." });
+    if (Number(request.headers["content-length"]) > 16 * 1024 * 1024)
+      return gatewayErrorResponse(incoming, 413, {
+        message: "Model service request body is too large.",
+        code: "request_too_large",
+      });
     const body = record(
       yield* request.json.pipe(
         Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(16 * 1024 * 1024)),
@@ -568,30 +630,23 @@ export const make = Effect.gen(function* () {
         model.id === requested || (incoming === "gemini" && model.id === `models/${requested}`),
     );
     if (!selected)
-      return HttpServerResponse.jsonUnsafe(
-        { error: { message: "This model is not allowed by the agent binding." } },
-        { status: 403 },
-      );
+      return gatewayErrorResponse(incoming, 403, {
+        message: "This model is not allowed by the agent binding.",
+      });
     if (selected.available === false)
-      return HttpServerResponse.jsonUnsafe(
-        {
-          error: {
-            message:
-              "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
-          },
-        },
-        { status: 503 },
-      );
+      return gatewayErrorResponse(incoming, 503, {
+        message:
+          "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
+      });
     const available = selected.protocols ?? service.protocols;
     const protocol =
       available.includes(incoming) && service.protocols.includes(incoming)
         ? incoming
         : available.find((value) => service.protocols.includes(value));
     if (!protocol)
-      return HttpServerResponse.jsonUnsafe(
-        { error: { message: "No compatible upstream protocol is configured for this model." } },
-        { status: 422 },
-      );
+      return gatewayErrorResponse(incoming, 422, {
+        message: "No compatible upstream protocol is configured for this model.",
+      });
     if (countTokens && protocol !== incoming)
       return yield* new ModelServiceError({
         detail: "Token counting is unavailable across different model protocols.",
@@ -643,25 +698,49 @@ export const make = Effect.gen(function* () {
       headers: Readonly<Record<string, string | undefined>>,
     ) => {
       const error = parseUpstreamError(value);
+      const overflow = upstreamContextOverflow(error);
       const details = upstreamErrorDetails(
         error,
         headers["x-request-id"] ?? headers["request-id"],
         [service.apiKey ?? "", ...Object.values(service.headers), runtime.token],
       );
       return new ModelServiceRequestFailure({
-        detail: message + details.detail,
-        status,
+        detail: overflow
+          ? incoming === "anthropic-messages"
+            ? overflow.tokens !== undefined && overflow.limit !== undefined
+              ? `prompt is too long: ${overflow.tokens} tokens > ${overflow.limit} maximum`
+              : "prompt is too long"
+            : incoming === "gemini"
+              ? "The input token count exceeds the maximum number of tokens allowed."
+              : "The request exceeds the model's maximum context length."
+          : message + details.detail,
+        status: overflow ? 400 : status,
         retryable:
+          !overflow &&
           details.code !== "invalid_encrypted_content" &&
           isRetryableModelServiceError(status, {
             ...error,
             ...(details.code ? { code: details.code } : {}),
           }),
-        code: details.code ?? fallbackCode,
+        code: overflow ? "context_length_exceeded" : (details.code ?? fallbackCode),
         source: "upstream",
         requestId: details.requestId,
       });
     };
+    const initialBridge =
+      protocol === incoming
+        ? undefined
+        : yield* openProtocolBridge({
+            from: incoming,
+            to: protocol,
+            model: selected.id,
+            stream,
+            body,
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.provideService(Path.Path, path),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          );
     const attempt = Effect.fn("ModelServiceGateway.attempt")(
       function* (attemptId: number) {
         const stripEncryptedReasoning = omitEncryptedReasoning;
@@ -670,19 +749,21 @@ export const make = Effect.gen(function* () {
         const started = yield* Clock.currentTimeMillis;
         yield* Effect.annotateCurrentSpan({ requestId, attempt: attemptId, incoming, protocol });
         const bridge =
-          protocol === incoming
-            ? undefined
-            : yield* openProtocolBridge({
-                from: incoming,
-                to: protocol,
-                model: selected.id,
-                stream,
-                body,
-              }).pipe(
-                Effect.provideService(FileSystem.FileSystem, fs),
-                Effect.provideService(Path.Path, path),
-                Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-              );
+          attemptId === 1
+            ? initialBridge
+            : protocol === incoming
+              ? undefined
+              : yield* openProtocolBridge({
+                  from: incoming,
+                  to: protocol,
+                  model: selected.id,
+                  stream,
+                  body,
+                }).pipe(
+                  Effect.provideService(FileSystem.FileSystem, fs),
+                  Effect.provideService(Path.Path, path),
+                  Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+                );
         if (
           bridge?.replay &&
           (bridge.replay.opaqueItemsOmitted > 0 || bridge.replay.unavailableFieldsOmitted > 0)
@@ -707,7 +788,17 @@ export const make = Effect.gen(function* () {
         if (protocol === "gemini" && stream) upstreamUrl.searchParams.set("alt", "sse");
         const headers = modelServiceHeaders(service, protocol);
         if (protocol === "anthropic-messages" && request.headers["anthropic-beta"])
-          headers["anthropic-beta"] = request.headers["anthropic-beta"];
+          headers["anthropic-beta"] = [
+            ...new Set(
+              [headers["anthropic-beta"], request.headers["anthropic-beta"]].flatMap(
+                (value) =>
+                  value
+                    ?.split(",")
+                    .map((beta) => beta.trim())
+                    .filter(Boolean) ?? [],
+              ),
+            ),
+          ].join(",");
         const budget = countTokens
           ? { body }
           : modelServiceRequestOutputBudget(
@@ -734,7 +825,18 @@ export const make = Effect.gen(function* () {
           const automatic = withoutForcedToolChoice(requestBody);
           canRepairForcedToolChoice ||= automatic !== requestBody;
           if (useAutoToolChoice) requestBody = automatic;
-          const repaired = withoutForcedToolThinking(requestBody);
+        }
+        if (protocol === "openai-chat" || protocol === "anthropic-messages") {
+          const forced = record(requestBody.tool_choice).type;
+          const repaired =
+            protocol === "anthropic-messages"
+              ? record(requestBody.thinking).type === "enabled" &&
+                (forced === "any" || forced === "tool")
+                ? Object.fromEntries(
+                    Object.entries(requestBody).filter(([key]) => key !== "thinking"),
+                  )
+                : requestBody
+              : withoutForcedToolThinking(requestBody);
           canRepairForcedToolThinking ||= repaired !== requestBody;
           if (stripForcedToolThinking) {
             requestBody = repaired;
@@ -837,6 +939,7 @@ export const make = Effect.gen(function* () {
           let downstreamEnded = false;
           let downstreamBytes = 0;
           let errorEmitted = false;
+          let upstreamErrorCode: string | undefined;
           let outcome = "not_consumed";
           let failureStage: "upstream" | "bridge" | "downstream" | undefined;
           let downstreamExit = "not_started";
@@ -972,7 +1075,7 @@ export const make = Effect.gen(function* () {
                         ? status
                         : retryable
                           ? 502
-                          : 422,
+                          : 400,
                     error,
                     "upstream_stream_error",
                     "The model service returned a stream error before producing a usable response.",
@@ -1007,7 +1110,15 @@ export const make = Effect.gen(function* () {
               checked(
                 "upstream",
                 Effect.try({
-                  try: () => ({ chunk, frames: upstream.push(chunk) }),
+                  try: () => {
+                    const frames = upstream.push(chunk);
+                    for (const frame of frames) {
+                      const error = modelServiceStreamEvent(protocol, frame).error;
+                      if (error)
+                        upstreamErrorCode = upstreamErrorDetails(parseUpstreamError(error)).code;
+                    }
+                    return { chunk, frames };
+                  },
                   catch: integrityError,
                 }),
               ).pipe(
@@ -1158,6 +1269,11 @@ export const make = Effect.gen(function* () {
               }),
             ),
             Stream.catch((error) => {
+              if (
+                downstream.snapshot().terminal === "error" ||
+                downstream.snapshot().terminal === "failed"
+              )
+                return Stream.empty;
               errorEmitted = true;
               const cancelled = error instanceof ModelServiceRequestCancelled;
               const unavailable = outcome === "service_disabled";
@@ -1165,22 +1281,26 @@ export const make = Effect.gen(function* () {
                 streamError(
                   cancelled
                     ? "cox_model_service_request_cancelled"
-                    : zeroTokenStopDetected
-                      ? ZERO_TOKEN_STOP_CODE
-                      : unavailable
-                        ? "cox_model_service_unavailable"
-                        : error instanceof ModelServiceStreamError || isModelServiceError(error)
-                          ? "cox_model_service_incomplete_stream"
-                          : "cox_model_service_stream_interrupted",
+                    : upstreamErrorCode
+                      ? upstreamErrorCode
+                      : zeroTokenStopDetected
+                        ? ZERO_TOKEN_STOP_CODE
+                        : unavailable
+                          ? "cox_model_service_unavailable"
+                          : error instanceof ModelServiceStreamError || isModelServiceError(error)
+                            ? "cox_model_service_incomplete_stream"
+                            : "cox_model_service_stream_interrupted",
                   cancelled
                     ? error.detail
-                    : zeroTokenStopDetected
-                      ? ZERO_TOKEN_STOP_MESSAGE
-                      : unavailable
-                        ? "This model service is unavailable."
-                        : error instanceof ModelServiceStreamError
-                          ? error.detail
-                          : "The model service stream was interrupted before protocol completion.",
+                    : upstreamErrorCode
+                      ? `The model service returned a stream error (${upstreamErrorCode}).`
+                      : zeroTokenStopDetected
+                        ? ZERO_TOKEN_STOP_MESSAGE
+                        : unavailable
+                          ? "This model service is unavailable."
+                          : error instanceof ModelServiceStreamError
+                            ? error.detail
+                            : "The model service stream was interrupted before protocol completion.",
                 ),
               );
             }),
@@ -1207,6 +1327,17 @@ export const make = Effect.gen(function* () {
         }
         const result = yield* response.json.pipe(
           Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(32 * 1024 * 1024)),
+          Effect.mapError((error) =>
+            error.reason.cause instanceof SyntaxError
+              ? new ModelServiceRequestFailure({
+                  detail: "The model service returned an invalid JSON response.",
+                  status: 502,
+                  retryable: false,
+                  code: "upstream_invalid_response",
+                  source: "upstream",
+                })
+              : error,
+          ),
         );
         const error = parseUpstreamError(result);
         const details = upstreamErrorDetails(error);
@@ -1277,12 +1408,19 @@ export const make = Effect.gen(function* () {
                 source: "gateway",
               }),
       ),
+      Effect.catchTag("ModelServiceRequestFailure", (error) =>
+        error.code === "context_length_exceeded" ||
+        (error.code === "upstream_invalid_response" && !error.retryable)
+          ? Effect.succeed(recoveryFailureResponse(incoming, error))
+          : Effect.fail(error),
+      ),
     );
     const stateful =
       countTokens || Boolean(body.background || body.previous_response_id || body.conversation);
+    const convertedTools = record(initialBridge?.body ?? body).tools;
     const upstreamTools =
-      Array.isArray(body.tools) &&
-      body.tools.some((tool) => {
+      Array.isArray(convertedTools) &&
+      convertedTools.some((tool: unknown) => {
         const type = record(tool).type;
         return (
           (typeof type === "string" && !["function", "custom", "computer"].includes(type)) ||
@@ -1344,7 +1482,7 @@ export const make = Effect.gen(function* () {
         }
         if (error.code === "incompatible_tool_choice_thinking") {
           if (
-            protocol !== "openai-chat" ||
+            (protocol !== "openai-chat" && protocol !== "anthropic-messages") ||
             !canRepairForcedToolThinking ||
             disableForcedToolThinking
           )
@@ -1373,39 +1511,40 @@ export const make = Effect.gen(function* () {
       Effect.catchTags({
         ModelServiceRequestCancelled: (error) =>
           Effect.succeed(
-            HttpServerResponse.jsonUnsafe(
-              {
-                type: "error",
-                error: {
-                  type: "request_cancelled",
-                  message: error.detail,
-                  code: "cox_model_service_request_cancelled",
-                },
-              },
-              { status: 499, headers: { "x-should-retry": "false" } },
-            ),
+            gatewayErrorResponse(incoming, 499, {
+              type: "request_cancelled",
+              message: error.detail,
+              code: "cox_model_service_request_cancelled",
+            }),
           ),
-        ModelServiceRequestFailure: (error) => Effect.succeed(recoveryFailureResponse(error)),
+        ModelServiceRequestFailure: (error) =>
+          Effect.succeed(recoveryFailureResponse(incoming, error)),
       }),
     );
   }).pipe(
     Effect.catchTag("ModelServiceError", (error) =>
-      Effect.succeed(
-        HttpServerResponse.jsonUnsafe(
-          { error: { message: error.detail } },
-          { status: error.status ?? 502 },
-        ),
-      ),
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        return gatewayErrorResponse(
+          incomingProtocol(new URL(request.url, "http://127.0.0.1").pathname),
+          error.status ?? 502,
+          { message: error.detail },
+        );
+      }),
     ),
     Effect.catchCause((cause) =>
       Cause.hasInterrupts(cause)
         ? Effect.interrupt
-        : Effect.succeed(
-            HttpServerResponse.jsonUnsafe(
-              { error: { message: "The model service request could not be completed." } },
-              { status: 502 },
-            ),
-          ),
+        : Effect.gen(function* () {
+            const request = yield* HttpServerRequest.HttpServerRequest;
+            return gatewayErrorResponse(
+              incomingProtocol(new URL(request.url, "http://127.0.0.1").pathname),
+              502,
+              {
+                message: "The model service request could not be completed.",
+              },
+            );
+          }),
     ),
   );
   return { materialize, handle, lifecycle };
