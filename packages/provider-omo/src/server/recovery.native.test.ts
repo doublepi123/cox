@@ -145,11 +145,22 @@ export default function probe(pi) {
                 },
                 {
                   type: "model_change",
-                  id: "model-old",
+                  id: "11111111",
                   parentId: null,
                   timestamp,
                   provider: "cox",
                   modelId: "wrong",
+                },
+                {
+                  type: "message",
+                  id: "22222222",
+                  parentId: "11111111",
+                  timestamp,
+                  message: {
+                    role: "user",
+                    content: [{ type: "text", text: "Previous offline task" }],
+                    timestamp: 1794528000000,
+                  },
                 },
               ]
                 .map((entry) => JSON.stringify(entry))
