@@ -56,7 +56,11 @@ export function localServiceReceiptState(
     currentVersion,
     latestVersion: receipt.targetVersion,
     status:
-      receipt.status === "healthy" ? "idle" : receipt.status === "activating" ? "ready" : "error",
+      receipt.status === "healthy"
+        ? "idle"
+        : receipt.status === "activating"
+          ? "restarting"
+          : "error",
     message:
       receipt.status === "healthy"
         ? null

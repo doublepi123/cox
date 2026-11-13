@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { render } from "../../../test/render";
+import { act, fakeTimers, render, stubGlobal } from "../../../test/render";
 import { page } from "vite-plus/test/browser";
 import "~/index.css";
 import { setLanguagePreference } from "../../i18n";
@@ -21,7 +21,14 @@ const mocks = vi.hoisted(() => ({
   check: vi.fn(async () => {}),
   download: vi.fn(async () => {}),
   apply: vi.fn(async () => {}),
+  useRealHook: false,
 }));
+
+const response = (state: LocalServiceUpdateState) =>
+  new Response(JSON.stringify(state), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 
 vi.mock(import("@effect/atom-react"), async (importOriginal) => {
   const actual = await importOriginal();
@@ -65,16 +72,22 @@ vi.mock(import("./settingsLayout"), () => ({
     </div>
   ),
 }));
-vi.mock(import("../../hooks/useLocalServiceUpdate"), () => ({
-  useLocalServiceUpdate: () => ({
-    state: mocks.state,
-    busy: false,
-    error: null,
-    check: mocks.check,
-    download: mocks.download,
-    apply: mocks.apply,
-  }),
-}));
+vi.mock(import("../../hooks/useLocalServiceUpdate"), async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    useLocalServiceUpdate: (enabled: boolean) =>
+      mocks.useRealHook
+        ? actual.useLocalServiceUpdate(enabled)
+        : {
+            state: mocks.state,
+            busy: false,
+            error: null,
+            check: mocks.check,
+            download: mocks.download,
+            apply: mocks.apply,
+          },
+  };
+});
 
 describe("local service update settings", () => {
   it("checks the current server, prepares an update and confirms the restart", async () => {
@@ -113,6 +126,95 @@ describe("local service update settings", () => {
     await screen.rerender(<LocalServiceUpdates />);
     expect(screen.container.textContent).toBe("");
     mocks.permitted = true;
+  });
+
+  it("polls after apply, clears a transient restart error and stops when healthy", async () => {
+    using _timers = fakeTimers();
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const ready = {
+      ...mocks.state,
+      status: "ready" as const,
+      latestVersion: "0.2.0",
+    };
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(response(ready))
+      .mockResolvedValueOnce(response({ ...ready, status: "restarting" }))
+      .mockRejectedValueOnce(new Error("Service down"))
+      .mockResolvedValue(response({ ...ready, status: "idle" }));
+    using _fetch = stubGlobal("fetch", fetchMock);
+    await using screen = await render(<LocalServiceUpdates />);
+    await screen.getByRole("button", { name: "Restart and update", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Restart and update" }).click();
+    await expect
+      .element(screen.getByText("Restarting Cox. This page will reconnect when it is ready."))
+      .toBeVisible();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await expect.element(screen.getByText("Service down")).toBeVisible();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await expect.element(screen.getByText("Cox is up to date.")).toBeVisible();
+    expect(screen.container.textContent).not.toContain("Service down");
+    fetchMock.mockClear();
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears a transient polling error observed from an initially restarting service", async () => {
+    using _timers = fakeTimers();
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const restarting = {
+      ...mocks.state,
+      status: "restarting" as const,
+      latestVersion: "0.2.0",
+    };
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(response(restarting))
+      .mockRejectedValueOnce(new Error("Service down"))
+      .mockResolvedValue(response({ ...restarting, status: "idle" }));
+    using _fetch = stubGlobal("fetch", fetchMock);
+    await using screen = await render(<LocalServiceUpdates />);
+    await expect
+      .element(screen.getByText("Restarting Cox. This page will reconnect when it is ready."))
+      .toBeVisible();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await expect.element(screen.getByText("Service down")).toBeVisible();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await expect.element(screen.getByText("Cox is up to date.")).toBeVisible();
+    expect(screen.container.textContent).not.toContain("Service down");
+  });
+
+  it("shows active-work ready feedback and permits a retry", async () => {
+    mocks.apply.mockClear();
+    mocks.state = {
+      ...mocks.state,
+      status: "ready",
+      latestVersion: "0.2.0",
+      message: "Wait for active agent turns to finish before updating Cox.",
+    };
+    await using screen = await render(<LocalServiceUpdates />);
+    await expect
+      .element(screen.getByText("Wait for active agent turns to finish before updating Cox."))
+      .toBeVisible();
+    await screen.getByRole("button", { name: "Restart and update", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Restart and update" }).click();
+    expect(mocks.apply).toHaveBeenCalledOnce();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    mocks.state = { ...mocks.state, message: null };
+    await screen.rerender(<LocalServiceUpdates />);
+    await screen.getByRole("button", { name: "Restart and update", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Restart and update" }).click();
+    expect(mocks.apply).toHaveBeenCalledTimes(2);
   });
 
   it("shows Chinese progress and restart state", async () => {

@@ -16,6 +16,7 @@ export function useLocalServiceUpdate(enabled: boolean) {
     const body = (await response.json()) as LocalServiceUpdateState & { message?: string };
     if (!response.ok)
       throw new Error(body.message ?? `Update request failed (${response.status}).`);
+    setError(null);
     setState(body);
     return body;
   }, []);
@@ -23,36 +24,37 @@ export function useLocalServiceUpdate(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    const load = () =>
+      request().catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [enabled, request]);
+
+  useEffect(() => {
+    if (!enabled || (state?.status !== "downloading" && state?.status !== "restarting")) return;
+    let active = true;
     let loading = false;
     const load = () => {
       if (loading) return;
       loading = true;
       void request()
-        .then(
-          (next) => {
-            if (!active) return;
-            if (next.status === "downloading" || next.status === "restarting") {
-              if (!timer) timer = setInterval(load, 1_000);
-            } else if (timer) {
-              clearInterval(timer);
-              timer = undefined;
-            }
-          },
-          (cause) => {
-            if (active) setError(cause instanceof Error ? cause.message : String(cause));
-          },
-        )
+        .catch((cause) => {
+          if (active) setError(cause instanceof Error ? cause.message : String(cause));
+        })
         .finally(() => {
           loading = false;
         });
     };
-    load();
+    const timer = setInterval(load, 1_000);
     return () => {
       active = false;
-      if (timer) clearInterval(timer);
+      clearInterval(timer);
     };
-  }, [enabled, request]);
+  }, [enabled, request, state?.status]);
 
   const execute = async (action: "check" | "download" | "apply") => {
     if (inFlight.current) return;

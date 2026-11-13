@@ -1,28 +1,162 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { EnvironmentId } from "@t3tools/contracts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as SqlClient from "effect/sql/SqlClient";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as DatabaseMigrationHead from "../persistence/databaseMigrationHead.ts";
+import { make as makeLocalServiceUpdate } from "./LocalServiceUpdate.ts";
 import {
   compareVersions,
   detectLocalServiceUpdateOwnership,
+  LOCAL_SERVICE_UPDATE_ENV,
   updateEnvironment,
 } from "./ownership.ts";
+import * as Operation from "./operation.ts";
+import * as Preflight from "./preflight.ts";
+import * as Release from "./release.ts";
 import { parseLocalServiceRelease } from "./release.ts";
 import {
   localServiceReceiptState,
   prepareLocalServiceUpdate,
+  type LocalServiceUpdateReceipt,
   type LocalServiceUpdatePlan,
 } from "./operation.ts";
 
+const mocks = vi.hoisted(() => ({
+  fetchRelease: vi.fn<typeof Release.fetchLocalServiceRelease>(),
+  installRelease: vi.fn<typeof Release.installLocalServiceRelease>(),
+  launchUpdate: vi.fn<typeof Operation.launchLocalServiceUpdate>(),
+  inspectCandidateMigration: vi.fn<typeof Preflight.inspectCandidateMigration>(),
+  databaseMigrationHead: vi.fn<typeof DatabaseMigrationHead.databaseMigrationHead>(),
+}));
+
+vi.mock("./release.ts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchLocalServiceRelease: mocks.fetchRelease,
+  installLocalServiceRelease: mocks.installRelease,
+}));
+vi.mock("./operation.ts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  launchLocalServiceUpdate: mocks.launchUpdate,
+}));
+vi.mock("./preflight.ts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  inspectCandidateMigration: mocks.inspectCandidateMigration,
+}));
+vi.mock("../persistence/databaseMigrationHead.ts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  databaseMigrationHead: mocks.databaseMigrationHead,
+}));
+
 const directories: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
+
+function receipt(
+  status: LocalServiceUpdateReceipt["status"],
+  message: string | null = null,
+): LocalServiceUpdateReceipt {
+  return {
+    schema: 1,
+    targetVersion: "0.2.0",
+    status,
+    message,
+    backupDirectory: "/private/backup",
+    databaseBackup: "/private/backup/statev2.sqlite",
+  };
+}
+
+async function writeReceipt(directory: string, value: LocalServiceUpdateReceipt) {
+  await writeFile(join(directory, "local-service-update", "receipt.json"), JSON.stringify(value));
+}
+
+async function makeService(initialReceipt?: LocalServiceUpdateReceipt) {
+  const directory = await mkdtemp(join(tmpdir(), "cox-local-service-update-service-"));
+  directories.push(directory);
+  await mkdir(join(directory, "local-service-update"), { recursive: true });
+  await writeFile(join(directory, "local-service-update", "unit"), "__COX_ENTRY__\n");
+  if (initialReceipt) await writeReceipt(directory, initialReceipt);
+  mocks.fetchRelease.mockResolvedValue({
+    version: "99.0.0",
+    url: "https://registry.npmjs.org/@doublepi123/cox/-/cox-99.0.0.tgz",
+    integrity: "sha512-" + "A".repeat(86) + "==",
+  });
+  mocks.installRelease.mockImplementation(async (input) => {
+    const current = join(input.directory, "current");
+    await mkdir(join(current, "dist", "persistence"), { recursive: true });
+    await writeFile(
+      join(current, "package.json"),
+      JSON.stringify({ version: input.release.version }),
+    );
+    return join(current, "dist", "bin.mjs");
+  });
+  mocks.launchUpdate.mockResolvedValue();
+  mocks.inspectCandidateMigration.mockResolvedValue(1);
+  mocks.databaseMigrationHead.mockReturnValue(1);
+  const originalEntry = process.argv[1];
+  const originalUpdateEnvironment = process.env[LOCAL_SERVICE_UPDATE_ENV];
+  const originalInvocationId = process.env.INVOCATION_ID;
+  process.argv[1] = "/srv/cox/dist/bin.mjs";
+  process.env[LOCAL_SERVICE_UPDATE_ENV] = "1";
+  process.env.INVOCATION_ID = "test-invocation";
+  const dependencies = Layer.mergeAll(
+    ServerConfig.layerTest(process.cwd(), directory).pipe(Layer.provide(NodeServices.layer)),
+    NodeServices.layer,
+    NodeSqliteClient.layer({ filename: ":memory:" }),
+    Layer.mock(ServerEnvironment.ServerEnvironment)({
+      getEnvironmentId: Effect.succeed(EnvironmentId.make("test-environment")),
+    }),
+  );
+  const runtime = ManagedRuntime.make(dependencies);
+  const config = await runtime.runPromise(ServerConfig.ServerConfig);
+  const database = new DatabaseSync(config.dbPath);
+  database.close();
+  const service = await runtime.runPromise(
+    makeLocalServiceUpdate().pipe(
+      Effect.provideService(ServerConfig.ServerConfig, {
+        ...config,
+        staticDir: "/srv/cox/dist/client",
+      }),
+    ),
+  );
+  await runtime.runPromise(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT PRIMARY KEY, deleted_at INTEGER)`;
+      yield* sql`CREATE TABLE orchestration_v2_projection_runs (thread_id TEXT, status TEXT)`;
+      yield* sql`CREATE TABLE orchestration_v2_projection_runtime_requests (thread_id TEXT, status TEXT)`;
+    }),
+  );
+  return {
+    directory,
+    runtime,
+    service,
+    async [Symbol.asyncDispose]() {
+      await runtime.dispose();
+      if (originalEntry === undefined) process.argv.splice(1, 1);
+      else process.argv[1] = originalEntry;
+      if (originalUpdateEnvironment === undefined) delete process.env[LOCAL_SERVICE_UPDATE_ENV];
+      else process.env[LOCAL_SERVICE_UPDATE_ENV] = originalUpdateEnvironment;
+      if (originalInvocationId === undefined) delete process.env.INVOCATION_ID;
+      else process.env.INVOCATION_ID = originalInvocationId;
+    },
+  };
+}
 
 function ownership(overrides: Record<string, unknown> = {}) {
   return detectLocalServiceUpdateOwnership({
@@ -92,6 +226,81 @@ describe("local service update boundaries", () => {
 });
 
 describe("local service update transaction", () => {
+  it("consumes a rollback receipt so a fresh release can be downloaded", async () => {
+    await using harness = await makeService(receipt("rolled-back", "health check failed"));
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "error",
+    });
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "idle",
+    });
+    expect(await harness.runtime.runPromise(harness.service.check)).toMatchObject({
+      status: "available",
+      latestVersion: "99.0.0",
+    });
+    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+      status: "ready",
+      latestVersion: "99.0.0",
+    });
+  });
+
+  it("observes an activating receipt become healthy without inventing an applicable plan", async () => {
+    await using harness = await makeService(receipt("activating"));
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "restarting",
+    });
+    await expect(harness.runtime.runPromise(harness.service.apply)).rejects.toThrow("not ready");
+    await writeReceipt(harness.directory, receipt("healthy"));
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "idle",
+    });
+  });
+
+  it("observes an activating receipt become a rollback error", async () => {
+    await using harness = await makeService(receipt("activating"));
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "restarting",
+    });
+    await writeReceipt(harness.directory, receipt("rolled-back", "health check failed"));
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("health check failed"),
+    });
+  });
+
+  it("retains ready feedback during active work and observes recovery after apply", async () => {
+    await using harness = await makeService();
+    await harness.runtime.runPromise(harness.service.state);
+    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+      status: "ready",
+    });
+    await harness.runtime.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO orchestration_v2_projection_threads (thread_id, deleted_at) VALUES ('thread-1', NULL)`;
+        yield* sql`INSERT INTO orchestration_v2_projection_runs (thread_id, status) VALUES ('thread-1', 'running')`;
+      }),
+    );
+    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+      status: "ready",
+      message: expect.stringContaining("Wait for active agent turns"),
+    });
+    await harness.runtime.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM orchestration_v2_projection_runs`;
+      }),
+    );
+    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+      status: "restarting",
+      message: null,
+    });
+    await writeReceipt(harness.directory, receipt("healthy"));
+    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+      status: "idle",
+    });
+  });
+
   it("backs up a consistent live SQLite database and static settings before handoff", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cox-local-service-update-"));
     directories.push(directory);

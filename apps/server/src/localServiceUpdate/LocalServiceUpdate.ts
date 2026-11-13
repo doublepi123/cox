@@ -91,6 +91,9 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
   let operation: Promise<void> | undefined;
   let release: LocalServiceRelease | undefined;
   let plan: LocalServiceUpdatePlan | undefined;
+  let consumedReceipt:
+    | { readonly key: string; readonly state: LocalServiceUpdateState }
+    | undefined;
   const directory = path.join(config.baseDir, "local-service-update");
   const receiptPath = path.join(directory, "receipt.json");
   const run = Effect.runPromiseWith(yield* Effect.context<FileSystem.FileSystem | Crypto.Crypto>());
@@ -98,12 +101,35 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
   const state: Effect.Effect<LocalServiceUpdateState> = Effect.gen(function* () {
     if (!ownership) return unavailable();
     if (operation) return current;
+    if (current.status === "downloading" || (current.status === "ready" && ready && plan))
+      return current;
     const receipt = yield* Effect.tryPromise(() => readLocalServiceReceipt(receiptPath)).pipe(
       Effect.orElseSucceed(() => null),
     );
-    if (current.supported && !receipt) return current;
-    if (["downloading", "ready", "restarting"].includes(current.status)) return current;
-    current = localServiceReceiptState(packageJson.version, receipt);
+    if (!receipt) {
+      consumedReceipt = undefined;
+      if (current.supported && current.status !== "restarting") return current;
+      current = localServiceReceiptState(packageJson.version, null);
+      return current;
+    }
+    if (receipt.status === "activating") {
+      consumedReceipt = undefined;
+      current = localServiceReceiptState(packageJson.version, receipt);
+      return current;
+    }
+    const key = [
+      receipt.status,
+      receipt.targetVersion,
+      receipt.message,
+      receipt.backupDirectory,
+      receipt.databaseBackup,
+    ].join("\0");
+    if (consumedReceipt?.key === key && current !== consumedReceipt.state) return current;
+    current = localServiceReceiptState(
+      packageJson.version,
+      consumedReceipt?.key === key ? null : receipt,
+    );
+    consumedReceipt = { key, state: current };
     return current;
   }).pipe(Effect.withSpan("localServiceUpdate.state"));
 
@@ -286,10 +312,15 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
       const active = yield* busyWork(sql).pipe(
         Effect.mapError((cause) => new LocalServiceUpdateError(String(cause))),
       );
-      if (active.length > 0)
-        return yield* Effect.fail(
-          new LocalServiceUpdateError("Wait for active agent turns to finish before updating Cox."),
-        );
+      if (active.length > 0) {
+        current = {
+          ...current,
+          status: "ready",
+          message: "Wait for active agent turns to finish before updating Cox.",
+          progress: null,
+        };
+        return current;
+      }
       current = { ...current, status: "restarting", message: null, progress: null };
       operation = launchLocalServiceUpdate(plan).catch((error: unknown) => {
         current = { ...current, status: "error", message: String(error), progress: null };

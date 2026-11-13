@@ -40,9 +40,10 @@ export function LocalServiceUpdates() {
         : state.status === "restarting"
           ? t("Restarting Cox. This page will reconnect when it is ready.")
           : state.status === "ready"
-            ? t("Cox {version} is downloaded and backed up. Restart to finish updating.", {
+            ? (state.message ??
+              t("Cox {version} is downloaded and backed up. Restart to finish updating.", {
                 version: state.latestVersion ?? "",
-              })
+              }))
             : state.status === "available"
               ? t("Cox {version} is available.", { version: state.latestVersion ?? "" })
               : state.status === "error"
