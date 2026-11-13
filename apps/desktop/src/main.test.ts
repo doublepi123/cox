@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions } from "electron";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { RemoteConnectionProfile } from "./connections.ts";
+import { loadMacUpdateLaunch } from "./mac-update-transaction.ts";
 
 const userHome = resolve("/fixture/user");
 const resourcesPath = resolve("/fixture/resources");
@@ -149,12 +150,21 @@ const fixture = {
   launchBackend: vi.fn(async (_start: (directory: string) => Promise<string>) => localOrigin),
   backendExit: undefined as ((message: string) => void) | undefined,
   inspect: vi.fn(async (_origin: string) => inspection),
+  locale: "en-US",
+  transactionId: "",
+  backendState: {} as {
+    status?: string;
+    currentVersion?: string | null;
+    latestVersion?: string | null;
+    message?: string | null;
+  },
   clientCheck: vi.fn(async () => undefined),
   clientState: {} as { status?: string; currentVersion?: string; latestVersion?: string },
   clientApply: vi.fn(async () => {}),
   softwareCheck: vi.fn(async () => undefined),
   softwareApply: vi.fn(async () => {}),
   messageBox: vi.fn(async () => ({ response: 1 })),
+  logWrite: vi.fn(),
   quit: vi.fn(),
   errors: vi.fn(),
   menu: [] as MenuItemConstructorOptions[],
@@ -178,7 +188,7 @@ vi.mock("node:fs", () => ({
     fixture.files.delete(source);
   }),
   statSync: () => ({ size: 0 }),
-  createWriteStream: () => ({ on: vi.fn(), write: vi.fn() }),
+  createWriteStream: () => ({ on: vi.fn(), write: fixture.logWrite }),
 }));
 vi.mock("electron", () => ({
   app: {
@@ -187,9 +197,9 @@ vi.mock("electron", () => ({
     setAppLogsPath: vi.fn(),
     setName: vi.fn(),
     getVersion: () => "0.2.24",
-    getPreferredSystemLanguages: () => ["en-US"],
+    getPreferredSystemLanguages: () => [fixture.locale],
     requestSingleInstanceLock: () => true,
-    commandLine: { getSwitchValue: () => "", hasSwitch: () => true },
+    commandLine: { getSwitchValue: () => fixture.transactionId, hasSwitch: () => true },
     on: fixture.events.on.bind(fixture.events),
     quit: fixture.quit,
     whenReady: () => {
@@ -236,7 +246,7 @@ vi.mock("./backend-updates.ts", () => ({
   BackendUpdates: class {
     launch = fixture.launchBackend;
     getState() {
-      return {};
+      return fixture.backendState;
     }
   },
 }));
@@ -253,6 +263,9 @@ vi.mock("./software-updates.ts", () => ({
   SoftwareUpdates: class {
     check = fixture.softwareCheck;
     apply = fixture.softwareApply;
+    getState() {
+      return { backend: fixture.backendState, client: fixture.clientState };
+    }
   },
   softwareUpdateReady: vi.fn(),
 }));
@@ -345,6 +358,10 @@ beforeEach(() => {
   fixture.backendExit = undefined;
   fixture.inspect.mockReset().mockResolvedValue(inspection);
   fixture.loadURL.mockReset().mockResolvedValue(undefined);
+  fixture.messageBox.mockReset().mockResolvedValue({ response: 1 });
+  fixture.locale = "en-US";
+  fixture.transactionId = "";
+  fixture.backendState = {};
   fixture.clientState = {};
 });
 
@@ -730,6 +747,77 @@ describe("desktop connection manager windows", () => {
     expect(fixture.launchBackend).not.toHaveBeenCalled();
   });
 
+  it("acknowledges a pending macOS update when failed remote preflight finishes loading Connections", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    fixture.transactionId = "pending-update";
+    const launch = {
+      acknowledged: false,
+      ready: vi.fn(async () => {
+        launch.acknowledged = true;
+      }),
+      fail: vi.fn(async () => {}),
+    };
+    vi.mocked(loadMacUpdateLaunch).mockResolvedValueOnce(launch);
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({
+        version: 1,
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+      }),
+    );
+    fixture.inspect.mockRejectedValueOnce(new Error("Remote server returned HTTP 503."));
+    await start();
+    expect(manager().visible).toBe(true);
+    expect(launch.ready).toHaveBeenCalledOnce();
+    expect(launch.fail).not.toHaveBeenCalled();
+  });
+
+  it("presents an available manual update while only Connections is visible", async () => {
+    await start();
+    expect(primary().visible).toBe(false);
+    expect(manager().visible).toBe(true);
+    fixture.clientState = {
+      status: "available",
+      currentVersion: "0.2.24",
+      latestVersion: "0.2.25",
+    };
+    fixture.messageBox.mockResolvedValueOnce({ response: 0 });
+    clickMenu((item) => item.id === "cox-check-updates");
+    await vi.waitFor(() =>
+      expect(fixture.messageBox).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Software updates",
+          message: "Software updates are available.",
+          detail: "Cox Desktop 0.2.24 → 0.2.25",
+        }),
+      ),
+    );
+    expect(fixture.softwareCheck).toHaveBeenCalledWith(true);
+  });
+
+  it("presents a manual update error while only Connections is visible", async () => {
+    await start();
+    fixture.backendState = {
+      status: "error",
+      currentVersion: "0.1.60",
+      latestVersion: "0.1.61",
+      message: "Error: ECONNRESET",
+    };
+    clickMenu((item) => item.id === "cox-check-updates");
+    await vi.waitFor(() =>
+      expect(fixture.messageBox).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "warning",
+          title: "Software updates",
+          message: "Could not finish updating. Check for updates again.",
+          detail: "Cox 0.1.60 → 0.1.61\nError: ECONNRESET",
+        }),
+      ),
+    );
+    expect(fixture.softwareCheck).toHaveBeenCalledWith(true);
+  });
+
   it.each([false, true])(
     "saves choice %s without connecting and restores it on reopen",
     async (choice) => {
@@ -943,6 +1031,24 @@ describe("desktop connection manager windows", () => {
       "Remote server is unavailable",
     );
     expect(fixture.launchBackend).not.toHaveBeenCalled();
+  });
+
+  it("renders known remote preflight errors in Chinese and retains technical details in the log", async () => {
+    fixture.locale = "zh-CN";
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({
+        version: 1,
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+      }),
+    );
+    fixture.inspect.mockRejectedValueOnce(new Error("Remote server returned HTTP 503."));
+    await start();
+    const page = decodeURIComponent(manager().webContents.getURL());
+    expect(page).toContain("远程服务器返回 HTTP 503。");
+    expect(page).not.toContain("Remote server returned HTTP 503.");
+    expect(fixture.logWrite).toHaveBeenCalledWith("Error: Remote server returned HTTP 503.\n");
   });
 
   it("hides a failed main-page load and opens Connections separately after successful preflight", async () => {

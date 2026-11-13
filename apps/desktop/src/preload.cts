@@ -147,8 +147,35 @@ if (window.location.protocol === "data:") {
     if (error) error.hidden = true;
   });
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("cox-connection-new-window")?.addEventListener("change", () => {
-      void connections.setOpenInNewWindow(openInNewWindow()).catch(showError);
+    const newWindowChoice = document.getElementById("cox-connection-new-window");
+    let savedOpenInNewWindow =
+      newWindowChoice instanceof HTMLInputElement ? newWindowChoice.checked : true;
+    let latestSave = 0;
+    let savedSave = 0;
+    let latestSaveFailed = false;
+    const restoreOpenInNewWindow = () => {
+      if (newWindowChoice instanceof HTMLInputElement)
+        newWindowChoice.checked = savedOpenInNewWindow;
+    };
+    newWindowChoice?.addEventListener("change", () => {
+      const save = ++latestSave;
+      latestSaveFailed = false;
+      const choice = openInNewWindow();
+      void connections.setOpenInNewWindow(choice).then(
+        () => {
+          if (save > savedSave) {
+            savedSave = save;
+            savedOpenInNewWindow = choice;
+          }
+          if (save !== latestSave && latestSaveFailed) restoreOpenInNewWindow();
+        },
+        (error: unknown) => {
+          showError(error);
+          if (save !== latestSave) return;
+          latestSaveFailed = true;
+          restoreOpenInNewWindow();
+        },
+      );
     });
     document.getElementById("cox-open-connections")?.addEventListener("click", () => {
       void run(connections.show);

@@ -7,6 +7,16 @@ const source = stripTypeScriptTypes(
   readFileSync(new URL("./preload.cts", import.meta.url), "utf8"),
 );
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function loadBridge(args: string[], globals: Record<string, unknown> = {}, protocol = "https:") {
   const exposed = new Map<string, Record<string, unknown>>();
   const invoke = vi.fn(async () => undefined);
@@ -140,6 +150,193 @@ describe("desktop preload connection roles", () => {
     onChange();
     await Promise.resolve();
     expect(error).toEqual({ hidden: false, textContent: "Could not save connection preference" });
+  });
+
+  it("restores the saved window choice after persistence fails and connects with it", async () => {
+    class Input {
+      checked: boolean;
+      value = "";
+      addEventListener = vi.fn();
+      constructor(checked: boolean) {
+        this.checked = checked;
+      }
+    }
+    const choice = new Input(true);
+    const name = new Input(false);
+    name.value = "Studio";
+    const origin = new Input(false);
+    origin.value = "https://cox.example.com";
+    const form = { addEventListener: vi.fn() };
+    const error = { hidden: true, textContent: "" };
+    const ready = vi.fn();
+    const elements: Record<string, unknown> = {
+      "cox-connection-new-window": choice,
+      "cox-connection-name": name,
+      "cox-connection-origin": origin,
+      "cox-connection-form": form,
+      "cox-connection-error": error,
+    };
+    const { invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLInputElement: Input,
+        document: {
+          getElementById: (id: string) => elements[id],
+          addEventListener: ready,
+          querySelectorAll: vi.fn(() => []),
+        },
+      },
+      "data:",
+    );
+    const onReady = ready.mock.calls.find(([event]) => event === "DOMContentLoaded")?.[1];
+    onReady();
+    const onChange = choice.addEventListener.mock.calls.find(([event]) => event === "change")?.[1];
+    invoke.mockRejectedValueOnce("Could not save connection preference");
+    choice.checked = false;
+    onChange();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(choice.checked).toBe(true);
+    expect(error).toEqual({ hidden: false, textContent: "Could not save connection preference" });
+    const onSubmit = form.addEventListener.mock.calls.find(([event]) => event === "submit")?.[1];
+    onSubmit({ preventDefault: vi.fn() });
+    expect(invoke).toHaveBeenLastCalledWith("cox:connections-connect", {
+      name: "Studio",
+      origin: "https://cox.example.com",
+      openInNewWindow: true,
+    });
+  });
+
+  it("does not restore a stale rejection over a later saved toggle", async () => {
+    class Input {
+      checked = true;
+      addEventListener = vi.fn();
+    }
+    const choice = new Input();
+    const error = { hidden: true, textContent: "" };
+    const ready = vi.fn();
+    const { invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLInputElement: Input,
+        document: {
+          getElementById: (id: string) =>
+            id === "cox-connection-new-window"
+              ? choice
+              : id === "cox-connection-error"
+                ? error
+                : undefined,
+          addEventListener: ready,
+        },
+      },
+      "data:",
+    );
+    const onReady = ready.mock.calls.find(([event]) => event === "DOMContentLoaded")?.[1];
+    onReady();
+    const onChange = choice.addEventListener.mock.calls.find(([event]) => event === "change")?.[1];
+    const first = deferred<undefined>();
+    const second = deferred<undefined>();
+    invoke.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    choice.checked = false;
+    onChange();
+    choice.checked = true;
+    onChange();
+    second.resolve(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    first.reject("Could not save connection preference");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(choice.checked).toBe(true);
+  });
+
+  it("keeps the last successfully saved choice when an overlapping save fails", async () => {
+    class Input {
+      checked = true;
+      addEventListener = vi.fn();
+    }
+    const choice = new Input();
+    const error = { hidden: true, textContent: "" };
+    const ready = vi.fn();
+    const { invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLInputElement: Input,
+        document: {
+          getElementById: (id: string) =>
+            id === "cox-connection-new-window"
+              ? choice
+              : id === "cox-connection-error"
+                ? error
+                : undefined,
+          addEventListener: ready,
+        },
+      },
+      "data:",
+    );
+    const onReady = ready.mock.calls.find(([event]) => event === "DOMContentLoaded")?.[1];
+    onReady();
+    const onChange = choice.addEventListener.mock.calls.find(([event]) => event === "change")?.[1];
+    const first = deferred<undefined>();
+    const second = deferred<undefined>();
+    invoke.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    choice.checked = false;
+    onChange();
+    choice.checked = true;
+    onChange();
+    first.resolve(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(choice.checked).toBe(true);
+    second.reject("Could not save connection preference");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(choice.checked).toBe(false);
+    expect(error).toEqual({ hidden: false, textContent: "Could not save connection preference" });
+  });
+
+  it("adopts a late successful save after the latest save fails", async () => {
+    class Input {
+      checked = true;
+      addEventListener = vi.fn();
+    }
+    const choice = new Input();
+    const error = { hidden: true, textContent: "" };
+    const ready = vi.fn();
+    const { invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      {
+        HTMLInputElement: Input,
+        document: {
+          getElementById: (id: string) =>
+            id === "cox-connection-new-window"
+              ? choice
+              : id === "cox-connection-error"
+                ? error
+                : undefined,
+          addEventListener: ready,
+        },
+      },
+      "data:",
+    );
+    const onReady = ready.mock.calls.find(([event]) => event === "DOMContentLoaded")?.[1];
+    onReady();
+    const onChange = choice.addEventListener.mock.calls.find(([event]) => event === "change")?.[1];
+    const first = deferred<undefined>();
+    const second = deferred<undefined>();
+    invoke.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    choice.checked = false;
+    onChange();
+    choice.checked = true;
+    onChange();
+    second.reject("Could not save connection preference");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(choice.checked).toBe(true);
+    first.resolve(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(choice.checked).toBe(false);
   });
 
   it("updates retained connection cards using text rather than HTML and preserves form state", () => {

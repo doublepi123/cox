@@ -34,7 +34,7 @@ import {
   settingsWindowUrl,
   usageWindowUrl,
 } from "./config.ts";
-import { desktopText } from "./native-text.ts";
+import { desktopConnectionError, desktopText } from "./native-text.ts";
 import { createDesktopMenuTemplate } from "./native-menu.ts";
 
 function systemLocale() {
@@ -110,9 +110,10 @@ async function acknowledgeMacLaunch() {
       if (approvedQuit || !window || window.isDestroyed()) break;
       if (
         !startingBackend &&
-        (await window.webContents.executeJavaScript(
-          "Boolean(document.querySelector('[data-slot=\"sidebar-wrapper\"]'))",
-        ))
+        (hasVisibleConnectionManager() ||
+          (await window.webContents.executeJavaScript(
+            "Boolean(document.querySelector('[data-slot=\"sidebar-wrapper\"]'))",
+          )))
       ) {
         await macUpdateLaunch.ready();
         process.off("SIGTERM", terminateMacLaunch);
@@ -139,6 +140,16 @@ function hasReadyRemoteWindow() {
   );
 }
 
+function hasVisibleConnectionManager() {
+  return Boolean(
+    connectionsWindow &&
+      !connectionsWindow.isDestroyed() &&
+      connectionsWindow.isVisible() &&
+      connectionsPageUrl &&
+      connectionsWindow.webContents.getURL() === connectionsPageUrl,
+  );
+}
+
 function isRemoteContext() {
   return (
     connectionMode === "remote" ||
@@ -149,7 +160,13 @@ function isRemoteContext() {
 async function offerSoftwareUpdate(manual = false) {
   if (isRemoteContext()) return offerRemoteClientUpdate(manual);
   if (!softwareUpdates) return;
-  if (approvedQuit || quitPending || !desktopReady || nativeUpdatePrompt) return;
+  if (
+    approvedQuit ||
+    quitPending ||
+    (!desktopReady && !(manual && hasVisibleConnectionManager())) ||
+    nativeUpdatePrompt
+  )
+    return;
   let { backend: backendState, client } = softwareUpdates.getState();
   const key = `${backendState.status}:${backendState.latestVersion}:${client.status}:${client.latestVersion}`;
   const available = backendState.status === "available" || client.status === "available";
@@ -216,7 +233,9 @@ async function offerRemoteClientUpdate(manual = false) {
     !clientUpdates ||
     approvedQuit ||
     quitPending ||
-    (!desktopReady && !hasReadyRemoteWindow()) ||
+    (!desktopReady &&
+      !hasReadyRemoteWindow() &&
+      !(manual && hasVisibleConnectionManager())) ||
     nativeUpdatePrompt
   )
     return;
@@ -1391,7 +1410,7 @@ async function start() {
           systemLocale(),
           connectionStore.snapshot(),
           icon,
-          error === undefined ? undefined : String(error),
+          error === undefined ? undefined : desktopConnectionError(systemLocale(), error),
           draft,
         ),
       );
@@ -1420,6 +1439,7 @@ async function start() {
     await target.loadURL(connectionsPageUrl);
     target.show();
     target.focus();
+    void acknowledgeMacLaunch();
   }
 
   openConnectionManager = () => showConnections();

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { DesktopBackendUpdateState } from "@t3tools/contracts";
-import { desktopText, desktopUpdateNotice } from "./native-text.ts";
+import { desktopConnectionError, desktopText, desktopUpdateNotice } from "./native-text.ts";
 
 const state: DesktopBackendUpdateState = {
   desktopVersion: "0.2.3",
@@ -13,6 +13,38 @@ const state: DesktopBackendUpdateState = {
 };
 
 describe("native desktop language and update messages", () => {
+  it.each([
+    [
+      "Enter an HTTPS server origin without credentials, a path, query, or fragment.",
+      "请输入不含凭据、路径、查询或片段的 HTTPS 服务器地址。",
+    ],
+    ["Invalid remote server identity.", "远程服务器标识无效。"],
+    ["Remote server response is too large.", "远程服务器响应过大。"],
+    [
+      "The server did not return a valid Cox environment descriptor.",
+      "服务器未返回有效的 Cox 环境描述信息。",
+    ],
+    [
+      "Remote Cox servers must enable COX_AUTH_PASSWORD.",
+      "远程 Cox 服务器必须启用 COX_AUTH_PASSWORD。",
+    ],
+  ])("translates the known remote preflight error %s", (error, expected) => {
+    expect(desktopConnectionError("zh-CN", new Error(error))).toBe(expected);
+  });
+
+  it("translates remote HTTP status errors without dropping the status", () => {
+    expect(desktopConnectionError("zh-CN", new Error("Remote server returned HTTP 503."))).toBe(
+      "远程服务器返回 HTTP 503。",
+    );
+    expect(desktopConnectionError("en-US", new Error("Remote server returned HTTP 503."))).toBe(
+      "Remote server returned HTTP 503.",
+    );
+  });
+
+  it("retains unknown remote diagnostics", () => {
+    expect(desktopConnectionError("zh-CN", new Error("ECONNRESET"))).toBe("Error: ECONNRESET");
+  });
+
   it.each(["zh-CN", "zh-TW", "zh-Hans", "zh_HK", "ZH-cn"])(
     "uses only Chinese copy for %s",
     (locale) => {

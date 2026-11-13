@@ -19,6 +19,15 @@ const chinese = {
   Usage: "用量",
   Connections: "连接管理",
   "Connect to remote server": "连接远程服务器",
+  "Enter an HTTPS server origin without credentials, a path, query, or fragment.":
+    "请输入不含凭据、路径、查询或片段的 HTTPS 服务器地址。",
+  "Invalid remote server identity.": "远程服务器标识无效。",
+  "Remote server returned HTTP {status}.": "远程服务器返回 HTTP {status}。",
+  "Remote server response is too large.": "远程服务器响应过大。",
+  "The server did not return a valid Cox environment descriptor.":
+    "服务器未返回有效的 Cox 环境描述信息。",
+  "Remote Cox servers must enable COX_AUTH_PASSWORD.":
+    "远程 Cox 服务器必须启用 COX_AUTH_PASSWORD。",
   "Updating quits Cox. Remote agent tasks and terminals continue on the server.":
     "更新会退出 Cox；远程 Agent 任务和终端会继续在服务器上运行。",
   "The client update is not ready.": "客户端更新尚未就绪。",
@@ -128,6 +137,16 @@ export function desktopText(
 ): string {
   const text = /^zh(?:[-_]|$)/i.test(locale) ? chinese[key] : key;
   return text.replace(/\{([^}]+)\}/g, (placeholder, name: string) => values[name] ?? placeholder);
+}
+
+export function desktopConnectionError(locale: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const httpStatus = /^Remote server returned HTTP (\d+)\.$/.exec(message)?.[1];
+  if (httpStatus)
+    return desktopText(locale, "Remote server returned HTTP {status}.", { status: httpStatus });
+  return Object.hasOwn(chinese, message)
+    ? desktopText(locale, message as TextKey)
+    : String(error);
 }
 
 export function desktopUpdateNotice(locale: string, state: DesktopBackendUpdateState) {
