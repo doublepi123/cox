@@ -5468,6 +5468,82 @@ it.layer(layer)("model service gateway", (it) => {
         expect(result.text).not.toContain("cox_model_service_incomplete_stream");
       }).pipe(Effect.scoped),
   );
+  it.effect.each(["done", "trailing-data", "disconnect"])(
+    "preserves a Chat tool-call error without replaying the request (%s)",
+    (ending) =>
+      Effect.gen(function* () {
+        const ready = yield* Deferred.make<void>();
+        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+        const encoder = new TextEncoder();
+        const h = yield* harness({
+          protocol: "openai-chat",
+          recovery: { retryEnabled: true, retryToolRequests: true, maxAttempts: 3 },
+          respond: () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(output) {
+                  controller = output;
+                  Deferred.doneUnsafe(ready, Effect.void);
+                  output.enqueue(
+                    encoder.encode(
+                      chatStreamFrame({
+                        tool_calls: [
+                          {
+                            index: 0,
+                            id: "call_eval",
+                            type: "function",
+                            function: { name: "eval", arguments: '{"code":"1 + 1"}' },
+                          },
+                        ],
+                      }),
+                    ),
+                  );
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        const fiber = yield* h
+          .invoke("/v1/chat/completions", {
+            model: "Vendor/Exact",
+            messages: [{ role: "user", content: "Evaluate an expression" }],
+            stream: true,
+            tools: [
+              {
+                type: "function",
+                function: {
+                  name: "eval",
+                  parameters: { type: "object", properties: { code: { type: "string" } } },
+                },
+              },
+            ],
+          })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(ready);
+        yield* TestClock.adjust("1 second");
+        if (!controller) throw new Error("Missing stream controller");
+        controller.enqueue(
+          encoder.encode(sseFrame({ error: { message: "malformed_function_call" } })),
+        );
+        yield* TestClock.adjust("1 second");
+        if (ending === "disconnect") controller.error(new Error("upstream disconnected"));
+        else {
+          controller.enqueue(
+            encoder.encode(
+              ending === "done"
+                ? "data: [DONE]\n\n"
+                : sseFrame({ choices: [], usage: { completion_tokens: 0 } }),
+            ),
+          );
+          controller.close();
+        }
+        const result = yield* Fiber.join(fiber);
+        expect(result.text).toContain("call_eval");
+        expect(result.text.match(/malformed_function_call/g)).toHaveLength(1);
+        expect(result.text).not.toContain("cox_model_service_incomplete_stream");
+        expect(h.calls).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
   it.effect("unions configured and incoming Anthropic betas", () =>
     Effect.gen(function* () {
       const h = yield* harness({
