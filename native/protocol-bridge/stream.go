@@ -28,6 +28,7 @@ type streamCompletion struct {
 	sequence           int
 	usage              map[string]json.RawMessage
 	itemBytes          int
+	stopReason         string
 }
 
 type streamState struct {
@@ -243,12 +244,13 @@ func (s *session) observeSource(frame string) error {
 		if choice.Index < 0 || choice.Index >= 128 {
 			return errors.New("The upstream Chat stream has too many choices.")
 		}
-		if s.completion.choices[choice.Index] != "" {
-			return errors.New("The upstream Chat stream continued a finished choice.")
-		}
 		var delta struct {
-			FunctionCall json.RawMessage `json:"function_call"`
-			Tools        []struct {
+			Content          string          `json:"content"`
+			Reasoning        string          `json:"reasoning"`
+			ReasoningContent string          `json:"reasoning_content"`
+			Refusal          string          `json:"refusal"`
+			FunctionCall     json.RawMessage `json:"function_call"`
+			Tools            []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Function struct {
@@ -262,6 +264,12 @@ func (s *session) observeSource(frame string) error {
 		}
 		if len(delta.FunctionCall) > 0 && string(delta.FunctionCall) != "null" {
 			return errors.New("Legacy Chat function calls cannot be converted safely to Responses.")
+		}
+		if finished := s.completion.choices[choice.Index]; finished != "" {
+			if delta.Content != "" || delta.Reasoning != "" || delta.ReasoningContent != "" || delta.Refusal != "" || len(delta.Tools) > 0 || (choice.FinishReason != nil && *choice.FinishReason != finished) {
+				return errors.New("The upstream Chat stream continued a finished choice.")
+			}
+			continue
 		}
 		for _, part := range delta.Tools {
 			if part.Index < 0 || part.Index >= 4096 {
@@ -434,6 +442,9 @@ func (s *session) observeConverted(chunks [][]byte) error {
 }
 
 func (s *session) finishStream() ([][]byte, error) {
+	if s.completion.failed && s.completion.terminal {
+		return nil, nil
+	}
 	if s.to == tr.FormatOpenAI && !s.completion.sourceDone {
 		return nil, errors.New("The upstream Chat stream ended without [DONE].")
 	}

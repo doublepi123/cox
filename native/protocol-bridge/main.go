@@ -193,10 +193,16 @@ func (s *session) handle(in input) (out output) {
 		if !json.Valid(body) {
 			return output{Error: "The upstream response could not be converted."}
 		}
+		body = s.responseStopCompat(body, s.sourceStopReason(raw))
 		return output{Body: body}
 	case "chunk":
 		if s.original == nil || !s.stream {
 			return output{Error: "No streaming request is active."}
+		}
+		if !s.completion.finalized {
+			if chunks := s.upstreamErrorFrame(in.Chunk); chunks != nil {
+				return output{Chunks: chunks}
+			}
 		}
 		if err := s.observeSource(in.Chunk); err != nil {
 			return output{Error: err.Error()}
@@ -216,6 +222,7 @@ func (s *session) handle(in input) (out output) {
 			}
 			framed = append(framed, chunk)
 		}
+		framed = s.streamStopCompat(framed, in.Chunk)
 		framed, err := s.normalizeResponseTerminal(framed)
 		if err != nil {
 			return output{Error: err.Error()}
