@@ -90,8 +90,19 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
       reason: null,
       tools: new Map<number, ChatStreamTool>(),
     };
-    if (state.reason !== null)
+    if (state.reason !== null) {
+      const trailer = record(choice.delta);
+      const accounting =
+        (choice.finish_reason == null || choice.finish_reason === state.reason) &&
+        [trailer.content, trailer.reasoning_content, trailer.reasoning, trailer.refusal].every(
+          (value) => value == null || value === "",
+        ) &&
+        (trailer.tool_calls == null ||
+          (Array.isArray(trailer.tool_calls) && trailer.tool_calls.length === 0)) &&
+        trailer.function_call == null;
+      if (accounting) return;
       return fail("invalid_stream_event", "The model service continued a finished Chat choice.");
+    }
     chatChoices.set(index, state);
     if (choice.delta != null && (typeof choice.delta !== "object" || Array.isArray(choice.delta)))
       return fail("invalid_stream_event", "The model service sent an invalid Chat delta.");

@@ -148,6 +148,56 @@ describe("model service stream integrity", () => {
       expect.objectContaining({ reason: "stream_limit" }),
     );
   });
+  it.each([
+    { name: "stop", head: chat({ content: "hi" }, "stop"), finish: "stop" },
+    {
+      name: "tool_calls",
+      head: chat(
+        { tool_calls: [{ index: 0, id: "call_a", function: { name: "read", arguments: "{}" } }] },
+        "tool_calls",
+      ),
+      finish: "tool_calls",
+    },
+  ])("accepts an OpenRouter usage trailer repeating finish_reason=$name", ({ head, finish }) => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    monitor.push(
+      encoder.encode(
+        head +
+          frame({
+            choices: [
+              { index: 0, delta: { role: "assistant", content: "" }, finish_reason: finish },
+            ],
+            usage: { prompt_tokens: 3, completion_tokens: 2 },
+          }) +
+          "data: [DONE]\n\n",
+      ),
+    );
+    monitor.finish();
+    expect(monitor.snapshot()).toMatchObject({
+      terminal: "completed",
+      validationError: undefined,
+      output: { outputTokens: 2 },
+    });
+  });
+
+  it.each([
+    { name: "content", text: chat({ content: "more" }) },
+    { name: "reasoning", text: chat({ reasoning_content: "more" }) },
+    { name: "refusal", text: chat({ refusal: "no" }) },
+    {
+      name: "tool data",
+      text: chat({ tool_calls: [{ index: 0, function: { arguments: "{}" } }] }),
+    },
+    { name: "a different finish_reason", text: chat({}, "length") },
+    { name: "empty-delta different finish_reason", text: chat({ content: "" }, "tool_calls") },
+  ])("still rejects a finished Chat choice receiving $name", ({ text }) => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    monitor.push(encoder.encode(chat({ content: "hi" }, "stop")));
+    expect(() => monitor.push(encoder.encode(text))).toThrow(
+      expect.objectContaining({ reason: "invalid_stream_event" }),
+    );
+  });
+
   it("separates protocol completion from an explicitly zero-generated empty stop", () => {
     const monitor = makeModelServiceStreamMonitor("openai-chat");
     monitor.push(
