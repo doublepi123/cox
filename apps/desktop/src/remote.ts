@@ -54,14 +54,64 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function readJson(fetcher: typeof fetch, url: string, signal: AbortSignal): Promise<unknown> {
+export class RemoteGatewayRequiredError extends Error {
+  readonly origin: string;
+  constructor(origin: string) {
+    super("Sign in to Cloudflare Access to connect to this server.");
+    this.origin = origin;
+  }
+}
+
+export function isCloudflareAccessGate(origin: string, status: number, headers: Headers): boolean {
+  if (status >= 300 && status < 400) {
+    const location = headers.get("location");
+    if (!location) return false;
+    try {
+      const target = new URL(location, origin);
+      return (
+        target.protocol === "https:" &&
+        (target.hostname.toLowerCase().endsWith(".cloudflareaccess.com") ||
+          (target.origin === origin && target.pathname.startsWith("/cdn-cgi/access/")))
+      );
+    } catch {
+      return false;
+    }
+  }
+  if (status !== 401 && status !== 403) return false;
+  return (
+    [...headers.keys()].some((name) => name.startsWith("cf-access-")) ||
+    /Cloudflare-Access/i.test(headers.get("www-authenticate") ?? "")
+  );
+}
+
+export function isCloudflareAccessUrl(target: string): boolean {
+  try {
+    const url = new URL(target);
+    return (
+      url.protocol === "https:" && url.hostname.toLowerCase().endsWith(".cloudflareaccess.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function readJson(
+  fetcher: typeof fetch,
+  origin: string,
+  url: string,
+  signal: AbortSignal,
+): Promise<unknown> {
   const response = await fetcher(url, {
     cache: "no-store",
-    credentials: "omit",
+    credentials: "include",
     headers: { accept: "application/json" },
-    redirect: "error",
+    redirect: "manual",
     signal,
   });
+  if (isCloudflareAccessGate(origin, response.status, response.headers))
+    throw new RemoteGatewayRequiredError(origin);
+  if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400))
+    throw new Error("Remote server redirected the request. Enter the server's final HTTPS origin.");
   if (!response.ok) throw new Error(`Remote server returned HTTP ${response.status}.`);
   const text = await response.text();
   if (text.length > 1_000_000) throw new Error("Remote server response is too large.");
@@ -75,7 +125,7 @@ export async function inspectRemoteServer(
 ): Promise<RemoteServerInspection> {
   const origin = normalizeRemoteOrigin(originInput);
   const descriptor = record(
-    await readJson(fetcher, `${origin}/.well-known/t3/environment`, signal),
+    await readJson(fetcher, origin, `${origin}/.well-known/t3/environment`, signal),
   );
   if (
     !descriptor ||
@@ -84,7 +134,7 @@ export async function inspectRemoteServer(
     !nonEmptyString(descriptor.serverVersion)
   )
     throw new Error("The server did not return a valid Cox environment descriptor.");
-  const session = record(await readJson(fetcher, `${origin}/api/auth/session`, signal));
+  const session = record(await readJson(fetcher, origin, `${origin}/api/auth/session`, signal));
   const auth = record(session?.auth);
   if (auth?.loginMode !== "password")
     throw new Error("Remote Cox servers must enable COX_AUTH_PASSWORD.");

@@ -127,7 +127,7 @@ export class DesktopConnectionStore {
         "The server identity changed. Forget this server and add it again only if this was expected.",
       );
     const profile: RemoteConnectionProfile = {
-      id: existing?.id ?? newRemoteProfileId(),
+      id: existing?.id ?? (input.id ? remoteProfileId(input.id) : newRemoteProfileId()),
       name: input.name?.trim() || existing?.name || inspection.label,
       ...inspection,
       origin: normalizedOrigin,

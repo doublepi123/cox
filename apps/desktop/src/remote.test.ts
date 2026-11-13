@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   inspectRemoteServer,
+  isCloudflareAccessUrl,
   newRemoteProfileId,
   normalizeRemoteOrigin,
   remotePartition,
@@ -50,7 +51,7 @@ describe("remote Cox connections", () => {
     expect(() => remotePartition("../cox-desktop")).toThrow("Invalid remote server identity.");
   });
 
-  it("preflights the descriptor and password policy without credentials or redirects", async () => {
+  it("preflights the descriptor and password policy with profile cookies and no followed redirects", async () => {
     const fetcher = remoteFetcher();
     await expect(inspectRemoteServer("https://cox.example.com", fetcher)).resolves.toEqual({
       origin: "https://cox.example.com",
@@ -61,9 +62,74 @@ describe("remote Cox connections", () => {
     for (const call of fetcher.mock.calls)
       expect(call[1]).toMatchObject({
         cache: "no-store",
-        credentials: "omit",
-        redirect: "error",
+        credentials: "include",
+        redirect: "manual",
       });
+  });
+
+  it.each([
+    [
+      "an Access login redirect",
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://team.cloudflareaccess.com/cdn-cgi/access/login/cox" },
+      }),
+    ],
+    [
+      "a same-origin Access redirect",
+      new Response(null, { status: 302, headers: { location: "/cdn-cgi/access/login/cox" } }),
+    ],
+    [
+      "an Access challenge",
+      new Response(null, { status: 403, headers: { "cf-access-domain": "cox.example.com" } }),
+    ],
+    [
+      "an Access authentication header",
+      new Response(null, {
+        status: 401,
+        headers: { "www-authenticate": 'Cloudflare-Access realm="cox"' },
+      }),
+    ],
+  ])("requires a gateway sign-in for %s", async (_name, gate) => {
+    await expect(
+      inspectRemoteServer(
+        "https://cox.example.com",
+        vi.fn(async () => gate),
+      ),
+    ).rejects.toMatchObject({
+      name: "Error",
+      origin: "https://cox.example.com",
+      message: "Sign in to Cloudflare Access to connect to this server.",
+    });
+  });
+
+  it("rejects other redirects and plain authorization failures", async () => {
+    await expect(
+      inspectRemoteServer(
+        "https://cox.example.com",
+        vi.fn(
+          async () =>
+            new Response(null, {
+              status: 302,
+              headers: { location: "https://evil.example.com/cdn-cgi/access/login/cox" },
+            }),
+        ),
+      ),
+    ).rejects.toThrow("redirected");
+    await expect(
+      inspectRemoteServer(
+        "https://cox.example.com",
+        vi.fn(async () => new Response(null, { status: 403 })),
+      ),
+    ).rejects.toThrow("HTTP 403");
+  });
+
+  it("recognizes only HTTPS Cloudflare Access team pages", () => {
+    expect(isCloudflareAccessUrl("https://team.cloudflareaccess.com/cdn-cgi/access/login")).toBe(
+      true,
+    );
+    expect(isCloudflareAccessUrl("http://team.cloudflareaccess.com/")).toBe(false);
+    expect(isCloudflareAccessUrl("https://cloudflareaccess.com.evil.test/")).toBe(false);
   });
 
   it("rejects HTTP before making a remote request", async () => {

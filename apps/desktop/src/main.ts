@@ -24,7 +24,15 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createStartupPage } from "./startup-page.ts";
 import { createConnectionPage } from "./connection-page.ts";
 import { DesktopConnectionStore, type RemoteConnectionProfile } from "./connections.ts";
-import { inspectRemoteServer, remotePartition, type RemoteConnectionInput } from "./remote.ts";
+import {
+  inspectRemoteServer,
+  isCloudflareAccessUrl,
+  newRemoteProfileId,
+  RemoteGatewayRequiredError,
+  remotePartition,
+  type RemoteConnectionInput,
+  type RemoteServerInspection,
+} from "./remote.ts";
 import { trustedWindowAccess, type WindowAccess } from "./window-access.ts";
 import type { DesktopBackendUpdateState, DesktopClientUpdateState } from "@t3tools/contracts";
 import {
@@ -648,6 +656,122 @@ async function openExternal(target: string) {
   }
 }
 
+function remoteFetch(partition: string): typeof fetch {
+  return (input, init) => {
+    const request = new Request(input, init);
+    return new Promise<Response>((resolve, reject) => {
+      const client = net.request({
+        method: request.method,
+        url: request.url,
+        session: session.fromPartition(partition),
+        credentials: "include",
+        redirect: "manual",
+        cache: "no-store",
+      });
+      const abort = () => {
+        client.abort();
+        reject(request.signal.reason);
+      };
+      if (request.signal.aborted) {
+        abort();
+        return;
+      }
+      request.signal.addEventListener("abort", abort, { once: true });
+      for (const [name, value] of request.headers) client.setHeader(name, value);
+      client.on("redirect", (status, _method, location, headers) => {
+        const values = new Headers();
+        for (const [name, list] of Object.entries(headers))
+          for (const value of list) values.append(name, value);
+        values.set("location", location);
+        resolve(new Response(null, { status, headers: values }));
+        client.abort();
+      });
+      client.on("response", (response) => {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(response.headers))
+          for (const item of Array.isArray(value) ? value : [value]) headers.append(name, item);
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("error", reject);
+        response.on("end", () =>
+          resolve(
+            new Response(chunks.length ? Buffer.concat(chunks) : null, {
+              status: response.statusCode,
+              headers,
+            }),
+          ),
+        );
+      });
+      client.on("error", reject);
+      client.end();
+    });
+  };
+}
+
+const gatewaySignIns = new Map<string, Promise<void>>();
+
+function signInToGateway(partition: string, serverOrigin: string): Promise<void> {
+  const pending = gatewaySignIns.get(partition);
+  if (pending) {
+    for (const target of BrowserWindow.getAllWindows())
+      if (target.webContents.session === session.fromPartition(partition) && !target.isVisible())
+        target.show();
+    return pending;
+  }
+  const signIn = new Promise<void>((resolve, reject) => {
+    const target = new BrowserWindow({
+      width: 520,
+      height: 720,
+      minWidth: 400,
+      minHeight: 360,
+      title: text("Cloudflare Access sign-in"),
+      backgroundColor: "#151518",
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        partition,
+      },
+    });
+    if (!configuredSessions.has(partition)) {
+      target.webContents.session.setPermissionCheckHandler(() => false);
+      target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
+        callback(false),
+      );
+    }
+    let finished = false;
+    const finish = (error?: Error) => {
+      if (finished) return;
+      finished = true;
+      if (error) reject(error);
+      else resolve();
+      if (!target.isDestroyed()) target.destroy();
+    };
+    const guard = (event: Event, url: string) => {
+      if (!url.startsWith("https://")) event.preventDefault();
+    };
+    target.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    target.webContents.on("will-navigate", guard);
+    target.webContents.on("will-redirect", guard);
+    target.webContents.on("will-attach-webview", (event) => event.preventDefault());
+    target.webContents.on("did-navigate", (_event, url) => {
+      const page = URL.parse(url);
+      if (page?.origin === serverOrigin && !page.pathname.startsWith("/cdn-cgi/")) finish();
+    });
+    target.once("closed", () =>
+      finish(new Error("Cloudflare Access sign-in was closed before it finished.")),
+    );
+    if (process.platform === "win32") target.setMenuBarVisibility(false);
+    target.loadURL(serverOrigin).catch((error: unknown) => {
+      if (!(error instanceof Error && "code" in error && error.code === "ERR_ABORTED"))
+        finish(error instanceof Error ? error : new Error(String(error)));
+    });
+  }).finally(() => gatewaySignIns.delete(partition));
+  gatewaySignIns.set(partition, signIn);
+  return signIn;
+}
+
 async function start() {
   const transactionId = app.commandLine.getSwitchValue("cox-update-transaction");
   if (app.isPackaged && process.platform === "darwin" && transactionId) {
@@ -866,6 +990,17 @@ async function start() {
       if (localPageUrl && target === localPageUrl) return;
       if (origin && isBackendNavigation(target, origin)) return;
       event.preventDefault();
+      const remoteOrigin = connectionMode === "remote" ? origin : undefined;
+      if (remoteOrigin && isCloudflareAccessUrl(target)) {
+        const partition = mainPartition;
+        void signInToGateway(partition, remoteOrigin)
+          .then(async () => {
+            if (window && mainPartition === partition && origin === remoteOrigin)
+              await window.loadURL(remoteOrigin);
+          })
+          .catch((error: unknown) => process.stderr.write(`${String(error)}\n`));
+        return;
+      }
       void openExternal(target);
     };
     target.webContents.on("will-navigate", guardNavigation);
@@ -1566,10 +1701,21 @@ async function start() {
       void openExternal(url);
       return { action: "deny" };
     });
+    let signingIn = false;
     const guard = (event: Event, url: string) => {
       if (isBackendNavigation(url, profile.origin)) return;
       event.preventDefault();
-      void openExternal(url);
+      if (!isCloudflareAccessUrl(url)) {
+        void openExternal(url);
+        return;
+      }
+      signingIn = true;
+      void signInToGateway(remotePartition(profile.id), profile.origin)
+        .then(async () => {
+          if (!target.isDestroyed()) await target.loadURL(profile.origin);
+        })
+        .catch((error: unknown) => process.stderr.write(`${String(error)}\n`))
+        .finally(() => (signingIn = false));
     };
     target.webContents.on("will-navigate", guard);
     target.webContents.on("will-redirect", guard);
@@ -1602,6 +1748,7 @@ async function start() {
       await target.loadURL(profile.origin);
       return target;
     } catch (error) {
+      if (signingIn) return target;
       if (!target.isDestroyed()) target.destroy();
       throw error;
     }
@@ -1640,9 +1787,27 @@ async function start() {
         connected.focus();
         return;
       }
-      const inspection = await inspectRemoteServer(targetOrigin, (input, init) =>
-        net.fetch(input instanceof URL ? input.href : input, init),
-      );
+      const requestedOrigin = URL.parse(targetOrigin.trim())?.origin;
+      const profileId =
+        existing?.id ??
+        connectionStore.snapshot().profiles.find((profile) => profile.origin === requestedOrigin)
+          ?.id ??
+        newRemoteProfileId();
+      const partition = remotePartition(profileId);
+      let inspection: RemoteServerInspection;
+      try {
+        inspection = await inspectRemoteServer(targetOrigin, remoteFetch(partition));
+      } catch (error) {
+        if (!(error instanceof RemoteGatewayRequiredError)) throw error;
+        try {
+          await signInToGateway(partition, error.origin);
+          inspection = await inspectRemoteServer(error.origin, remoteFetch(partition));
+        } catch (signInError) {
+          if (!connectionStore.profile(profileId))
+            await session.fromPartition(partition).clearStorageData();
+          throw signInError;
+        }
+      }
       if (
         approvedQuit ||
         quitPending ||
@@ -1652,7 +1817,7 @@ async function start() {
       )
         return;
       const profile = connectionStore.saveRemote(inspection, {
-        ...(input.id ? { id: input.id } : {}),
+        id: profileId,
         ...(input.name !== undefined ? { name: input.name } : {}),
       });
       if (manager && !manager.isDestroyed())
@@ -1687,7 +1852,6 @@ async function start() {
       connectionGeneration++;
       if (window) closeOwnerPages(window);
       activeRemoteProfile = profile;
-      const partition = remotePartition(profile.id);
       if (mainPartition !== partition) replaceMainWindow(partition);
       connectionMode = "remote";
       showWindow();

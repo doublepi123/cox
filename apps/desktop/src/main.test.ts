@@ -309,6 +309,12 @@ function satellites() {
   );
 }
 
+function gatewayWindow() {
+  return fixture.windows.find(
+    (target) => !target.destroyed && target.options.title === "Cloudflare Access sign-in",
+  );
+}
+
 function clickMenu(match: (item: MenuItemConstructorOptions) => boolean) {
   const flatten = (items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
     items.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? flatten(item.submenu) : [])]);
@@ -1458,6 +1464,51 @@ describe("desktop connection manager windows", () => {
       expect(fixture.quit).not.toHaveBeenCalled();
     },
   );
+
+  it("signs in to Cloudflare Access in the profile session before saving the connection", async () => {
+    await start();
+    const { RemoteGatewayRequiredError } = await import("./remote.ts");
+    fixture.inspect.mockRejectedValueOnce(new RemoteGatewayRequiredError(inspection.origin));
+    const pending = invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    await vi.waitFor(() => expect(gatewayWindow()).toBeDefined());
+    const signIn = gatewayWindow()!;
+    expect(signIn.options.webPreferences?.preload).toBeUndefined();
+    const partition = signIn.options.webPreferences?.partition;
+    const event = { preventDefault: vi.fn() };
+    signIn.webContents.emit("will-navigate", event, "http://team.cloudflareaccess.com/");
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    signIn.webContents.emit("did-navigate", {}, inspection.origin + "/cdn-cgi/access/authorized");
+    expect(signIn.destroyed).toBe(false);
+    signIn.webContents.emit("did-navigate", {}, inspection.origin + "/");
+    await pending;
+    expect(signIn.destroyed).toBe(true);
+    expect(fixture.inspect).toHaveBeenCalledTimes(2);
+    expect(satellites()[0]?.options.webPreferences?.partition).toBe(partition);
+    expect(JSON.parse(fixture.files.get(connectionsFile)!).profiles).toHaveLength(1);
+  });
+
+  it("discards an unsaved profile session when Cloudflare Access sign-in is closed", async () => {
+    await start();
+    const { RemoteGatewayRequiredError } = await import("./remote.ts");
+    fixture.inspect.mockRejectedValueOnce(new RemoteGatewayRequiredError(inspection.origin));
+    const pending = invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    await vi.waitFor(() => expect(gatewayWindow()).toBeDefined());
+    const signIn = gatewayWindow()!;
+    signIn.destroy();
+    await pending;
+    expect(fixture.inspect).toHaveBeenCalledOnce();
+    expect(signIn.webContents.session.clearStorageData).toHaveBeenCalledOnce();
+    expect(satellites()).toHaveLength(0);
+    expect(decodeURIComponent(manager().webContents.getURL())).toContain(
+      "Cloudflare Access sign-in was closed before it finished.",
+    );
+  });
 
   it("retains the escaped remote draft after the remote page fails to load", async () => {
     await start();

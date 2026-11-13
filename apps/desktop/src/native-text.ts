@@ -28,6 +28,13 @@ const chinese = {
     "服务器未返回有效的 Cox 环境描述信息。",
   "Remote Cox servers must enable COX_AUTH_PASSWORD.":
     "远程 Cox 服务器必须启用 COX_AUTH_PASSWORD。",
+  "Cloudflare Access sign-in": "Cloudflare Access 登录",
+  "Sign in to Cloudflare Access to connect to this server.":
+    "请先登录 Cloudflare Access 再连接此服务器。",
+  "Cloudflare Access sign-in was closed before it finished.":
+    "Cloudflare Access 登录窗口在完成前被关闭。",
+  "Remote server redirected the request. Enter the server's final HTTPS origin.":
+    "远程服务器重定向了请求，请输入服务器最终的 HTTPS 地址。",
   "Updating quits Cox. Remote agent tasks and terminals continue on the server.":
     "更新会退出 Cox；远程 Agent 任务和终端会继续在服务器上运行。",
   "The client update is not ready.": "客户端更新尚未就绪。",
