@@ -220,6 +220,10 @@ export interface PiAdapterV2Options {
     readonly connect: typeof makePiRpcConnection;
     readonly materializeExtension: typeof materializePiT3McpExtension;
     readonly buildLaunch: typeof buildPiRpcLaunch;
+    readonly prepareThread?: (
+      connection: PiRpcConnection,
+      input: ProviderAdapter.ProviderAdapterV2EnsureThreadInput,
+    ) => Effect.Effect<void, PiRpcError | PiRpcTimeoutError>;
     readonly capabilities?: OrchestrationV2ProviderCapabilities;
     readonly nativeSubagents?: { readonly requestName: string };
     readonly applyRuntimePolicy?: (
@@ -540,6 +544,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         input.providerSessionId,
       );
       const launch = buildLaunch({
+        modelSelection: input.modelSelection,
         launchArgs: resolvedLaunchArgs.args,
         environment: sessionEnvironment,
         mcpSession,
@@ -2770,11 +2775,12 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               if (state?.activeTurn != null) {
                 state.activeTurn.failure = interrupted
                   ? null
-                  : makeProviderFailure({
+                  : (state.activeTurn.failure ??
+                    makeProviderFailure({
                       cause,
                       message: "Pi process exited unexpectedly.",
                       class: "transport_error",
-                    });
+                    }));
                 yield* finalizeTurn(state, false);
               } else {
                 yield* cancelPendingPrompts(yield* DateTime.now);
@@ -2845,6 +2851,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         const needsNewSession = resumeId == null && registrationAttempted;
         registrationAttempted = true;
         if (resumeId != null || needsNewSession) {
+          if (options.runtime?.prepareThread !== undefined)
+            yield* options.runtime.prepareThread(connection, threadInput);
           lastNativeThreadId = resumeId ?? lastNativeThreadId;
           // Failed lifecycle operations can still change native sessions; invalidate bindings and defaults.
           threadState = null;
@@ -2869,7 +2877,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         contextWindow = rememberModelContextWindow(recordField(stateData, "model"));
         // Capture each baseline before applying selections so our own choices cannot become Pi defaults.
         if (baselineModel === null && appliedModel === null) {
-          const stateModel = recordField(stateData, "model");
+          const stateModel =
+            recordField(stateData, "coxBaselineModel") ?? recordField(stateData, "model");
           const provider = recordString(stateModel, "provider");
           const modelId = recordString(stateModel, "id");
           if (provider !== undefined && modelId !== undefined) {
@@ -2877,8 +2886,21 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           }
         }
         if (baselineThinking === null && appliedThinking === null) {
-          baselineThinking = recordString(stateData, "thinkingLevel") ?? null;
-          appliedThinking = baselineThinking;
+          baselineThinking =
+            recordString(stateData, "coxBaselineThinking") ??
+            recordString(stateData, "thinkingLevel") ??
+            null;
+          appliedThinking = recordString(stateData, "thinkingLevel") ?? null;
+        }
+        if (
+          recordField(stateData, "coxBaselineModel") !== undefined &&
+          threadInput.modelSelection.model !== PI_INHERIT_MODEL_SLUG
+        ) {
+          const currentModel = recordField(stateData, "model");
+          const provider = recordString(currentModel, "provider");
+          const modelId = recordString(currentModel, "id");
+          if (provider !== undefined && modelId !== undefined)
+            appliedModel = `${provider}/${modelId}`;
         }
         // switch_session accepts a file path, not Pi's display session UUID.
         const nativeId = recordString(stateData, "sessionFile");

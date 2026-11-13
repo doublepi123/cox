@@ -646,6 +646,115 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("PiAdapterV2", () => {
+  it.effect("restores the native baseline after an early OMO model selection", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime } = yield* openRuntime(fake, "cox/selected");
+      fake.queueState({
+        model: { provider: "cox", id: "selected" },
+        coxBaselineModel: { provider: "cox", id: "original" },
+        coxBaselineThinking: "low",
+        thinkingLevel: "high",
+      });
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("cox/selected"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread, "default");
+      assert.isTrue(
+        fake
+          .allRequests()
+          .some(
+            (request) =>
+              request.type === "set_model" &&
+              request.provider === "cox" &&
+              request.modelId === "original",
+          ),
+      );
+      assert.isTrue(
+        fake
+          .allRequests()
+          .some((request) => request.type === "set_thinking_level" && request.level === "low"),
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+  it.effect("prepares the selected model before restoring a native session", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      let launchedModel: string | undefined;
+      const native: NonNullable<PiAdapterV2Options["runtime"]> = {
+        driver: PI_PROVIDER,
+        label: "Pi",
+        connect: makePiRpcConnection,
+        materializeExtension: materializePiT3McpExtension,
+        buildLaunch: (input) => {
+          launchedModel = input.modelSelection?.model;
+          return buildPiRpcLaunch(input);
+        },
+        prepareThread: (connection, input) =>
+          connection
+            .request({
+              type: "extension_request",
+              name: "fixture.prepare",
+              data: { model: input.modelSelection.model },
+            })
+            .pipe(Effect.asVoid),
+      };
+      const { runtime } = yield* openRuntime(
+        fake,
+        "default",
+        THREAD_ID,
+        SESSION_ID,
+        undefined,
+        undefined,
+        native,
+      );
+      assert.equal(launchedModel, "default");
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* runtime.resumeThread({
+        providerThread,
+        modelSelection: modelSelection("cox/selected"),
+      });
+      const requests = fake.allRequests();
+      const prepared = requests.findIndex((request) => request.name === "fixture.prepare");
+      const switched = requests.findIndex((request) => request.type === "switch_session");
+      assert.isAtLeast(prepared, 0);
+      assert.isAbove(switched, prepared);
+      assert.deepEqual(requests[prepared]?.data, { model: "cox/selected" });
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
+  it.effect("keeps the provider error when a stranded native process is retired", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.emit({ type: "agent_start" });
+      yield* fake.emit({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          stopReason: "error",
+          errorMessage: "Offline model_not_found",
+          content: [],
+        },
+      });
+      yield* fake.closeStdout;
+      const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isTrue(terminal.type === "turn.terminal" && terminal.status === "failed");
+      assert.include(JSON.stringify(terminal), "Offline model_not_found");
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect("accepts authoritative DAG retries at an unchanged completion timestamp", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;

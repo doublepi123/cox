@@ -114,6 +114,71 @@ export function omoSessionState(value: unknown, ephemeral = false): unknown {
     : { ...state, isStreaming: true };
 }
 
+export class OmoFailureRecovery {
+  private runId: string | undefined;
+  private failed = false;
+  private idle = false;
+
+  reset() {
+    this.runId = undefined;
+    this.failed = false;
+    this.idle = false;
+  }
+
+  observe(event: PiRpcRecord): boolean {
+    if (event.type === "agent_start") {
+      this.reset();
+      this.runId = typeof event.runId === "string" ? event.runId : undefined;
+    }
+    if (event.type === "message_end" && record(event.message).role === "assistant")
+      this.failed = record(event.message).stopReason === "error";
+    if (event.type === "auto_retry_start") this.idle = false;
+    if (event.type === "agent_idle") this.idle = true;
+    return (
+      this.failed &&
+      this.idle &&
+      (event.type === "agent_idle" || event.type === "session_lifecycle")
+    );
+  }
+
+  stranded(value: unknown): boolean {
+    return (
+      this.failed &&
+      this.idle &&
+      this.runId !== undefined &&
+      record(record(value).lifecycle).runId === this.runId &&
+      omoStrandedFailure(value)
+    );
+  }
+}
+
+function omoStrandedFailure(value: unknown): boolean {
+  const state = record(value);
+  const lifecycle = record(state.lifecycle);
+  const waits = record(lifecycle.waitingOn);
+  return (
+    lifecycle.role === "root" &&
+    lifecycle.state === "running" &&
+    lifecycle.restoring === false &&
+    lifecycle.persisted === true &&
+    typeof lifecycle.runId === "string" &&
+    lifecycle.activity === undefined &&
+    Array.isArray(lifecycle.holds) &&
+    lifecycle.holds.length === 0 &&
+    waits.children === 0 &&
+    Array.isArray(waits.background) &&
+    waits.background.length === 0 &&
+    Array.isArray(waits.human) &&
+    waits.human.length === 0 &&
+    state.isStreaming === false &&
+    state.isCompacting === false &&
+    state.isBashRunning === false &&
+    state.retryAttempt === 0 &&
+    typeof state.pendingMessageCount === "number" &&
+    state.pendingMessageCount > 0
+  );
+}
+
 export function omoTaskEvent(value: unknown, nativeThreadId?: string): PiRpcRecord | undefined {
   const data = record(value);
   if (!Array.isArray(data.tasks)) return undefined;
@@ -274,6 +339,8 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
     const events = yield* Queue.unbounded<PiRpcRecord, PiRpcError>();
     const ephemeral = options.env.COX_OMO_EPHEMERAL === "1";
     const lifecycle = new OmoLifecycle(ephemeral);
+    let selectionBaseline: PiRpcRecord = {};
+    const failureRecovery = new OmoFailureRecovery();
     const taskUpdates = new OmoTaskUpdates();
     const dagUpdates = new OmoDagUpdates();
     let boundState: PiRpcRecord = {};
@@ -513,6 +580,23 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           }
         }
         for (const item of translated) yield* Queue.offer(events, item);
+        if (failureRecovery.observe(event)) {
+          const generation = bindingGeneration;
+          const state = record(
+            yield* connection
+              .request({ type: "get_state" })
+              .pipe(Effect.orElseSucceed(() => undefined)),
+          );
+          if (
+            generation === bindingGeneration &&
+            (event.sessionId === undefined || state.sessionId === event.sessionId) &&
+            failureRecovery.stranded(state)
+          ) {
+            yield* connection
+              .request({ type: "clear_queue" })
+              .pipe(Effect.ensuring(connection.terminate), Effect.ignore);
+          }
+        }
       }
     }).pipe(
       Effect.catchCause((cause) => Queue.failCause(events, cause)),
@@ -539,6 +623,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
       const initialized = record(
         yield* connection.request({ type: "extension_request", name: "cox.omo.ready", data: {} }),
       );
+      selectionBaseline = record(initialized.selectionBaseline);
       const failure = omoStartupFailure(initialized);
       if (failure !== undefined)
         return yield* new PiRpcError({
@@ -564,11 +649,13 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           });
         if (["new_session", "switch_session", "fork"].includes(String(input.type))) {
           lifecycle.reset();
+          failureRecovery.reset();
           taskUpdates.reset();
           dagUpdates.reset();
           bindingGeneration++;
           dagHeads.clear();
           boundState = {};
+          selectionBaseline = {};
           taskTranscripts.clear();
         }
         if (input.type === "extension_request" && input.name === "cox.omo.tasks") {
@@ -601,6 +688,19 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
               : input,
           timeoutMs,
         );
+        if (
+          ["new_session", "switch_session", "fork"].includes(String(input.type)) &&
+          options.env.COX_OMO_EXTENSION_REQUIRED === "1"
+        ) {
+          const initialized = record(
+            yield* connection.request({
+              type: "extension_request",
+              name: "cox.omo.ready",
+              data: {},
+            }),
+          );
+          selectionBaseline = record(initialized.selectionBaseline);
+        }
         if (input.type === "abort") {
           const stopped = yield* Effect.gen(function* () {
             if (record(response).stopped !== true) return false;
@@ -652,7 +752,15 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
         if (input.type !== "get_state") return response;
         bindState(response);
         return yield* Effect.try({
-          try: () => omoSessionState(response, ephemeral),
+          try: () =>
+            omoSessionState(
+              {
+                ...record(response),
+                coxBaselineModel: selectionBaseline.model,
+                coxBaselineThinking: selectionBaseline.thinkingLevel,
+              },
+              ephemeral,
+            ),
           catch: (cause) => new PiRpcError({ operation: "get_state", cause }),
         });
       }),

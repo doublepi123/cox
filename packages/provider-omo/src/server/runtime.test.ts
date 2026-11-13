@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   OmoLifecycle,
+  OmoFailureRecovery,
   omoSessionState,
   omoTaskEvent,
   OmoTaskUpdates,
@@ -8,6 +9,79 @@ import {
   omoStartupFailure,
   omoTaskIsQuiescent,
 } from "./runtime.ts";
+
+describe("OMO stranded provider failure", () => {
+  const state = {
+    isStreaming: false,
+    isCompacting: false,
+    isBashRunning: false,
+    retryAttempt: 0,
+    pendingMessageCount: 1,
+    lifecycle: {
+      role: "root",
+      state: "running",
+      runId: "run",
+      restoring: false,
+      persisted: true,
+      holds: [],
+      waitingOn: { children: 0, background: [], human: [] },
+    },
+  };
+  const failed = () => {
+    const recovery = new OmoFailureRecovery();
+    recovery.observe({ type: "agent_start", runId: "run" });
+    recovery.observe({ type: "message_end", message: { role: "assistant", stopReason: "error" } });
+    recovery.observe({ type: "agent_idle" });
+    return recovery;
+  };
+  it("requires both an assistant failure and a native idle boundary", () => {
+    const recovery = new OmoFailureRecovery();
+    expect(recovery.stranded(state)).toBe(false);
+    recovery.observe({ type: "agent_start", runId: "run" });
+    recovery.observe({ type: "message_end", message: { role: "assistant", stopReason: "error" } });
+    expect(recovery.stranded(state)).toBe(false);
+    expect(recovery.observe({ type: "agent_idle" })).toBe(true);
+    expect(recovery.stranded(state)).toBe(true);
+  });
+  it("does not recover streaming, compacting, bash, retrying or drained sessions", () => {
+    for (const patch of [
+      { isStreaming: true },
+      { isCompacting: true },
+      { isBashRunning: true },
+      { retryAttempt: 1 },
+      { pendingMessageCount: 0 },
+    ])
+      expect(failed().stranded({ ...state, ...patch })).toBe(false);
+  });
+  it("preserves children, background work, human waits, holds and model activity", () => {
+    for (const patch of [
+      { waitingOn: { children: 1, background: [], human: [] } },
+      { waitingOn: { children: 0, background: [{ source: "memory" }], human: [] } },
+      { waitingOn: { children: 0, background: [], human: [{ key: "answer" }] } },
+      { holds: [{ kind: "session_hold" }] },
+      { activity: { kind: "model" } },
+      { role: "child" },
+      { runId: "next" },
+      { persisted: false },
+      { restoring: true },
+      { state: "done" },
+    ])
+      expect(failed().stranded({ ...state, lifecycle: { ...state.lifecycle, ...patch } })).toBe(
+        false,
+      );
+  });
+  it("rechecks after background settlement and forgets failures on replacement and retry", () => {
+    const recovery = failed();
+    expect(recovery.observe({ type: "session_lifecycle" })).toBe(true);
+    recovery.observe({ type: "auto_retry_start" });
+    expect(recovery.stranded(state)).toBe(false);
+    recovery.observe({ type: "agent_start", runId: "next" });
+    recovery.observe({ type: "agent_idle" });
+    expect(recovery.stranded(state)).toBe(false);
+    recovery.reset();
+    expect(recovery.stranded(state)).toBe(false);
+  });
+});
 
 describe("OMO startup health", () => {
   it("does not fail startup for explicitly excluded tools", () => {

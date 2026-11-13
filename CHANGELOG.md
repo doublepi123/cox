@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.79 — 2026-11-13
+
+- Apply the selected OMO model and thinking level before automatic startup or
+  restored-session work begins, while preserving native defaults for inheritance.
+- Retire failed OMO runs whose native input queue remains stranded after execution
+  stops. Preserve live children, background work, user waits and retry activity.
+- Keep the original provider error when retiring a failed native process, so the
+  run ends as failed and subsequent queued Cox messages can proceed.
+
 ## 0.1.78 — 2026-11-13
 
 - Recover requests when an upstream model explicitly rejects forced tool choice

@@ -17,7 +17,7 @@ import { OmoSettings } from "../settings.ts";
 import * as Schema from "effect/Schema";
 import * as Path from "effect/Path";
 import { prepareOmoConfiguration } from "./configuration.ts";
-import { buildOmoLaunch, materializeOmoExtension } from "./extension.ts";
+import { buildOmoLaunch, materializeOmoExtension, omoSessionSelection } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
 import { omoTodoSnapshot } from "./todo.ts";
 import { applyOmoRuntimePolicy } from "./permissions.ts";
@@ -55,6 +55,14 @@ export const OmoAdapterDriver: ProviderAdapterDriver<OmoSettings, OmoAdapterEnv>
           connect: makeOmoRpcConnection,
           materializeExtension: materializeOmoExtension,
           buildLaunch: buildOmoLaunch,
+          prepareThread: (connection, input) =>
+            connection
+              .request({
+                type: "extension_request",
+                name: "cox.omo.prepare",
+                data: omoSessionSelection(input.modelSelection),
+              })
+              .pipe(Effect.asVoid),
           nativeSubagents: { requestName: "cox.omo.tasks" },
           applyRuntimePolicy: applyOmoRuntimePolicy,
           todo: {

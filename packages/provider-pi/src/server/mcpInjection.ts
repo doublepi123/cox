@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
 import type { McpProviderSessionConfig } from "@t3tools/provider-core/server/mcpSession";
+import type { ModelSelection } from "@t3tools/contracts";
 import {
   PI_T3_MCP_EXTENSION_FILENAME,
   PI_T3_MCP_EXTENSION_SOURCE,
@@ -245,6 +246,7 @@ export const materializePiT3McpExtension = Effect.fn("materializePiT3McpExtensio
 });
 
 export function buildPiRpcLaunch(input: {
+  readonly modelSelection?: ModelSelection;
   readonly launchArgs: ReadonlyArray<string>;
   readonly environment: NodeJS.ProcessEnv;
   readonly mcpSession: McpProviderSessionConfig | undefined;

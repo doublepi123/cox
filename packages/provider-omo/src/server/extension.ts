@@ -7,6 +7,15 @@ import { omoPermissionPreset } from "./permissions.ts";
 import { OMO_SUBAGENT_TRANSCRIPT_SOURCE } from "./subagents.ts";
 import { OMO_RUNTIME_ASSETS_SOURCE } from "./runtimeAssets.ts";
 import { OMO_MEMORY_SOURCE } from "./memory.ts";
+import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+import type { ModelSelection } from "@t3tools/contracts";
+
+export function omoSessionSelection(selection: ModelSelection) {
+  return {
+    model: selection.model,
+    thinking: getModelSelectionStringOptionValue(selection, "thinking"),
+  };
+}
 
 export const OMO_EXTENSION_SOURCE = `
 import { pathToFileURL } from "node:url";
@@ -25,6 +34,29 @@ export default async function coxOmo(pi) {
   const runtime = await loadCoxOmoRuntimeAssets();
   const { entry, tasks } = runtime;
   pi.on("session_start", (_event, ctx) => runtime.assertNativeSession(ctx));
+  let selectionError;
+  let selectionBaseline;
+  pi.rpc.handle("cox.omo.prepare", async data => {
+    process.env.COX_OMO_SESSION_SELECTION = JSON.stringify(data);
+    return { prepared: true };
+  });
+  pi.on("session_start", async (event, ctx) => {
+    if (event.reason === "reload") return;
+    selectionError = undefined;
+    selectionBaseline = { model: ctx.model, thinkingLevel: pi.getThinkingLevel?.() };
+    try {
+      const selection = JSON.parse(process.env.COX_OMO_SESSION_SELECTION || "{}");
+      if (selection.model && selection.model !== "default") {
+        if (managed && !allowed.has(selection.model)) throw new Error("The selected model is outside this Cox binding.");
+        const model = ctx.modelRegistry.getAvailable().find(model => model.provider + "/" + model.id === selection.model);
+        if (!model || !(await pi.setSessionModel(model))) throw new Error("OMO Native could not restore the selected Cox model.");
+      }
+      if (selection.thinking) pi.setSessionThinkingLevel(selection.thinking);
+    } catch (error) {
+      selectionError = error instanceof Error ? error.message : String(error);
+      ctx.abort("system");
+    }
+  });
   if (runtime.kind === "npm") {
     if (!runtime.permissions.decisionModulePath) throw new Error("The selected OMO npm engine has no child permission module.");
     const childPermissions = await import(pathToFileURL(runtime.permissions.decisionModulePath).href);
@@ -122,6 +154,10 @@ export default async function coxOmo(pi) {
   ${OMO_TODO_BRIDGE_SOURCE}
   ${OMO_SUBAGENT_TRANSCRIPT_SOURCE}
   pi.on("before_agent_start", async (_event, ctx) => {
+    if (selectionError) {
+      ctx.abort("system");
+      throw new Error(selectionError);
+    }
     if (!pi.getPermissionPreset?.()) throw new Error("OMO Native's permission system is not active.");
     if (process.env.COX_OMO_MANAGED_MODELS === "1" && ctx.model?.provider !== "cox")
       throw new Error("This OMO Native instance must use a model from its Cox model service binding.");
@@ -136,6 +172,7 @@ export default async function coxOmo(pi) {
     }
   });
   pi.rpc.handle("cox.omo.ready", async () => {
+    if (selectionError) throw new Error(selectionError);
     await bridge.ensureReady().catch(() => undefined);
     const coxOrchestration = bridge.getHealth();
     const tool = pi.getAllTools().find(tool => tool.name === "task");
@@ -148,6 +185,7 @@ export default async function coxOmo(pi) {
     const coxRequired = !!process.env.T3_MCP_URL || !!process.env.T3_MCP_BEARER_TOKEN;
     const coxAvailable = !coxRequired || coxOrchestration.available;
     return {
+      selectionBaseline,
       ready: (!required || nativeTaskReady) && (!coxRequired || coxOrchestration.coxOrchestrationReady),
       available: nativeTaskAvailable && coxAvailable,
       nativeTaskReady,
@@ -186,6 +224,11 @@ export const buildOmoLaunch: typeof buildPiRpcLaunch = (input) => {
     args: [...launch.args, "--permission-preset", preset],
     env: {
       ...launch.env,
+      ...(input.modelSelection === undefined
+        ? {}
+        : {
+            COX_OMO_SESSION_SELECTION: JSON.stringify(omoSessionSelection(input.modelSelection)),
+          }),
       COX_NATIVE_PERMISSIONS: "1",
       OMO_SENPI_DISABLED: "1",
       COX_OMO_EXTENSION_REQUIRED:
