@@ -11,9 +11,15 @@ import { PI_T3_MCP_EXTENSION_SOURCE } from "@t3tools/provider-pi/server";
 import { buildOmoLaunch, OMO_EXTENSION_SOURCE } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
 
-it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER).each(["startup", "resume"])(
-  "applies selection before native %s and reaps a failed turn with stranded input",
-  async (reason) => {
+it
+  .skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER)
+  .each(
+    ["startup", "resume"].flatMap((reason) =>
+      ["input", "notification"].map((pending) => ({ reason, pending })),
+    ),
+  )(
+  "applies selection before native $reason and reaps a failed turn with stranded $pending",
+  async ({ reason, pending }) => {
     let releaseFailure: (() => void) | undefined;
     let receiveModel: (model: string) => void = () => {};
     const requestedModel = new Promise<string>((resolve) => {
@@ -27,6 +33,13 @@ it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER).each(["startup", "resume"])(
       request.on("end", () => {
         receiveModel((JSON.parse(body) as { model: string }).model);
         releaseFailure = () => {
+          if (pending === "notification") {
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            response.end(
+              `data: ${JSON.stringify({ error: { message: "malformed_function_call" } })}\n\ndata: [DONE]\n\n`,
+            );
+            return;
+          }
           response.writeHead(503, { "content-type": "application/json" });
           response.end(
             JSON.stringify({
@@ -57,6 +70,11 @@ it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER).each(["startup", "resume"])(
             path.join(temporary, "probe.ts"),
             `
 export default function probe(pi) {
+  pi.rpc.handle("cox.recovery.notify", async () => {
+    pi.sendMessage({ customType: "senpi-codemode:notification", content: "Detached eval cell offline (py) completed.", display: false },
+      { triggerTurn: true, deliverAs: "followUp" });
+    return { queued: true };
+  });
   pi.on("session_start", event => {
     if (event.reason === ${JSON.stringify(reason)}) pi.sendUserMessage("Offline automatic startup turn");
   });
@@ -174,24 +192,53 @@ export default function probe(pi) {
             yield* connection.request({ type: "switch_session", sessionPath });
           }
           expect(yield* Effect.promise(() => requestedModel)).toBe("selected");
-          expect(yield* connection.request({ type: "get_state" })).toMatchObject({
+          const initialState = (yield* connection.request({ type: "get_state" })) as Record<
+            string,
+            unknown
+          >;
+          expect(initialState).toMatchObject({
             model: { provider: "cox", id: "selected" },
             coxBaselineModel: { provider: "cox", id: "wrong" },
           });
-          yield* connection.request({
-            type: "prompt",
-            message: "Input arriving during the failed request",
-            streamingBehavior: "steer",
-          });
+          if (pending === "notification") {
+            yield* connection.request({
+              type: "extension_request",
+              name: "cox.recovery.notify",
+              data: {},
+            });
+          } else {
+            yield* connection.request({
+              type: "prompt",
+              message: "Input arriving during the failed request",
+              streamingBehavior: "steer",
+            });
+          }
           yield* Effect.sync(() => releaseFailure?.());
           let sawFailure = false;
+          let failureMessage: string | undefined;
           while (!sawFailure) {
             const event = yield* Queue.take(connection.events);
-            const message = event.message as { stopReason?: string } | undefined;
+            const message = event.message as
+              | { stopReason?: string; errorMessage?: string }
+              | undefined;
             sawFailure = event.type === "message_end" && message?.stopReason === "error";
+            if (sawFailure) failureMessage = message?.errorMessage;
           }
-          yield* connection.exited.pipe(Effect.ignore);
+          yield* connection.exited.pipe(Effect.ignore, Effect.timeout("10 seconds"));
           expect(sawFailure).toBe(true);
+          if (pending === "notification") {
+            expect(failureMessage).toBe("malformed_function_call");
+            if (typeof initialState.sessionFile !== "string") throw new Error("Session missing");
+            const transcript = (yield* fs.readFileString(initialState.sessionFile))
+              .trim()
+              .split("\n")
+              .map(
+                (line) => JSON.parse(line) as { customType?: string; data?: { state?: string } },
+              );
+            expect(
+              transcript.findLast((entry) => entry.customType === "session-lifecycle")?.data?.state,
+            ).toBe("failed");
+          }
         }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("30 seconds")),
       );
     } finally {

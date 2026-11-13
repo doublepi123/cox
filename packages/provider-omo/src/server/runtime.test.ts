@@ -34,6 +34,21 @@ describe("OMO stranded provider failure", () => {
     recovery.observe({ type: "agent_idle" });
     return recovery;
   };
+  const deliveryState = {
+    ...state,
+    pendingMessageCount: 0,
+    lifecycle: {
+      ...state.lifecycle,
+      state: "waiting_background",
+      runActive: false,
+      lastTurnEnd: { endedBy: "provider-error" },
+      waitingOn: {
+        children: 0,
+        background: [{ source: "delivery:senpi-codemode:notification:completed", activeCount: 1 }],
+        human: [],
+      },
+    },
+  };
   it("requires both an assistant failure and a native idle boundary", () => {
     const recovery = new OmoFailureRecovery();
     expect(recovery.stranded(state)).toBe(false);
@@ -52,6 +67,77 @@ describe("OMO stranded provider failure", () => {
       { pendingMessageCount: 0 },
     ])
       expect(failed().stranded({ ...state, ...patch })).toBe(false);
+  });
+  it("recovers completed notifications after the failed run becomes idle", () => {
+    const recovery = new OmoFailureRecovery();
+    recovery.observe({ type: "agent_start", runId: "run" });
+    recovery.observe({ type: "message_end", message: { role: "assistant", stopReason: "error" } });
+    expect(recovery.stranded(deliveryState)).toBe(false);
+    recovery.observe({ type: "agent_idle" });
+    expect(recovery.stranded(deliveryState)).toBe(true);
+    expect(
+      recovery.stranded({
+        ...deliveryState,
+        lifecycle: { ...deliveryState.lifecycle, runActive: undefined, lastTurnEnd: undefined },
+      }),
+    ).toBe(true);
+    expect(
+      recovery.stranded({
+        ...deliveryState,
+        pendingMessageCount: 1,
+        lifecycle: { ...deliveryState.lifecycle, state: "running" },
+      }),
+    ).toBe(true);
+    recovery.observe({ type: "message_end", message: { role: "assistant", stopReason: "stop" } });
+    expect(recovery.stranded(deliveryState)).toBe(false);
+  });
+  it("waits for real producers before recovering their queued notifications", () => {
+    const background = deliveryState.lifecycle.waitingOn.background;
+    expect(
+      failed().stranded({
+        ...deliveryState,
+        lifecycle: {
+          ...deliveryState.lifecycle,
+          waitingOn: {
+            ...deliveryState.lifecycle.waitingOn,
+            background: [...background, { source: "senpi-codemode", activeCount: 1 }],
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(failed().stranded(deliveryState)).toBe(true);
+  });
+  it("preserves active runs, children, human waits and unknown background obligations", () => {
+    const waits = deliveryState.lifecycle.waitingOn;
+    for (const patch of [
+      { runActive: true },
+      { runId: "next" },
+      { role: "child" },
+      { persisted: false },
+      { restoring: true },
+      { activity: { kind: "model" } },
+      { holds: [{ kind: "session_hold" }] },
+      { waitingOn: { ...waits, children: 1 } },
+      { waitingOn: { ...waits, human: [{ key: "answer" }] } },
+      { waitingOn: { ...waits, background: [{ source: "memory", activeCount: 1 }] } },
+      { waitingOn: { ...waits, background: [{ source: "delivery:", activeCount: 1 }] } },
+      { waitingOn: { ...waits, background: [{}] } },
+      { waitingOn: { ...waits, background: [] } },
+      { state: "failed" },
+    ])
+      expect(
+        failed().stranded({
+          ...deliveryState,
+          lifecycle: { ...deliveryState.lifecycle, ...patch },
+        }),
+      ).toBe(false);
+    for (const patch of [
+      { isStreaming: true },
+      { isCompacting: true },
+      { isBashRunning: true },
+      { retryAttempt: 1 },
+    ])
+      expect(failed().stranded({ ...deliveryState, ...patch })).toBe(false);
   });
   it("preserves children, background work, human waits, holds and model activity", () => {
     for (const patch of [
