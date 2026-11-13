@@ -11,6 +11,7 @@ import {
   discoverModelService,
   fetchModelServiceModels,
   modelServiceEndpoint,
+  modelServiceHeaders,
   parseModelServiceModel,
 } from "./discovery.ts";
 
@@ -326,6 +327,76 @@ describe("model service discovery", () => {
     expect(modelServiceEndpoint({ baseUrl: "https://models.test" }, "gemini", "models").href).toBe(
       "https://models.test/v1beta/models",
     );
+  });
+  it("adds the Anthropic version segment to unversioned vendor base paths", () => {
+    const anthropic = (baseUrl: string) =>
+      modelServiceEndpoint({ baseUrl }, "anthropic-messages", "messages").href;
+    expect(anthropic("https://api.deepseek.com/anthropic")).toBe(
+      "https://api.deepseek.com/anthropic/v1/messages",
+    );
+    expect(anthropic("https://open.bigmodel.cn/api/anthropic/")).toBe(
+      "https://open.bigmodel.cn/api/anthropic/v1/messages",
+    );
+    expect(anthropic("https://models.test/anthropic/v1")).toBe(
+      "https://models.test/anthropic/v1/messages",
+    );
+    expect(anthropic("https://models.test/proxy/v2")).toBe("https://models.test/proxy/v2/messages");
+    expect(
+      modelServiceEndpoint({ baseUrl: "https://models.test/proxy" }, "openai-chat", "models").href,
+    ).toBe("https://models.test/proxy/models");
+  });
+  it("lets a configured Anthropic version override the default", () => {
+    expect(
+      modelServiceHeaders(
+        config({ protocols: ["anthropic-messages"], headers: { "anthropic-version": "2099-01-01" } }),
+        "anthropic-messages",
+      )["anthropic-version"],
+    ).toBe("2099-01-01");
+    expect(
+      modelServiceHeaders(config({ protocols: ["anthropic-messages"] }), "anthropic-messages")[
+        "anthropic-version"
+      ],
+    ).toBe("2023-06-01");
+  });
+  it("drops non-generative Gemini models and reads declared Gemini and OpenRouter capabilities", () => {
+    expect(
+      parseModelServiceModel(
+        { name: "models/text-embedding-004", supportedGenerationMethods: ["embedContent"] },
+        ["gemini"],
+      ),
+    ).toBeNull();
+    expect(
+      parseModelServiceModel(
+        { name: "models/imagen-4.0-generate-001", supportedGenerationMethods: ["predict"] },
+        ["gemini"],
+      ),
+    ).toBeNull();
+    expect(
+      parseModelServiceModel(
+        {
+          name: "models/gemini-2.5-pro",
+          supportedGenerationMethods: ["generateContent", "countTokens"],
+          thinking: true,
+        },
+        ["gemini"],
+      ),
+    ).toMatchObject({ id: "models/gemini-2.5-pro", supportsReasoning: true });
+    expect(
+      parseModelServiceModel(
+        {
+          id: "openai/gpt-5",
+          context_length: 400000,
+          top_provider: { max_completion_tokens: 128000 },
+          supported_parameters: ["tools", "reasoning", "max_tokens"],
+        },
+        ["openai-chat"],
+      ),
+    ).toMatchObject({ maxOutputTokens: 128000, supportsTools: true, supportsReasoning: true });
+    expect(
+      parseModelServiceModel({ id: "no-tools", supported_parameters: ["max_tokens"] }, [
+        "openai-chat",
+      ]),
+    ).toMatchObject({ supportsTools: false });
   });
   it.effect("paginates Anthropic metadata with the right headers and refuses redirects", () =>
     Effect.gen(function* () {

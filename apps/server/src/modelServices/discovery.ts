@@ -46,7 +46,14 @@ export function modelServiceEndpoint(
 ): URL {
   const url = new URL(service.baseUrl);
   const base = url.href.replace(/\/+$/, "");
-  const version = url.pathname === "/" ? (protocol === "gemini" ? "/v1beta" : "/v1") : "";
+  const version =
+    url.pathname === "/"
+      ? protocol === "gemini"
+        ? "/v1beta"
+        : "/v1"
+      : protocol === "anthropic-messages" && !/\/v\d+[a-z0-9]*\/*$/i.test(url.pathname)
+        ? "/v1"
+        : "";
   return new URL(`${base}${version}/${endpoint.replace(/^\/+/, "")}`);
 }
 
@@ -55,8 +62,8 @@ export function modelServiceHeaders(
   protocol: ModelServiceProtocol,
 ): Record<string, string> {
   return {
-    ...service.headers,
     ...(protocol === "anthropic-messages" ? { "anthropic-version": "2023-06-01" } : {}),
+    ...service.headers,
     ...(service.apiKey
       ? protocol === "anthropic-messages"
         ? { "x-api-key": service.apiKey }
@@ -74,6 +81,11 @@ export function parseModelServiceModel(
   const raw = record(value);
   const id = typeof raw.id === "string" ? raw.id : typeof raw.name === "string" ? raw.name : "";
   if (!id.trim()) return null;
+  if (
+    Array.isArray(raw.supportedGenerationMethods) &&
+    !raw.supportedGenerationMethods.includes("generateContent")
+  )
+    return null;
   const inputModalities =
     raw.input_modalities ??
     record(raw.modalities).input ??
@@ -107,9 +119,22 @@ export function parseModelServiceModel(
         ),
       ]
     : undefined;
-  const tools = raw.supports_tools ?? record(raw.capabilities).tools ?? raw.tool_call;
-  const output = raw.max_output_tokens ?? raw.outputTokenLimit ?? record(raw.limit).output;
-  const reasoning = raw.supports_reasoning ?? raw.reasoning;
+  const parameters = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : undefined;
+  const tools =
+    raw.supports_tools ??
+    record(raw.capabilities).tools ??
+    raw.tool_call ??
+    parameters?.includes("tools");
+  const output =
+    raw.max_output_tokens ??
+    raw.outputTokenLimit ??
+    record(raw.limit).output ??
+    record(raw.top_provider).max_completion_tokens;
+  const reasoning =
+    raw.supports_reasoning ??
+    raw.reasoning ??
+    raw.thinking ??
+    (parameters?.includes("reasoning") ? true : undefined);
   return {
     id: model.slug,
     name: model.name === model.slug ? modelServiceDisplayName(model.slug) : model.name,

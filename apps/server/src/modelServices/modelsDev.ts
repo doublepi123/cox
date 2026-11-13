@@ -42,7 +42,7 @@ export function parseModelsDevCatalog(value: unknown): ModelsDevCatalog {
       const modalities = record(raw.modalities);
       const input = strings(modalities.input);
       const output = strings(modalities.output);
-      const context = positive(limit.context);
+      const context = positive(limit.input) ?? positive(limit.context);
       const maxOutput = positive(limit.output);
       const efforts = Array.isArray(raw.reasoning_options)
         ? raw.reasoning_options.flatMap((option: unknown) => {
@@ -91,6 +91,12 @@ export function parseModelsDevCatalog(value: unknown): ModelsDevCatalog {
   return index;
 }
 
+const officialProviders: Readonly<Record<string, string>> = {
+  "api.openai.com": "openai",
+  "api.anthropic.com": "anthropic",
+  "generativelanguage.googleapis.com": "google",
+};
+
 export function enrichModelFromModelsDev(
   model: ModelServiceModel,
   catalog: ModelsDevCatalog,
@@ -102,12 +108,23 @@ export function enrichModelFromModelsDev(
   const canonical = candidates.filter(
     (entry) => entry.canonicalId === `${entry.provider}/${entry.model.id}`,
   );
-  const pool = hosted.length ? hosted : canonical.length === 1 ? canonical : candidates;
+  const firstParty = candidates.filter((entry) => entry.provider === officialProviders[host]);
+  const pool = hosted.length
+    ? hosted
+    : firstParty.length
+      ? firstParty
+      : canonical.length === 1
+        ? canonical
+        : candidates;
   const match = pool[0]?.model;
-  if (
-    !match ||
-    (pool.length > 1 && pool.some((entry) => JSON.stringify(entry.model) !== JSON.stringify(match)))
-  )
+  const used = (entry: ModelServiceModel) =>
+    JSON.stringify([
+      entry.capabilities,
+      entry.maxOutputTokens,
+      entry.supportsTools,
+      entry.supportsReasoning,
+    ]);
+  if (!match || (pool.length > 1 && pool.some((entry) => used(entry.model) !== used(match))))
     return model;
   const capabilities = {
     ...match.capabilities,

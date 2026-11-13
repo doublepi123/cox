@@ -16,10 +16,13 @@ describe("gateway configuration", () => {
       tokenizeCliArgs(
         codexGatewayRuntime(config, { COX_MODEL_SERVICE_KEY: "local-token" }).settings.launchArgs,
       ),
-    ).toContain("model_providers.cox_gateway.request_max_retries=0");
-    expect(codexGatewayRuntime(config, {}).settings.launchArgs).not.toContain(
-      "request_max_retries",
+    ).toEqual(
+      expect.arrayContaining([
+        "model_providers.cox_gateway.request_max_retries=0",
+        "model_providers.cox_gateway.stream_max_retries=0",
+      ]),
     );
+    expect(codexGatewayRuntime(config, {}).settings.launchArgs).not.toMatch(/_max_retries/);
   });
   it("keeps subscription launches unchanged without API settings", () => {
     const config = decodeCodexSettings({});

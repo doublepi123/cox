@@ -100,6 +100,54 @@ describe("models.dev model metadata", () => {
       enrichModelFromModelsDev(model, index, "https://proxy.test/v1").capabilities?.contextWindow,
     ).toBe(32000);
   });
+  it("uses the declared input limit as the context window when it is below total context", () => {
+    const index = parseModelsDevCatalog({
+      openai: {
+        models: {
+          "gpt-split": { id: "gpt-split", limit: { context: 400000, input: 272000, output: 128000 } },
+        },
+      },
+    });
+    expect(
+      enrichModelFromModelsDev({ id: "gpt-split", capabilities: null }, index, "https://proxy.test"),
+    ).toMatchObject({ capabilities: { contextWindow: 272000 }, maxOutputTokens: 128000 });
+  });
+  it("ignores unused differences and prefers the first-party entry on official hosts", () => {
+    const index = parseModelsDevCatalog({
+      openai: {
+        models: {
+          "gpt-dated": { id: "gpt-dated", name: "GPT Dated", limit: { context: 400000 } },
+        },
+      },
+      relay: {
+        models: {
+          "gpt-dated": {
+            id: "gpt-dated",
+            name: "Relay GPT",
+            limit: { context: 128000 },
+          },
+        },
+      },
+      mirror: {
+        models: {
+          "gpt-dated": { id: "gpt-dated", name: "Relay GPT (mirror)", limit: { context: 128000 } },
+        },
+      },
+    });
+    const model = { id: "gpt-dated", capabilities: null };
+    expect(
+      enrichModelFromModelsDev(model, index, "https://api.openai.com/v1").capabilities
+        ?.contextWindow,
+    ).toBe(400000);
+    const relayOnly = parseModelsDevCatalog({
+      relay: { models: { same: { id: "same", name: "A", limit: { context: 128000 } } } },
+      mirror: { models: { same: { id: "same", name: "B", limit: { context: 128000 } } } },
+    });
+    expect(
+      enrichModelFromModelsDev({ id: "same", capabilities: null }, relayOnly, "https://proxy.test")
+        .capabilities?.contextWindow,
+    ).toBe(128000);
+  });
   it("does not guess when exact IDs are ambiguous or metadata is malformed", () => {
     const index = parseModelsDevCatalog({
       a: { models: { common: { id: "common", limit: { context: 1000 } } } },
