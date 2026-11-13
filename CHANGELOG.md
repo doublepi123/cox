@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.84 — 2026-11-13
+
+- Count OMO Native usage: the usage page now reads OMO session transcripts,
+  including model-service runtime sessions and subagent sessions, and lists OMO
+  first. Model-service-bound Pi instances also report their runtime history.
+- Put OMO Native first: it leads the provider list, the model picker and the Add
+  provider dialog, where it is selected by default.
+- Reorder providers in Settings > Providers with Move up/Move down. The order is
+  saved on the server and also orders the model picker.
+- Delete the default Codex and Claude providers. Deleted defaults stay removed
+  after restarts and come back when added again from Add provider; resetting a
+  customized default is still a separate action.
+- Remove the paid AI recommendation draft and its prompt from OMO role settings.
+  Use Apply official recommendations instead; saved prompts are ignored.
+
 ## 0.1.83 — 2026-11-13
 
 - Bound sign-in requests so startup and "Signing in…" can no longer wait forever,
