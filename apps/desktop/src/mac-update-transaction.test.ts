@@ -7,6 +7,7 @@ import {
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -102,6 +103,19 @@ describe("macOS application update transactions", () => {
     await runMacUpdateTransaction(test.home, test.transaction.id, test.operations);
     expect(await macUpdateInProgress(test.home, undefined, alive)).toBe(false);
   });
+  it("keeps an aged reservation active while its helper is alive", async () => {
+    const test = await fixture();
+    const reservation = join(test.home, "client-updates", "mac-applying.json");
+    await writeMacUpdateState(join(test.home, "client-updates"), "mac-applying.json", {
+      id: test.transaction.id,
+      helperPid: process.pid,
+    });
+    const expired = 1_700_000_000;
+    await utimes(reservation, expired, expired);
+    expect(await macUpdateInProgress(test.home, undefined, () => true)).toBe(true);
+    expect(await macUpdateInProgress(test.home, undefined, () => false)).toBe(false);
+    expect(await macUpdateInProgress(test.home, test.transaction.id, () => true)).toBe(false);
+  });
   it("restores the old app if placing the replacement fails after the old bundle was moved", async () => {
     const test = await fixture();
     let checks = 0;
@@ -129,7 +143,11 @@ describe("macOS application update transactions", () => {
     );
     expect(await readFile(join(test.target, "version"), "utf8")).toBe("new");
     expect(await readFile(join(test.home, "userdata", "database"), "utf8")).toBe("old-data");
+    expect(await readFile(join(test.home, "client-updates", "mac-result.json"), "utf8")).toBe(
+      JSON.stringify({ version: "0.2.5", currentVersion: "0.2.5", status: "updated" }),
+    );
     await expect(readdir(test.paths.previous)).rejects.toThrow();
+    await expect(readdir(test.paths.directory)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("restores both application and matching data when a replacement migrates data and then fails", async () => {
@@ -156,6 +174,9 @@ describe("macOS application update transactions", () => {
     );
     expect(test.launch).toHaveBeenCalledTimes(2);
     expect(await readFile(join(test.home, "browser", "Preferences"), "utf8")).toBe("old-browser");
+    expect(await readFile(join(test.paths.directory, "status.json"), "utf8")).toContain(
+      '"phase":"rolled-back"',
+    );
   });
 
   it("refuses to restore data while an unresponsive replacement cannot be stopped", async () => {

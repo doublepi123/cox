@@ -108,8 +108,6 @@ export async function macUpdateInProgress(
 ) {
   const path = join(home, "client-updates", "mac-applying.json");
   if (!(await exists(path))) return false;
-  const age = performance.timeOrigin + performance.now() - (await lstat(path)).mtimeMs;
-  if (age > 15 * 60_000) return false;
   let value: unknown;
   try {
     value = JSON.parse(await readFile(path, "utf8"));
@@ -289,6 +287,7 @@ export async function runMacUpdateTransaction(
       await rm(join(paths.directory, "browser-backup"), { recursive: true, force: true }).catch(
         () => {},
       );
+      await rm(paths.directory, { recursive: true, force: true }).catch(() => {});
       return "committed" as const;
     } catch (error) {
       if (child) await child.stop();

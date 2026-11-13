@@ -338,6 +338,8 @@ export class ClientUpdates {
   private feed: ClientUpdateFeed | undefined;
   private artifact: ClientUpdateArtifact | undefined;
   private downloaded: string | undefined;
+  private manualDownload: string | undefined;
+  private installerHandedOff = false;
   private automatic: ClientAutomaticUpdater | undefined;
   private state: DesktopClientUpdateState;
 
@@ -548,6 +550,7 @@ export class ClientUpdates {
   ): Promise<string> {
     const directory = join(this.directory, "downloads", randomUUID());
     await mkdir(directory, { recursive: true, mode: 0o700 });
+    this.manualDownload = directory;
     const path = join(directory, artifact.filename);
     try {
       const response = await fetchClientUpdateResponse(artifact.url, signal, this.options.fetcher);
@@ -596,6 +599,7 @@ export class ClientUpdates {
       return path;
     } catch (error) {
       await rm(directory, { recursive: true, force: true });
+      if (this.manualDownload === directory) this.manualDownload = undefined;
       throw error;
     }
   }
@@ -721,6 +725,7 @@ export class ClientUpdates {
             (async (path: string) => (await import("electron")).shell.openPath(path));
           const error = await openInstaller(downloaded);
           if (error) throw new Error("The desktop installer could not be opened: " + error);
+          this.installerHandedOff = true;
         }
         this.applied = true;
         this.publish({ progress: null });
@@ -751,6 +756,11 @@ export class ClientUpdates {
         this.options.macUpdater?.close(),
       ]);
       for (const result of results) if (result.status === "rejected") throw result.reason;
+      const manualDownload = this.manualDownload;
+      if (manualDownload && !this.installerHandedOff) {
+        this.manualDownload = undefined;
+        await rm(manualDownload, { recursive: true, force: true }).catch(() => {});
+      }
     })();
     return this.closing;
   }

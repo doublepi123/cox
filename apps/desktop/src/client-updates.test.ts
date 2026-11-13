@@ -474,6 +474,46 @@ describe("desktop client update lifecycle", () => {
     expect((await updates.download()).status).toBe("ready");
   });
 
+  it("removes an unapplied manual installer on close", async () => {
+    const { updates, home } = await fixture();
+    await updates.check();
+    await updates.download();
+    const downloads = join(home, "client-updates", "downloads");
+    expect(await readdir(downloads)).toHaveLength(1);
+    await updates.close();
+    expect(await readdir(downloads)).toEqual([]);
+  });
+
+  it("preserves a manual installer after successful handoff", async () => {
+    const { updates, openInstaller } = await fixture();
+    await updates.check();
+    await updates.download();
+    await updates.apply();
+    const path = openInstaller.mock.calls[0]![0];
+    await updates.close();
+    expect(await readFile(path)).toEqual(bytes);
+  });
+
+  it("does not leave an abandoned installer when close races a download", async () => {
+    const { updates, fetcher, home } = await fixture();
+    await updates.check();
+    let downloading = false;
+    fetcher.mockImplementation(
+      async (_url, options) =>
+        new Promise((_resolve, reject) => {
+          downloading = true;
+          options?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        }),
+    );
+    const download = updates.download();
+    await vi.waitFor(() => expect(downloading).toBe(true));
+    await updates.close();
+    await download;
+    expect(await readdir(join(home, "client-updates", "downloads"))).toEqual([]);
+  });
+
   it("propagates installer handoff failure so the parent can keep the app open", async () => {
     const { updates } = await fixture({ openInstaller: async () => "OS refused the installer" });
     await updates.check();
