@@ -6,6 +6,7 @@ export function createConnectionPage(
   snapshot: DesktopConnectionSnapshot,
   icon?: string,
   error?: string,
+  draft?: { readonly name?: string; readonly origin?: string },
 ) {
   const zh = /^zh(?:-|_|$)/i.test(locale);
   const labels = zh
@@ -62,7 +63,7 @@ export function createConnectionPage(
     `<div id="cox-connection-error" class="error" role="alert" ${error ? "" : "hidden"}>${escapeHtml(error ?? "")}</div>`,
     `<section><h2>${labels.local}</h2><div class="local"><div><strong>${labels.local}</strong><span>${labels.localDetail}</span></div><button type="button" data-action="local">${labels.useLocal}</button></div></section>`,
     `<section><h2>${labels.remote}</h2><label class="window-choice"><input id="cox-connection-new-window" type="checkbox"${snapshot.openInNewWindow ? " checked" : ""}><span>${labels.newWindow}<small>${labels.newWindowDetail}</small></span></label><div id="cox-connection-profiles" data-active-profile-id="${active?.kind === "remote" ? escapeHtml(active.profileId) : ""}" data-current-label="${labels.current}">${profiles}</div><template id="cox-connection-profile">${card()}</template>`,
-    `<form id="cox-connection-form"><input id="cox-connection-name" aria-label="${labels.name}" placeholder="${labels.name}" autocomplete="off"><input id="cox-connection-origin" aria-label="${labels.origin}" placeholder="https://cox.example.com" type="url" required autocomplete="url"><button type="submit">${labels.add}</button></form>`,
+    `<form id="cox-connection-form"><input id="cox-connection-name" aria-label="${labels.name}" placeholder="${labels.name}" value="${escapeHtml(draft?.name ?? "")}" autocomplete="off"><input id="cox-connection-origin" aria-label="${labels.origin}" placeholder="https://cox.example.com" value="${escapeHtml(draft?.origin ?? "")}" type="url" required autocomplete="url"><button type="submit">${labels.add}</button></form>`,
     `<p class="security">${labels.security}</p></section></main></body></html>`,
   ].join("");
 }

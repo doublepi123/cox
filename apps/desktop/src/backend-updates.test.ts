@@ -247,13 +247,50 @@ describe("managed desktop Cox backend", () => {
     expect(test.manager.getState()).toMatchObject({ status: "idle", progress: null });
   });
 
-  it("clears startup progress when an existing backend fails to start", async () => {
+  it("clears startup progress and stops a failed existing backend before retrying", async () => {
     const test = await fixture();
     await test.manager.launch(test.start, test.stop);
     const next = test.make();
-    test.start.mockRejectedValueOnce(new Error("existing backend failed"));
+    let live = false;
+    let failures = 1;
+    test.start.mockImplementation(async () => {
+      if (live) throw new Error("The previous Cox backend is still running.");
+      live = true;
+      if (failures-- > 0) throw new Error("existing backend failed");
+      return "http://127.0.0.1:12345";
+    });
+    test.stop.mockImplementation(async () => {
+      live = false;
+    });
     await expect(next.launch(test.start, test.stop)).rejects.toThrow("existing backend failed");
     expect(next.getState()).toMatchObject({ status: "error", progress: null });
+    expect(test.stop).toHaveBeenCalledOnce();
+    await expect(next.launch(test.start, test.stop)).resolves.toBe("http://127.0.0.1:12345");
+    expect(next.getState().progress).toBeNull();
+  });
+
+  it("stops a failed rollback backend start before retrying", async () => {
+    const test = await fixture();
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.check();
+    await test.manager.stage();
+    const next = test.make();
+    let live = false;
+    let starts = 0;
+    test.start.mockImplementation(async () => {
+      if (live) throw new Error("The previous Cox backend is still running.");
+      live = true;
+      starts++;
+      if (starts === 1) throw new Error("candidate failed");
+      if (starts === 2) throw new Error("rollback failed");
+      return "http://127.0.0.1:12345";
+    });
+    test.stop.mockImplementation(async () => {
+      live = false;
+    });
+    await expect(next.launch(test.start, test.stop)).rejects.toThrow("rollback failed");
+    expect(test.stop).toHaveBeenCalledTimes(2);
+    await expect(next.launch(test.start, test.stop)).resolves.toBe("http://127.0.0.1:12345");
   });
 
   it("persists an ignored version while still offering newer releases", async () => {

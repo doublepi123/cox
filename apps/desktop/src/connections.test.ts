@@ -109,6 +109,51 @@ describe("desktop connection persistence", () => {
     expect(new DesktopConnectionStore(directory).snapshot().openInNewWindow).toBe(false);
   });
 
+  it("rolls back a saved profile when persistence fails", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    const file = join(directory, "connections.json");
+    mkdirSync(file);
+    expect(() => store.saveRemote(inspection, {})).toThrow();
+    expect(store.snapshot()).toEqual({ active: null, profiles: [], openInNewWindow: true });
+    rmSync(file, { recursive: true });
+    store.saveRemote(inspection, {});
+    expect(store.snapshot().profiles).toHaveLength(1);
+  });
+
+  it("rolls back the active target when persistence fails", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    const profile = store.saveRemote(inspection, {});
+    const file = join(directory, "connections.json");
+    rmSync(file, { force: true });
+    mkdirSync(file);
+    expect(() => store.setActive({ kind: "remote", profileId: profile.id })).toThrow();
+    expect(store.snapshot().active).toBeNull();
+    rmSync(file, { recursive: true });
+    store.setActive({ kind: "remote", profileId: profile.id });
+    expect(store.snapshot().active).toEqual({ kind: "remote", profileId: profile.id });
+  });
+
+  it("rolls back a removed profile when persistence fails", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    const profile = store.saveRemote(inspection, {});
+    store.setActive({ kind: "remote", profileId: profile.id });
+    const file = join(directory, "connections.json");
+    rmSync(file, { force: true });
+    mkdirSync(file);
+    expect(() => store.remove(profile.id)).toThrow();
+    expect(store.snapshot()).toEqual({
+      active: { kind: "remote", profileId: profile.id },
+      profiles: [profile],
+      openInNewWindow: true,
+    });
+    rmSync(file, { recursive: true });
+    store.remove(profile.id);
+    expect(store.snapshot()).toEqual({ active: null, profiles: [], openInNewWindow: true });
+  });
+
   it.each([null, "false", 0, {}])("rejects a malformed saved new-window choice %j", (choice) => {
     const directory = home();
     writeFileSync(

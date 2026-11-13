@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   createWriteStream,
   existsSync,
@@ -1294,6 +1295,11 @@ async function start() {
           return;
         }
         log.write(`${message}\n`);
+        if (connectionMode !== "local") {
+          if (origin === localOrigin) origin = undefined;
+          localOrigin = undefined;
+          return;
+        }
         dialog.showErrorBox(
           text("Cox backend stopped"),
           `${message}\n${text("Reopen Cox to restart.")}\n${text("Logs")}: ${logPath}`,
@@ -1353,7 +1359,12 @@ async function start() {
     await window.loadURL(localPageUrl);
   }
 
-  async function showConnections(error?: unknown, owner?: BrowserWindow, refresh = false) {
+  async function showConnections(
+    error?: unknown,
+    owner?: BrowserWindow,
+    refresh = false,
+    draft?: Pick<RemoteConnectionInput, "name" | "origin">,
+  ) {
     if (!connectionStore || approvedQuit || quitPending) return;
     const icon = "data:image/png;base64," + readFileSync(startupIcon).toString("base64");
     const focused = mainOwner(owner ?? BrowserWindow.getFocusedWindow());
@@ -1381,6 +1392,7 @@ async function start() {
           connectionStore.snapshot(),
           icon,
           error === undefined ? undefined : String(error),
+          draft,
         ),
       );
     if (!existing) {
@@ -1412,7 +1424,10 @@ async function start() {
 
   openConnectionManager = () => showConnections();
 
-  async function showConnectionManager(error?: unknown) {
+  async function showConnectionManager(
+    error?: unknown,
+    draft?: Pick<RemoteConnectionInput, "name" | "origin">,
+  ) {
     if (!connectionStore || !window || window.isDestroyed() || approvedQuit || quitPending) return;
     connectionGeneration++;
     connectionMode = "manager";
@@ -1426,11 +1441,15 @@ async function start() {
     localPageUrl = undefined;
     window.hide();
     await window.loadURL("about:blank");
-    await showConnections(error, undefined, true);
+    await showConnections(error, undefined, true, draft);
   }
 
   async function startLocal() {
-    if (switchingConnections || approvedQuit || quitPending) return;
+    if (switchingConnections)
+      throw new Error(
+        "Another connection change is already in progress. Wait for it to finish and try again.",
+      );
+    if (approvedQuit || quitPending) return;
     const backendUpdates = updates;
     if (!backendUpdates) throw new Error("Cox updates are not initialized.");
     switchingConnections = true;
@@ -1563,7 +1582,11 @@ async function start() {
   }
 
   async function connectRemote(input: RemoteConnectionInput) {
-    if (switchingConnections || approvedQuit || quitPending) return;
+    if (switchingConnections)
+      throw new Error(
+        "Another connection change is already in progress. Wait for it to finish and try again.",
+      );
+    if (approvedQuit || quitPending) return;
     switchingConnections = true;
     const manager = connectionsWindow;
     const owner = connectionsOwner && !connectionsOwner.isDestroyed() ? connectionsOwner : window;
@@ -1625,9 +1648,9 @@ async function start() {
       if (connectionsWindow && !connectionsWindow.isDestroyed()) connectionsWindow.close();
     } catch (error) {
       log.write(`${String(error)}\n`);
-      if (!manager) await showConnectionManager(error);
+      if (!manager) await showConnectionManager(error, input);
       else if (!manager.isDestroyed() && connectionsWindow === manager)
-        await showConnections(error);
+        await showConnections(error, undefined, false, input);
     } finally {
       switchingConnections = false;
     }
@@ -1647,22 +1670,22 @@ async function start() {
       noLink: true,
     });
     if (answer.response !== 1) return;
+    const removedFromMain =
+      activeRemoteProfile?.id === profile.id && mainPartition === remotePartition(profile.id);
+    const remoteSession = session.fromPartition(remotePartition(profile.id));
+    await remoteSession.clearStorageData();
+    await remoteSession.clearCache();
+    await remoteSession.clearAuthCache();
+    connectionStore.remove(profile.id);
     for (const [target, connected] of remoteWindows) {
       if (connected.id === profile.id && !target.isDestroyed()) target.destroy();
     }
-    const removedFromMain =
-      activeRemoteProfile?.id === profile.id && mainPartition === remotePartition(profile.id);
     if (removedFromMain) {
       activeRemoteProfile = undefined;
       window?.hide();
       replaceMainWindow("persist:cox-desktop");
       connectionMode = "manager";
     }
-    const remoteSession = session.fromPartition(remotePartition(profile.id));
-    await remoteSession.clearStorageData();
-    await remoteSession.clearCache();
-    await remoteSession.clearAuthCache();
-    connectionStore.remove(profile.id);
     if (activeRemoteProfile?.id === profile.id) activeRemoteProfile = undefined;
     if (removedFromMain) await showConnectionManager();
     else if (connectionsWindow && !connectionsWindow.isDestroyed()) {
@@ -1731,11 +1754,21 @@ async function start() {
 
   const freshClientOnly =
     metadata.coxVersion === null && !existsSync(join(home, "backend-updates", "state.json"));
-  connectionStore = new DesktopConnectionStore(home, freshClientOnly ? null : { kind: "local" });
+  let connectionRecoveryError: Error | undefined;
+  try {
+    connectionStore = new DesktopConnectionStore(home, freshClientOnly ? null : { kind: "local" });
+  } catch (error) {
+    const file = join(home, "connections.json");
+    renameSync(file, `${file}.invalid-${randomUUID()}.bak`);
+    connectionStore = new DesktopConnectionStore(home, null);
+    connectionRecoveryError = new Error(
+      `Cox could not read the saved connection settings. The original file was preserved.\n${String(error)}`,
+    );
+  }
   const active = connectionStore.snapshot().active;
   if (active?.kind === "remote") await connectRemote({ id: active.profileId });
   else if (active?.kind === "local") await startLocal();
-  else await showConnectionManager();
+  else await showConnectionManager(connectionRecoveryError);
 }
 
 if (

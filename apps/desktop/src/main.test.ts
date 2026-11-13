@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { renameSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions } from "electron";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -145,7 +146,8 @@ const fixture = {
   events: new EventEmitter(),
   started: Promise.resolve() as Promise<unknown>,
   loadURL: vi.fn(async (_url: string) => {}),
-  launchBackend: vi.fn(async () => localOrigin),
+  launchBackend: vi.fn(async (_start: (directory: string) => Promise<string>) => localOrigin),
+  backendExit: undefined as ((message: string) => void) | undefined,
   inspect: vi.fn(async (_origin: string) => inspection),
   clientCheck: vi.fn(async () => undefined),
   clientState: {} as { status?: string; currentVersion?: string; latestVersion?: string },
@@ -171,10 +173,10 @@ vi.mock("node:fs", () => ({
     return contents;
   },
   writeFileSync: (path: string, contents: string) => fixture.files.set(path, contents),
-  renameSync: (source: string, destination: string) => {
+  renameSync: vi.fn((source: string, destination: string) => {
     fixture.files.set(destination, fixture.files.get(source)!);
     fixture.files.delete(source);
-  },
+  }),
   statSync: () => ({ size: 0 }),
   createWriteStream: () => ({ on: vi.fn(), write: vi.fn() }),
 }));
@@ -218,7 +220,18 @@ vi.mock("electron", () => ({
   session: { fromPartition },
   shell: { openExternal: vi.fn(), openPath: vi.fn() },
 }));
-vi.mock("./backend.ts", () => ({ BackendProcess: vi.fn(), validateBackendInstallation: vi.fn() }));
+vi.mock("./backend.ts", () => ({
+  BackendProcess: class {
+    constructor(options: { onUnexpectedExit: (message: string) => void }) {
+      fixture.backendExit = options.onUnexpectedExit;
+    }
+    async start() {
+      return localOrigin;
+    }
+    async stop() {}
+  },
+  validateBackendInstallation: vi.fn(),
+}));
 vi.mock("./backend-updates.ts", () => ({
   BackendUpdates: class {
     launch = fixture.launchBackend;
@@ -328,6 +341,8 @@ beforeEach(() => {
   fixture.handlers.clear();
   fixture.listeners.clear();
   fixture.events.removeAllListeners();
+  fixture.launchBackend.mockReset().mockResolvedValue(localOrigin);
+  fixture.backendExit = undefined;
   fixture.inspect.mockReset().mockResolvedValue(inspection);
   fixture.loadURL.mockReset().mockResolvedValue(undefined);
   fixture.clientState = {};
@@ -759,12 +774,15 @@ describe("desktop connection manager windows", () => {
     await invoke("cox:connections-new-window", target, false);
     fixture.inspect.mockRejectedValueOnce(new Error("Remote server is unavailable"));
     await invoke("cox:connections-connect", target, {
+      name: 'Office <"West"> & Co',
       origin: inspection.origin,
       openInNewWindow: false,
     });
     expect(manager()).toBe(target);
     const page = decodeURIComponent(target.webContents.getURL());
     expect(page).toContain("Remote server is unavailable");
+    expect(page).toContain('value="Office &lt;&quot;West&quot;&gt; &amp; Co"');
+    expect(page).toContain(`value="${inspection.origin}"`);
     expect(page).not.toContain('type="checkbox" checked');
   });
 
@@ -1069,5 +1087,154 @@ describe("desktop connection manager windows", () => {
       ),
     ).toThrow("Invalid remote connection request");
     expect(fixture.inspect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "{",
+    JSON.stringify({
+      version: 1,
+      active: { kind: "remote", profileId: saved.id },
+      profiles: [],
+    }),
+  ])("recovers malformed connection settings into a usable manager", async (contents) => {
+    fixture.files.set(connectionsFile, contents);
+    await import("./main.ts");
+    await fixture.started;
+    expect(fixture.quit).not.toHaveBeenCalled();
+    expect(fixture.errors).not.toHaveBeenCalled();
+    const backup = [...fixture.files.keys()].find((path) =>
+      path.startsWith(connectionsFile + ".invalid-"),
+    );
+    expect(backup).toBeDefined();
+    expect(fixture.files.get(backup!)).toBe(contents);
+    const target = manager();
+    expect(target.visible).toBe(true);
+    expect(decodeURIComponent(target.webContents.getURL())).toContain(
+      "Cox could not read the saved connection settings.",
+    );
+    await invoke("cox:connections-local", target);
+    expect(primary().webContents.getURL()).toBe(localOrigin);
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a remote session alive after the inactive local backend exits and can restart local", async () => {
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    fixture.launchBackend.mockImplementationOnce(async (start) =>
+      start(resolve("/fixture/backend")),
+    );
+    await start();
+    await invoke("cox:connections-show", primary());
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: false,
+    });
+    const remote = primary();
+    expect(remote.webContents.getURL()).toBe(inspection.origin);
+    expect(fixture.backendExit).toBeTypeOf("function");
+    fixture.backendExit!("The local backend stopped");
+    expect(remote.destroyed).toBe(false);
+    expect(remote.visible).toBe(true);
+    expect(fixture.errors).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
+    await invoke("cox:connections-show", remote);
+    await invoke("cox:connections-local", manager());
+    expect(primary().webContents.getURL()).toBe(localOrigin);
+    expect(fixture.launchBackend).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a remote connection while a local launch is pending", async () => {
+    await start();
+    const target = manager();
+    const launching = Promise.withResolvers<string>();
+    fixture.launchBackend.mockImplementationOnce(() => launching.promise);
+    const local = invoke("cox:connections-local", target);
+    await vi.waitFor(() => expect(fixture.launchBackend).toHaveBeenCalledOnce());
+    try {
+      await expect(
+        invoke("cox:connections-connect", target, { origin: inspection.origin }),
+      ).rejects.toThrow("already in progress");
+      expect(fixture.inspect).not.toHaveBeenCalled();
+    } finally {
+      launching.resolve(localOrigin);
+      await local;
+    }
+  });
+
+  it("rejects a local connection while remote inspection is pending", async () => {
+    await start();
+    const target = manager();
+    const inspecting = Promise.withResolvers<typeof inspection>();
+    fixture.inspect.mockImplementationOnce(() => inspecting.promise);
+    const remote = invoke("cox:connections-connect", target, { origin: inspection.origin });
+    await vi.waitFor(() => expect(fixture.inspect).toHaveBeenCalledOnce());
+    try {
+      await expect(invoke("cox:connections-local", target)).rejects.toThrow("already in progress");
+      expect(fixture.launchBackend).not.toHaveBeenCalled();
+    } finally {
+      inspecting.resolve(inspection);
+      await remote;
+    }
+  });
+
+  it.each(["storage", "persistence"])(
+    "preserves remote windows and selection when Forget %s cleanup fails",
+    async (failure) => {
+      fixture.files.set(
+        connectionsFile,
+        JSON.stringify({
+          version: 1,
+          active: { kind: "remote", profileId: saved.id },
+          profiles: [saved],
+        }),
+      );
+      await start();
+      const main = primary();
+      await invoke("cox:connections-show", main);
+      const target = manager();
+      await invoke("cox:connections-connect", target, {
+        id: saved.id,
+        openInNewWindow: true,
+      });
+      const satellite = satellites()[0]!;
+      if (failure === "storage")
+        main.webContents.session.clearStorageData.mockRejectedValueOnce(
+          new Error("Storage cleanup failed"),
+        );
+      else
+        vi.mocked(renameSync).mockImplementationOnce(() => {
+          throw new Error("Settings removal failed");
+        });
+      await expect(invoke("cox:connections-forget", target, saved.id)).rejects.toThrow(
+        failure === "storage" ? "Storage cleanup failed" : "Settings removal failed",
+      );
+      expect(primary()).toBe(main);
+      expect(main.visible).toBe(true);
+      expect(main.webContents.getURL()).toBe(inspection.origin);
+      expect(satellite.destroyed).toBe(false);
+      expect(manager()).toBe(target);
+      expect(JSON.parse(fixture.files.get(connectionsFile)!)).toMatchObject({
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+      });
+      expect(fixture.quit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retains the escaped remote draft after the remote page fails to load", async () => {
+    await start();
+    const target = manager();
+    fixture.loadURL.mockImplementation(async (url) => {
+      if (url === inspection.origin) throw new Error("Remote page failed to load");
+    });
+    await invoke("cox:connections-connect", target, {
+      name: 'Office <"West"> & Co',
+      origin: inspection.origin + "/?first=1&second=2",
+      openInNewWindow: false,
+    });
+    const page = decodeURIComponent(target.webContents.getURL());
+    expect(page).toContain("Remote page failed to load");
+    expect(page).toContain('value="Office &lt;&quot;West&quot;&gt; &amp; Co"');
+    expect(page).toContain(`value="${inspection.origin}/?first=1&amp;second=2"`);
+    expect(fixture.quit).not.toHaveBeenCalled();
   });
 });

@@ -132,6 +132,7 @@ export class DesktopConnectionStore {
       ...inspection,
       origin: normalizedOrigin,
     };
+    const previous = this.state;
     this.state = {
       ...this.state,
       profiles: existing
@@ -140,19 +141,31 @@ export class DesktopConnectionStore {
           )
         : [...this.state.profiles, profile],
     };
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.state = previous;
+      throw error;
+    }
     return profile;
   }
 
   setActive(active: DesktopConnectionTarget): void {
     if (active?.kind === "remote" && !this.profile(active.profileId))
       throw new Error("Unknown remote server.");
+    const previous = this.state;
     this.state = { ...this.state, active };
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.state = previous;
+      throw error;
+    }
   }
 
   remove(id: string): void {
     const profileId = remoteProfileId(id);
+    const previous = this.state;
     this.state = {
       ...this.state,
       active:
@@ -161,7 +174,12 @@ export class DesktopConnectionStore {
           : this.state.active,
       profiles: this.state.profiles.filter((profile) => profile.id !== profileId),
     };
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.state = previous;
+      throw error;
+    }
   }
 
   private persist(): void {

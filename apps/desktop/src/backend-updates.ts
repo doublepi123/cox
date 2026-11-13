@@ -430,7 +430,13 @@ export class BackendUpdates {
     if (!this.disk.pending) {
       const { status, message } = this.state;
       this.publish({ status: "installing", message: null, progress: progress("starting") });
-      const origin = await start(await this.server(this.disk.active));
+      let origin: string;
+      try {
+        origin = await start(await this.server(this.disk.active));
+      } catch (error) {
+        await stop();
+        throw error;
+      }
       this.publish({ status, message, progress: null });
       return origin;
     }
@@ -468,7 +474,13 @@ export class BackendUpdates {
       if (!this.disk.active) throw error;
       const { status, message } = this.state;
       this.publish({ status: "installing", message: null, progress: progress("starting") });
-      const origin = await start(await this.server(this.disk.active));
+      let origin: string;
+      try {
+        origin = await start(await this.server(this.disk.active));
+      } catch (startError) {
+        await stop();
+        throw startError;
+      }
       this.publish({ status, message, progress: null });
       return origin;
     }
