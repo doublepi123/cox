@@ -1,5 +1,13 @@
 # Changelog
 
+## Desktop 0.2.28 — 2026-11-13
+
+- Connect to remote Cox servers behind Cloudflare Access. The client no longer
+  fails with "Attempted to redirect, but redirect policy was 'error'": it opens a
+  sandboxed Cloudflare Access sign-in window in the server's own session, then
+  checks the server and connects. Remote windows whose Access session expires
+  sign in again and reload; other redirects are still rejected.
+
 ## 0.1.87 — 2026-11-13
 
 - Model gateway streams: accept OpenRouter's usage accounting frame after a
