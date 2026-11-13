@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.86 — 2026-11-13
+
+- Mark Claude Opus and Sonnet 5.5, Fable and Mythos models as not supporting
+  forced tool choice in generated OMO and Pi model catalogs. Their first turn no
+  longer hits an upstream 400 followed by a "Model service recovered" notice.
+
 ## 0.1.85 — 2026-11-13
 
 - Save model service protocol, capability and availability changes without OMO
