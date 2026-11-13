@@ -9,6 +9,145 @@ const response = (status: string) =>
   frame({ type: `response.${status}`, response: { status, output: [] } });
 
 describe("model service stream integrity", () => {
+  it.each([
+    "",
+    chat({ content: "private-content" }),
+    frame({
+      choices: [
+        { index: 0, delta: {}, finish_reason: "stop" },
+        { index: 1, delta: { content: "private-content" } },
+      ],
+    }),
+  ])("requires a finish reason for every Chat choice before DONE (%s)", (text) => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    expect(() => monitor.push(encoder.encode(text + "data: [DONE]\n\n"))).toThrow(
+      expect.objectContaining({ reason: "missing_terminal_event" }),
+    );
+    expect(monitor.snapshot().terminal).toBe("none");
+    expect(JSON.stringify(monitor.snapshot())).not.toContain("private-content");
+  });
+
+  it.each(['{"private-argument":', "[]", "null", "true", '"text"', ""])(
+    "rejects invalid successful tool arguments without exposing them (%s)",
+    (argumentsText) => {
+      const monitor = makeModelServiceStreamMonitor("openai-chat");
+      expect(() =>
+        monitor.push(
+          encoder.encode(
+            chat(
+              {
+                tool_calls: [
+                  { index: 0, id: "call_a", function: { name: "read", arguments: argumentsText } },
+                ],
+              },
+              "tool_calls",
+            ),
+          ),
+        ),
+      ).toThrow(expect.objectContaining({ reason: "invalid_stream_event" }));
+      expect(monitor.snapshot().terminal).toBe("none");
+      expect(JSON.stringify(monitor.snapshot())).not.toContain("private-argument");
+    },
+  );
+
+  it("validates interleaved fragmented tools independently across choices", () => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    const tool = (index: number, id: string, name: string, args: string) => ({
+      index,
+      id,
+      function: { name, arguments: args },
+    });
+    const text =
+      frame({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [tool(0, "call_a", "read", '{"path":'), tool(1, "call_b", "list", "{")],
+            },
+          },
+          {
+            index: 1,
+            delta: { tool_calls: [tool(0, "call_c", "search", "{}")] },
+            finish_reason: "tool_calls",
+          },
+        ],
+      }) +
+      chat({ tool_calls: [tool(1, "", "", "}"), tool(0, "", "", '"x"}')] }, "tool_calls") +
+      frame({ choices: [], usage: { completion_tokens: 20 } }) +
+      "data: [DONE]\n\n";
+    for (const byte of encoder.encode(text)) monitor.push(Uint8Array.of(byte));
+    monitor.finish();
+    expect(monitor.snapshot().terminal).toBe("completed");
+  });
+
+  it.each(["length", "max_tokens", "content_filter"])(
+    "preserves partial tools as incomplete for %s",
+    (finish) => {
+      const monitor = makeModelServiceStreamMonitor("openai-chat");
+      monitor.push(
+        encoder.encode(
+          chat({ tool_calls: [{ index: 0, function: { arguments: "{" } }] }, finish) +
+            frame({ choices: [{ index: 1, delta: {}, finish_reason: "stop" }] }) +
+            "data: [DONE]\n\n",
+        ),
+      );
+      monitor.finish();
+      expect(monitor.snapshot().terminal).toBe("incomplete");
+    },
+  );
+
+  it.each([
+    chat({ tool_calls: [{ index: 0, function: { name: "read", arguments: "{}" } }] }, "tool_calls"),
+    chat({ tool_calls: [{ index: 0, id: "call_a", function: { arguments: "{}" } }] }, "stop"),
+    chat({ tool_calls: [{ index: 0, id: "call_a" }] }) +
+      chat({ tool_calls: [{ index: 0, id: "call_b" }] }),
+    chat({}, "stop") + chat({ content: "late" }),
+    chat({ tool_calls: [{ index: -1 }] }),
+    chat({ tool_calls: [{ index: 4096 }] }),
+    frame({ choices: [{ index: 128, delta: {} }] }),
+  ])("rejects malformed choices and tool identities (%s)", (text) => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    expect(() => monitor.push(encoder.encode(text))).toThrow(
+      expect.objectContaining({ reason: "invalid_stream_event" }),
+    );
+  });
+
+  it("retains valid legacy function calls on the native Chat path", () => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    monitor.push(
+      encoder.encode(
+        chat({ function_call: { name: "read", arguments: "{" } }) +
+          chat({ function_call: { arguments: "}" } }, "function_call") +
+          "data: [DONE]\n\n",
+      ),
+    );
+    monitor.finish();
+    expect(monitor.snapshot().terminal).toBe("completed");
+  });
+
+  it("bounds tool tracking across choices", () => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    monitor.push(
+      encoder.encode(chat({ tool_calls: Array.from({ length: 4096 }, (_, index) => ({ index })) })),
+    );
+    expect(() =>
+      monitor.push(
+        encoder.encode(frame({ choices: [{ index: 1, delta: { tool_calls: [{ index: 0 }] } }] })),
+      ),
+    ).toThrow(expect.objectContaining({ reason: "stream_limit" }));
+  });
+
+  it("bounds accumulated arguments even when every frame is below the SSE limit", () => {
+    const monitor = makeModelServiceStreamMonitor("openai-chat");
+    const fragment = encoder.encode(
+      chat({ tool_calls: [{ index: 0, function: { arguments: "x".repeat(1024 * 1024) } }] }),
+    );
+    for (let index = 0; index < 16; index++) monitor.push(fragment);
+    expect(() => monitor.push(fragment)).toThrow(
+      expect.objectContaining({ reason: "stream_limit" }),
+    );
+  });
   it("separates protocol completion from an explicitly zero-generated empty stop", () => {
     const monitor = makeModelServiceStreamMonitor("openai-chat");
     monitor.push(
@@ -125,12 +264,12 @@ describe("model service stream integrity", () => {
   it.each([
     {
       protocol: "openai-chat",
-      text: "data: [DONE]\n\ndata: [DONE]\n\n",
+      text: chat({}, "stop") + "data: [DONE]\n\ndata: [DONE]\n\n",
       reason: "duplicate_terminal_event",
     },
     {
       protocol: "openai-chat",
-      text: "data: [DONE]\n\n" + chat({ content: "late" }),
+      text: chat({}, "stop") + "data: [DONE]\n\n" + chat({ content: "late" }),
       reason: "event_after_terminal",
     },
     { protocol: "openai-responses", text: "data: [DONE]\n\n", reason: "invalid_stream_event" },

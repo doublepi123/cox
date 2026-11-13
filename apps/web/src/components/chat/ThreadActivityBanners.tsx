@@ -74,6 +74,9 @@ function ExtensionStatusDisclosure({
   const texts = statuses.map((status) =>
     status.kind === "memory" ? translateUi(status.text) : status.text,
   );
+  const reflecting = statuses.some(
+    (status) => status.kind === "memory" && status.text === "Memory reflecting",
+  );
   return (
     <Popover>
       <PopoverTrigger
@@ -82,7 +85,11 @@ function ExtensionStatusDisclosure({
         className="pe-2 sm:pe-1.5"
       >
         <ComposerBanner.Icon>
-          <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+          {reflecting ? (
+            <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+          ) : (
+            <CircleDashedIcon />
+          )}
         </ComposerBanner.Icon>
         <ComposerBanner.Content className="whitespace-nowrap leading-7 sm:leading-6">
           <span className="min-w-0 truncate font-medium">{texts[0]}</span>
@@ -119,7 +126,7 @@ export function extensionStatusBannerItem(
   return {
     id: "provider-extension-status",
     variant: "default",
-    icon: <LoaderCircleIcon />,
+    icon: <CircleDashedIcon />,
     title: providerLabel,
     row: <ExtensionStatusDisclosure statuses={visible} providerLabel={providerLabel} />,
   };

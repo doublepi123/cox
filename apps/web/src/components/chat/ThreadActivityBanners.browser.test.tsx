@@ -68,3 +68,25 @@ it("stays closed when the statuses change while focus is elsewhere", async () =>
   await expect.element(trigger).toHaveAttribute("aria-expanded", "false");
   expect(page.getByRole("dialog").elements()).toHaveLength(0);
 });
+
+it("stops spinning after memory reflection and preserves the achieved goal status", async () => {
+  const goal = { key: "goal", text: "Deliver a Chinese, evidence-bac… · Goal achieved (2h 12m)" };
+  await using screen = await render(stack([goal, { key: "memory", text: "mem:x reflecting" }]));
+  const trigger = screen.getByRole("button", { name: "OMO Native extension status" });
+  expect(trigger.element().querySelector(".animate-spin")).not.toBeNull();
+  await screen.rerender(stack([goal, { key: "memory", text: "mem:x 2m ago (+14)" }]));
+  await expect.element(trigger).toHaveTextContent(goal.text);
+  expect(trigger.element().querySelector(".animate-spin")).toBeNull();
+  await trigger.click();
+  await expect.element(page.getByRole("dialog").getByRole("listitem")).toHaveTextContent(goal.text);
+});
+
+it.each(["Pursuing goal (3m)", "Goal paused", "Goal achieved (2h 12m)"])(
+  "does not infer running work from arbitrary extension text: %s",
+  async (text) => {
+    await using screen = await render(stack([{ key: "goal", text }]));
+    const trigger = screen.getByRole("button", { name: "OMO Native extension status" });
+    await expect.element(trigger).toHaveTextContent(text);
+    expect(trigger.element().querySelector(".animate-spin")).toBeNull();
+  },
+);

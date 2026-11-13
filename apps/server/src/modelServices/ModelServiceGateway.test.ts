@@ -1452,31 +1452,54 @@ it.layer(layer)("model service gateway", (it) => {
   it.effect("diagnoses bridge refusal independently from upstream completion metadata", () =>
     withGatewayDiagnostics((messages) =>
       Effect.gen(function* () {
+        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
         const h = yield* harness({
           recovery: { retryEnabled: true, hedgeEnabled: true, maxAttempts: 10 },
           respond: () =>
             new Response(
-              chatStreamFrame({
-                tool_calls: [
-                  {
-                    index: 0,
-                    id: "call_fixture",
-                    type: "function",
-                    function: { name: "Read", arguments: '{"secret-path":' },
-                  },
-                ],
-              }) +
-                chatStreamFrame({}, "tool_calls") +
-                "data: [DONE]\n\n",
+              new ReadableStream<Uint8Array>({
+                start(output) {
+                  controller = output;
+                  output.enqueue(new TextEncoder().encode(chatStreamFrame({ content: "initial" })));
+                },
+              }),
               { headers: { "content-type": "text/event-stream" } },
             ),
         });
-        const result = yield* h.invoke("/v1/responses", {
-          model: "Vendor/Exact",
-          stream: true,
-          input: "test",
-          tools: [{ type: "function", name: "Read", parameters: { type: "object" } }],
-        });
+        const result = yield* Effect.gen(function* () {
+          const response = yield* h.gateway.handle.pipe(
+            Effect.provideService(
+              HttpServerRequest.HttpServerRequest,
+              HttpServerRequest.fromWeb(
+                new Request("http://127.0.0.1/api/model-gateway/v1/responses", {
+                  method: "POST",
+                  headers: {
+                    authorization: `Bearer ${h.token}`,
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: "Vendor/Exact",
+                    stream: true,
+                    input: "test",
+                    tools: [{ type: "function", name: "Read", parameters: { type: "object" } }],
+                  }),
+                }),
+              ),
+            ),
+          );
+          controller!.enqueue(
+            new TextEncoder().encode(
+              chatStreamFrame(
+                { function_call: { name: "Read", arguments: '{"secret-path":"fixture"}' } },
+                "function_call",
+              ) + "data: [DONE]\n\n",
+            ),
+          );
+          controller!.close();
+          return {
+            text: yield* Effect.promise(() => HttpServerResponse.toWeb(response).text()),
+          };
+        }).pipe(Effect.scoped);
         expect(result.text).toContain("response.output_item.added");
         expect(result.text).not.toContain("event: response.completed");
         expect(result.text).toContain("cox_model_service_incomplete_stream");
@@ -1548,9 +1571,29 @@ it.layer(layer)("model service gateway", (it) => {
 
   it.effect.each([
     { tail: 'data: {"choices":\n\n', reason: "invalid_json" },
-    { tail: "data: [DONE]\n\ndata: [DONE]\n\n", reason: "duplicate_terminal_event" },
+    { tail: "data: [DONE]\n\n", reason: "missing_terminal_event" },
     {
-      tail: "data: [DONE]\n\n" + chatStreamFrame({ content: "late" }),
+      tail:
+        chatStreamFrame(
+          {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_a",
+                function: { name: "read", arguments: '{"private-argument":' },
+              },
+            ],
+          },
+          "tool_calls",
+        ) + "data: [DONE]\n\n",
+      reason: "invalid_stream_event",
+    },
+    {
+      tail: chatStreamFrame({}, "stop") + "data: [DONE]\n\ndata: [DONE]\n\n",
+      reason: "duplicate_terminal_event",
+    },
+    {
+      tail: chatStreamFrame({}, "stop") + "data: [DONE]\n\n" + chatStreamFrame({ content: "late" }),
       reason: "event_after_terminal",
     },
   ])("diagnoses malformed post-output streams without replay ($reason)", (scenario) =>
@@ -1580,6 +1623,8 @@ it.layer(layer)("model service gateway", (it) => {
         const result = yield* Fiber.join(fiber);
         expect(result.text).toContain("initial");
         expect(result.text).toContain("cox_model_service_incomplete_stream");
+        expect(result.text).not.toContain("private-argument");
+        expect(result.text).not.toContain("data: [DONE]");
         expect(h.calls).toHaveLength(1);
         expect(messages).toContainEqual(
           expect.objectContaining({
@@ -2641,7 +2686,7 @@ it.layer(layer)("model service gateway", (it) => {
       expect(cancelled).toEqual([0]);
       controllers[1]!.enqueue(
         new TextEncoder().encode(
-          'data: {"choices":[{"delta":{"content":"sibling survived"}}]}\n\ndata: [DONE]\n\n',
+          chatStreamFrame({ content: "sibling survived" }, "stop") + "data: [DONE]\n\n",
         ),
       );
       controllers[1]!.close();
@@ -2939,7 +2984,7 @@ it.layer(layer)("model service gateway", (it) => {
             return new Response(
               calls === 1
                 ? 'data: {"error":{"status":429,"code":"insufficient_quota"}}\n\n'
-                : 'data: {"choices":[{"delta":{"content":"quota recovered"}}]}\n\ndata: [DONE]\n\n',
+                : chatStreamFrame({ content: "quota recovered" }, "stop") + "data: [DONE]\n\n",
               { headers: { "content-type": "text/event-stream" } },
             );
           },
@@ -3428,7 +3473,14 @@ it.layer(layer)("model service gateway", (it) => {
                 { headers: { "content-type": "text/event-stream" } },
               )
             : new Response(
-                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"winner-tool","function":{"name":"shell","arguments":"{}"}}]}}]}\n\ndata: [DONE]\n\n',
+                chatStreamFrame(
+                  {
+                    tool_calls: [
+                      { index: 0, id: "winner-tool", function: { name: "shell", arguments: "{}" } },
+                    ],
+                  },
+                  "tool_calls",
+                ) + "data: [DONE]\n\n",
                 { headers: { "content-type": "text/event-stream" } },
               );
         },
@@ -3456,7 +3508,7 @@ it.layer(layer)("model service gateway", (it) => {
           new Response(
             ++calls === 1
               ? 'data: {"type":"error","error":{"type":"overloaded_error","message":"private-upstream-key"}}\n\n'
-              : 'data: {"choices":[{"delta":{"content":"recovered stream"}}]}\n\ndata: [DONE]\n\n',
+              : chatStreamFrame({ content: "recovered stream" }, "stop") + "data: [DONE]\n\n",
             { headers: { "content-type": "text/event-stream" } },
           ),
       });
@@ -3507,7 +3559,7 @@ it.layer(layer)("model service gateway", (it) => {
       yield* TestClock.adjust("1 second");
       expect(h.calls).toHaveLength(1);
       controller!.enqueue(
-        encoder.encode('data: {"choices":[{"delta":{"content":"answer"}}]}\n\ndata: [DONE]\n\n'),
+        encoder.encode(chatStreamFrame({ content: "answer" }, "stop") + "data: [DONE]\n\n"),
       );
       controller!.close();
       expect(yield* Effect.promise(() => HttpServerResponse.toWeb(response).text())).toContain(

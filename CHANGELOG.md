@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.82 — 2026-11-13
+
+- Stop animating informational extension statuses such as an achieved OMO goal.
+  Preserve their full text in the disclosure and animate only an explicitly
+  active memory reflection, so completed work no longer appears to keep running.
+- Require every native Chat stream choice to finish before accepting `[DONE]`.
+  Validate successful tool-call identities and assembled JSON object arguments,
+  with bounded tracking across choices and fragmented calls. Preserve incomplete
+  output for length and content-filter termination and valid native legacy calls.
+- Report damaged streams without replaying requests after output was delivered.
+
 ## 0.1.81 — 2026-11-13
 
 - Stop all active gateway recovery attempts immediately when an error is not
