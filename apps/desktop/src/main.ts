@@ -1385,6 +1385,11 @@ async function start() {
     draft?: Pick<RemoteConnectionInput, "name" | "origin">,
   ) {
     if (!connectionStore || approvedQuit || quitPending) return;
+    const connectedProfileIds = new Set<string>();
+    for (const [target, profile] of remoteWindows)
+      if (!target.isDestroyed()) connectedProfileIds.add(profile.id);
+    if (connectionMode === "remote" && activeRemoteProfile && window && !window.isDestroyed())
+      connectedProfileIds.add(activeRemoteProfile.id);
     const icon = "data:image/png;base64," + readFileSync(startupIcon).toString("base64");
     const focused = mainOwner(owner ?? BrowserWindow.getFocusedWindow());
     const requestedOwner =
@@ -1412,6 +1417,7 @@ async function start() {
           icon,
           error === undefined ? undefined : desktopConnectionError(systemLocale(), error),
           draft,
+          connectedProfileIds,
         ),
       );
     if (!existing) {
@@ -1581,6 +1587,8 @@ async function start() {
       closeOwnerPages(target);
       readyWindows.delete(targetId);
       remoteWindows.delete(target);
+      if (!switchingConnections && connectionsWindow && !connectionsWindow.isDestroyed())
+        void showConnections(undefined, undefined, true);
       if (
         process.platform !== "darwin" &&
         connectionMode === "manager" &&
@@ -1617,6 +1625,23 @@ async function start() {
       if (input.id && !existing) throw new Error("Unknown remote server.");
       const targetOrigin = input.origin ?? existing?.origin;
       if (!targetOrigin) throw new Error("Enter an HTTPS server origin.");
+      const connected = existing
+        ? ([...remoteWindows.entries()].find(
+            ([target, profile]) => !target.isDestroyed() && profile.id === existing.id,
+          )?.[0] ??
+          (connectionMode === "remote" &&
+          activeRemoteProfile?.id === existing.id &&
+          window &&
+          !window.isDestroyed()
+            ? window
+            : undefined))
+        : undefined;
+      if (connected) {
+        if (connected.isMinimized()) connected.restore();
+        connected.show();
+        connected.focus();
+        return;
+      }
       const inspection = await inspectRemoteServer(targetOrigin, (input, init) =>
         net.fetch(input instanceof URL ? input.href : input, init),
       );
@@ -1651,6 +1676,14 @@ async function start() {
         }
         if (!input.openInNewWindow && owner && !owner.isDestroyed()) owner.destroy();
         if (!input.openInNewWindow && manager && !manager.isDestroyed()) manager.close();
+        if (input.openInNewWindow && manager && !manager.isDestroyed()) {
+          await showConnections(undefined, undefined, true);
+          if (!target.isDestroyed()) {
+            if (target.isMinimized()) target.restore();
+            target.show();
+            target.focus();
+          }
+        }
         return;
       }
       connectionGeneration++;
@@ -1671,6 +1704,33 @@ async function start() {
       if (!manager) await showConnectionManager(error, input);
       else if (!manager.isDestroyed() && connectionsWindow === manager)
         await showConnections(error, undefined, false, input);
+    } finally {
+      switchingConnections = false;
+    }
+  }
+
+  async function disconnectRemote(id: string) {
+    if (switchingConnections)
+      throw new Error(
+        "Another connection change is already in progress. Wait for it to finish and try again.",
+      );
+    if (approvedQuit || quitPending) return;
+    switchingConnections = true;
+    try {
+      const profile = connectionStore.profile(id);
+      if (!profile) return;
+      const removedFromMain = connectionMode === "remote" && activeRemoteProfile?.id === profile.id;
+      for (const [target, connected] of remoteWindows) {
+        if (connected.id === profile.id && !target.isDestroyed()) target.destroy();
+      }
+      if (removedFromMain) {
+        activeRemoteProfile = undefined;
+        window?.hide();
+        replaceMainWindow("persist:cox-desktop");
+        connectionMode = "manager";
+        connectionStore.setActive(null);
+      }
+      await showConnections(undefined, undefined, true);
     } finally {
       switchingConnections = false;
     }
@@ -1765,6 +1825,11 @@ async function start() {
         ? { openInNewWindow: value.openInNewWindow }
         : {}),
     });
+  });
+  ipcMain.handle("cox:connections-disconnect", (event, id: unknown) => {
+    if (!connectionManagerSender(event) || typeof id !== "string")
+      throw new Error("Invalid remote connection request.");
+    return disconnectRemote(id);
   });
   ipcMain.handle("cox:connections-forget", (event, id: unknown) => {
     if (!connectionManagerSender(event) || typeof id !== "string")

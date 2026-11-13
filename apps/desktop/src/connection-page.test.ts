@@ -91,6 +91,33 @@ describe("local desktop connection pages", () => {
     expect(page).toContain("Cox " + profile.serverVersion + " · Current");
   });
 
+  it.each([
+    ["en-US", "Connected", "Disconnect"],
+    ["zh-CN", "已连接", "断开"],
+  ])("marks open remote instances and offers Disconnect in %s", (locale, connected, disconnect) => {
+    const page = createConnectionPage(
+      locale,
+      { active: null, profiles: [profile], openInNewWindow: true },
+      undefined,
+      undefined,
+      undefined,
+      new Set([profile.id]),
+    );
+    expect(page).toContain("Cox " + profile.serverVersion + " · " + connected);
+    expect(page).toContain('data-action="disconnect"');
+    expect(page).toContain(disconnect);
+  });
+
+  it("does not offer Disconnect for a saved profile with no open window", () => {
+    const page = createConnectionPage("en-US", {
+      active: null,
+      profiles: [profile],
+      openInNewWindow: true,
+    });
+    expect(page).not.toContain('data-action="disconnect"');
+    expect(page).not.toContain("Connected");
+  });
+
   it("offers connections during local backend preparation", () => {
     expect(createStartupPage("zh-CN")).toContain("连接管理");
     expect(createStartupPage("en-US")).toContain("cox-open-connections");

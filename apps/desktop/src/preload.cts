@@ -92,6 +92,7 @@ if (window.location.protocol === "data:") {
       ipcRenderer.invoke("cox:connections-connect", input),
     setOpenInNewWindow: (choice: boolean) =>
       ipcRenderer.invoke("cox:connections-new-window", choice),
+    disconnect: (id: string) => ipcRenderer.invoke("cox:connections-disconnect", id),
     forget: (id: string) => ipcRenderer.invoke("cox:connections-forget", id),
   };
   contextBridge.exposeInMainWorld("coxConnections", connections);
@@ -201,6 +202,7 @@ if (window.location.protocol === "data:") {
       if (button.dataset.action === "local") void run(connections.useLocal);
       if (button.dataset.action === "connect" && id)
         void run(() => connections.connect({ id, openInNewWindow: openInNewWindow() }));
+      if (button.dataset.action === "disconnect" && id) void run(() => connections.disconnect(id));
       if (button.dataset.action === "forget" && id) void run(() => connections.forget(id));
     });
   });

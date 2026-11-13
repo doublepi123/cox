@@ -405,4 +405,15 @@ describe("desktop preload connection roles", () => {
     expect(bridge.checkUpdates).toBeUndefined();
     expect(exposed.has("coxConnections")).toBe(true);
   });
+
+  it("requests Disconnect for the selected saved profile", async () => {
+    const { exposed, invoke } = loadBridge(
+      ["--cox-window-kind=main", "--cox-remote=true"],
+      { document: { addEventListener: vi.fn() } },
+      "data:",
+    );
+    const connections = exposed.get("coxConnections")!;
+    await (connections.disconnect as (id: string) => Promise<void>)("profile-1");
+    expect(invoke).toHaveBeenCalledWith("cox:connections-disconnect", "profile-1");
+  });
 });

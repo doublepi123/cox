@@ -7,6 +7,7 @@ export function createConnectionPage(
   icon?: string,
   error?: string,
   draft?: { readonly name?: string; readonly origin?: string },
+  connectedProfileIds: ReadonlySet<string> = new Set(),
 ) {
   const zh = /^zh(?:-|_|$)/i.test(locale);
   const labels = zh
@@ -21,8 +22,10 @@ export function createConnectionPage(
         name: "名称（可选）",
         origin: "HTTPS 服务器地址",
         connect: "连接",
+        disconnect: "断开",
         forget: "忘记",
         current: "当前",
+        connected: "已连接",
         newWindow: "在新窗口打开",
         newWindowDetail: "保留当前窗口和连接管理页，单独打开远程服务器。",
         security:
@@ -39,8 +42,10 @@ export function createConnectionPage(
         name: "Name (optional)",
         origin: "HTTPS server origin",
         connect: "Connect",
+        disconnect: "Disconnect",
         forget: "Forget",
         current: "Current",
+        connected: "Connected",
         newWindow: "Open in a new window",
         newWindowDetail:
           "Keep the current window and Connections open, and open this remote server separately.",
@@ -48,8 +53,13 @@ export function createConnectionPage(
           "Remote servers must use HTTPS and enable COX_AUTH_PASSWORD. Passwords are entered only on the server's sign-in page and never saved in connection settings.",
       };
   const active = snapshot.active;
-  const card = (profile?: DesktopConnectionSnapshot["profiles"][number]) =>
-    `<article class="server" data-profile-id="${escapeHtml(profile?.id ?? "")}"><div class="server-copy"><strong>${escapeHtml(profile?.name ?? "")}</strong><span>${escapeHtml(profile?.origin ?? "")}</span><small>Cox ${escapeHtml(profile?.serverVersion ?? "")}${profile && active?.kind === "remote" && active.profileId === profile.id ? ` · ${labels.current}` : ""}</small></div><div class="actions"><button type="button" data-action="connect" data-id="${escapeHtml(profile?.id ?? "")}">${labels.connect}</button><button type="button" class="secondary" data-action="forget" data-id="${escapeHtml(profile?.id ?? "")}">${labels.forget}</button></div></article>`;
+  const card = (profile?: DesktopConnectionSnapshot["profiles"][number]) => {
+    const current = Boolean(
+      profile && active?.kind === "remote" && active.profileId === profile.id,
+    );
+    const connected = Boolean(profile && (current || connectedProfileIds.has(profile.id)));
+    return `<article class="server" data-profile-id="${escapeHtml(profile?.id ?? "")}"><div class="server-copy"><strong>${escapeHtml(profile?.name ?? "")}</strong><span>${escapeHtml(profile?.origin ?? "")}</span><small>Cox ${escapeHtml(profile?.serverVersion ?? "")}${connected ? ` · ${current ? labels.current : labels.connected}` : ""}</small></div><div class="actions"><button type="button" data-action="connect" data-id="${escapeHtml(profile?.id ?? "")}">${labels.connect}</button>${connected ? `<button type="button" class="secondary" data-action="disconnect" data-id="${escapeHtml(profile?.id ?? "")}">${labels.disconnect}</button>` : ""}<button type="button" class="secondary" data-action="forget" data-id="${escapeHtml(profile?.id ?? "")}">${labels.forget}</button></div></article>`;
+  };
   const profiles = snapshot.profiles.map(card).join("");
   return [
     '<!doctype html><meta charset="utf-8">',

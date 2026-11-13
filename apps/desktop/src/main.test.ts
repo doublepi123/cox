@@ -78,6 +78,7 @@ class TestWindow extends EventEmitter {
   readonly setPosition = vi.fn();
   readonly options: BrowserWindowConstructorOptions;
   visible: boolean;
+  minimized = false;
   destroyed = false;
   constructor(options: BrowserWindowConstructorOptions) {
     super();
@@ -98,7 +99,7 @@ class TestWindow extends EventEmitter {
     return this.visible;
   }
   isMinimized() {
-    return false;
+    return this.minimized;
   }
   isMaximized() {
     return false;
@@ -110,6 +111,7 @@ class TestWindow extends EventEmitter {
     return false;
   }
   restore() {
+    this.minimized = false;
     this.visible = true;
   }
   show() {
@@ -569,20 +571,26 @@ describe("desktop connection manager windows", () => {
     expect(fixture.launchBackend).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps distinct owners on the same saved remote profile from reusing each other's pages", async () => {
+  it("keeps distinct remote owners from reusing each other's pages", async () => {
     await start();
     const connections = manager();
-    for (let index = 0; index < 2; index++)
+    for (let index = 0; index < 2; index++) {
+      fixture.inspect.mockResolvedValueOnce({
+        ...inspection,
+        origin: `https://remote-${index}.example.com`,
+        environmentId: "environment-" + index,
+      });
       await invoke("cox:connections-connect", connections, {
-        origin: inspection.origin,
+        origin: `https://remote-${index}.example.com`,
         openInNewWindow: true,
       });
+    }
     const [first, second] = satellites() as [TestWindow, TestWindow];
     for (const owner of [first, second]) {
       await invoke("cox:settings-open", owner, "/settings/general");
       await invoke("cox:usage-open", owner, "/usage");
     }
-    expect(first.webContents.session).toBe(second.webContents.session);
+    expect(first.webContents.session).not.toBe(second.webContents.session);
     expect(pages("settings")).toHaveLength(2);
     expect(pages("usage")).toHaveLength(2);
     await invoke("cox:main-open", pages("usage")[1]!, "/threads/second");
@@ -675,7 +683,7 @@ describe("desktop connection manager windows", () => {
     expect(event.preventDefault).toHaveBeenCalledOnce();
   });
 
-  it("cleans primary-owned pages on same-profile reconnect, connection switch and owner close", async () => {
+  it("cleans primary-owned pages on connection switch and owner close", async () => {
     fixture.files.set(
       connectionsFile,
       JSON.stringify({
@@ -690,18 +698,12 @@ describe("desktop connection manager windows", () => {
     await invoke("cox:usage-open", remote, "/usage");
     const previous = [...pages("settings"), ...pages("usage")];
     await invoke("cox:connections-show", remote);
-    await invoke("cox:connections-connect", manager(), { id: saved.id, openInNewWindow: false });
-    expect(primary()).toBe(remote);
-    expect(previous.every((page) => page.destroyed)).toBe(true);
-    await invoke("cox:usage-open", remote, "/usage");
-    const beforeSwitch = pages("usage")[0]!;
-    await invoke("cox:connections-show", remote);
     fixture.inspect.mockResolvedValueOnce({ ...inspection, origin: "https://other.example.com" });
     await invoke("cox:connections-connect", manager(), {
       origin: "https://other.example.com",
       openInNewWindow: false,
     });
-    expect(beforeSwitch.destroyed).toBe(true);
+    expect(previous.every((page) => page.destroyed)).toBe(true);
     expect(remote.destroyed).toBe(true);
     const next = primary();
     await invoke("cox:settings-open", next, "/settings/general");
@@ -946,28 +948,160 @@ describe("desktop connection manager windows", () => {
     expect(primary().visible).toBe(false);
   });
 
-  it("keeps Connections open for repeated new-window connections without changing the main target", async () => {
+  it.each([false, true])(
+    "focuses the existing window for repeated connections with openInNewWindow=%s without changing the main target",
+    async (openInNewWindow) => {
+      await start();
+      const target = manager();
+      await invoke("cox:connections-connect", target, {
+        origin: inspection.origin,
+        openInNewWindow: true,
+      });
+      const remote = satellites()[0]!;
+      const reload = vi.spyOn(remote, "loadURL");
+      remote.minimized = true;
+      remote.hide();
+      const stored = JSON.parse(fixture.files.get(connectionsFile)!);
+      expect(stored.active).toBe(null);
+      expect(target.destroyed).toBe(false);
+      expect(primary().visible).toBe(false);
+      expect(target.webContents.send).toHaveBeenCalledWith(
+        "cox:connection-saved",
+        stored.profiles[0],
+      );
+      await invoke("cox:connections-connect", target, {
+        id: stored.profiles[0].id,
+        openInNewWindow,
+      });
+      expect(satellites()).toEqual([remote]);
+      expect(remote.visible).toBe(true);
+      expect(remote.minimized).toBe(false);
+      expect(fixture.focused).toBe(remote);
+      expect(reload).not.toHaveBeenCalled();
+      expect(fixture.windows.filter((value) => value.visible && value !== target)).toHaveLength(1);
+      expect(manager()).toBe(target);
+      expect(fixture.quit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("disconnects one satellite and its pages without clearing its profile or session", async () => {
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    const local = primary();
+    await invoke("cox:connections-show", local);
+    const target = manager();
+    for (let index = 0; index < 2; index++) {
+      fixture.inspect.mockResolvedValueOnce({
+        ...inspection,
+        origin: `https://remote-${index}.example.com`,
+        environmentId: "environment-" + index,
+      });
+      await invoke("cox:connections-connect", target, {
+        origin: `https://remote-${index}.example.com`,
+        openInNewWindow: true,
+      });
+    }
+    const [first, second] = satellites() as [TestWindow, TestWindow];
+    await invoke("cox:settings-open", first, "/settings/general");
+    await invoke("cox:usage-open", first, "/usage");
+    const ownedPages = [...pages("settings"), ...pages("usage")];
+    const stored = JSON.parse(fixture.files.get(connectionsFile)!) as {
+      profiles: RemoteConnectionProfile[];
+    };
+    await invoke("cox:connections-disconnect", target, stored.profiles[0]!.id);
+    expect(first.destroyed).toBe(true);
+    expect(ownedPages.every((page) => page.destroyed)).toBe(true);
+    expect(second.destroyed).toBe(false);
+    expect(local.visible).toBe(true);
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    expect(first.webContents.session.clearStorageData).not.toHaveBeenCalled();
+    expect(first.webContents.session.clearCache).not.toHaveBeenCalled();
+    expect(first.webContents.session.clearAuthCache).not.toHaveBeenCalled();
+    expect(JSON.parse(fixture.files.get(connectionsFile)!)).toMatchObject({
+      active: { kind: "local" },
+      profiles: stored.profiles,
+    });
+    expect(
+      decodeURIComponent(target.webContents.getURL()).match(/data-action="disconnect"/g),
+    ).toHaveLength(1);
+    second.destroy();
+    await vi.waitFor(() =>
+      expect(decodeURIComponent(target.webContents.getURL())).not.toContain(
+        'data-action="disconnect"',
+      ),
+    );
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("disconnects the primary remote without quitting or clearing its saved session", async () => {
+    fixture.files.set(
+      connectionsFile,
+      JSON.stringify({
+        version: 1,
+        active: { kind: "remote", profileId: saved.id },
+        profiles: [saved],
+      }),
+    );
+    await start();
+    const remote = primary();
+    const remoteSession = remote.webContents.session;
+    await invoke("cox:settings-open", remote, "/settings/general");
+    const settings = pages("settings")[0]!;
+    await invoke("cox:connections-show", remote);
+    const target = manager();
+    fixture.inspect.mockResolvedValueOnce({
+      ...inspection,
+      origin: "https://other.example.com",
+      environmentId: "environment-other",
+    });
+    await invoke("cox:connections-connect", target, {
+      origin: "https://other.example.com",
+      openInNewWindow: true,
+    });
+    const satellite = satellites()[0]!;
+    await invoke("cox:connections-disconnect", target, saved.id);
+    expect(remote.destroyed).toBe(true);
+    expect(settings.destroyed).toBe(true);
+    expect(primary()).not.toBe(remote);
+    expect(primary().visible).toBe(false);
+    expect(primary().options.webPreferences?.partition).toBe("persist:cox-desktop");
+    expect(satellite.destroyed).toBe(false);
+    expect(target.destroyed).toBe(false);
+    expect(target.visible).toBe(true);
+    expect(remoteSession.clearStorageData).not.toHaveBeenCalled();
+    expect(remoteSession.clearCache).not.toHaveBeenCalled();
+    expect(remoteSession.clearAuthCache).not.toHaveBeenCalled();
+    const stored = JSON.parse(fixture.files.get(connectionsFile)!);
+    expect(stored.active).toBe(null);
+    expect(stored.profiles).toHaveLength(2);
+    expect(
+      stored.profiles.some((profile: RemoteConnectionProfile) => profile.id === saved.id),
+    ).toBe(true);
+    expect(
+      decodeURIComponent(target.webContents.getURL()).match(/data-action="disconnect"/g),
+    ).toHaveLength(1);
+    expect(fixture.launchBackend).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("restricts Disconnect to a valid id from the trusted Connections main frame", async () => {
     await start();
     const target = manager();
+    expect(() => invoke("cox:connections-disconnect", target, 1)).toThrow("Invalid");
+    expect(() => invoke("cox:connections-disconnect", primary(), saved.id)).toThrow("Invalid");
+    expect(() =>
+      fixture.handlers.get("cox:connections-disconnect")!(
+        { sender: target.webContents, senderFrame: { url: target.webContents.getURL() } },
+        saved.id,
+      ),
+    ).toThrow("Invalid");
     await invoke("cox:connections-connect", target, {
       origin: inspection.origin,
       openInNewWindow: true,
     });
-    const stored = JSON.parse(fixture.files.get(connectionsFile)!);
-    expect(stored.active).toBe(null);
-    expect(target.destroyed).toBe(false);
-    expect(primary().visible).toBe(false);
-    expect(target.webContents.send).toHaveBeenCalledWith(
-      "cox:connection-saved",
-      stored.profiles[0],
-    );
-    await invoke("cox:connections-connect", target, {
-      id: stored.profiles[0].id,
-      openInNewWindow: true,
-    });
-    expect(fixture.windows.filter((value) => value.visible && value !== target)).toHaveLength(2);
-    expect(manager()).toBe(target);
-    expect(fixture.quit).not.toHaveBeenCalled();
+    const remote = satellites()[0]!;
+    expect(() => invoke("cox:connections-disconnect", remote, saved.id)).toThrow("Invalid");
+    expect(remote.destroyed).toBe(false);
   });
 
   it("keeps unchecked connection switching and reveals the primary only for its server", async () => {
@@ -1124,6 +1258,11 @@ describe("desktop connection manager windows", () => {
     )!;
     await invoke("cox:connections-show", satellite);
     satellite.destroy();
+    await vi.waitFor(() =>
+      expect(decodeURIComponent(target.webContents.getURL())).not.toContain(
+        'data-action="disconnect"',
+      ),
+    );
     await invoke("cox:connections-connect", target, {
       origin: inspection.origin,
       openInNewWindow: true,
@@ -1297,11 +1436,6 @@ describe("desktop connection manager windows", () => {
       const main = primary();
       await invoke("cox:connections-show", main);
       const target = manager();
-      await invoke("cox:connections-connect", target, {
-        id: saved.id,
-        openInNewWindow: true,
-      });
-      const satellite = satellites()[0]!;
       if (failure === "storage")
         main.webContents.session.clearStorageData.mockRejectedValueOnce(
           new Error("Storage cleanup failed"),
@@ -1316,7 +1450,6 @@ describe("desktop connection manager windows", () => {
       expect(primary()).toBe(main);
       expect(main.visible).toBe(true);
       expect(main.webContents.getURL()).toBe(inspection.origin);
-      expect(satellite.destroyed).toBe(false);
       expect(manager()).toBe(target);
       expect(JSON.parse(fixture.files.get(connectionsFile)!)).toMatchObject({
         active: { kind: "remote", profileId: saved.id },
