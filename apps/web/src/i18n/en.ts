@@ -1265,6 +1265,7 @@ export const en = {
   "{name} enablement": "{name} enablement",
   "Enable {name}": "Enable {name}",
   "Delete instance {name}": "Delete instance {name}",
+  "Delete provider instance '{name}'?": "Delete provider instance '{name}'?",
   "Model slugs must be {count} characters or less.":
     "Model slugs must be {count} characters or less.",
   " · {count} hidden": " · {count} hidden",

@@ -17,6 +17,7 @@ import { piClient } from "@t3tools/provider-pi/client";
 import { omoClient } from "@t3tools/provider-omo/client";
 
 export const providerClients = makeProviderClientRegistry([
+  omoClient,
   {
     driverKind: ProviderDriverKind.make("codex"),
     label: "Codex",
@@ -44,7 +45,6 @@ export const providerClients = makeProviderClientRegistry([
   },
   museClient,
   piClient,
-  omoClient,
   acpRegistryClient,
 ]);
 

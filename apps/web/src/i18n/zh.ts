@@ -1185,6 +1185,7 @@ export const zh = {
   "{name} enablement": "{name} 启用状态",
   "Enable {name}": "启用 {name}",
   "Delete instance {name}": "删除实例 {name}",
+  "Delete provider instance '{name}'?": "删除提供商实例“{name}”吗？",
   "Model slugs must be {count} characters or less.": "模型标识不能超过 {count} 个字符。",
   " · {count} hidden": " · 隐藏 {count} 个",
   "{direction} {name} {position} favorites": "{direction} {name} {position}收藏列表",

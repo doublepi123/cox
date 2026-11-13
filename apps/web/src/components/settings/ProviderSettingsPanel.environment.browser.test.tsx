@@ -32,6 +32,7 @@ const state = vi.hoisted(() => ({
   updateProvider: vi.fn(),
   uninstall: vi.fn(),
   acceptUrlAuth: vi.fn(),
+  confirm: vi.fn(),
   updateSettings: vi.fn(),
   updateModelPreferences: vi.fn(),
   toggleFavorite: vi.fn(),
@@ -138,6 +139,10 @@ vi.mock(import("../../state/environments"), async (original) => {
 vi.mock(import("../../state/entities"), async (original) => ({
   ...(await original()),
   useProjects: (() => []) as never,
+}));
+vi.mock(import("../../localApi"), async (original) => ({
+  ...(await original()),
+  readLocalApi: (() => ({ dialogs: { confirm: state.confirm } })) as never,
 }));
 vi.mock(import("./settingsLayout"), async (original) => ({
   ...(await original()),
@@ -252,6 +257,7 @@ async function setup() {
   state.updateProvider.mockReset().mockResolvedValue(AsyncResult.success(undefined));
   state.uninstall.mockReset().mockResolvedValue(AsyncResult.success({}));
   state.acceptUrlAuth.mockReset().mockResolvedValue(AsyncResult.success({ accepted: true }));
+  state.confirm.mockReset().mockResolvedValue(true);
   await setProviders([]);
 }
 
@@ -289,6 +295,76 @@ describe("EnvironmentProviderSettings routing", () => {
       .element(page.getByText("This provider instance is no longer available on this device."))
       .toBeVisible();
     expect(state.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("lists OMO first and persists accessible row reordering", async () => {
+    await setup();
+    await using _screen = await render(panel());
+
+    const selectedLabels = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('button[aria-pressed][aria-label^="Select "]'),
+      (element) => element.getAttribute("aria-label"),
+    );
+    expect(selectedLabels.slice(0, 3)).toEqual([
+      "Select OMO Native",
+      "Select Codex",
+      "Select Claude",
+    ]);
+
+    await userEvent.click(page.getByRole("button", { name: "Move OMO Native down" }));
+
+    expect(state.updateSettings).toHaveBeenCalledWith({
+      providerInstanceOrder: ["codex", "omo", "claudeAgent"],
+    });
+  });
+
+  it("hides a tombstoned default from the provider list", async () => {
+    await setup();
+    state.settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      deletedDefaultProviderInstances: [codexId],
+    };
+    await using _screen = await render(panel());
+
+    expect(page.getByRole("button", { name: "Select Codex" }).query()).toBeNull();
+    await expect.element(page.getByRole("button", { name: "Select OMO Native" })).toBeVisible();
+  });
+
+  it("deletes an unconfigured default through the shared confirmation flow", async () => {
+    await setup();
+    await using _screen = await render(panel({ targetInstanceId: codexId }));
+
+    await userEvent.click(page.getByRole("button", { name: "Delete instance codex" }));
+
+    expect(state.confirm).toHaveBeenCalledWith("Delete provider instance 'codex'?", {
+      variant: "destructive",
+    });
+    expect(state.mutateProviderInstance).toHaveBeenCalledWith({
+      operation: "remove",
+      instanceId: codexId,
+      driver: ProviderDriverKind.make("codex"),
+    });
+  });
+
+  it("resets a dirty default without tombstoning it", async () => {
+    await setup();
+    state.settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [codexId]: { driver: ProviderDriverKind.make("codex"), displayName: "Work" },
+      },
+    };
+    await using _screen = await render(panel({ targetInstanceId: codexId }));
+
+    await userEvent.click(
+      page.getByRole("button", { name: "Reset Codex provider settings to default" }),
+    );
+
+    expect(state.mutateProviderInstance).toHaveBeenCalledWith({
+      operation: "reset",
+      instanceId: codexId,
+    });
+    expect(state.confirm).not.toHaveBeenCalled();
   });
 
   it("updates one provider instance without sending a stale whole map", async () => {

@@ -639,6 +639,93 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("persists provider ordering and default deletion markers", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const codex = ProviderInstanceId.make("codex");
+      const claude = ProviderInstanceId.make("claudeAgent");
+
+      const saved = yield* serverSettings.updateSettings({
+        providerInstanceOrder: [claude, codex],
+        deletedDefaultProviderInstances: [codex],
+      });
+
+      assert.deepEqual(saved.providerInstanceOrder, [claude, codex]);
+      assert.deepEqual(saved.deletedDefaultProviderInstances, [codex]);
+      const persisted = JSON.parse(yield* fs.readFileString(config.settingsPath));
+      assert.deepEqual(persisted.providerInstanceOrder, ["claudeAgent", "codex"]);
+      assert.deepEqual(persisted.deletedDefaultProviderInstances, ["codex"]);
+      assert.deepEqual(
+        ServerSettingsModule.redactServerSettingsForClient(saved).deletedDefaultProviderInstances,
+        [codex],
+      );
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("restores a deleted default when its instance is created again", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const codex = ProviderInstanceId.make("codex");
+      const driver = ProviderDriverKind.make("codex");
+
+      const removed = yield* serverSettings.updateProviderInstance({
+        operation: "remove",
+        instanceId: codex,
+      });
+      assert.deepEqual(removed.deletedDefaultProviderInstances, [codex]);
+      assert.isUndefined(removed.providerInstances[codex]);
+
+      const restored = yield* serverSettings.updateProviderInstance({
+        operation: "create",
+        instanceId: codex,
+        instance: { driver, enabled: true },
+      });
+      assert.deepEqual(restored.deletedDefaultProviderInstances, []);
+      assert.deepEqual(restored.providerInstances[codex], { driver, enabled: true });
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("clears a default deletion marker on upsert", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const codex = ProviderInstanceId.make("codex");
+      const driver = ProviderDriverKind.make("codex");
+      yield* serverSettings.updateSettings({ deletedDefaultProviderInstances: [codex] });
+
+      const restored = yield* serverSettings.updateProviderInstance({
+        operation: "upsert",
+        instanceId: codex,
+        instance: { driver, enabled: true },
+      });
+
+      assert.deepEqual(restored.deletedDefaultProviderInstances, []);
+      assert.deepEqual(restored.providerInstances[codex], { driver, enabled: true });
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("resets default customization without deleting the default", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const codex = ProviderInstanceId.make("codex");
+      const driver = ProviderDriverKind.make("codex");
+      yield* serverSettings.updateProviderInstance({
+        operation: "upsert",
+        instanceId: codex,
+        instance: { driver, displayName: "Work" },
+      });
+
+      const reset = yield* serverSettings.updateProviderInstance({
+        operation: "reset",
+        instanceId: codex,
+      });
+
+      assert.isUndefined(reset.providerInstances[codex]);
+      assert.deepEqual(reset.deletedDefaultProviderInstances, []);
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("pauses provider-instance mutations while a settings snapshot is in use", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
@@ -973,6 +1060,18 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("skips a deleted default when choosing a text-generation fallback", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const next = yield* serverSettings.updateSettings({
+        deletedDefaultProviderInstances: [ProviderInstanceId.make("codex")],
+      });
+
+      assert.equal(next.textGenerationModelSelection.instanceId, "claudeAgent");
+      assert.equal(next.textGenerationModelSelection.model, "claude-haiku-5-5");
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   // A backend behind a custom model may refuse the built-in default.
   it.effect("falls back to the thread default when it is a custom model on that instance", () =>
     Effect.gen(function* () {
@@ -1117,6 +1216,28 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         driver: "codex",
         config: { binaryPath: "/opt/guard/bin/codex" },
       });
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("does not resurrect a deleted default from legacy provider settings", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fileSystem.writeFileString(
+        serverConfig.settingsPath,
+        JSON.stringify({
+          providers: { codex: { binaryPath: "/legacy/codex" } },
+          deletedDefaultProviderInstances: ["codex"],
+        }),
+      );
+
+      const settings = yield* serverSettings.getSettings;
+
+      assert.isUndefined(settings.providerInstances[ProviderInstanceId.make("codex")]);
+      assert.deepEqual(settings.deletedDefaultProviderInstances, [
+        ProviderInstanceId.make("codex"),
+      ]);
     }).pipe(Effect.provide(layerServerSettings())),
   );
 

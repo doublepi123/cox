@@ -54,11 +54,15 @@ export const deriveProviderInstanceConfigMap = (
   settings: ServerSettings,
 ): ProviderInstanceConfigMap => {
   const merged: Record<string, ProviderInstanceConfig> = { ...settings.providerInstances };
+  const deletedDefaults = new Set(settings.deletedDefaultProviderInstances);
+  for (const instanceId of deletedDefaults) {
+    delete merged[instanceId];
+  }
 
   for (const driver of BUILT_IN_DRIVERS) {
     if (driver.metadata.hasDefaultInstance === false) continue;
     const instanceId = defaultInstanceIdForDriver(driver.driverKind);
-    if (instanceId in merged) continue;
+    if (deletedDefaults.has(instanceId) || instanceId in merged) continue;
     merged[instanceId] = { driver: driver.driverKind };
   }
 

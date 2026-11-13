@@ -1,4 +1,5 @@
-import type { ProviderInstanceId } from "@t3tools/contracts";
+import type { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
+import { providerClients } from "@t3tools/client-runtime/provider-clients";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 
@@ -8,6 +9,47 @@ export interface ModelSlugItem {
 
 export interface ProviderModelItem extends ModelSlugItem {
   readonly instanceId: ProviderInstanceId;
+}
+
+export interface ProviderInstanceOrderable {
+  readonly instanceId: ProviderInstanceId;
+  readonly driverKind: ProviderDriverKind;
+  readonly isDefault: boolean;
+}
+
+const DEFAULT_DRIVER_ORDER = new Map(
+  providerClients.definitions.map((definition, index) => [definition.driverKind, index] as const),
+);
+
+export function orderProviderInstances<Entry extends ProviderInstanceOrderable>(
+  entries: ReadonlyArray<Entry>,
+  providerInstanceOrder: ReadonlyArray<ProviderInstanceId> = [],
+): ReadonlyArray<Entry> {
+  const entriesById = new Map(entries.map((entry) => [entry.instanceId, entry] as const));
+  const ordered: Entry[] = [];
+  for (const instanceId of providerInstanceOrder) {
+    const entry = entriesById.get(instanceId);
+    if (entry === undefined || ordered.includes(entry)) continue;
+    ordered.push(entry);
+  }
+
+  const orderedIds = new Set(ordered.map((entry) => entry.instanceId));
+  const driverOrder = new Map(DEFAULT_DRIVER_ORDER);
+  for (const entry of entries) {
+    if (!driverOrder.has(entry.driverKind)) driverOrder.set(entry.driverKind, driverOrder.size);
+  }
+  const originalOrder = new Map(entries.map((entry, index) => [entry.instanceId, index] as const));
+  const remaining = entries
+    .filter((entry) => !orderedIds.has(entry.instanceId))
+    .toSorted((left, right) => {
+      const driverDifference =
+        (driverOrder.get(left.driverKind) ?? 0) - (driverOrder.get(right.driverKind) ?? 0);
+      if (driverDifference !== 0) return driverDifference;
+      if (left.isDefault !== right.isDefault)
+        return Number(right.isDefault) - Number(left.isDefault);
+      return (originalOrder.get(left.instanceId) ?? 0) - (originalOrder.get(right.instanceId) ?? 0);
+    });
+  return [...ordered, ...remaining];
 }
 
 export function providerModelKey(instanceId: ProviderInstanceId, slug: string): string {

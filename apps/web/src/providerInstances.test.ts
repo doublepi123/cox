@@ -1,5 +1,6 @@
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_SERVER_SETTINGS,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -12,6 +13,7 @@ import {
   deriveProviderInstanceEntries,
   getDefaultProviderInstanceModel,
   isProviderInstancePickerReady,
+  providerInstanceEntriesFor,
   resolveDefaultProviderModelSelection,
   resolveSelectableProviderInstance,
   shouldShowInstanceBadge,
@@ -158,6 +160,37 @@ describe("applyProviderInstanceSettings", () => {
 
     expect(codex?.enabled).toBe(true);
     expect(grok?.enabled).toBe(false);
+  });
+});
+
+describe("provider instance ordering", () => {
+  const providers = [
+    provider({ provider: ProviderDriverKind.make("claudeAgent"), instanceId: "claudeAgent" }),
+    provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex_work" }),
+    provider({ provider: ProviderDriverKind.make("omo"), instanceId: "omo" }),
+    provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
+  ];
+  const ids = (order: ReadonlyArray<string> = []) =>
+    providerInstanceEntriesFor(
+      providers,
+      {
+        ...DEFAULT_SERVER_SETTINGS,
+        providerInstanceOrder: order.map((id) => ProviderInstanceId.make(id)),
+      },
+      null,
+    ).map((entry) => entry.instanceId);
+
+  it("uses OMO and registry order for unordered instances, with defaults before customs", () => {
+    expect(ids()).toEqual(["omo", "codex", "codex_work", "claudeAgent"]);
+  });
+
+  it("puts saved ids first and appends new ids in default order", () => {
+    expect(ids(["claudeAgent", "missing", "claudeAgent"])).toEqual([
+      "claudeAgent",
+      "omo",
+      "codex",
+      "codex_work",
+    ]);
   });
 });
 

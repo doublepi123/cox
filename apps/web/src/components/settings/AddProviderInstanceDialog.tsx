@@ -80,7 +80,7 @@ function deriveInstanceId(driver: ProviderDriverKind, label: string): string {
 }
 
 const INSTANCE_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
-const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
+const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("omo");
 const ACP_REGISTRY_DRIVER_KIND = ProviderDriverKind.make("acpRegistry");
 const DEFAULT_DRIVER_OPTION = providerClients.definitions[0]!;
 const DRIVER_OPTIONS = providerClients.definitions.filter(
@@ -203,12 +203,11 @@ export function AddProviderInstanceDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [createdInstanceId, setCreatedInstanceId] = useState<ProviderInstanceId | null>(null);
 
-  // Reserve Codex/Claude default ids because they run before configuration; other unconfigured slots are
-  // available.
+  // Reserve Codex/Claude default ids while their built-in instances still exist.
+  const deletedDefaultIds = new Set<string>(settings.deletedDefaultProviderInstances ?? []);
   const existingIds = new Set([
-    "codex",
-    "claudeAgent",
     ...Object.keys(settings.providerInstances ?? {}),
+    ...["codex", "claudeAgent"].filter((id) => !deletedDefaultIds.has(id)),
   ]);
 
   const driverOption = providerClients.get(driver) ?? DEFAULT_DRIVER_OPTION;

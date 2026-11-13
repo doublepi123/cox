@@ -1385,6 +1385,12 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  providerInstanceOrder: Schema.Array(ProviderInstanceId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  deletedDefaultProviderInstances: Schema.Array(ProviderInstanceId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   modelServices: Schema.Record(ModelServiceId, ModelServiceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1703,6 +1709,8 @@ export const ServerSettingsPatch = Schema.Struct({
   sourceControlHosts: Schema.optionalKey(Schema.Record(Schema.String, SourceControlHostSettings)),
   // Replace whole maps to avoid half-merged driver configs.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  providerInstanceOrder: Schema.optionalKey(Schema.Array(ProviderInstanceId)),
+  deletedDefaultProviderInstances: Schema.optionalKey(Schema.Array(ProviderInstanceId)),
   modelServices: Schema.optionalKey(
     Schema.Record(ModelServiceId, Schema.NullOr(ModelServiceConfig)),
   ),
@@ -1734,6 +1742,8 @@ export function requiredScopesForServerSettingsPatch(
     if (
       key === "providers" ||
       key === "providerInstances" ||
+      key === "providerInstanceOrder" ||
+      key === "deletedDefaultProviderInstances" ||
       key === "modelServices" ||
       key === "usageLimitSources" ||
       key === "secretProviders"

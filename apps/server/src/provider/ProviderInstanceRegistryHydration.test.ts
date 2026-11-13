@@ -117,6 +117,26 @@ describe("deriveProviderInstanceConfigMap", () => {
 
     expect(merged[instanceId]).toBe(settings.providerInstances[instanceId]);
   });
+
+  it("does not hydrate a deleted default or revive it from a project override", () => {
+    const codex = ProviderInstanceId.make("codex");
+    const settings = settingsWith({
+      providerInstances: {
+        [codex]: { driver: ProviderDriverKind.make("codex"), enabled: true },
+      },
+      deletedDefaultProviderInstances: [codex],
+      projectSettingsOverrides: {
+        [projectId]: { providerInstances: { [codex]: { enabled: true } } },
+      },
+    });
+
+    const merged = deriveProviderInstanceConfigMap(settings);
+
+    expect(merged[codex]).toBeUndefined();
+    expect(merged[ProviderInstanceId.make("claudeAgent")]).toEqual({
+      driver: ProviderDriverKind.make("claudeAgent"),
+    });
+  });
 });
 
 describe("seedDevReplayInstance", () => {

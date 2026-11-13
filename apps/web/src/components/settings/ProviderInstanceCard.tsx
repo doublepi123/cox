@@ -4,6 +4,8 @@ import { Spinner } from "~/components/ui/spinner";
 
 import {
   AlertTriangleIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
   CheckIcon,
   ArrowUpCircleIcon,
   CopyIcon,
@@ -677,6 +679,9 @@ interface ProviderInstanceCardProps {
   readonly mode: "list" | "editor";
   readonly selected?: boolean | undefined;
   readonly onSelect?: (() => void) | undefined;
+  readonly onMove?: ((instanceId: ProviderInstanceId, direction: -1 | 1) => void) | undefined;
+  readonly canMoveUp?: boolean | undefined;
+  readonly canMoveDown?: boolean | undefined;
   readonly readOnly?: boolean | undefined;
   readonly canWriteSettings?: boolean;
   readonly onUpdate: (nextInstance: ProviderInstanceConfig) => void;
@@ -724,6 +729,9 @@ export function ProviderInstanceCard({
   mode,
   selected = false,
   onSelect,
+  onMove,
+  canMoveUp = false,
+  canMoveDown = false,
   readOnly = false,
   canWriteSettings = true,
   onUpdate,
@@ -1151,6 +1159,42 @@ export function ProviderInstanceCard({
           </span>
         </div>
         <span className="flex h-5 shrink-0 items-center gap-1">
+          {onMove ? (
+            <>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      disabled={readOnly || !canMoveUp}
+                      onClick={() => onMove(instanceId, -1)}
+                      aria-label={t("Move {name} up", { name: displayName })}
+                    />
+                  }
+                >
+                  <ArrowUpIcon className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">{t("Move up")}</TooltipPopup>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      disabled={readOnly || !canMoveDown}
+                      onClick={() => onMove(instanceId, 1)}
+                      aria-label={t("Move {name} down", { name: displayName })}
+                    />
+                  }
+                >
+                  <ArrowDownIcon className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">{t("Move down")}</TooltipPopup>
+              </Tooltip>
+            </>
+          ) : null}
           {projectOverride?.value !== undefined ? (
             <span className="flex items-center">
               <ProjectOverrideInheritance

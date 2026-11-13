@@ -1,4 +1,5 @@
 import { pipe } from "effect/Function";
+import { orderProviderInstances } from "./modelOrdering";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
@@ -151,35 +152,17 @@ function applyProviderInstanceBranding(
 /** Picker order: each driver's default instance first, then its custom instances. */
 export function providerInstanceEntriesFor(
   providers: ReadonlyArray<ServerProvider>,
-  settings: Pick<ServerSettings, "providerInstances" | "projectSettingsOverrides">,
+  settings: Pick<
+    ServerSettings,
+    "providerInstances" | "providerInstanceOrder" | "projectSettingsOverrides"
+  >,
   projectId: ProjectId | null,
 ): ReadonlyArray<ProviderInstanceEntry> {
   return pipe(
     deriveProviderInstanceEntries(providers),
     (entries) => applyProviderInstanceSettings(entries, settings, projectId),
-    sortProviderInstanceEntries,
+    (entries) => orderProviderInstances(entries, settings.providerInstanceOrder),
   );
-}
-
-function sortProviderInstanceEntries(
-  entries: ReadonlyArray<ProviderInstanceEntry>,
-): ReadonlyArray<ProviderInstanceEntry> {
-  const byKind = new Map<ProviderDriverKind, ProviderInstanceEntry[]>();
-  for (const entry of entries) {
-    const bucket = byKind.get(entry.driverKind);
-    if (bucket) {
-      bucket.push(entry);
-    } else {
-      byKind.set(entry.driverKind, [entry]);
-    }
-  }
-  const sorted: ProviderInstanceEntry[] = [];
-  for (const bucket of byKind.values()) {
-    const defaults = bucket.filter((entry) => entry.isDefault);
-    const customs = bucket.filter((entry) => !entry.isDefault);
-    sorted.push(...defaults, ...customs);
-  }
-  return sorted;
 }
 
 function getProviderInstanceEntry(

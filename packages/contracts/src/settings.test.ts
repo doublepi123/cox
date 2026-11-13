@@ -63,6 +63,36 @@ describe("clone layout settings", () => {
   });
 });
 
+describe("provider instance management settings", () => {
+  const codex = ProviderInstanceId.make("codex");
+  const claude = ProviderInstanceId.make("claudeAgent");
+
+  it("defaults ordering and deletion markers to empty lists and round-trips replacements", () => {
+    const defaults = decodeServerSettings({});
+    expect(defaults.providerInstanceOrder).toEqual([]);
+    expect(defaults.deletedDefaultProviderInstances).toEqual([]);
+
+    const input = {
+      providerInstanceOrder: [claude, codex],
+      deletedDefaultProviderInstances: [codex],
+    };
+    expect(decodeServerSettingsPatch(input)).toEqual(input);
+    expect(encodeServerSettingsPatch(input)).toEqual(input);
+    expect(decodeServerSettings(encodeServerSettings(decodeServerSettings(input)))).toMatchObject(
+      input,
+    );
+  });
+
+  it("requires provider management for ordering and default deletion markers", () => {
+    expect(requiredScopesForServerSettingsPatch({ providerInstanceOrder: [] })).toEqual([
+      "providers:manage",
+    ]);
+    expect(
+      requiredScopesForServerSettingsPatch({ deletedDefaultProviderInstances: [codex] }),
+    ).toEqual(["providers:manage"]);
+  });
+});
+
 describe("storage cleanup settings", () => {
   it("keeps cleanup disabled for existing installations", () => {
     expect(decodeServerSettings({}).worktreeCleanup).toBeNull();

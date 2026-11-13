@@ -50,6 +50,8 @@ import { useStableCallback } from "../../hooks/useStableCallback";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { cn } from "../../lib/utils";
 import { resolveAppModelSelectionState } from "../../modelSelection";
+import { orderProviderInstances } from "../../modelOrdering";
+import { readLocalApi } from "../../localApi";
 import {
   useEnvironments,
   usePrimaryEnvironmentId,
@@ -697,7 +699,7 @@ export function EnvironmentProviderSettings({
     readonly instanceId: ProviderInstanceId;
     /** Undefined for a default slot the user never configured. */
     readonly explicitInstance: ProviderInstanceConfig | undefined;
-    readonly driver: ProviderDriverKind;
+    readonly driverKind: ProviderDriverKind;
     readonly isDefault: boolean;
     readonly isDirty?: boolean;
   }
@@ -719,7 +721,7 @@ export function EnvironmentProviderSettings({
     ),
   );
 
-  const rows: InstanceRow[] = [];
+  const unorderedRows: InstanceRow[] = [];
   const visibleDriverKinds = new Set<ProviderDriverKind>(
     visibleProviderSettings.map((providerSettings) => providerSettings.provider),
   );
@@ -732,26 +734,27 @@ export function EnvironmentProviderSettings({
     const hasDefaultSlot = providerSettings.hasDefaultInstance || explicitInstance !== undefined;
     if (
       hasDefaultSlot &&
-      (driver === "codex" ||
+      (driver === "omo" ||
+        driver === "codex" ||
         driver === "claudeAgent" ||
         isDirty ||
         resolveProviderInstanceEnabled(explicitInstance ?? { driver }) ||
         defaultInstanceId === targetInstanceId)
     ) {
-      rows.push({
+      unorderedRows.push({
         instanceId: defaultInstanceId,
         explicitInstance,
-        driver,
+        driverKind: driver,
         isDefault: true,
         isDirty,
       });
     }
     for (const [id, instance] of instancesByDriver.get(providerSettings.provider) ?? []) {
       if (id === defaultInstanceId) continue;
-      rows.push({
+      unorderedRows.push({
         instanceId: id,
         explicitInstance: instance,
-        driver: instance.driver,
+        driverKind: instance.driver,
         isDefault: false,
       });
     }
@@ -759,14 +762,21 @@ export function EnvironmentProviderSettings({
   for (const [driver, list] of instancesByDriver) {
     if (visibleDriverKinds.has(driver)) continue;
     for (const [id, instance] of list) {
-      rows.push({
+      unorderedRows.push({
         instanceId: id,
         explicitInstance: instance,
-        driver: instance.driver,
+        driverKind: instance.driver,
         isDefault: defaultSlotIdsBySource.has(String(id)),
       });
     }
   }
+  const deletedDefaultInstanceIds = new Set<string>(settings.deletedDefaultProviderInstances ?? []);
+  const rows = orderProviderInstances(
+    unorderedRows.filter(
+      (row) => !row.isDefault || !deletedDefaultInstanceIds.has(String(row.instanceId)),
+    ),
+    settings.providerInstanceOrder,
+  );
 
   const targetInstanceMissing =
     targetInstanceId !== undefined &&
@@ -831,9 +841,15 @@ export function EnvironmentProviderSettings({
 
   const deleteInstance = useStableCallback(
     async (instanceId: ProviderInstanceId, instance: ProviderInstanceConfig) => {
+      const confirmed = await readLocalApi()?.dialogs.confirm(
+        t("Delete provider instance '{name}'?", { name: instanceId }),
+        { variant: "destructive" },
+      );
+      if (!confirmed || !readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
       const updateResult = await persistProviderInstance({
         operation: "remove",
         instanceId,
+        driver: instance.driver,
       });
       if (updateResult._tag === "Failure") {
         const error = squashAtomCommandFailure(updateResult);
@@ -868,7 +884,7 @@ export function EnvironmentProviderSettings({
 
   const resetDefaultInstance = useStableCallback(async (driverKind: ProviderDriverKind) => {
     const result = await persistProviderInstance({
-      operation: "remove",
+      operation: "reset",
       instanceId: defaultInstanceIdForDriver(driverKind),
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -894,6 +910,19 @@ export function EnvironmentProviderSettings({
     },
   );
 
+  const moveInstance = useStableCallback((instanceId: ProviderInstanceId, direction: -1 | 1) => {
+    const index = rows.findIndex((row) => row.instanceId === instanceId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= rows.length) return;
+    const next = rows.map((row) => row.instanceId);
+    const current = next[index];
+    const displaced = next[nextIndex];
+    if (current === undefined || displaced === undefined) return;
+    next[index] = displaced;
+    next[nextIndex] = current;
+    updateSettings({ providerInstanceOrder: next });
+  });
+
   const stableUpdateModelPreferences = useStableCallback(updateModelPreferences);
   const stableToggleModelFavorite = useStableCallback(toggleModelFavorite);
   const actions: ProviderInstanceRowActions = {
@@ -913,6 +942,7 @@ export function EnvironmentProviderSettings({
 
   const representativeProjectId = projectIds[0];
   const renderProviderInstance = (row: InstanceRow, mode: "list" | "editor") => {
+    const rowIndex = rows.findIndex((candidate) => candidate.instanceId === row.instanceId);
     const showProjectOverride =
       representativeProjectId !== undefined && supportsProjectProviderOverrides;
     return (
@@ -921,7 +951,7 @@ export function EnvironmentProviderSettings({
         environmentId={environmentId}
         environmentLabel={environmentLabel}
         instanceId={row.instanceId}
-        driver={row.driver}
+        driver={row.driverKind}
         explicitInstance={row.explicitInstance}
         isDefault={row.isDefault}
         isDirty={row.isDirty === true}
@@ -951,6 +981,9 @@ export function EnvironmentProviderSettings({
         modelPreferences={settings.providerModelPreferences?.[row.instanceId]}
         favorites={favorites}
         actions={actions}
+        onMove={mode === "list" && !readOnly ? moveInstance : undefined}
+        canMoveUp={rowIndex > 0}
+        canMoveDown={rowIndex >= 0 && rowIndex < rows.length - 1}
       />
     );
   };
@@ -1223,6 +1256,9 @@ function ProviderInstanceRow({
   isDirty,
   mode,
   selected,
+  onMove,
+  canMoveUp,
+  canMoveDown,
   readOnly,
   canWriteSettings,
   liveProvider,
@@ -1243,6 +1279,9 @@ function ProviderInstanceRow({
   readonly isDirty: boolean;
   readonly mode: "list" | "editor";
   readonly selected: boolean;
+  readonly onMove: ((instanceId: ProviderInstanceId, direction: -1 | 1) => void) | undefined;
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
   readonly readOnly: boolean;
   readonly canWriteSettings: boolean;
   readonly liveProvider: ServerProvider | undefined;
@@ -1310,6 +1349,9 @@ function ProviderInstanceRow({
       mode={mode}
       selected={selected}
       onSelect={mode === "list" ? () => actions.selectInstance(instanceId) : undefined}
+      onMove={onMove}
+      canMoveUp={canMoveUp}
+      canMoveDown={canMoveDown}
       readOnly={readOnly}
       runtime={
         mode === "editor" && codexSetupMode === "managed" ? (
@@ -1440,11 +1482,7 @@ function ProviderInstanceRow({
         </>
       }
       onUpdate={(next) => actions.updateInstance(instanceId, instance, next)}
-      onDelete={
-        mode === "editor" && !isDefault
-          ? () => actions.deleteInstance(instanceId, instance)
-          : undefined
-      }
+      onDelete={mode === "editor" ? () => actions.deleteInstance(instanceId, instance) : undefined}
       headerAction={
         mode === "editor" && isDefault && isDirty ? (
           <SettingResetButton

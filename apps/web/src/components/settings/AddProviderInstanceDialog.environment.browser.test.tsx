@@ -16,6 +16,7 @@ const actions = vi.hoisted(() => ({
 }));
 type DialogSettings = {
   providerInstances: Record<string, unknown>;
+  deletedDefaultProviderInstances?: string[];
   modelServices?: Record<string, unknown>;
 };
 const settingsHooks = vi.hoisted(() => ({
@@ -132,9 +133,14 @@ function button(label: string) {
 }
 const click = (label: string) => act(async () => button(label).click());
 const radio = (label: string) =>
-  [...document.querySelectorAll<HTMLElement>('[role="radio"]')].find(
-    (element) => element.textContent?.trim() === label,
+  [...document.querySelectorAll<HTMLElement>('[role="radio"]')].find((element) =>
+    element.textContent?.trim().endsWith(label),
   );
+async function chooseDriver(label: string) {
+  const option = radio(label);
+  expect(option, `radio ${label}`).toBeDefined();
+  await act(async () => option?.click());
+}
 const input = (selector: string) => {
   const found = document.querySelector<HTMLInputElement>(selector);
   expect(found, selector).not.toBeNull();
@@ -157,6 +163,7 @@ const signInStep = () => document.querySelector('[aria-label="Sign-in step"]');
 async function prepareCodexInstance() {
   await using stack = new AsyncDisposableStack();
   const screen = stack.use(await render(dialog()));
+  await chooseDriver("Codex");
   await click("Configure manually");
   await type("#add-provider-label", "Work");
   await click("Next");
@@ -174,12 +181,57 @@ function setup() {
 }
 
 describe("AddProviderInstanceDialog environment routing", () => {
+  it("opens with OMO Native selected and uses the standard configuration flow", async () => {
+    setup();
+    await using _screen = await render(dialog());
+
+    const omoOption = radio("OMO Native");
+    expect(omoOption).toBeDefined();
+    expect(omoOption?.getAttribute("aria-checked")).toBe("true");
+    expect(document.body.textContent).not.toContain("Continue with ChatGPT");
+    await click("Next");
+    expect(input("#add-provider-label").value).toBe("OMO Native");
+    await click("Next");
+    await click("Add instance");
+
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "omo",
+      instance: { driver: "omo", enabled: true, displayName: "OMO Native" },
+    });
+  });
+
+  it("restores the codex id after its default instance was deleted", async () => {
+    setup();
+    settingsHooks.read.mockReturnValue({
+      providerInstances: {},
+      deletedDefaultProviderInstances: ["codex"],
+    });
+    await using _screen = await render(dialog());
+    await chooseDriver("Codex");
+    await click("Configure manually");
+    await click("Next");
+    await click("Add instance");
+
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "codex",
+      instance: {
+        driver: "codex",
+        enabled: true,
+        displayName: "Codex",
+        config: { setupMode: "existing" },
+      },
+    });
+  });
+
   it("chooses an unused identity for another account without replacing configured instances", async () => {
     setup();
     settingsHooks.read.mockReturnValue({
       providerInstances: { codex_2: { driver: "codex", enabled: false } },
     });
     await using _screen = await render(dialog());
+    await chooseDriver("Codex");
     await click("Configure manually");
     await click("Next");
     await click("Add instance");
@@ -253,8 +305,10 @@ describe("AddProviderInstanceDialog environment routing", () => {
         modelServices: { [sharedServiceId]: sharedModelService },
       });
       await using _screen = await render(dialog());
-      if (driver === "codex") await click("Configure manually");
-      else {
+      if (driver === "codex") {
+        await chooseDriver("Codex");
+        await click("Configure manually");
+      } else {
         await act(async () => radio(label)!.click());
         await click("Next");
       }
@@ -297,6 +351,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
       modelServices: { [sharedServiceId]: { ...sharedModelService, models: [] } },
     });
     await using _screen = await render(dialog());
+    await chooseDriver("Codex");
     await click("Configure manually");
     await click("Next");
     await chooseSharedModelService();

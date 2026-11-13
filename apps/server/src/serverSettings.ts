@@ -10,6 +10,7 @@ import {
   type ProviderInstanceMutation,
   defaultInstanceIdForDriver,
   isProviderDriverKind,
+  isUnconfiguredDefaultInstanceEnabled,
   ProviderDriverKind,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
@@ -186,12 +187,33 @@ export function applyProviderInstanceMutation(
   mutation: ProviderInstanceMutation,
 ): ServerSettings {
   const providerInstances = { ...settings.providerInstances };
+  const deletedDefaultProviderInstances = new Set(settings.deletedDefaultProviderInstances);
   if (mutation.operation === "upsert" || mutation.operation === "create") {
     providerInstances[mutation.instanceId] = mutation.instance;
+    deletedDefaultProviderInstances.delete(mutation.instanceId);
   } else {
+    const driver =
+      mutation.operation === "remove"
+        ? (mutation.driver ??
+          settings.providerInstances[mutation.instanceId]?.driver ??
+          ProviderDriverKind.make(mutation.instanceId))
+        : undefined;
     delete providerInstances[mutation.instanceId];
+    if (
+      mutation.operation === "remove" &&
+      driver !== undefined &&
+      defaultInstanceIdForDriver(driver) === mutation.instanceId
+    ) {
+      deletedDefaultProviderInstances.add(mutation.instanceId);
+    } else {
+      deletedDefaultProviderInstances.delete(mutation.instanceId);
+    }
   }
-  return { ...settings, providerInstances };
+  return {
+    ...settings,
+    providerInstances,
+    deletedDefaultProviderInstances: [...deletedDefaultProviderInstances],
+  };
 }
 
 const secretProviderConfigGuards = new Map(
@@ -472,7 +494,11 @@ function migrateLegacyProviderSettings(
     if (Array.isArray(blob)) continue;
     const driver = kind;
     const instanceId = defaultInstanceIdForDriver(driver);
-    if (Object.hasOwn(providerInstances, instanceId)) continue;
+    if (
+      settings.deletedDefaultProviderInstances.includes(instanceId) ||
+      Object.hasOwn(providerInstances, instanceId)
+    )
+      continue;
 
     const { enabled: rawEnabled, ...config } = blob as Record<string, unknown>;
     const explicitEnabled = typeof rawEnabled === "boolean" ? rawEnabled : undefined;
@@ -497,7 +523,13 @@ function migrateLegacyProviderSettings(
 }
 
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const selection = resolveTextGenerationModelSelection(settings);
+  const selection = resolveTextGenerationModelSelection(settings, (instanceId) => {
+    if (settings.deletedDefaultProviderInstances.includes(instanceId)) return false;
+    const instance = settings.providerInstances[instanceId];
+    return instance === undefined
+      ? isUnconfiguredDefaultInstanceEnabled(instanceId)
+      : resolveProviderInstanceEnabled(instance);
+  });
   return selection === null || selection === settings.textGenerationModelSelection
     ? settings
     : { ...settings, textGenerationModelSelection: selection };

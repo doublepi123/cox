@@ -98,6 +98,11 @@ export const ProviderInstanceMutation = Schema.Union([
   Schema.Struct({
     operation: Schema.Literal("remove"),
     instanceId: ProviderInstanceId,
+    driver: Schema.optionalKey(ProviderDriverKind),
+  }),
+  Schema.Struct({
+    operation: Schema.Literal("reset"),
+    instanceId: ProviderInstanceId,
   }),
 ]);
 export type ProviderInstanceMutation = typeof ProviderInstanceMutation.Type;
