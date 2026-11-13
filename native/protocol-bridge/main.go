@@ -95,6 +95,11 @@ func (s *session) handle(in input) (out output) {
 			in.Body, _ = json.Marshal(fields)
 		}
 		replayBody := []byte(in.Body)
+		var compatErr error
+		replayBody, compatErr = requestInputCompat(in, to)
+		if compatErr != nil {
+			return output{Error: compatErr.Error()}
+		}
 		var replay *reasoningReplayState
 		if from == tr.FormatOpenAIResponse && to == tr.FormatOpenAI {
 			var err error
@@ -124,7 +129,9 @@ func (s *session) handle(in input) (out output) {
 			}
 			converted["stream"], _ = json.Marshal(in.Stream)
 			converted["model"], _ = json.Marshal(in.Model)
-			if fields["reasoning"] == nil && fields["reasoning_effort"] == nil && fields["thinking"] == nil {
+			var generationConfig map[string]json.RawMessage
+			_ = json.Unmarshal(fields["generationConfig"], &generationConfig)
+			if fields["reasoning"] == nil && fields["reasoning_effort"] == nil && fields["thinking"] == nil && generationConfig["thinkingConfig"] == nil {
 				delete(converted, "reasoning")
 			}
 			if fields["include"] == nil {
@@ -153,6 +160,10 @@ func (s *session) handle(in input) (out output) {
 				}
 			}
 			request.Body, _ = json.Marshal(converted)
+		}
+		request.Body, compatErr = requestOutputCompat(in, to, request.Body)
+		if compatErr != nil {
+			return output{Error: compatErr.Error()}
 		}
 		s.from, s.to, s.model, s.stream = from, to, in.Model, in.Stream
 		s.original, s.translated = in.Body, request.Body
