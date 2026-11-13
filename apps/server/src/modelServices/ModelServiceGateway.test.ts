@@ -353,6 +353,167 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each(["codex", "claudeAgent", "omo", "pi", "opencode"])(
+    "selects an offered model for %s after its default is delisted",
+    (driver) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver });
+        const current = yield* h.settings.getSettings;
+        const changed = {
+          ...current,
+          modelServices: {
+            [serviceId]: {
+              ...current.modelServices[serviceId]!,
+              models: [{ ...service.models[0]!, available: false }, service.models[1]!],
+            },
+          },
+        };
+        const instances = {
+          [instanceId]: {
+            ...h.instances[instanceId]!,
+            modelService: { serviceId, modelIds: [], defaultModel: "Vendor/Exact" },
+          },
+        };
+        const result = yield* h.gateway.materialize(changed, instances);
+        const instance = result[instanceId]!;
+        const config = record(instance.config);
+        if (driver === "codex") expect(config.launchArgs).toContain('model=\\"hidden\\"');
+        if (driver === "pi" || driver === "omo") expect(config.model).toBe("hidden");
+        if (driver === "claudeAgent") {
+          for (const name of [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+          ])
+            expect(instance.environment?.find((entry) => entry.name === name)?.value).toBe(
+              "hidden",
+            );
+        }
+        if (driver === "opencode") {
+          const content = instance.environment?.find(
+            (entry) => entry.name === "OPENCODE_CONFIG_CONTENT",
+          )?.value;
+          expect(JSON.parse(String(content))).toMatchObject({
+            model: "cox/hidden",
+            small_model: "cox/hidden",
+          });
+        }
+        const disabled = yield* h.gateway.materialize(
+          {
+            ...changed,
+            modelServices: {
+              [serviceId]: {
+                ...changed.modelServices[serviceId]!,
+                models: changed.modelServices[serviceId]!.models.map((model) => ({
+                  ...model,
+                  available: false,
+                })),
+              },
+            },
+          },
+          instances,
+        );
+        expect(disabled[instanceId]?.enabled).toBe(false);
+        expect((yield* h.invoke("/v1/models")).status).toBe(401);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("aligns managed Pi retry and HTTP timeouts while preserving settings", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "pi", recovery: { budgetMs: 600_000 } });
+      const fs = yield* FileSystem.FileSystem;
+      const file = `${h.config.agentDir}/settings.json`;
+      expect(yield* fs.exists(file)).toBe(true);
+      expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject({
+        httpIdleTimeoutMs: 630_000,
+        retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0, timeoutMs: 630_000 } },
+      });
+      yield* fs.writeFileString(
+        file,
+        JSON.stringify({
+          theme: "fixture",
+          retry: {
+            enabled: true,
+            maxRetries: 7,
+            baseDelayMs: 123,
+            provider: { timeoutMs: 100, maxRetryDelayMs: 789 },
+          },
+        }),
+      );
+      yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+      expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject({
+        theme: "fixture",
+        httpIdleTimeoutMs: 630_000,
+        retry: {
+          enabled: false,
+          maxRetries: 0,
+          baseDelayMs: 123,
+          provider: { maxRetries: 0, timeoutMs: 630_000, maxRetryDelayMs: 789 },
+        },
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("preserves OpenCode context limits without a known output cap", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "opencode", maxOutputTokens: null });
+      const content = h.materialized[instanceId]!.environment?.find(
+        (entry) => entry.name === "OPENCODE_CONFIG_CONTENT",
+      )?.value;
+      expect(JSON.parse(String(content)).provider.cox.models["Vendor/Exact"].limit).toEqual({
+        context: 64000,
+        output: 32000,
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([4000, null])(
+    "sets Claude output budget only for a known cap of %s",
+    (maxOutputTokens) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "claudeAgent", maxOutputTokens });
+        expect(
+          h.materialized[instanceId]!.environment?.find(
+            (entry) => entry.name === "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+          )?.value,
+        ).toBe(maxOutputTokens === null ? undefined : "4000");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["agentModels", "categoryModels"])(
+    "isolates a delisted OMO %s selection from other bindings",
+    (field) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo" });
+        const current = yield* h.settings.getSettings;
+        const changed = {
+          ...current,
+          modelServices: {
+            [serviceId]: {
+              ...current.modelServices[serviceId]!,
+              models: [{ ...service.models[0]!, available: false }, service.models[1]!],
+            },
+          },
+        };
+        const otherId = ProviderInstanceId.make("other-binding");
+        const original = h.instances[instanceId]!;
+        const result = yield* h.gateway.materialize(changed, {
+          [instanceId]: { ...original, config: { [field]: { oracle: "cox/Vendor/Exact" } } },
+          [otherId]: {
+            ...original,
+            driver: ProviderDriverKind.make("codex"),
+            modelService: { serviceId, modelIds: ["hidden"], defaultModel: "hidden" },
+          },
+        });
+        expect(result[instanceId]?.enabled).toBe(false);
+        expect(record(result[instanceId]?.config).enabled).toBe(false);
+        expect(result[otherId]?.enabled).toBe(true);
+        expect(record(result[otherId]?.config).launchArgs).toContain("hidden");
+        expect((yield* h.invoke("/v1/models")).status).toBe(401);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect.each([100, 600_000, 1_800_000])(
     "aligns managed OMO timeouts to the %s ms recovery budget",
     (budgetMs) =>
@@ -4972,49 +5133,43 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect.each(["agentModels", "categoryModels"])(
-    "rejects missing explicit OMO %s without model fallback",
+    "disables missing explicit OMO %s without model fallback",
     (field) =>
       Effect.gen(function* () {
         const h = yield* harness({ driver: "omo" });
         for (const slug of ["cox/missing", "Vendor/Exact", "cox/hidden"]) {
-          const result = yield* h.gateway
-            .materialize(yield* h.settings.getSettings, {
-              [instanceId]: { ...h.instances[instanceId]!, config: { [field]: { oracle: slug } } },
-            })
-            .pipe(Effect.flip);
-          expect(result.detail).toContain("explicitly selected OMO role model");
+          const result = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+            [instanceId]: { ...h.instances[instanceId]!, config: { [field]: { oracle: slug } } },
+          });
+          expect(result[instanceId]?.enabled).toBe(false);
         }
         expect(h.calls).toEqual([]);
       }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "rejects OMO role models that become unavailable and inherits only an empty main default",
-    () =>
-      Effect.gen(function* () {
-        const h = yield* harness({ driver: "omo" });
-        const current = yield* h.settings.getSettings;
-        const changed = {
-          ...current,
-          modelServices: {
-            [serviceId]: {
-              ...current.modelServices[serviceId]!,
-              models: [{ ...service.models[0]!, available: false }, service.models[1]!],
-            },
+  it.effect("disables stale OMO roles and inherits an available main default", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "omo" });
+      const current = yield* h.settings.getSettings;
+      const changed = {
+        ...current,
+        modelServices: {
+          [serviceId]: {
+            ...current.modelServices[serviceId]!,
+            models: [{ ...service.models[0]!, available: false }, service.models[1]!],
           },
-        };
-        const instance = { ...h.instances[instanceId]!, modelService: { serviceId, modelIds: [] } };
-        const result = yield* h.gateway
-          .materialize(changed, {
-            [instanceId]: { ...instance, config: { agentModels: { oracle: "cox/Vendor/Exact" } } },
-          })
-          .pipe(Effect.flip);
-        expect(result.detail).toContain("explicitly selected OMO role model");
-        const mainResult = yield* h.gateway.materialize(changed, h.instances).pipe(Effect.flip);
-        expect(mainResult.detail).toContain("explicitly selected OMO default model");
-        const inherited = yield* h.gateway.materialize(changed, { [instanceId]: instance });
-        expect(record(inherited[instanceId]!.config).model).toBe("hidden");
-      }).pipe(Effect.scoped),
+        },
+      };
+      const instance = { ...h.instances[instanceId]!, modelService: { serviceId, modelIds: [] } };
+      const result = yield* h.gateway.materialize(changed, {
+        [instanceId]: { ...instance, config: { agentModels: { oracle: "cox/Vendor/Exact" } } },
+      });
+      expect(result[instanceId]?.enabled).toBe(false);
+      const mainResult = yield* h.gateway.materialize(changed, h.instances);
+      expect(mainResult[instanceId]?.enabled).toBe(false);
+      const inherited = yield* h.gateway.materialize(changed, { [instanceId]: instance });
+      expect(record(inherited[instanceId]!.config).model).toBe("hidden");
+    }).pipe(Effect.scoped),
   );
 
   it.effect("removes Pi Responses compatibility when the service switches protocols", () =>

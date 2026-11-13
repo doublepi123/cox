@@ -183,34 +183,18 @@ export const make = Effect.gen(function* () {
           });
         const models = boundModelServiceModels(service, binding);
         const activeModels = models.filter((model) => model.available !== false);
-        if (instance.driver === "omo") {
-          const roles = [
-            record(instance.config).agentModels,
-            record(instance.config).categoryModels,
-          ];
-          for (const roleModels of roles) {
-            for (const slug of Object.values(record(roleModels))) {
-              if (
-                slug !== "" &&
-                (typeof slug !== "string" ||
-                  !activeModels.some((model) => `cox/${model.id}` === slug))
-              )
-                return yield* new ModelServiceError({
-                  detail:
-                    "An explicitly selected OMO role model is unavailable in the bound model service. Clear or reassign the role before continuing.",
-                });
-            }
-          }
-          if (
-            binding.defaultModel &&
-            !activeModels.some((model) => model.id === binding.defaultModel)
-          )
-            return yield* new ModelServiceError({
-              detail:
-                "The explicitly selected OMO default model is unavailable in the bound model service.",
-            });
-        }
-        if (models.length === 0 || (instance.driver === "omo" && activeModels.length === 0)) {
+        const unavailableRole =
+          instance.driver === "omo" &&
+          [record(instance.config).agentModels, record(instance.config).categoryModels].some(
+            (roleModels) =>
+              Object.values(record(roleModels)).some(
+                (slug) =>
+                  slug !== "" &&
+                  (typeof slug !== "string" ||
+                    !activeModels.some((model) => `cox/${model.id}` === slug)),
+              ),
+          );
+        if (activeModels.length === 0 || unavailableRole) {
           bindings.delete(id);
           next[id] = {
             ...instance,
@@ -220,8 +204,8 @@ export const make = Effect.gen(function* () {
           continue;
         }
         const selected =
-          models.find((model) => model.id === binding.defaultModel)?.id ??
-          (instance.driver === "omo" ? activeModels[0]!.id : models[0]!.id);
+          activeModels.find((model) => model.id === binding.defaultModel)?.id ??
+          activeModels[0]!.id;
         const prior = bindings.get(id);
         const token =
           prior?.binding.serviceId === binding.serviceId
@@ -241,10 +225,22 @@ export const make = Effect.gen(function* () {
         const environment = [...(instance.environment ?? [])].filter(
           (variable) =>
             variable.name !== "COX_MODEL_SERVICE_KEY" &&
+            !(
+              instance.driver === "claudeAgent" && variable.name === "CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+            ) &&
             !(instance.driver === "omo" && variable.name === "COX_OMO_GATEWAY_TIMEOUT_MS"),
         );
         environment.push({ name: "COX_MODEL_SERVICE_KEY", value: token, sensitive: true });
         if (instance.driver === "claudeAgent") {
+          const maxOutputTokens = activeModels.find(
+            (model) => model.id === selected,
+          )?.maxOutputTokens;
+          if (maxOutputTokens)
+            environment.push({
+              name: "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+              value: String(maxOutputTokens),
+              sensitive: false,
+            });
           environment.push({ name: "CLAUDE_CODE_MAX_RETRIES", value: "0", sensitive: false });
           environment.push({
             name: "API_TIMEOUT_MS",
@@ -347,7 +343,7 @@ export const make = Effect.gen(function* () {
         }
         if (instance.driver === "pi" || instance.driver === "omo") {
           const agentDir = path.join(directory, instance.driver);
-          if (instance.driver === "omo") {
+          {
             const settingsPath = path.join(agentDir, "settings.json");
             const runtimeSettingsText = (yield* fs.exists(settingsPath))
               ? yield* fs.readFileString(settingsPath)
@@ -355,22 +351,25 @@ export const make = Effect.gen(function* () {
             const existing = record(yield* decode(runtimeSettingsText));
             const retry = record(existing.retry);
             const timeoutMs = service.recovery.budgetMs + 30_000;
-            environment.push({
-              name: "COX_OMO_GATEWAY_TIMEOUT_MS",
-              value: String(timeoutMs),
-              sensitive: false,
-            });
+            if (instance.driver === "omo")
+              environment.push({
+                name: "COX_OMO_GATEWAY_TIMEOUT_MS",
+                value: String(timeoutMs),
+                sensitive: false,
+              });
             yield* write(settingsPath, {
               ...existing,
               httpIdleTimeoutMs: timeoutMs,
               retry: {
                 ...retry,
                 enabled: false,
+                ...(instance.driver === "pi" ? { maxRetries: 0 } : {}),
                 provider: {
                   ...record(retry.provider),
-                  streamStartTimeoutMs: timeoutMs,
+                  ...(instance.driver === "pi"
+                    ? { maxRetries: 0 }
+                    : { streamStartTimeoutMs: timeoutMs, keepAliveTimeoutMs: timeoutMs }),
                   timeoutMs,
-                  keepAliveTimeoutMs: timeoutMs,
                 },
               },
             });
@@ -451,11 +450,13 @@ export const make = Effect.gen(function* () {
                     model.id,
                     {
                       name: model.name ?? model.id,
-                      ...(model.capabilities?.contextWindow && model.maxOutputTokens
+                      ...(model.capabilities?.contextWindow
                         ? {
                             limit: {
                               context: model.capabilities.contextWindow,
-                              output: model.maxOutputTokens,
+                              output:
+                                model.maxOutputTokens ??
+                                Math.min(model.capabilities.contextWindow, 32_000),
                             },
                           }
                         : {}),
