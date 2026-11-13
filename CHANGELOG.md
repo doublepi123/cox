@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.83 — 2026-11-13
+
+- Bound sign-in requests so startup and "Signing in…" can no longer wait forever,
+  and retry response-less network failures within the existing bootstrap window.
+- Answer throttled password sign-ins with HTTP 429 and the remaining wait instead
+  of "invalid password". Retrying during the lockout no longer extends it, and a
+  successful sign-in clears earlier failures.
+- Keep live connection, session and thread views following a server that was
+  renamed or replaced under the same environment.
+- Keep local service updates recoverable: validation failures before activation
+  roll back without touching the running service, the page stays on "Restarting"
+  until the helper reports, launch failures can be retried, and a failed first
+  load shows the error with Retry.
+- Run separate provider installs concurrently and retry undelivered browser
+  profile reports.
+- Translate sign-in errors, connection status titles, slow-request toasts, update
+  messages and the update View action, and use neutral server wording in
+  connection banners.
+- Desktop client fixes (shipped with the next desktop release): Connect focuses an
+  instance's existing window instead of opening another; Connections marks open
+  instances and can Disconnect one without clearing its data or quitting; updated
+  macOS clients that open Connections are no longer rolled back; manual update
+  checks work from Connections; remote preflight errors are translated; a failed
+  new-window preference save restores the saved choice.
+
 ## 0.1.82 — 2026-11-13
 
 - Stop animating informational extension statuses such as an achieved OMO goal.
