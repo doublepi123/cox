@@ -143,10 +143,10 @@ function hasReadyRemoteWindow() {
 function hasVisibleConnectionManager() {
   return Boolean(
     connectionsWindow &&
-      !connectionsWindow.isDestroyed() &&
-      connectionsWindow.isVisible() &&
-      connectionsPageUrl &&
-      connectionsWindow.webContents.getURL() === connectionsPageUrl,
+    !connectionsWindow.isDestroyed() &&
+    connectionsWindow.isVisible() &&
+    connectionsPageUrl &&
+    connectionsWindow.webContents.getURL() === connectionsPageUrl,
   );
 }
 
@@ -233,9 +233,7 @@ async function offerRemoteClientUpdate(manual = false) {
     !clientUpdates ||
     approvedQuit ||
     quitPending ||
-    (!desktopReady &&
-      !hasReadyRemoteWindow() &&
-      !(manual && hasVisibleConnectionManager())) ||
+    (!desktopReady && !hasReadyRemoteWindow() && !(manual && hasVisibleConnectionManager())) ||
     nativeUpdatePrompt
   )
     return;

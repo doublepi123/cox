@@ -115,9 +115,9 @@ describe("ServerAuthGate", () => {
 
     await page.getByLabelText("Password").fill("correct-password");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect.element(page.getByRole("alert")).toHaveTextContent(
-      "Too many failed attempts. Try again in 2 min.",
-    );
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("Too many failed attempts. Try again in 2 min.");
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
 

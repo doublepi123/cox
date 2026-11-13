@@ -144,9 +144,7 @@ export function desktopConnectionError(locale: string, error: unknown): string {
   const httpStatus = /^Remote server returned HTTP (\d+)\.$/.exec(message)?.[1];
   if (httpStatus)
     return desktopText(locale, "Remote server returned HTTP {status}.", { status: httpStatus });
-  return Object.hasOwn(chinese, message)
-    ? desktopText(locale, message as TextKey)
-    : String(error);
+  return Object.hasOwn(chinese, message) ? desktopText(locale, message as TextKey) : String(error);
 }
 
 export function desktopUpdateNotice(locale: string, state: DesktopBackendUpdateState) {
