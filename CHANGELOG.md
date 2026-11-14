@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.1.92 — 2026-11-14
+
+- Selective upstream T3 adaptations across 28 behavior units (30 commits through
+  `77d3358a1f`; see `UPSTREAM_PORTING_20261114.md`):
+  - **Contracts & shared**: treat `options: null` as omitted in `ModelSelection`,
+    percent-encode literal `&` in file-citation Markdown links, improve dark-palette
+    `PASS`/`FAIL` terminal badge contrast, and dispatch queued SQLite reads to the
+    first free reader connection via a counting semaphore.
+  - **Client runtime**: ignore inherited `Object.prototype` keys in PR search
+    qualifiers, label whole-repository groups from repository identity, and refresh
+    older-settled thread counts when threads move between projects.
+  - **Providers**: enumerate `/proc` by name so ACP teardown survives exiting PIDs,
+    require newline-complete OpenCode listening lines, surface `usage_limit` warnings
+    during OpenCode 2 retry backoffs, apply Cursor catalog default model parameters
+    across chat, follow-ups, and text generation, stream Pi shell output as UTF-8-safe
+    deltas instead of per-update snapshots, and honor explicit thinking options on
+    custom off-catalog Claude models.
+  - **Server, Git & orchestration**: protect conflicted multi-commit sequencer state
+    and reftable pseudo-refs during selected-file commits, retry failed scratch Git
+    probes instead of caching transient timeouts until restart, preserve existing
+    UTF-8 BOMs on workspace editor saves, re-resolve detached preview scroll targets
+    and emit mousemove steps during preview drags, match accented messages on short
+    search prefixes, clamp oversized `cox_thread_list` limits to 100, retry SQLite
+    lock-timeout failures while settling claimed orchestration effects, avoid
+    secondary schema failures when reporting invalid provider events, allow
+    prototype-named provider instance IDs, and set `frame-ancestors 'none'` /
+    `X-Frame-Options: DENY` on SPA HTML responses.
+  - **Web UI**: ignore pending-question digit shortcuts inside dialogs, menus,
+    comboboxes, popups, and `<select>` controls, close only the theme editor on
+    `Escape` while keeping Settings open, preserve leading/trailing filename
+    whitespace in checkpoint diffs, preserve notebook traceback frame boundaries while
+    stripping ANSI escape codes, and pad copied inline-code Markdown with meaningful
+    edge spaces.
+
 ## 0.1.91 — 2026-11-14
 
 - An OMO thread no longer shows as working indefinitely while OMO only waits on
