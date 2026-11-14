@@ -869,6 +869,66 @@ describe("PiAdapterV2", () => {
         assert.equal(runtime.providerSession.status, outcome === "failed" ? "error" : "ready");
       }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
+  it.effect("settles an idle OMO turn waiting on its own monitors and adopts the later wake", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const offers =
+        yield* Queue.unbounded<ProviderContinuationRequests.ProviderContinuationRequest>();
+      const { runtime, takeEvent } = yield* openRuntime(
+        fake,
+        "default",
+        THREAD_ID,
+        SESSION_ID,
+        undefined,
+        { offer: (offer) => Queue.offer(offers, offer).pipe(Effect.asVoid) },
+      );
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.takeRequest("prompt");
+      const lifecycle = new OmoLifecycle();
+      const send = (event: PiRpcRecord) =>
+        Effect.forEach(lifecycle.observe(event), (item) => fake.emit(item));
+      yield* send({ type: "agent_start", runId: "producer-run" });
+      yield* send({
+        type: "message_end",
+        message: { role: "assistant", content: [], stopReason: "stop" },
+      });
+      yield* send({
+        type: "session_lifecycle",
+        lifecycle: {
+          role: "root",
+          state: "waiting_human",
+          runId: "producer-run",
+          seq: 1,
+          persisted: true,
+          restoring: false,
+          runPaused: false,
+          holds: [],
+          waitingOn: {
+            children: 0,
+            background: [{ source: "terminal-monitors", activeCount: 1 }],
+            human: [{ kind: "goal_blocked", requestId: "goal:blocked:1" }],
+          },
+        },
+      });
+      yield* send({ type: "agent_idle" });
+      const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isTrue(terminal.type === "turn.terminal" && terminal.status === "completed");
+      assert.equal(runtime.providerSession.status, "ready");
+      assert.deepEqual(
+        runtime.providerSession.extensionStatuses?.map((status) => status.key),
+        ["cox-omo-wait"],
+      );
+      yield* send({ type: "agent_start", runId: "monitor-wake" });
+      yield* Queue.take(offers);
+      assert.equal(runtime.providerSession.status, "running");
+      assert.deepEqual(runtime.providerSession.extensionStatuses, []);
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect("accepts authoritative DAG retries at an unchanged completion timestamp", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;

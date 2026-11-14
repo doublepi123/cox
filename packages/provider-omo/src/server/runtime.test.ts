@@ -8,6 +8,7 @@ import {
   omoPermissionRequest,
   omoStartupFailure,
   omoTaskIsQuiescent,
+  OMO_WAIT_STATUS_KEY,
 } from "./runtime.ts";
 
 describe("OMO stranded provider failure", () => {
@@ -341,10 +342,11 @@ describe("OMO root work lifecycle", () => {
       {
         waitingOn: {
           children: 0,
-          background: [{ source: "terminal-monitors" }],
+          background: [{ source: "delivery:steer" }],
           human: [blockedGoal],
         },
       },
+      { waitingOn: { children: 0, background: [{}], human: [blockedGoal] } },
       { waitingOn: { children: 0, background: [], human: [blockedGoal, { kind: "question" }] } },
       { waitingOn: { children: 0, background: [], human: [] } },
       { runId: "prior" },
@@ -385,6 +387,98 @@ describe("OMO root work lifecycle", () => {
       { isStreaming: false, lifecycle: blocked(1, { activity: { kind: "tool" } }).lifecycle },
     ])
       expect(omoSessionState(state)).toMatchObject({ isStreaming: true });
+  });
+
+  it("settles an idle root that only waits on its own background monitors and shows the wait", () => {
+    const monitors = { source: "terminal-monitors", activeCount: 1 };
+    const waiting = (seq: number, extra: Record<string, unknown> = {}) =>
+      lifecycle("waiting_background", seq, {
+        completionId: undefined,
+        runPaused: false,
+        holds: [],
+        waitingOn: { children: 0, background: [monitors], human: [] },
+        ...extra,
+      });
+    const notice = {
+      type: "extension_ui_request",
+      method: "setStatus",
+      statusKey: OMO_WAIT_STATUS_KEY,
+      statusText: expect.stringContaining("terminal monitors"),
+    };
+    const clear = {
+      type: "extension_ui_request",
+      method: "setStatus",
+      statusKey: OMO_WAIT_STATUS_KEY,
+    };
+    const started = () => {
+      const mapper = new OmoLifecycle();
+      mapper.observe({ type: "agent_start", runId: "run" });
+      return mapper;
+    };
+
+    const mapper = started();
+    expect(mapper.observe(waiting(1))).toEqual([]);
+    expect(mapper.observe({ type: "agent_idle" })).toEqual([
+      notice,
+      { type: "agent_settled", aborted: false },
+    ]);
+    expect(mapper.observe(waiting(2))).toEqual([]);
+    expect(mapper.observe({ type: "agent_start", runId: "wake" })).toEqual([
+      clear,
+      { type: "agent_start", runId: "wake" },
+    ]);
+
+    const finished = started();
+    finished.observe(waiting(1));
+    finished.observe({ type: "agent_idle" });
+    expect(
+      finished.observe(
+        lifecycle("done", 2, { waitingOn: { children: 0, background: [], human: [] } }),
+      ),
+    ).toEqual([clear]);
+
+    const goal = started();
+    goal.observe(
+      waiting(1, {
+        state: "waiting_human",
+        waitingOn: {
+          children: 0,
+          background: [monitors],
+          human: [{ kind: "goal_blocked", requestId: "goal:1" }],
+        },
+      }),
+    );
+    expect(goal.observe({ type: "agent_idle" })).toEqual([
+      notice,
+      { type: "agent_settled", aborted: false },
+    ]);
+
+    const quiet = started();
+    quiet.observe(
+      waiting(1, {
+        waitingOn: { children: 0, background: [{ source: "cox-memory:1:2" }], human: [] },
+      }),
+    );
+    expect(quiet.observe({ type: "agent_idle" })).toEqual([
+      { type: "agent_settled", aborted: false },
+    ]);
+
+    for (const extra of [
+      { waitingOn: { children: 1, background: [monitors], human: [] } },
+      { activity: { kind: "tool" } },
+      { holds: [{ kind: "run_fence" }] },
+    ]) {
+      const busy = started();
+      busy.observe(waiting(1, extra));
+      expect(busy.observe({ type: "agent_idle" })).toEqual([]);
+    }
+
+    expect(omoSessionState({ isStreaming: false, lifecycle: waiting(1).lifecycle })).toMatchObject({
+      isStreaming: false,
+    });
+    expect(omoSessionState({ isStreaming: true, lifecycle: waiting(1).lifecycle })).toMatchObject({
+      isStreaming: true,
+    });
   });
 });
 

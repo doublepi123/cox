@@ -28,11 +28,11 @@ export function omoTaskIsQuiescent(value: unknown): boolean {
   );
 }
 
-function omoAwaitingBlockedGoal(value: unknown): boolean {
+function omoIdleWait(value: unknown): boolean {
   const lifecycle = record(value);
   const waits = record(lifecycle.waitingOn);
   return (
-    lifecycle.state === "waiting_human" &&
+    (lifecycle.state === "waiting_human" || lifecycle.state === "waiting_background") &&
     lifecycle.runActive !== true &&
     lifecycle.runPaused !== true &&
     lifecycle.activity === undefined &&
@@ -40,11 +40,39 @@ function omoAwaitingBlockedGoal(value: unknown): boolean {
     lifecycle.holds.length === 0 &&
     waits.children === 0 &&
     Array.isArray(waits.background) &&
-    waits.background.length === 0 &&
+    waits.background.every((wait) => {
+      const source = record(wait).source;
+      return typeof source === "string" && source.length > 0 && !source.startsWith("delivery:");
+    }) &&
     Array.isArray(waits.human) &&
-    waits.human.length > 0 &&
-    waits.human.every((wait) => record(wait).kind === "goal_blocked")
+    waits.human.every((wait) => record(wait).kind === "goal_blocked") &&
+    waits.human.length + waits.background.length > 0
   );
+}
+
+const omoWaitLabels: Readonly<Record<string, string>> = {
+  "terminal-monitors": "terminal monitors",
+  "terminal-background-sessions": "background terminal sessions",
+};
+
+export const OMO_WAIT_STATUS_KEY = "cox-omo-wait";
+
+function omoWaitStatusText(value: unknown): string | undefined {
+  const background = record(record(value).waitingOn).background;
+  if (!Array.isArray(background)) return undefined;
+  const labels = [
+    ...new Set(
+      background.flatMap((value) => {
+        const source = record(value).source;
+        if (typeof source !== "string" || /memory/.test(source) || source.startsWith("delivery:"))
+          return [];
+        return [omoWaitLabels[source] ?? source];
+      }),
+    ),
+  ];
+  return labels.length === 0
+    ? undefined
+    : `Waiting for background work: ${labels.join(", ")}. Not generating; send a message to continue now.`;
 }
 
 export class OmoLifecycle {
@@ -58,6 +86,8 @@ export class OmoLifecycle {
   private runId: string | undefined;
   private idle = false;
   private latest: PiRpcRecord | undefined;
+  private waitStatus: string | undefined;
+  private idleSettledRun: string | undefined;
   private readonly completions = new Set<string>();
 
   reset() {
@@ -66,7 +96,22 @@ export class OmoLifecycle {
     this.runId = undefined;
     this.idle = false;
     this.latest = undefined;
+    this.waitStatus = undefined;
+    this.idleSettledRun = undefined;
     this.completions.clear();
+  }
+
+  private showWait(text: string | undefined): ReadonlyArray<PiRpcRecord> {
+    if (text === this.waitStatus) return [];
+    this.waitStatus = text;
+    return [
+      {
+        type: "extension_ui_request",
+        method: "setStatus",
+        statusKey: OMO_WAIT_STATUS_KEY,
+        ...(text === undefined ? {} : { statusText: text }),
+      },
+    ];
   }
 
   bind(value: unknown) {
@@ -80,7 +125,9 @@ export class OmoLifecycle {
     if (event.type === "agent_start") {
       this.runId = typeof event.runId === "string" ? event.runId : undefined;
       this.idle = false;
-      return [event];
+      this.idleSettledRun = undefined;
+      if (this.runId !== undefined) this.completions.delete(`turn:${this.runId}`);
+      return [...this.showWait(undefined), event];
     }
     if (event.type === "auto_retry_start") this.idle = false;
     if (event.type === "agent_idle") {
@@ -100,16 +147,17 @@ export class OmoLifecycle {
     const advanced = lifecycle.seq > this.sequence;
     this.sequence = lifecycle.seq;
     this.latest = lifecycle;
-    if (!advanced && !omoAwaitingBlockedGoal(lifecycle)) return [];
-    return this.settle(lifecycle);
+    const waiting =
+      this.waitStatus === undefined
+        ? []
+        : this.showWait(omoIdleWait(lifecycle) ? omoWaitStatusText(lifecycle) : undefined);
+    if (!advanced && !omoIdleWait(lifecycle)) return waiting;
+    return [...waiting, ...this.settle(lifecycle)];
   }
 
   private settle(lifecycle: PiRpcRecord): ReadonlyArray<PiRpcRecord> {
-    const blockedGoal = this.idle && omoAwaitingBlockedGoal(lifecycle);
-    if (
-      typeof lifecycle.state !== "string" ||
-      (!terminalStates.has(lifecycle.state) && !blockedGoal)
-    )
+    const idleWait = this.idle && omoIdleWait(lifecycle);
+    if (typeof lifecycle.state !== "string" || (!terminalStates.has(lifecycle.state) && !idleWait))
       return [];
     if (lifecycle.restoring === true || (lifecycle.persisted !== true && !this.ephemeral))
       return [];
@@ -119,7 +167,7 @@ export class OmoLifecycle {
       lifecycle.runId !== this.runId
     )
       return [];
-    const completionId = blockedGoal
+    const completionId = idleWait
       ? typeof lifecycle.runId === "string"
         ? `turn:${lifecycle.runId}`
         : undefined
@@ -128,9 +176,13 @@ export class OmoLifecycle {
     this.completions.add(completionId);
     if (this.completions.size > 128)
       this.completions.delete(this.completions.values().next().value!);
+    if (!idleWait && lifecycle.runId !== undefined && lifecycle.runId === this.idleSettledRun)
+      return [];
+    if (idleWait && typeof lifecycle.runId === "string") this.idleSettledRun = lifecycle.runId;
     return [
+      ...(idleWait ? this.showWait(omoWaitStatusText(lifecycle)) : []),
       ...(lifecycle.state === "failed" ||
-      (blockedGoal && lifecycle.failure !== undefined && lifecycle.failure !== null)
+      (idleWait && lifecycle.failure !== undefined && lifecycle.failure !== null)
         ? [
             {
               type: "message_end",
@@ -154,7 +206,7 @@ export function omoSessionState(value: unknown, ephemeral = false): unknown {
   if (typeof lifecycle.state !== "string")
     throw new Error("OMO Native did not expose the required session lifecycle.");
   return (terminalStates.has(lifecycle.state) ||
-    (omoAwaitingBlockedGoal(lifecycle) && state.isStreaming === false)) &&
+    (omoIdleWait(lifecycle) && state.isStreaming === false)) &&
     lifecycle.restoring !== true &&
     (lifecycle.persisted === true || ephemeral || lifecycle.epoch === 0)
     ? state
