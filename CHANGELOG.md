@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.90 — 2026-11-14
+
+- Multi-protocol model services now route Kimi model IDs to OpenAI Chat instead
+  of Anthropic Messages, keeping GPT models on OpenAI Responses and other models
+  on Anthropic Messages. This avoids `Invalid native tool call event order`
+  failures in OMO recovery streams when a relay serves Kimi over converted
+  Anthropic SSE.
+- Scheduled tasks now support one-shot (`once`) execution times in contracts,
+  the server scheduler and the Web UI, and OMO `schedule_prompt` calls route
+  into Cox scheduled tasks.
+- Add end-to-end adapter coverage for native OMO rollback and fork flows.
+
 ## 0.1.89 — 2026-11-14
 
 - OMO now retries model gateway streams that are cut off mid-response. Interrupted
