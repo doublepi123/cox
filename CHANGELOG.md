@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.91 — 2026-11-14
+
+- An OMO thread no longer shows as working indefinitely while OMO only waits on
+  its own terminal monitors or background sessions. When the native run goes
+  idle, Cox completes the turn, reports the session idle on reconnect and shows
+  "Waiting for background work" above the composer; the monitor's later wake
+  continues as a new turn. Child tasks, questions, holds and queued deliveries
+  still keep the turn open.
+- OMO native child tasks now receive a one-shot completion contract. Child
+  tasks cannot be woken after their final reply, so they wait for commands in
+  the foreground and report unfinished work to the parent instead of relying on
+  a monitor or background wake that never arrives.
+
 ## 0.1.90 — 2026-11-14
 
 - Multi-protocol model services now route Kimi model IDs to OpenAI Chat instead

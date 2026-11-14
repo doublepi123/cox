@@ -1,6 +1,6 @@
 {
   "name": "cox",
-  "version": "0.1.90",
+  "version": "0.1.91",
   "license": "MIT",
   "bin": {
     "cox": "./dist/bin.mjs"
