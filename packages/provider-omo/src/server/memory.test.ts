@@ -227,38 +227,68 @@ describe("Cox native global memory", () => {
     expect(open.size).toBe(0);
   });
 
-  it("holds native background custody until asynchronous memory finishes and releases it on failure", async () => {
-    const open = new Set<string>();
-    const { nativeOptions, handlers } = await fixture({
-      lifecycle: {
-        obligations: {
-          open: (key: string, kind: string) => {
-            expect(kind).toBe("background");
-            open.add(key);
-            return { close: () => open.delete(key) };
+  it("holds native background custody until asynchronous memory finishes and cancels it without unhandled rejections on failure", async () => {
+    const open = new Map<string, string>();
+    const closed: Array<string> = [];
+    const unhandled: Array<unknown> = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { nativeOptions, handlers } = await fixture({
+        lifecycle: {
+          obligations: {
+            open: (key: string, kind: string) => {
+              expect(kind).toBe("background");
+              open.set(key, "open");
+              return {
+                close: (reason: string) => {
+                  open.delete(key);
+                  closed.push(reason);
+                },
+              };
+            },
           },
         },
-      },
-    });
-    handlers.get("before_agent_start")?.({});
-    let finish!: () => void;
-    const pending = nativeOptions!.work.track(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+      });
+      handlers.get("before_agent_start")?.({});
+      let finish: (() => void) | undefined;
+      const pending = nativeOptions?.work.track(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      expect(open.size).toBe(1);
+      finish?.();
+      await pending;
+      await nativeOptions?.work.settled();
+      expect(open.size).toBe(0);
+      expect(closed).toEqual(["consumed"]);
+
+      let rejectHook: ((reason?: unknown) => void) | undefined;
+      const hookResult = new Promise<never>((_resolve, reject) => {
+        rejectHook = reject;
+      });
+      void nativeOptions?.work.track(() => hookResult);
+      rejectHook?.(new Error("Hook failure"));
+      await expect(hookResult).rejects.toThrow("Hook failure");
+      await nativeOptions?.work.settled();
+      await expect(
+        nativeOptions?.work.track(async () => {
+          throw new Error("Direct failure");
         }),
-    );
-    expect(open.size).toBe(1);
-    finish();
-    await pending;
-    await nativeOptions!.work.settled();
-    expect(open.size).toBe(0);
-    await expect(
-      nativeOptions!.work.track(async () => {
-        throw new Error("Fixture failure");
-      }),
-    ).rejects.toThrow("Fixture failure");
-    expect(open.size).toBe(0);
+      ).rejects.toThrow("Direct failure");
+      await nativeOptions?.work.settled();
+      // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- Node emits unhandledRejection only between macrotasks; no promise can mark that point.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+      expect(open.size).toBe(0);
+      expect(closed).toEqual(["consumed", "cancelled", "cancelled"]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
   it("keeps local memory global and disables every background model until a bound main model is known", async () => {
     const { component, nativeOptions } = await fixture();

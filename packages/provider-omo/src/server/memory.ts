@@ -317,9 +317,10 @@ async function createCoxOmoMemoryComponent(options) {
       let result;
       try { result = Promise.resolve(action()); }
       catch (error) { ownedWork.delete(key); token?.close("cancelled"); throw error; }
-      const tracked = result.finally(() => { running.delete(tracked); ownedWork.delete(key); token?.close("consumed"); });
-      running.add(tracked);
-      return tracked;
+      const finish = reason => { running.delete(settled); ownedWork.delete(key); token?.close(reason); };
+      const settled = result.then(() => finish("consumed"), () => finish("cancelled"));
+      running.add(settled);
+      return result;
     },
     async settled() { while (running.size > 0) await Promise.allSettled([...running]); },
   };
