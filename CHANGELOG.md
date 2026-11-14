@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.93 — 2026-11-14
+
+- An OMO thread no longer remains stuck in `running` ("Thinking") with follow-up
+  replies queued when OMO goes idle with synthetic root human-attention markers
+  (`question:<runId>:<seq>` from prose questions or timed-out prompts,
+  `goal_paused`, `stalled`, or `interrupted_run`). Cox now completes the turn on
+  `agent_idle` and reports the session idle on reconnect while keeping live UI
+  dialogs, pending question bridges, approvals, child tasks, holds and queued
+  deliveries open.
+- Automatic OMO background memory hooks no longer crash the native OMO RPC
+  process with `Pi process exited unexpectedly.` (`exit code 1`) when a wrapped
+  hook or background task rejects. `work.track` now attaches settlement cleanup
+  directly to the underlying promise without creating an unobserved derived
+  rejection, and closes failed background custody tokens as `cancelled` instead
+  of `consumed`.
+- Pi and OMO turns that recover from a mid-turn model stream error (for example,
+  `cox_model_service_incomplete_stream` followed by an active goal continuation)
+  no longer retain the stale failure and mark the completed turn as `failed` at
+  settlement; a subsequent unrecovered error still fails the turn as expected.
+
 ## 0.1.92 — 2026-11-14
 
 - Selective upstream T3 adaptations across 28 behavior units (30 commits through
