@@ -54,12 +54,13 @@ export class ProviderEventNormalizeError extends Schema.TaggedError<ProviderEven
   {
     providerSessionId: ProviderSessionId,
     threadId: ThreadId,
-    providerEvent: ProviderAdapter.ProviderAdapterV2Event,
+    // The rejected payload cannot be validated again while reporting its normalization failure.
+    eventType: Schema.String,
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
-    return `Failed to normalize provider event ${this.providerEvent.type} for thread ${this.threadId}.`;
+    return `Failed to normalize provider event ${this.eventType} for thread ${this.threadId}.`;
   }
 }
 
@@ -626,7 +627,7 @@ export const layer: Layer.Layer<
           return yield* new ProviderEventNormalizeError({
             providerSessionId: input.providerSessionId,
             threadId: input.threadId,
-            providerEvent: event,
+            eventType: event.type,
             cause: "Native subagent view belongs to another task.",
           });
         if (task.model !== null && task.model !== child.modelSelection.model) {
@@ -1129,7 +1130,7 @@ export const layer: Layer.Layer<
                 new ProviderEventNormalizeError({
                   providerSessionId: input.providerSessionId,
                   threadId: input.threadId,
-                  providerEvent: input.event,
+                  eventType: input.event.type,
                   cause,
                 }),
             ),
