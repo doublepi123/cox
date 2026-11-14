@@ -1323,7 +1323,7 @@ export const make = Effect.gen(function* () {
                           ? "This model service is unavailable."
                           : error instanceof ModelServiceStreamError
                             ? error.detail
-                            : "The model service stream was interrupted before protocol completion.",
+                            : "Connection lost: the model service stream was interrupted before protocol completion.",
                 ),
               );
             }),

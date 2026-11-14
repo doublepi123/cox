@@ -21,7 +21,10 @@ describe("model service stream integrity", () => {
   ])("requires a finish reason for every Chat choice before DONE (%s)", (text) => {
     const monitor = makeModelServiceStreamMonitor("openai-chat");
     expect(() => monitor.push(encoder.encode(text + "data: [DONE]\n\n"))).toThrow(
-      expect.objectContaining({ reason: "missing_terminal_event" }),
+      expect.objectContaining({
+        reason: "missing_terminal_event",
+        detail: expect.stringContaining("ended without"),
+      }),
     );
     expect(monitor.snapshot().terminal).toBe("none");
     expect(JSON.stringify(monitor.snapshot())).not.toContain("private-content");
@@ -357,7 +360,10 @@ describe("model service stream integrity", () => {
       encoder.encode(frame({ type: "message_delta", delta: { stop_reason: "end_turn" } })),
     );
     expect(() => monitor.finish()).toThrow(
-      expect.objectContaining({ reason: "missing_terminal_event" }),
+      expect.objectContaining({
+        reason: "missing_terminal_event",
+        detail: expect.stringContaining("ended without"),
+      }),
     );
   });
 

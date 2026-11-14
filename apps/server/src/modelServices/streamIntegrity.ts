@@ -197,7 +197,7 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
         )
           return fail(
             "missing_terminal_event",
-            "The model service ended before every Chat choice finished.",
+            "The model service stream ended without finishing every Chat choice.",
           );
         mark(
           [...reasons].some((value) => incompleteChatReasons.has(value))
@@ -324,7 +324,10 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
       if (protocol === "gemini" && terminal === "none" && reasons.size)
         mark([...reasons].every((value) => value === "STOP") ? "completed" : "incomplete");
       if (terminal === "none")
-        fail("missing_terminal_event", "The model service stream ended before its terminal event.");
+        fail(
+          "missing_terminal_event",
+          "The model service stream ended without its terminal event.",
+        );
     },
   };
 }

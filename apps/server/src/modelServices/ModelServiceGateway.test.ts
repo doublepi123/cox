@@ -1995,6 +1995,7 @@ it.layer(layer)("model service gateway", (it) => {
         const result = yield* Fiber.join(fiber);
         expect(result.text).toContain("first");
         expect(result.text).toContain("cox_model_service_stream_interrupted");
+        expect(result.text).toContain("Connection lost");
         expect(result.text).not.toContain("private-transport-error");
         expect(h.calls).toHaveLength(1);
         expect(messages).toContainEqual(
