@@ -28,6 +28,25 @@ export function omoTaskIsQuiescent(value: unknown): boolean {
   );
 }
 
+function omoAwaitingBlockedGoal(value: unknown): boolean {
+  const lifecycle = record(value);
+  const waits = record(lifecycle.waitingOn);
+  return (
+    lifecycle.state === "waiting_human" &&
+    lifecycle.runActive !== true &&
+    lifecycle.runPaused !== true &&
+    lifecycle.activity === undefined &&
+    Array.isArray(lifecycle.holds) &&
+    lifecycle.holds.length === 0 &&
+    waits.children === 0 &&
+    Array.isArray(waits.background) &&
+    waits.background.length === 0 &&
+    Array.isArray(waits.human) &&
+    waits.human.length > 0 &&
+    waits.human.every((wait) => record(wait).kind === "goal_blocked")
+  );
+}
+
 export class OmoLifecycle {
   private readonly ephemeral: boolean;
 
@@ -37,12 +56,16 @@ export class OmoLifecycle {
   private sessionId: string | undefined;
   private sequence = -1;
   private runId: string | undefined;
+  private idle = false;
+  private latest: PiRpcRecord | undefined;
   private readonly completions = new Set<string>();
 
   reset() {
     this.sessionId = undefined;
     this.sequence = -1;
     this.runId = undefined;
+    this.idle = false;
+    this.latest = undefined;
     this.completions.clear();
   }
 
@@ -56,9 +79,15 @@ export class OmoLifecycle {
   observe(event: PiRpcRecord): ReadonlyArray<PiRpcRecord> {
     if (event.type === "agent_start") {
       this.runId = typeof event.runId === "string" ? event.runId : undefined;
+      this.idle = false;
       return [event];
     }
-    if (event.type === "agent_settled" || event.type === "agent_idle") return [];
+    if (event.type === "auto_retry_start") this.idle = false;
+    if (event.type === "agent_idle") {
+      this.idle = true;
+      return this.latest === undefined ? [] : this.settle(this.latest);
+    }
+    if (event.type === "agent_settled") return [];
     if (event.type !== "session_lifecycle") return [event];
     const lifecycle = record(event.lifecycle);
     if (lifecycle.role === "child") return [];
@@ -67,9 +96,21 @@ export class OmoLifecycle {
     if (this.sessionId !== undefined && sessionId !== undefined && sessionId !== this.sessionId)
       return [];
     if (sessionId !== undefined) this.sessionId = sessionId;
-    if (lifecycle.seq <= this.sequence) return [];
+    if (lifecycle.seq < this.sequence) return [];
+    const advanced = lifecycle.seq > this.sequence;
     this.sequence = lifecycle.seq;
-    if (!terminalStates.has(lifecycle.state)) return [];
+    this.latest = lifecycle;
+    if (!advanced && !omoAwaitingBlockedGoal(lifecycle)) return [];
+    return this.settle(lifecycle);
+  }
+
+  private settle(lifecycle: PiRpcRecord): ReadonlyArray<PiRpcRecord> {
+    const blockedGoal = this.idle && omoAwaitingBlockedGoal(lifecycle);
+    if (
+      typeof lifecycle.state !== "string" ||
+      (!terminalStates.has(lifecycle.state) && !blockedGoal)
+    )
+      return [];
     if (lifecycle.restoring === true || (lifecycle.persisted !== true && !this.ephemeral))
       return [];
     if (
@@ -78,13 +119,18 @@ export class OmoLifecycle {
       lifecycle.runId !== this.runId
     )
       return [];
-    const completionId = lifecycle.completionId;
+    const completionId = blockedGoal
+      ? typeof lifecycle.runId === "string"
+        ? `turn:${lifecycle.runId}`
+        : undefined
+      : lifecycle.completionId;
     if (typeof completionId !== "string" || this.completions.has(completionId)) return [];
     this.completions.add(completionId);
     if (this.completions.size > 128)
       this.completions.delete(this.completions.values().next().value!);
     return [
-      ...(lifecycle.state === "failed"
+      ...(lifecycle.state === "failed" ||
+      (blockedGoal && lifecycle.failure !== undefined && lifecycle.failure !== null)
         ? [
             {
               type: "message_end",
@@ -107,7 +153,8 @@ export function omoSessionState(value: unknown, ephemeral = false): unknown {
   const lifecycle = record(state.lifecycle);
   if (typeof lifecycle.state !== "string")
     throw new Error("OMO Native did not expose the required session lifecycle.");
-  return terminalStates.has(lifecycle.state) &&
+  return (terminalStates.has(lifecycle.state) ||
+    (omoAwaitingBlockedGoal(lifecycle) && state.isStreaming === false)) &&
     lifecycle.restoring !== true &&
     (lifecycle.persisted === true || ephemeral || lifecycle.epoch === 0)
     ? state

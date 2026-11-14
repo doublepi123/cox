@@ -316,6 +316,76 @@ describe("OMO root work lifecycle", () => {
     });
     expect(() => omoSessionState({ isStreaming: false })).toThrow("required session lifecycle");
   });
+
+  it("settles an idle root whose only remaining human wait is a blocked goal", () => {
+    const blockedGoal = { kind: "goal_blocked", requestId: "goal:1" };
+    const blocked = (seq: number, extra: Record<string, unknown> = {}) =>
+      lifecycle("waiting_human", seq, {
+        completionId: undefined,
+        runPaused: false,
+        holds: [],
+        waitingOn: { children: 0, background: [], human: [blockedGoal] },
+        ...extra,
+      });
+    const started = () => {
+      const mapper = new OmoLifecycle();
+      mapper.observe({ type: "agent_start", runId: "run" });
+      return mapper;
+    };
+    for (const extra of [
+      { activity: { kind: "model" } },
+      { runActive: true },
+      { runPaused: true },
+      { holds: [{ kind: "run_fence" }] },
+      { waitingOn: { children: 1, background: [], human: [blockedGoal] } },
+      {
+        waitingOn: {
+          children: 0,
+          background: [{ source: "terminal-monitors" }],
+          human: [blockedGoal],
+        },
+      },
+      { waitingOn: { children: 0, background: [], human: [blockedGoal, { kind: "question" }] } },
+      { waitingOn: { children: 0, background: [], human: [] } },
+      { runId: "prior" },
+    ]) {
+      const mapper = started();
+      expect(mapper.observe(blocked(1, extra))).toEqual([]);
+      expect(mapper.observe({ type: "agent_idle" })).toEqual([]);
+    }
+
+    const mapper = started();
+    expect(mapper.observe(blocked(1))).toEqual([]);
+    expect(mapper.observe({ type: "agent_idle" })).toEqual([
+      { type: "agent_settled", aborted: false },
+    ]);
+    expect(mapper.observe(blocked(2))).toEqual([]);
+
+    const late = started();
+    expect(late.observe({ type: "agent_idle" })).toEqual([]);
+    expect(late.observe(blocked(1))).toEqual([{ type: "agent_settled", aborted: false }]);
+
+    const retrying = started();
+    expect(retrying.observe({ type: "agent_idle" })).toEqual([]);
+    expect(retrying.observe({ type: "auto_retry_start" })).toEqual([{ type: "auto_retry_start" }]);
+    expect(retrying.observe(blocked(1))).toEqual([]);
+
+    const failed = started();
+    failed.observe(blocked(1, { failure: { reason: "provider_error" } }));
+    expect(failed.observe({ type: "agent_idle" })).toMatchObject([
+      { type: "message_end", message: { stopReason: "error" } },
+      { type: "agent_settled", aborted: false },
+    ]);
+
+    expect(omoSessionState({ isStreaming: false, lifecycle: blocked(1).lifecycle })).toMatchObject({
+      isStreaming: false,
+    });
+    for (const state of [
+      { isStreaming: true, lifecycle: blocked(1).lifecycle },
+      { isStreaming: false, lifecycle: blocked(1, { activity: { kind: "tool" } }).lifecycle },
+    ])
+      expect(omoSessionState(state)).toMatchObject({ isStreaming: true });
+  });
 });
 
 describe("OMO native task snapshots", () => {

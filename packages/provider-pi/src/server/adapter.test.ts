@@ -816,6 +816,59 @@ describe("PiAdapterV2", () => {
         assert.equal(runtime.providerSession.status, outcome === "failed" ? "error" : "ready");
       }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
+  it.effect.each(["completed", "failed"] as const)(
+    "settles an idle OMO turn as %s while a blocked goal still waits for the user",
+    (outcome) =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const { runtime, takeEvent } = yield* openRuntime(fake);
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        yield* startTurn(runtime, providerThread);
+        yield* fake.takeRequest("prompt");
+        const lifecycle = new OmoLifecycle();
+        const send = (event: PiRpcRecord) =>
+          Effect.forEach(lifecycle.observe(event), (item) => fake.emit(item));
+        yield* send({ type: "agent_start", runId: "goal-run" });
+        const errorMessage =
+          "Connection lost: the model service stream was interrupted before protocol completion.";
+        yield* send({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: outcome === "failed" ? "error" : "stop",
+            ...(outcome === "failed" ? { errorMessage } : {}),
+          },
+        });
+        const waiting = {
+          role: "root",
+          state: "waiting_human",
+          runId: "goal-run",
+          seq: 1,
+          persisted: true,
+          restoring: false,
+          runPaused: false,
+          holds: [],
+          waitingOn: {
+            children: 0,
+            background: [],
+            human: [{ kind: "goal_blocked", requestId: "goal:blocked:1" }],
+          },
+        };
+        assert.deepEqual(lifecycle.observe({ type: "session_lifecycle", lifecycle: waiting }), []);
+        yield* send({ type: "agent_idle" });
+        const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+        assert.isTrue(terminal.type === "turn.terminal");
+        if (terminal.type !== "turn.terminal") return;
+        assert.equal(terminal.status, outcome);
+        assert.equal(terminal.failure?.message ?? null, outcome === "failed" ? errorMessage : null);
+        assert.equal(runtime.providerSession.status, outcome === "failed" ? "error" : "ready");
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect("accepts authoritative DAG retries at an unchanged completion timestamp", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;
