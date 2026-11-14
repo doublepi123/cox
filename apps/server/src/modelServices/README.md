@@ -1,5 +1,28 @@
 # Model services
 
+## Multi-protocol gateway routing
+
+When a model service enables more than one distinct protocol, the gateway routes
+GPT model IDs to OpenAI Responses and all other model IDs to Anthropic Messages.
+GPT matching is case-insensitive and uses the final slash-delimited segment:
+`gpt`, `gpt-*`, and `openai/gpt-*` match; display names do not affect routing.
+Pi and OMO receive per-model API and base URL settings, and OpenCode receives
+per-model SDK settings, so these multi-protocol agents use the selected protocol
+natively. Matching gateway requests pass through without the protocol bridge.
+Fixed-protocol agents (Codex and Claude Agent) keep their native API; the existing
+bridge converts requests and responses only when upstream differs.
+
+The target must be enabled by both the service and the model's protocol list
+(when present). Otherwise the gateway returns 422 before contacting upstream;
+it does not fall back to Chat or another protocol. Single-protocol services
+retain their existing routing, including conversion from a different client
+protocol. Cross-protocol token counting remains unsupported (501).
+
+This policy applies only to gateway inference. Discovery and explicit service
+connectivity tests continue to use the configured protocols. A successful
+connectivity test alone does not prove the gateway's required protocol works.
+No saved settings or model metadata are rewritten by this policy.
+
 ## Model service reasoning replay compatibility
 
 Model services preserve encrypted reasoning replay by default. A repair after an

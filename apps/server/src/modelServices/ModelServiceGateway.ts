@@ -31,6 +31,7 @@ import * as Settings from "../serverSettings.ts";
 import * as ServerConfig from "../config.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
+import { modelServiceUpstreamProtocol } from "./upstreamProtocol.ts";
 import { makeModelServiceStreamMonitor, ModelServiceStreamError } from "./streamIntegrity.ts";
 import { chatResponseOutput } from "./responseOutput.ts";
 import {
@@ -283,6 +284,7 @@ export const make = Effect.gen(function* () {
         bindings.set(id, { token, binding, driver: instance.driver });
         const native = record(instance.config);
         const protocol = modelServiceAgentProtocol(instance.driver, service);
+        const multiProtocol = new Set(service.protocols).size > 1;
         const directory = path.join(config.baseDir, "model-services", "runtime", id);
         const runtimeModels = activeModels.map((model) => ({
           slug: modelServiceModelSlug(instance.driver, model.id),
@@ -452,10 +454,13 @@ export const make = Effect.gen(function* () {
                     : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
                 api: API_NAMES[protocol],
                 apiKey: "$COX_MODEL_SERVICE_KEY",
-                ...(protocol === "openai-responses"
+                ...(protocol === "openai-responses" && !multiProtocol
                   ? { compat: { supportsStrictMode: true } }
                   : {}),
                 models: activeModels.map((model) => {
+                  const nativeProtocol = multiProtocol
+                    ? (modelServiceUpstreamProtocol(service, model, protocol) ?? protocol)
+                    : protocol;
                   const thinking = modelServiceAgentCapabilities(
                     instance.driver,
                     model.capabilities,
@@ -464,6 +469,15 @@ export const make = Effect.gen(function* () {
                   return {
                     id: model.id,
                     name: model.name ?? model.id,
+                    ...(multiProtocol
+                      ? {
+                          api: API_NAMES[nativeProtocol],
+                          baseUrl:
+                            nativeProtocol === "anthropic-messages"
+                              ? baseUrl
+                              : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
+                        }
+                      : {}),
                     ...(levels.length
                       ? {
                           reasoning: true,
@@ -486,10 +500,12 @@ export const make = Effect.gen(function* () {
                       : {}),
                     ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
                     ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
-                    ...(protocol !== "gemini" &&
-                    FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
-                      ? { compat: { supportsForcedToolChoice: false } }
-                      : {}),
+                    ...(nativeProtocol === "openai-responses" && multiProtocol
+                      ? { compat: { supportsStrictMode: true } }
+                      : nativeProtocol !== "gemini" &&
+                          FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
+                        ? { compat: { supportsForcedToolChoice: false } }
+                        : {}),
                   };
                 }),
               },
@@ -511,26 +527,36 @@ export const make = Effect.gen(function* () {
                 name: service.name,
                 npm: SDK_PACKAGES[protocol],
                 options: {
-                  baseURL: baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
+                  baseURL: baseUrl + (!multiProtocol && protocol === "gemini" ? "/v1beta" : "/v1"),
                   apiKey: token,
                 },
                 models: Object.fromEntries(
-                  activeModels.map((model) => [
-                    model.id,
-                    {
-                      name: model.name ?? model.id,
-                      ...(model.capabilities?.contextWindow
-                        ? {
-                            limit: {
-                              context: model.capabilities.contextWindow,
-                              output:
-                                model.maxOutputTokens ??
-                                Math.min(model.capabilities.contextWindow, 32_000),
-                            },
-                          }
-                        : {}),
-                    },
-                  ]),
+                  activeModels.map((model) => {
+                    const nativeProtocol = multiProtocol
+                      ? (modelServiceUpstreamProtocol(service, model, protocol) ?? protocol)
+                      : protocol;
+                    return [
+                      model.id,
+                      {
+                        name: model.name ?? model.id,
+                        ...(multiProtocol
+                          ? {
+                              provider: { npm: SDK_PACKAGES[nativeProtocol] },
+                            }
+                          : {}),
+                        ...(model.capabilities?.contextWindow
+                          ? {
+                              limit: {
+                                context: model.capabilities.contextWindow,
+                                output:
+                                  model.maxOutputTokens ??
+                                  Math.min(model.capabilities.contextWindow, 32_000),
+                              },
+                            }
+                          : {}),
+                      },
+                    ];
+                  }),
                 ),
               },
             },
@@ -638,14 +664,11 @@ export const make = Effect.gen(function* () {
         message:
           "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
       });
-    const available = selected.protocols ?? service.protocols;
-    const protocol =
-      available.includes(incoming) && service.protocols.includes(incoming)
-        ? incoming
-        : available.find((value) => service.protocols.includes(value));
+    const protocol = modelServiceUpstreamProtocol(service, selected, incoming);
     if (!protocol)
       return gatewayErrorResponse(incoming, 422, {
-        message: "No compatible upstream protocol is configured for this model.",
+        message:
+          "No compatible upstream protocol is configured for this model. Multi-protocol services require OpenAI Responses for GPT models and Anthropic Messages for other models.",
       });
     if (countTokens && protocol !== incoming)
       return yield* new ModelServiceError({

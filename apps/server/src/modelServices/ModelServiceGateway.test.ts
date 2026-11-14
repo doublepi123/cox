@@ -212,6 +212,9 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
     readonly driver?: string;
     readonly protocol?: ModelServiceConfig["protocols"][number];
+    readonly protocols?: ModelServiceConfig["protocols"];
+    readonly modelId?: string;
+    readonly modelProtocols?: ModelServiceConfig["protocols"];
     readonly maxOutputTokens?: number | null;
     readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
     readonly encryptedReasoningReplay?: ModelServiceConfig["encryptedReasoningReplay"];
@@ -230,7 +233,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
       [serviceId]: {
         ...service,
         revision: previous?.revision ?? 0,
-        protocols: [options.protocol ?? "openai-chat"],
+        protocols: options.protocols ?? [options.protocol ?? "openai-chat"],
         ...(options.encryptedReasoningReplay
           ? { encryptedReasoningReplay: options.encryptedReasoningReplay }
           : {}),
@@ -239,6 +242,8 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
           const { maxOutputTokens: defaultBudget, ...rest } = model;
           return {
             ...rest,
+            id: options.modelId ?? model.id,
+            ...(options.modelProtocols ? { protocols: options.modelProtocols } : {}),
             ...(options.modelReplay ? { encryptedReasoningReplay: options.modelReplay } : {}),
             ...(options.maxOutputTokens === null
               ? {}
@@ -286,7 +291,11 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     [instanceId]: {
       driver,
       enabled: true,
-      modelService: { serviceId, modelIds: ["Vendor/Exact"], defaultModel: "Vendor/Exact" },
+      modelService: {
+        serviceId,
+        modelIds: [options.modelId ?? "Vendor/Exact"],
+        defaultModel: options.modelId ?? "Vendor/Exact",
+      },
       config: { launchArgs: "", retained: true },
     },
   };
@@ -362,6 +371,269 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect.each([false, true])(
+    "passes native tool streams through and converts only mismatched clients (convert=%s)",
+    (convert) =>
+      withGatewayDiagnostics((logs) =>
+        Effect.gen(function* () {
+          for (const gpt of [false, true]) {
+            const modelId = gpt ? "gpt-6.1-terra" : "kimi-k2.8-code";
+            const tool = {
+              type: "function_call",
+              id: "fc_test",
+              call_id: "call_test",
+              name: "read_file",
+              arguments: '{"path":"a.txt"}',
+              status: "completed",
+            };
+            const response = {
+              id: "resp_test",
+              status: "completed",
+              model: modelId,
+              output: [tool],
+              usage: { input_tokens: 2, output_tokens: 2, total_tokens: 4 },
+            };
+            const frames = gpt
+              ? [
+                  {
+                    type: "response.created",
+                    response: { ...response, status: "in_progress", output: [] },
+                  },
+                  {
+                    type: "response.output_item.added",
+                    output_index: 0,
+                    item: { ...tool, arguments: "", status: "in_progress" },
+                  },
+                  {
+                    type: "response.function_call_arguments.delta",
+                    item_id: tool.id,
+                    output_index: 0,
+                    delta: tool.arguments,
+                  },
+                  {
+                    type: "response.function_call_arguments.done",
+                    item_id: tool.id,
+                    output_index: 0,
+                    arguments: tool.arguments,
+                  },
+                  { type: "response.output_item.done", output_index: 0, item: tool },
+                  { type: "response.completed", response },
+                ]
+              : [
+                  {
+                    type: "message_start",
+                    message: {
+                      id: "msg_test",
+                      type: "message",
+                      role: "assistant",
+                      model: modelId,
+                      content: [],
+                      usage: { input_tokens: 2, output_tokens: 0 },
+                    },
+                  },
+                  {
+                    type: "content_block_start",
+                    index: 0,
+                    content_block: {
+                      type: "tool_use",
+                      id: "call_test",
+                      name: "read_file",
+                      input: {},
+                    },
+                  },
+                  {
+                    type: "content_block_delta",
+                    index: 0,
+                    delta: { type: "input_json_delta", partial_json: tool.arguments },
+                  },
+                  { type: "content_block_stop", index: 0 },
+                  {
+                    type: "message_delta",
+                    delta: { stop_reason: "tool_use", stop_sequence: null },
+                    usage: { output_tokens: 2 },
+                  },
+                  { type: "message_stop" },
+                ];
+            const text = frames.map((frame) => `event: ${frame.type}\n${sseFrame(frame)}`).join("");
+            const h = yield* harness({
+              driver: "omo",
+              modelId,
+              protocols: ["gemini", "openai-chat", "openai-responses", "anthropic-messages"],
+              respond: () =>
+                new Response(text, { headers: { "content-type": "text/event-stream" } }),
+            });
+            const result = yield* h.invoke(
+              convert ? "/v1/chat/completions" : gpt ? "/v1/responses" : "/v1/messages",
+              {
+                model: modelId,
+                stream: true,
+                ...(gpt && !convert
+                  ? { input: "read a.txt" }
+                  : { messages: [{ role: "user", content: "read a.txt" }] }),
+              },
+            );
+            expect(result.status).toBe(200);
+            expect(result.text).toContain("read_file");
+            expect(result.text).toContain("call_test");
+            expect(result.text).not.toContain("cox_model_service_incomplete_stream");
+            if (!convert) expect(result.text).toBe(text);
+            else expect(result.text).toContain("[DONE]");
+            expect(h.calls).toHaveLength(1);
+            expect(h.calls[0]!.url).toBe(
+              `https://upstream.test/v1/${gpt ? "responses" : "messages"}`,
+            );
+          }
+          const terminals = logs.filter((entry) => entry.event === "stream_terminal");
+          expect(terminals).toHaveLength(2);
+          for (const terminal of terminals) expect(terminal.converted).toBe(convert);
+        }),
+      ),
+  );
+
+  it.effect.each(["pi", "omo", "opencode"])(
+    "materializes mixed native protocols without conversion for %s",
+    (driver) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver,
+          modelId: "openai/gpt-6.1-terra",
+          protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+          respond: () => Response.json(responsesAnswer),
+        });
+        const instances = {
+          [instanceId]: { ...h.instances[instanceId]!, modelService: { serviceId, modelIds: [] } },
+        };
+        for (const phase of ["initial", "restart"]) {
+          if (phase === "restart") yield* h.restart();
+          const materialized = yield* h.gateway.materialize(
+            yield* h.settings.getSettings,
+            instances,
+          );
+          const config = record(materialized[instanceId]!.config);
+          if (driver === "opencode") {
+            const generated = JSON.parse(
+              String(
+                materialized[instanceId]!.environment!.find(
+                  (entry) => entry.name === "OPENCODE_CONFIG_CONTENT",
+                )!.value,
+              ),
+            );
+            expect(generated.provider.cox.models["openai/gpt-6.1-terra"]).toMatchObject({
+              provider: { npm: "@ai-sdk/openai" },
+            });
+            expect(generated.provider.cox.options.baseURL).toBe(
+              "http://127.0.0.1:0/api/model-gateway/v1",
+            );
+            expect(generated.provider.cox.models.hidden.provider.npm).toBe("@ai-sdk/anthropic");
+          } else {
+            const fs = yield* FileSystem.FileSystem;
+            const generated = JSON.parse(
+              yield* fs.readFileString(String(config.agentDir) + "/models.json"),
+            );
+            expect(generated.providers.cox.models).toMatchObject([
+              {
+                id: "openai/gpt-6.1-terra",
+                api: "openai-responses",
+                baseUrl: "http://127.0.0.1:0/api/model-gateway/v1",
+                compat: { supportsStrictMode: true },
+              },
+              {
+                id: "hidden",
+                api: "anthropic-messages",
+                baseUrl: "http://127.0.0.1:0/api/model-gateway",
+              },
+            ]);
+            expect(generated.providers.cox.models[1].compat).toBeUndefined();
+          }
+        }
+        const response = yield* h.invoke("/v1/responses", {
+          model: "openai/gpt-6.1-terra",
+          input: "hello",
+        });
+        expect(response.status).toBe(200);
+        expect(JSON.parse(response.text)).toEqual(responsesAnswer);
+        expect(h.calls[0]!.url).toBe("https://upstream.test/v1/responses");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { modelId: "gpt-6.1-terra", endpoint: "/responses", response: responsesAnswer },
+    {
+      modelId: "gemini-3.8-flash",
+      endpoint: "/messages",
+      response: {
+        id: "msg_test",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "recovered safely" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 2, output_tokens: 2 },
+      },
+    },
+  ])(
+    "routes and converts Chat to the model-selected $endpoint",
+    ({ modelId, endpoint, response }) =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          modelId,
+          protocols: ["openai-chat", "anthropic-messages", "openai-responses"],
+          respond: () => Response.json(response),
+        });
+        const result = yield* h.invoke("/v1/chat/completions", {
+          model: modelId,
+          messages: [{ role: "user", content: "hello" }],
+        });
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text).choices[0].message.content).toBe("recovered safely");
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.url).toBe("https://upstream.test/v1" + endpoint);
+        expect(sentBody(h.calls[0]!).model).toBe(modelId);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("rejects unavailable family protocols without calling upstream", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        modelId: "gpt-6.1-terra",
+        protocols: ["openai-chat", "anthropic-messages"],
+      });
+      const result = yield* h.invoke("/v1/chat/completions", {
+        model: "gpt-6.1-terra",
+        messages: [],
+      });
+      expect(result.status).toBe(422);
+      expect(h.calls).toHaveLength(0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("respects model protocol restrictions and rejects cross-protocol token counting", () =>
+    Effect.gen(function* () {
+      const restricted = yield* harness({
+        modelId: "kimi-k2.8-code",
+        protocols: ["openai-chat", "anthropic-messages"],
+        modelProtocols: ["openai-chat"],
+      });
+      expect(
+        (yield* restricted.invoke("/v1/chat/completions", {
+          model: "kimi-k2.8-code",
+          messages: [],
+        })).status,
+      ).toBe(422);
+      expect(restricted.calls).toHaveLength(0);
+      const gpt = yield* harness({
+        modelId: "gpt-6.1-terra",
+        protocols: ["openai-responses", "anthropic-messages"],
+      });
+      expect(
+        (yield* gpt.invoke("/v1/messages/count_tokens", {
+          model: "gpt-6.1-terra",
+          messages: [],
+        })).status,
+      ).toBe(501);
+      expect(gpt.calls).toHaveLength(0);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect.each(["codex", "claudeAgent", "omo", "pi", "opencode"])(
     "selects an offered model for %s after its default is delisted",
     (driver) =>
