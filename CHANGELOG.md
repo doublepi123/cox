@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.88 — 2026-11-14
+
+- Multi-protocol model services now route GPT model IDs to OpenAI Responses and
+  other model IDs to Anthropic Messages. Single-protocol services retain their
+  existing behavior. A missing target protocol is rejected before contacting
+  upstream rather than silently falling back to Chat.
+- Pi, OMO and OpenCode receive per-model native protocol configuration so matching
+  requests and tool streams pass through without protocol conversion. Codex and
+  Claude Agent retain their native APIs and convert only when upstream differs.
+- Add regression coverage for upstream tool-call failures, preserving the error
+  without replaying requests after output has started.
+- OMO retires orphaned memory work when restoring a session, preventing stale
+  work from keeping a restored session active indefinitely.
+
 ## Desktop 0.2.28 — 2026-11-13
 
 - Connect to remote Cox servers behind Cloudflare Access. The client no longer
