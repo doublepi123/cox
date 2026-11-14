@@ -241,7 +241,10 @@ const make = Effect.gen(function* () {
         Cause.hasInterrupts(cause) ? Effect.interrupt : Effect.succeed(Option.none<string>()),
       ),
     ),
-    Duration.infinity,
+    Exit.match({
+      onSuccess: (root) => (Option.isSome(root) ? Duration.infinity : Duration.zero),
+      onFailure: () => Duration.zero,
+    }),
   );
   const scratchRoot = probe.pipe(Effect.onInterrupt(() => invalidate));
 

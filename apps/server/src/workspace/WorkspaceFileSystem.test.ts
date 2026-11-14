@@ -408,6 +408,32 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
   });
 
   describe("writeFile", () => {
+    it.effect.each([
+      { original: "\uFEFFexport const answer = 42;\n", explicitBom: false },
+      { original: "\uFEFFexport const answer = 42;\n", explicitBom: true },
+      { original: "export const answer = 42;\n", explicitBom: false },
+      { original: "", explicitBom: false },
+      { original: "a", explicitBom: false },
+    ])("preserves UTF-8 BOM bytes across editor saves ($original, $explicitBom)", (input) =>
+      Effect.gen(function* () {
+        const service = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "bom.ts", input.original);
+        const read = yield* service.readFile({ cwd, relativePath: "bom.ts" });
+        const edited = read.contents.replace("42", "43");
+        yield* service.writeFile({
+          cwd,
+          relativePath: "bom.ts",
+          contents: input.explicitBom ? "\uFEFF" + edited : edited,
+        });
+        expect([...(yield* fs.readFile(path.join(cwd, "bom.ts")))]).toEqual([
+          ...new TextEncoder().encode(input.original.replace("42", "43")),
+        ]);
+      }),
+    );
+
     it.effect("rejects writes outside a known workspace", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;

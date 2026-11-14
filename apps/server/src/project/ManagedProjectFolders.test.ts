@@ -1,6 +1,12 @@
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { CommandId, ProjectId, ThreadId, VcsProcessSpawnError } from "@t3tools/contracts";
+import {
+  CommandId,
+  ProjectId,
+  ThreadId,
+  VcsProcessSpawnError,
+  VcsProcessTimeoutError,
+} from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -154,6 +160,44 @@ it.effect("offers a Scratch folder when Git is not installed", () =>
     },
   ),
 );
+
+it.effect("offers the Scratch folder once a Git check that timed out is asked again", () => {
+  let checks = 0;
+  return withScratch(
+    ({ baseDir }) =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const scratch = yield* ManagedProjectFolders.ManagedProjectFolders;
+        assert.isTrue(Option.isNone(yield* scratch.scratchRoot));
+        assert.equal(yield* requireRoot, path.resolve(baseDir, "scratch"));
+        const successfulChecks = checks;
+        assert.equal(yield* requireRoot, path.resolve(baseDir, "scratch"));
+        assert.equal(checks, successfulChecks);
+      }),
+    {
+      vcsProcess: Layer.effect(
+        VcsProcess.VcsProcess,
+        Effect.map(VcsProcess.make, (real) =>
+          VcsProcess.VcsProcess.of({
+            run: (input) =>
+              Effect.suspend(() => {
+                checks++;
+                if (checks > 1) return real.run(input);
+                return Effect.fail(
+                  new VcsProcessTimeoutError({
+                    operation: input.operation,
+                    command: input.command,
+                    cwd: input.cwd,
+                    timeoutMs: 5_000,
+                  }),
+                );
+              }),
+          }),
+        ),
+      ).pipe(Layer.provide(ProcessRunner.layer), Layer.provide(NodeServices.layer)),
+    },
+  );
+});
 
 it.effect("creates one Scratch project, even for concurrent first requests", () =>
   withScratch(() =>
