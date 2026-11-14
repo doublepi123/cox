@@ -33,6 +33,8 @@ import {
   makeCursorAdapterV2,
   nestedToolCallFromEnvelope,
 } from "./adapter.ts";
+import { cursorSdkModelSelection } from "./sdkModel.ts";
+import { buildCursorDiscoveredModelsFromSdk } from "./status.ts";
 import * as CursorAgentSdk from "./CursorAgentSdk.ts";
 import { ConfigurationError } from "./sdk.ts";
 
@@ -1773,6 +1775,102 @@ describe("CursorAdapterV2", () => {
     const logged = JSON.stringify(CursorAgentSdk.loggedCursorAgentOptions(options));
     assert.notInclude(logged, "secret-cursor-api-key");
     assert.notInclude(logged, "secret-cursor-mcp-token");
+  });
+
+  const grokCatalog = buildCursorDiscoveredModelsFromSdk([
+    {
+      id: "grok-4.5",
+      displayName: "Grok 4.5",
+      parameters: [
+        {
+          id: "effort",
+          displayName: "Effort",
+          values: [{ value: "low" }, { value: "medium" }, { value: "high" }],
+        },
+        { id: "fast", displayName: "Fast", values: [{ value: "false" }, { value: "true" }] },
+      ],
+      variants: [
+        {
+          displayName: "Grok 4.5 High Fast",
+          isDefault: true,
+          params: [
+            { id: "effort", value: "high" },
+            { id: "fast", value: "true" },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  it("fills unset catalog parameters and keeps Fast off", () => {
+    assert.deepEqual(
+      cursorSdkModelSelection(
+        { instanceId: ProviderInstanceId.make("cursor"), model: "grok-4.5" },
+        grokCatalog,
+      ),
+      {
+        id: "grok-4.5",
+        params: [
+          { id: "effort", value: "high" },
+          { id: "fast", value: "false" },
+        ],
+      },
+    );
+  });
+
+  it("keeps explicit options over catalog defaults", () => {
+    assert.deepEqual(
+      cursorSdkModelSelection(
+        {
+          instanceId: ProviderInstanceId.make("cursor"),
+          model: "grok-4.5",
+          options: [
+            { id: "effort", value: "low" },
+            { id: "fastMode", value: true },
+          ],
+        },
+        grokCatalog,
+      ),
+      {
+        id: "grok-4.5",
+        params: [
+          { id: "effort", value: "low" },
+          { id: "fast", value: "true" },
+        ],
+      },
+    );
+  });
+
+  it("sends no parameters for a model missing from the catalog", () => {
+    assert.deepEqual(
+      cursorSdkModelSelection(
+        { instanceId: ProviderInstanceId.make("cursor"), model: "auto" },
+        grokCatalog,
+      ),
+      { id: "default" },
+    );
+  });
+
+  it("sends catalog default model parameters on Cursor agent options", () => {
+    const options = makeCursorAgentOptions({
+      modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "grok-4.5" },
+      models: grokCatalog,
+      runtimePolicy: {
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: "/workspace",
+      },
+      threadId: ThreadId.make("thread-cursor-catalog-defaults"),
+      mcpSession: undefined,
+      platform: "linux",
+    });
+    assert.deepEqual(options.model, {
+      id: "grok-4.5",
+      params: [
+        { id: "effort", value: "high" },
+        { id: "fast", value: "false" },
+      ],
+    });
   });
 
   it("recognizes direct and SDK-wrapped abort failures as cancellation", () => {

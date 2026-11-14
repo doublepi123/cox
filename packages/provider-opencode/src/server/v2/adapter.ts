@@ -569,6 +569,11 @@ const wakeTurnId = (sessionId: string, attemptId: string) => `${sessionId}:wake:
 const isWakeTurn = (turn: OrchestrationV2ProviderTurn) =>
   turn.nativeTurnRef?.nativeId?.includes(":wake:") === true;
 
+// OpenCode types an empty balance as provider.quota too, but it answers
+// that with HTTP 402 and it never resets. Usage windows and budgets are 429.
+const isUsageLimit = (error: { readonly type: string; readonly status?: number | undefined }) =>
+  (error.type === "provider.quota" && error.status !== 402) || error.type === "provider.rate-limit";
+
 const INTERRUPT_TIMEOUT = "10 seconds";
 const INSTRUCTIONS_KEY = "t3-code";
 const RECONNECT_ATTEMPTS = 5;
@@ -1323,7 +1328,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
         failure: makeProviderFailure({
           message: readableProviderErrorMessage(error.message, error.status, error.response?.body),
           code: error.type,
-          class: "provider_error",
+          class: isUsageLimit(error) ? "usage_limit" : "provider_error",
           retryable: true,
         }),
         startedAt: turn.retry?.startedAt ?? (yield* DateTime.now),
@@ -2392,16 +2397,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           return yield* endExecution(state, turn, { status: "interrupted" });
         case "session.execution.failed": {
           const { type, message, status, response } = event.data.error;
-          // OpenCode types an empty balance as provider.quota too, but it answers
-          // that with HTTP 402 and it never resets. Usage windows and budgets are 429.
-          const usageLimit =
-            (type === "provider.quota" && status !== 402) || type === "provider.rate-limit";
           return yield* endExecution(state, turn, {
             status: "failed",
             failure: makeProviderFailure({
               message: readableProviderErrorMessage(message, status, response?.body),
               code: type,
-              class: usageLimit ? "usage_limit" : "provider_error",
+              class: isUsageLimit(event.data.error) ? "usage_limit" : "provider_error",
             }),
           });
         }
