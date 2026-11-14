@@ -18,6 +18,9 @@ export function omoSessionSelection(selection: ModelSelection) {
   };
 }
 
+export const OMO_CHILD_COMPLETION_CONTRACT =
+  "\n\n<cox_one_shot_child>\nYou run as a one-shot child task: after your final reply nothing wakes you again, so monitors, background commands and scheduled wake-ups cannot continue your work, and their results are lost. Wait for every command you depend on in the foreground with a bounded timeout, and finish verification, reports and cleanup before your final reply. If work must outlive your reply, say exactly what remains unfinished so your parent can take it over.\n</cox_one_shot_child>";
+
 export const OMO_EXTENSION_SOURCE = `
 import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
@@ -87,6 +90,7 @@ export default async function coxOmo(pi) {
   const managed = process.env.COX_OMO_MANAGED_MODELS === "1";
   const allowed = new Set(JSON.parse(process.env.COX_OMO_ALLOWED_MODELS || "[]"));
   const registries = new WeakMap();
+  const childContract = ${JSON.stringify(OMO_CHILD_COMPLETION_CONTRACT)};
   let nativeTaskRegistered = false;
   const permit = model => model && allowed.has(model.provider + "/" + model.id);
   const scopedRegistry = registry => {
@@ -124,7 +128,9 @@ export default async function coxOmo(pi) {
       if (key === "registerTool") {
         const register = target.registerTool.bind(target);
         return tool => {
-          register(tool);
+          register(tool.name !== "task" ? tool : { ...tool, execute: (id, params, ...rest) =>
+            tool.execute(id, typeof params?.prompt === "string" && !params.prompt.includes(childContract)
+              ? { ...params, prompt: params.prompt + childContract } : params, ...rest) });
           if (tool.name === "task") nativeTaskRegistered = true;
         };
       }
