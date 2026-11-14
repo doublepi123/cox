@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import { buildPiRpcLaunch, materializePiT3McpExtension } from "@t3tools/provider-pi/server";
 import { OMO_TODO_BRIDGE_SOURCE } from "./todo.ts";
+import { OMO_SCHEDULE_BRIDGE_SOURCE } from "./schedule.ts";
 import { OMO_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { omoPermissionPreset } from "./permissions.ts";
 import { OMO_SUBAGENT_TRANSCRIPT_SOURCE } from "./subagents.ts";
@@ -19,6 +20,7 @@ export function omoSessionSelection(selection: ModelSelection) {
 
 export const OMO_EXTENSION_SOURCE = `
 import { pathToFileURL } from "node:url";
+import { Type } from "typebox";
 import coxBridge from "./pi-t3-mcp-extension.ts";
 
 ${OMO_RUNTIME_ASSETS_SOURCE}
@@ -151,6 +153,7 @@ export default async function coxOmo(pi) {
     orchestrationInstructions: ${JSON.stringify(OMO_CODE_ORCHESTRATION_INSTRUCTIONS.trim())},
     bridgeInstructions: "Cox tools use their full mcp__cox__<name> names. Only when Cox delegation is explicitly requested or OMO native task cannot provide the required capability, use mcp__cox__orchestrator_capabilities then mcp__cox__delegate_task with the task field, not prompt. Discover optional Cox tools with tool_search using their full names. Generic subagent or parallel requests use OMO native task instead. Never change between native and Cox delegation silently after an error, denial, or exclusion.",
   });
+  ${OMO_SCHEDULE_BRIDGE_SOURCE}
   ${OMO_TODO_BRIDGE_SOURCE}
   ${OMO_SUBAGENT_TRANSCRIPT_SOURCE}
   pi.on("before_agent_start", async (_event, ctx) => {

@@ -527,6 +527,15 @@ export default async function t3McpExtension(pi: ExtensionAPI, options?: { reado
   installGuidance(startAndReconcile);
 
   return {
+    async callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal) {
+      await ensureStarted();
+      const result = await client.callTool(name, args, signal);
+      return {
+        content: mcpModelContent(result),
+        structuredContent: mcpScriptResult(result),
+        isError: isMcpToolError(result),
+      };
+    },
     async ensureReady() {
       await ensureStarted();
       reconcileDiscovery({ model: selectedModel });

@@ -143,6 +143,72 @@ describe("Pi project trust", () => {
 });
 
 describe("Pi MCP tool results", () => {
+  it("exposes raw authenticated calls with script output and error status", async () => {
+    const requests: Array<{
+      readonly method: string;
+      readonly params?: { readonly name: string; readonly arguments: Record<string, unknown> };
+    }> = [];
+    const source = NodeModule.stripTypeScriptTypes(
+      PI_T3_MCP_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace(
+        "export default async function",
+        "async function",
+      ),
+    );
+    const bridge: {
+      readonly callTool: (
+        name: string,
+        args: Record<string, unknown>,
+        signal: AbortSignal,
+      ) => Promise<unknown>;
+    } = await NodeVM.runInNewContext(`${source}\nt3McpExtension(pi)`, {
+      process: { env: { T3_MCP_URL: "http://fixture.invalid/mcp", T3_MCP_BEARER_TOKEN: "token" } },
+      AbortSignal,
+      NodePath,
+      pi: { on: () => {}, registerTool: () => {} },
+      fetch: async (
+        _url: string,
+        input: { readonly body: string; readonly signal: AbortSignal },
+      ) => {
+        input.signal.throwIfAborted();
+        const request = JSON.parse(input.body) as (typeof requests)[number];
+        requests.push(request);
+        return new Response(
+          JSON.stringify({
+            result:
+              request.method === "tools/list"
+                ? { tools: [] }
+                : {
+                    content: [{ type: "text", text: "Schedule rejected" }],
+                    structuredContent: { rejected: true },
+                    isError: true,
+                    _meta: { private: true },
+                  },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+    const output = await bridge.callTool(
+      "schedule_task",
+      { prompt: "Check" },
+      new AbortController().signal,
+    );
+    assert.deepEqual(output, {
+      content: [{ type: "text", text: "Schedule rejected" }],
+      structuredContent: {
+        content: [{ type: "text", text: "Schedule rejected" }],
+        structuredContent: { rejected: true },
+        isError: true,
+      },
+      isError: true,
+    });
+    assert.equal(requests.at(-1)?.method, "tools/call");
+    assert.deepEqual(requests.at(-1)?.params, {
+      name: "schedule_task",
+      arguments: { prompt: "Check" },
+    });
+  });
+
   it("returns mixed screenshot blocks and typed script output without repeating structured text", async () => {
     const content = [
       { type: "text", text: "Browser screenshot" },
