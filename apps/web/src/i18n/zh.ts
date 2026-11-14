@@ -1219,6 +1219,7 @@ export const zh = {
   "Every {count} min": "每 {count} 分钟",
   "Every {count} sec": "每 {count} 秒",
   "{days} at {time}": "{days} {time}",
+  "Once at {time}": "{time} 运行一次",
   "Reconnect {environment} to view its scheduled tasks.":
     "重新连接 {environment} 后可查看定时任务。",
   "Thread {id}": "会话 {id}",
@@ -1867,8 +1868,8 @@ export const zh = {
   "Enter the path of the checkout to run in.": "请输入运行任务的工作区路径。",
   "Could not save scheduled task": "无法保存定时任务",
   "Edit task": "编辑任务",
-  "Run a prompt automatically on an interval, at a fixed time, or when a webhook is called.":
-    "按间隔、固定时间或 Webhook 调用自动运行提示词。",
+  "Run a prompt automatically on an interval, at a fixed time, once, or when a webhook is called.":
+    "按间隔、固定时间、仅一次或 Webhook 调用自动运行提示词。",
   "Reconnect this environment before saving.": "请重新连接此环境后再保存。",
   "Runs on": "运行环境",
   "Unavailable environment": "环境不可用",
@@ -1885,6 +1886,9 @@ export const zh = {
   Schedule: "计划",
   "At a time": "固定时间",
   "Every interval": "固定间隔",
+  Once: "仅一次",
+  "Invalid run time": "运行时间无效",
+  "Choose a future date and time.": "请选择一个未来的日期和时间。",
   "Each request runs the prompt. Use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent.":
     "每个请求都会运行提示词。可在提示词中使用 {{body.path}}、{{headers.name}}、{{query.name}}、{{body}} 或 {{request}}；只有被引用的数据会发送给代理。",
   "Skip requests older than": "跳过超过以下时间的请求",

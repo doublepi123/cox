@@ -26,6 +26,50 @@ describe("scheduled task schedule calculation", () => {
     expect(parts?.minute).toBe(0);
   });
 
+  it("returns runAt for a future once schedule and null at or before it", () => {
+    const runAt = DateTime.makeUnsafe("2026-07-01T11:00:00+02:00");
+    const schedule = { type: "once", runAt: "2026-07-01T11:00:00+02:00" } as const;
+    expect(nextScheduledRunAt(schedule, DateTime.makeUnsafe("2026-07-01T08:59:59.999Z"))).toEqual(
+      runAt,
+    );
+    expect(nextScheduledRunAt(schedule, runAt)).toBeNull();
+    expect(nextScheduledRunAt(schedule, DateTime.add(runAt, { minutes: 1 }))).toBeNull();
+    expect(nextScheduledRunAt({ type: "once", runAt: "not a date" }, runAt)).toBeNull();
+  });
+
+  it("compares once schedules by runAt instant", () => {
+    expect(
+      isSameSchedule(
+        { type: "once", runAt: "2026-07-01T11:00:00+02:00" },
+        { type: "once", runAt: "2026-07-01T09:00:00.000Z" },
+      ),
+    ).toBe(true);
+    expect(
+      isSameSchedule(
+        { type: "once", runAt: "2026-07-01T09:00:00Z" },
+        { type: "once", runAt: "2026-07-01T09:00:01Z" },
+      ),
+    ).toBe(false);
+    expect(
+      isSameSchedule(
+        { type: "once", runAt: "2026-07-01T09:00:00Z" },
+        {
+          type: "interval",
+          everyMs: 60_000,
+        },
+      ),
+    ).toBe(false);
+    expect(
+      isSameSchedule(
+        { type: "interval", everyMs: 60_000 },
+        {
+          type: "once",
+          runAt: "2026-07-01T09:00:00Z",
+        },
+      ),
+    ).toBe(false);
+  });
+
   it("compares schedules structurally", () => {
     expect(
       isSameSchedule({ type: "interval", everyMs: 60_000 }, { type: "interval", everyMs: 60_000 }),

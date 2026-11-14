@@ -176,6 +176,16 @@ describe("editing scheduled task branch settings", () => {
   });
 });
 
+describe("one-shot scheduled tasks", () => {
+  it("round-trips the run time and rejects an empty one", () => {
+    const runAt = "2026-09-07T09:30:00.000Z";
+    const draft = taskToDraft({ ...legacyTask, schedule: { type: "once", runAt } });
+    expect(draft.scheduleMode).toBe("once");
+    expect(scheduleFromDraft(draft)).toEqual({ type: "once", runAt });
+    expect(scheduleFromDraft({ ...draft, runAtLocal: "" })).toBeNull();
+  });
+});
+
 describe("webhook scheduled tasks", () => {
   const signature = { header: "x-signature", encoding: "base64", prefix: "" } as const;
   const webhookTask: ScheduledTask = {

@@ -1,5 +1,6 @@
 import { MIN_SCHEDULED_TASK_INTERVAL_MS, type ScheduledTaskSchedule } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
 
 const MINUTE_MS = 60_000;
 
@@ -17,6 +18,13 @@ export function nextScheduledRunAt(
   if (schedule.type === "interval") {
     // Intervals advance elapsed time, including across daylight-saving changes.
     return DateTime.addDuration(from, Math.max(schedule.everyMs, MIN_SCHEDULED_TASK_INTERVAL_MS));
+  }
+  if (schedule.type === "once") {
+    const runAt = DateTime.make(schedule.runAt);
+    return Option.isSome(runAt) &&
+      DateTime.toEpochMillis(runAt.value) > DateTime.toEpochMillis(from)
+      ? runAt.value
+      : null;
   }
 
   const time = parseTimeOfDay(schedule.timeOfDay);
@@ -48,6 +56,16 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
     return b.type === "interval" && a.everyMs === b.everyMs;
   }
   if (a.type === "webhook") return b.type === "webhook";
+  if (a.type === "once") {
+    if (b.type !== "once") return false;
+    const aRunAt = DateTime.make(a.runAt);
+    const bRunAt = DateTime.make(b.runAt);
+    return (
+      Option.isSome(aRunAt) &&
+      Option.isSome(bRunAt) &&
+      DateTime.toEpochMillis(aRunAt.value) === DateTime.toEpochMillis(bRunAt.value)
+    );
+  }
   if (b.type !== "fixed_time") return false;
   // Compare parsed times so padded-hour edits do not reschedule pending runs.
   const aTime = parseTimeOfDay(a.timeOfDay);

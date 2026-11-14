@@ -24,6 +24,19 @@ describe("ScheduledTaskSchedule", () => {
   });
 });
 
+describe("once schedules", () => {
+  it("decodes a valid once schedule in both unions", () => {
+    const once = { type: "once", runAt: "2026-07-01T09:00:00+02:00" };
+    expect(decodeSchedule(once)).toEqual(once);
+    expect(decodeUpsertSchedule(once)).toEqual(once);
+  });
+
+  it("rejects a once schedule without runAt", () => {
+    expect(() => decodeSchedule({ type: "once" })).toThrow();
+    expect(() => decodeUpsertSchedule({ type: "once" })).toThrow();
+  });
+});
+
 it.each(["literal", " ", "\t\n", "{{body.bad", "{{unknown.field}}"])(
   "rejects invalid dedupe template %s",
   (replayKey) => {

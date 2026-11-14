@@ -97,6 +97,7 @@ import {
   defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
   scheduleFromDraft,
+  isFutureRunAt,
   scheduledTaskDefaultModel,
   taskToDraft,
   type DraftState,
@@ -159,6 +160,7 @@ const EMPTY_DRAFT: DraftState = {
   enabled: true,
   scheduleMode: "fixed",
   intervalMinutes: "15",
+  runAtLocal: "",
   timeOfDay: "09:00",
   weekdays: new Set([1, 2, 3, 4, 5]),
   projectId: "",
@@ -321,6 +323,8 @@ export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
       ? translateCurrent("Every {count} min", { count: minutes })
       : translateCurrent("Every {count} sec", { count: Math.round(schedule.everyMs / 1000) });
   }
+  if (schedule.type === "once")
+    return translateCurrent("Once at {time}", { time: new Date(schedule.runAt).toLocaleString() });
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0
@@ -1444,6 +1448,13 @@ function ScheduledTaskEditorForm({
       return;
     }
     const schedule = scheduleFromDraft(draft);
+    if (
+      draft.scheduleMode === "once" &&
+      (schedule?.type !== "once" || !isFutureRunAt(schedule.runAt))
+    ) {
+      reportFailure(t("Invalid run time"), t("Choose a future date and time."));
+      return;
+    }
     if (schedule === null) {
       for (const error of webhookDraftErrors(draft, t))
         reportFailure(error.title, error.description);
@@ -1522,7 +1533,7 @@ function ScheduledTaskEditorForm({
         <DialogTitle>{draft.editingId ? t("Edit task") : t("New task")}</DialogTitle>
         <DialogDescription>
           {t(
-            "Run a prompt automatically on an interval, at a fixed time, or when a webhook is called.",
+            "Run a prompt automatically on an interval, at a fixed time, once, or when a webhook is called.",
           )}
         </DialogDescription>
       </DialogHeader>
@@ -1775,7 +1786,12 @@ function ScheduledTaskEditorForm({
                 value={[draft.scheduleMode]}
                 onValueChange={(values) => {
                   const mode = values[0] as ScheduleMode | undefined;
-                  if (mode === "fixed" || mode === "interval" || mode === "webhook")
+                  if (
+                    mode === "fixed" ||
+                    mode === "interval" ||
+                    mode === "once" ||
+                    mode === "webhook"
+                  )
                     setDraft((current) => ({
                       ...current,
                       scheduleMode: mode,
@@ -1788,6 +1804,7 @@ function ScheduledTaskEditorForm({
               >
                 <Toggle value="fixed">{t("At a time")}</Toggle>
                 <Toggle value="interval">{t("Every interval")}</Toggle>
+                <Toggle value="once">{t("Once")}</Toggle>
                 <Toggle value="webhook">{t("On webhook")}</Toggle>
               </ToggleGroup>
             </div>
@@ -1999,6 +2016,21 @@ function ScheduledTaskEditorForm({
                     </Toggle>
                   ))}
                 </ToggleGroup>
+              </div>
+            ) : draft.scheduleMode === "once" ? (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="scheduled-task-run-at">{t("Run at")}</Label>
+                <div className="min-w-0">
+                  <Input
+                    type="datetime-local"
+                    id="scheduled-task-run-at"
+                    nativeInput
+                    value={draft.runAtLocal}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, runAtLocal: event.target.value }))
+                    }
+                  />
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2">

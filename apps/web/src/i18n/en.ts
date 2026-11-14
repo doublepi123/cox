@@ -1300,6 +1300,7 @@ export const en = {
   "Every {count} min": "Every {count} min",
   "Every {count} sec": "Every {count} sec",
   "{days} at {time}": "{days} at {time}",
+  "Once at {time}": "Once at {time}",
   "Reconnect {environment} to view its scheduled tasks.":
     "Reconnect {environment} to view its scheduled tasks.",
   "Thread {id}": "Thread {id}",
@@ -1965,8 +1966,8 @@ export const en = {
   "Enter the path of the checkout to run in.": "Enter the path of the checkout to run in.",
   "Could not save scheduled task": "Could not save scheduled task",
   "Edit task": "Edit task",
-  "Run a prompt automatically on an interval, at a fixed time, or when a webhook is called.":
-    "Run a prompt automatically on an interval, at a fixed time, or when a webhook is called.",
+  "Run a prompt automatically on an interval, at a fixed time, once, or when a webhook is called.":
+    "Run a prompt automatically on an interval, at a fixed time, once, or when a webhook is called.",
   "Reconnect this environment before saving.": "Reconnect this environment before saving.",
   "Runs on": "Runs on",
   "Unavailable environment": "Unavailable environment",
@@ -1983,6 +1984,9 @@ export const en = {
   Schedule: "Schedule",
   "At a time": "At a time",
   "Every interval": "Every interval",
+  Once: "Once",
+  "Invalid run time": "Invalid run time",
+  "Choose a future date and time.": "Choose a future date and time.",
   "Each request runs the prompt. Use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent.":
     "Each request runs the prompt. Use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent.",
   "Skip requests older than": "Skip requests older than",

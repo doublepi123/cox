@@ -57,7 +57,7 @@ export function validateScheduledTasksSearch(raw: Record<string, unknown>) {
   };
 }
 
-export type ScheduleMode = "fixed" | "interval" | "webhook";
+export type ScheduleMode = "fixed" | "interval" | "once" | "webhook";
 export type WorkspaceMode = "root" | "worktree" | "existing_worktree";
 
 export interface DraftState {
@@ -67,6 +67,7 @@ export interface DraftState {
   readonly enabled: boolean;
   readonly scheduleMode: ScheduleMode;
   readonly intervalMinutes: string;
+  readonly runAtLocal: string;
   readonly timeOfDay: string;
   readonly weekdays: ReadonlySet<number>;
   readonly projectId: string;
@@ -200,12 +201,27 @@ export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedul
     const everyMs = Math.round(Number(draft.intervalMinutes) * 60_000);
     return { type: "interval", everyMs };
   }
+  if (draft.scheduleMode === "once") {
+    const runAt = new Date(draft.runAtLocal).getTime();
+    return Number.isFinite(runAt) ? { type: "once", runAt: new Date(runAt).toISOString() } : null;
+  }
   const selectedEveryDay = draft.weekdays.size === 0 || draft.weekdays.size === 7;
   return {
     type: "fixed_time",
     timeOfDay: draft.timeOfDay || "09:00",
     ...(selectedEveryDay ? {} : { weekdays: [...draft.weekdays].toSorted() }),
   };
+}
+
+export function isFutureRunAt(runAt: string): boolean {
+  return Date.parse(runAt) > Date.now();
+}
+
+export function localDateTimeInputValue(iso: string): string {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function taskToDraft(task: ScheduledTask): DraftState {
@@ -221,9 +237,16 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     prompt: task.prompt,
     enabled: task.enabled,
     scheduleMode:
-      schedule.type === "interval" ? "interval" : schedule.type === "webhook" ? "webhook" : "fixed",
+      schedule.type === "fixed_time"
+        ? "fixed"
+        : schedule.type === "interval"
+          ? "interval"
+          : schedule.type === "once"
+            ? "once"
+            : "webhook",
     intervalMinutes:
       schedule.type === "interval" ? String(Math.max(1, schedule.everyMs / 60_000)) : "15",
+    runAtLocal: schedule.type === "once" ? localDateTimeInputValue(schedule.runAt) : "",
     timeOfDay: schedule.type === "fixed_time" ? schedule.timeOfDay.padStart(5, "0") : "09:00",
     weekdays,
     projectId: task.projectId,

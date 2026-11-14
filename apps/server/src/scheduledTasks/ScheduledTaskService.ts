@@ -281,6 +281,7 @@ function iso(value: DateTime.DateTime): string {
 }
 
 const RUN_OUTCOME_WAIT_MS = 24 * 60 * 60 * 1_000;
+const ONCE_RUN_AT_PAST_TOLERANCE_MS = 60_000;
 const RUN_FAILURE_ERRORS = {
   failed: "The run failed.",
   interrupted: "The run was stopped.",
@@ -666,22 +667,30 @@ export const layer = Layer.effect(
           ),
         );
 
-    const markRunning = (id: ScheduledTaskId, startedAtIso: string, webhookDeliveryId?: string) =>
+    const markRunning = (input: {
+      readonly id: ScheduledTaskId;
+      readonly startedAtIso: string;
+      readonly webhookDeliveryId?: string;
+      readonly consumeOnce?: boolean;
+    }) =>
       sql<{ task_id: string }>`
         UPDATE scheduled_tasks
-        SET updated_at = ${startedAtIso},
-            last_run_at = ${startedAtIso},
-            last_run_webhook_delivery_id = ${webhookDeliveryId ?? null},
+        SET updated_at = ${input.startedAtIso},
+            last_run_at = ${input.startedAtIso},
+            last_run_webhook_delivery_id = ${input.webhookDeliveryId ?? null},
             last_run_status = 'running',
             last_run_error = NULL
-        WHERE task_id = ${id}
+            ${input.consumeOnce === true ? sql`, enabled = 0, next_run_at = NULL` : sql``}
+        WHERE task_id = ${input.id}
         RETURNING task_id
       `.pipe(
         Effect.mapError((cause) =>
-          taskError("Could not mark schedule task as running.", { taskId: id, cause }),
+          taskError("Could not mark schedule task as running.", { taskId: input.id, cause }),
         ),
         Effect.flatMap((rows) =>
-          rows.length > 0 ? Effect.void : taskError("Schedule task not found.", { taskId: id }),
+          rows.length > 0
+            ? Effect.void
+            : taskError("Schedule task not found.", { taskId: input.id }),
         ),
       );
 
@@ -788,6 +797,7 @@ export const layer = Layer.effect(
       const updated = yield* sql<{ task_id: string }>`
         UPDATE scheduled_tasks
         SET next_run_at = ${next}, updated_at = ${iso(now)}
+          ${task.schedule.type === "once" ? sql`, enabled = 0` : sql``}
         WHERE task_id = ${task.id} AND created_at = ${task.createdAt}
           AND next_run_at IS ${task.nextRunAt}
           AND updated_at = ${task.updatedAt}
@@ -936,7 +946,11 @@ export const layer = Layer.effect(
                   return "stale" as const;
                 if (current.lastRunStatus === "running" || (yield* hasOutstandingRun(active.id)))
                   return "busy" as const;
-                yield* markRunning(active.id, startedAtIso);
+                yield* markRunning({
+                  id: active.id,
+                  startedAtIso,
+                  consumeOnce: trigger === "scheduled" && active.schedule.type === "once",
+                });
                 return "claimed" as const;
               }),
             )
@@ -967,7 +981,11 @@ export const layer = Layer.effect(
           yield* sql
             .withTransaction(
               Effect.gen(function* () {
-                yield* markRunning(active.id, startedAtIso, webhook.deliveryId);
+                yield* markRunning({
+                  id: active.id,
+                  startedAtIso,
+                  webhookDeliveryId: webhook.deliveryId,
+                });
                 // Recovery must distinguish this delivery from other windows waiting on the same task.
                 yield* sql`UPDATE scheduled_task_webhook_pending SET state = 'running' WHERE delivery_id = ${webhook.deliveryId}`;
               }),
@@ -1392,6 +1410,27 @@ export const layer = Layer.effect(
               ),
             }
           : input.schedule;
+      let onceNextRunAt: string | null = null;
+      if (
+        schedule.type === "once" &&
+        (existingTask === null || !isSameSchedule(existingTask.schedule, schedule))
+      ) {
+        const runAt = DateTime.make(schedule.runAt);
+        if (Option.isNone(runAt)) {
+          return yield* taskError("A once schedule needs a valid runAt date-time.", { taskId: id });
+        }
+        if (
+          DateTime.toEpochMillis(runAt.value) <
+          DateTime.toEpochMillis(now) - ONCE_RUN_AT_PAST_TOLERANCE_MS
+        ) {
+          return yield* taskError("A once schedule's runAt is too far in the past.", {
+            taskId: id,
+          });
+        }
+        onceNextRunAt = iso(
+          DateTime.toEpochMillis(runAt.value) > DateTime.toEpochMillis(now) ? runAt.value : now,
+        );
+      }
       const webhook =
         input.schedule.type === "webhook"
           ? yield* Effect.gen(function* () {
@@ -1456,7 +1495,7 @@ export const layer = Layer.effect(
         updatedAt: iso(now),
         nextRunAt: scheduleUnchanged
           ? existingTask.nextRunAt
-          : nextRunAt({ enabled: input.enabled, schedule }, now),
+          : (onceNextRunAt ?? nextRunAt({ enabled: input.enabled, schedule }, now)),
         lastRunAt: existingTask?.lastRunAt ?? null,
         lastRunStatus: existingTask?.lastRunStatus ?? "never",
         lastRunError: existingTask?.lastRunError ?? null,
