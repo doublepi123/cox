@@ -15,12 +15,17 @@ describe("gateway upstream protocol", () => {
     ["openai/GPT-6-astra", "openai-responses"],
     ["vendor/team/gpt-5", "openai-responses"],
     ["gpt", "openai-responses"],
+    ["kimi-k2.8-code", "openai-chat"],
+    ["kimi-k3.1-pro", "openai-chat"],
+    ["moonshotai/Kimi-K3", "openai-chat"],
+    ["kimi", "openai-chat"],
     ["gemini-3.8-flash", "anthropic-messages"],
-    ["kimi-k2.8-code", "anthropic-messages"],
     ["claude-fable", "anthropic-messages"],
     ["o3", "anthropic-messages"],
     ["not-gpt-5", "anthropic-messages"],
     ["gptish", "anthropic-messages"],
+    ["not-kimi-k3", "anthropic-messages"],
+    ["kimish", "anthropic-messages"],
   ] as const)("routes %s independently of client protocol and configured order", (id, expected) => {
     for (const incoming of service.protocols) {
       for (const protocols of [service.protocols, [...service.protocols].reverse()]) {
@@ -61,8 +66,22 @@ describe("gateway upstream protocol", () => {
     ).toBeUndefined();
     expect(
       modelServiceUpstreamProtocol(
+        { ...service, protocols: ["anthropic-messages", "openai-responses"] },
+        { id: "kimi-k3.1-pro", capabilities: null },
+        "anthropic-messages",
+      ),
+    ).toBeUndefined();
+    expect(
+      modelServiceUpstreamProtocol(
         service,
-        { id: "kimi-k2.8-code", capabilities: null, protocols: ["openai-chat"] },
+        { id: "kimi-k2.8-code", capabilities: null, protocols: ["anthropic-messages"] },
+        "anthropic-messages",
+      ),
+    ).toBeUndefined();
+    expect(
+      modelServiceUpstreamProtocol(
+        service,
+        { id: "claude-fable", capabilities: null, protocols: ["openai-chat"] },
         "openai-chat",
       ),
     ).toBeUndefined();

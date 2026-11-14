@@ -668,7 +668,7 @@ export const make = Effect.gen(function* () {
     if (!protocol)
       return gatewayErrorResponse(incoming, 422, {
         message:
-          "No compatible upstream protocol is configured for this model. Multi-protocol services require OpenAI Responses for GPT models and Anthropic Messages for other models.",
+          "No compatible upstream protocol is configured for this model. Multi-protocol services require OpenAI Responses for GPT models, OpenAI Chat for Kimi models, and Anthropic Messages for other models.",
       });
     if (countTokens && protocol !== incoming)
       return yield* new ModelServiceError({

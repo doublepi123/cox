@@ -13,9 +13,12 @@ export function modelServiceUpstreamProtocol(
     service.protocols.includes(protocol),
   );
   if (new Set(service.protocols).size > 1) {
-    const target = /^gpt(?:-|$)/i.test(model.id.split("/").at(-1) ?? "")
+    const slug = model.id.split("/").at(-1) ?? "";
+    const target = /^gpt(?:-|$)/i.test(slug)
       ? "openai-responses"
-      : "anthropic-messages";
+      : /^kimi(?:-|$)/i.test(slug)
+        ? "openai-chat"
+        : "anthropic-messages";
     return available.includes(target) ? target : undefined;
   }
   return available.includes(incoming) ? incoming : available[0];

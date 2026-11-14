@@ -377,7 +377,7 @@ it.layer(layer)("model service gateway", (it) => {
       withGatewayDiagnostics((logs) =>
         Effect.gen(function* () {
           for (const gpt of [false, true]) {
-            const modelId = gpt ? "gpt-6.1-terra" : "kimi-k2.8-code";
+            const modelId = gpt ? "gpt-6.1-terra" : "claude-fable";
             const tool = {
               type: "function_call",
               id: "fc_test",
@@ -500,6 +500,16 @@ it.layer(layer)("model service gateway", (it) => {
           protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
           respond: () => Response.json(responsesAnswer),
         });
+        const current = yield* h.settings.getSettings;
+        const baseService = current.modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...baseService,
+              models: [...baseService.models, { id: "kimi-k3.1-pro", capabilities: null }],
+            },
+          },
+        });
         const instances = {
           [instanceId]: { ...h.instances[instanceId]!, modelService: { serviceId, modelIds: [] } },
         };
@@ -520,6 +530,9 @@ it.layer(layer)("model service gateway", (it) => {
             );
             expect(generated.provider.cox.models["openai/gpt-6.1-terra"]).toMatchObject({
               provider: { npm: "@ai-sdk/openai" },
+            });
+            expect(generated.provider.cox.models["kimi-k3.1-pro"]).toMatchObject({
+              provider: { npm: "@ai-sdk/openai-compatible" },
             });
             expect(generated.provider.cox.options.baseURL).toBe(
               "http://127.0.0.1:0/api/model-gateway/v1",
@@ -542,8 +555,14 @@ it.layer(layer)("model service gateway", (it) => {
                 api: "anthropic-messages",
                 baseUrl: "http://127.0.0.1:0/api/model-gateway",
               },
+              {
+                id: "kimi-k3.1-pro",
+                api: "openai-completions",
+                baseUrl: "http://127.0.0.1:0/api/model-gateway/v1",
+              },
             ]);
             expect(generated.providers.cox.models[1].compat).toBeUndefined();
+            expect(generated.providers.cox.models[2].compat).toBeUndefined();
           }
         }
         const response = yield* h.invoke("/v1/responses", {
@@ -558,6 +577,21 @@ it.layer(layer)("model service gateway", (it) => {
 
   it.effect.each([
     { modelId: "gpt-6.1-terra", endpoint: "/responses", response: responsesAnswer },
+    {
+      modelId: "kimi-k3.1-pro",
+      endpoint: "/chat/completions",
+      response: {
+        id: "chat_test",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "recovered safely" },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 },
+      },
+    },
     {
       modelId: "gemini-3.8-flash",
       endpoint: "/messages",
@@ -603,6 +637,16 @@ it.layer(layer)("model service gateway", (it) => {
       });
       expect(result.status).toBe(422);
       expect(h.calls).toHaveLength(0);
+      const kimi = yield* harness({
+        modelId: "kimi-k3.1-pro",
+        protocols: ["anthropic-messages", "openai-responses"],
+      });
+      const kimiResult = yield* kimi.invoke("/v1/messages", {
+        model: "kimi-k3.1-pro",
+        messages: [],
+      });
+      expect(kimiResult.status).toBe(422);
+      expect(kimi.calls).toHaveLength(0);
     }).pipe(Effect.scoped),
   );
 
@@ -611,15 +655,26 @@ it.layer(layer)("model service gateway", (it) => {
       const restricted = yield* harness({
         modelId: "kimi-k2.8-code",
         protocols: ["openai-chat", "anthropic-messages"],
-        modelProtocols: ["openai-chat"],
+        modelProtocols: ["anthropic-messages"],
       });
       expect(
-        (yield* restricted.invoke("/v1/chat/completions", {
+        (yield* restricted.invoke("/v1/messages", {
           model: "kimi-k2.8-code",
           messages: [],
         })).status,
       ).toBe(422);
       expect(restricted.calls).toHaveLength(0);
+      const kimi = yield* harness({
+        modelId: "kimi-k3.1-pro",
+        protocols: ["openai-chat", "anthropic-messages"],
+      });
+      expect(
+        (yield* kimi.invoke("/v1/messages/count_tokens", {
+          model: "kimi-k3.1-pro",
+          messages: [],
+        })).status,
+      ).toBe(501);
+      expect(kimi.calls).toHaveLength(0);
       const gpt = yield* harness({
         modelId: "gpt-6.1-terra",
         protocols: ["openai-responses", "anthropic-messages"],
