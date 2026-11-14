@@ -197,6 +197,24 @@ describe("serializeRenderedMarkdownFragment", () => {
     expect(serializeRenderedMarkdownFragment(asNode(container))).toBe("first line\nsecond line");
   });
 
+  it.each([
+    ["backtick edges", "`value`"],
+    ["space edges", "  value  "],
+    ["only spaces", "   "],
+  ])("copies inline code that parses back unchanged: %s", (_, value) => {
+    const container = new FakeElement("DIV").append(
+      new FakeElement("P").append(
+        new FakeText("Use "),
+        new FakeElement("CODE").append(new FakeText(value)),
+        new FakeText(" here."),
+      ),
+    );
+    const paragraph = parseMarkdownWithMath(serializeRenderedMarkdownFragment(asNode(container)))
+      .children[0];
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    expect(paragraph.children.find((child) => child.type === "inlineCode")?.value).toBe(value);
+  });
+
   it("keeps fences when a bare list item sits alongside the code block", () => {
     const container = new FakeElement("DIV").append(
       new FakeElement("UL").append(new FakeElement("LI")),

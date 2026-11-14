@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../../test/render";
+import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ThemeEditorPanel } from "./ThemeEditorPanel";
 
 function dragHeader(panel: HTMLElement, toX: number, toY: number) {
@@ -61,6 +62,41 @@ async function renderPanel() {
   };
 }
 
+async function renderBesideSettings() {
+  const onSettingsOpenChange = vi.fn();
+  const onEditorOpenChange = vi.fn();
+  const screen = await render(
+    <>
+      <Dialog onOpenChange={onSettingsOpenChange} open>
+        <DialogPopup>
+          <DialogTitle>Settings</DialogTitle>
+        </DialogPopup>
+      </Dialog>
+      <ThemeEditorPanel
+        open
+        onOpenChange={onEditorOpenChange}
+        onSaved={() => true}
+        editingTheme={null}
+        initialAppearance="light"
+        restoreTheme={() => {}}
+      />
+    </>,
+  );
+  return {
+    onSettingsOpenChange,
+    onEditorOpenChange,
+    [Symbol.asyncDispose]: () => screen[Symbol.asyncDispose](),
+  };
+}
+
+async function editorElement(selector: string) {
+  const query = () => document.querySelector<HTMLElement>(`[data-theme-editor-panel] ${selector}`);
+  await expect.poll(query).toBeTruthy();
+  const element = query();
+  if (!element) throw new Error("Expected the theme editor element to remain mounted");
+  return element;
+}
+
 describe("ThemeEditorPanel", () => {
   it("keeps its left edge when resized after the window shrank", async () => {
     await using view = await renderPanel();
@@ -109,5 +145,25 @@ describe("ThemeEditorPanel", () => {
 
     await page.viewport(1280, 900);
     await expect.poll(() => (panel.element() as HTMLElement).style.left).toBe("700px");
+  });
+
+  it("closes on Escape without closing Settings", async () => {
+    await using view = await renderBesideSettings();
+    (await editorElement("input")).focus();
+    await userEvent.keyboard("{Escape}");
+
+    expect(view.onEditorOpenChange).toHaveBeenCalledWith(false);
+    expect(view.onSettingsOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves inspection on Escape without closing the editor or Settings", async () => {
+    await using view = await renderBesideSettings();
+    (await editorElement('[aria-label="Inspect app colors"]')).click();
+    await editorElement('[aria-label="Cancel inspecting app colors"]');
+    await userEvent.keyboard("{Escape}");
+
+    await editorElement('[aria-label="Inspect app colors"]');
+    expect(view.onEditorOpenChange).not.toHaveBeenCalled();
+    expect(view.onSettingsOpenChange).not.toHaveBeenCalled();
   });
 });

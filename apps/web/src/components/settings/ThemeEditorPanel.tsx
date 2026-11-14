@@ -664,6 +664,7 @@ export function ThemeEditorPanel({
     const cancelInspection = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      event.stopImmediatePropagation();
       clearHover();
       clearInspectorSelection();
     };
@@ -1106,6 +1107,12 @@ export function ThemeEditorPanel({
         isMinimized && "max-h-none",
       )}
       data-theme-editor-panel
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        if (!event.currentTarget.contains(event.target as Node)) return;
+        event.stopPropagation();
+        onOpenChange(false);
+      }}
       ref={panelRef}
       role="dialog"
       style={{
