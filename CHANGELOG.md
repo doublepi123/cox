@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.89 — 2026-11-14
+
+- OMO now retries model gateway streams that are cut off mid-response. Interrupted
+  and truncated gateway streams report "Connection lost" or "ended without its
+  terminal event", which OMO's retry policy recognizes, instead of ending the turn
+  with an unretried stream error.
+- A blocked OMO goal no longer leaves a Cox thread running indefinitely. When OMO
+  goes idle and its only remaining wait is a blocked goal, Cox completes the turn
+  and reports the session idle on reconnect; questions, child tasks, background
+  work and holds still keep the turn open.
+
 ## 0.1.88 — 2026-11-14
 
 - Multi-protocol model services now route GPT model IDs to OpenAI Responses and
