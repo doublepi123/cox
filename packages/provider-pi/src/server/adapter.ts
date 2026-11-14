@@ -2383,11 +2383,16 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             const message = event["message"];
             if (recordString(message, "role") !== "assistant") return;
             yield* completeOpenStreamItems(turn);
-            if (recordString(message, "stopReason") === "error" && turn.failure === null) {
-              turn.failure = makeProviderFailure({
-                message: recordString(message, "errorMessage") ?? "Pi reported a model error.",
-                class: "provider_error",
-              });
+            const stopReason = recordString(message, "stopReason");
+            if (stopReason === "error") {
+              if (turn.failure === null) {
+                turn.failure = makeProviderFailure({
+                  message: recordString(message, "errorMessage") ?? "Pi reported a model error.",
+                  class: "provider_error",
+                });
+              }
+            } else if (stopReason !== "aborted" && turn.activeProviderRetry === null) {
+              turn.failure = null;
             }
             return;
           }

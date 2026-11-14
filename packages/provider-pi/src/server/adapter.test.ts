@@ -5554,6 +5554,105 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect(
+    "clears an intermediate assistant error when a continuation completes the turn, while reporting a later unrecovered error",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const { runtime, takeEvent } = yield* openRuntime(fake);
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        yield* startTurn(runtime, providerThread);
+        yield* fake.takeRequest("prompt");
+        yield* fake.emit({ type: "agent_start" });
+        yield* fake.emit({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage:
+              '{"type":"error","error":{"type":"stream_error","code":"cox_model_service_incomplete_stream","message":"The model service stream ended without its terminal event."}}',
+          },
+        });
+        yield* fake.emit({ type: "agent_start" });
+        yield* fake.emit({
+          type: "message_start",
+          message: { role: "assistant", content: [] },
+        });
+        yield* fake.emit({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_delta",
+            contentIndex: 0,
+            delta: "Completed after goal continuation.",
+          },
+        });
+        yield* fake.emit({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Completed after goal continuation." }],
+            stopReason: "stop",
+          },
+        });
+        yield* fake.emit({ type: "agent_settled" });
+
+        const errors: Array<string> = [];
+        const firstTerminal = yield* takeEvent((event) => {
+          if (event.type === "turn_item.updated" && event.turnItem.type === "error") {
+            errors.push(event.turnItem.failure.message);
+          }
+          return event.type === "turn.terminal";
+        });
+        assert.deepEqual(errors, []);
+        assert.isTrue(
+          firstTerminal.type === "turn.terminal" && firstTerminal.status === "completed",
+        );
+
+        yield* startTurn(runtime, providerThread);
+        yield* fake.takeRequest("prompt");
+        yield* fake.emit({ type: "agent_start" });
+        yield* fake.emit({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage: "stale intermediate error",
+          },
+        });
+        yield* fake.emit({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "toolUse",
+          },
+        });
+        yield* fake.emit({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage: "final unrecovered error",
+          },
+        });
+        yield* fake.emit({ type: "agent_settled" });
+
+        const secondTerminal = yield* takeEvent((event) => event.type === "turn.terminal");
+        assert.isTrue(
+          secondTerminal.type === "turn.terminal" &&
+            secondTerminal.status === "failed" &&
+            secondTerminal.failure.message === "final unrecovered error",
+        );
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect.each([
     {
       pi: "clears its native queue",
