@@ -9,6 +9,13 @@ describe("reading qualifiers out of a typed query", () => {
     });
   });
 
+  it("keeps inherited qualifier names as search text", () => {
+    expect(parsePullRequestQuery("review:constructor checks:toString")).toEqual({
+      text: "review:constructor checks:toString",
+      filters: {},
+    });
+  });
+
   it("keeps the spaces in a quoted name of a list, and drops an empty part", () => {
     expect(parsePullRequestQuery('label:"needs design","wip"').filters.labels).toEqual([
       ["needs design", "wip"],

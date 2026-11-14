@@ -57,6 +57,67 @@ function settings(
 }
 
 describe("buildProjectGroups", () => {
+  it("labels whole-repository groups from repository identity", () => {
+    const subfolder = makeProject("design-study", "/work/NewCo/reference/design-study", {
+      title: "Design Study",
+      updatedAt: "2026-07-03T00:00:00.000Z",
+      repositoryIdentity: {
+        ...repositoryIdentity,
+        canonicalKey: "github.com/t3tools/newco",
+        origin: { canonicalKey: repositoryIdentity.canonicalKey, displayName: "T3 Code" },
+      },
+    });
+    const root = makeProject("NewCo", "/work/NewCo", {
+      updatedAt: "2026-07-02T00:00:00.000Z",
+      repositoryIdentity: {
+        ...repositoryIdentity,
+        canonicalKey: "github.com/t3tools/newco",
+        origin: { canonicalKey: repositoryIdentity.canonicalKey, displayName: "T3 Code" },
+      },
+    });
+    const lowercasedIdentity = {
+      ...repositoryIdentity,
+      canonicalKey: "github.com/t3tools/newco",
+      name: "T3CODE",
+      displayName: "T3 Code",
+      origin: { canonicalKey: repositoryIdentity.canonicalKey, displayName: "T3 Code" },
+    };
+    const clone = makeProject("NewCo", "/remote/NewCo", {
+      environmentId: EnvironmentId.make("remote"),
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      repositoryIdentity: lowercasedIdentity,
+    });
+
+    const groups = buildProjectGroups({
+      projects: [subfolder, root, clone],
+      settings: settings("repository"),
+      preferredEnvironmentId: environmentId,
+    });
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.label).toBe("T3 Code");
+
+    const pathGroups = buildProjectGroups({
+      projects: [
+        makeProject("design", "/work/t3code/design", {
+          title: "Design docs",
+          repositoryIdentity: { ...repositoryIdentity, rootPath: "/work/t3code" },
+        }),
+        makeProject("design", "/remote/t3code/design", {
+          environmentId: EnvironmentId.make("remote"),
+          title: "design",
+          repositoryIdentity: { ...repositoryIdentity, rootPath: "/remote/t3code" },
+        }),
+        makeProject("t3code", "/work/t3code", {
+          repositoryIdentity: { ...repositoryIdentity, rootPath: "/work/t3code" },
+        }),
+      ],
+      settings: settings("repository_path"),
+      preferredEnvironmentId: environmentId,
+    });
+    expect(pathGroups.map((group) => group.label)).toEqual(["t3code", "t3code"]);
+  });
+
   it.each(["repository", "repository_path", "separate"] as const)(
     "keeps scratch project ownership separate by default in %s mode",
     (mode) => {

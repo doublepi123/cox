@@ -199,9 +199,22 @@ export function resolveScratchProjectScopeKey(
 }
 
 export function deriveProjectGroupLabel(input: {
+  readonly groupKey: string;
   readonly representative: Pick<EnvironmentProject, "title" | "repositoryIdentity">;
   readonly members: ReadonlyArray<Pick<EnvironmentProject, "title" | "repositoryIdentity">>;
 }): string {
+  const representativeIdentity = input.representative.repositoryIdentity;
+  if (
+    representativeIdentity &&
+    input.groupKey === repositoryGroupingKeyOf(representativeIdentity)
+  ) {
+    return (
+      repositoryGroupingDisplayNameOf(representativeIdentity) ??
+      representativeIdentity.origin?.displayName ??
+      representativeIdentity.name ??
+      input.representative.title
+    );
+  }
   const sharedTitles = uniqueNonEmptyValues(input.members.map((member) => member.title));
   const sharedDisplayNames = uniqueNonEmptyValues(
     input.members.map((member) =>
@@ -211,6 +224,12 @@ export function deriveProjectGroupLabel(input: {
   const sharedRepositoryNames = uniqueNonEmptyValues(
     input.members.map((member) => member.repositoryIdentity?.name),
   );
+  if (sharedRepositoryNames.length === 1) {
+    return sharedRepositoryNames[0]!;
+  }
+  if (sharedDisplayNames.length === 1) {
+    return sharedDisplayNames[0]!;
+  }
   const sharedTitle = sharedTitles[0];
   if (
     sharedTitles.length === 1 &&
@@ -220,14 +239,6 @@ export function deriveProjectGroupLabel(input: {
   ) {
     return sharedTitle;
   }
-  if (sharedDisplayNames.length === 1) {
-    return sharedDisplayNames[0]!;
-  }
-
-  if (sharedRepositoryNames.length === 1) {
-    return sharedRepositoryNames[0]!;
-  }
-
   return input.representative.title;
 }
 
@@ -367,6 +378,7 @@ export function buildProjectGroups<TProject extends EnvironmentProject>(input: {
           ? "No project"
           : members.length > 1
             ? deriveProjectGroupLabel({
+                groupKey: key,
                 representative,
                 members: members.map((member) => member.project),
               })

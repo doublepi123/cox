@@ -60,11 +60,12 @@ const row = (
     readonly settledDay?: number;
     readonly createdDay?: number;
     readonly subagent?: boolean;
+    readonly project?: ProjectId;
   },
 ) =>
   ({
     id: ThreadId.make(id),
-    projectId: project,
+    projectId: input.project ?? project,
     lineage: {
       parentThreadId: input.subagent === true ? ThreadId.make("parent") : null,
       relationshipToParent: input.subagent === true ? "subagent" : null,
@@ -100,6 +101,16 @@ describe("olderSettledCountKey", () => {
     expect(key([...base, row("new", { createdDay: 70 })])).toBe(start);
     expect(key([...base, row("new-settled", { createdDay: 70, settledDay: 71 })])).toBe(start);
     expect(key([...base, row("child", { createdDay: 5, subagent: true })])).toBe(start);
+  });
+
+  it("changes when an older settled thread moves to another project", () => {
+    const start = key(base);
+    const moved = [
+      row("kept-old", { settledDay: 10, project: ProjectId.make("other-project") }),
+      base[1]!,
+    ];
+
+    expect(key(moved)).not.toBe(start);
   });
 });
 
