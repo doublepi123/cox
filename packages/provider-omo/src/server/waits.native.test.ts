@@ -80,7 +80,13 @@ it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER)(
                 },
               ],
             }
-          : { content: child ? "Report pending: the copy is unfinished." : "Report handled." };
+          : {
+              content: child
+                ? "Report pending: the copy is unfinished."
+                : parentTools.length === 4
+                  ? "Report handled. Ready to continue?"
+                  : "Finished.",
+            };
         response.write(chunk({ role: "assistant", ...delta }, null));
         response.write(chunk({}, step ? "tool_calls" : "stop"));
         response.end("data: [DONE]\n\n");
@@ -197,6 +203,30 @@ it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER)(
           expect(events.filter(waitStatus).at(-1)).not.toHaveProperty("statusText");
           yield* until((event) => event.type === "agent_settled");
           expect(parentTools).toHaveLength(4);
+          expect(yield* connection.request({ type: "get_state" })).toMatchObject({
+            isStreaming: false,
+            lifecycle: {
+              state: "waiting_human",
+              waitingOn: {
+                children: 0,
+                background: [],
+                human: [
+                  {
+                    kind: "question",
+                    requestId: expect.stringMatching(/^question:[^:\s]+:[1-9]\d*$/),
+                  },
+                ],
+              },
+            },
+          });
+
+          yield* connection.request({ type: "prompt", message: "Yes, finish." });
+          yield* until((event) => event.type === "agent_settled");
+          expect(parentTools).toHaveLength(5);
+          expect(yield* connection.request({ type: "get_state" })).toMatchObject({
+            isStreaming: false,
+            lifecycle: { state: "done" },
+          });
         }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("60 seconds")),
       );
     } finally {

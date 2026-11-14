@@ -318,8 +318,12 @@ describe("OMO root work lifecycle", () => {
     expect(() => omoSessionState({ isStreaming: false })).toThrow("required session lifecycle");
   });
 
-  it("settles an idle root whose only remaining human wait is a blocked goal", () => {
+  it("settles an idle root whose remaining human waits are synthetic root attention markers", () => {
     const blockedGoal = { kind: "goal_blocked", requestId: "goal:1" };
+    const syntheticQuestion = {
+      kind: "question",
+      requestId: "question:44294c22-9c2b-463f-81c4-a94d3b9aa789:27",
+    };
     const blocked = (seq: number, extra: Record<string, unknown> = {}) =>
       lifecycle("waiting_human", seq, {
         completionId: undefined,
@@ -348,6 +352,34 @@ describe("OMO root work lifecycle", () => {
       },
       { waitingOn: { children: 0, background: [{}], human: [blockedGoal] } },
       { waitingOn: { children: 0, background: [], human: [blockedGoal, { kind: "question" }] } },
+      {
+        waitingOn: {
+          children: 0,
+          background: [],
+          human: [{ kind: "question", requestId: "c55499f5-79fc-4adc-87cf-97ee99539b0f" }],
+        },
+      },
+      {
+        waitingOn: {
+          children: 0,
+          background: [],
+          human: [{ kind: "question", requestId: "toolu_vrtx_01Hw6xGbkg3fz39Bot3zE2xg" }],
+        },
+      },
+      {
+        waitingOn: {
+          children: 0,
+          background: [],
+          human: [{ kind: "question", requestId: "question:run:0" }],
+        },
+      },
+      {
+        waitingOn: {
+          children: 0,
+          background: [],
+          human: [{ kind: "approval", requestId: "approval:run:1" }],
+        },
+      },
       { waitingOn: { children: 0, background: [], human: [] } },
       { runId: "prior" },
     ]) {
@@ -356,12 +388,26 @@ describe("OMO root work lifecycle", () => {
       expect(mapper.observe({ type: "agent_idle" })).toEqual([]);
     }
 
-    const mapper = started();
-    expect(mapper.observe(blocked(1))).toEqual([]);
-    expect(mapper.observe({ type: "agent_idle" })).toEqual([
-      { type: "agent_settled", aborted: false },
-    ]);
-    expect(mapper.observe(blocked(2))).toEqual([]);
+    for (const human of [
+      [blockedGoal],
+      [{ kind: "goal_paused", requestId: "goal:1:2" }],
+      [{ kind: "stalled", requestId: "stall:1:3" }],
+      [{ kind: "interrupted_run", requestId: "interrupted:1:4" }],
+      [syntheticQuestion],
+      [{ kind: "question", requestId: "question:2:1" }],
+      [syntheticQuestion, blockedGoal],
+    ]) {
+      const mapper = started();
+      expect(
+        mapper.observe(blocked(1, { waitingOn: { children: 0, background: [], human } })),
+      ).toEqual([]);
+      expect(mapper.observe({ type: "agent_idle" })).toEqual([
+        { type: "agent_settled", aborted: false },
+      ]);
+      expect(
+        mapper.observe(blocked(2, { waitingOn: { children: 0, background: [], human } })),
+      ).toEqual([]);
+    }
 
     const late = started();
     expect(late.observe({ type: "agent_idle" })).toEqual([]);
@@ -379,12 +425,33 @@ describe("OMO root work lifecycle", () => {
       { type: "agent_settled", aborted: false },
     ]);
 
-    expect(omoSessionState({ isStreaming: false, lifecycle: blocked(1).lifecycle })).toMatchObject({
+    expect(
+      omoSessionState({
+        isStreaming: false,
+        lifecycle: blocked(1, {
+          waitingOn: { children: 0, background: [], human: [syntheticQuestion, blockedGoal] },
+        }).lifecycle,
+      }),
+    ).toMatchObject({
       isStreaming: false,
     });
     for (const state of [
       { isStreaming: true, lifecycle: blocked(1).lifecycle },
       { isStreaming: false, lifecycle: blocked(1, { activity: { kind: "tool" } }).lifecycle },
+      {
+        isStreaming: false,
+        pendingDialogs: [{ id: "dialog-1" }],
+        lifecycle: blocked(1, {
+          waitingOn: { children: 0, background: [], human: [syntheticQuestion] },
+        }).lifecycle,
+      },
+      {
+        isStreaming: false,
+        pendingQuestions: [{ id: "question-1" }],
+        lifecycle: blocked(1, {
+          waitingOn: { children: 0, background: [], human: [syntheticQuestion] },
+        }).lifecycle,
+      },
     ])
       expect(omoSessionState(state)).toMatchObject({ isStreaming: true });
   });
