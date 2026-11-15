@@ -83,7 +83,7 @@ class CoxVaultPlugin : Plugin() {
                 require(target.origin.startsWith("https://") || call.getBoolean("allowInsecureHttp") == true)
                 require(metadata.getString(target.id, null) == target.origin)
                 val digest = MessageDigest.getInstance("SHA-256").digest(target.origin.toByteArray(Charsets.UTF_8))
-                    .joinToString("") { "%02x".format(it.toInt() and 255) }.take(16)
+                    .joinToString("") { "%02x".format(it.toInt() and 255) }
                 val expectedName = "cox_srv_${target.id.lowercase().replace("-", "")}_$digest"
                 val profileName = call.getString("androidProfileName") ?: expectedName
                 require(profileName == expectedName)
