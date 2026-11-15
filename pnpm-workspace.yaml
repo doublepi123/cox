@@ -1,5 +1,6 @@
 packages:
   - apps/desktop
+  - apps/mobile
   - apps/server
   - apps/web
   - packages/*
