@@ -116,8 +116,8 @@ stopped-server backup and upgrade procedure above.
 
 - Web UI and a local Node HTTP/WebSocket server.
 - Local agent providers, projects, threads, streaming chat, terminal sessions, Git/worktrees and checkpoints.
-- Electron desktop clients for macOS and Windows; no React Native/iOS/Android app or app-store distribution.
-- Direct desktop connections to user-operated Cox servers; no T3 Connect, Clerk cloud account, relay, tunnel service, hosted app, server discovery or managed remote environments.
+- Electron desktop clients for macOS and Windows, the pure-remote [Cox Mobile client](apps/mobile/README.md) (`@cox/mobile`) for iOS 17+ and Android 8+ Lite, and standalone local/remote [CoCode for Android](docs/mobile-cocode-interop.md) (`io.cocode.app`).
+- Direct desktop and mobile connections to user-operated Cox servers; no cloud accounts, T3 Connect, tunnel service, hosted app, server discovery, multi-server aggregation, or managed remote environments.
 - No upstream release/update service or automatic migration from a T3 installation.
 
 Local-by-default does not mean offline inference. Agent providers still use their configured model services, and Git integrations can contact your configured repository hosts. Provider authentication and local credential storage are retained.
@@ -413,6 +413,35 @@ macOS ARM/Intel and Windows. Packages are published only after all native checks
 The first independent desktop release must be published before Cox-triggered combination
 builds can select it. See [RELEASING.md](RELEASING.md#desktop-release-matrix).
 
+## Mobile access and notifications
+
+### Phone browsers and Home Screen PWAs (`@t3tools/web`)
+
+Connect any modern phone or tablet browser directly to your Cox server over Tailscale HTTPS, Cloudflare Tunnel with Cloudflare Access, or a TLS reverse proxy with `COX_AUTH_PASSWORD` enabled. On `360px-430px` touch viewports, `@t3tools/web` switches Diff and Preview panels into full-width single-surface sheets (defaulting to unified diffs on `<640px`), pins a thumb-zone workspace bar (**Threads**, **New Thread**, **Changes/Diff**, **Terminal**, plus **Servers** inside Cox Mobile) that hides when the virtual keyboard opens, and keeps `ask_user_question`, tool approvals, and secret prompts scrollable within the live visual viewport.
+
+Touch controls extend across the coding surfaces: the Ghostty WASM terminal adds one-shot and double-tap-locked `Ctrl` and `Alt` modifiers, clipboard paste, font-size zoom, and single-finger vertical scrollback; OMO Native DAG workflows open in a compact wave list with a one-tap toggle to a pinch-to-zoom, touch-pannable graph sheet; and mobile attachments compress `>2 MB` camera photos client-side while automatically refreshing an expired 10-minute signed upload token once on cellular drops without losing your draft. On HTTPS origins, `/sw.js` serves HTML navigations strictly network-first (`cache: "no-store"`) so Cox server upgrades never hit client/server protocol skew.
+
+### Cox Mobile native shell (`@cox/mobile`)
+
+[`apps/mobile`](apps/mobile/README.md) (`@cox/mobile`, bundle and application ID `dev.doublepi.cox.mobile`) is a pure-remote Capacitor launcher paired with isolated native workspace WebViews for **iOS 17+** (`WKWebsiteDataStore(forIdentifier:)`) and **Android 8+ Lite** (`androidx.webkit` `MULTI_PROFILE`, `<20 MB` APK). It never embeds a local backend or client self-updater; each workspace loads the remote server's own matching Web UI directly on its canonical origin.
+
+- **Multi-server isolation and quick switching**: keeps up to 2 active server WebViews warm in an LRU pool with a native floating **Servers** switcher pill, pinning each server's `environmentId` during preflight (`/.well-known/t3/environment` and `/api/auth/session`) and wiping its isolated cookies and storage before forgetting a profile.
+- **Biometric password vault and Cloudflare Access**: `CoxVaultPlugin` stores optional per-server passwords in Apple Keychain (Face ID / Touch ID) or Android Keystore `EncryptedSharedPreferences` (`BiometricPrompt`), exchanging credentials natively via `POST /api/auth/browser-session` without exposing secrets to remote JavaScript. Servers gated by Cloudflare Access complete SSO through a quarantined `GatewayHandoff` barrier before `window.__coxMobileShell__` attaches with a rotated 256-bit token.
+- **Transport policy**: requires `https://` by default (for example `https://cox.example.com`) and permits password-protected LAN or Tailscale HTTP (such as `http://192.0.2.10:3773`) only after explicit per-server user opt-in.
+- **Build and verification commands**: run `pnpm mobile:dev`, `pnpm mobile:build`, `pnpm mobile:test`, `pnpm mobile:smoke`, and `pnpm --filter @cox/mobile verify:package` from the repository root. See [`apps/mobile/README.md`](apps/mobile/README.md) for Xcode, Gradle, and sideloading instructions.
+
+### Standalone Android `CoCode` (`io.cocode.app`) interoperability
+
+Android users can install `@cox/mobile` (`dev.doublepi.cox.mobile`) alongside standalone [`CoCode`](site/cocode/index.html) (`io.cocode.app`) without package or storage conflicts. Choose `@cox/mobile` when all your repositories and agents run on remote hosts and you want a tiny multi-server remote client; choose `CoCode` when you want an unrooted on-device Alpine Linux / PRoot environment running a local Cox server (`127.0.0.1:3773`) and agent CLIs directly on the phone, plus remote connections. Both Android shells enforce the same `MULTI_PROFILE` fail-closed `IsolationPanel` (offering **Open in Browser** rather than falling back to the global `CookieManager`), Cloudflare Access `GatewayHandoff`, origin-checked cookie downloads, and `environmentId` pinning. See [`docs/mobile-cocode-interop.md`](docs/mobile-cocode-interop.md) for the full comparison and `coxMobileShell` bridge specification.
+
+### Background agent notifications (`/settings/notifications`)
+
+Open **Settings → Notifications** (`/settings/notifications`, backed by authenticated `/api/notifications/*` routes) to receive alerts while your phone is locked or another app is in front:
+
+- **Self-hosted Web Push (RFC 8291 / 8292 VAPID)**: Cox operates zero Cox-run cloud relays or account services. Your Cox server auto-generates a local P-256 VAPID keypair, encrypts payloads end-to-end (`aes128gcm`) to each browser's P-256 subscription key, and posts the ciphertext directly to the browser's standard push endpoint (such as Apple, Google, or Mozilla push infrastructure), so browser push providers deliver opaque ciphertext without plaintext access. Browser Web Push requires an HTTPS origin, and iOS 16.4+ Safari requires adding Cox to the Home Screen as a standalone PWA first.
+- **SSRF-hardened outbound webhooks**: configure up to 10 **Bark**, **Telegram Bot**, **Ntfy**, or **HMAC-signed Generic JSON** (`X-Cox-Signature-256`) channels. Outbound webhooks work with `@cox/mobile`, `CoCode`, and plain HTTP LAN servers (`Allow private network HTTP` permits private `http://` targets while still blocking Cox's own port, link-local/metadata addresses, and redirects). **Bark** is recommended on iOS for instant `timeSensitive` native push notifications with tap-to-open thread deep links even over plain HTTP LAN connections.
+- **Strict attention filtering**: notifications fire only on non-archived, non-snoozed top-level threads for real human-attention prompts (`ask_user_question`, command/file/permission/MCP approvals, and secret prompts) and root turn completion or failure, while suppressing synthetic OMO internal wait markers (`goal_blocked`, `goal_paused`, `stalled`, `interrupted_run`, and prose `question`).
+
 ## Password sign-in and remote access
 
 Cox defaults to loopback (`127.0.0.1`). Without a password, the local browser automatically establishes a session; no token or pairing link is needed. Never expose this local-no-password mode through a reverse proxy, tunnel, or port forward.
@@ -455,6 +484,8 @@ After the binding is configured, publish through the workflow with `authenticati
 
 - `apps/web`: browser UI.
 - `apps/server`: local API, agent processes and orchestration.
+- `apps/desktop`: Electron desktop shell for macOS and Windows.
+- `apps/mobile`: `@cox/mobile` pure-remote Capacitor launcher and native isolated WebView shell for iOS 17+ and Android 8+ Lite.
 - `packages/client-runtime`: browser state and local connection runtime.
 - `packages/contracts`, `packages/shared`: wire contracts and shared utilities.
 - `packages/provider-*`: local agent adapters.
