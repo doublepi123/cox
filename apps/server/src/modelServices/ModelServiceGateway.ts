@@ -65,6 +65,7 @@ import {
 } from "./recovery.ts";
 import { makeRecoveryTracker } from "./recoveryTracker.ts";
 import { ChildProcessSpawner } from "effect/process";
+import { parse as parseYamlText, stringify as stringifyYamlValue } from "yaml";
 import {
   HttpClient,
   HttpClientRequest,
@@ -223,17 +224,28 @@ export const make = Effect.gen(function* () {
     ? HttpServer.formatAddress(server.value.address)
     : `http://${config.host === "::1" ? "[::1]" : "127.0.0.1"}:${config.port}`;
   const baseUrl = origin.replace(/\/+$/, "") + PREFIX;
-  const write = Effect.fn("ModelServiceGateway.writeRuntimeFile")(function* (
+  const writeRuntimeText = Effect.fn("ModelServiceGateway.writeRuntimeFile")(function* (
     file: string,
-    value: unknown,
+    text: string,
   ) {
     yield* fs.makeDirectory(path.dirname(file), { recursive: true });
-    const text = yield* encode(value);
     const previous = yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""));
     if (text === previous) return;
     const temporary = file + ".next";
     yield* fs.writeFileString(temporary, text, { mode: 0o600 });
     yield* fs.rename(temporary, file);
+  });
+  const write = Effect.fn("ModelServiceGateway.writeRuntimeJsonFile")(function* (
+    file: string,
+    value: unknown,
+  ) {
+    yield* writeRuntimeText(file, yield* encode(value));
+  });
+  const writeYaml = Effect.fn("ModelServiceGateway.writeRuntimeYamlFile")(function* (
+    file: string,
+    value: unknown,
+  ) {
+    yield* writeRuntimeText(file, stringifyYamlValue(value));
   });
   const materialize = Effect.fn("ModelServiceGateway.materialize")(
     function* (current: ServerSettings, instances: ProviderInstanceConfigMap) {
@@ -524,6 +536,102 @@ export const make = Effect.gen(function* () {
             model: selected,
             apiKey: "",
             ...(instance.driver === "omo" ? { modelServiceManaged: true } : {}),
+          });
+        }
+        if (instance.driver === "omp") {
+          const agentDir = path.join(directory, "omp");
+          const configPath = path.join(agentDir, "config.yml");
+          const timeoutSeconds = Math.ceil((service.recovery.budgetMs + 30_000) / 1000);
+          {
+            const existingText = (yield* fs.exists(configPath))
+              ? yield* fs.readFileString(configPath)
+              : "{}";
+            const existing = record(
+              yield* Effect.try({
+                try: () => parseYamlText(existingText) as unknown,
+                catch: () =>
+                  new ModelServiceError({
+                    detail: "Could not parse the existing omp config.yml.",
+                  }),
+              }),
+            );
+            const providers = record(existing.providers);
+            const retry = record(existing.retry);
+            yield* writeYaml(configPath, {
+              ...existing,
+              providers: {
+                ...providers,
+                streamFirstEventTimeoutSeconds: timeoutSeconds,
+                streamIdleTimeoutSeconds: timeoutSeconds,
+              },
+              retry: {
+                ...retry,
+                enabled: false,
+                maxRetries: 0,
+              },
+            });
+          }
+          yield* writeYaml(path.join(agentDir, "models.yml"), {
+            providers: {
+              cox: {
+                baseUrl:
+                  protocol === "anthropic-messages"
+                    ? baseUrl
+                    : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
+                api: API_NAMES[protocol],
+                apiKey: "COX_MODEL_SERVICE_KEY",
+                ...(protocol === "openai-responses" && !multiProtocol
+                  ? { compat: { supportsStrictMode: true } }
+                  : {}),
+                models: activeModels.flatMap((model) => {
+                  const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
+                  if (!resolvedProtocol) return [];
+                  const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
+                  const thinking = modelServiceAgentCapabilities("omp", model.capabilities)
+                    ?.optionDescriptors?.[0];
+                  const levels = thinking?.type === "select" ? thinking.options : [];
+                  const efforts = levels.flatMap((option) =>
+                    option.id === "off" ? [] : [option.id],
+                  );
+                  return [
+                    {
+                      id: model.id,
+                      name: model.name ?? model.id,
+                      ...(multiProtocol
+                        ? {
+                            api: API_NAMES[nativeProtocol],
+                            baseUrl:
+                              nativeProtocol === "anthropic-messages"
+                                ? baseUrl
+                                : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
+                          }
+                        : {}),
+                      ...(efforts.length
+                        ? { reasoning: true, thinking: { mode: "effort", efforts } }
+                        : {}),
+                      ...(model.capabilities?.contextWindow
+                        ? { contextWindow: model.capabilities.contextWindow }
+                        : {}),
+                      ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
+                      ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
+                      ...(nativeProtocol === "openai-responses" && multiProtocol
+                        ? { compat: { supportsStrictMode: true } }
+                        : nativeProtocol !== "gemini" &&
+                            FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
+                          ? { compat: { supportsForcedToolChoice: false } }
+                          : {}),
+                    },
+                  ];
+                }),
+              },
+            },
+          });
+          Object.assign(additions, {
+            agentDir,
+            sessionDir: path.join(agentDir, "sessions"),
+            provider: "cox",
+            model: selected,
+            apiKey: "",
           });
         }
         if (instance.driver === "opencode") {

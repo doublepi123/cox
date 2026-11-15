@@ -371,6 +371,16 @@ describe("provider enabled defaults", () => {
     expect(
       resolveProviderInstanceEnabled({ driver: ProviderDriverKind.make("omo"), config: {} }),
     ).toBe(false);
+    expect(
+      resolveProviderInstanceEnabled({ driver: ProviderDriverKind.make("omp"), config: {} }),
+    ).toBe(false);
+    expect(
+      resolveProviderInstanceEnabled({
+        driver: ProviderDriverKind.make("omp"),
+        enabled: true,
+        config: {},
+      }),
+    ).toBe(true);
     expect(resolveProviderInstanceEnabled({ driver: codex, config: {} })).toBe(true);
     expect(
       resolveProviderInstanceEnabled({ driver: ProviderDriverKind.make("ollama"), config: {} }),

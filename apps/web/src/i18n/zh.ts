@@ -1,4 +1,33 @@
 export const zh = {
+  "Path to the Oh My Pi binary.": "Oh My Pi 可执行文件的路径。",
+  "Oh My Pi provider ID. Leave empty to use the native configuration.":
+    "Oh My Pi 模型提供商 ID。留空使用原生配置。",
+  "Oh My Pi model ID or provider/model. Leave empty to inherit the native default.":
+    "Oh My Pi 模型 ID 或 provider/model。留空继承原生默认模型。",
+  "Stored separately on this computer. Leave empty to use existing Oh My Pi credentials.":
+    "单独存储在此计算机上。留空使用已有的 Oh My Pi 凭据。",
+  "Oh My Pi configuration directory": "Oh My Pi 配置目录",
+  "Optional absolute path for Oh My Pi credentials, models.yml and config.yml. Leave empty to use this Cox instance's configuration.":
+    "Oh My Pi 凭据、models.yml 和 config.yml 的可选绝对路径。留空使用此 Cox 实例的配置。",
+  "Additional CLI arguments passed to omp on session start.":
+    "启动会话时传给 omp 的额外命令行参数。",
+  "Preparing Oh My Pi setup…": "正在准备 Oh My Pi 设置…",
+  "Oh My Pi setup": "Oh My Pi 设置",
+  "Oh My Pi": "Oh My Pi",
+  "Installing Oh My Pi…": "正在安装 Oh My Pi…",
+  "Oh My Pi {version} is installed.": "已安装 Oh My Pi {version}。",
+  "Install Oh My Pi and its required Bun runtime in Cox's tools directory.":
+    "在 Cox 工具目录中安装 Oh My Pi 及其所需的 Bun 运行时。",
+  "Enable Oh My Pi": "启用 Oh My Pi",
+  "Update Oh My Pi": "更新 Oh My Pi",
+  "Install Oh My Pi": "安装 Oh My Pi",
+  "Uses the custom omp binary path below.": "使用下方的自定义 omp 可执行文件路径。",
+  "Using your existing omp CLI.": "使用已有的 omp CLI。",
+  "Cox installs Oh My Pi and Bun in its own tools directory.":
+    "Cox 将 Oh My Pi 和 Bun 安装在自己的工具目录中。",
+  "Oh My Pi model access": "Oh My Pi 模型访问",
+  "Bind a model service above, or configure independent Oh My Pi credentials below. Installing does not start an agent turn.":
+    "绑定上方的模型服务，或在下方配置独立的 Oh My Pi 凭据。安装不会启动代理回合。",
   "Automatic global memory": "自动全局记忆",
   "Remember and recall information across projects for this Cox instance. Stored locally in Cox; remote synchronization is disabled. Background memory models use the Cox model service binding.":
     "在此 Cox 实例的不同项目间记忆并回忆信息。数据保存在 Cox 本地，不进行远程同步；后台记忆模型使用已绑定的 Cox 模型服务。",

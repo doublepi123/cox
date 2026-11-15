@@ -12,6 +12,66 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { SettingsRow } from "./settingsLayout";
 
+const SETUP_COPY = {
+  pi: {
+    title: "Pi",
+    preparing: "Preparing Pi setup…",
+    region: "Pi setup",
+    runtime: "Pi CLI",
+    installing: "Installing Pi…",
+    installed: "Pi {version} is installed.",
+    description: "Install the official Pi coding agent.",
+    enable: "Enable Pi",
+    update: "Update Pi",
+    install: "Install Pi",
+    docs: "https://pi.dev",
+    custom: "Uses the custom Pi binary path below.",
+    local: "Using your existing Pi CLI.",
+    managed: "Cox installs Pi in its own tools directory.",
+    credentials: "Pi credentials",
+    access:
+      "Configure a model provider and API key below, or keep using your existing Pi login. To sign in with a subscription, run /login in Pi using the same configuration directory.",
+  },
+  omo: {
+    title: "OMO Native",
+    preparing: "Preparing OMO setup…",
+    region: "OMO setup",
+    runtime: "OMO Native",
+    installing: "Installing OMO Native…",
+    installed: "OMO Native {version} is installed.",
+    description: "Install the tested OMO Native runtime (omo-ai 5.1.69).",
+    enable: "Enable OMO Native",
+    update: "Update OMO Native",
+    install: "Install OMO Native",
+    docs: "https://github.com/doublepi123/cox#omo-native",
+    custom: "Uses the custom OMO binary path below.",
+    local: "Using your existing OMO CLI.",
+    managed: "Cox installs OMO Native in its own tools directory.",
+    credentials: "OMO model access",
+    access:
+      "Bind a model service above, or configure independent OMO credentials below. Installing does not start an agent turn.",
+  },
+  omp: {
+    title: "Oh My Pi",
+    preparing: "Preparing Oh My Pi setup…",
+    region: "Oh My Pi setup",
+    runtime: "Oh My Pi",
+    installing: "Installing Oh My Pi…",
+    installed: "Oh My Pi {version} is installed.",
+    description: "Install Oh My Pi and its required Bun runtime in Cox's tools directory.",
+    enable: "Enable Oh My Pi",
+    update: "Update Oh My Pi",
+    install: "Install Oh My Pi",
+    docs: "https://omp.sh",
+    custom: "Uses the custom omp binary path below.",
+    local: "Using your existing omp CLI.",
+    managed: "Cox installs Oh My Pi and Bun in its own tools directory.",
+    credentials: "Oh My Pi model access",
+    access:
+      "Bind a model service above, or configure independent Oh My Pi credentials below. Installing does not start an agent turn.",
+  },
+} as const;
+
 export function PiSetupSection(props: {
   readonly environmentId: EnvironmentId;
   readonly instanceId: ProviderInstanceId;
@@ -19,19 +79,14 @@ export function PiSetupSection(props: {
   readonly enabled: boolean;
   readonly readOnly: boolean;
   readonly onEnable: () => void;
-  readonly runtime?: "pi" | "omo";
+  readonly runtime?: keyof typeof SETUP_COPY;
 }) {
   const { t } = useTranslation();
-  const title = props.runtime === "omo" ? "OMO Native" : "Pi";
+  const copy = SETUP_COPY[props.runtime ?? "pi"];
   if (props.readOnly)
-    return <SettingsRow title={title} description={t("Provider setup is read-only.")} />;
+    return <SettingsRow title={copy.title} description={t("Provider setup is read-only.")} />;
   if (!props.provider?.setup)
-    return (
-      <SettingsRow
-        title={title}
-        description={t(props.runtime === "omo" ? "Preparing OMO setup…" : "Preparing Pi setup…")}
-      />
-    );
+    return <SettingsRow title={copy.title} description={t(copy.preparing)} />;
   return (
     <PiSetupActions
       key={`${props.environmentId}:${props.instanceId}`}
@@ -58,9 +113,10 @@ function PiSetupActions({
   readonly provider: ServerProvider;
   readonly enabled: boolean;
   readonly onEnable: () => void;
-  readonly runtime?: "pi" | "omo";
+  readonly runtime?: keyof typeof SETUP_COPY;
 }) {
   const { t } = useTranslation();
+  const copy = SETUP_COPY[runtime];
   const target = { environmentId, input: { instanceId } };
   const query = useEnvironmentQuery(serverEnvironment.providerInstallState(target));
   const installation = query.data;
@@ -99,34 +155,20 @@ function PiSetupActions({
     setPending(false);
   }
   return (
-    <section
-      aria-label={t(runtime === "omo" ? "OMO setup" : "Pi setup")}
-      className="divide-y divide-border/50 text-xs"
-    >
+    <section aria-label={t(copy.region)} className="divide-y divide-border/50 text-xs">
       <SettingsRow
-        title={runtime === "omo" ? "OMO Native" : t("Pi CLI")}
+        title={t(copy.runtime)}
         description={
           <span role="status">
             {installing
               ? t(
                   installation?.phase === "verifying"
                     ? "Checking the downloaded runtime."
-                    : runtime === "omo"
-                      ? "Installing OMO Native…"
-                      : "Installing Pi…",
+                    : copy.installing,
                 )
               : installed
-                ? t(
-                    runtime === "omo"
-                      ? "OMO Native {version} is installed."
-                      : "Pi {version} is installed.",
-                    { version: version ?? "" },
-                  )
-                : t(
-                    runtime === "omo"
-                      ? "Install the tested OMO Native runtime (omo-ai 5.1.69)."
-                      : "Install the official Pi coding agent.",
-                  )}
+                ? t(copy.installed, { version: version ?? "" })
+                : t(copy.description)}
           </span>
         }
         status={
@@ -148,7 +190,7 @@ function PiSetupActions({
                 disabled={pending || installing}
                 onClick={onEnable}
               >
-                {t(runtime === "omo" ? "Enable OMO Native" : "Enable Pi")}
+                {t(copy.enable)}
               </Button>
             ) : null}
             {installing && installation?.operationId ? (
@@ -174,33 +216,13 @@ function PiSetupActions({
                 disabled={pending || query.error !== null}
                 onClick={() => void run(() => start(target))}
               >
-                {t(
-                  retry
-                    ? "Retry installation"
-                    : installed
-                      ? runtime === "omo"
-                        ? "Update OMO Native"
-                        : "Update Pi"
-                      : runtime === "omo"
-                        ? "Install OMO Native"
-                        : "Install Pi",
-                )}
+                {t(retry ? "Retry installation" : installed ? copy.update : copy.install)}
               </Button>
             ) : null}
             <Button
               size="sm"
               variant="ghost-muted"
-              render={
-                <a
-                  href={
-                    runtime === "omo"
-                      ? "https://github.com/doublepi123/cox#omo-native"
-                      : "https://pi.dev"
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
+              render={<a href={copy.docs} target="_blank" rel="noreferrer" />}
             >
               {t("Open docs")}
             </Button>
@@ -210,16 +232,10 @@ function PiSetupActions({
         <p className="text-muted-foreground [overflow-wrap:anywhere]">
           {t(
             provider.setup?.canInstall === false
-              ? runtime === "omo"
-                ? "Uses the custom OMO binary path below."
-                : "Uses the custom Pi binary path below."
+              ? copy.custom
               : installation?.source === "local"
-                ? runtime === "omo"
-                  ? "Using your existing OMO CLI."
-                  : "Using your existing Pi CLI."
-                : runtime === "omo"
-                  ? "Cox installs OMO Native in its own tools directory."
-                  : "Cox installs Pi in its own tools directory.",
+                ? copy.local
+                : copy.managed,
           )}
         </p>
         {installation?.executablePath ? (
@@ -228,14 +244,7 @@ function PiSetupActions({
           </p>
         ) : null}
       </SettingsRow>
-      <SettingsRow
-        title={t(runtime === "omo" ? "OMO model access" : "Pi credentials")}
-        description={t(
-          runtime === "omo"
-            ? "Bind a model service above, or configure independent OMO credentials below. Installing does not start an agent turn."
-            : "Configure a model provider and API key below, or keep using your existing Pi login. To sign in with a subscription, run /login in Pi using the same configuration directory.",
-        )}
-      />
+      <SettingsRow title={t(copy.credentials)} description={t(copy.access)} />
     </section>
   );
 }

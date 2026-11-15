@@ -15,6 +15,7 @@ import { museClient } from "@t3tools/provider-muse/client";
 import { openCodeClient } from "@t3tools/provider-opencode/client";
 import { piClient } from "@t3tools/provider-pi/client";
 import { omoClient } from "@t3tools/provider-omo/client";
+import { ompClient } from "@t3tools/provider-omp/client";
 
 export const providerClients = makeProviderClientRegistry([
   omoClient,
@@ -45,6 +46,7 @@ export const providerClients = makeProviderClientRegistry([
   },
   museClient,
   piClient,
+  ompClient,
   acpRegistryClient,
 ]);
 

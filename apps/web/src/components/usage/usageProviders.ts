@@ -47,6 +47,11 @@ export const PROVIDER_PRESENTATION = {
     color: "#4d9f8a",
     driverKind: ProviderDriverKind.make("pi"),
   },
+  omp: {
+    label: "Oh My Pi",
+    color: "#4d849f",
+    driverKind: ProviderDriverKind.make("omp"),
+  },
   muse: {
     label: "Muse Code",
     color: "#0866ff",

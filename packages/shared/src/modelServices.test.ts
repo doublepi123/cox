@@ -49,6 +49,33 @@ describe("central model settings", () => {
       modelServiceAgentCapabilities("omo", capabilities)?.optionDescriptors?.[0],
     ).toMatchObject({ id: "thinking", options: [{ id: "off" }, { id: "high" }] });
   });
+  it("binds omp model services with the cox slug prefix and Pi-native thinking ladder", () => {
+    expect(modelServiceModelSlug("omp", "Vendor/Exact/ID")).toBe("cox/Vendor/Exact/ID");
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          options: [
+            { id: "none", label: "Off" },
+            { id: "minimal", label: "Minimal" },
+            { id: "max", label: "Max" },
+            { id: "unsupported", label: "Unsupported" },
+          ],
+        },
+      ],
+    };
+    expect(modelServiceAgentCapabilities("omp", capabilities)).toEqual(
+      modelServiceAgentCapabilities("pi", capabilities),
+    );
+    expect(
+      modelServiceAgentCapabilities("omp", capabilities)?.optionDescriptors?.[0],
+    ).toMatchObject({
+      id: "thinking",
+      options: [{ id: "off" }, { id: "minimal" }, { id: "max" }],
+    });
+  });
   it("keeps ignored models out of agent bindings while preserving their configuration", () => {
     const config = {
       ...service,

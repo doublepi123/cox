@@ -735,6 +735,7 @@ export function EnvironmentProviderSettings({
     if (
       hasDefaultSlot &&
       (driver === "omo" ||
+        driver === "omp" ||
         driver === "codex" ||
         driver === "claudeAgent" ||
         isDirty ||
@@ -1414,8 +1415,9 @@ function ProviderInstanceRow({
               readOnly={readOnly}
               onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
             />
-          ) : mode === "editor" && driver === "pi" ? (
+          ) : mode === "editor" && (driver === "pi" || driver === "omp") ? (
             <PiSetupSection
+              runtime={driver === "omp" ? "omp" : "pi"}
               environmentId={environmentId}
               instanceId={instanceId}
               provider={liveProvider}

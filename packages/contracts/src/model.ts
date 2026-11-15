@@ -122,6 +122,7 @@ const FX_DRIVER_KIND = ProviderDriverKind.make("fx");
 const MUSE_DRIVER_KIND = ProviderDriverKind.make("muse");
 const PI_DRIVER_KIND = ProviderDriverKind.make("pi");
 const OMO_DRIVER_KIND = ProviderDriverKind.make("omo");
+const OMP_DRIVER_KIND = ProviderDriverKind.make("omp");
 const ACP_REGISTRY_DRIVER_KIND = ProviderDriverKind.make("acpRegistry");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
@@ -153,6 +154,8 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   // "default" defers to the user's own Pi settings.json model selection.
   [PI_DRIVER_KIND]: "default",
   [OMO_DRIVER_KIND]: "default",
+  // "default" defers to the user's own omp config.yml model roles.
+  [OMP_DRIVER_KIND]: "default",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
   [ProviderDriverKind.make("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
 };
@@ -204,5 +207,6 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
   [ACP_REGISTRY_DRIVER_KIND]: "ACP Registry",
   [PI_DRIVER_KIND]: "Pi",
   [OMO_DRIVER_KIND]: "OMO Native",
+  [OMP_DRIVER_KIND]: "Oh My Pi",
   [OPENCODE_DRIVER_KIND]: "OpenCode",
 };

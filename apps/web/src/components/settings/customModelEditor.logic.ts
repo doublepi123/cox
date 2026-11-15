@@ -104,6 +104,7 @@ export const DESCRIPTOR_PRESETS_BY_KIND: Partial<
   ],
   [ProviderDriverKind.make("pi")]: PI_FAMILY_PRESETS,
   [ProviderDriverKind.make("omo")]: PI_FAMILY_PRESETS,
+  [ProviderDriverKind.make("omp")]: PI_FAMILY_PRESETS,
   [ProviderDriverKind.make("opencode")]: [
     { id: "variant", label: "Reasoning", type: "select", choices: EFFORT_CHOICES },
     {

@@ -188,7 +188,7 @@ API-key and custom API connections do not run ChatGPT subscription-limit queries
 For a shared connection, open **Settings → Model services**, add the base URL, API key and
 supported protocols, then choose **Save and fetch models**. Model discovery reads metadata
 only. You can also add or edit model metadata manually when a service has no model-list API.
-In **Settings → Providers**, bind a Codex, Claude Code, Pi, OMO Native or OpenCode instance to the service,
+In **Settings → Providers**, bind a Codex, Claude Code, Pi, Oh My Pi, OMO Native or OpenCode instance to the service,
 select its models and a default. Unbinding restores that instance's independent settings.
 
 Each service's **Request recovery** settings include an opt-in **Retry non-transient upstream
@@ -233,6 +233,24 @@ the upstream service can reject a tier for a particular account or connection. C
 silently retry with a different tier.
 Account-catalog speed options fill gaps in native model discovery without discarding
 native model settings. Cox does not advertise Fast when neither catalog reports it.
+
+### Oh My Pi
+
+Oh My Pi (`omp`) is a separate, disabled-by-default provider. Open **Settings → Providers**,
+select **Oh My Pi**, and choose **Install** to install the tested
+`@oh-my-pi/pi-coding-agent 18.20.2` release. Cox installs the required Bun runtime in its own
+tools directory when needed; it does not replace the Node runtime used by Cox. You can also
+select an existing `omp` executable with **Binary path**.
+
+Each instance keeps its native configuration and sessions in Cox's state directory. To use
+existing Oh My Pi credentials, set **Oh My Pi configuration directory** to the corresponding
+agent directory. Oh My Pi uses `models.yml` and `config.yml`; its configuration is independent
+of Pi and OMO Native. Bind a model service to share Cox's model catalog and locally stored
+credentials, or configure an independent model provider and API key.
+
+Cox uses Oh My Pi's native RPC interface for streaming, tools, approvals and session
+continuation. Installing or refreshing the provider only checks runtime and model metadata;
+it does not start an agent turn.
 
 ### OMO Native
 

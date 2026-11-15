@@ -20,6 +20,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
+import { parse as parseYaml } from "yaml";
 import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -215,6 +216,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     readonly protocols?: ModelServiceConfig["protocols"];
     readonly modelId?: string;
     readonly modelProtocols?: ModelServiceConfig["protocols"];
+    readonly modelCapabilities?: ModelServiceConfig["models"][number]["capabilities"];
     readonly maxOutputTokens?: number | null;
     readonly recovery?: Partial<ModelServiceConfig["recovery"]>;
     readonly encryptedReasoningReplay?: ModelServiceConfig["encryptedReasoningReplay"];
@@ -244,6 +246,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
             ...rest,
             id: options.modelId ?? model.id,
             ...(options.modelProtocols ? { protocols: options.modelProtocols } : {}),
+            ...(options.modelCapabilities ? { capabilities: options.modelCapabilities } : {}),
             ...(options.modelReplay ? { encryptedReasoningReplay: options.modelReplay } : {}),
             ...(options.maxOutputTokens === null
               ? {}
@@ -1111,6 +1114,107 @@ it.layer(layer)("model service gateway", (it) => {
           value: "930000",
           sensitive: false,
         });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([100, 600_000, 1_800_000])(
+    "aligns managed omp retry and stream timeouts to the %s ms recovery budget",
+    (budgetMs) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omp", recovery: { budgetMs } });
+        const fs = yield* FileSystem.FileSystem;
+        const file = `${h.config.agentDir}/config.yml`;
+        const timeoutSeconds = Math.ceil((budgetMs + 30_000) / 1000);
+        expect(parseYaml(yield* fs.readFileString(file))).toMatchObject({
+          providers: {
+            streamFirstEventTimeoutSeconds: timeoutSeconds,
+            streamIdleTimeoutSeconds: timeoutSeconds,
+          },
+          retry: { enabled: false, maxRetries: 0 },
+        });
+        yield* fs.writeFileString(
+          file,
+          "theme: fixture\nproviders:\n  streamIdleTimeoutSeconds: 12\n  webSearchTimeoutSeconds: 42\nretry:\n  enabled: true\n  maxRetries: 7\n  baseDelayMs: 123\n",
+        );
+        yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+        expect(parseYaml(yield* fs.readFileString(file))).toMatchObject({
+          theme: "fixture",
+          providers: {
+            streamFirstEventTimeoutSeconds: timeoutSeconds,
+            streamIdleTimeoutSeconds: timeoutSeconds,
+            webSearchTimeoutSeconds: 42,
+          },
+          retry: { enabled: false, maxRetries: 0, baseDelayMs: 123 },
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "writes omp models.yml with env-resolved credentials, native thinking levels, and per-model protocols",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          driver: "omp",
+          protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+          modelProtocols: ["openai-chat"],
+          modelCapabilities: {
+            contextWindow: 64000,
+            supportsImages: true,
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "none", label: "Off" },
+                  { id: "low", label: "Low" },
+                  { id: "high", label: "High" },
+                  { id: "unsupported", label: "Unsupported" },
+                ],
+              },
+            ],
+          },
+        });
+        const fs = yield* FileSystem.FileSystem;
+        const generated = parseYaml(
+          yield* fs.readFileString(String(h.config.agentDir) + "/models.yml"),
+        ) as {
+          providers: { cox: { apiKey: string; models: Record<string, unknown>[] } };
+        };
+        expect(generated.providers.cox.apiKey).toBe("COX_MODEL_SERVICE_KEY");
+        expect(generated.providers.cox.models).toMatchObject([
+          {
+            id: "Vendor/Exact",
+            api: "openai-completions",
+            baseUrl: "http://127.0.0.1:0/api/model-gateway/v1",
+            reasoning: true,
+            thinking: { mode: "effort", efforts: ["low", "high"] },
+            contextWindow: 64000,
+            maxTokens: 4000,
+            input: ["text", "image"],
+          },
+        ]);
+        const instance = h.materialized[instanceId]!;
+        expect(record(instance.config)).toMatchObject({
+          agentDir: h.config.agentDir,
+          sessionDir: `${h.config.agentDir}/sessions`,
+          provider: "cox",
+          model: "Vendor/Exact",
+          apiKey: "",
+        });
+        expect(record(instance.config).customModels).toMatchObject([
+          { slug: "cox/Vendor/Exact", name: "Exact" },
+        ]);
+        expect(instance.environment).toContainEqual({
+          name: "COX_MODEL_SERVICE_KEY",
+          value: expect.any(String),
+          sensitive: true,
+        });
+        const response = yield* h.invoke("/v1/chat/completions", {
+          model: "Vendor/Exact",
+          messages: [{ role: "user", content: "hello" }],
+        });
+        expect(response.status).toBe(200);
       }).pipe(Effect.scoped),
   );
 

@@ -305,16 +305,17 @@ describe("EnvironmentProviderSettings routing", () => {
       document.querySelectorAll<HTMLButtonElement>('button[aria-pressed][aria-label^="Select "]'),
       (element) => element.getAttribute("aria-label"),
     );
-    expect(selectedLabels.slice(0, 3)).toEqual([
+    expect(selectedLabels.slice(0, 4)).toEqual([
       "Select OMO Native",
       "Select Codex",
       "Select Claude",
+      "Select Oh My Pi",
     ]);
 
     await userEvent.click(page.getByRole("button", { name: "Move OMO Native down" }));
 
     expect(state.updateSettings).toHaveBeenCalledWith({
-      providerInstanceOrder: ["codex", "omo", "claudeAgent"],
+      providerInstanceOrder: ["codex", "omo", "claudeAgent", "omp"],
     });
   });
 

@@ -18,6 +18,7 @@ export const MODEL_SERVICE_AGENT_DRIVERS = [
   "claudeAgent",
   "pi",
   "omo",
+  "omp",
   "opencode",
 ] as const;
 
@@ -139,7 +140,9 @@ export function boundModelServiceModels(
 }
 
 export function modelServiceModelSlug(driver: string, id: string): string {
-  return driver === "pi" || driver === "omo" || driver === "opencode" ? `cox/${id}` : id;
+  return driver === "pi" || driver === "omo" || driver === "omp" || driver === "opencode"
+    ? `cox/${id}`
+    : id;
 }
 
 export function modelServiceRoleReferences(
@@ -174,6 +177,7 @@ export function modelServiceAgentCapabilities(
   driver: string,
   capabilities: ModelCapabilities | null,
 ): ModelCapabilities | undefined {
+  const nativeThinkingDriver = driver === "pi" || driver === "omo" || driver === "omp";
   if (!capabilities)
     return driver === "claudeAgent"
       ? (withClaudeUltracodeCapabilities(null) ?? undefined)
@@ -182,15 +186,13 @@ export function modelServiceAgentCapabilities(
     (option) =>
       ["reasoningEffort", "effort", "thinking"].includes(option.id) && option.type === "select",
   );
-  const allowed =
-    driver === "pi" || driver === "omo"
-      ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
-      : [];
+  const allowed = nativeThinkingDriver
+    ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+    : [];
   const options =
     descriptor?.type === "select"
       ? descriptor.options.flatMap((option) => {
-          const id =
-            (driver === "pi" || driver === "omo") && option.id === "none" ? "off" : option.id;
+          const id = nativeThinkingDriver && option.id === "none" ? "off" : option.id;
           return driver === "codex" || driver === "claudeAgent" || allowed.includes(id)
             ? [{ ...option, id }]
             : [];
@@ -206,12 +208,11 @@ export function modelServiceAgentCapabilities(
             ...(options.length
               ? [
                   {
-                    id:
-                      driver === "pi" || driver === "omo"
-                        ? "thinking"
-                        : driver === "claudeAgent"
-                          ? "effort"
-                          : "reasoningEffort",
+                    id: nativeThinkingDriver
+                      ? "thinking"
+                      : driver === "claudeAgent"
+                        ? "effort"
+                        : "reasoningEffort",
                     label: "Reasoning",
                     type: "select" as const,
                     options,

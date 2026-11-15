@@ -17,6 +17,7 @@ export const UsageProviderKind = Schema.Literals([
   "pi",
   "muse",
   "omo",
+  "omp",
 ]);
 export type UsageProviderKind = typeof UsageProviderKind.Type;
 

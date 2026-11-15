@@ -1,4 +1,33 @@
 export const en = {
+  "Path to the Oh My Pi binary.": "Path to the Oh My Pi binary.",
+  "Oh My Pi provider ID. Leave empty to use the native configuration.":
+    "Oh My Pi provider ID. Leave empty to use the native configuration.",
+  "Oh My Pi model ID or provider/model. Leave empty to inherit the native default.":
+    "Oh My Pi model ID or provider/model. Leave empty to inherit the native default.",
+  "Stored separately on this computer. Leave empty to use existing Oh My Pi credentials.":
+    "Stored separately on this computer. Leave empty to use existing Oh My Pi credentials.",
+  "Oh My Pi configuration directory": "Oh My Pi configuration directory",
+  "Optional absolute path for Oh My Pi credentials, models.yml and config.yml. Leave empty to use this Cox instance's configuration.":
+    "Optional absolute path for Oh My Pi credentials, models.yml and config.yml. Leave empty to use this Cox instance's configuration.",
+  "Additional CLI arguments passed to omp on session start.":
+    "Additional CLI arguments passed to omp on session start.",
+  "Preparing Oh My Pi setup…": "Preparing Oh My Pi setup…",
+  "Oh My Pi setup": "Oh My Pi setup",
+  "Oh My Pi": "Oh My Pi",
+  "Installing Oh My Pi…": "Installing Oh My Pi…",
+  "Oh My Pi {version} is installed.": "Oh My Pi {version} is installed.",
+  "Install Oh My Pi and its required Bun runtime in Cox's tools directory.":
+    "Install Oh My Pi and its required Bun runtime in Cox's tools directory.",
+  "Enable Oh My Pi": "Enable Oh My Pi",
+  "Update Oh My Pi": "Update Oh My Pi",
+  "Install Oh My Pi": "Install Oh My Pi",
+  "Uses the custom omp binary path below.": "Uses the custom omp binary path below.",
+  "Using your existing omp CLI.": "Using your existing omp CLI.",
+  "Cox installs Oh My Pi and Bun in its own tools directory.":
+    "Cox installs Oh My Pi and Bun in its own tools directory.",
+  "Oh My Pi model access": "Oh My Pi model access",
+  "Bind a model service above, or configure independent Oh My Pi credentials below. Installing does not start an agent turn.":
+    "Bind a model service above, or configure independent Oh My Pi credentials below. Installing does not start an agent turn.",
   "Automatic global memory": "Automatic global memory",
   "Remember and recall information across projects for this Cox instance. Stored locally in Cox; remote synchronization is disabled. Background memory models use the Cox model service binding.":
     "Remember and recall information across projects for this Cox instance. Stored locally in Cox; remote synchronization is disabled. Background memory models use the Cox model service binding.",

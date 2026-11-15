@@ -1178,6 +1178,50 @@ it.layer(
       );
     });
 
+    describe("omp model inventories", () => {
+      const cachedModels = [
+        { slug: "claude-opus-5-5", name: "Claude Opus 5.5", isCustom: false, capabilities: null },
+        { slug: "gpt-6-astra", name: "GPT-6 Astra", isCustom: false, capabilities: null },
+      ] as const;
+      const cachedProvider = {
+        instanceId: ProviderInstanceId.make("omp-personal"),
+        driver: ProviderDriverKind.make("omp"),
+        status: "ready",
+        enabled: true,
+        installed: true,
+        auth: { status: "authenticated", type: "omp" },
+        checkedAt: "2026-10-03T00:00:00.000Z",
+        version: "18.20.2",
+        models: [...cachedModels],
+        slashCommands: [],
+        skills: [],
+      } satisfies ServerProvider;
+
+      it("retains omp models during incomplete probes and drops them after completed discovery", () => {
+        const pendingProvider = {
+          ...cachedProvider,
+          status: "warning",
+          version: null,
+          auth: { status: "unknown" },
+          models: [],
+        } satisfies ServerProvider;
+        for (const provider of [pendingProvider, { ...pendingProvider, installed: false }]) {
+          assert.deepStrictEqual(
+            ProviderRegistry.mergeProviderSnapshot(cachedProvider, provider).models,
+            cachedModels,
+          );
+        }
+        assert.deepStrictEqual(
+          ProviderRegistry.mergeProviderSnapshot(cachedProvider, {
+            ...cachedProvider,
+            checkedAt: "2026-10-03T00:05:00.000Z",
+            models: [cachedModels[1]],
+          }).models,
+          [cachedModels[1]],
+        );
+      });
+    });
+
     describe("Codex model inventories", () => {
       const cachedProvider = {
         instanceId: ProviderInstanceId.make("codex-personal"),

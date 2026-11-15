@@ -12,6 +12,7 @@ import { OpenCodeDriver, type OpenCodeDriverEnv } from "@t3tools/provider-openco
 import { MuseDriver, type MuseDriverEnv } from "@t3tools/provider-muse/server";
 import { PiDriver, type PiDriverEnv } from "@t3tools/provider-pi/server";
 import { OmoDriver, type OmoDriverEnv } from "@t3tools/provider-omo/server";
+import { OmpDriver, type OmpDriverEnv } from "@t3tools/provider-omp/server";
 import type {
   AnyProviderDriver,
   ProviderUsageReaderEnv,
@@ -28,6 +29,7 @@ export type BuiltInDriversEnv =
   | OpenCodeDriverEnv
   | PiDriverEnv
   | OmoDriverEnv
+  | OmpDriverEnv
   | MuseDriverEnv;
 
 export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>> = [
@@ -40,6 +42,7 @@ export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv
   AntigravityDriver,
   PiDriver,
   OmoDriver,
+  OmpDriver,
   MuseDriver,
   AcpRegistryDriver,
 ];
@@ -53,7 +56,8 @@ export type BuiltInUsageReadersEnv =
   | ProviderUsageReaderEnv<typeof CursorDriver>
   | ProviderUsageReaderEnv<typeof PiDriver>
   | ProviderUsageReaderEnv<typeof MuseDriver>
-  | ProviderUsageReaderEnv<typeof OmoDriver>;
+  | ProviderUsageReaderEnv<typeof OmoDriver>
+  | ProviderUsageReaderEnv<typeof OmpDriver>;
 
 /** Order matters: aggregation keeps the first duplicate record. */
 export const BUILT_IN_USAGE_DRIVERS: ReadonlyArray<
@@ -64,6 +68,7 @@ export const BUILT_IN_USAGE_DRIVERS: ReadonlyArray<
   GrokDriver,
   PiDriver,
   OmoDriver,
+  OmpDriver,
   OpenCodeDriver,
   MuseDriver,
   AntigravityDriver,
