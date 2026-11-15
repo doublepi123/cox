@@ -1,4 +1,5 @@
 import { lookup } from "node:dns/promises";
+import type { LookupAddress } from "node:dns";
 import { addAbortListener } from "node:events";
 import { BlockList, isIP } from "node:net";
 
@@ -39,12 +40,17 @@ export type WebPushDeliveryResult =
 export type WebPushConfig = {
   readonly subject?: string;
   readonly allowLoopbackHttpForTest?: boolean;
+  readonly lookup?: (
+    hostname: string,
+    options: { readonly all: true },
+  ) => Promise<readonly LookupAddress[]>;
 };
 
 export class WebPushService extends Context.Service<
   WebPushService,
   {
     readonly getVapidPublicKey: Effect.Effect<string, WebPushError>;
+    readonly validateEndpoint: (endpoint: string) => Effect.Effect<boolean>;
     readonly send: (
       subscription: Pick<MobilePushSubscriptionInput, "endpoint" | "keys">,
       payload: Uint8Array,
@@ -83,10 +89,21 @@ const loopback = new BlockList();
 loopback.addSubnet("127.0.0.0", 8, "ipv4");
 loopback.addAddress("::1", "ipv6");
 
+const isAddressAllowed = (address: string, family: number, allowLoopback: boolean): boolean => {
+  const type = family === 6 ? "ipv6" : "ipv4";
+  if (allowLoopback && (family === 4 || address === "::1") && loopback.check(address, type))
+    return true;
+  return !blocked.check(address, type) && (family !== 6 || globalV6.check(address, "ipv6"));
+};
+
 const post = async (
   endpoint: URL,
   message: { readonly body: Buffer; readonly authorization: string },
-  policy: { readonly allowLoopback: boolean; readonly signal: AbortSignal },
+  policy: {
+    readonly allowLoopback: boolean;
+    readonly lookup: WebPushConfig["lookup"];
+    readonly signal: AbortSignal;
+  },
 ): Promise<number> => {
   const host = endpoint.hostname.replace(/^\[|\]$/g, "");
   const signal = AbortSignal.any([policy.signal, AbortSignal.timeout(5_000)]);
@@ -98,7 +115,7 @@ const post = async (
       );
       const addresses = isIP(host)
         ? Promise.resolve([{ address: host, family: isIP(host) }])
-        : lookup(host, { all: true, verbatim: true });
+        : (policy.lookup ?? lookup)(host, { all: true });
       void addresses
         .then(
           (resolved) => {
@@ -106,18 +123,9 @@ const post = async (
             const first = resolved[0];
             if (
               !first ||
-              resolved.some(({ address, family }) => {
-                const type = family === 6 ? "ipv6" : "ipv4";
-                if (
-                  policy.allowLoopback &&
-                  (family === 4 || address === "::1") &&
-                  loopback.check(address, type)
-                )
-                  return false;
-                return (
-                  blocked.check(address, type) || (family === 6 && !globalV6.check(address, "ipv6"))
-                );
-              })
+              resolved.some(
+                ({ address, family }) => !isAddressAllowed(address, family, policy.allowLoopback),
+              )
             ) {
               reject(new WebPushError({ reason: "endpoint" }));
               return;
@@ -130,7 +138,7 @@ const post = async (
                 signal,
                 lookup: (_hostname, options, callback) =>
                   options.all
-                    ? callback(null, resolved)
+                    ? callback(null, [...resolved])
                     : callback(null, first.address, first.family),
                 headers: {
                   "Content-Type": "application/octet-stream",
@@ -166,23 +174,46 @@ export const make = Effect.fn("WebPushService.make")(function* (config: WebPushC
     Effect.provideService(ServerSecretStore, store),
     Effect.mapError((error) => new WebPushError({ reason: error.reason })),
   );
+  const resolve = config.lookup ?? lookup;
+  const isEndpointAllowed = (candidate: string): boolean => {
+    const endpoint = URL.parse(candidate);
+    return (
+      endpoint !== null &&
+      !endpoint.username &&
+      !endpoint.password &&
+      !endpoint.hash &&
+      (endpoint.protocol === "https:" ||
+        (config.allowLoopbackHttpForTest === true &&
+          endpoint.protocol === "http:" &&
+          ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)))
+    );
+  };
+  const validateEndpoint = (candidate: string): Effect.Effect<boolean> =>
+    Effect.tryPromise({
+      try: async () => {
+        if (!isEndpointAllowed(candidate)) return false;
+        const endpoint = URL.parse(candidate);
+        if (endpoint === null) return false;
+        const hostname = endpoint.hostname.replace(/^\[|\]$/g, "");
+        const addresses = isIP(hostname)
+          ? [{ address: hostname, family: isIP(hostname) }]
+          : await resolve(hostname, { all: true });
+        return (
+          addresses.length > 0 &&
+          addresses.every(({ address, family }) =>
+            isAddressAllowed(address, family, config.allowLoopbackHttpForTest === true),
+          )
+        );
+      },
+      catch: () => new WebPushError({ reason: "dns" }),
+    }).pipe(Effect.orElseSucceed(() => false));
   return WebPushService.of({
     getVapidPublicKey: keys.pipe(Effect.map((key) => key.publicKey)),
+    validateEndpoint,
     send: Effect.fn("WebPushService.send")(
       function* (subscription, payload) {
         const endpoint = URL.parse(subscription.endpoint);
-        if (
-          !endpoint ||
-          endpoint.username ||
-          endpoint.password ||
-          endpoint.hash ||
-          (endpoint.protocol !== "https:" &&
-            !(
-              config.allowLoopbackHttpForTest === true &&
-              endpoint.protocol === "http:" &&
-              ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)
-            ))
-        )
+        if (endpoint === null || !isEndpointAllowed(subscription.endpoint))
           return yield* new WebPushError({ reason: "endpoint" });
         const key = yield* keys;
         const now = yield* Clock.currentTimeMillis;
@@ -199,7 +230,11 @@ export const make = Effect.fn("WebPushService.make")(function* (config: WebPushC
                 authorization,
                 body: encryptWebPushPayload(subscription.keys, payload),
               },
-              { allowLoopback: config.allowLoopbackHttpForTest === true, signal },
+              {
+                allowLoopback: config.allowLoopbackHttpForTest === true,
+                lookup: resolve,
+                signal,
+              },
             );
           },
           catch: (error) =>

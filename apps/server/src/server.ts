@@ -87,6 +87,9 @@ import * as LocalServiceUpdate from "./localServiceUpdate/LocalServiceUpdate.ts"
 import * as LocalServiceUpdateHttp from "./localServiceUpdate/http.ts";
 import * as ServerOwnership from "./serverOwnership.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as NotificationsHttp from "./notifications/http.ts";
+import * as NotificationSubscriptions from "./persistence/NotificationSubscriptions.ts";
+import * as WebPushService from "./notifications/WebPushService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as NativeAppIconResolver from "./assets/NativeAppIconResolver.ts";
 import * as AntigravityInstallation from "./provider/AntigravityInstallation.ts";
@@ -621,6 +624,12 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),
       Layer.provide(LocalServiceUpdateHttp.layer),
       Layer.provide(WebhookRoute.layer),
+      Layer.provide(
+        NotificationsHttp.layer.pipe(
+          Layer.provide(NotificationSubscriptions.layer),
+          Layer.provide(WebPushService.layer),
+        ),
+      ),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
     ),
     ServerHttp.layerOtlpTracesProxyRoute,
