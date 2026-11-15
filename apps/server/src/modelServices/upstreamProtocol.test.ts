@@ -56,33 +56,74 @@ describe("gateway upstream protocol", () => {
     }
   });
 
-  it("never bypasses service or model protocol restrictions", () => {
+  it("falls back by family preference within the service and model protocol intersection", () => {
     expect(
       modelServiceUpstreamProtocol(
-        { ...service, protocols: ["openai-chat", "anthropic-messages"] },
-        { id: "gpt-6", capabilities: null },
+        { ...service, protocols: ["openai-chat", "openai-responses", "anthropic-messages"] },
+        { id: "gpt-6.1-sol", capabilities: null, protocols: ["openai-chat"] },
         "openai-chat",
       ),
-    ).toBeUndefined();
+    ).toBe("openai-chat");
+    expect(
+      modelServiceUpstreamProtocol(
+        { ...service, protocols: ["openai-chat", "openai-responses", "anthropic-messages"] },
+        { id: "gpt-6.1-sol", capabilities: null, protocols: ["openai-chat"] },
+        "openai-responses",
+      ),
+    ).toBe("openai-chat");
+    expect(
+      modelServiceUpstreamProtocol(
+        {
+          ...service,
+          protocols: ["gemini", "anthropic-messages", "openai-responses", "openai-chat"],
+        },
+        { id: "gpt-6.1-sol", capabilities: null, protocols: ["openai-chat"] },
+        "openai-responses",
+      ),
+    ).toBe("openai-chat");
+    expect(
+      modelServiceUpstreamProtocol(
+        { ...service, protocols: ["anthropic-messages", "openai-chat"] },
+        { id: "gpt-6", capabilities: null },
+        "anthropic-messages",
+      ),
+    ).toBe("openai-chat");
     expect(
       modelServiceUpstreamProtocol(
         { ...service, protocols: ["anthropic-messages", "openai-responses"] },
         { id: "kimi-k3.1-pro", capabilities: null },
-        "anthropic-messages",
+        "openai-responses",
       ),
-    ).toBeUndefined();
+    ).toBe("anthropic-messages");
     expect(
       modelServiceUpstreamProtocol(
         service,
         { id: "kimi-k2.8-code", capabilities: null, protocols: ["anthropic-messages"] },
         "anthropic-messages",
       ),
-    ).toBeUndefined();
+    ).toBe("anthropic-messages");
     expect(
       modelServiceUpstreamProtocol(
         service,
         { id: "claude-fable", capabilities: null, protocols: ["openai-chat"] },
         "openai-chat",
+      ),
+    ).toBe("openai-chat");
+    expect(
+      modelServiceUpstreamProtocol(
+        { ...service, protocols: ["openai-chat", "gemini"] },
+        { id: "gemini-3.8-flash", capabilities: null },
+        "openai-chat",
+      ),
+    ).toBe("gemini");
+  });
+
+  it("never bypasses empty or disjoint protocol restrictions", () => {
+    expect(
+      modelServiceUpstreamProtocol(
+        { ...service, protocols: ["openai-chat", "openai-responses"] },
+        { id: "gpt-6", capabilities: null, protocols: ["gemini"] },
+        "openai-responses",
       ),
     ).toBeUndefined();
     expect(

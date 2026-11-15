@@ -47,6 +47,59 @@ export function modelServiceDisplayName(id: string): string {
   return [prefix, ...words].filter(Boolean).join(" ");
 }
 
+const MODEL_SERVICE_PROTOCOL_PREFERENCE = {
+  gpt: ["openai-responses", "openai-chat", "anthropic-messages", "gemini"],
+  kimi: ["openai-chat", "anthropic-messages", "openai-responses", "gemini"],
+  gemini: ["anthropic-messages", "gemini", "openai-chat", "openai-responses"],
+  default: ["anthropic-messages", "openai-chat", "openai-responses", "gemini"],
+} as const satisfies Record<string, ReadonlyArray<ModelServiceProtocol>>;
+
+const CONVERTIBLE_MODEL_SERVICE_PROTOCOLS: ReadonlySet<ModelServiceProtocol> = new Set([
+  "openai-responses",
+  "openai-chat",
+  "anthropic-messages",
+  "gemini",
+]);
+
+export function modelServiceUpstreamProtocol(
+  service: ModelServiceConfig,
+  model: ModelServiceModel,
+  incoming?: ModelServiceProtocol,
+): ModelServiceProtocol | undefined {
+  const serviceProtocols = new Set(service.protocols);
+  const allowed = new Set(
+    (model.protocols ?? service.protocols).filter(
+      (protocol) =>
+        serviceProtocols.has(protocol) &&
+        (incoming === undefined ||
+          protocol === incoming ||
+          (CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(incoming) &&
+            CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(protocol))),
+    ),
+  );
+  if (allowed.size === 0) return undefined;
+  const slug = model.id.split("/").at(-1) ?? "";
+  const order = /^gpt(?:-|$)/i.test(slug)
+    ? MODEL_SERVICE_PROTOCOL_PREFERENCE.gpt
+    : /^kimi(?:-|$)/i.test(slug)
+      ? MODEL_SERVICE_PROTOCOL_PREFERENCE.kimi
+      : /^gemini(?:-|$)/i.test(slug)
+        ? MODEL_SERVICE_PROTOCOL_PREFERENCE.gemini
+        : MODEL_SERVICE_PROTOCOL_PREFERENCE.default;
+  return order.find((protocol) => allowed.has(protocol));
+}
+
+export function isBoundModelServiceModelAllowed(
+  binding: ModelServiceBinding,
+  model: ModelServiceModel,
+): boolean {
+  return (
+    model.ignored !== true &&
+    (binding.modelIds.length === 0 || binding.modelIds.includes(model.id)) &&
+    model.supportsTools !== false
+  );
+}
+
 export function modelServiceAgentProtocol(
   driver: string,
   service: ModelServiceConfig,
@@ -63,11 +116,8 @@ export function boundModelServiceModels(
   return service.models
     .filter(
       (model) =>
-        model.ignored !== true &&
-        (binding.modelIds.length === 0 || binding.modelIds.includes(model.id)) &&
-        model.supportsTools !== false &&
-        (model.protocols === undefined ||
-          model.protocols.some((protocol) => service.protocols.includes(protocol))),
+        isBoundModelServiceModelAllowed(binding, model) &&
+        modelServiceUpstreamProtocol(service, model) !== undefined,
     )
     .map((model) => ({
       ...model,

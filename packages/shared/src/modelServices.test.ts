@@ -8,11 +8,13 @@ import {
   modelServiceDisplayName,
   modelServiceProviderModels,
   modelServiceModelSlug,
+  modelServiceUpstreamProtocol,
 } from "./modelServices.ts";
 
 const id = ModelServiceId.make("shared");
 const other = ModelServiceId.make("other");
-const service = Schema.decodeSync(ModelServiceConfig)({
+const decodeModelServiceConfig = Schema.decodeSync(ModelServiceConfig);
+const service = decodeModelServiceConfig({
   name: "Shared",
   baseUrl: "https://api.test",
   protocols: ["openai-chat"],
@@ -181,6 +183,21 @@ describe("central model settings", () => {
     expect(boundModelServiceModels(service, { serviceId: id, modelIds: ["different"] })).toEqual(
       [],
     );
+    const multiProtocolService = decodeModelServiceConfig({
+      name: "Multi",
+      baseUrl: "https://api.test",
+      protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+      models: [
+        { id: "gpt-6.1-sol", protocols: ["openai-chat"], capabilities: null },
+        { id: "gpt-empty", protocols: [], capabilities: null },
+        { id: "gemini-only", protocols: ["gemini"], capabilities: null },
+      ],
+    });
+    expect(
+      boundModelServiceModels(multiProtocolService, { serviceId: id, modelIds: [] }).map(
+        (model) => [model.id, modelServiceUpstreamProtocol(multiProtocolService, model)],
+      ),
+    ).toEqual([["gpt-6.1-sol", "openai-chat"]]);
   });
 
   it("maps reported reasoning controls and adds Codex Ultra when max is supported", () => {

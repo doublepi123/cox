@@ -506,7 +506,12 @@ it.layer(layer)("model service gateway", (it) => {
           modelServices: {
             [serviceId]: {
               ...baseService,
-              models: [...baseService.models, { id: "kimi-k3.1-pro", capabilities: null }],
+              models: [
+                ...baseService.models,
+                { id: "kimi-k3.1-pro", capabilities: null },
+                { id: "gpt-6.1-sol", capabilities: null, protocols: ["openai-chat"] },
+                { id: "gpt-empty", capabilities: null, protocols: [] },
+              ],
             },
           },
         });
@@ -534,6 +539,10 @@ it.layer(layer)("model service gateway", (it) => {
             expect(generated.provider.cox.models["kimi-k3.1-pro"]).toMatchObject({
               provider: { npm: "@ai-sdk/openai-compatible" },
             });
+            expect(generated.provider.cox.models["gpt-6.1-sol"]).toMatchObject({
+              provider: { npm: "@ai-sdk/openai-compatible" },
+            });
+            expect(generated.provider.cox.models["gpt-empty"]).toBeUndefined();
             expect(generated.provider.cox.options.baseURL).toBe(
               "http://127.0.0.1:0/api/model-gateway/v1",
             );
@@ -560,9 +569,15 @@ it.layer(layer)("model service gateway", (it) => {
                 api: "openai-completions",
                 baseUrl: "http://127.0.0.1:0/api/model-gateway/v1",
               },
+              {
+                id: "gpt-6.1-sol",
+                api: "openai-completions",
+                baseUrl: "http://127.0.0.1:0/api/model-gateway/v1",
+              },
             ]);
             expect(generated.providers.cox.models[1].compat).toBeUndefined();
             expect(generated.providers.cox.models[2].compat).toBeUndefined();
+            expect(generated.providers.cox.models[3].compat).toBeUndefined();
           }
         }
         const response = yield* h.invoke("/v1/responses", {
@@ -625,29 +640,175 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect("rejects unavailable family protocols without calling upstream", () =>
-    Effect.gen(function* () {
-      const h = yield* harness({
-        modelId: "gpt-6.1-terra",
-        protocols: ["openai-chat", "anthropic-messages"],
-      });
-      const result = yield* h.invoke("/v1/chat/completions", {
-        model: "gpt-6.1-terra",
-        messages: [],
-      });
-      expect(result.status).toBe(422);
-      expect(h.calls).toHaveLength(0);
-      const kimi = yield* harness({
-        modelId: "kimi-k3.1-pro",
-        protocols: ["anthropic-messages", "openai-responses"],
-      });
-      const kimiResult = yield* kimi.invoke("/v1/messages", {
-        model: "kimi-k3.1-pro",
-        messages: [],
-      });
-      expect(kimiResult.status).toBe(422);
-      expect(kimi.calls).toHaveLength(0);
-    }).pipe(Effect.scoped),
+  it.effect(
+    "falls back within allowed multi-protocol intersections and converts Responses to Chat",
+    () =>
+      Effect.gen(function* () {
+        const stallStarted = yield* Deferred.make<void>();
+        const stallCancelled = yield* Deferred.make<void>();
+        let mode: "text" | "stream-tool" | "stall" = "text";
+        const h = yield* harness({
+          modelId: "gpt-6.1-sol",
+          protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+          modelProtocols: ["openai-chat"],
+          respond: () => {
+            if (mode === "stall") {
+              return new Response(
+                new ReadableStream<Uint8Array>({
+                  start() {
+                    Deferred.doneUnsafe(stallStarted, Effect.void);
+                  },
+                  cancel() {
+                    Deferred.doneUnsafe(stallCancelled, Effect.void);
+                  },
+                }),
+                { headers: { "content-type": "text/event-stream" } },
+              );
+            }
+            if (mode === "stream-tool") {
+              const payload =
+                chatStreamFrame({
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_sol_42",
+                      type: "function",
+                      function: { name: "lookup_file", arguments: '{"path":"src/a.ts"}' },
+                    },
+                  ],
+                }) +
+                chatStreamFrame({}, "tool_calls") +
+                sseFrame({
+                  id: "chat-integrity",
+                  choices: [],
+                  usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+                }) +
+                "data: [DONE]\n\n";
+              return new Response(payload, { headers: { "content-type": "text/event-stream" } });
+            }
+            return Response.json({
+              id: "chat_sol",
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", content: "routed via chat" },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 },
+            });
+          },
+        });
+        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
+        yield* h.settings.updateSettings({
+          modelServices: {
+            [serviceId]: {
+              ...current,
+              protocols: ["openai-chat", "openai-responses", "anthropic-messages", "gemini"],
+            },
+          },
+        });
+        const catalog = yield* h.invoke("/v1/models");
+        expect(catalog.status).toBe(200);
+        expect(JSON.parse(catalog.text).data.map((entry: { id: string }) => entry.id)).toEqual([
+          "gpt-6.1-sol",
+        ]);
+        const chatResult = yield* h.invoke("/v1/chat/completions", {
+          model: "gpt-6.1-sol",
+          messages: [{ role: "user", content: "ping" }],
+        });
+        expect(chatResult.status).toBe(200);
+        expect(JSON.parse(chatResult.text).choices[0].message.content).toBe("routed via chat");
+        const converted = yield* h.invoke("/v1/responses", {
+          model: "gpt-6.1-sol",
+          input: [{ role: "user", content: "ping via responses" }],
+        });
+        expect(converted.status).toBe(200);
+        expect(JSON.parse(converted.text)).toMatchObject({
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [{ type: "output_text", text: "routed via chat" }],
+            },
+          ],
+          usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
+        });
+        expect(h.calls).toHaveLength(2);
+        expect(h.calls.map((call) => call.url)).toEqual([
+          "https://upstream.test/v1/chat/completions",
+          "https://upstream.test/v1/chat/completions",
+        ]);
+        expect(sentBody(h.calls[1]!).model).toBe("gpt-6.1-sol");
+
+        mode = "stream-tool";
+        const streamed = yield* h.invoke("/v1/responses", {
+          model: "gpt-6.1-sol",
+          stream: true,
+          tools: [
+            {
+              type: "function",
+              name: "lookup_file",
+              parameters: { type: "object", properties: { path: { type: "string" } } },
+            },
+          ],
+          input: [{ role: "user", content: "inspect src/a.ts" }],
+        });
+        expect(streamed.status).toBe(200);
+        const completedLine = streamed.text
+          .split("\n")
+          .find(
+            (line) => line.startsWith("data: ") && line.includes('"type":"response.completed"'),
+          );
+        expect(completedLine).toBeDefined();
+        const completedEvent = JSON.parse(completedLine!.slice(6));
+        expect(completedEvent.response).toMatchObject({
+          status: "completed",
+          usage: { input_tokens: 11, output_tokens: 7, total_tokens: 18 },
+          output: [
+            {
+              type: "function_call",
+              call_id: "call_sol_42",
+              name: "lookup_file",
+              arguments: '{"path":"src/a.ts"}',
+            },
+          ],
+        });
+
+        const forbidden = yield* h.invoke("/v1/responses", {
+          model: "hidden",
+          input: [{ role: "user", content: "unauthorized model" }],
+        });
+        expect(forbidden.status).toBe(403);
+        expect(h.calls).toHaveLength(3);
+
+        mode = "stall";
+        const session = ProviderSessionId.make("sol-cancel-session");
+        yield* h.gateway.lifecycle.begin(session, recoveryInput("sol"), () => Effect.void);
+        yield* h.gateway.lifecycle.observe(session, recoveryTurn("sol"));
+        const inflight = yield* h
+          .invoke(
+            "/v1/responses",
+            {
+              model: "gpt-6.1-sol",
+              stream: true,
+              input: [{ role: "user", content: "cancel me" }],
+            },
+            { authorization: `Bearer ${h.token}.${session}` },
+          )
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(stallStarted);
+        yield* h.gateway.lifecycle.cancel(session);
+        yield* TestClock.adjust("1 second");
+        const cancelledResponse = yield* Fiber.join(inflight);
+        expect(cancelledResponse.status).toBe(499);
+        expect(JSON.parse(cancelledResponse.text)).toMatchObject({
+          error: { type: "request_cancelled", code: "cox_model_service_request_cancelled" },
+        });
+        yield* Deferred.await(stallCancelled);
+        expect(yield* Deferred.isDone(stallCancelled)).toBe(true);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("respects model protocol restrictions and rejects cross-protocol token counting", () =>
@@ -656,14 +817,60 @@ it.layer(layer)("model service gateway", (it) => {
         modelId: "kimi-k2.8-code",
         protocols: ["openai-chat", "anthropic-messages"],
         modelProtocols: ["anthropic-messages"],
+        respond: () =>
+          Response.json({
+            id: "msg_kimi",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: "kimi via anthropic" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 3, output_tokens: 2 },
+          }),
+      });
+      const routed = yield* restricted.invoke("/v1/messages", {
+        model: "kimi-k2.8-code",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hi" }],
+      });
+      expect(routed.status).toBe(200);
+      expect(restricted.calls).toHaveLength(1);
+      expect(restricted.calls[0]!.url).toBe("https://upstream.test/v1/messages");
+
+      const current = (yield* restricted.settings.getSettings).modelServices[serviceId]!;
+      yield* restricted.settings.updateSettings({
+        modelServices: {
+          [serviceId]: {
+            ...current,
+            models: current.models.map((model) =>
+              model.id === "kimi-k2.8-code" ? { ...model, protocols: ["gemini"] } : model,
+            ),
+          },
+        },
       });
       expect(
         (yield* restricted.invoke("/v1/messages", {
           model: "kimi-k2.8-code",
-          messages: [],
+          messages: [{ role: "user", content: "hi" }],
         })).status,
       ).toBe(422);
-      expect(restricted.calls).toHaveLength(0);
+      const latest = (yield* restricted.settings.getSettings).modelServices[serviceId]!;
+      yield* restricted.settings.updateSettings({
+        modelServices: {
+          [serviceId]: {
+            ...latest,
+            models: latest.models.map((model) =>
+              model.id === "kimi-k2.8-code" ? { ...model, protocols: [] } : model,
+            ),
+          },
+        },
+      });
+      expect(
+        (yield* restricted.invoke("/v1/messages", {
+          model: "kimi-k2.8-code",
+          messages: [{ role: "user", content: "hi" }],
+        })).status,
+      ).toBe(422);
+      expect(restricted.calls).toHaveLength(1);
       const kimi = yield* harness({
         modelId: "kimi-k3.1-pro",
         protocols: ["openai-chat", "anthropic-messages"],

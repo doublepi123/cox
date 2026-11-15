@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import {
   boundModelServiceModels,
+  isBoundModelServiceModelAllowed,
   MODEL_SERVICE_AGENT_DRIVERS,
   modelServiceAgentProtocol,
   modelServiceAgentCapabilities,
@@ -457,56 +458,58 @@ export const make = Effect.gen(function* () {
                 ...(protocol === "openai-responses" && !multiProtocol
                   ? { compat: { supportsStrictMode: true } }
                   : {}),
-                models: activeModels.map((model) => {
-                  const nativeProtocol = multiProtocol
-                    ? (modelServiceUpstreamProtocol(service, model, protocol) ?? protocol)
-                    : protocol;
+                models: activeModels.flatMap((model) => {
+                  const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
+                  if (!resolvedProtocol) return [];
+                  const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
                   const thinking = modelServiceAgentCapabilities(
                     instance.driver,
                     model.capabilities,
                   )?.optionDescriptors?.[0];
                   const levels = thinking?.type === "select" ? thinking.options : [];
-                  return {
-                    id: model.id,
-                    name: model.name ?? model.id,
-                    ...(multiProtocol
-                      ? {
-                          api: API_NAMES[nativeProtocol],
-                          baseUrl:
-                            nativeProtocol === "anthropic-messages"
-                              ? baseUrl
-                              : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
-                        }
-                      : {}),
-                    ...(levels.length
-                      ? {
-                          reasoning: true,
-                          thinkingLevelMap: Object.fromEntries(
-                            ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map(
-                              (level) => [
-                                level,
-                                levels.some((option) => option.id === level)
-                                  ? level === "off"
-                                    ? "none"
-                                    : level
-                                  : null,
-                              ],
-                            ),
-                          ),
-                        }
-                      : {}),
-                    ...(model.capabilities?.contextWindow
-                      ? { contextWindow: model.capabilities.contextWindow }
-                      : {}),
-                    ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
-                    ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
-                    ...(nativeProtocol === "openai-responses" && multiProtocol
-                      ? { compat: { supportsStrictMode: true } }
-                      : nativeProtocol !== "gemini" &&
-                          FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
-                        ? { compat: { supportsForcedToolChoice: false } }
+                  return [
+                    {
+                      id: model.id,
+                      name: model.name ?? model.id,
+                      ...(multiProtocol
+                        ? {
+                            api: API_NAMES[nativeProtocol],
+                            baseUrl:
+                              nativeProtocol === "anthropic-messages"
+                                ? baseUrl
+                                : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
+                          }
                         : {}),
-                  };
+                      ...(levels.length
+                        ? {
+                            reasoning: true,
+                            thinkingLevelMap: Object.fromEntries(
+                              ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map(
+                                (level) => [
+                                  level,
+                                  levels.some((option) => option.id === level)
+                                    ? level === "off"
+                                      ? "none"
+                                      : level
+                                    : null,
+                                ],
+                              ),
+                            ),
+                          }
+                        : {}),
+                      ...(model.capabilities?.contextWindow
+                        ? { contextWindow: model.capabilities.contextWindow }
+                        : {}),
+                      ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
+                      ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
+                      ...(nativeProtocol === "openai-responses" && multiProtocol
+                        ? { compat: { supportsStrictMode: true } }
+                        : nativeProtocol !== "gemini" &&
+                            FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
+                          ? { compat: { supportsForcedToolChoice: false } }
+                          : {}),
+                    },
+                  ];
                 }),
               },
             },
@@ -531,30 +534,32 @@ export const make = Effect.gen(function* () {
                   apiKey: token,
                 },
                 models: Object.fromEntries(
-                  activeModels.map((model) => {
-                    const nativeProtocol = multiProtocol
-                      ? (modelServiceUpstreamProtocol(service, model, protocol) ?? protocol)
-                      : protocol;
+                  activeModels.flatMap((model) => {
+                    const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
+                    if (!resolvedProtocol) return [];
+                    const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
                     return [
-                      model.id,
-                      {
-                        name: model.name ?? model.id,
-                        ...(multiProtocol
-                          ? {
-                              provider: { npm: SDK_PACKAGES[nativeProtocol] },
-                            }
-                          : {}),
-                        ...(model.capabilities?.contextWindow
-                          ? {
-                              limit: {
-                                context: model.capabilities.contextWindow,
-                                output:
-                                  model.maxOutputTokens ??
-                                  Math.min(model.capabilities.contextWindow, 32_000),
-                              },
-                            }
-                          : {}),
-                      },
+                      [
+                        model.id,
+                        {
+                          name: model.name ?? model.id,
+                          ...(multiProtocol
+                            ? {
+                                provider: { npm: SDK_PACKAGES[nativeProtocol] },
+                              }
+                            : {}),
+                          ...(model.capabilities?.contextWindow
+                            ? {
+                                limit: {
+                                  context: model.capabilities.contextWindow,
+                                  output:
+                                    model.maxOutputTokens ??
+                                    Math.min(model.capabilities.contextWindow, 32_000),
+                                },
+                              }
+                            : {}),
+                        },
+                      ],
                     ];
                   }),
                 ),
@@ -651,25 +656,26 @@ export const make = Effect.gen(function* () {
           )
         : undefined;
     const requested = googleId ?? (typeof body.model === "string" ? body.model : "");
-    const selected = models.find(
+    const boundCandidate = service.models.find(
       (model) =>
-        model.id === requested || (incoming === "gemini" && model.id === `models/${requested}`),
+        isBoundModelServiceModelAllowed(runtime.binding, model) &&
+        (model.id === requested || (incoming === "gemini" && model.id === `models/${requested}`)),
     );
-    if (!selected)
+    if (!boundCandidate)
       return gatewayErrorResponse(incoming, 403, {
         message: "This model is not allowed by the agent binding.",
       });
-    if (selected.available === false)
+    if (boundCandidate.available === false)
       return gatewayErrorResponse(incoming, 503, {
         message:
           "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
       });
-    const protocol = modelServiceUpstreamProtocol(service, selected, incoming);
+    const protocol = modelServiceUpstreamProtocol(service, boundCandidate, incoming);
     if (!protocol)
       return gatewayErrorResponse(incoming, 422, {
-        message:
-          "No compatible upstream protocol is configured for this model. Multi-protocol services require OpenAI Responses for GPT models, OpenAI Chat for Kimi models, and Anthropic Messages for other models.",
+        message: "No compatible upstream protocol is configured for this model.",
       });
+    const selected = models.find((model) => model.id === boundCandidate.id) ?? boundCandidate;
     if (countTokens && protocol !== incoming)
       return yield* new ModelServiceError({
         detail: "Token counting is unavailable across different model protocols.",

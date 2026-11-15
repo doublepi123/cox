@@ -2,21 +2,23 @@
 
 ## Multi-protocol gateway routing
 
-When a model service enables more than one distinct protocol, the gateway routes
-GPT model IDs to OpenAI Responses and all other model IDs to Anthropic Messages.
-GPT matching is case-insensitive and uses the final slash-delimited segment:
-`gpt`, `gpt-*`, and `openai/gpt-*` match; display names do not affect routing.
-Pi and OMO receive per-model API and base URL settings, and OpenCode receives
-per-model SDK settings, so these multi-protocol agents use the selected protocol
-natively. Matching gateway requests pass through without the protocol bridge.
-Fixed-protocol agents (Codex and Claude Agent) keep their native API; the existing
-bridge converts requests and responses only when upstream differs.
+Protocol availability is determined by the intersection of the service's enabled
+protocols and the model's explicit protocol list (when present). Model family
+only sets the preference order over that allowed intersection: GPT model IDs
+prefer OpenAI Responses then OpenAI Chat, Kimi model IDs prefer OpenAI Chat,
+Gemini model IDs prefer Anthropic Messages then Gemini, and other model IDs
+prefer Anthropic Messages. Matching is case-insensitive and uses the final
+slash-delimited segment (`gpt`, `gpt-*`, `openai/gpt-*`, `kimi`, `kimi-*`);
+display names do not affect routing.
 
-The target must be enabled by both the service and the model's protocol list
-(when present). Otherwise the gateway returns 422 before contacting upstream;
-it does not fall back to Chat or another protocol. Single-protocol services
-retain their existing routing, including conversion from a different client
-protocol. Cross-protocol token counting remains unsupported (501).
+Catalog filtering, native agent configuration (per-model API/base URL in Pi and
+OMO, per-model SDK in OpenCode) and gateway request execution resolve through
+the same rule. Matching gateway requests pass through without the protocol
+bridge; fixed-protocol agents (such as Codex sending OpenAI Responses to a
+Chat-only GPT model) convert within the same bound model and service through the
+protocol bridge. Empty protocol intersections and explicit empty protocol lists
+return 422 without contacting upstream, unbound models return 403, and
+cross-protocol token counting remains unsupported (501).
 
 This policy applies only to gateway inference. Discovery and explicit service
 connectivity tests continue to use the configured protocols. A successful
