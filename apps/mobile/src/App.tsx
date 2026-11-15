@@ -100,6 +100,7 @@ export function App({ store }: AppProps) {
   };
 
   const forget = async (profile: SavedServerProfile) => {
+    setBusyId(profile.id);
     try {
       await forgetWorkspaceProfile(profile);
       await store.forget(profile.id);
@@ -108,6 +109,8 @@ export function App({ store }: AppProps) {
       setNotice(null);
     } catch (caught) {
       setError(formatConnectionError(caught, t));
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -221,10 +224,16 @@ export function App({ store }: AppProps) {
         >
           <p className="forget-target">{sheet.profile.label}</p>
           <p>{t("forgetWarning")}</p>
+          {error ? (
+            <p role="alert" className="form-error">
+              {error}
+            </p>
+          ) : null}
           <div className="sheet-actions">
             <button
               type="button"
               className="button button-secondary"
+              disabled={busyId === sheet.profile.id}
               onClick={() => setSheet(null)}
             >
               {t("keepServer")}
@@ -233,6 +242,7 @@ export function App({ store }: AppProps) {
               type="button"
               className="button button-danger"
               onClick={() => void forget(sheet.profile)}
+              disabled={busyId === sheet.profile.id}
             >
               {t("forgetServer")}
             </button>

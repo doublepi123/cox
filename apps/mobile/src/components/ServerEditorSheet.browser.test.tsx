@@ -51,6 +51,26 @@ afterEach(() => {
 });
 
 describe("HTTP consent in the server editor", () => {
+  it("collects a masked password only when vault saving is selected", async () => {
+    const { onSave } = renderEditor();
+    await page.getByLabelText(t("originLabel")).fill("https://cox.example.com");
+    await expect.element(page.getByLabelText(t("vaultPassword"))).not.toBeInTheDocument();
+    await page.getByRole("checkbox", { name: t("savePasswordInVault") }).click();
+    const password = page.getByLabelText(t("vaultPassword"));
+    await expect.element(password).toHaveAttribute("type", "password");
+    await password.fill("secret-editor-password");
+
+    await page.getByRole("button", { name: t("saveServer") }).click();
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        password: "secret-editor-password",
+        savePasswordInVault: true,
+        requireBiometric: true,
+      }),
+    );
+  });
+
   it("rejects HTTP before passing an unapproved draft to saving", async () => {
     const { onSave, permission } = renderEditor();
     await page.getByLabelText(t("originLabel")).fill(httpProfile.origin);

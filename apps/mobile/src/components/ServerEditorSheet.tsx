@@ -26,6 +26,7 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
     props.profile?.hasSavedPassword ?? false,
   );
   const [saving, setSaving] = useState(false);
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const t = props.t;
 
@@ -61,6 +62,8 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
         origin: normalizedOrigin,
         allowInsecureHttp: normalizedOrigin.startsWith("http://") && allowInsecureHttp,
         savePasswordInVault,
+        ...(savePasswordInVault && password ? { password } : {}),
+        requireBiometric: true,
       });
       saved = true;
     } catch (caught) {
@@ -128,6 +131,22 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
           <span>{t("savePasswordInVault")}</span>
         </label>
         <p className="field-help">{t("vaultHelp")}</p>
+        {savePasswordInVault ? (
+          <div className="field">
+            <label htmlFor="server-password">{t("vaultPassword")}</label>
+            <input
+              id="server-password"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required={!props.profile?.hasSavedPassword}
+            />
+            {props.profile?.hasSavedPassword ? (
+              <p className="field-help">{t("vaultKeepPassword")}</p>
+            ) : null}
+          </div>
+        ) : null}
         {error ? (
           <p className="form-error" role="alert" data-testid="server-editor-error">
             {error}

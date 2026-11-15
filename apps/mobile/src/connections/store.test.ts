@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { VaultError, type BiometricVault } from "../vault/biometricVault";
 import { RemoteEnvironmentMismatchError } from "@t3tools/shared/remoteServerAdmission";
 import {
   CONNECTION_STORAGE_KEY,
@@ -12,6 +13,20 @@ const IDS = [
   "22222222-2222-4222-8222-222222222222",
   "33333333-3333-4333-8333-333333333333",
 ] as const;
+
+function deferred() {
+  let resolve: () => void = () => {
+    throw new Error("Promise not initialized");
+  };
+  let reject: (reason: unknown) => void = () => {
+    throw new Error("Promise not initialized");
+  };
+  const promise = new Promise<void>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 
 class MemoryStorage implements ConnectionStorage {
   private readonly values = new Map<string, string>();
@@ -45,13 +60,18 @@ function admissionFetcher(environmentId: () => string = () => "env-mobile-a") {
   return { fetcher, requests };
 }
 
-function createStore(storage: ConnectionStorage, fetcher?: typeof fetch): ConnectionStore {
+function createStore(
+  storage: ConnectionStorage,
+  fetcher?: typeof fetch,
+  vault?: BiometricVault,
+): ConnectionStore {
   const ids = [...IDS];
   return new ConnectionStore({
     storage,
     ...(fetcher ? { fetcher } : {}),
     now: () => "2026-11-15T12:00:00.000Z",
     newId: () => ids.shift() ?? IDS[2],
+    ...(vault ? { vault } : {}),
   });
 }
 
@@ -66,13 +86,21 @@ function draft(origin: string, overrides: Partial<ServerDraft> = {}): ServerDraf
 }
 
 describe("mobile connection store", () => {
-  it("persists inspected server metadata and only the vault preference", async () => {
+  it("persists inspected metadata without the password after native vault saving", async () => {
     const storage = new MemoryStorage();
     const { fetcher } = admissionFetcher();
-    const store = createStore(storage, fetcher);
+    const savePassword = vi.fn().mockResolvedValue(undefined);
+    const store = createStore(storage, fetcher, {
+      savePassword,
+      unlockAndAutofillPassword: vi.fn(),
+      deletePassword: vi.fn(),
+    });
 
     const profile = await store.saveServer(
-      draft("https://cox.example.com", { savePasswordInVault: true }),
+      draft("https://cox.example.com", {
+        savePasswordInVault: true,
+        password: "secret-test-password",
+      }),
     );
 
     expect(profile).toEqual({
@@ -88,6 +116,13 @@ describe("mobile connection store", () => {
       healthStatus: "unverified",
     });
     expect(profile).not.toHaveProperty("password");
+    expect(savePassword).toHaveBeenCalledWith({
+      profileId: IDS[0],
+      canonicalOrigin: profile.origin,
+      password: "secret-test-password",
+      requireBiometric: true,
+    });
+    expect(storage.getItem(CONNECTION_STORAGE_KEY)).not.toContain("secret-test-password");
     expect(storage.getItem(CONNECTION_STORAGE_KEY)).toBe(
       JSON.stringify({ version: 1, profiles: [profile] }),
     );
@@ -193,9 +228,188 @@ describe("mobile connection store", () => {
     const store = createStore(storage, fetcher);
     const saved = await store.saveServer(draft("https://cox.example.com"));
 
-    store.forget(saved.id);
+    await store.forget(saved.id);
 
     expect(store.getSnapshot().profiles).toEqual([]);
     expect(createStore(storage, fetcher).getSnapshot().profiles).toEqual([]);
+  });
+
+  it("keeps the saved profile until vault deletion succeeds and retains it after failure", async () => {
+    const storage = new MemoryStorage();
+    const { fetcher } = admissionFetcher();
+    const deletion = deferred();
+    const store = createStore(storage, fetcher, {
+      savePassword: vi.fn().mockResolvedValue(undefined),
+      unlockAndAutofillPassword: vi.fn().mockResolvedValue(undefined),
+      deletePassword: () => deletion.promise,
+    });
+    const saved = await store.saveServer(
+      draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+    );
+    const forgotten = store.forget(saved.id);
+    expect(store.getSnapshot().profiles).toEqual([saved]);
+    deletion.reject(new VaultError("unavailable"));
+    await expect(forgotten).rejects.toBeInstanceOf(VaultError);
+    expect(createStore(storage, fetcher).getSnapshot().profiles).toEqual([saved]);
+  });
+
+  it("does not delete a saved credential when profile persistence fails during Forget", async () => {
+    const storage = new MemoryStorage();
+    const { fetcher } = admissionFetcher();
+    const deletePassword = vi.fn().mockResolvedValue(undefined);
+    const store = createStore(storage, fetcher, {
+      savePassword: vi.fn().mockResolvedValue(undefined),
+      unlockAndAutofillPassword: vi.fn(),
+      deletePassword,
+    });
+    const saved = await store.saveServer(
+      draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+    );
+    const previousRaw = storage.getItem(CONNECTION_STORAGE_KEY);
+    let rejectUpdate = true;
+    vi.spyOn(storage, "setItem").mockImplementation((key, value) => {
+      if (
+        key === CONNECTION_STORAGE_KEY &&
+        JSON.parse(value).profiles.length === 0 &&
+        rejectUpdate
+      ) {
+        rejectUpdate = false;
+        throw new DOMException("Storage write refused", "QuotaExceededError");
+      }
+      MemoryStorage.prototype.setItem.call(storage, key, value);
+    });
+
+    await expect(store.forget(saved.id)).rejects.toMatchObject({ name: "QuotaExceededError" });
+
+    expect(deletePassword).not.toHaveBeenCalled();
+    expect(storage.getItem(CONNECTION_STORAGE_KEY)).toBe(previousRaw);
+    expect(store.getSnapshot().profiles).toEqual([saved]);
+  });
+
+  it("restores persisted profile metadata after vault deletion failure and can retry", async () => {
+    const storage = new MemoryStorage();
+    const { fetcher } = admissionFetcher();
+    const deletePassword = vi
+      .fn<BiometricVault["deletePassword"]>()
+      .mockRejectedValueOnce(new VaultError("unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const store = createStore(storage, fetcher, {
+      savePassword: vi.fn().mockResolvedValue(undefined),
+      unlockAndAutofillPassword: vi.fn(),
+      deletePassword,
+    });
+    const saved = await store.saveServer(
+      draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+    );
+    const previousRaw = storage.getItem(CONNECTION_STORAGE_KEY);
+
+    await expect(store.forget(saved.id)).rejects.toBeInstanceOf(VaultError);
+    expect(storage.getItem(CONNECTION_STORAGE_KEY)).toBe(previousRaw);
+    expect(JSON.parse(previousRaw ?? "{}").profiles[0].hasSavedPassword).toBe(true);
+    expect(store.getSnapshot().profiles).toEqual([saved]);
+
+    await store.forget(saved.id);
+
+    expect(storage.getItem(CONNECTION_STORAGE_KEY)).toBe(
+      JSON.stringify({ version: 1, profiles: [] }),
+    );
+    expect(store.getSnapshot().profiles).toEqual([]);
+    expect(deletePassword).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an existing saved credential when clearing its profile flag cannot persist", async () => {
+    const storage = new MemoryStorage();
+    const { fetcher } = admissionFetcher();
+    const deletePassword = vi.fn().mockResolvedValue(undefined);
+    const store = createStore(storage, fetcher, {
+      savePassword: vi.fn().mockResolvedValue(undefined),
+      unlockAndAutofillPassword: vi.fn(),
+      deletePassword,
+    });
+    const saved = await store.saveServer(
+      draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+    );
+    const previousRaw = storage.getItem(CONNECTION_STORAGE_KEY);
+    let rejectUpdate = true;
+    vi.spyOn(storage, "setItem").mockImplementation((key, value) => {
+      if (
+        key === CONNECTION_STORAGE_KEY &&
+        JSON.parse(value).profiles[0].hasSavedPassword === false &&
+        rejectUpdate
+      ) {
+        rejectUpdate = false;
+        throw new DOMException("Storage write refused", "QuotaExceededError");
+      }
+      MemoryStorage.prototype.setItem.call(storage, key, value);
+    });
+
+    await expect(
+      store.saveServer(
+        draft("https://cox.example.com", { id: saved.id, savePasswordInVault: false }),
+      ),
+    ).rejects.toMatchObject({ name: "QuotaExceededError" });
+
+    expect(deletePassword).not.toHaveBeenCalled();
+    expect(storage.getItem(CONNECTION_STORAGE_KEY)).toBe(previousRaw);
+    expect(store.getSnapshot().profiles).toEqual([saved]);
+  });
+
+  it("records a connection only after vault unlock completes", async () => {
+    const { fetcher } = admissionFetcher();
+    const unlock = deferred();
+    const started = deferred();
+    const store = createStore(new MemoryStorage(), fetcher, {
+      savePassword: vi.fn().mockResolvedValue(undefined),
+      unlockAndAutofillPassword: () => {
+        started.resolve();
+        return unlock.promise;
+      },
+      deletePassword: vi.fn().mockResolvedValue(undefined),
+    });
+    const saved = await store.saveServer(
+      draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+    );
+    const connecting = store.connect(saved.id);
+    await started.promise;
+    expect(store.getSnapshot().profiles[0]?.lastConnectedAt).toBeNull();
+    unlock.resolve();
+    expect((await connecting).lastConnectedAt).toBe("2026-11-15T12:00:00.000Z");
+  });
+
+  it("refuses a changed origin without a replacement credential", async () => {
+    const { fetcher } = admissionFetcher();
+    const savePassword = vi.fn().mockResolvedValue(undefined);
+    const store = createStore(new MemoryStorage(), fetcher, {
+      savePassword,
+      unlockAndAutofillPassword: vi.fn(),
+      deletePassword: vi.fn(),
+    });
+    const saved = await store.saveServer(
+      draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+    );
+
+    await expect(
+      store.saveServer(
+        draft("https://other.example.com", { id: saved.id, savePasswordInVault: true }),
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(store.getSnapshot().profiles).toEqual([saved]);
+    expect(savePassword).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not save a profile if the native vault refuses its credential", async () => {
+    const { fetcher } = admissionFetcher();
+    const store = createStore(new MemoryStorage(), fetcher, {
+      savePassword: vi.fn().mockRejectedValue(new VaultError("unavailable")),
+      unlockAndAutofillPassword: vi.fn(),
+      deletePassword: vi.fn(),
+    });
+
+    await expect(
+      store.saveServer(
+        draft("https://cox.example.com", { savePasswordInVault: true, password: "secret" }),
+      ),
+    ).rejects.toBeInstanceOf(VaultError);
+    expect(store.getSnapshot().profiles).toEqual([]);
   });
 });

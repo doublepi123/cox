@@ -5,6 +5,7 @@ import {
   RemoteGatewayRequiredError,
   type RemoteServerInspection,
 } from "@t3tools/shared/remoteServerAdmission";
+import { biometricVault, VaultError, type BiometricVault } from "../vault/biometricVault";
 
 export const CONNECTION_STORAGE_KEY = "cox.mobile.connections.v1";
 
@@ -36,6 +37,8 @@ export interface ServerDraft {
   readonly origin: string;
   readonly allowInsecureHttp: boolean;
   readonly savePasswordInVault: boolean;
+  readonly password?: string;
+  readonly requireBiometric?: boolean;
 }
 
 export interface ConnectionStorage {
@@ -48,6 +51,7 @@ export interface ConnectionStoreOptions {
   readonly fetcher?: typeof fetch;
   readonly now?: () => string;
   readonly newId?: () => string;
+  readonly vault?: BiometricVault;
 }
 
 interface StoredConnections extends ConnectionSnapshot {
@@ -155,6 +159,7 @@ export class ConnectionStore {
   private readonly fetcher: typeof fetch;
   private readonly now: () => string;
   private readonly newId: () => string;
+  private readonly vault: BiometricVault;
   private readonly listeners = new Set<() => void>();
   private snapshot: ConnectionSnapshot;
 
@@ -163,6 +168,7 @@ export class ConnectionStore {
     this.fetcher = options.fetcher ?? fetch;
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? (() => crypto.randomUUID());
+    this.vault = options.vault ?? biometricVault;
     this.snapshot = decodeSnapshot(this.storage.getItem(CONNECTION_STORAGE_KEY));
   }
 
@@ -176,13 +182,28 @@ export class ConnectionStore {
       fetcher: this.fetcher,
     });
     const profile = this.profileFromInspection(draft, inspection, existing);
-    this.commit(
-      existing
-        ? this.snapshot.profiles.map((candidate) =>
-            candidate.id === existing.id ? profile : candidate,
-          )
-        : [...this.snapshot.profiles, profile],
-    );
+    if (draft.savePasswordInVault) {
+      if (draft.password) {
+        await this.vault.savePassword({
+          profileId: profile.id,
+          canonicalOrigin: profile.origin,
+          password: draft.password,
+          requireBiometric: draft.requireBiometric ?? true,
+        });
+      } else if (!existing?.hasSavedPassword || existing.origin !== profile.origin) {
+        throw new VaultError("invalid_input");
+      }
+    }
+    const profiles = existing
+      ? this.snapshot.profiles.map((candidate) =>
+          candidate.id === existing.id ? profile : candidate,
+        )
+      : [...this.snapshot.profiles, profile];
+    if (existing?.hasSavedPassword && !draft.savePasswordInVault) {
+      await this.commitAfterVaultDeletion(existing.id, profiles);
+    } else {
+      this.commit(profiles);
+    }
     return profile;
   }
 
@@ -206,6 +227,13 @@ export class ConnectionStore {
       throw error;
     }
     const current = this.requireProfile(id);
+    if (current.hasSavedPassword) {
+      await this.vault.unlockAndAutofillPassword({
+        profileId: current.id,
+        canonicalOrigin: current.origin,
+        allowInsecureHttp: current.allowInsecureHttp,
+      });
+    }
     const profile: SavedServerProfile = {
       ...current,
       lastServerVersion: inspection.serverVersion,
@@ -238,9 +266,35 @@ export class ConnectionStore {
     if (destination !== fromIndex) this.commit(profiles);
   }
 
-  forget(id: string): void {
-    if (!this.snapshot.profiles.some((profile) => profile.id === id)) return;
-    this.commit(this.snapshot.profiles.filter((profile) => profile.id !== id));
+  async forget(id: string): Promise<void> {
+    const profile = this.snapshot.profiles.find((candidate) => candidate.id === id);
+    if (!profile) return;
+    const profiles = this.snapshot.profiles.filter((candidate) => candidate.id !== id);
+    if (profile.hasSavedPassword) {
+      await this.commitAfterVaultDeletion(id, profiles);
+    } else {
+      this.commit(profiles);
+    }
+  }
+
+  private async commitAfterVaultDeletion(
+    id: string,
+    profiles: readonly SavedServerProfile[],
+  ): Promise<void> {
+    const previousRaw = this.storage.getItem(CONNECTION_STORAGE_KEY);
+    const previousSnapshot = this.snapshot;
+    const write = this.storage.setItem.bind(this.storage);
+    const stored: StoredConnections = { version: 1, profiles };
+    write(CONNECTION_STORAGE_KEY, JSON.stringify(stored));
+    try {
+      await this.vault.deletePassword(id);
+    } catch (error) {
+      if (previousRaw !== null) write(CONNECTION_STORAGE_KEY, previousRaw);
+      this.snapshot = previousSnapshot;
+      throw error;
+    }
+    this.snapshot = { profiles };
+    for (const listener of this.listeners) listener();
   }
 
   private requireProfile(id: string): SavedServerProfile {

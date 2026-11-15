@@ -3,6 +3,7 @@ import {
   RemoteEnvironmentMismatchError,
   RemoteGatewayRequiredError,
 } from "@t3tools/shared/remoteServerAdmission";
+import { VaultError } from "./vault/biometricVault";
 
 export const LOCALE_STORAGE_KEY = "cox.mobile.locale";
 
@@ -44,8 +45,13 @@ const en = {
   allowHttp: "Allow password-protected plain HTTP on trusted LAN/Tailscale",
   allowHttpWarning:
     "Plain HTTP exposes traffic to the local network. Enable it only for a server you trust.",
-  savePasswordInVault: "Save the password in the biometric vault on next connect",
-  vaultHelp: "Only this preference is stored here. The native vault handles the credential.",
+  savePasswordInVault: "Save the password in the biometric vault",
+  vaultHelp: "The native vault stores the password and asks you to unlock it when connecting.",
+  vaultPassword: "Server password",
+  vaultKeepPassword: "Leave blank to keep the saved password for this origin.",
+  vaultInvalid: "Enter a password before enabling the vault or changing the server origin.",
+  vaultUnavailable:
+    "The native vault could not complete the operation. Unlock your device and try again.",
   saveServer: "Verify and save",
   saving: "Checking server",
   cancel: "Cancel",
@@ -123,8 +129,12 @@ const zhCN: Record<TranslationKey, string> = {
   originHelp: "仅填写源地址，不要包含路径、查询参数、片段或凭据。",
   allowHttp: "允许在可信 LAN/Tailscale 上使用带密码保护的明文 HTTP",
   allowHttpWarning: "明文 HTTP 会向本地网络暴露流量。仅对你信任的服务器启用。",
-  savePasswordInVault: "下次连接时将密码保存到生物识别保险箱",
-  vaultHelp: "这里只保存此偏好，实际凭据由原生保险箱处理。",
+  savePasswordInVault: "将密码保存到生物识别保险箱",
+  vaultHelp: "原生保险箱保存密码，连接时需要解锁。",
+  vaultPassword: "服务器密码",
+  vaultKeepPassword: "留空以保留此地址已保存的密码。",
+  vaultInvalid: "启用保险箱或更改服务器地址前，请输入密码。",
+  vaultUnavailable: "原生保险箱无法完成操作。请解锁设备后重试。",
   saveServer: "验证并保存",
   saving: "正在检查服务器",
   cancel: "取消",
@@ -189,7 +199,13 @@ const admissionErrorKeys: Record<RemoteAdmissionError["code"], TranslationKey> =
   password_required: "passwordRequired",
 };
 
+const vaultErrorKeys: Record<VaultError["code"], TranslationKey> = {
+  invalid_input: "vaultInvalid",
+  unavailable: "vaultUnavailable",
+};
+
 export function formatConnectionError(error: unknown, t: Translator): string {
+  if (error instanceof VaultError) return t(vaultErrorKeys[error.code]);
   if (error instanceof RemoteGatewayRequiredError) return t("gatewayRequired");
   if (error instanceof RemoteEnvironmentMismatchError) return t("identityMismatch");
   if (error instanceof RemoteAdmissionError) return t(admissionErrorKeys[error.code]);
