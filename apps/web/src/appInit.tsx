@@ -37,6 +37,7 @@ import {
 import { syncBrowserChromeTheme } from "./hooks/useTheme";
 import { startThreadVisitedMigration } from "./hooks/useThreadVisitedMigration";
 import { startProviderAuthDelivery } from "./providerAuthDelivery";
+import { startNotificationDeepLinkNavigation } from "./pwa/notificationDeepLinks";
 import { getRouter, type AppRouter } from "./router";
 import { appAtomRegistry } from "./rpc/atomRegistry";
 import { primaryServerConfigAtom } from "./state/server";
@@ -172,6 +173,7 @@ export function startAppServices(): AppRouter {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     void router.navigate({ href });
   });
+  startNotificationDeepLinkNavigation(router);
   if (isDesktopPageWindow(window.coxDesktop)) {
     return router;
   }

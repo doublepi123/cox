@@ -174,6 +174,7 @@ function SettingsContentLayout() {
   const contentScopeKey =
     location.pathname === "/settings/diagnostics" ||
     location.pathname === "/settings/providers" ||
+    location.pathname === "/settings/notifications" ||
     location.pathname === "/settings/model-services"
       ? environment?.environmentId
       : JSON.stringify(search);
@@ -266,6 +267,7 @@ function SettingsRouteLayout() {
       search={rawSearch}
       singleEnvironment={
         pathname === "/settings/providers" ||
+        pathname === "/settings/notifications" ||
         pathname === "/settings/secrets" ||
         pathname === "/settings/model-services"
       }

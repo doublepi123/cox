@@ -21,6 +21,7 @@ export type SettingsPath =
   | "/settings/diagnostics"
   | "/settings/appearance"
   | "/settings/chat"
+  | "/settings/notifications"
   | "/settings/diffs"
   | "/settings/keybindings"
   | "/settings/providers"
@@ -73,6 +74,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
   "/settings/chat": "Chat",
+  "/settings/notifications": "Notifications",
   "/settings/diffs": "Diffs & pull requests",
   "/settings/keybindings": "Keybindings",
   "/settings/providers": "Providers",
@@ -118,7 +120,10 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Connections",
-    paths: isSecretsFeatureEnabled ? ["/settings/secrets"] : [],
+    paths: [
+      "/settings/notifications",
+      ...(isSecretsFeatureEnabled ? ["/settings/secrets" as const] : []),
+    ],
   },
   {
     heading: null,
@@ -487,6 +492,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "In-app notifications",
     to: "/settings/general",
     searchTerms: ["notification toast popup completion input approval failure"],
+  },
+  {
+    id: "mobile-notifications",
+    title: "Notifications",
+    to: "/settings/notifications",
+    targetId: "web-push",
+    searchTerms: ["web push webhook bark telegram ntfy json mobile lan https"],
   },
   {
     id: "time-format",
@@ -962,6 +974,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/general": null,
   "/settings/appearance": null,
   "/settings/chat": null,
+  "/settings/notifications": null,
   "/settings/diffs": null,
   "/settings/keybindings": null,
   "/settings/providers": null,

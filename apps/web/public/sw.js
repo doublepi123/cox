@@ -8,12 +8,23 @@ function safeThreadPath(value) {
     value.startsWith("//") ||
     /[\\\u0000-\u0020\u007f]/.test(value)
   ) {
-    return "/";
+    return null;
   }
   const target = new URL(value, self.location.origin);
-  return target.origin === self.location.origin
-    ? `${target.pathname}${target.search}${target.hash}`
-    : "/";
+  if (target.origin !== self.location.origin || target.pathname.startsWith("/settings/")) {
+    return null;
+  }
+  const segments = target.pathname.split("/");
+  if (segments.length !== 3 || segments[0] !== "") return null;
+  for (const segment of segments.slice(1)) {
+    if (!segment || segment === "." || segment === ".." || segment.length > 256) return null;
+    try {
+      if (/[/\\\u0000-\u0020\u007f]/.test(decodeURIComponent(segment))) return null;
+    } catch {
+      return null;
+    }
+  }
+  return `${target.pathname}${target.search}${target.hash}`;
 }
 
 self.addEventListener("install", (event) => {
@@ -101,6 +112,7 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const threadPath = safeThreadPath(event.notification.data?.threadPath);
+  if (threadPath === null) return;
   const targetUrl = new URL(threadPath, self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
@@ -108,8 +120,8 @@ self.addEventListener("notificationclick", (event) => {
         (candidate) => new URL(candidate.url).origin === self.location.origin,
       );
       if (client) {
-        await client.navigate(targetUrl);
         await client.focus();
+        client.postMessage({ type: "cox:navigate-thread", threadPath });
       } else {
         await self.clients.openWindow(targetUrl);
       }
