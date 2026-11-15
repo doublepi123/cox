@@ -88,6 +88,7 @@ export interface PiRpcSpawnOptions {
   readonly args: ReadonlyArray<string>;
   readonly cwd: string | undefined;
   readonly env: NodeJS.ProcessEnv;
+  readonly decodeIncomingRecord?: (record: PiRpcRecord) => PiRpcRecord | undefined;
 }
 
 export interface PiRpcConnection {
@@ -322,14 +323,24 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
               });
               continue;
             }
-            yield* routeRecord(record);
+            const decoded =
+              options.decodeIncomingRecord === undefined
+                ? record
+                : options.decodeIncomingRecord(record);
+            if (decoded !== undefined) yield* routeRecord(decoded);
           }
         }),
       ),
     );
     for (const line of frame("\n")) {
       const trailing = parsePiRecord(line);
-      if (trailing !== undefined) yield* routeRecord(trailing);
+      if (trailing !== undefined) {
+        const decoded =
+          options.decodeIncomingRecord === undefined
+            ? trailing
+            : options.decodeIncomingRecord(trailing);
+        if (decoded !== undefined) yield* routeRecord(decoded);
+      }
     }
   }).pipe(
     Effect.matchCauseEffect({
