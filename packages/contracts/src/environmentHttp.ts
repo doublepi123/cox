@@ -53,6 +53,20 @@ import {
 import { Project, ProjectMutation, ProjectSnapshot } from "./project.ts";
 import { LocalServiceUpdateState } from "./localServiceUpdate.ts";
 import {
+  DeletePushSubscriptionResponse,
+  MobilePushSubscriptionInput,
+  NOTIFICATION_PUSH_SUBSCRIPTIONS_PATH,
+  NOTIFICATION_PUSH_SUBSCRIPTION_PATH,
+  NOTIFICATION_TEST_PATH,
+  NOTIFICATION_VAPID_PUBLIC_KEY_PATH,
+  PushSubscriptionsListResponse,
+  PushSubscriptionId,
+  RegisteredPushSubscription,
+  TestNotificationRequest,
+  TestNotificationResponse,
+  VapidPublicKeyResponse,
+} from "./notifications.ts";
+import {
   PullRequestDiffInput,
   PullRequestDiffResult,
   PullRequestOperationError,
@@ -618,6 +632,60 @@ class EnvironmentLocalServiceUpdatesHttpApi extends HttpApiGroup.make("localServ
     HttpApiEndpoint.post("apply", "/api/local-service-update/apply", {
       success: LocalServiceUpdateState,
       error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
+// Not yet added to EnvironmentHttpApi: HttpApiBuilder.layer type-requires a handler layer
+// for every group, and the apps/server notification routes land in a later todo.
+export class EnvironmentNotificationsHttpApi extends HttpApiGroup.make("notifications")
+  .add(
+    HttpApiEndpoint.get("vapidPublicKey", NOTIFICATION_VAPID_PUBLIC_KEY_PATH, {
+      headers: OptionalBearerHeaders,
+      success: VapidPublicKeyResponse,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get("pushSubscriptions", NOTIFICATION_PUSH_SUBSCRIPTIONS_PATH, {
+      headers: OptionalBearerHeaders,
+      success: PushSubscriptionsListResponse,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("pushSubscriptionCreate", NOTIFICATION_PUSH_SUBSCRIPTIONS_PATH, {
+      headers: OptionalBearerHeaders,
+      payload: MobilePushSubscriptionInput,
+      success: RegisteredPushSubscription,
+      error: [
+        EnvironmentRequestInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentInternalError,
+      ],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.make("DELETE")("pushSubscriptionDelete", NOTIFICATION_PUSH_SUBSCRIPTION_PATH, {
+      headers: OptionalBearerHeaders,
+      params: Schema.Struct({ id: PushSubscriptionId }),
+      success: DeletePushSubscriptionResponse,
+      error: [
+        EnvironmentRequestInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentInternalError,
+      ],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("test", NOTIFICATION_TEST_PATH, {
+      headers: OptionalBearerHeaders,
+      payload: TestNotificationRequest,
+      success: TestNotificationResponse,
+      error: [
+        EnvironmentRequestInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentInternalError,
+      ],
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 

@@ -2,6 +2,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ModelServiceConfig,
   ModelServiceId,
+  NotificationWebhookChannel,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -32,6 +33,7 @@ import {
 
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
+const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeModelService = Schema.decodeSync(ModelServiceConfig);
 
 const FOLDED_SERVER_SETTINGS = { ...DEFAULT_SERVER_SETTINGS, projectSettingsFolded: true };
@@ -1135,5 +1137,57 @@ describe("synchronized model preferences", () => {
         setModelFavorites: [{ provider, model: "sol", favorite: false }],
       }).favorites,
     ).toEqual([{ provider: otherProvider, model: "sol" }]);
+  });
+});
+
+describe("notification settings patches", () => {
+  const decodeChannel = Schema.decodeUnknownSync(NotificationWebhookChannel);
+  const barkChannel = decodeChannel({
+    id: "bark-phone",
+    label: "Bark on my phone",
+    provider: "bark",
+    url: "https://api.day.app/abcdef/",
+    events: ["turn_failed", "human_attention"],
+  });
+  const ntfyChannel = decodeChannel({
+    ...barkChannel,
+    id: "ntfy-tablet",
+    provider: "ntfy",
+    secret: "tk_presentation_poll",
+  });
+
+  it("merges notification patch fields and replaces the webhook list wholesale", () => {
+    const withChannel = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      notifications: { webhooks: [barkChannel] },
+    });
+    expect(withChannel.notifications).toEqual({
+      webPushEnabled: true,
+      webhooks: [barkChannel],
+    });
+
+    const disabled = applyServerSettingsPatch(withChannel, {
+      notifications: { webPushEnabled: false },
+    });
+    expect(disabled.notifications).toEqual({
+      webPushEnabled: false,
+      webhooks: [barkChannel],
+    });
+
+    const replaced = applyServerSettingsPatch(disabled, {
+      notifications: { webhooks: [ntfyChannel] },
+    });
+    expect(replaced.notifications).toEqual({
+      webPushEnabled: false,
+      webhooks: [ntfyChannel],
+    });
+  });
+
+  it("keeps patched notification settings decodable for the next settings read", () => {
+    const patched = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      notifications: { webPushEnabled: true, webhooks: [barkChannel, ntfyChannel] },
+    });
+    expect(decodeServerSettings(encodeServerSettings(patched)).notifications).toEqual(
+      patched.notifications,
+    );
   });
 });
