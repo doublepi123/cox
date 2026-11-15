@@ -4,6 +4,26 @@ import { Tool } from "effect/ai";
 
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
 
+it("advertises string enums while dropping numeric and boolean enums", () => {
+  const tool = Tool.make("cox_enum_example", {
+    parameters: Schema.Struct({
+      count: Schema.Literals([1, 2]),
+      enabled: Schema.Literal(true),
+      mode: Schema.Literals(["light", "dark"]),
+    }),
+  });
+
+  expect(advertisedJsonSchema(tool)).toEqual({
+    type: "object",
+    properties: {
+      count: { type: "number" },
+      enabled: { type: "boolean" },
+      mode: { type: "string", enum: ["light", "dark"] },
+    },
+    required: ["count", "enabled", "mode"],
+  });
+});
+
 it("drops JSON noise, merges tagged unions, and keeps null where it is required", () => {
   const Every = Schema.Struct({ ms: Schema.Int });
   const tool = Tool.make("example", {

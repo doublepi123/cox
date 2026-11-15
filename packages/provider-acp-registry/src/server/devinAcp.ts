@@ -54,3 +54,9 @@ export function extractDevinSubagentUpdate(
     result: typeof completed?.summary === "string" ? completed.summary : null,
   };
 }
+
+export function devinAnswerablePermissionOptions(
+  request: AcpSchema.RequestPermissionRequest,
+): ReadonlyArray<AcpSchema.PermissionOption> {
+  return request.options.filter((option) => option.optionId.trim() !== "plan_bypass");
+}

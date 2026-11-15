@@ -153,30 +153,34 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
     connections.delete(request.connectionId);
     const sessionId = connection.sessionId;
     if (sessionId !== null) {
-      const response = yield* Effect.tryPromise({
-        try: (signal) =>
-          fetchImplementation(options.endpoint, {
-            method: "DELETE",
-            signal,
-            headers: {
-              authorization: options.authorization,
-              "mcp-session-id": sessionId,
-              ...(connection.protocolVersion === null
-                ? {}
-                : { "mcp-protocol-version": connection.protocolVersion }),
-            },
-          }),
-        catch: bridgeError,
-      });
-      if (!response.ok && response.status !== 404) {
-        return yield* Effect.fail(
-          new AcpMcpOverAcpError(
-            `Cox MCP endpoint rejected disconnect with HTTP ${response.status}.`,
-          ),
+      yield* Effect.gen(function* () {
+        const response = yield* Effect.tryPromise({
+          try: (signal) =>
+            fetchImplementation(options.endpoint, {
+              method: "DELETE",
+              signal,
+              headers: {
+                authorization: options.authorization,
+                "mcp-session-id": sessionId,
+                ...(connection.protocolVersion === null
+                  ? {}
+                  : { "mcp-protocol-version": connection.protocolVersion }),
+              },
+            }),
+          catch: bridgeError,
+        });
+        if (!response.ok && response.status !== 404) {
+          return yield* Effect.fail(
+            new AcpMcpOverAcpError(
+              `Cox MCP endpoint rejected disconnect with HTTP ${response.status}.`,
+            ),
+          );
+        }
+        yield* Effect.promise(
+          () => response.body?.cancel().catch(() => undefined) ?? Promise.resolve(),
         );
-      }
-      yield* Effect.promise(
-        () => response.body?.cancel().catch(() => undefined) ?? Promise.resolve(),
+      }).pipe(
+        Effect.onError(() => Effect.sync(() => connections.set(request.connectionId, connection))),
       );
     }
     return {};
