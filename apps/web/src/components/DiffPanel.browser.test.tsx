@@ -17,11 +17,12 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
+import { type ReactNode, useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
-import { act, render } from "../../test/render";
+import { act, render, stubGlobal } from "../../test/render";
 import { makeThreadFixture } from "~/test-fixtures";
 
 type ResultAtom<A> = Atom.Atom<AsyncResult.AsyncResult<A, Error>>;
@@ -35,6 +36,7 @@ const state = vi.hoisted(() => ({
   filePatches: new Map<string, PatchAtom>(),
   requestedPaths: new Set<string>(),
   diffFilesCollapsed: false,
+  diffLayout: "stacked" as ClientSettings["diffLayout"],
   codeViewMounts: 0,
   project: {
     workspaceRoot: "/project",
@@ -83,11 +85,19 @@ vi.mock("~/state/filesystem", () => ({
   useFilesystemReadAccess: () => ({ canReadFiles: true, isPending: false, error: null }),
 }));
 vi.mock("~/hooks/useThreadRouteTarget", () => ({ useThreadRouteRef: () => state.threadRef }));
-vi.mock("~/hooks/useSettings", () => ({
-  useClientSettings: (select: (settings: ClientSettings) => unknown) =>
-    select({ ...DEFAULT_CLIENT_SETTINGS, diffFilesCollapsed: state.diffFilesCollapsed }),
-  updateClientSettings: async () => {},
-}));
+vi.mock("~/hooks/useSettings", () => {
+  const settings = () => ({
+    ...DEFAULT_CLIENT_SETTINGS,
+    diffFilesCollapsed: state.diffFilesCollapsed,
+    diffLayout: state.diffLayout,
+  });
+  return {
+    useClientSettings: (select: (settings: ClientSettings) => unknown) => select(settings()),
+    getClientSettings: settings,
+    ensureClientSettingsHydrated: async () => {},
+    updateClientSettings: async () => {},
+  };
+});
 vi.mock("~/hooks/useTheme", () => ({
   useRenderedAppearance: () => "dark",
   getRenderedAppearance: () => "dark",
@@ -123,8 +133,34 @@ vi.mock("./diffs/StyledDiffCodeView", async (importOriginal) => {
 });
 
 import DiffPanel from "./DiffPanel";
+import { ChatRightPanel } from "./chat/ChatRightPanel";
+import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
+import type { PreviewPanelInlineSize } from "~/hooks/usePreviewPanelInlineSize";
 import { useDiffPanelSessionStore, useDiffPanelStore } from "~/diffPanelStore";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
+
+type TestRightPanelTabsProps = {
+  readonly mode: PreviewPanelMode;
+  readonly maximized?: boolean | undefined;
+  readonly open?: boolean | undefined;
+  readonly inlineSize: PreviewPanelInlineSize;
+  readonly layoutControls: ReactNode;
+  readonly children: ReactNode;
+};
+
+vi.mock("./RightPanelTabs", () => ({
+  RightPanelTabs: (props: TestRightPanelTabsProps) => (
+    <PreviewPanelShell
+      mode={props.mode}
+      maximized={props.maximized ?? false}
+      open={props.open ?? true}
+      inlineSize={props.inlineSize}
+    >
+      <div className="flex min-h-12 shrink-0 items-center justify-end">{props.layoutControls}</div>
+      {props.children}
+    </PreviewPanelShell>
+  ),
+}));
 
 const cwd = "/project-worktree";
 const errorMessage = "Could not find a common commit between 'origin/orphan' and HEAD.";
@@ -164,6 +200,7 @@ function setup(failedBaseRef: string | null) {
   state.filePatches.clear();
   state.requestedPaths.clear();
   state.diffFilesCollapsed = false;
+  state.diffLayout = DEFAULT_CLIENT_SETTINGS.diffLayout;
   state.codeViewMounts = 0;
   state.project = { workspaceRoot: "/project", repositoryIdentity: null };
   state.toolCallItem = null;
@@ -345,6 +382,193 @@ function setupFiles(paths: string[]) {
   };
 }
 
+async function viewportScope(width: number, height: number) {
+  const previous = { width: window.innerWidth, height: window.innerHeight };
+  await page.viewport(width, height);
+  return {
+    [Symbol.asyncDispose]: () => page.viewport(previous.width, previous.height),
+  };
+}
+
+function coarsePointerScope() {
+  const matchMedia = window.matchMedia.bind(window);
+  return stubGlobal("matchMedia", (query: string) => {
+    const media = matchMedia(query);
+    if (query === "(pointer: coarse)") {
+      Object.defineProperty(media, "matches", { value: true });
+    }
+    return media;
+  });
+}
+
+const shortcutContext = {
+  terminalFocus: false,
+  terminalOpen: false,
+  previewFocus: false,
+  previewOpen: false,
+  isWeb: true,
+  isDesktop: false,
+  modelPickerOpen: false,
+};
+
+function ChatDiffPanel({
+  context,
+  maximized = false,
+}: {
+  readonly context: ReturnType<typeof setupFiles>;
+  readonly maximized?: boolean;
+}) {
+  const [workspaceLayoutElement, setWorkspaceLayoutElement] = useState<HTMLDivElement | null>(null);
+  return (
+    <RegistryContext.Provider value={context.registry}>
+      <div
+        ref={setWorkspaceLayoutElement}
+        className="flex h-[800px] w-full min-w-0 overflow-hidden"
+      >
+        <div className="min-w-0 flex-1">Chat</div>
+        <ChatRightPanel
+          sheet={false}
+          maximized={maximized}
+          workspaceLayoutElement={workspaceLayoutElement}
+          widthStorageKey="test-mobile-diff-panel-width"
+          sheetAnimationDurationMs={0}
+          onCloseSheet={() => {}}
+          open
+          keybindings={[]}
+          getShortcutContext={() => shortcutContext}
+          layoutControls={null}
+          surfaces={[{ id: "diff", kind: "diff" }]}
+          environmentId={context.threadRef.environmentId}
+          activeSurfaceId="diff"
+          pendingSurfaceIds={new Set()}
+          previewSessions={{}}
+          terminalLabelsById={new Map()}
+          onActivate={() => {}}
+          onCloseSurface={() => {}}
+          onCloseOtherSurfaces={() => {}}
+          onCloseSurfacesToRight={() => {}}
+          onCloseAllSurfaces={() => {}}
+          onCopyFilePath={() => {}}
+          onAddBrowser={() => {}}
+          onAddBrowserInProfile={() => {}}
+          onAddTerminal={() => {}}
+          onAddDiff={() => {}}
+          onAddFiles={() => {}}
+          onAddPullRequest={() => {}}
+          onAddPullRequests={() => {}}
+          browserAvailable={false}
+          terminalAvailable={false}
+          diffAvailable
+          filesAvailable={false}
+          pullRequestAvailable={false}
+          pullRequestsAvailable={false}
+          sideChatAvailable={false}
+        >
+          <DiffPanel
+            mode="embedded"
+            composerDraftTarget={context.threadRef}
+            workspaceMutationId={null}
+            visible
+          />
+        </ChatRightPanel>
+      </div>
+    </RegistryContext.Provider>
+  );
+}
+
+function previewPanel() {
+  const element = document.querySelector("[data-preview-panel-mode]");
+  if (!(element instanceof HTMLElement)) throw new Error("Missing preview panel");
+  return element;
+}
+
+it("defaults to an overflow-free unified diff with touch targets at 360px", async () => {
+  await using _viewport = await viewportScope(360, 800);
+  using _pointer = coarsePointerScope();
+  using context = setupFiles(["mobile.ts"]);
+  state.diffLayout = "split";
+  await using _screen = await render(<ChatDiffPanel context={context} maximized />);
+  await context.load("mobile.ts");
+  await expect.element(page.getByText("after-mobile.ts-0", { exact: true })).toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Stacked diff view", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await vi.waitFor(() => {
+    const diff = document
+      .querySelector("diffs-container")
+      ?.shadowRoot?.querySelector("[data-diff-type]");
+    expect(diff?.getAttribute("data-diff-type")).toBe("single");
+  });
+  const close = page.getByRole("button", { name: "Close panel", exact: true }).element();
+  const closeRect = close.getBoundingClientRect();
+  expect(closeRect.width).toBeGreaterThanOrEqual(44);
+  expect(closeRect.height).toBeGreaterThanOrEqual(44);
+  const collapse = page
+    .getByRole("button", { name: "Collapse mobile.ts", exact: true })
+    .element()
+    .getBoundingClientRect();
+  expect(collapse.width).toBeGreaterThanOrEqual(44);
+  expect(collapse.height).toBeGreaterThanOrEqual(44);
+  expect(previewPanel().getBoundingClientRect().width).toBe(360);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
+});
+
+it("switches the active file from the mobile file selector", async () => {
+  await using _viewport = await viewportScope(360, 800);
+  using _pointer = coarsePointerScope();
+  using context = setupFiles(["first.ts", "second.ts"]);
+  state.diffFilesCollapsed = true;
+  await using _screen = await render(<ChatDiffPanel context={context} />);
+  await context.load("first.ts");
+  await context.load("second.ts");
+  const selector = page.getByRole("combobox", { name: "Jump to changed file", exact: true });
+  await expect.element(selector).toHaveValue("first.ts");
+  await expect
+    .element(page.getByRole("button", { name: "Expand second.ts", exact: true }))
+    .toHaveAttribute("aria-expanded", "false");
+  await selector.selectOptions("second.ts");
+  await expect.element(selector).toHaveValue("second.ts");
+  await expect
+    .element(page.getByRole("button", { name: "Collapse second.ts", exact: true }))
+    .toHaveAttribute("aria-expanded", "true");
+  await expect.element(page.getByText("after-second.ts-0", { exact: true })).toBeVisible();
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
+});
+
+it("moves between resizable inline and full-width sheet layouts across resizes", async () => {
+  await using _viewport = await viewportScope(1280, 800);
+  using context = setupFiles(["resize.ts"]);
+  state.diffLayout = "split";
+  await using _screen = await render(<ChatDiffPanel context={context} />);
+  await context.load("resize.ts");
+  await expect.element(page.getByText("after-resize.ts-0", { exact: true })).toBeVisible();
+  expect(previewPanel().dataset.previewPanelMode).toBe("inline");
+  expect(previewPanel().getBoundingClientRect().width).toBeGreaterThan(360);
+  await expect
+    .element(page.getByRole("button", { name: "Split diff view", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+
+  await page.viewport(360, 800);
+  await expect.element(page.getByRole("dialog")).toBeVisible();
+  await vi.waitFor(() => {
+    expect(previewPanel().dataset.previewPanelMode).toBe("sheet");
+    expect(previewPanel().getBoundingClientRect().width).toBe(360);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
+  });
+  await expect
+    .element(page.getByRole("button", { name: "Stacked diff view", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+
+  await page.viewport(1280, 800);
+  await vi.waitFor(() => {
+    expect(previewPanel().dataset.previewPanelMode).toBe("inline");
+    expect(previewPanel().getBoundingClientRect().width).toBeGreaterThan(360);
+  });
+  await expect
+    .element(page.getByRole("button", { name: "Split diff view", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+});
+
 it("loads deferred patches in batches when the footer is reached", async () => {
   const paths = Array.from({ length: 9 }, (_, index) => `file-${index + 1}.txt`);
   using context = setupFiles(paths);
@@ -373,6 +597,7 @@ it("loads deferred patches in batches when the footer is reached", async () => {
 });
 
 it("selects an unloaded file by path from the tree without requesting the intervening files", async () => {
+  await using _viewport = await viewportScope(1280, 800);
   const paths = Array.from({ length: 6 }, (_, index) => `tree-${index + 1}.txt`);
   using context = setupFiles(paths);
   state.diffFilesCollapsed = true;
@@ -435,6 +660,7 @@ it.each([
 });
 
 it("opens a tool-call diff file relative to its project workspace", async () => {
+  await using _viewport = await viewportScope(1280, 800);
   using context = setup("origin/orphan");
   state.thread = { ...state.thread!, worktreePath: null };
   state.project = { workspaceRoot: "/repo/apps/web", repositoryIdentity: { rootPath: "/repo" } };

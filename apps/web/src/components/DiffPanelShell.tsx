@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
 
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
+import { RIGHT_PANEL_SHEET_MEDIA_QUERY } from "~/rightPanelLayout";
 import { Skeleton } from "./ui/skeleton";
 export type DiffPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 function getDiffPanelHeaderRowClassName(mode: DiffPanelMode) {
   return cn(
     "flex items-center justify-between gap-2",
     mode === "embedded" ? "px-2" : "px-4",
-    "flex h-10 min-h-10 shrink-0 items-center border-b border-border/60 bg-background in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent",
+    "flex h-10 min-h-10 shrink-0 items-center border-b border-border/60 bg-background max-[768px]:h-auto max-[768px]:min-h-11 max-[768px]:flex-wrap max-[768px]:py-1 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent",
   );
 }
 export function DiffPanelShell(props: {
@@ -15,16 +17,18 @@ export function DiffPanelShell(props: {
   header: ReactNode;
   children: ReactNode;
 }) {
+  const forceSheet = useMediaQuery(RIGHT_PANEL_SHEET_MEDIA_QUERY);
+  const mode = forceSheet && props.mode === "inline" ? "sheet" : props.mode;
   return (
     <div
       className={cn(
         "flex h-full min-w-0 flex-col bg-background",
-        props.mode === "inline"
+        mode === "inline"
           ? "w-[42vw] min-w-[360px] max-w-[560px] shrink-0 border-l border-border"
-          : "w-full",
+          : "w-full max-w-full",
       )}
     >
-      <div className={getDiffPanelHeaderRowClassName(props.mode)} data-surface-subheader>
+      <div className={getDiffPanelHeaderRowClassName(mode)} data-surface-subheader>
         {props.header}
       </div>
       {props.children}

@@ -11,8 +11,10 @@ import {
   usePreviewPanelInlineSize,
 } from "~/hooks/usePreviewPanelInlineSize";
 import { RESIZABLE_WIDTH_PROPERTY } from "~/hooks/useResizableWidth";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { canReturnFocusTo, workspaceAreaProps } from "../../lib/workspaceFocus";
 import { cn } from "~/lib/utils";
+import { RIGHT_PANEL_SHEET_MEDIA_QUERY } from "~/rightPanelLayout";
 
 import { RightPanelResizeHandle } from "./RightPanelResizeHandle";
 
@@ -64,7 +66,9 @@ function PreviewPanelShellFrame(
   props: PreviewPanelShellProps & { inlineSize: PreviewPanelInlineSize },
 ) {
   const panelArea = workspaceAreaProps("panel", 4, props.workspaceLabel ?? "Workspace panel");
-  const isInline = props.mode === "inline";
+  const forceSheet = useMediaQuery(RIGHT_PANEL_SHEET_MEDIA_QUERY);
+  const resolvedMode = forceSheet && props.mode === "inline" ? "sheet" : props.mode;
+  const isInline = resolvedMode === "inline";
   const collapsible = isInline && props.open !== undefined;
   const open = props.open ?? true;
   const maximized = props.maximized ?? false;
@@ -171,7 +175,7 @@ function PreviewPanelShellFrame(
             } as CSSProperties)
           : undefined
       }
-      data-preview-panel-mode={props.mode}
+      data-preview-panel-mode={resolvedMode}
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
       {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}

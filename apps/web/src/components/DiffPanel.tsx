@@ -7,7 +7,12 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import type { ReviewBranchCommitsResult, ScopedThreadRef, RunId } from "@t3tools/contracts";
+import type {
+  DiffLayout,
+  ReviewBranchCommitsResult,
+  ScopedThreadRef,
+  RunId,
+} from "@t3tools/contracts";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -40,6 +45,8 @@ import {
   useDiffPanelStore,
 } from "../diffPanelStore";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { DIFF_PANEL_MOBILE_MEDIA_QUERY } from "../rightPanelLayout";
 import { isTestChangedFile } from "@t3tools/shared/changedFileKind";
 import { useHideTestFiles } from "./diffs/useHideTestFiles";
 import { useRenderedAppearance } from "../hooks/useTheme";
@@ -141,11 +148,13 @@ function DiffFileCollapseToggle({
   filePath,
   fileKey,
   collapsed,
+  mobile,
   onToggle,
 }: {
   filePath: string;
   fileKey: string;
   collapsed: boolean;
+  mobile: boolean;
   onToggle: (fileKey: string) => void;
 }) {
   return (
@@ -154,7 +163,7 @@ function DiffFileCollapseToggle({
         <TooltipTrigger
           render={
             <Button
-              size="icon-micro"
+              size={mobile ? "icon-xl" : "icon-micro"}
               variant="ghost"
               aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
               aria-expanded={!collapsed}
@@ -226,6 +235,10 @@ export default function DiffPanel({
     wordWrap: settings.wordWrap,
   }));
   const diffLayout = settings.diffLayout;
+  const mobileDiff = useMediaQuery(DIFF_PANEL_MOBILE_MEDIA_QUERY);
+  const [mobileDiffLayout, setMobileDiffLayout] = useState<DiffLayout | null>(null);
+  const resolvedDiffLayout = mobileDiff ? (mobileDiffLayout ?? "stacked") : diffLayout;
+  const [mobileFilePath, setMobileFilePath] = useState<string | null>(null);
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
   const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
   const [fileTreeOpen, setFileTreeOpen] = useLocalStorage(
@@ -647,6 +660,16 @@ export default function DiffPanel({
     return !hideTestFiles || path === selectedFilePath || !isTestChangedFile(path);
   };
   const shownFileEntries = renderableFileEntries.filter(({ fileDiff }) => isFileShown(fileDiff));
+  const shownFilePaths = [
+    ...new Set(shownFileEntries.map(({ fileDiff }) => resolveFileDiffPath(fileDiff))),
+  ];
+  const mobileActiveFilePath =
+    (mobileFilePath !== null && shownFilePaths.includes(mobileFilePath) ? mobileFilePath : null) ??
+    (selectedFilePath !== null && shownFilePaths.includes(selectedFilePath)
+      ? selectedFilePath
+      : null) ??
+    shownFilePaths[0] ??
+    "";
   const shownFileKeys = shownFileEntries.map((file) => file.fileKey);
   const defaultCollapsedDiffFileKeys = settings.diffFilesCollapsed
     ? new Set(diffFileKeys)
@@ -809,7 +832,7 @@ export default function DiffPanel({
 
   const headerRow = (
     <>
-      <div className="@container/diff-refs flex min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag]">
+      <div className="@container/diff-refs flex min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag] max-[768px]:min-h-11">
         <DropdownMenu>
           <span
             className={cn(
@@ -1105,7 +1128,7 @@ export default function DiffPanel({
       </div>
       <div
         className={cn(
-          "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]",
+          "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag] max-[768px]:w-full max-[768px]:flex-wrap max-[768px]:justify-end",
           headerCommitSha !== null && "gap-0",
         )}
       >
@@ -1123,7 +1146,7 @@ export default function DiffPanel({
               render={
                 <Button
                   type="button"
-                  size="icon-sm"
+                  size={mobileDiff ? "icon-xl" : "icon-sm"}
                   variant="ghost"
                   aria-label={isRefreshingDiff ? "Refreshing diff" : "Refresh diff"}
                   onClick={refreshDiffFromUserAction}
@@ -1143,7 +1166,7 @@ export default function DiffPanel({
               render={
                 <Button
                   type="button"
-                  size="icon-sm"
+                  size={mobileDiff ? "icon-xl" : "icon-sm"}
                   variant="ghost"
                   aria-label={allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
                   onClick={toggleDiffFileCollapse}
@@ -1164,18 +1187,27 @@ export default function DiffPanel({
           <ToggleGroup
             aria-label={t("Diff layout")}
             variant="segmented"
-            value={[diffLayout]}
+            value={[resolvedDiffLayout]}
             onValueChange={(value) => {
               const next = value[0];
               if (next === "stacked" || next === "split") {
+                if (mobileDiff) setMobileDiffLayout(next);
                 updateClientSettings({ diffLayout: next });
               }
             }}
           >
-            <Toggle aria-label={t("Stacked diff view")} value="stacked">
+            <Toggle
+              aria-label={t("Stacked diff view")}
+              value="stacked"
+              size={mobileDiff ? "touch" : undefined}
+            >
               <Rows3Icon className="size-3.5" />
             </Toggle>
-            <Toggle aria-label={t("Split diff view")} value="split">
+            <Toggle
+              aria-label={t("Split diff view")}
+              value="split"
+              size={mobileDiff ? "touch" : undefined}
+            >
               <Columns2Icon className="size-3.5" />
             </Toggle>
           </ToggleGroup>
@@ -1186,7 +1218,7 @@ export default function DiffPanel({
               <Toggle
                 aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
                 variant="ghost"
-                size="sm"
+                size={mobileDiff ? "touch" : "sm"}
                 pressed={wordWrap}
                 onPressedChange={(pressed) => {
                   setWordWrap(Boolean(pressed));
@@ -1208,7 +1240,7 @@ export default function DiffPanel({
                   diffIgnoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")
                 }
                 variant="ghost"
-                size="sm"
+                size={mobileDiff ? "touch" : "sm"}
                 pressed={diffIgnoreWhitespace}
                 onPressedChange={(pressed) => {
                   setDiffIgnoreWhitespace(Boolean(pressed));
@@ -1229,7 +1261,7 @@ export default function DiffPanel({
                 <Toggle
                   aria-label={t("Hide test files")}
                   variant="ghost"
-                  size="sm"
+                  size={mobileDiff ? "touch" : "sm"}
                   pressed={hideTestFiles}
                   onPressedChange={(pressed) => setHideTestFiles(Boolean(pressed))}
                 />
@@ -1244,7 +1276,7 @@ export default function DiffPanel({
             </TooltipPopup>
           </Tooltip>
         )}
-        {diffFileKeys.length > 0 && (
+        {diffFileKeys.length > 0 && !mobileDiff && (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1293,6 +1325,29 @@ export default function DiffPanel({
       ) : (
         <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+            {mobileDiff && shownFileEntries.length > 0 ? (
+              <div className="flex shrink-0 items-center border-b border-border/60 px-3 py-2 sm:hidden">
+                <label className="flex min-w-0 flex-1 items-center">
+                  <span className="sr-only">Jump to changed file</span>
+                  <select
+                    aria-label="Jump to changed file"
+                    className="h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                    value={mobileActiveFilePath}
+                    onChange={(event) => {
+                      const path = event.currentTarget.value;
+                      setMobileFilePath(path);
+                      revealDiffFile(path);
+                    }}
+                  >
+                    {shownFilePaths.map((path) => (
+                      <option key={path} value={path}>
+                        {path}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
             {preview?.incomplete && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
                 {selectedPatchError
@@ -1363,7 +1418,7 @@ export default function DiffPanel({
                 </div>
               )
             ) : lazySource || renderablePatch?.kind === "files" ? (
-              <div className="flex min-h-0 flex-1 overflow-hidden">
+              <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
                 <div
                   className="min-h-0 min-w-0 flex-1"
                   onClickCapture={(event) => {
@@ -1395,7 +1450,7 @@ export default function DiffPanel({
                     key={collapseScopeKey ?? reviewSectionId}
                     viewerRef={codeViewReveal.attach}
                     codeViewKey={`${codeViewMountKey}:${lazySource ? filePatchScope : "preview"}`}
-                    className="h-full min-h-0 overflow-auto"
+                    className="h-full min-h-0 min-w-0 max-w-full overflow-auto"
                     files={codeViewFiles}
                     pendingFiles={pendingFiles}
                     renderCodeViewFooter={renderLoadingBoundary}
@@ -1438,12 +1493,13 @@ export default function DiffPanel({
                           filePath={resolveFileDiffPath(fileDiff)}
                           fileKey={fileKey}
                           collapsed={unavailable || collapsedDiffFileKeys.has(fileKey)}
+                          mobile={mobileDiff}
                           onToggle={toggleDiffFileCollapsed}
                         />
                       );
                     }}
                     options={{
-                      diffStyle: diffLayout === "split" ? "split" : "unified",
+                      diffStyle: resolvedDiffLayout === "split" ? "split" : "unified",
                       lineDiffType: "none",
                       overflow: wordWrap ? "wrap" : "scroll",
                       theme: resolveDiffThemeName(resolvedTheme),
@@ -1455,7 +1511,7 @@ export default function DiffPanel({
                     }}
                   />
                 </div>
-                {fileTreeOpen ? (
+                {fileTreeOpen && !mobileDiff ? (
                   <aside className="flex w-[min(16rem,40%)] min-w-40 shrink-0 border-l border-border/60">
                     <DiffFileTree
                       ariaLabel={`${reviewSectionTitle} files`}
