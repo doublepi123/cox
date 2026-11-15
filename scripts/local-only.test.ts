@@ -6,7 +6,7 @@ import {
   assertDistributionManifestsAreLocalOnly,
   assertMobileDirectoryIsRemoteOnly,
   assertMobileManifestIsLocalOnly,
-} from "./lib/local-only";
+} from "./lib/local-only.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
