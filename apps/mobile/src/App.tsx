@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { RemoteGatewayRequiredError } from "@t3tools/shared/remoteServerAdmission";
 import { QrScannerSheet } from "./components/QrScannerSheet";
 import { ServerEditorSheet } from "./components/ServerEditorSheet";
 import { ServerList } from "./components/ServerList";
@@ -13,6 +14,11 @@ import {
   type Locale,
 } from "./i18n";
 import { applyThemePreference, readThemePreference, type ThemePreference } from "./theme";
+import {
+  forgetWorkspaceProfile,
+  hasNativeWorkspace,
+  openWorkspace,
+} from "./workspace/workspacePlugin";
 
 type ActiveSheet =
   | {
@@ -56,7 +62,26 @@ export function App({ store }: AppProps) {
     setError(null);
     setNotice(null);
     try {
-      await store.connect(id);
+      let profile: SavedServerProfile;
+      let gatewayLogin = false;
+      try {
+        profile = await store.connect(id);
+      } catch (caught) {
+        const saved = profiles.find((entry) => entry.id === id);
+        if (!(caught instanceof RemoteGatewayRequiredError) || !hasNativeWorkspace() || !saved)
+          throw caught;
+        profile = saved;
+        gatewayLogin = true;
+      }
+      await openWorkspace({
+        profileId: profile.id,
+        origin: profile.origin,
+        allowInsecureHttp: profile.allowInsecureHttp,
+        label: profile.label,
+        lastThreadPath: profile.lastThreadPath,
+        serverCount: profiles.length,
+        gatewayLogin,
+      });
       setNotice(t("connectionReady"));
     } catch (caught) {
       setError(formatConnectionError(caught, t));
@@ -74,9 +99,10 @@ export function App({ store }: AppProps) {
     }
   };
 
-  const forget = (profile: SavedServerProfile) => {
+  const forget = async (profile: SavedServerProfile) => {
     try {
-      store.forget(profile.id);
+      await forgetWorkspaceProfile(profile);
+      await store.forget(profile.id);
       setSheet(null);
       setError(null);
       setNotice(null);
@@ -206,7 +232,7 @@ export function App({ store }: AppProps) {
             <button
               type="button"
               className="button button-danger"
-              onClick={() => forget(sheet.profile)}
+              onClick={() => void forget(sheet.profile)}
             >
               {t("forgetServer")}
             </button>

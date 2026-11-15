@@ -362,6 +362,9 @@ importers:
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      effect:
+        specifier: 4.0.5
+        version: 4.0.5
       react:
         specifier: 'catalog:'
         version: 19.3.0
