@@ -10,6 +10,7 @@ import {
   ModelServiceError,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Context from "effect/Context";
 import type * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -17,13 +18,13 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
-import * as NodeUtil from "node:util";
 
 import * as Settings from "../serverSettings.ts";
 import * as SecretResolver from "../secrets/SecretResolver.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "./builtInDrivers.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
 import * as ProviderInstanceRegistryMutator from "./ProviderInstanceRegistryMutator.ts";
+import { makeSettingsSynchronizer } from "./providerSettingsSynchronizer.ts";
 import * as ProviderOrchestrationAdapterInfrastructure from "./ProviderOrchestrationAdapterInfrastructure.ts";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import * as ProviderHostLive from "./ProviderHostLive.ts";
@@ -141,39 +142,18 @@ export const materializeInstances = Effect.fn("materializeModelServiceInstances"
   return yield* gateway.value.materialize(settings, instances);
 });
 
-const vaultConfigs = (settings: ServerSettings) =>
-  Object.entries(settings.secretProviders).map(([id, { kind, config }]) => [id, kind, config]);
-
 export const layerSettingsWatcher = (
   settingsChanges: Stream.Stream<ServerSettings>,
   initialSettings: ServerSettings | undefined,
 ) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
-      const mutator = yield* ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator;
-      const serverSettings = yield* Settings.ServerSettingsService;
-      let secretProviders = initialSettings && vaultConfigs(initialSettings);
+      const { reconcileFromStream } = yield* makeSettingsSynchronizer({
+        initialSettings,
+        materialize: materializeInstances,
+      });
       yield* settingsChanges.pipe(
-        Stream.runForEach(() =>
-          // The subscription predates the seed read, so a queued change can be
-          // older than the seed. A failed current read must leave the registry intact.
-          serverSettings.getSettings.pipe(
-            Effect.flatMap((current) =>
-              Effect.gen(function* () {
-                const entries = yield* materializeInstances(current);
-                yield* mutator.reconcile(entries);
-                const next = vaultConfigs(current);
-                if (!NodeUtil.isDeepStrictEqual(secretProviders, next)) {
-                  yield* mutator.reloadSecrets();
-                  secretProviders = next;
-                }
-              }),
-            ),
-            Effect.catchCause((cause) =>
-              Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
-            ),
-          ),
-        ),
+        Stream.runForEach(() => reconcileFromStream),
         Effect.forkScoped,
       );
     }),
@@ -210,9 +190,38 @@ export const layer: Layer.Layer<
       Layer.provide(SecretResolver.layer),
     );
 
-    return layerSettingsWatcher(settingsChanges, initialSettings).pipe(
-      Layer.provideMerge(layerMutable),
+    const layerSynchronized = Layer.effectContext(
+      Effect.gen(function* () {
+        const baseRegistry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+        const mutator = yield* ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator;
+        const { reconcileFromStream, synchronize } = yield* makeSettingsSynchronizer({
+          initialSettings,
+          materialize: materializeInstances,
+        });
+        yield* settingsChanges.pipe(
+          Stream.runForEach(() => reconcileFromStream),
+          Effect.forkScoped,
+        );
+        const hydratedRegistry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"] = {
+          ...baseRegistry,
+          get streamChanges() {
+            return baseRegistry.streamChanges;
+          },
+          get subscribeChanges() {
+            return baseRegistry.subscribeChanges;
+          },
+          synchronize: synchronize.pipe(Effect.andThen(baseRegistry.synchronize ?? Effect.void)),
+        };
+        return Context.make(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          hydratedRegistry,
+        ).pipe(
+          Context.add(ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator, mutator),
+        );
+      }),
     );
+
+    return layerSynchronized.pipe(Layer.provide(layerMutable));
   }),
 ) as Layer.Layer<
   | ProviderInstanceRegistry.ProviderInstanceRegistry

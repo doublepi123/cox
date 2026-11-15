@@ -28,6 +28,11 @@ import * as Stream from "effect/Stream";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 
 import { buildUnavailableProviderSnapshot } from "./unavailableProviderSnapshot.ts";
+import {
+  makeProviderCredentialFingerprint,
+  sameProviderCredentialFingerprint,
+  type ProviderCredentialFingerprint,
+} from "./providerCredentialGeneration.ts";
 import * as ProviderInstanceRegistryMutator from "./ProviderInstanceRegistryMutator.ts";
 import type { AnyProviderDriver, ProviderInstance } from "@t3tools/provider-core/server/driver";
 
@@ -37,6 +42,10 @@ export class ProviderInstanceRegistry extends Context.Service<
     readonly getInstance: (
       instanceId: ProviderInstanceId,
     ) => Effect.Effect<ProviderInstance | undefined>;
+    readonly getCredentialGeneration?: (
+      instanceId: ProviderInstanceId,
+    ) => Effect.Effect<number | undefined>;
+    readonly synchronize?: Effect.Effect<void>;
     readonly listInstances: Effect.Effect<ReadonlyArray<ProviderInstance>>;
     readonly listUnavailable: Effect.Effect<ReadonlyArray<ServerProvider>>;
     /** streamChanges subscribes on consumption; use subscribeChanges before forking to avoid missing the next publish. */
@@ -55,12 +64,15 @@ interface LiveEntry {
   readonly scope: Scope.Closeable;
   readonly entry: ProviderInstanceConfig;
   readonly secrets: InstanceSecrets;
+  readonly credentialFingerprint: ProviderCredentialFingerprint;
+  readonly credentialGeneration: number;
 }
 
 interface RegistryState {
   readonly entries: Ref.Ref<ReadonlyMap<ProviderInstanceId, LiveEntry>>;
   readonly unavailable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ServerProvider>>;
   readonly secretsUnreadable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ProviderInstanceConfig>>;
+  readonly nextCredentialGeneration: Ref.Ref<number>;
   readonly changes: PubSub.PubSub<void>;
 }
 
@@ -155,6 +167,8 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
   readonly rawInstanceId: string;
   readonly entry: ProviderInstanceConfig;
   readonly deferSecrets: boolean;
+  readonly previous?: LiveEntry;
+  readonly allocateCredentialGeneration: Effect.Effect<number>;
 }): Effect.fn.Return<
   | { readonly kind: "live"; readonly live: LiveEntry }
   | {
@@ -273,6 +287,13 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
     };
   }
 
+  const credentialFingerprint = makeProviderCredentialFingerprint(entry, enabled, secrets);
+  const credentialGeneration =
+    input.previous !== undefined &&
+    sameProviderCredentialFingerprint(input.previous.credentialFingerprint, credentialFingerprint)
+      ? input.previous.credentialGeneration
+      : yield* input.allocateCredentialGeneration;
+
   return {
     kind: "live" as const,
     live: {
@@ -280,6 +301,8 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
       scope: childScope,
       entry,
       secrets,
+      credentialFingerprint,
+      credentialGeneration,
     },
   };
 });
@@ -386,6 +409,11 @@ const makeReconcile = <R>(input: {
           rawInstanceId,
           entry,
           deferSecrets,
+          ...(existing === undefined ? {} : { previous: existing }),
+          allocateCredentialGeneration: Ref.updateAndGet(
+            state.nextCredentialGeneration,
+            (value) => value + 1,
+          ),
         });
         if (result.kind === "live") {
           builtEntries.set(instanceId, result.live);
@@ -459,10 +487,17 @@ export const makeProviderInstanceRegistry = Effect.fn(
   const secretsUnreadable = yield* Ref.make<
     ReadonlyMap<ProviderInstanceId, ProviderInstanceConfig>
   >(new Map());
+  const nextCredentialGeneration = yield* Ref.make(0);
   const changes = yield* PubSub.unbounded<void>();
   yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
 
-  const state: RegistryState = { entries, unavailable, secretsUnreadable, changes };
+  const state: RegistryState = {
+    entries,
+    unavailable,
+    secretsUnreadable,
+    nextCredentialGeneration,
+    changes,
+  };
   const reconcileWithR = makeReconcile({ state, driversById, parentScope });
   const configMapRef = yield* Ref.make(input.configMap);
   const semaphore = yield* Semaphore.make(1);
@@ -545,6 +580,14 @@ export const makeProviderInstanceRegistry = Effect.fn(
 
   const registry: ProviderInstanceRegistry["Service"] = {
     getInstance: (id) => Ref.get(entries).pipe(Effect.map((map) => map.get(id)?.instance)),
+    getCredentialGeneration: (id) =>
+      Ref.get(entries).pipe(
+        Effect.map((map) => {
+          const live = map.get(id);
+          return live?.instance.enabled ? live.credentialGeneration : undefined;
+        }),
+      ),
+    synchronize: semaphore.withPermits(1)(Effect.void),
     listInstances: Ref.get(entries).pipe(
       Effect.map(
         (map) =>

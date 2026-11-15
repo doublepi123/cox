@@ -6,8 +6,10 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import type * as Stream from "effect/Stream";
 
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import { ProviderAdapterDriverCreateError } from "@t3tools/provider-core/server/adapterDriver";
@@ -43,6 +45,12 @@ export interface ProviderAdapterRegistryV2Shape {
     instanceId: ProviderInstanceId,
   ) => Effect.Effect<ProviderAdapter.ProviderAdapterV2["Service"], ProviderAdapterRegistryV2Error>;
   readonly list: () => Effect.Effect<ReadonlyArray<ProviderInstanceId>>;
+  readonly getCredentialGeneration?: (
+    instanceId: ProviderInstanceId,
+  ) => Effect.Effect<number | undefined>;
+  readonly synchronize?: Effect.Effect<void>;
+  readonly subscribeChanges?: Effect.Effect<PubSub.Subscription<void>, never, Scope.Scope>;
+  readonly streamChanges?: Stream.Stream<void>;
   readonly getMetadata?: (instanceId: ProviderInstanceId) => Effect.Effect<
     {
       readonly driver: ProviderAdapter.ProviderAdapterV2["Service"]["driver"];
@@ -131,6 +139,18 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
           Effect.map((available) => available.map((instance) => instance.instanceId)),
         );
       }),
+      ...(instances.getCredentialGeneration === undefined
+        ? {}
+        : {
+            getCredentialGeneration: instances.getCredentialGeneration,
+            get subscribeChanges() {
+              return instances.subscribeChanges;
+            },
+            get streamChanges() {
+              return instances.streamChanges;
+            },
+          }),
+      ...(instances.synchronize === undefined ? {} : { synchronize: instances.synchronize }),
       getMetadata: Effect.fn("ProviderAdapterRegistry.getMetadata")(function* (instanceId) {
         const instance = yield* instances.getInstance(instanceId);
         if (instance === undefined) {

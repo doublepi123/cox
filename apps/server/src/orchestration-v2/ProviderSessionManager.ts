@@ -26,6 +26,7 @@ import * as FiberSet from "effect/FiberSet";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
@@ -234,6 +235,7 @@ interface LiveSessionEntry {
   >;
   readonly requestEventPermit: Semaphore.Semaphore;
   readonly scope: Scope.Closeable;
+  readonly credentialGeneration: number | undefined;
   readonly idleGeneration: number;
   readonly busyTurns: ReadonlySet<string>;
   readonly idleFiber: Fiber.Fiber<void, never> | null;
@@ -1751,6 +1753,7 @@ export const layerWithOptions = (
         eventSubscribers: Ref.Ref<
           ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
         >,
+        replayReplacedWake: Ref.Ref<boolean>,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
         const providerSessionId = runtime.providerSessionId;
         const subscribeEvents = makeEventSubscription(eventSubscribers);
@@ -1923,7 +1926,21 @@ export const layerWithOptions = (
                     ),
                   ),
                   () =>
-                    runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
+                    Ref.getAndSet(replayReplacedWake, false).pipe(
+                      Effect.flatMap((shouldReplayWake) =>
+                        runtime.startTurn(
+                          shouldReplayWake &&
+                            input.message.createdBy === "agent" &&
+                            input.message.creationSource === "provider"
+                            ? {
+                                ...input,
+                                message: { ...input.message, creationSource: "server" },
+                              }
+                            : input,
+                        ),
+                      ),
+                      turnMetrics("send", input.modelSelection.model),
+                    ),
                   (_, exit) =>
                     Exit.isFailure(exit)
                       ? observeActivity(
@@ -2305,6 +2322,71 @@ export const layerWithOptions = (
         ),
       );
 
+      if (
+        registry.subscribeChanges !== undefined &&
+        registry.getCredentialGeneration !== undefined
+      ) {
+        const subscribeChanges = registry.subscribeChanges;
+        const getCredentialGeneration = registry.getCredentialGeneration;
+        yield* Effect.gen(function* () {
+          const registryChanges = yield* subscribeChanges;
+          return yield* PubSub.take(registryChanges).pipe(
+            Effect.flatMap(() =>
+              Effect.gen(function* () {
+                if (shutdownSignal.received) return;
+                const snapshot = [...(yield* Ref.get(sessions)).values()];
+                yield* Effect.forEach(
+                  snapshot,
+                  (candidate) =>
+                    Effect.gen(function* () {
+                      if (
+                        candidate.credentialGeneration === undefined ||
+                        candidate.busyTurns.size > 0
+                      ) {
+                        return;
+                      }
+                      const latestGeneration = yield* getCredentialGeneration(
+                        candidate.runtime.instanceId,
+                      );
+                      if (latestGeneration === candidate.credentialGeneration) return;
+                      const hasPendingWork =
+                        candidate.runtime.hasPendingBackgroundWork === undefined
+                          ? false
+                          : yield* candidate.runtime.hasPendingBackgroundWork.pipe(
+                              Effect.catchCause(() => Effect.succeed(false)),
+                            );
+                      const hasOmoIdleWait =
+                        candidate.runtime.providerSession.extensionStatuses?.some(
+                          (status) => status.key === "cox-omo-wait",
+                        ) === true;
+                      if (hasPendingWork || hasOmoIdleWait) return;
+                      const providerSessionId = candidate.runtime.providerSessionId;
+                      yield* sessionOpen.withLock(
+                        providerSessionId,
+                        Effect.gen(function* () {
+                          const current = (yield* Ref.get(sessions)).get(
+                            sessionKey(providerSessionId),
+                          );
+                          if (current !== candidate || current.busyTurns.size > 0) return;
+                          yield* releaseEntry({
+                            providerSessionId,
+                            reason: "manual_shutdown",
+                            detail: "Provider credentials changed.",
+                            onlyIfIdleGeneration: current.idleGeneration,
+                            gracefulSubscribers: true,
+                          }).pipe(logReleaseFailure(providerSessionId));
+                        }),
+                      );
+                    }),
+                  { concurrency: "unbounded", discard: true },
+                );
+              }),
+            ),
+            Effect.forever,
+          );
+        }).pipe(Effect.ignore, Effect.forkIn(layerScope, { startImmediately: true }));
+      }
+
       return ProviderSessionManagerV2.of({
         shutdown,
         subscribePromptSuggestion: (threadId) =>
@@ -2338,25 +2420,50 @@ export const layerWithOptions = (
                   });
                 }
               }
+              if (registry.synchronize !== undefined) {
+                yield* registry.synchronize;
+              }
+              const currentCredentialGeneration =
+                registry.getCredentialGeneration === undefined
+                  ? undefined
+                  : yield* registry.getCredentialGeneration(input.modelSelection.instanceId);
               const key = sessionKey(input.providerSessionId);
               const existing = (yield* Ref.get(sessions)).get(key);
+              let hadPendingWake = false;
               if (existing !== undefined) {
-                const attached = existing.attachedThreadIds.has(input.threadId);
-                if (!attached && !existing.supportsMultipleProviderThreads) {
-                  return yield* new ProviderSessionOpenError({
-                    instanceId: input.modelSelection.instanceId,
+                const reusable =
+                  existing.runtime.instanceId === input.modelSelection.instanceId &&
+                  existing.credentialGeneration === currentCredentialGeneration;
+                if (reusable) {
+                  const attached = existing.attachedThreadIds.has(input.threadId);
+                  if (!attached && !existing.supportsMultipleProviderThreads) {
+                    return yield* new ProviderSessionOpenError({
+                      instanceId: input.modelSelection.instanceId,
+                      providerSessionId: input.providerSessionId,
+                      cause: `Provider ${existing.runtime.driver} does not support attaching multiple app threads to one session.`,
+                    });
+                  }
+                  if (!attached) yield* agentScope.clear(input.threadId);
+                  yield* ensureThreadAttached({
                     providerSessionId: input.providerSessionId,
-                    cause: `Provider ${existing.runtime.driver} does not support attaching multiple app threads to one session.`,
+                    threadId: input.threadId,
+                    providerInstanceId: existing.runtime.instanceId,
                   });
+                  yield* touchActivity(input.providerSessionId);
+                  return existing.exposedRuntime;
                 }
-                if (!attached) yield* agentScope.clear(input.threadId);
-                yield* ensureThreadAttached({
+                hadPendingWake =
+                  existing.runtime.hasPendingBackgroundWork === undefined
+                    ? false
+                    : yield* existing.runtime.hasPendingBackgroundWork.pipe(
+                        Effect.catchCause(() => Effect.succeed(false)),
+                      );
+                yield* releaseEntry({
                   providerSessionId: input.providerSessionId,
-                  threadId: input.threadId,
-                  providerInstanceId: existing.runtime.instanceId,
+                  reason: "manual_shutdown",
+                  detail: "Provider credentials changed.",
+                  gracefulSubscribers: existing.busyTurns.size === 0,
                 });
-                yield* touchActivity(input.providerSessionId);
-                return existing.exposedRuntime;
               }
 
               const adapter = yield* registry.get(input.modelSelection.instanceId).pipe(
@@ -2440,7 +2547,8 @@ export const layerWithOptions = (
               const eventSubscribers = yield* Ref.make<
                 ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
               >(new Map());
-              const exposedRuntime = decorateRuntime(runtime, eventSubscribers);
+              const replayReplacedWake = yield* Ref.make(hadPendingWake);
+              const exposedRuntime = decorateRuntime(runtime, eventSubscribers, replayReplacedWake);
               const entry: LiveSessionEntry = {
                 attachedThreadIds: new Set([input.threadId]),
                 loadedProviderThreadKeyByThread: new Map(),
@@ -2456,6 +2564,7 @@ export const layerWithOptions = (
                 eventSubscribers,
                 requestEventPermit: yield* Semaphore.make(1),
                 scope: sessionScope,
+                credentialGeneration: currentCredentialGeneration,
                 idleGeneration: 0,
                 busyTurns: new Set(),
                 idleFiber: null,
