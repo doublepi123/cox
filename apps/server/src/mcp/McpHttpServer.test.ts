@@ -26,6 +26,7 @@ import { HttpBody, HttpClient, HttpClientRequest, HttpRouter } from "effect/http
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
 import * as ServerConfig from "../config.ts";
+import * as ServerHttp from "../http.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
@@ -893,6 +894,24 @@ it.effect("admits provider and OAuth client credentials and points only clients 
               ),
           }),
         ),
+        Layer.provide(ServerHttp.layerBrowserApiCors),
+        Layer.provide(
+          Layer.effect(
+            ServerConfig.ServerConfig,
+            ServerConfig.ServerConfig.pipe(
+              Effect.map((config) => ({
+                ...config,
+                devUrl: new URL("http://localhost:5173"),
+              })),
+            ),
+          ).pipe(
+            Layer.provide(
+              ServerConfig.layerTest(process.cwd(), { prefix: "cox-mcp-origin-test-" }).pipe(
+                Layer.provide(NodeServices.layer),
+              ),
+            ),
+          ),
+        ),
       );
       yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
         Layer.build,
@@ -966,6 +985,44 @@ it.effect("admits provider and OAuth client credentials and points only clients 
           .slice(spansBeforeRejection)
           .filter((span) => span.name.startsWith("mcp.tool.")),
       ).toEqual([]);
+      for (const origin of ["https://untrusted.invalid", "http://localhost:5173"]) {
+        for (const method of ["POST", "OPTIONS"] as const) {
+          for (const token of [providerToken, clientToken, undefined]) {
+            const response = yield* httpClient.execute(
+              HttpClientRequest.make(method)("/mcp?origin-probe=1", {
+                headers: {
+                  origin,
+                  accept: "application/json, text/event-stream",
+                  "access-control-request-method": "POST",
+                  ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+                },
+                ...(method === "POST"
+                  ? {
+                      body: HttpBody.text(
+                        `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}`,
+                        "application/json",
+                      ),
+                    }
+                  : {}),
+              }),
+            );
+            expect(response.status).toBe(403);
+            expect(response.headers["www-authenticate"]).toBeUndefined();
+            expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+          }
+        }
+      }
+      const preflight = yield* httpClient.execute(
+        HttpClientRequest.options("/api/cors-probe", {
+          headers: {
+            origin: "http://localhost:5173",
+            "access-control-request-method": "POST",
+          },
+        }),
+      );
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+      expect(preflight.headers["access-control-allow-credentials"]).toBe("true");
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

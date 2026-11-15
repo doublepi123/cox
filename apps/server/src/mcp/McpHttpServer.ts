@@ -69,6 +69,7 @@ import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
+import { MCP_HTTP_PATH } from "../httpCors.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
   HttpServerRequest.toURL(request).pipe(
@@ -204,7 +205,9 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     return limited;
   });
   return Effect.fnUntraced(function* (httpEffect) {
-    const admitted = yield* authenticateRequest(yield* HttpServerRequest.HttpServerRequest);
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    if (request.headers.origin !== undefined) return HttpServerResponse.empty({ status: 403 });
+    const admitted = yield* authenticateRequest(request);
     if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
     return yield* httpEffect.pipe(
       Effect.provideService(McpInvocationContext.McpInvocationContext, admitted),
@@ -1117,7 +1120,7 @@ export const layerPullRequestsToolkit = toolkitRegistration(
 export const layerMcpTransport = McpServer.layerHttp({
   name: "Cox",
   version: packageJson.version,
-  path: "/mcp",
+  path: MCP_HTTP_PATH,
   protocols: [McpProtocol.v2025_06_18],
   allowSessionTermination: true,
 }).pipe(Layer.provide(layerMcpAuthMiddleware));

@@ -9,3 +9,5 @@ export const browserApiCorsAllowedHeaders = [
   "dpop",
   ORCHESTRATION_PROTOCOL_HEADER,
 ] as const;
+
+export const MCP_HTTP_PATH = "/mcp";
