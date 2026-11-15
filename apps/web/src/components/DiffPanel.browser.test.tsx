@@ -6,6 +6,7 @@ import {
   ProjectId,
   RunId,
   ThreadId,
+  TurnItemId,
   type ClientSettings,
   type ReviewBranchCommitsResult,
   type ReviewDiffPreviewResult,
@@ -34,6 +35,12 @@ const state = vi.hoisted(() => ({
   filePatches: new Map<string, PatchAtom>(),
   requestedPaths: new Set<string>(),
   diffFilesCollapsed: false,
+  codeViewMounts: 0,
+  project: {
+    workspaceRoot: "/project",
+    repositoryIdentity: null as { rootPath: string } | null,
+  },
+  toolCallItem: null as unknown,
   config: null as unknown as Atom.Atom<null>,
   status: null as unknown as ResultAtom<VcsStatusResult>,
   localRefs: null as unknown as ResultAtom<VcsListRefsResult>,
@@ -68,7 +75,7 @@ vi.mock("~/state/vcs", () => ({
 }));
 vi.mock("~/state/entities", () => ({
   useQuietThreadShell: () => state.thread,
-  useProject: () => ({ workspaceRoot: "/project", repositoryIdentity: null }),
+  useProject: () => state.project,
   useThreadCheckpointSummaries: () => state.checkpoints,
   useQuietThreadVisibleTurnItems: () => [],
 }));
@@ -89,7 +96,11 @@ vi.mock("~/hooks/useTheme", () => ({
 }));
 vi.mock("~/state/queries", () => ({
   useCheckpointDiff: () => ({ data: state.checkpointDiff, error: null, isPending: false }),
-  useTurnItemDetail: () => ({ data: null, error: null, isPending: false }),
+  useTurnItemDetail: () => ({
+    data: state.toolCallItem ? { item: state.toolCallItem } : null,
+    error: null,
+    isPending: false,
+  }),
   useDebouncedValue: <A,>(value: A) => value,
 }));
 vi.mock("~/state/use-atom-command", () => ({ useAtomCommand: () => async () => {} }));
@@ -97,9 +108,23 @@ vi.mock("~/editorPreferences", () => ({ useOpenInPreferredEditor: () => async ()
 vi.mock("~/fileContextMenu", () => ({ useFileContextMenuHandler: () => () => {} }));
 vi.mock("~/browser/useOpenLink", () => ({ useOpenLink: () => async () => {} }));
 vi.mock("./DiffFilePathCopyButton", () => ({ DiffFilePathCopyButton: () => null }));
+vi.mock("./diffs/StyledDiffCodeView", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./diffs/StyledDiffCodeView")>();
+  const { createElement, useEffect } = await import("react");
+  return {
+    ...actual,
+    StyledDiffCodeView: (props: Parameters<typeof actual.StyledDiffCodeView>[0]) => {
+      useEffect(() => {
+        state.codeViewMounts += 1;
+      }, []);
+      return createElement(actual.StyledDiffCodeView, props);
+    },
+  };
+});
 
 import DiffPanel from "./DiffPanel";
 import { useDiffPanelSessionStore, useDiffPanelStore } from "~/diffPanelStore";
+import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
 const cwd = "/project-worktree";
 const errorMessage = "Could not find a common commit between 'origin/orphan' and HEAD.";
@@ -139,6 +164,9 @@ function setup(failedBaseRef: string | null) {
   state.filePatches.clear();
   state.requestedPaths.clear();
   state.diffFilesCollapsed = false;
+  state.codeViewMounts = 0;
+  state.project = { workspaceRoot: "/project", repositoryIdentity: null };
+  state.toolCallItem = null;
   state.checkpoints = [];
   state.checkpointDiff = null;
   const patch = Atom.make<AsyncResult.AsyncResult<ReviewDiffPreviewSource, Error>>(
@@ -404,4 +432,151 @@ it.each([
   await expect
     .element(screen.getByRole("button", { name: `Collapse ${name}`, exact: true }))
     .toHaveAttribute("aria-expanded", "true");
+});
+
+it("opens a tool-call diff file relative to its project workspace", async () => {
+  using context = setup("origin/orphan");
+  state.thread = { ...state.thread!, worktreePath: null };
+  state.project = { workspaceRoot: "/repo/apps/web", repositoryIdentity: { rootPath: "/repo" } };
+  const status = AsyncResult.getOrThrow(context.registry.get(state.status));
+  state.status = Atom.make(
+    AsyncResult.success({ ...status, workingTree: { ...status.workingTree, rootPath: "/repo" } }),
+  );
+  state.toolCallItem = {
+    type: "file_change",
+    fileName: "src/a.ts",
+    diffStr: "--- src/a.ts\n+++ src/a.ts\n@@ -1 +1 @@\n-before\n+after\n",
+  };
+  useDiffPanelStore.getState().selectToolCall(context.threadRef, {
+    threadId: context.threadRef.threadId,
+    itemId: TurnItemId.make("edit"),
+    revision: "1",
+  });
+  await using screen = await render(
+    <RegistryContext.Provider value={context.registry}>
+      <div className="flex h-[600px] flex-col">
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>,
+  );
+  await userEvent.click(screen.getByText("src/a.ts", { exact: true }));
+  await vi.waitFor(() =>
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, context.threadRef),
+    ).toMatchObject({ activeSurfaceId: "file:src/a.ts" }),
+  );
+});
+
+it("reuses the mounted code view when collapsing and expanding all files", async () => {
+  using context = setupFiles(["mount.ts"]);
+  await using screen = await render(
+    <RegistryContext.Provider value={context.registry}>
+      <div className="flex h-[600px] flex-col">
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>,
+  );
+  await context.load("mount.ts");
+  await expect.element(screen.getByText("after-mount.ts-0", { exact: true })).toBeVisible();
+  await vi.waitFor(() => expect(state.codeViewMounts).toBeGreaterThan(0));
+  const mounts = state.codeViewMounts;
+
+  await userEvent.click(screen.getByRole("button", { name: "Collapse all files", exact: true }));
+  await expect
+    .element(screen.getByRole("button", { name: "Expand all files", exact: true }))
+    .toBeVisible();
+  expect(state.codeViewMounts).toBe(mounts);
+
+  await userEvent.click(screen.getByRole("button", { name: "Expand all files", exact: true }));
+  await expect
+    .element(screen.getByRole("button", { name: "Collapse all files", exact: true }))
+    .toBeVisible();
+  expect(state.codeViewMounts).toBe(mounts);
+});
+
+it("keeps repeated diff blocks independent when surrounding content changes", async () => {
+  using context = setup("origin/orphan");
+  state.thread = { ...state.thread!, worktreePath: null };
+  const patch = (blocks: [string, string][]) =>
+    blocks
+      .map(([path, content]) =>
+        [
+          `diff --git a/${path} b/${path}`,
+          `--- a/${path}`,
+          `+++ b/${path}`,
+          "@@ -1 +1 @@",
+          "-before",
+          `+${content}`,
+          "",
+        ].join("\n"),
+      )
+      .join("");
+  state.toolCallItem = {
+    type: "file_change",
+    fileName: "same.ts",
+    diffStr: patch([
+      ["same.ts", "first"],
+      ["same.ts", "second"],
+      ["same.ts", "second"],
+    ]),
+  };
+  useDiffPanelStore.getState().selectToolCall(context.threadRef, {
+    threadId: context.threadRef.threadId,
+    itemId: TurnItemId.make("repeated"),
+    revision: "1",
+  });
+  const panel = () => (
+    <RegistryContext.Provider value={context.registry}>
+      <div className="flex h-[600px] flex-col">
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>
+  );
+  await using screen = await render(panel());
+  const blocks = () => [...screen.container.querySelectorAll("diffs-container")];
+  const body = (index: number) => blocks()[index]?.shadowRoot?.querySelector("[data-diff]");
+  const expanded = () => blocks().map((_, index) => body(index) != null);
+  const fileKey = (index: number) =>
+    blocks()[index]?.querySelector("[data-diff-file-key]")?.getAttribute("data-diff-file-key");
+  const clickHeader = async (index: number) => {
+    const header = blocks()[index]?.shadowRoot?.querySelector("[data-diffs-header]");
+    if (!header) throw new Error(`Missing diff header ${String(index)}`);
+    await act(async () =>
+      header.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true })),
+    );
+  };
+  await vi.waitFor(() => {
+    expect(blocks()).toHaveLength(3);
+    expect(expanded()).toEqual([true, true, true]);
+  });
+  await vi.waitFor(() => {
+    expect(body(0)?.textContent).toContain("first");
+    expect(body(1)?.textContent).toContain("second");
+    expect(body(2)?.textContent).toContain("second");
+  });
+
+  await clickHeader(1);
+  await vi.waitFor(() => expect(expanded()).toEqual([true, false, true]));
+  const collapsedFileKey = fileKey(1);
+  if (!collapsedFileKey) throw new Error("Missing collapsed diff file key");
+  state.toolCallItem = {
+    type: "file_change",
+    fileName: "same.ts",
+    diffStr: patch([
+      ["unrelated.ts", "new"],
+      ["same.ts", "first"],
+      ["same.ts", "updated second"],
+      ["same.ts", "second"],
+    ]),
+  };
+  await screen.rerender(panel());
+  await vi.waitFor(() => expect(blocks()).toHaveLength(4));
+  const collapsedIndex = blocks().findIndex((_, index) => fileKey(index) === collapsedFileKey);
+  expect(collapsedIndex).toBeGreaterThanOrEqual(0);
+  expect(expanded()).toEqual(blocks().map((_, index) => index !== collapsedIndex));
+  await clickHeader(collapsedIndex);
+  await vi.waitFor(() => {
+    expect(expanded()).toEqual([true, true, true, true]);
+    expect(body(collapsedIndex)?.textContent).toContain("updated second");
+  });
 });

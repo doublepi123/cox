@@ -1,11 +1,15 @@
 import { createMemoryHistory } from "@tanstack/react-router";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopeProjectRef,
+  scopeThreadRef,
+  scopedThreadKey,
+} from "@t3tools/client-runtime/environment";
 import type { WsRpcProtocolClient } from "@t3tools/client-runtime/rpc";
 import { ThreadId } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import type * as Context from "effect/Context";
 import { expect, it, vi } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import "./ThreadRouteView";
 
@@ -13,6 +17,7 @@ import { AppRoot } from "~/AppRoot";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
+import { makeThreadProjectionFixture } from "../test-fixtures";
 import {
   ENVIRONMENT_ID,
   PROJECT_ID,
@@ -21,11 +26,19 @@ import {
   type FakeDriver,
 } from "../../test/fakeEnvironment";
 import { act, render } from "../../test/render";
+import { draftSendState } from "./chat/chatViewSend";
 
 const threadStreamFailure = vi.hoisted(() => ({
   threadId: null as string | null,
   kind: "empty" as "empty" | "cached",
   delivered: new Set<string>(),
+}));
+
+const sendGate = vi.hoisted(() => ({
+  started: false,
+  completion: null as Promise<void> | null,
+  runTransitionUpdate: null as (() => void | Promise<void>) | null,
+  promptRef: null as { current: string } | null,
 }));
 
 // The socket is the only fake layer; see test/appScenarios.renders.tsx.
@@ -43,12 +56,25 @@ vi.mock("../../../../packages/client-runtime/src/connection/driver.ts", async (i
     new Proxy(client, {
       get: (target, property, receiver) => {
         const method = Reflect.get(target, property, receiver) as unknown;
-        if (
-          property !== contracts.ORCHESTRATION_V2_WS_METHODS.subscribeThread ||
-          typeof method !== "function"
-        ) {
-          return method;
+        if (typeof method !== "function") return method;
+        if (property === contracts.ORCHESTRATION_V2_WS_METHODS.dispatchCommand) {
+          return () => Effect.succeed({ sequence: 1 });
         }
+        if (property === contracts.ORCHESTRATION_V2_WS_METHODS.launchThread) {
+          return (input: { readonly threadId: ThreadId }) => {
+            const projection = makeThreadProjectionFixture();
+            return Effect.succeed({
+              threadId: input.threadId,
+              projection: {
+                ...projection,
+                thread: { ...projection.thread, id: input.threadId },
+              },
+              resumed: false,
+              sequence: 1,
+            });
+          };
+        }
+        if (property !== contracts.ORCHESTRATION_V2_WS_METHODS.subscribeThread) return method;
         return (input: { readonly threadId: ThreadId }) => {
           const stream = method(input);
           if (input.threadId !== threadStreamFailure.threadId) return stream;
@@ -79,9 +105,38 @@ vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
   trackRpcRequestSent: () => {},
 }));
 
+vi.mock(import("./chat/draftHeroTransition"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    runMobileComposerTransition: (
+      update: () => void | Promise<void>,
+      options: Parameters<typeof actual.runMobileComposerTransition>[1],
+    ) => {
+      const completion = sendGate.completion;
+      if (completion === null) return actual.runMobileComposerTransition(update, options);
+      sendGate.started = true;
+      sendGate.runTransitionUpdate = update;
+      return completion;
+    },
+  };
+});
+
+vi.mock(import("./chat/useComposerSend"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    useComposerSend: (input: Parameters<typeof actual.useComposerSend>[0]) => {
+      sendGate.promptRef = input.promptRef;
+      return actual.useComposerSend(input);
+    },
+  };
+});
+
 installFakeEnvironment([
   threadWithHistory("thread-stream-empty", 1),
   threadWithHistory("thread-stream-cached", 1),
+  threadWithHistory("thread-send-destination", 1),
 ]);
 
 const returningUserSettings = () =>
@@ -177,4 +232,67 @@ it("a thread with cached detail shows its stored stream failure instead of sync 
   expect(composerSyncStatus()).toBeNull();
 
   await recoverThreadStream();
+});
+
+it("a send finishing after navigation leaves the open thread's composer alone", async () => {
+  returningUserSettings();
+  const origin = ThreadId.make("thread-send-origin");
+  const draftId = DraftId.make("draft-send-origin");
+  const destination = ThreadId.make("thread-send-destination");
+  useComposerDraftStore
+    .getState()
+    .setProjectDraftThreadId(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), draftId, {
+      threadId: origin,
+    });
+  let finishTransition = () => {};
+  const completion = new Promise<void>((resolve) => {
+    finishTransition = resolve;
+  });
+  sendGate.started = false;
+  sendGate.completion = completion;
+  using _sendGate = {
+    [Symbol.dispose]() {
+      sendGate.started = false;
+      sendGate.completion = null;
+      sendGate.runTransitionUpdate = null;
+      sendGate.promptRef = null;
+    },
+  };
+  const router = getRouter(createMemoryHistory({ initialEntries: [`/draft/${draftId}`] }));
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, { router: false });
+  const editor = page.getByTestId("composer-editor");
+  await expect.element(editor).toBeVisible();
+  await userEvent.click(editor);
+  await userEvent.type(editor, "origin message");
+  await userEvent.click(page.getByRole("button", { name: "Submit message", exact: true }));
+  const originRouteKey = scopedThreadKey(scopeThreadRef(ENVIRONMENT_ID, origin));
+  await vi.waitFor(() => {
+    expect(draftSendState(originRouteKey).sendInFlight.current).toBe(true);
+    expect(sendGate.started).toBe(true);
+  });
+
+  await act(() => router.navigate({ href: `/${ENVIRONMENT_ID}/${destination}` }));
+  await expect.element(page.getByText(`Answer 0 for ${destination}.`)).toBeVisible();
+  await userEvent.click(editor);
+  await userEvent.type(editor, "destination draft");
+  await userEvent.keyboard("{ArrowLeft}");
+  await expect.element(editor).toHaveTextContent("destination draft");
+  const cursor = window.getSelection()?.anchorOffset;
+  expect(cursor).toBe("destination draft".length - 1);
+
+  await act(async () => {
+    const update = sendGate.runTransitionUpdate;
+    if (update === null) throw new Error("Draft transition did not start");
+    await update();
+    finishTransition();
+  });
+  await vi.waitFor(() => expect(draftSendState(originRouteKey).sendInFlight.current).toBe(false));
+  expect(sendGate.promptRef?.current).toBe("destination draft");
+  await expect.element(editor).toHaveTextContent("destination draft");
+  expect(window.getSelection()?.anchorOffset).toBe(cursor);
+  expect(
+    useComposerDraftStore.getState().getComposerDraft(scopeThreadRef(ENVIRONMENT_ID, destination))
+      ?.prompt,
+  ).toBe("destination draft");
 });
