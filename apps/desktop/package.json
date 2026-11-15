@@ -8,7 +8,7 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/build.ts",
     "dev": "pnpm build && pnpm electron:install && node scripts/dev.ts",
     "electron:install": "install-electron",
     "package": "pnpm electron:install && node scripts/package.ts",
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
     "@types/node": "catalog:",
     "electron": "45.2.3",
     "electron-builder": "26.18.0",

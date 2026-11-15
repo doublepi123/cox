@@ -2,10 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "rootDir": "src",
+    "rootDir": "../..",
     "outDir": "dist",
     "sourceMap": true
   },
-  "include": ["src"],
+  "include": ["src", "../../packages/shared/src/remoteServerAdmission.ts"],
   "exclude": ["src/**/*.test.ts"]
 }
