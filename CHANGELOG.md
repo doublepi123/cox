@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.96 — 2026-11-15
+
+- Add Oh My Pi (`omp`) as an independent, disabled-by-default provider with
+  English and Chinese setup, model selection, credentials and usage reporting.
+  Settings installs the tested `@oh-my-pi/pi-coding-agent 18.20.2` and required
+  Bun 1.4.4 into Cox's tools directory, including cancellable installation and
+  verification of an existing managed runtime.
+- Share central model services with Oh My Pi using its native `models.yml` and
+  `config.yml`, isolated per-instance sessions and scoped gateway credentials.
+  Native streaming, MCP tools, approvals, child tasks and Todo updates use Cox's
+  existing provider interfaces.
+- Preserve Oh My Pi's native completion and background-work boundaries, emit a
+  single native approval, and translate its inclusive fork boundary so fork and
+  rollback exclude future user input. Stop withdraws queued messages and reports
+  their cancellation before the session can resume.
+
 ## 0.1.95 — 2026-11-15
 
 - Multi-protocol model services now use the explicit service and model protocol
