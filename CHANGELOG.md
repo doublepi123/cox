@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.95 — 2026-11-15
+
+- Multi-protocol model services now use the explicit service and model protocol
+  intersection to determine availability while treating model family (`gpt` →
+  OpenAI Responses then OpenAI Chat, `kimi` → OpenAI Chat, `gemini` → Anthropic
+  Messages then Gemini, others → Anthropic Messages) strictly as a preference
+  order. Model discovery supplements each family's primary protocol when enabled
+  on a multi-protocol service (normalizing endpoint-type aliases), connectivity
+  tests and OMO Memory / Pi / OpenCode / gateway configurations resolve through
+  the same rule, and `ModelServiceGateway` falls back boundedly before any
+  output is selected when an upstream channel rejects an unsupported endpoint
+  (`404` other than `model_not_found`, `405`, `501`, or explicit
+  `unsupported_protocol`) without treating `401`, `403`, `429`, quota or context
+  overflow errors as protocol failures. Empty or disjoint protocol sets still
+  return HTTP `422` and unbound models return HTTP `403`.
+- Rebinding a provider instance across model services or toggling an instance
+  off and back on no longer leaves live OMO or provider sessions reusing
+  revoked `COX_MODEL_SERVICE_KEY` credentials and failing follow-up turns with
+  HTTP `401`. `ProviderInstanceRegistry` and `ProviderSessionManagerV2` now
+  track credential generations behind a single-flight settings reconciliation
+  barrier, retiring stale sessions for the affected instance only and resuming
+  persisted native conversation history, worktree, model, thinking selection and
+  buffered background wakes on a fresh runtime while leaving unrelated settings
+  updates undisturbed.
+
 ## 0.1.94 — 2026-11-15
 
 - Selective upstream T3 adaptations across 41 behavior units (41 commits through
