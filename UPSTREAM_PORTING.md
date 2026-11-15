@@ -1,9 +1,11 @@
 # Upstream port status
 
-Latest follow-up: [November 14 follow-up](UPSTREAM_PORTING_20261114.md), comparing
-658 commits through `77d3358a1f` and adapting 30 selected commits (28 behavior
-units) for Cox 0.1.92. The [November 12 follow-up](UPSTREAM_PORTING_20261112.md)
-compares 646 commits through `fc2b5de20c` (Cox 0.1.77), and the
+Latest follow-up: [November 15 follow-up](UPSTREAM_PORTING_20261115.md), comparing
+485 commits through `52451a7909` and adapting 41 selected commits (41 behavior
+units) for Cox 0.1.94. The [November 14 follow-up](UPSTREAM_PORTING_20261114.md)
+compares 658 commits through `77d3358a1f` (Cox 0.1.92), the
+[November 12 follow-up](UPSTREAM_PORTING_20261112.md) compares 646 commits through
+`fc2b5de20c` (Cox 0.1.77), and the
 [November 11 follow-up](UPSTREAM_PORTING_20261111.md) records the preceding
 selective adaptation through `0f13d2ccbd`.
 

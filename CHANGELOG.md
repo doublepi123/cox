@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.1.94 — 2026-11-15
+
+- Selective upstream T3 adaptations across 41 behavior units (41 commits through
+  `52451a7909`; see `UPSTREAM_PORTING_20261115.md`):
+  - **Shared & privacy**: convert inline code paths like `docker/Dockerfile` into
+    file chips, resolve relative Codex citations with filename punctuation, block
+    `.localdomain` hosts from leaking to external favicon services, default
+    schemeless loopback preview URLs to HTTP, and compare prerelease semver
+    identifiers without locale or precision loss.
+  - **Client runtime**: retry failed terminal resizes, deliver MCP app image
+    results instead of hanging, preserve integer precision beyond `2^53` in tool
+    outputs, and release shared terminal grids when views close.
+  - **Providers (ACP, Cursor, Claude, Codex & core)**: keep the server running
+    when the Cursor SDK aborts a stalled request (`onStall`), allow retrying
+    failed MCP-over-ACP disconnects, exclude bypass-permissions options on Devin
+    ACP plan approvals, prevent ACP cancels from overtaking prompts, survive
+    blank ACP stdout lines, accept `..agent`-prefixed managed registry binaries,
+    keep Claude monitor threads waiting between updates, cap handoff work reserve
+    on small context windows, settle unfinished Codex web searches and plan items
+    at turn end, report pre-`initialize` Codex exits instead of `EPIPE`, surface
+    crashed Codex handlers/transport workers without hanging, and sanitize
+    non-string MCP tool JSON Schema enums for Gemini.
+  - **Server, Git, MCP security & orchestration**: reject disallowed browser
+    `Origin` headers on `/mcp` with HTTP `403` before auth and CORS, reject MCP
+    OAuth resources with empty `#` fragments, report restart-continued tasks
+    accurately in `task_status`, regenerate empty persisted server secrets
+    atomically on startup, retire unreadable outbox effects without blocking later
+    thread work, keep queued runs gated behind failed worktree setup, close open
+    approval/question cards when stopping stalled runs, recover abandoned turns
+    from interrupted/cancelled runs, clear continuously printing terminals without
+    hanging, fork post-checkpoint Git status refreshes off the turn critical path,
+    show untracked files when `status.showUntrackedFiles=no`, refuse unresolved
+    UTF-16 merge commits, preserve pushed commits when final status reads fail,
+    surface rate-limited GitHub PR review-thread reads, and serialize parallel
+    worktree branch renames.
+  - **Web UI**: open tool-call diff files in nested project workspaces, avoid
+    remounting the diff code view on collapse-all/expand-all, prevent duplicate
+    file blocks from crashing the diff viewer, and preserve the active thread's
+    composer text and caret when an earlier thread's send completes after
+    navigation.
+
 ## 0.1.93 — 2026-11-14
 
 - An OMO thread no longer remains stuck in `running` ("Thinking") with follow-up
