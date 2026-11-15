@@ -78,6 +78,42 @@ describe("runMigrations", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
+  it.effect("upgrades a database at exactly 80", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 80 });
+
+      assert.deepStrictEqual(yield* runMigrations(), [[81, "MobilePushAndWebhookNotifications"]]);
+
+      const tables = yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name IN ('mobile_push_subscriptions', 'mobile_notification_dedupe')
+      `;
+      assert.deepStrictEqual(tables.map((row) => row.name).toSorted(), [
+        "mobile_notification_dedupe",
+        "mobile_push_subscriptions",
+      ]);
+
+      const indexes = yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master
+        WHERE type = 'index' AND tbl_name = 'mobile_push_subscriptions' AND sql IS NOT NULL
+      `;
+      assert.include(
+        indexes.map((row) => row.name),
+        "idx_mobile_push_subscriptions_session",
+      );
+
+      const foreignKeys = yield* sql<{
+        readonly table: string;
+        readonly on_delete: string;
+      }>`PRAGMA foreign_key_list(mobile_push_subscriptions)`;
+      assert.deepStrictEqual(
+        foreignKeys.map((row) => ({ table: row.table, on_delete: row.on_delete })),
+        [{ table: "auth_sessions", on_delete: "CASCADE" }],
+      );
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect("drops the unused correlation index and keeps correlation values", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
