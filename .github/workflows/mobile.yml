@@ -1,0 +1,185 @@
+name: Cox mobile packages
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "mobile-v*"
+  pull_request:
+    paths:
+      - apps/mobile/**
+      - packages/shared/**
+      - packages/contracts/**
+      - pnpm-lock.yaml
+      - .github/workflows/mobile.yml
+permissions:
+  contents: read
+jobs:
+  android-lite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - run: npm install --global pnpm@12.14.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cox/mobile build
+      - run: pnpm --filter @cox/mobile verify:package
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: pnpm --filter @cox/mobile exec cap copy android
+      - name: Detect signing credentials
+        id: signing
+        env:
+          COX_MOBILE_ANDROID_KEYSTORE_BASE64: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_BASE64 }}
+          COX_MOBILE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_PASSWORD }}
+          COX_MOBILE_ANDROID_KEYSTORE_ALIAS: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_ALIAS }}
+          COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD }}
+        run: |
+          signed=false
+          if [[ -n "$COX_MOBILE_ANDROID_KEYSTORE_BASE64" && -n "$COX_MOBILE_ANDROID_KEYSTORE_PASSWORD" && -n "$COX_MOBILE_ANDROID_KEYSTORE_ALIAS" && -n "$COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD" ]]; then
+            signed=true
+          fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+      - run: ./gradlew testDebugUnitTest assembleDebug
+        if: steps.signing.outputs.signed != 'true'
+        working-directory: apps/mobile/android
+      - name: Build signed release APK
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          COX_MOBILE_ANDROID_KEYSTORE_BASE64: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_BASE64 }}
+          COX_MOBILE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_PASSWORD }}
+          COX_MOBILE_ANDROID_KEYSTORE_ALIAS: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_ALIAS }}
+          COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD }}
+        working-directory: apps/mobile/android
+        run: |
+          set -euo pipefail
+          printf '%s' "$COX_MOBILE_ANDROID_KEYSTORE_BASE64" | base64 --decode > cox-release.keystore
+          cat > keystore.properties <<PROPERTIES
+          storeFile=cox-release.keystore
+          storePassword=$COX_MOBILE_ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$COX_MOBILE_ANDROID_KEYSTORE_ALIAS
+          keyPassword=$COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD
+          PROPERTIES
+          ./gradlew testDebugUnitTest assembleRelease
+      - name: Verify APK size and generate checksums
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/android-release"
+          find apps/mobile/android/app/build/outputs/apk -name '*.apk' -exec cp {} "$RUNNER_TEMP/android-release/" \;
+          cd "$RUNNER_TEMP/android-release"
+          for apk in *.apk; do
+            test "$(stat -c %s "$apk")" -lt 20971520
+          done
+          applicationId="$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id ./*.apk)"
+          printf '{"applicationId":"%s"}\n' "$applicationId" > release-metadata.json
+          sha256sum *.apk > SHA256SUMS
+          node "$GITHUB_WORKSPACE/apps/mobile/scripts/verify-package.ts" --release-dir "$PWD"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-mobile-android
+          path: ${{ runner.temp }}/android-release/
+          if-no-files-found: error
+  ios-ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - run: npm install --global pnpm@12.14.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cox/mobile build
+      - run: pnpm --filter @cox/mobile verify:package
+      - run: pnpm --filter @cox/mobile exec cap copy ios
+      - name: Detect signing credentials
+        id: signing
+        env:
+          COX_MOBILE_APPLE_CERT_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_BASE64 }}
+          COX_MOBILE_APPLE_CERT_PASSWORD: ${{ secrets.COX_MOBILE_APPLE_CERT_PASSWORD }}
+          COX_MOBILE_APPLE_CERT_PROFILE_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_PROFILE_BASE64 }}
+        run: |
+          signed=false
+          if [[ -n "$COX_MOBILE_APPLE_CERT_BASE64" && -n "$COX_MOBILE_APPLE_CERT_PASSWORD" && -n "$COX_MOBILE_APPLE_CERT_PROFILE_BASE64" ]]; then
+            signed=true
+          fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+      - name: Archive and package unsigned device IPA
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -project apps/mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" AD_HOC_CODE_SIGNING_ALLOWED=YES archive
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/CoxMobile.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/ipa/Payload/App.app"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry cox-mobile-unsigned.ipa Payload)
+      - name: Archive and export a signed IPA
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          COX_MOBILE_APPLE_CERT_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_BASE64 }}
+          COX_MOBILE_APPLE_CERT_PASSWORD: ${{ secrets.COX_MOBILE_APPLE_CERT_PASSWORD }}
+          COX_MOBILE_APPLE_CERT_PROFILE_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="cox-mobile-build"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          printf '%s' "$COX_MOBILE_APPLE_CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/cox-ios.p12"
+          printf '%s' "$COX_MOBILE_APPLE_CERT_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/cox-ios.mobileprovision"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cox-ios.p12" -k "$KEYCHAIN" -P "$COX_MOBILE_APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security cms -D -i "$RUNNER_TEMP/cox-ios.mobileprovision" > cox-ios-profile.plist
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' cox-ios-profile.plist)"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' cox-ios-profile.plist)"
+          TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' cox-ios-profile.plist)"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/cox-ios.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          xcodebuild archive -project apps/mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
+            CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" DEVELOPER_TEAM="$TEAM_ID"
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>dev.doublepi.cox.mobile</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/ipa"
+      - name: Generate IPA checksums and verify metadata
+        run: |
+          set -euo pipefail
+          applicationId="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$RUNNER_TEMP/CoxMobile.xcarchive/Products/Applications/App.app/Info.plist")"
+          cd "$RUNNER_TEMP/ipa"
+          printf '{"applicationId":"%s"}\n' "$applicationId" > release-metadata.json
+          shasum -a 256 *.ipa > SHA256SUMS
+          node "$GITHUB_WORKSPACE/apps/mobile/scripts/verify-package.ts" --release-dir "$PWD"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-mobile-ios-ipa
+          path: |
+            ${{ runner.temp }}/ipa/*.ipa
+            ${{ runner.temp }}/ipa/SHA256SUMS
+            ${{ runner.temp }}/ipa/release-metadata.json
+          if-no-files-found: error

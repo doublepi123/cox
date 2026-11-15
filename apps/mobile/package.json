@@ -8,7 +8,9 @@
     "dev": "vp dev",
     "build": "vp build",
     "typecheck": "tsc --noEmit",
-    "test": "vp test run"
+    "test": "vp test run",
+    "verify:package": "node scripts/verify-package.ts",
+    "smoke": "node scripts/smoke-mobile-e2e.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.6.2",
@@ -28,6 +30,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "playwright-core": "1.60.0",
     "typescript": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "yaml": "2.9.1"
   }
 }
