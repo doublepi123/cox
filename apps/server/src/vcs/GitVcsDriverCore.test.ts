@@ -714,6 +714,24 @@ it.effect.each([
   ).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("still lists untracked files when config hides them", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const cwd = yield* makeTmpDir();
+      yield* initRepoWithCommit(cwd);
+      yield* git(cwd, ["config", "status.showUntrackedFiles", "no"]);
+      yield* writeTextFile(cwd, "untracked.txt", "untracked\n");
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const status = yield* driver.statusDetailsLocal(cwd);
+      assert.include(
+        status.workingTree.files.map((file) => file.path),
+        "untracked.txt",
+      );
+      assert.isTrue(status.hasWorkingTreeChanges);
+    }),
+  ).pipe(Effect.provide(layerTest)),
+);
+
 it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
   "preserves embedded newlines in repository paths after worktree creation",
   () =>
@@ -4459,6 +4477,44 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("gives parallel renames to one generated name distinct branches", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const path = yield* Path.Path;
+        const worktrees = yield* makeTmpDir("git-worktrees-");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        // A multi-model send launches one worktree per model with the same message, so their
+        // generated names often match and the renames can land together.
+        const temporaryBranches = ["t3/aaaa1111", "t3/bbbb2222", "t3/cccc3333"];
+        yield* Effect.forEach(temporaryBranches, (branch) =>
+          driver.createWorktree({
+            cwd,
+            path: path.join(worktrees, branch.replace("/", "-")),
+            refName: initialBranch,
+            newRefName: branch,
+          }),
+        );
+
+        const renamed = yield* Effect.forEach(
+          temporaryBranches,
+          (branch) =>
+            driver.renameBranch({
+              cwd: path.join(worktrees, branch.replace("/", "-")),
+              oldBranch: branch,
+              newBranch: "feat/add-search",
+            }),
+          { concurrency: "unbounded" },
+        );
+
+        assert.deepStrictEqual(renamed.map((result) => result.branch).toSorted(), [
+          "feat/add-search",
+          "feat/add-search-1",
+          "feat/add-search-2",
+        ]);
+      }),
+    );
+
     it.effect.each(["release/v2", "refs/heads/release/v2", "deadbeef"])(
       "records the branch name when creating a worktree from %s",
       (baseRef) =>
@@ -5458,30 +5514,49 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
     );
 
     it.effect.each([
-      { location: "root", conflict: false },
-      { location: "nested", conflict: false },
-      { location: "worktree", conflict: false },
-      { location: "root", conflict: true },
-      { location: "nested", conflict: true },
-      { location: "worktree", conflict: true },
+      { location: "root", conflict: false, encoding: "utf8", large: false },
+      { location: "nested", conflict: false, encoding: "utf8", large: false },
+      { location: "worktree", conflict: false, encoding: "utf8", large: false },
+      { location: "root", conflict: true, encoding: "utf8", large: false },
+      { location: "nested", conflict: true, encoding: "utf8", large: false },
+      { location: "worktree", conflict: true, encoding: "utf8", large: false },
+      { location: "root", conflict: true, encoding: "utf16le", large: false },
+      { location: "root", conflict: true, encoding: "utf16le", large: true },
     ])(
-      "rejects selected-file merge commits without mutation ($location, conflict: $conflict)",
-      ({ location, conflict }) =>
+      "rejects selected-file merge commits without mutation ($location, conflict: $conflict, $encoding)",
+      ({ location, conflict, encoding, large }) =>
         Effect.gen(function* () {
           let cwd = yield* makeTmpDir();
           const { initialBranch } = yield* initRepoWithCommit(cwd);
+          const writeReadme = (text: string) =>
+            Effect.sync(() =>
+              NodeFS.writeFileSync(
+                NodePath.join(cwd, "README.md"),
+                encoding === "utf16le" ? Buffer.from(`\ufeff${text}`, "utf16le") : text,
+              ),
+            );
+          if (encoding === "utf16le") {
+            yield* writeTextFile(
+              cwd,
+              ".gitattributes",
+              "README.md text working-tree-encoding=UTF-16\n",
+            );
+            yield* writeReadme("base\n");
+            yield* git(cwd, ["add", "."]);
+            yield* git(cwd, ["commit", "-m", "Declare UTF-16 encoding"]);
+          }
           const driver = yield* GitVcsDriver.GitVcsDriver;
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           yield* git(cwd, ["checkout", "-b", "feature"]);
           yield* writeTextFile(cwd, "feature.txt", "feature\n");
-          if (conflict) yield* writeTextFile(cwd, "README.md", "feature version\n");
+          if (conflict) yield* writeReadme("feature version\n");
           yield* git(cwd, ["add", "."]);
           yield* git(cwd, ["commit", "-m", "Feature"]);
           const featureHead = yield* git(cwd, ["rev-parse", "HEAD"]);
           yield* git(cwd, ["checkout", initialBranch]);
           yield* writeTextFile(cwd, "main.txt", "main\n");
-          if (conflict) yield* writeTextFile(cwd, "README.md", "main version\n");
+          if (conflict) yield* writeReadme("main version\n");
           yield* git(cwd, ["add", "."]);
           yield* git(cwd, ["commit", "-m", "Main"]);
           const mainHead = yield* git(cwd, ["rev-parse", "HEAD"]);
@@ -5530,6 +5605,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           assert.equal(yield* git(cwd, ["rev-parse", "HEAD"]), mainHead);
           assert.equal(yield* git(cwd, ["ls-files", "--unmerged"]), unmerged);
 
+          const resolvedText = `Heading\n=======\n\nresolved${large ? "x".repeat(17 * 1024 * 1024) : ""}\n`;
           if (conflict) {
             const unresolved = yield* driver
               .commit(commitCwd, "Unresolved merge", "", { stage: {} })
@@ -5541,8 +5617,10 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
               names.map((name) => NodeFS.readFileSync(path.join(gitDir, name))),
               before,
             );
-            yield* writeTextFile(cwd, "README.md", "Heading\n=======\n\nresolved\n");
-            assert.isNotNull(yield* driver.prepareCommitContext(commitCwd));
+            yield* writeReadme(resolvedText);
+            assert.isNotNull(
+              yield* driver.prepareCommitContext(commitCwd, undefined, { includePatch: false }),
+            );
           }
           yield* driver.commit(commitCwd, "Finish merge", "", { stage: {} });
           assert.equal(
@@ -5552,7 +5630,12 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           assert.isFalse(NodeFS.existsSync(path.join(gitDir, "MERGE_HEAD")));
           assert.equal(yield* git(cwd, ["show", "HEAD:feature.txt"]), "feature");
           assert.equal(yield* git(cwd, ["show", "HEAD:unrelated.txt"]), "unrelated");
-          if (conflict)
+          if (large) {
+            assert.equal(
+              yield* git(cwd, ["cat-file", "-s", "HEAD:README.md"]),
+              String(Buffer.byteLength(resolvedText)),
+            );
+          } else if (conflict)
             assert.equal(
               yield* git(cwd, ["show", "HEAD:README.md"]),
               "Heading\n=======\n\nresolved",
