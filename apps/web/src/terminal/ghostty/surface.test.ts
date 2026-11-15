@@ -7,6 +7,7 @@ import {
 import { synchronizeTerminalSession } from "../../components/ThreadTerminalDrawer";
 
 import { GhosttyTerminalCore, type GhosttyCell, type GhosttyRow } from "./core";
+import { TerminalTouchModifiers } from "./touchModifiers";
 import {
   advanceTerminalSelectionClickSequence,
   applyTerminalCopyEvent,
@@ -179,7 +180,6 @@ describe("GhosttyTerminalSurface visibility", () => {
     );
     const snapshot = vi.spyOn(GhosttyTerminalCore.prototype, "snapshot");
     const onData = vi.fn<(data: string) => void>();
-
     return {
       canvas,
       mount,
@@ -367,6 +367,180 @@ describe("GhosttyTerminalSurface visibility", () => {
       "\x1b[99;5u",
       "\x1b[99;5:3u",
     ]);
+  });
+
+  it("consumes sticky Ctrl from soft input and keeps locked Ctrl across keydowns", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ beforeKey: () => true });
+    const modifiers = new TerminalTouchModifiers();
+    surface.setTouchModifiers(modifiers);
+    modifiers.tap("ctrl", 100);
+    surface.input.value = "d";
+    surface.input.dispatchEvent(Object.assign(new Event("input"), { inputType: "insertText" }));
+    expect(modifiers.getSnapshot().ctrl).toBe("off");
+    modifiers.tap("ctrl", 500);
+    modifiers.tap("ctrl", 600);
+    key(surface, "c", "KeyC");
+    key(surface, "l", "KeyL");
+    expect(modifiers.getSnapshot().ctrl).toBe("locked");
+    modifiers.tap("ctrl", 700);
+    modifiers.tap("alt", 800);
+    surface.input.value = "f";
+    surface.input.dispatchEvent(new Event("input"));
+
+    expect(harness.onData.mock.calls.map(([data]) => data)).toEqual([
+      "\x04",
+      "\x03",
+      "\x0c",
+      "\x1bf",
+    ]);
+    expect(modifiers.getSnapshot()).toEqual({ ctrl: "off", alt: "off" });
+  });
+
+  it("matches Ghostty printable ASCII for direct touch encoding and every text event path", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ beforeKey: () => true });
+    const oracle = await GhosttyTerminalCore.create(
+      12,
+      3,
+      8,
+      16,
+      {
+        foreground: { r: 255, g: 255, b: 255 },
+        background: { r: 0, g: 0, b: 0 },
+        cursor: { r: 255, g: 255, b: 255 },
+      },
+      () => {},
+    );
+    for (let code = 32; code <= 126; code += 1) {
+      const character = String.fromCharCode(code);
+      for (const mode of ["ctrl", "alt", "ctrl+alt"] as const) {
+        const modifiers = new TerminalTouchModifiers();
+        surface.setTouchModifiers(modifiers);
+        const control = mode.includes("ctrl");
+        const alternate = mode.includes("alt");
+        const keyEvent: Parameters<GhosttyTerminalCore["encodeKey"]>[0] = {
+          key: character,
+          code: "",
+          ctrlKey: control,
+          altKey: alternate,
+          metaKey: false,
+          shiftKey: false,
+          isComposing: false,
+          repeat: false,
+          getModifierState: () => false,
+        };
+        const expected = oracle.encodeKey(keyEvent);
+        if (control) modifiers.tap("ctrl", 100);
+        if (alternate) modifiers.tap("alt", 100);
+        expect(modifiers.encode(character)).toBe(expected);
+        expect(modifiers.getSnapshot()).toEqual({ ctrl: "off", alt: "off" });
+        for (const route of ["keydown", "input", "compositionend"] as const) {
+          if (control) modifiers.tap("ctrl", 100);
+          if (alternate) modifiers.tap("alt", 100);
+          harness.onData.mockClear();
+          if (route === "keydown") {
+            expect(key(surface, character, "").defaultPrevented).toBe(true);
+          } else {
+            if (route === "compositionend")
+              surface.input.dispatchEvent(new Event("compositionstart"));
+            surface.input.value = character;
+            surface.input.dispatchEvent(
+              Object.assign(new Event(route), { data: character, inputType: "insertText" }),
+            );
+          }
+          expect(harness.onData.mock.calls).toEqual([[expected]]);
+          expect(modifiers.getSnapshot()).toEqual({ ctrl: "off", alt: "off" });
+        }
+      }
+    }
+    oracle.dispose();
+
+    const modifiers = new TerminalTouchModifiers();
+    surface.setTouchModifiers(modifiers);
+    for (const [character, expected] of [
+      ["2", "\x00"],
+      ["/", "\x1f"],
+      [" ", "\x00"],
+      ["@", "\x00"],
+      ["?", "\x7f"],
+      ["!", "\x1b[33;5u"],
+    ] as const) {
+      modifiers.tap("ctrl", 100);
+      expect(modifiers.encode(character)).toBe(expected);
+      modifiers.tap("ctrl", 100);
+      surface.input.value = character;
+      surface.input.dispatchEvent(Object.assign(new Event("input"), { inputType: "insertText" }));
+      expect(harness.onData.mock.calls.at(-1)).toEqual([expected]);
+      expect(modifiers.getSnapshot().ctrl).toBe("off");
+    }
+
+    modifiers.tap("ctrl", 500);
+    modifiers.tap("ctrl", 600);
+    surface.input.value = "?";
+    surface.input.dispatchEvent(new Event("input"));
+    expect(harness.onData.mock.calls.at(-1)).toEqual(["\x7f"]);
+    expect(modifiers.getSnapshot().ctrl).toBe("locked");
+  });
+
+  it("uses the terminal keyboard mode for touch Ctrl on every text event path", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ beforeKey: () => true });
+    const modifiers = new TerminalTouchModifiers();
+    surface.setTouchModifiers(modifiers);
+    surface.write("\x1b[>11u");
+
+    for (const route of ["keydown", "input", "compositionend"] as const) {
+      modifiers.tap("ctrl", 100);
+      if (route === "keydown") {
+        key(surface, "2", "");
+      } else {
+        surface.input.value = "2";
+        surface.input.dispatchEvent(Object.assign(new Event(route), { data: "2" }));
+      }
+      expect(harness.onData.mock.calls.at(-1)).toEqual(["\x1b[50;5u"]);
+      expect(modifiers.getSnapshot().ctrl).toBe("off");
+    }
+  });
+
+  it("waits for IME commit and suppresses its duplicate input with a sticky modifier", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ beforeKey: () => true });
+    const modifiers = new TerminalTouchModifiers();
+    surface.setTouchModifiers(modifiers);
+    modifiers.tap("ctrl", 100);
+    surface.input.dispatchEvent(new Event("compositionstart"));
+    key(surface, "Process", "", { keyCode: 229, isComposing: true });
+    surface.input.value = "d";
+    surface.input.dispatchEvent(Object.assign(new Event("input"), { isComposing: true }));
+    surface.input.dispatchEvent(Object.assign(new Event("compositionend"), { data: "d" }));
+    surface.input.dispatchEvent(
+      Object.assign(new Event("input"), { data: "d", inputType: "insertFromComposition" }),
+    );
+
+    expect(harness.onData.mock.calls).toEqual([["\x04"]]);
+    expect(modifiers.getSnapshot().ctrl).toBe("off");
+  });
+
+  it("scrolls history with one finger and leaves a second finger free to pinch", async () => {
+    const harness = createHarness();
+    const surface = await harness.create();
+    surface.write(Array.from({ length: 50 }, (_, index) => `row ${index}\r\n`).join(""));
+    harness.flushFrame();
+    expect(surface.isAtBottom()).toBe(true);
+    harness.touch("pointerdown", 20);
+    harness.touch("pointermove", 80);
+    harness.touch("pointerup", 80);
+    harness.flushFrame();
+    expect(surface.isAtBottom()).toBe(false);
+    const scrolled = harness.renderedSnapshot.rowData;
+    harness.touch("pointerdown", 20);
+    harness.touch("pointerdown", 25, 3);
+    harness.touch("pointermove", 80);
+    harness.touch("pointerup", 80);
+    harness.flushFrame();
+    expect(harness.renderedSnapshot.rowData).toEqual(scrolled);
+    expect(harness.onData).not.toHaveBeenCalled();
   });
 
   it("sends exactly what the matching hardware key events send for every touch key", async () => {

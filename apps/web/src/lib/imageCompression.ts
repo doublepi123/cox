@@ -542,7 +542,20 @@ export async function prepareImageForAttachment(
   file: File,
   maxBytes: number,
 ): Promise<CompressImageFileResult> {
-  if (!isHeicImageFile(file)) return compressImageToByteLimit(file, maxBytes);
+  if (!isHeicImageFile(file)) {
+    const mobileBudget = 2 * 1024 * 1024;
+    if (
+      typeof window !== "undefined" &&
+      window.innerWidth < 640 &&
+      file.size > mobileBudget &&
+      ["image/jpeg", "image/png", "image/webp"].includes(file.type.toLowerCase())
+    ) {
+      const compressed = await compressImageToByteLimit(file, Math.min(mobileBudget, maxBytes));
+      if (compressed.ok && compressed.file.size < file.size) return compressed;
+      if (file.size <= maxBytes) return { ok: true, file, recompressed: false };
+    }
+    return compressImageToByteLimit(file, maxBytes);
+  }
   const prepared = await prepareHeicImage(file).image;
   if (!prepared.ok || prepared.file.size <= maxBytes) return prepared;
   const result = await compressImageToByteLimit(prepared.file, maxBytes, {

@@ -53,6 +53,7 @@ import { useUsageLimitsPanel } from "./chat/useUsageLimitsPanel";
 import { useWorktreeSetup } from "./chat/useWorktreeSetup";
 import { useChatShortcuts } from "./chat/useChatShortcuts";
 import { ChatBannerLane } from "./chat/ChatBannerLane";
+import { MobileConnectionBanner } from "./chat/MobileConnectionBanner";
 import * as Schema from "effect/Schema";
 import {
   AuthOrchestrationOperateScope,
@@ -3176,6 +3177,14 @@ export default function ChatView(props: ChatViewProps) {
         )}
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
+          <MobileConnectionBanner
+            reconnecting={
+              activeEnvironment?.connection.phase === "reconnecting" ||
+              activeEnvironment?.connection.phase === "connecting" ||
+              activeEnvironment?.connection.phase === "offline"
+            }
+            syncing={threadSyncPhase !== null}
+          />
           <ThreadFindCanvas
             findOptions={{
               skills: timelineSkills,

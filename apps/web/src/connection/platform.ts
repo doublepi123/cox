@@ -31,6 +31,11 @@ import * as ConnectionStorage from "./storage";
 import { clientPresentationMetadata } from "./clientMetadata";
 
 let nextObservedRpcRequestId = 0;
+const RECONNECT_EVENT = "cox:connection-retry";
+
+export function requestApplicationReconnect(): void {
+  window.dispatchEvent(new Event(RECONNECT_EVENT));
+}
 
 function currentNetworkStatus(): "unknown" | "offline" | "online" {
   if (typeof navigator === "undefined") {
@@ -109,6 +114,7 @@ export function subscribeToApplicationWakeups(
     networkChangedWhileHidden = false;
     onWakeup("network-changed");
   };
+  const retryNow = () => onWakeup("network-changed");
   const connection =
     "connection" in navigator && navigator.connection instanceof EventTarget
       ? navigator.connection
@@ -120,6 +126,7 @@ export function subscribeToApplicationWakeups(
   window.addEventListener("pageshow", listener);
   window.addEventListener("pagehide", listener);
   window.addEventListener("online", networkChanged);
+  window.addEventListener(RECONNECT_EVENT, retryNow);
   connection?.addEventListener("change", networkChanged);
   return () => {
     document.removeEventListener("visibilitychange", listener);
@@ -129,6 +136,7 @@ export function subscribeToApplicationWakeups(
     window.removeEventListener("pageshow", listener);
     window.removeEventListener("pagehide", listener);
     window.removeEventListener("online", networkChanged);
+    window.removeEventListener(RECONNECT_EVENT, retryNow);
     connection?.removeEventListener("change", networkChanged);
   };
 }
