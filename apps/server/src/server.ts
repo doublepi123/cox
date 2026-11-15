@@ -88,8 +88,6 @@ import * as LocalServiceUpdateHttp from "./localServiceUpdate/http.ts";
 import * as ServerOwnership from "./serverOwnership.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as NotificationsHttp from "./notifications/http.ts";
-import * as NotificationSubscriptions from "./persistence/NotificationSubscriptions.ts";
-import * as WebPushService from "./notifications/WebPushService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as NativeAppIconResolver from "./assets/NativeAppIconResolver.ts";
 import * as AntigravityInstallation from "./provider/AntigravityInstallation.ts";
