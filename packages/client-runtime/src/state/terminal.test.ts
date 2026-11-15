@@ -1,4 +1,12 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  type TerminalCloseInput,
+  type TerminalOpenInput,
+  type TerminalResizeInput,
+  type TerminalWriteInput,
+} from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { expect, it } from "vite-plus/test";
 
@@ -9,6 +17,7 @@ import {
   type TerminalLifecycleEvent,
   type TerminalSessionMode,
 } from "./terminal.ts";
+import { runAtomCommand } from "./runtime.ts";
 import { EMPTY_TERMINAL_BUFFER_STATE, type TerminalBufferState } from "./terminalSession.ts";
 
 function run(events: ReadonlyArray<TerminalLifecycleEvent>) {
@@ -59,7 +68,20 @@ it("leaves the history a viewer was reading when operate is granted", () => {
 const environmentId = EnvironmentId.make("environment");
 const threadId = ThreadId.make("thread");
 
-function setup(options: { readonly initialInput?: string } = {}) {
+type CommandInput =
+  | TerminalOpenInput
+  | TerminalResizeInput
+  | TerminalWriteInput
+  | TerminalCloseInput;
+
+function setup(
+  options: {
+    readonly initialInput?: string;
+    readonly beforeCommand?: (name: string, input: CommandInput) => Promise<void>;
+    readonly resizeFailure?: () => boolean;
+    readonly resizeInterrupted?: () => boolean;
+  } = {},
+) {
   // Tests flush the registry's scheduled work to control when driver finalizers run.
   const scheduled: Array<() => void> = [];
   const registry = AtomRegistry.make({
@@ -78,14 +100,32 @@ function setup(options: { readonly initialInput?: string } = {}) {
     AsyncResult.initial(true),
   );
   const access = { canOperate: true };
-  const calls: Array<{ readonly command: string; readonly input: unknown }> = [];
+  const calls: Array<{ readonly command: string; readonly input: CommandInput }> = [];
+  const pending: Promise<unknown>[] = [];
   const command = (name: string) => ({
     label: name,
-    run: async (_registry: AtomRegistry.AtomRegistry, value: { readonly input: unknown }) => {
-      calls.push({ command: name, input: value.input });
-      return AsyncResult.success(undefined);
+    run: (_registry: AtomRegistry.AtomRegistry, value: { readonly input: CommandInput }) => {
+      const result = (async () => {
+        calls.push({ command: name, input: value.input });
+        if (options.beforeCommand) await options.beforeCommand(name, value.input);
+        if (name === "resize" && options.resizeInterrupted?.())
+          return AsyncResult.failure(Cause.interrupt());
+        return name === "resize" && options.resizeFailure?.()
+          ? AsyncResult.failure(Cause.fail("resize rejected"))
+          : AsyncResult.success(undefined);
+      })();
+      pending.push(result);
+      return result;
     },
   });
+  const write = command("write");
+  // Await command completion, then a normal input receipt through the same command runner.
+  const completeCommands = async (count = pending.length) => {
+    await Promise.all(pending.slice(0, count));
+    await runAtomCommand(registry, write, {
+      input: { threadId, terminalId: "term-1", data: "typed" },
+    });
+  };
   const exits: Array<true> = [];
   const live: Array<boolean> = [];
   const session = createTerminalSession(
@@ -94,7 +134,7 @@ function setup(options: { readonly initialInput?: string } = {}) {
       observe: () => observation,
       open: command("open"),
       resize: command("resize"),
-      write: command("write"),
+      write,
       close: command("close"),
     },
     {
@@ -126,7 +166,21 @@ function setup(options: { readonly initialInput?: string } = {}) {
     registry.set(observation, snapshot(state));
   const mount = (mode: TerminalSessionMode) => registry.mount(session.driver(mode));
   const of = (name: string) => calls.filter((call) => call.command === name).map((c) => c.input);
-  return { session, attached, access, flush, detach, emit, observe, mount, calls, of, exits, live };
+  return {
+    session,
+    attached,
+    access,
+    flush,
+    detach,
+    emit,
+    observe,
+    mount,
+    calls,
+    of,
+    exits,
+    live,
+    completeCommands,
+  };
 }
 
 it("replays the measured grid on every new attachment generation", () => {
@@ -152,6 +206,90 @@ it("replays the measured grid on every new attachment generation", () => {
     { threadId, terminalId: "term-1", cols: 100, rows: 30 },
     { threadId, terminalId: "term-1", cols: 100, rows: 30 },
   ]);
+});
+
+it("sends each failed resize again once, in every attachment generation", async () => {
+  // Resizes stay in flight until the test settles them, and every one fails.
+  const resizes: Array<() => void> = [];
+  const { session, attached, emit, detach, mount, of } = setup({
+    resizeFailure: () => true,
+    beforeCommand: (name) =>
+      name === "resize" ? new Promise<void>((resolve) => resizes.push(resolve)) : Promise.resolve(),
+  });
+  const failResize = async (index: number) => {
+    resizes[index]!();
+    // No promise marks the retry decision, so flush the command's continuation chain.
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+  };
+  mount(attached);
+  emit({ status: "running", version: 1 });
+  detach();
+  await failResize(0);
+  expect(of("resize")).toHaveLength(1);
+
+  emit({ status: "running", version: 1, generation: 2 });
+  await failResize(1);
+  expect(of("resize")).toHaveLength(3);
+  await failResize(2);
+  session.reportGridSize({ cols: 100, rows: 30 });
+  await failResize(3);
+  await failResize(4);
+  expect(of("resize")).toEqual([
+    { threadId, terminalId: "term-1", cols: 120, rows: 40 },
+    { threadId, terminalId: "term-1", cols: 120, rows: 40 },
+    { threadId, terminalId: "term-1", cols: 120, rows: 40 },
+    { threadId, terminalId: "term-1", cols: 100, rows: 30 },
+    { threadId, terminalId: "term-1", cols: 100, rows: 30 },
+  ]);
+});
+
+it("does not retry a failed resize that a newer one replaced", async () => {
+  const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  let resizes = 0;
+  let settling = -1;
+  const { session, attached, emit, mount, of, completeCommands } = setup({
+    initialInput: "pnpm dev\r",
+    // The newer resize succeeds; the superseded one, and any retry of it, fail.
+    resizeFailure: () => settling !== 1,
+    beforeCommand: (name) => {
+      if (name !== "resize") return Promise.resolve();
+      const call = resizes++;
+      return gates[call]!.promise.then(() => {
+        settling = call;
+      });
+    },
+  });
+  session.reportGridSize({ cols: 120, rows: 40 });
+  mount(attached);
+  emit({ status: "running", version: 1 });
+  expect(of("write")).toEqual([{ threadId, terminalId: "term-1", data: "pnpm dev\r" }]);
+  session.reportGridSize({ cols: 100, rows: 30 });
+  gates[0]!.resolve();
+  await completeCommands(1);
+  gates[1]!.resolve();
+  await completeCommands();
+  expect(of("resize")).toEqual([
+    { threadId, terminalId: "term-1", cols: 120, rows: 40 },
+    { threadId, terminalId: "term-1", cols: 100, rows: 30 },
+  ]);
+});
+
+it("does not resend an interrupted resize", async () => {
+  const resizes: Array<() => void> = [];
+  const { attached, emit, mount, of } = setup({
+    resizeInterrupted: () => true,
+    beforeCommand: (name) =>
+      name === "resize" ? new Promise<void>((resolve) => resizes.push(resolve)) : Promise.resolve(),
+  });
+  const settleResize = async (index: number) => {
+    resizes[index]!();
+    // No promise marks the retry decision, so flush the command's continuation chain.
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+  };
+  mount(attached);
+  emit({ status: "running", version: 1 });
+  await settleResize(0);
+  expect(of("resize")).toEqual([{ threadId, terminalId: "term-1", cols: 120, rows: 40 }]);
 });
 
 it("writes the launch's initial input once the first snapshot lands", () => {

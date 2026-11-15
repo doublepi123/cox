@@ -7,6 +7,7 @@ import {
   type ScopedThreadRef,
   type FilesystemEntryMetadata,
 } from "@t3tools/contracts";
+import { Cause } from "effect";
 import { Atom, AsyncResult } from "effect/reactivity";
 import type { GhosttyTerminalSurfaceOptions } from "~/terminal/ghostty/surface";
 import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
@@ -19,6 +20,16 @@ const fixture = vi.hoisted(() => ({
   statusByThreadId: new Map<string, "running" | "exited">(),
   pendingSurfaces: [] as Array<() => void>,
   surfaceOptions: [] as GhosttyTerminalSurfaceOptions[],
+  reportedSize: null as { cols: number; rows: number } | null,
+  resizeCommand: {},
+  runResize: (_input: unknown): Promise<AsyncResult.AsyncResult<unknown, unknown>> =>
+    Promise.resolve(AsyncResult.success(undefined)),
+  setSession: (
+    _thread: ScopedThreadRef,
+    _status: "closed" | "starting" | "running",
+    _version: number,
+    _generation?: number,
+  ) => {},
   deniedScopes: new Set<string>(),
   metadataRequests: [] as string[],
   metadata: new Map<
@@ -31,11 +42,16 @@ const fixture = vi.hoisted(() => ({
   coarsePointer: false,
 }));
 
-// Every surface method is a no-op; `then` stays undefined so awaiting the surface resolves to it.
+// Every other surface method is a no-op; `then` stays undefined so awaiting the surface resolves to it.
 const fakeSurface: object = new Proxy(
   {
     input: document.createElement("textarea"),
     pressKey: (press: unknown) => fixture.pressedKeys.push(press),
+    // The real surface re-reports its measured grid.
+    resendSize: () => {
+      const size = fixture.reportedSize;
+      if (size) fixture.surfaceOptions.at(-1)!.onResize(size.cols, size.rows);
+    },
   },
   {
     get: (target, key) =>
@@ -66,6 +82,16 @@ vi.mock("../state/terminalSessions", async () => {
       }),
     ),
   );
+  fixture.setSession = (thread, status, version, generation) => {
+    appAtomRegistry.set(sessions(thread.environmentId)(thread.threadId), {
+      ...EMPTY_TERMINAL_SESSION_STATE,
+      status,
+      version,
+      ...(generation === undefined
+        ? {}
+        : { output: { ...EMPTY_TERMINAL_SESSION_STATE.output, generation } }),
+    });
+  };
   return {
     attachedTerminalSessionAtom: (
       environmentId: EnvironmentId,
@@ -83,7 +109,9 @@ vi.mock("../state/session", () => ({
     !fixture.deniedScopes.has(scope),
 }));
 vi.mock("../state/use-atom-command", () => ({
-  useAtomCommand: () => async () => ({ _tag: "Success" }),
+  useAtomCommand:
+    (command: object) => async (args: { input: { threadId: string; data?: string } }) =>
+      command === fixture.resizeCommand ? fixture.runResize(args) : { _tag: "Success" },
 }));
 // The commands are replaced above; importing their runtime would connect a client.
 vi.mock("../state/server", async () => {
@@ -91,7 +119,9 @@ vi.mock("../state/server", async () => {
   const config = Atom.make(null);
   return { serverEnvironment: { configValueAtom: () => config } };
 });
-vi.mock("../state/terminal", () => ({ terminalEnvironment: { write: {}, resize: {} } }));
+vi.mock("../state/terminal", () => ({
+  terminalEnvironment: { write: {}, resize: fixture.resizeCommand },
+}));
 vi.mock("../state/preview", () => ({ previewEnvironment: { open: {} } }));
 vi.mock("../state/projects", async () => {
   const { Atom, AsyncResult } = await import("effect/reactivity");
@@ -171,6 +201,8 @@ function setup() {
   ]);
   fixture.pendingSurfaces = [];
   fixture.surfaceOptions = [];
+  fixture.reportedSize = null;
+  fixture.runResize = () => Promise.resolve(AsyncResult.success(undefined));
   fixture.deniedScopes.clear();
   fixture.metadataRequests = [];
   fixture.metadata.clear();
@@ -408,4 +440,40 @@ it("rechecks terminal filesystem grants after pending metadata completes", async
   });
   expect(await validation).toBe(false);
   expect(options.canActivateLink!("src/pending.ts")).toBe(false);
+});
+
+it("resends a failed resize once in each writable session", async () => {
+  const { other: threadRef } = setup();
+  const resizes: unknown[] = [];
+  const failure = AsyncResult.failure(Cause.die(new Error("resize rejected")));
+  let failFirstResize = () => {};
+  fixture.runResize = (input) => {
+    resizes.push(input);
+    if (resizes.length > 1) return Promise.resolve(failure);
+    return new Promise((resolve) => {
+      failFirstResize = () => resolve(failure);
+    });
+  };
+  await using _screen = await render(<Drawer threadRef={threadRef} onCloseTerminal={() => {}} />);
+  await act(async () => {
+    fixture.pendingSurfaces.shift()?.();
+  });
+  await act(async () => {
+    fixture.reportedSize = { cols: 57, rows: 41 };
+    fixture.surfaceOptions.at(-1)!.onResize(57, 41);
+  });
+  // The first request fails while the attachment reconnects, so its retry is not sent.
+  await act(async () => {
+    fixture.setSession(threadRef, "running", 0, 1);
+    failFirstResize();
+  });
+  expect(resizes).toHaveLength(1);
+  await act(async () => {
+    fixture.setSession(threadRef, "running", 1, 2);
+  });
+  const resize = {
+    environmentId: threadRef.environmentId,
+    input: { threadId: threadRef.threadId, terminalId: "term-1", cols: 57, rows: 41 },
+  };
+  expect(resizes).toEqual([resize, resize, resize]);
 });
