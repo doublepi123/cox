@@ -3,13 +3,14 @@ import {
   ClaudeSettings,
   CodexSettings,
   type ServerSettings,
-  type SettingsSecretValue,
+  SettingsSecretValue,
   type ProviderInstanceEnvironment,
   UsageLimitSourceConfig,
   ModelServiceConfig,
   isSecretReference,
   secretSettingsFields,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
 import { cursorClient } from "@t3tools/provider-cursor/client";
 import { grokClient } from "@t3tools/provider-grok/client";
@@ -47,6 +48,7 @@ const providerSecretFields = new Map([
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
+const decodeSecretValue = Schema.decodeUnknownSync(SettingsSecretValue);
 
 export interface SettingsSecret {
   readonly secretName: string;
@@ -179,6 +181,16 @@ function mapSecretFieldGroups(
 
   return {
     ...settings,
+    notifications: {
+      ...settings.notifications,
+      webhooks: settings.notifications.webhooks.map((channel) => ({
+        ...channel,
+        secret: decodeSecretValue(
+          mapFields(channel, ["secret"], () => `notifications.webhook.${encode(channel.id)}.secret`)
+            .secret,
+        ),
+      })),
+    },
     modelServices: Object.fromEntries(
       Object.entries(settings.modelServices).map(([id, service]) => [
         id,
