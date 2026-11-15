@@ -65,7 +65,7 @@ const POSIX_FILE_ROOT_PREFIXES = [
   "/workspaces/",
 ] as const;
 
-const EXTENSIONLESS_FILE_NAMES = new Set([
+export const EXTENSIONLESS_FILE_NAMES: ReadonlySet<string> = new Set([
   "Makefile",
   "makefile",
   "GNUmakefile",
@@ -197,7 +197,9 @@ export function inlineCodeFilePathCandidate(codeText: string): string | null {
         .split(/[\\/]/)
         .at(-1) ?? "";
     if (VERSION_SUFFIX_PATTERN.test(basename)) return null;
-    if (!hasPosition && !FILE_EXTENSION_PATTERN.test(basename)) return null;
+    if (!hasPosition && !FILE_EXTENSION_PATTERN.test(basename)) {
+      return EXTENSIONLESS_FILE_NAMES.has(basename) ? candidate : null;
+    }
   }
   return candidate;
 }

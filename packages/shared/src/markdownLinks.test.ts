@@ -31,6 +31,8 @@ describe("inlineCodeFilePathCandidate", () => {
     ["origin/main", null],
     ["z-ai/glm-5.3", null],
     ["share/man/ls.1", "share/man/ls.1"],
+    ["docker/Dockerfile", "docker/Dockerfile"],
+    ["docker/Dockerfiles", null],
     ["src/main.ts/", null],
     ["./patches/", "./patches/"],
     ["/tmp/claude-1000/...", null],
@@ -145,7 +147,7 @@ describe("resolveMarkdownFileLinkTarget", () => {
   });
 
   it("keeps a backslash in a relative link that already names a file", () => {
-    expect(resolveMarkdownFileLinkTarget("./foo%5Cbar.ts", "/repo")).toBe("/repo/./foo\\bar.ts");
+    expect(resolveMarkdownFileLinkTarget("./foo%5Cbar.ts", "/repo")).toBe("/repo/foo\\bar.ts");
   });
 
   it("does not treat filename line references as external schemes", () => {
