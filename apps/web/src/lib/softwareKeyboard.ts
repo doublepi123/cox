@@ -3,13 +3,21 @@ type VirtualKeyboard = EventTarget & {
   readonly overlaysContent: boolean;
 };
 
-type KeyboardWindow = Pick<Window, "innerHeight" | "visualViewport"> & {
+type ViewportTarget = EventTarget & Pick<VisualViewport, "width" | "height" | "scale">;
+type ViewportStyle = Pick<CSSStyleDeclaration, "setProperty" | "removeProperty">;
+
+type KeyboardWindow = Pick<Window, "innerHeight"> & {
+  readonly visualViewport?: ViewportTarget | null;
   readonly navigator: Navigator & { readonly virtualKeyboard?: VirtualKeyboard };
+  readonly document?: {
+    readonly documentElement: { readonly style: ViewportStyle };
+  };
 };
 
 const KEYBOARD_THRESHOLD = 150;
+const VISUAL_VIEWPORT_HEIGHT_PROPERTY = "--visual-viewport-height";
 
-function viewportSnapshot(viewport: VisualViewport) {
+function viewportSnapshot(viewport: ViewportTarget) {
   return {
     width: Math.round(viewport.width),
     height: Math.round(viewport.height),
@@ -22,7 +30,13 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
   let viewportOpen = false;
   const viewport = win?.visualViewport;
   const keyboard = win?.navigator.virtualKeyboard;
+  const viewportStyle = win?.document?.documentElement.style;
   let previous = viewport ? viewportSnapshot(viewport) : undefined;
+
+  const syncViewportHeight = () => {
+    if (!viewport || !viewportStyle) return;
+    viewportStyle.setProperty(VISUAL_VIEWPORT_HEIGHT_PROPERTY, `${Math.round(viewport.height)}px`);
+  };
 
   const getSnapshot = () => {
     // Chromium can expose the API while withholding geometry outside overlay mode.
@@ -39,6 +53,7 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
 
   const onViewportResize = () => {
     if (!viewport || !win) return;
+    syncViewportHeight();
     const current = viewportSnapshot(viewport);
     // Adapted from Ionic's keyboard assist, MIT, Copyright (c) 2015-present Drifty Co.
     // https://github.com/ionic-team/ionic-framework/blob/main/core/src/utils/keyboard/keyboard.ts
@@ -58,6 +73,11 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
     notify();
   };
 
+  const onKeyboardGeometryChange = () => {
+    syncViewportHeight();
+    notify();
+  };
+
   const subscribe = (listener: () => void) => {
     if (!win) return () => {};
     if (listeners.size === 0) {
@@ -66,15 +86,19 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
         // A composer can mount after the keyboard has already opened.
         viewportOpen = win.innerHeight - previous.height * previous.scale > KEYBOARD_THRESHOLD;
         viewport.addEventListener("resize", onViewportResize);
+        viewport.addEventListener("scroll", syncViewportHeight);
+        syncViewportHeight();
       }
-      keyboard?.addEventListener("geometrychange", notify);
+      keyboard?.addEventListener("geometrychange", onKeyboardGeometryChange);
     }
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
       if (listeners.size === 0) {
         viewport?.removeEventListener("resize", onViewportResize);
-        keyboard?.removeEventListener("geometrychange", notify);
+        viewport?.removeEventListener("scroll", syncViewportHeight);
+        keyboard?.removeEventListener("geometrychange", onKeyboardGeometryChange);
+        viewportStyle?.removeProperty(VISUAL_VIEWPORT_HEIGHT_PROPERTY);
       }
     };
   };

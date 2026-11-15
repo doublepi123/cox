@@ -13,6 +13,7 @@ import { cn } from "~/lib/utils";
 import { isInSideChatPane } from "~/lib/sideChatPane";
 import { ComposerBanner } from "./ComposerBanner";
 import ChatMarkdown from "../ChatMarkdown";
+import { triggerMobileHapticSelection } from "../../mobile/mobileShellBridge";
 
 interface PendingUserInputPanelProps {
   pendingUserInputs: PendingUserInput[];
@@ -130,6 +131,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
 
   const handleOptionSelection = (questionId: string, optionValue: string) => {
     if (disabled || isResponding) return;
+    triggerMobileHapticSelection();
     if (activeQuestion?.multiSelect) {
       onToggleOption(questionId, optionValue);
       return;
@@ -243,7 +245,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         </ComposerBanner.Actions>
       </CollapsibleTrigger>
       <CollapsiblePanel>
-        <ComposerBanner.Scroll>
+        <ComposerBanner.Scroll className="max-sm:min-h-0 max-sm:max-h-[min(55dvh,calc(var(--visual-viewport-height,100dvh)-9rem))]">
           <ComposerBanner.Body className="ps-6 pe-4 pb-1 wrap-anywhere sm:ps-5.5">
             <ChatMarkdown
               text={activeQuestion.question}
@@ -261,7 +263,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 const isSelected =
                   isOptimisticallySelected || draftSelectedOptions?.[index] === true;
                 const className = cn(
-                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-left sm:ps-1.5 pointer-coarse:py-3 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
+                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-left max-sm:min-h-11 sm:ps-1.5 pointer-coarse:py-3 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
                   isSelected ? "text-foreground" : "text-foreground/70 hover:bg-muted/30",
                   (disabled || isResponding) && "opacity-50 cursor-not-allowed",
                   !disabled && !isResponding && "cursor-pointer",

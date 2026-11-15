@@ -4,6 +4,7 @@ import { createSoftwareKeyboardStore } from "./softwareKeyboard";
 
 function fixture(options: { native?: boolean; overlay?: boolean } = {}) {
   const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, scale: 1 });
+  const properties = new Map<string, string>();
   const keyboard = Object.assign(new EventTarget(), {
     boundingRect: { height: 0 },
     overlaysContent: options.overlay ?? false,
@@ -12,6 +13,14 @@ function fixture(options: { native?: boolean; overlay?: boolean } = {}) {
     innerHeight: 844,
     visualViewport: viewport,
     navigator: options.native ? { virtualKeyboard: keyboard } : {},
+    document: {
+      documentElement: {
+        style: {
+          setProperty: (name: string, value: string) => properties.set(name, value),
+          removeProperty: (name: string) => properties.delete(name),
+        },
+      },
+    },
   };
   const store = createSoftwareKeyboardStore(win as unknown as Window);
   const resize = (height: number, width = viewport.width, scale = viewport.scale) => {
@@ -22,7 +31,7 @@ function fixture(options: { native?: boolean; overlay?: boolean } = {}) {
     keyboard.boundingRect.height = height;
     keyboard.dispatchEvent(new Event("geometrychange"));
   };
-  return { store, viewport, keyboard, win, resize, geometry };
+  return { store, viewport, keyboard, win, properties, resize, geometry };
 }
 
 describe("software keyboard detection", () => {
@@ -121,5 +130,20 @@ describe("software keyboard detection", () => {
     resize(210.6);
     expect(store.getSnapshot()).toBe(false);
     unsubscribe();
+  });
+
+  it("publishes rounded visual viewport height on resize and scroll until disposal", () => {
+    const { store, viewport, properties, resize } = fixture();
+    {
+      using _subscription = { [Symbol.dispose]: store.subscribe(() => {}) };
+      expect(properties.get("--visual-viewport-height")).toBe("844px");
+
+      resize(480.4);
+      expect(properties.get("--visual-viewport-height")).toBe("480px");
+      Object.assign(viewport, { height: 479.6 });
+      viewport.dispatchEvent(new Event("scroll"));
+      expect(properties.get("--visual-viewport-height")).toBe("480px");
+    }
+    expect(properties.has("--visual-viewport-height")).toBe(false);
   });
 });

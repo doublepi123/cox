@@ -27,6 +27,7 @@ import { CheckIcon, ExternalLinkIcon, LockIcon, MinusIcon, ShieldCheckIcon } fro
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { isSecretsFeatureEnabled } from "../../env";
+import { triggerMobileHapticSelection } from "../../mobile/mobileShellBridge";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
@@ -119,6 +120,7 @@ function PendingSecretRequestForm(props: {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    triggerMobileHapticSelection();
     if (source === null) {
       void send({ type: "save", secret });
     } else if (secretRequestReference(source, reference) === undefined) {
@@ -134,7 +136,7 @@ function PendingSecretRequestForm(props: {
   return (
     <form
       data-v2-item-type={item.type}
-      className="flex min-w-0 flex-col gap-3 rounded-xl border border-border/60 bg-card p-4"
+      className="flex min-w-0 flex-col gap-3 rounded-xl border border-border/60 bg-card p-4 max-sm:max-h-[min(55dvh,calc(var(--visual-viewport-height,100dvh)-9rem))] max-sm:overflow-y-auto max-sm:overscroll-contain [&_button]:max-sm:min-h-11 [&_input]:max-sm:min-h-11"
       onSubmit={onSubmit}
       autoComplete="off"
       // On click, not pointerdown: the mousedown that follows a pointerdown
@@ -170,7 +172,7 @@ function PendingSecretRequestForm(props: {
           ) : null}
         </div>
       ) : null}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2 max-sm:flex-col max-sm:items-stretch">
         {sources.length > 0 ? (
           <SecretSourceSelect
             value={source?.id ?? null}
@@ -178,6 +180,7 @@ function PendingSecretRequestForm(props: {
             label={item.label}
             disabled={submitting}
             onValueChange={(next) => {
+              triggerMobileHapticSelection();
               setSourceId(next);
               setError(null);
             }}
@@ -244,7 +247,10 @@ function PendingSecretRequestForm(props: {
           size="xs"
           variant="ghost-muted"
           disabled={submitting}
-          onClick={() => void send({ type: "decline" })}
+          onClick={() => {
+            triggerMobileHapticSelection();
+            void send({ type: "decline" });
+          }}
         >
           {translateUi("Decline")}
         </Button>
