@@ -11,19 +11,20 @@ prefer Anthropic Messages. Matching is case-insensitive and uses the final
 slash-delimited segment (`gpt`, `gpt-*`, `openai/gpt-*`, `kimi`, `kimi-*`);
 display names do not affect routing.
 
-Catalog filtering, native agent configuration (per-model API/base URL in Pi and
-OMO, per-model SDK in OpenCode) and gateway request execution resolve through
-the same rule. Matching gateway requests pass through without the protocol
-bridge; fixed-protocol agents (such as Codex sending OpenAI Responses to a
-Chat-only GPT model) convert within the same bound model and service through the
-protocol bridge. Empty protocol intersections and explicit empty protocol lists
-return 422 without contacting upstream, unbound models return 403, and
-cross-protocol token counting remains unsupported (501).
-
-This policy applies only to gateway inference. Discovery and explicit service
-connectivity tests continue to use the configured protocols. A successful
-connectivity test alone does not prove the gateway's required protocol works.
-No saved settings or model metadata are rewritten by this policy.
+Catalog filtering, native agent configuration (per-model API/base URL in Pi,
+OMO and OMO Memory, per-model SDK in OpenCode), connectivity tests and gateway
+request execution resolve through the same family-ordered rule. When a
+multi-protocol service discovers models whose upstream metadata only lists a
+subset such as OpenAI Chat, discovery supplements the model family's primary
+protocol when enabled on the service (`openai-responses` for GPT, `openai-chat`
+for Kimi, `anthropic-messages` for other models). If an upstream channel rejects
+the primary protocol before any output is selected (`404` other than
+`model_not_found`, `405`, `501`, or explicit `unsupported_protocol`), the
+gateway falls back boundedly through the remaining allowed protocols within the
+same model and service without treating `401`, `403`, `429`, quota or context
+overflow errors as protocol failures. Empty protocol intersections and explicit
+empty protocol lists return 422 without contacting upstream, unbound models
+return 403, and cross-protocol token counting remains unsupported (501).
 
 ## Model service reasoning replay compatibility
 

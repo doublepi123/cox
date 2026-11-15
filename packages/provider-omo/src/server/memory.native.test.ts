@@ -35,7 +35,11 @@ Object.assign(process.env, {
 await writeFile(join(agent, "models.json"), JSON.stringify({ providers: { cox: {
   baseUrl: "http://127.0.0.1:1/v1", api: "openai-completions", apiKey: "$COX_MODEL_SERVICE_KEY",
   headers: { Authorization: "forbidden-inline-secret" },
-  models: ["main", "expert"].map(id => ({ id, name: id, contextWindow: 100000, maxTokens: 4096,
+  models: ["main", "expert"].map(id => ({ id, name: id,
+    api: id === "main" ? "openai-responses" : "anthropic-messages",
+    baseUrl: id === "main" ? "http://127.0.0.1:1/v1" : "http://127.0.0.1:1",
+    compat: id === "main" ? { supportsStrictMode: true } : { supportsForcedToolChoice: false },
+    contextWindow: 100000, maxTokens: 4096,
     headers: { Authorization: "forbidden-model-secret" } })),
 }, anthropic: { apiKey: "forbidden-other-secret", models: [] } } }));
 await writeFile(join(agent, "settings.json"), JSON.stringify({ retry: { modelFallback: true, fallbackChains: { "*": ["anthropic/outside"] } } }));
@@ -207,6 +211,14 @@ assert.equal(reflection.apiKey, undefined);
 assert.equal(reflection.root, memory);
 assert.equal(reflection.args[reflection.args.indexOf("--model") + 1], "cox/main");
 assert.ok(reflection.agentDir.startsWith(memory));
+const parsedPrivateModels = JSON.parse(await readFile(join(reflection.agentDir, "models.json"), "utf8")).providers.cox.models;
+assert.deepEqual(
+  parsedPrivateModels.map(m => ({ id: m.id, api: m.api, baseUrl: m.baseUrl, compat: m.compat, headers: m.headers })),
+  [
+    { id: "main", api: "openai-responses", baseUrl: "http://127.0.0.1:1/v1", compat: { supportsStrictMode: true }, headers: undefined },
+    { id: "expert", api: "anthropic-messages", baseUrl: "http://127.0.0.1:1", compat: { supportsForcedToolChoice: false }, headers: undefined },
+  ],
+);
 assert.match(await readFile(join(repo, "system", "reflected.md"), "utf8"), /Reflection fixture was local/);
 const artifacts = await readdir(join(memory, "agents", firstBinding.identity, "runtime"), { recursive: true });
 const manifests = artifacts.filter(name => name.endsWith("launch.json"));

@@ -194,12 +194,22 @@ async function createCoxOmoMemoryComponent(options) {
       if ((await stat(catalogPath)).size > 1024 * 1024) throw new Error("The Cox memory model catalog exceeds its limit.");
       const provider = JSON.parse(await readFile(catalogPath, "utf8")).providers?.cox;
       const gateway = new URL(provider?.baseUrl);
-      if (gateway.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(gateway.hostname) || gateway.username || gateway.password || gateway.search || gateway.hash ||
-          provider.apiKey !== "$COX_MODEL_SERVICE_KEY" || !["openai-completions", "openai-responses", "anthropic-messages", "google-generative-ai"].includes(provider.api))
+      const validGatewayApis = ["openai-completions", "openai-responses", "anthropic-messages", "google-generative-ai"];
+      const validLoopbackUrl = rawUrl => {
+        const parsed = new URL(rawUrl);
+        return parsed.protocol === "http:" && ["127.0.0.1", "[::1]"].includes(parsed.hostname) &&
+          parsed.origin === gateway.origin && !parsed.username && !parsed.password && !parsed.search && !parsed.hash;
+      };
+      if (!validLoopbackUrl(provider?.baseUrl) || provider.apiKey !== "$COX_MODEL_SERVICE_KEY" || !validGatewayApis.includes(provider.api))
         throw new Error("Cox memory requires the loopback Cox model gateway.");
-      const models = provider.models.filter(model => allowed.has("cox/" + model.id)).map(model =>
-        Object.fromEntries(["id", "name", "reasoning", "input", "cost", "contextWindow", "maxTokens", "thinkingLevelMap"]
-          .filter(key => model[key] !== undefined).map(key => [key, model[key]])));
+      const models = provider.models.filter(model => allowed.has("cox/" + model.id)).map(model => {
+        if (model.api !== undefined && !validGatewayApis.includes(model.api))
+          throw new Error("Cox memory model uses an unsupported gateway API.");
+        if (model.baseUrl !== undefined && !validLoopbackUrl(model.baseUrl))
+          throw new Error("Cox memory model requires the loopback Cox model gateway.");
+        return Object.fromEntries(["id", "name", "api", "baseUrl", "compat", "reasoning", "input", "cost", "contextWindow", "maxTokens", "thinkingLevelMap"]
+          .filter(key => model[key] !== undefined).map(key => [key, model[key]]));
+      });
       if (models.length !== allowed.size) throw new Error("The Cox memory model catalog does not match this binding.");
       await mkdir(privateDirectory, { recursive: true, mode: 0o700 });
       if ((await lstat(privateDirectory)).isSymbolicLink()) throw new Error("Cox memory runtime cannot be a symbolic link.");

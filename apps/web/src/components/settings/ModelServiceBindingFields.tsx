@@ -4,7 +4,11 @@ import {
   type ModelServiceConfig,
 } from "@t3tools/contracts";
 import { useId } from "react";
-import { boundModelServiceModels, modelServiceAgentProtocol } from "@t3tools/shared/modelServices";
+import {
+  boundModelServiceModels,
+  modelServiceAgentProtocol,
+  modelServiceUpstreamProtocol,
+} from "@t3tools/shared/modelServices";
 import { useTranslation } from "../../i18n";
 
 export function ModelServiceBindingFields({
@@ -129,9 +133,14 @@ export function ModelServiceBindingFields({
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {t(
-                      (model.protocols ?? service.protocols).includes(target!)
-                        ? "Native protocol"
-                        : "Protocol conversion",
+                      (driver === "omo" || driver === "pi" || driver === "opencode") &&
+                        new Set(service.protocols).size > 1
+                        ? modelServiceUpstreamProtocol(service, model, target!) !== undefined
+                          ? "Native protocol"
+                          : "Protocol conversion"
+                        : modelServiceUpstreamProtocol(service, model, target!) === target
+                          ? "Native protocol"
+                          : "Protocol conversion",
                     )}
                   </span>
                 </label>

@@ -315,6 +315,31 @@ describe("model service discovery", () => {
         "openai-chat",
       ])?.protocols,
     ).toEqual([]);
+    const threeProtocols = ["openai-chat", "openai-responses", "anthropic-messages"] as const;
+    expect(
+      parseModelServiceModel(
+        { id: "gpt-6.1-sol", supported_endpoint_types: ["openai"] },
+        threeProtocols,
+      )?.protocols,
+    ).toEqual(["openai-responses", "openai-chat"]);
+    expect(
+      parseModelServiceModel(
+        { id: "deepseek-flash", supported_endpoint_types: ["openai"] },
+        threeProtocols,
+      )?.protocols,
+    ).toEqual(["anthropic-messages", "openai-chat"]);
+    expect(
+      parseModelServiceModel(
+        { id: "kimi-k3.1-pro", supported_endpoint_types: ["openai"] },
+        threeProtocols,
+      )?.protocols,
+    ).toEqual(["openai-chat"]);
+    expect(
+      parseModelServiceModel(
+        { id: "gpt-6", supported_endpoint_types: ["OpenAI_Responses", "Anthropic_Messages"] },
+        threeProtocols,
+      )?.protocols,
+    ).toEqual(["openai-responses", "anthropic-messages"]);
   });
   it("uses the protocol's standard version only for an unversioned origin", () => {
     expect(

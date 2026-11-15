@@ -1,1 +1,5 @@
-export { modelServiceUpstreamProtocol } from "@t3tools/shared/modelServices";
+export {
+  modelServiceCandidateProtocols,
+  modelServiceUpstreamProtocol,
+  preferredModelServiceProtocols,
+} from "@t3tools/shared/modelServices";

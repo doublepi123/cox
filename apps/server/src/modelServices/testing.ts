@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import { modelServiceCandidateProtocols } from "@t3tools/shared/modelServices";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 
@@ -105,9 +106,13 @@ export const testModelService = Effect.fn("testModelService")(
       protocol: null,
       message: "No compatible protocol is configured for this model.",
     };
-    for (const protocol of service.protocols.filter(
-      (candidate) => !model.protocols || model.protocols.includes(candidate),
-    )) {
+    const candidates =
+      new Set(service.protocols).size > 1
+        ? modelServiceCandidateProtocols(service, model)
+        : service.protocols.filter(
+            (candidate) => !model.protocols || model.protocols.includes(candidate),
+          );
+    for (const protocol of candidates) {
       const request = testRequest(service, protocol, model.id);
       const outcome = yield* Effect.scoped(
         Effect.gen(function* () {

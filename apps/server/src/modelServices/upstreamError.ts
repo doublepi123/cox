@@ -5,6 +5,8 @@ const record = (value: unknown): Record<string, unknown> =>
 
 const codes = new Set([
   "invalid_encrypted_content",
+  "unsupported_protocol",
+  "endpoint_not_supported",
   "unsupported_parameter",
   "unsupported_value",
   "invalid_request_error",
@@ -138,6 +140,12 @@ export function upstreamErrorDetails(
     /^(?:status_code=400, )?[A-Za-z0-9_./-]{1,128} does not support forced tool_choice; use auto or none(?:\s*\(request id: [A-Za-z0-9_-]+\))?\s*$/.test(
       error.message,
     );
+  const unsupportedProtocol =
+    typeof error.message === "string" &&
+    error.message.length <= 16384 &&
+    /(?:unsupported|unknown|unrecognized|invalid)\s+(?:protocol|endpoint|api|route)\b|\b(?:protocol|endpoint|api)\s+(?:is\s+)?not\s+(?:supported|enabled|available|implemented)\b|\bonly\s+support(?:ed|s)?\s+(?:in|on|via|by)\s+\/?v1\/|\bnot\s+supported\s+(?:in|on|by)\s+(?:the\s+)?(?:\/?v1\/(?:responses|messages|chat\/completions)|responses\s+api|messages\s+api)\b|\bdoes\s+not\s+support\s+(?:the\s+)?(?:\/?v1\/(?:responses|messages)|responses\s+api|anthropic(?:\s+messages)?|messages\s+api)\b|\binvalid\s+url\s*\(\s*post\s+\/v1\/(?:responses|messages|chat\/completions)\s*\)|\b404\s+page\s+not\s+found\b/i.test(
+      error.message,
+    );
   const parameter = unsupportedUltra
     ? "reasoning_effort"
     : typeof error.param === "string"
@@ -178,7 +186,9 @@ export function upstreamErrorDetails(
       ? "unsupported_forced_tool_choice"
       : forcedToolThinking
         ? "incompatible_tool_choice_thinking"
-        : code,
+        : !encrypted && (unsupportedProtocol || code === "endpoint_not_supported")
+          ? "unsupported_protocol"
+          : code,
     requestId: upstreamRequestId,
     detail: details.length ? ` Rejected request (${details.join(", ")}).` : "",
   };

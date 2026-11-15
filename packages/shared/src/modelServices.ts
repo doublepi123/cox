@@ -61,11 +61,24 @@ const CONVERTIBLE_MODEL_SERVICE_PROTOCOLS: ReadonlySet<ModelServiceProtocol> = n
   "gemini",
 ]);
 
-export function modelServiceUpstreamProtocol(
+export function preferredModelServiceProtocols(
+  modelId: string,
+): ReadonlyArray<ModelServiceProtocol> {
+  const slug = modelId.split("/").at(-1) ?? "";
+  return /^gpt(?:-|$)/i.test(slug)
+    ? MODEL_SERVICE_PROTOCOL_PREFERENCE.gpt
+    : /^kimi(?:-|$)/i.test(slug)
+      ? MODEL_SERVICE_PROTOCOL_PREFERENCE.kimi
+      : /^gemini(?:-|$)/i.test(slug)
+        ? MODEL_SERVICE_PROTOCOL_PREFERENCE.gemini
+        : MODEL_SERVICE_PROTOCOL_PREFERENCE.default;
+}
+
+export function modelServiceCandidateProtocols(
   service: ModelServiceConfig,
   model: ModelServiceModel,
   incoming?: ModelServiceProtocol,
-): ModelServiceProtocol | undefined {
+): ReadonlyArray<ModelServiceProtocol> {
   const serviceProtocols = new Set(service.protocols);
   const allowed = new Set(
     (model.protocols ?? service.protocols).filter(
@@ -77,16 +90,16 @@ export function modelServiceUpstreamProtocol(
             CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(protocol))),
     ),
   );
-  if (allowed.size === 0) return undefined;
-  const slug = model.id.split("/").at(-1) ?? "";
-  const order = /^gpt(?:-|$)/i.test(slug)
-    ? MODEL_SERVICE_PROTOCOL_PREFERENCE.gpt
-    : /^kimi(?:-|$)/i.test(slug)
-      ? MODEL_SERVICE_PROTOCOL_PREFERENCE.kimi
-      : /^gemini(?:-|$)/i.test(slug)
-        ? MODEL_SERVICE_PROTOCOL_PREFERENCE.gemini
-        : MODEL_SERVICE_PROTOCOL_PREFERENCE.default;
-  return order.find((protocol) => allowed.has(protocol));
+  if (allowed.size === 0) return [];
+  return preferredModelServiceProtocols(model.id).filter((protocol) => allowed.has(protocol));
+}
+
+export function modelServiceUpstreamProtocol(
+  service: ModelServiceConfig,
+  model: ModelServiceModel,
+  incoming?: ModelServiceProtocol,
+): ModelServiceProtocol | undefined {
+  return modelServiceCandidateProtocols(service, model, incoming)[0];
 }
 
 export function isBoundModelServiceModelAllowed(

@@ -129,6 +129,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   readonly cancelled?: Effect.Effect<boolean>;
   readonly attempt: (attempt: number) => Effect.Effect<A, ModelServiceRequestFailure, Scope.Scope>;
   readonly repair?: (error: ModelServiceRequestFailure) => Effect.Effect<boolean>;
+  readonly fallbackProtocol?: (error: ModelServiceRequestFailure) => Effect.Effect<boolean>;
   readonly progress: (progress: RecoveryProgress) => Effect.Effect<void>;
   readonly diagnostic?: (event: RecoveryDiagnostic) => Effect.Effect<void>;
 }) {
@@ -149,6 +150,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
   let announced = false;
   let settled = false;
   let repaired = false;
+  let pendingProtocolFallback = false;
   let terminationReason = "recovery_budget_exhausted";
   let permanentFailure: ModelServiceRequestFailure | undefined;
   let lastAttemptFailure: ModelServiceRequestFailure | undefined;
@@ -298,7 +300,8 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       active.size < policy.maxConcurrent &&
       (active.size === 0 || (load.hedges < 9 && load.inFlight < 16))
     ) {
-      if (policy.retryEnabled && now >= retryAt) {
+      if ((policy.retryEnabled || pendingProtocolFallback) && now >= retryAt) {
+        pendingProtocolFallback = false;
         retryAt = Infinity;
         yield* launch(active.size > 0);
       } else if (
@@ -314,7 +317,9 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
     if (
       active.size === 0 &&
       attempts > 0 &&
-      (permanentFailure || !policy.retryEnabled || attempts >= policy.maxAttempts)
+      (permanentFailure ||
+        (!policy.retryEnabled && !pendingProtocolFallback) ||
+        attempts >= policy.maxAttempts)
     ) {
       if (permanentFailure) lastFailure = permanentFailure;
       terminationReason = permanentFailure
@@ -341,7 +346,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
                       !repaired && policy.hedgeEnabled && active.size > 0
                         ? nextHedgeAt - now
                         : Infinity,
-                      policy.retryEnabled ? retryAt - now : Infinity,
+                      policy.retryEnabled || pendingProtocolFallback ? retryAt - now : Infinity,
                     )
                   : Infinity,
               ),
@@ -370,6 +375,20 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       source: lastFailure.source,
       upstreamRequestId: lastFailure.requestId,
     });
+    if (
+      !permanentFailure &&
+      lastFailure.source === "upstream" &&
+      attempts < policy.maxAttempts &&
+      options.fallbackProtocol &&
+      (yield* options.fallbackProtocol(lastFailure))
+    ) {
+      repaired = false;
+      pendingProtocolFallback = true;
+      for (const id of active.keys()) yield* close(id, "protocol_fallback");
+      retryAt = yield* Clock.currentTimeMillis;
+      yield* report("retrying", 0, lastFailure.code ?? "unsupported_protocol");
+      continue;
+    }
     if (repaired) {
       permanentFailure ??= lastFailure;
       retryAt = Infinity;

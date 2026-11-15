@@ -6208,4 +6208,100 @@ it.layer(layer)("model service gateway", (it) => {
       expect(h.calls).toHaveLength(1);
     }).pipe(Effect.scoped),
   );
+
+  it.effect(
+    "falls back pre-output from Responses/Anthropic to Chat on unsupported upstream endpoints without treating 401/403/429 as protocol errors",
+    () =>
+      Effect.gen(function* () {
+        const gpt = yield* harness({
+          modelId: "gpt-6.1-sol",
+          protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+          respond: (request) =>
+            request.url.endsWith("/v1/responses")
+              ? Response.json(
+                  { error: { message: "Invalid URL (POST /v1/responses)" } },
+                  { status: 404 },
+                )
+              : Response.json({
+                  id: "chat_fallback_ok",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "gpt fell back to chat" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 6, completion_tokens: 4, total_tokens: 10 },
+                }),
+        });
+        const gptResponse = yield* gpt.invoke("/v1/responses", {
+          model: "gpt-6.1-sol",
+          input: [{ role: "user", content: "hi" }],
+        });
+        expect(gptResponse.status).toBe(200);
+        expect(JSON.parse(gptResponse.text)).toMatchObject({
+          status: "completed",
+          output: [{ content: [{ text: "gpt fell back to chat" }] }],
+        });
+        expect(gpt.calls.map((call) => call.url)).toEqual([
+          "https://upstream.test/v1/responses",
+          "https://upstream.test/v1/chat/completions",
+        ]);
+
+        const other = yield* harness({
+          modelId: "deepseek-flash",
+          protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+          respond: (request) =>
+            request.url.endsWith("/v1/messages")
+              ? Response.json(
+                  { error: { message: "This channel does not support the /v1/messages endpoint" } },
+                  { status: 400 },
+                )
+              : Response.json({
+                  id: "deepseek_chat_ok",
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "deepseek fell back to chat" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 5, completion_tokens: 4, total_tokens: 9 },
+                }),
+        });
+        const otherResponse = yield* other.invoke("/v1/messages", {
+          model: "deepseek-flash",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }],
+        });
+        expect(otherResponse.status).toBe(200);
+        expect(JSON.parse(otherResponse.text)).toMatchObject({
+          type: "message",
+          content: [{ type: "text", text: "deepseek fell back to chat" }],
+        });
+        expect(other.calls.map((call) => call.url)).toEqual([
+          "https://upstream.test/v1/messages",
+          "https://upstream.test/v1/chat/completions",
+        ]);
+
+        for (const nonProtocolStatus of [401, 403, 429] as const) {
+          const guarded = yield* harness({
+            modelId: "gpt-6.1-sol",
+            protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+            respond: () =>
+              Response.json(
+                { error: { message: "upstream auth or rate limit" } },
+                { status: nonProtocolStatus },
+              ),
+          });
+          const rejected = yield* guarded.invoke("/v1/responses", {
+            model: "gpt-6.1-sol",
+            input: [{ role: "user", content: "hi" }],
+          });
+          expect(rejected.status).toBe(nonProtocolStatus);
+          expect(guarded.calls).toHaveLength(1);
+          expect(guarded.calls[0]!.url).toBe("https://upstream.test/v1/responses");
+        }
+      }).pipe(Effect.scoped),
+  );
 });

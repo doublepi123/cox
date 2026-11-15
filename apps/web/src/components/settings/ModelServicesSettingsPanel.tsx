@@ -10,7 +10,10 @@ import {
 } from "@t3tools/contracts";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createModelServiceTestRunner } from "@t3tools/client-runtime/state/model-service-tests";
-import { modelServiceDisplayName } from "@t3tools/shared/modelServices";
+import {
+  modelServiceCandidateProtocols,
+  modelServiceDisplayName,
+} from "@t3tools/shared/modelServices";
 import * as Schema from "effect/Schema";
 import {
   isAtomCommandInterrupted,
@@ -904,7 +907,15 @@ function ModelServiceEditor({
                     <p className="text-xs text-muted-foreground">
                       {t("Context")}:{" "}
                       {model.capabilities?.contextWindow?.toLocaleString() ?? t("Unknown")} ·{" "}
-                      {(model.protocols ?? service?.protocols ?? [])
+                      {(service && new Set(service.protocols).size > 1
+                        ? [
+                            ...modelServiceCandidateProtocols(service, model),
+                            ...(model.protocols ?? []).filter(
+                              (protocol) => !service.protocols.includes(protocol),
+                            ),
+                          ]
+                        : (model.protocols ?? service?.protocols ?? [])
+                      )
                         .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
                         .join(" / ")}
                     </p>

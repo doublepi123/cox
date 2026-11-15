@@ -17,7 +17,10 @@ import { HttpClient, HttpClientRequest } from "effect/http";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
 import { parseGatewayModel } from "../provider/GatewayModels.ts";
 import * as Settings from "../serverSettings.ts";
-import { modelServiceDisplayName } from "@t3tools/shared/modelServices";
+import {
+  modelServiceDisplayName,
+  preferredModelServiceProtocols,
+} from "@t3tools/shared/modelServices";
 import { enrichModelFromModelsDev, fetchModelsDevCatalog } from "./modelsDev.ts";
 const isModelServiceError = Schema.is(ModelServiceError);
 
@@ -27,16 +30,35 @@ const record = (value: unknown): Record<string, unknown> =>
     : {};
 const protocolNames: Readonly<Record<string, ModelServiceProtocol>> = {
   "openai-response": "openai-responses",
+  openai_response: "openai-responses",
   "openai-responses": "openai-responses",
+  openai_responses: "openai-responses",
+  response: "openai-responses",
   responses: "openai-responses",
+  "responses-api": "openai-responses",
+  "openai-response-api": "openai-responses",
+  "/v1/responses": "openai-responses",
+  "v1/responses": "openai-responses",
   openai: "openai-chat",
   "openai-chat": "openai-chat",
+  openai_chat: "openai-chat",
+  chat: "openai-chat",
   "chat-completions": "openai-chat",
+  chat_completions: "openai-chat",
+  "openai-completions": "openai-chat",
+  openai_completions: "openai-chat",
+  "/v1/chat/completions": "openai-chat",
+  "v1/chat/completions": "openai-chat",
   anthropic: "anthropic-messages",
   claude: "anthropic-messages",
   "anthropic-messages": "anthropic-messages",
+  anthropic_messages: "anthropic-messages",
+  messages: "anthropic-messages",
+  "/v1/messages": "anthropic-messages",
+  "v1/messages": "anthropic-messages",
   gemini: "gemini",
   "google-generative-ai": "gemini",
+  "/v1beta": "gemini",
 };
 
 export function modelServiceEndpoint(
@@ -110,15 +132,34 @@ export function parseModelServiceModel(
   );
   if (!model) return null;
   const declared = raw.supported_endpoint_types ?? raw.supported_protocols ?? raw.protocols;
-  const protocols = Array.isArray(declared)
+  const declaredProtocols = Array.isArray(declared)
     ? [
         ...new Set(
-          declared.flatMap((name) =>
-            typeof name === "string" && protocolNames[name] ? [protocolNames[name]!] : [],
-          ),
+          declared.flatMap((name) => {
+            const normalized = typeof name === "string" ? name.trim().toLowerCase() : "";
+            return normalized && protocolNames[normalized] ? [protocolNames[normalized]!] : [];
+          }),
         ),
       ]
     : undefined;
+  const multiProtocolService = new Set(defaults).size > 1;
+  const preferredOrder = preferredModelServiceProtocols(model.slug);
+  const familyPrimary = preferredOrder[0]!;
+  const rawProtocols =
+    declaredProtocols === undefined
+      ? [...defaults]
+      : multiProtocolService &&
+          declaredProtocols.length > 0 &&
+          defaults.includes(familyPrimary) &&
+          !declaredProtocols.includes(familyPrimary)
+        ? [...declaredProtocols, familyPrimary]
+        : declaredProtocols;
+  const protocols = multiProtocolService
+    ? [
+        ...preferredOrder.filter((protocol) => rawProtocols.includes(protocol)),
+        ...rawProtocols.filter((protocol) => !preferredOrder.includes(protocol)),
+      ]
+    : rawProtocols;
   const parameters = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : undefined;
   const tools =
     raw.supports_tools ??
@@ -139,7 +180,7 @@ export function parseModelServiceModel(
     id: model.slug,
     name: model.name === model.slug ? modelServiceDisplayName(model.slug) : model.name,
     capabilities: model.capabilities,
-    protocols: protocols ?? [...defaults],
+    protocols,
     source: "discovered",
     available: true,
     ...(modalities(inputModalities) ? { inputModalities: modalities(inputModalities)! } : {}),

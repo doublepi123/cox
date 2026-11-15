@@ -131,4 +131,70 @@ describe("explicit model tests", () => {
       expect(calls).toBe(0);
     }).pipe(Effect.provide(ServerSettingsService.layerTest({ modelServices: { [id]: config() } }))),
   );
+
+  it.effect(
+    "tests GPT via Responses, Kimi via Chat, and other models via Anthropic first on multi-protocol services",
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const http = HttpClient.make((request) =>
+          Effect.sync(() => {
+            calls.push(new URL(request.url).pathname);
+            if (request.url.endsWith("/responses")) {
+              return HttpClientResponse.fromWeb(
+                request,
+                Response.json({ output: [], status: "completed" }),
+              );
+            }
+            if (request.url.endsWith("/messages")) {
+              return HttpClientResponse.fromWeb(
+                request,
+                Response.json({ type: "message", content: [{ text: "OK" }] }),
+              );
+            }
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json({ choices: [{ message: { content: "OK" } }] }),
+            );
+          }),
+        );
+        const gptResult = yield* testModelService({
+          serviceId: id,
+          revision: 0,
+          modelId: "gpt-6.1-terra",
+        }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+        const kimiResult = yield* testModelService({
+          serviceId: id,
+          revision: 0,
+          modelId: "kimi-k3.1-pro",
+        }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+        const otherResult = yield* testModelService({
+          serviceId: id,
+          revision: 0,
+          modelId: "deepseek-flash",
+        }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+        expect(gptResult).toMatchObject({ ok: true, protocol: "openai-responses" });
+        expect(kimiResult).toMatchObject({ ok: true, protocol: "openai-chat" });
+        expect(otherResult).toMatchObject({ ok: true, protocol: "anthropic-messages" });
+        expect(calls).toEqual(["/v1/responses", "/v1/chat/completions", "/v1/messages"]);
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [id]: decodeConfig({
+                name: "MultiTest",
+                baseUrl: "https://model.test",
+                apiKey: "private-key",
+                protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+                models: [
+                  { id: "gpt-6.1-terra", capabilities: null },
+                  { id: "kimi-k3.1-pro", capabilities: null },
+                  { id: "deepseek-flash", capabilities: null },
+                ],
+              }),
+            },
+          }),
+        ),
+      ),
+  );
 });

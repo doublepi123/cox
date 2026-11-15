@@ -32,7 +32,10 @@ import * as Settings from "../serverSettings.ts";
 import * as ServerConfig from "../config.ts";
 import { modelServiceEndpoint, modelServiceHeaders } from "./discovery.ts";
 import { openProtocolBridge } from "./ProtocolBridge.ts";
-import { modelServiceUpstreamProtocol } from "./upstreamProtocol.ts";
+import {
+  modelServiceCandidateProtocols,
+  modelServiceUpstreamProtocol,
+} from "./upstreamProtocol.ts";
 import { makeModelServiceStreamMonitor, ModelServiceStreamError } from "./streamIntegrity.ts";
 import { chatResponseOutput } from "./responseOutput.ts";
 import {
@@ -545,7 +548,12 @@ export const make = Effect.gen(function* () {
                           name: model.name ?? model.id,
                           ...(multiProtocol
                             ? {
-                                provider: { npm: SDK_PACKAGES[nativeProtocol] },
+                                provider: {
+                                  npm: SDK_PACKAGES[nativeProtocol],
+                                  ...(nativeProtocol === "gemini"
+                                    ? { options: { baseURL: baseUrl + "/v1beta" } }
+                                    : {}),
+                                },
                               }
                             : {}),
                           ...(model.capabilities?.contextWindow
@@ -670,13 +678,16 @@ export const make = Effect.gen(function* () {
         message:
           "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
       });
-    const protocol = modelServiceUpstreamProtocol(service, boundCandidate, incoming);
-    if (!protocol)
+    const candidateProtocols = modelServiceCandidateProtocols(service, boundCandidate, incoming);
+    let protocolIndex = 0;
+    const initialProtocol = candidateProtocols[0];
+    if (!initialProtocol)
       return gatewayErrorResponse(incoming, 422, {
         message: "No compatible upstream protocol is configured for this model.",
       });
+    let currentProtocol: ModelServiceProtocol = initialProtocol;
     const selected = models.find((model) => model.id === boundCandidate.id) ?? boundCandidate;
-    if (countTokens && protocol !== incoming)
+    if (countTokens && currentProtocol !== incoming)
       return yield* new ModelServiceError({
         detail: "Token counting is unavailable across different model protocols.",
         status: 501,
@@ -708,7 +719,7 @@ export const make = Effect.gen(function* () {
         sessionId,
         ...tracking.context,
         incoming,
-        protocol,
+        protocol: currentProtocol,
         ...event,
       });
     let hasEncryptedReasoning = false;
@@ -757,11 +768,11 @@ export const make = Effect.gen(function* () {
       });
     };
     const initialBridge =
-      protocol === incoming
+      currentProtocol === incoming
         ? undefined
         : yield* openProtocolBridge({
             from: incoming,
-            to: protocol,
+            to: currentProtocol,
             model: selected.id,
             stream,
             body,
@@ -772,13 +783,14 @@ export const make = Effect.gen(function* () {
           );
     const attempt = Effect.fn("ModelServiceGateway.attempt")(
       function* (attemptId: number) {
+        const protocol = currentProtocol;
         const stripEncryptedReasoning = omitEncryptedReasoning;
         const stripForcedToolThinking = disableForcedToolThinking;
         const useAutoToolChoice = relaxForcedToolChoice;
         const started = yield* Clock.currentTimeMillis;
         yield* Effect.annotateCurrentSpan({ requestId, attempt: attemptId, incoming, protocol });
         const bridge =
-          attemptId === 1
+          attemptId === 1 && protocolIndex === 0
             ? initialBridge
             : protocol === incoming
               ? undefined
@@ -1499,7 +1511,11 @@ export const make = Effect.gen(function* () {
         error: ModelServiceRequestFailure,
       ) {
         if (error.code === "unsupported_forced_tool_choice") {
-          if (protocol !== "openai-chat" || !canRepairForcedToolChoice || relaxForcedToolChoice)
+          if (
+            currentProtocol !== "openai-chat" ||
+            !canRepairForcedToolChoice ||
+            relaxForcedToolChoice
+          )
             return false;
           relaxForcedToolChoice = true;
           yield* diagnostic({
@@ -1511,7 +1527,7 @@ export const make = Effect.gen(function* () {
         }
         if (error.code === "incompatible_tool_choice_thinking") {
           if (
-            (protocol !== "openai-chat" && protocol !== "anthropic-messages") ||
+            (currentProtocol !== "openai-chat" && currentProtocol !== "anthropic-messages") ||
             !canRepairForcedToolThinking ||
             disableForcedToolThinking
           )
@@ -1524,13 +1540,71 @@ export const make = Effect.gen(function* () {
           });
           return true;
         }
-        if (protocol !== "openai-responses" || !hasEncryptedReasoning || omitEncryptedReasoning)
+        if (
+          currentProtocol !== "openai-responses" ||
+          !hasEncryptedReasoning ||
+          omitEncryptedReasoning
+        )
           return false;
         omitEncryptedReasoning = true;
         yield* diagnostic({
           event: "request_repaired",
           reason: "invalid_encrypted_content",
           repair: "removed_encrypted_reasoning",
+        });
+        return true;
+      }),
+      fallbackProtocol: Effect.fn("ModelServiceGateway.fallbackProtocol")(function* (
+        error: ModelServiceRequestFailure,
+      ) {
+        if (
+          countTokens ||
+          stateful ||
+          protocolIndex + 1 >= candidateProtocols.length ||
+          error.source !== "upstream" ||
+          [401, 402, 403, 408, 409, 413, 425, 429, 499].includes(error.status) ||
+          [
+            "authentication_error",
+            "permission_error",
+            "invalid_api_key",
+            "rate_limit_error",
+            "insufficient_quota",
+            "insufficient_user_quota",
+            "billing_hard_limit_reached",
+            "context_length_exceeded",
+            "string_above_max_length",
+            "invalid_encrypted_content",
+            "content_filter",
+            "content_policy_violation",
+            "cyber_policy",
+            "safety_violation",
+            "max_output_tokens",
+            "model_not_found",
+          ].includes(error.code ?? "") ||
+          !(
+            error.code === "unsupported_protocol" ||
+            error.status === 404 ||
+            error.status === 405 ||
+            error.status === 501
+          )
+        ) {
+          return false;
+        }
+        const fromProtocol = currentProtocol;
+        protocolIndex += 1;
+        currentProtocol = candidateProtocols[protocolIndex]!;
+        hasEncryptedReasoning = false;
+        omitEncryptedReasoning = replayPolicy === "omit";
+        disableForcedToolThinking = false;
+        canRepairForcedToolThinking = false;
+        relaxForcedToolChoice = false;
+        canRepairForcedToolChoice = false;
+        yield* diagnostic({
+          event: "request_repaired",
+          reason: error.code ?? `http_${error.status}`,
+          repair: "fallback_upstream_protocol",
+          fromProtocol,
+          toProtocol: currentProtocol,
         });
         return true;
       }),
