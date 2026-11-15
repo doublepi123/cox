@@ -703,24 +703,29 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
-  it.effect("persists provider ordering and default deletion markers", () =>
+  it.effect("persists provider and model-service ordering and default deletion markers", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
       const config = yield* ServerConfig.ServerConfig;
       const fs = yield* FileSystem.FileSystem;
       const codex = ProviderInstanceId.make("codex");
       const claude = ProviderInstanceId.make("claudeAgent");
+      const shared = ModelServiceId.make("shared");
+      const backup = ModelServiceId.make("backup");
 
       const saved = yield* serverSettings.updateSettings({
         providerInstanceOrder: [claude, codex],
         deletedDefaultProviderInstances: [codex],
+        modelServiceOrder: [backup, shared],
       });
 
       assert.deepEqual(saved.providerInstanceOrder, [claude, codex]);
       assert.deepEqual(saved.deletedDefaultProviderInstances, [codex]);
+      assert.deepEqual(saved.modelServiceOrder, [backup, shared]);
       const persisted = JSON.parse(yield* fs.readFileString(config.settingsPath));
       assert.deepEqual(persisted.providerInstanceOrder, ["claudeAgent", "codex"]);
       assert.deepEqual(persisted.deletedDefaultProviderInstances, ["codex"]);
+      assert.deepEqual(persisted.modelServiceOrder, ["backup", "shared"]);
       assert.deepEqual(
         ServerSettingsModule.redactServerSettingsForClient(saved).deletedDefaultProviderInstances,
         [codex],

@@ -1395,6 +1395,9 @@ export const ServerSettings = Schema.Struct({
   modelServices: Schema.Record(ModelServiceId, ModelServiceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  modelServiceOrder: Schema.Array(ModelServiceId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   notifications: MobileNotificationSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
@@ -1717,6 +1720,7 @@ export const ServerSettingsPatch = Schema.Struct({
   modelServices: Schema.optionalKey(
     Schema.Record(ModelServiceId, Schema.NullOr(ModelServiceConfig)),
   ),
+  modelServiceOrder: Schema.optionalKey(Schema.Array(ModelServiceId)),
   // Merge per source to avoid racing other edits; null removes an entry.
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
@@ -1748,6 +1752,7 @@ export function requiredScopesForServerSettingsPatch(
       key === "providerInstanceOrder" ||
       key === "deletedDefaultProviderInstances" ||
       key === "modelServices" ||
+      key === "modelServiceOrder" ||
       key === "usageLimitSources" ||
       key === "secretProviders"
     ) {

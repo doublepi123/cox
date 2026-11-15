@@ -162,6 +162,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   );
 }
 
+[data-compact-phone] [data-chat-column] {
+  padding-bottom: calc(--spacing(20) + env(safe-area-inset-bottom));
+}
+
+[data-compact-phone] [data-chat-header] [aria-current="page"] {
+  margin-inline-start: --spacing(4);
+}
+
+[data-compact-phone] [data-chat-header] [data-thread-title-chevron] {
+  opacity: 1;
+}
+
+[data-compact-phone] [data-chat-header] li:not([aria-current="page"]) {
+  display: none;
+}
+
 html[data-cox-desktop="macos"] {
   --native-titlebar-height: 52px;
   --workspace-controls-left: calc(92px / var(--desktop-window-zoom, 1));

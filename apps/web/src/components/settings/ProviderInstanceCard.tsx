@@ -1158,7 +1158,7 @@ export function ProviderInstanceCard({
             </span>
           </span>
         </div>
-        <span className="flex h-5 shrink-0 items-center gap-1">
+        <span className="flex h-5 shrink-0 items-center gap-1 max-sm:h-11 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11">
           {onMove ? (
             <>
               <Tooltip>
@@ -1221,7 +1221,7 @@ export function ProviderInstanceCard({
   }
 
   const editorHeaderAction = (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1.5 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11">
       {driverOption?.badgeLabel ? (
         <span className="shrink-0">
           <Badge variant="warning" size="sm">

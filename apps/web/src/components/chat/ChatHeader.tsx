@@ -41,6 +41,7 @@ import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
+import { MobileBranchOverflowTrigger } from "../BranchToolbar";
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
   activeThreadId: ThreadId;
@@ -422,6 +423,7 @@ export const ChatHeader = memo(function ChatHeader({
               </TooltipPopup>
             </Tooltip>
           ) : null}
+          <MobileBranchOverflowTrigger />
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
     </div>

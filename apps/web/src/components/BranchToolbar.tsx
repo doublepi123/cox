@@ -1,20 +1,30 @@
 import { translateCurrent, useTranslation } from "../i18n";
+import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { readLocalApi } from "../localApi";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { ComposerContextLabel } from "./ComposerContextLabel";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
-import { FolderGit2Icon, FolderGitIcon, FolderIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  FolderGit2Icon,
+  FolderGitIcon,
+  FolderIcon,
+  GitBranchIcon,
+} from "lucide-react";
 import {
   type Ref,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   memo,
+  useEffect,
   useImperativeHandle,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
 
@@ -56,9 +66,91 @@ import { Separator } from "./ui/separator";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { ComposerSurface } from "./chat/ComposerSurface";
+import {
+  ConnectionStatusDot,
+  connectionPhaseDotClassName,
+  connectionPhasePingClassName,
+} from "./ConnectionStatusDot";
 import { useComposerMenuProps } from "./chat/composerEventScope";
 import { cn } from "~/lib/utils";
 import { observeResize } from "~/lib/observeResize";
+import { useIsCompactPhoneViewport } from "../mobile/mobileShellBridge";
+import { useEnvironment } from "../state/environments";
+
+const MOBILE_BRANCH_OVERFLOW_EVENT = "cox:mobile-branch-overflow";
+const mobileBranchAvailabilityListeners = new Set<() => void>();
+let mobileBranchPickerAvailable = false;
+
+function setMobileBranchPickerAvailable(available: boolean) {
+  if (mobileBranchPickerAvailable === available) return;
+  mobileBranchPickerAvailable = available;
+  for (const listener of mobileBranchAvailabilityListeners) listener();
+}
+
+function subscribeMobileBranchAvailability(listener: () => void): () => void {
+  mobileBranchAvailabilityListeners.add(listener);
+  return () => mobileBranchAvailabilityListeners.delete(listener);
+}
+
+function readMobileBranchAvailability(): boolean {
+  return mobileBranchPickerAvailable;
+}
+
+export function MobileBranchOverflowTrigger() {
+  const { t } = useTranslation();
+  const compact = useIsCompactPhoneViewport();
+  const available = useSyncExternalStore(
+    subscribeMobileBranchAvailability,
+    readMobileBranchAvailability,
+    () => false,
+  );
+  if (!compact) return null;
+  return (
+    <button
+      type="button"
+      data-mobile-branch-overflow=""
+      aria-label={`${t("Branch")} / ${t("Worktree")}`}
+      disabled={!available}
+      className="inline-flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent/80 disabled:cursor-default disabled:opacity-40"
+      onClick={() => window.dispatchEvent(new Event(MOBILE_BRANCH_OVERFLOW_EVENT))}
+    >
+      <GitBranchIcon className="size-4" aria-hidden />
+      <ChevronDownIcon className="size-3" aria-hidden />
+    </button>
+  );
+}
+
+export function MobileBranchStatus() {
+  const { t } = useTranslation();
+  const compact = useIsCompactPhoneViewport();
+  const { activeThread, activeDraftThread, defaultProjectRef } = useHandleNewThread();
+  const environmentId =
+    activeThread?.environmentId ??
+    activeDraftThread?.environmentId ??
+    defaultProjectRef?.environmentId ??
+    null;
+  const environment = useEnvironment(environmentId);
+  if (!compact || !environment) return null;
+  const running = activeThread?.latestRun?.status === "running";
+  return (
+    <span
+      data-mobile-branch-status={running ? "running" : environment.connection.phase}
+      className="pointer-events-none fixed left-11 top-0 z-50 flex h-12 items-center"
+    >
+      <ConnectionStatusDot
+        tooltipText={running ? t("Running") : t(connectionStatusTitle(environment.connection))}
+        dotClassName={
+          running ? "bg-primary" : connectionPhaseDotClassName(environment.connection.phase)
+        }
+        pingClassName={
+          running
+            ? "bg-primary/60 duration-2000"
+            : connectionPhasePingClassName(environment.connection.phase)
+        }
+      />
+    </span>
+  );
+}
 
 export interface BranchToolbarHandle {
   openBranchPicker: () => void;
@@ -237,7 +329,8 @@ const RunContextSelector = memo(function RunContextSelector({
     return (
       <span
         className={cn(
-          "inline-flex h-7 min-w-0 max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-1.75 font-normal text-foreground/70 text-sm sm:h-6 sm:text-xs dark:text-muted-foreground",
+          "inline-flex h-7 min-w-0 max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-1.75 font-normal text-foreground/70 text-sm min-[641px]:h-6 min-[641px]:text-xs dark:text-muted-foreground",
+          "max-[640px]:min-h-11",
           isPanel && "max-w-full",
           isPanel && THREAD_DETAILS_PANEL_LOCKED_ROW_CLASS,
         )}
@@ -263,7 +356,10 @@ const RunContextSelector = memo(function RunContextSelector({
           isPanel ? (
             <ThreadDetailsControl part="select" />
           ) : (
-            <ComposerControl size="xs" className="min-w-0 max-w-[48%] flex-initial justify-start" />
+            <ComposerControl
+              size="xs"
+              className="min-h-11 min-w-0 max-w-[48%] flex-initial justify-start min-[641px]:min-h-6"
+            />
           )
         }
         onContextMenu={handleContextMenu}
@@ -556,6 +652,21 @@ export const BranchToolbar = memo(function BranchToolbar({
       ? t("Previous worktree ({branch})", { branch: previousWorktreeSeed.branch })
       : t("Previous worktree")
     : null;
+  const canOfferMobileBranchPicker =
+    layout === "composer" && showGitControls && activeProject !== null;
+  useEffect(() => {
+    if (!canOfferMobileBranchPicker) {
+      setMobileBranchPickerAvailable(false);
+      return;
+    }
+    setMobileBranchPickerAvailable(true);
+    const openBranchPicker = () => branchSelectorRef.current?.open();
+    window.addEventListener(MOBILE_BRANCH_OVERFLOW_EVENT, openBranchPicker);
+    return () => {
+      window.removeEventListener(MOBILE_BRANCH_OVERFLOW_EVENT, openBranchPicker);
+      setMobileBranchPickerAvailable(false);
+    };
+  }, [canOfferMobileBranchPicker]);
   const onUsePreviousWorktree = () => {
     if (!previousWorktreeSeed) return;
     setDraftThreadContext(draftId ?? threadRef, {
@@ -667,7 +778,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       {showGitControls || showEnvironmentIndicator ? (
         <div
           className={cn(
-            "min-h-7 min-w-10 items-center gap-1 sm:min-h-6",
+            "min-h-7 min-w-10 items-center gap-1 min-[641px]:min-h-6",
             showGitControls ? "hidden @xl/composer-surface:flex" : "flex",
             "flex-1",
           )}
@@ -700,7 +811,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         <BranchToolbarBranchSelector
           forceNewWorktree={forceNewWorktree}
           ref={branchSelectorRef}
-          className="min-w-0 flex-initial justify-end @max-xl/composer-surface:max-w-2/5 @max-xl/composer-surface:shrink-0 @xl/composer-surface:ml-auto"
+          className="min-h-11 min-w-0 flex-initial justify-end @max-xl/composer-surface:max-w-2/5 @max-xl/composer-surface:shrink-0 @xl/composer-surface:ml-auto min-[641px]:min-h-6"
           environmentId={environmentId}
           threadId={threadId}
           {...(draftId ? { draftId } : {})}

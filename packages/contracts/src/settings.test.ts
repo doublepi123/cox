@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 
 import { type CommandId, ProjectId } from "./baseSchemas.ts";
 import { SecretProviderId } from "./secretReference.ts";
+import { ModelServiceId } from "./modelService.ts";
 import {
   ProviderDriverKind,
   ProviderInstanceEnvironment,
@@ -90,6 +91,28 @@ describe("provider instance management settings", () => {
     expect(
       requiredScopesForServerSettingsPatch({ deletedDefaultProviderInstances: [codex] }),
     ).toEqual(["providers:manage"]);
+  });
+});
+
+describe("model service management settings", () => {
+  const shared = ModelServiceId.make("shared");
+  const backup = ModelServiceId.make("backup");
+
+  it("defaults ordering to an empty list and round-trips replacements", () => {
+    expect(decodeServerSettings({}).modelServiceOrder).toEqual([]);
+
+    const input = { modelServiceOrder: [backup, shared] };
+    expect(decodeServerSettingsPatch(input)).toEqual(input);
+    expect(encodeServerSettingsPatch(input)).toEqual(input);
+    expect(decodeServerSettings(encodeServerSettings(decodeServerSettings(input)))).toMatchObject(
+      input,
+    );
+  });
+
+  it("requires provider management for ordering", () => {
+    expect(requiredScopesForServerSettingsPatch({ modelServiceOrder: [] })).toEqual([
+      "providers:manage",
+    ]);
   });
 });
 

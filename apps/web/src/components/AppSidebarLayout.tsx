@@ -38,6 +38,9 @@ import {
   usePanelNavigationSuppression,
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
+import { MobileBranchStatus } from "./BranchToolbar";
+import { MobileWorkspaceBar } from "./mobile/MobileWorkspaceBar";
+import { useIsCompactPhoneViewport } from "../mobile/mobileShellBridge";
 
 import ThreadSidebar from "./Sidebar";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
@@ -348,6 +351,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   // A clamped drag may not change width, so viewport changes need a separate subscription.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
   const [brandWidth, setBrandWidth] = useState(0);
+  const compactPhoneViewport = useIsCompactPhoneViewport();
   const sidebarMinimumWidth = resolveThreadSidebarMinimumWidth(brandWidth);
   const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth, sidebarMinimumWidth);
   const resetSidebarWidth = () => {
@@ -361,12 +365,14 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const sidebarProviderStyle = {
     "--sidebar-width": `${clampThreadSidebarWidth(sidebarWidth, sidebarMinimumWidth, sidebarMaximumWidth)}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
+    ...(compactPhoneViewport ? { "--workspace-topbar-height": "48px" } : {}),
   } as CSSProperties;
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
         viewport
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
+        data-compact-phone={compactPhoneViewport ? "" : undefined}
         defaultOpen
         storageKey="cox:main-sidebar-open"
         style={sidebarProviderStyle}
@@ -392,10 +398,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <ThreadSidebar routeReveal={sidebarRouteReveal} />
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
+        <MobileBranchStatus />
         {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl />
-        {null}
+        <MobileWorkspaceBar />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );
