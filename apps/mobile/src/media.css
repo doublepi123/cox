@@ -1,0 +1,21 @@
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .button,
+  .server-card,
+  .sheet,
+  .segmented,
+  .field input {
+    border-color: CanvasText;
+  }
+  .segmented button[aria-pressed="true"] {
+    outline: 1px solid Highlight;
+  }
+}
