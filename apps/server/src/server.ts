@@ -80,6 +80,9 @@ import * as GitManager from "./git/GitManager.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as AgentAttentionNotifier from "./notifications/AgentAttentionNotifier.ts";
+import * as WebPushService from "./notifications/WebPushService.ts";
+import * as NotificationSubscriptions from "./persistence/NotificationSubscriptions.ts";
 import * as LocalServiceUpdate from "./localServiceUpdate/LocalServiceUpdate.ts";
 import * as LocalServiceUpdateHttp from "./localServiceUpdate/http.ts";
 import * as ServerOwnership from "./serverOwnership.ts";
@@ -698,14 +701,36 @@ const layerMakeServer = Layer.unwrap(
           );
       }),
     );
-    const layerRuntimeServices = ServerRuntimeStartup.layerWithOptions({
-      activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
-      abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
-      awaitAuxiliaryParked: Effect.all(
-        [Deferred.await(runtimeStateParked), Deferred.await(routesReady)],
-        { concurrency: "unbounded" },
-      ).pipe(Effect.asVoid),
-    }).pipe(Layer.provideMerge(layerRuntimeDependencies));
+    const layerRuntimeServices = Layer.unwrap(
+      Effect.gen(function* () {
+        const notifier = yield* AgentAttentionNotifier.AgentAttentionNotifier;
+        return ServerRuntimeStartup.layerWithOptions({
+          activate: notifier.start.pipe(
+            Effect.andThen(Deferred.succeed(activation, undefined)),
+            Effect.asVoid,
+          ),
+          abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
+          awaitAuxiliaryParked: Effect.all(
+            [Deferred.await(runtimeStateParked), Deferred.await(routesReady)],
+            { concurrency: "unbounded" },
+          ).pipe(Effect.asVoid),
+        });
+      }),
+    ).pipe(
+      Layer.provide(
+        AgentAttentionNotifier.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              WebPushService.layer,
+              NotificationSubscriptions.layer,
+              ProjectionStoreV2.layer,
+              RuntimeLayer.layerEventSink,
+            ),
+          ),
+        ),
+      ),
+      Layer.provideMerge(layerRuntimeDependencies),
+    );
 
     const layerRoutes = HttpRouter.serve(layerMakeRoutes, {
       disableLogger: !config.logWebSocketEvents,
