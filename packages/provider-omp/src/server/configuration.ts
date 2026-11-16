@@ -18,7 +18,8 @@ const API_KEY_VARIABLES: Readonly<Record<string, string>> = {
   cerebras: "CEREBRAS_API_KEY",
   xai: "XAI_API_KEY",
   "github-copilot": "COPILOT_GITHUB_TOKEN",
-  "kimi-coding": "KIMI_API_KEY",
+  "kimi-code": "KIMI_API_KEY",
+  moonshot: "KIMI_API_KEY",
   huggingface: "HF_TOKEN",
   "vercel-ai-gateway": "AI_GATEWAY_API_KEY",
   zai: "ZAI_API_KEY",
@@ -73,7 +74,6 @@ const RESERVED_OMP_LAUNCH_ARGUMENTS = new Set([
 
 const OMP_ARGUMENTS_WITH_VALUES = new Set([
   "--add-dir",
-  "--advisor",
   "--api-key",
   "--append-system-prompt",
   "--approval-mode",
@@ -114,6 +114,7 @@ const OMP_ARGUMENTS_WITH_VALUES = new Set([
 
 const OMP_ARGUMENTS_WITHOUT_VALUES = new Set([
   "--allow-home",
+  "--advisor",
   "--auto-approve",
   "--continue",
   "--external-thinking",

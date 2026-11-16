@@ -77,6 +77,18 @@ describe("Oh My Pi launch arguments", () => {
     });
   });
 
+  it("accepts the native valueless advisor flag without a positional prompt", () => {
+    expect(resolveOmpLaunchArgs("--advisor")).toEqual({ ok: true, args: ["--advisor"] });
+    expect(resolveOmpLaunchArgs("--advisor stray-token")).toEqual({
+      ok: false,
+      message: "Oh My Pi launch arguments cannot include positional prompt 'stray-token'.",
+    });
+    expect(resolveOmpLaunchArgs("--advisor --no-skills")).toEqual({
+      ok: true,
+      args: ["--advisor", "--no-skills"],
+    });
+  });
+
   it("requires a model with an explicit provider and appends the selected model", () => {
     expect(resolveOmpLaunchArgs("--provider anthropic")).toEqual({
       ok: false,
@@ -104,6 +116,8 @@ describe("Oh My Pi environment", () => {
     ["openai", "OPENAI_API_KEY"],
     ["google", "GEMINI_API_KEY"],
     ["openrouter", "OPENROUTER_API_KEY"],
+    ["kimi-code", "KIMI_API_KEY"],
+    ["moonshot", "KIMI_API_KEY"],
   ])("scopes %s credentials and the agent directory", (provider, variable) => {
     const config = settings({ provider, apiKey: "test-omp-key", agentDir: "/isolated/omp" });
     expect(ompEnvironment(config, { PATH: "/bin", [variable]: "old" })).toEqual({
