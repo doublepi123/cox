@@ -105,6 +105,22 @@ describe("bound text generation defaults", () => {
     ).toBe(selection);
   });
 
+  it("selects an enabled OMP binding when the default text provider is disabled", () => {
+    const ompId = ProviderInstanceId.make("omp");
+    const configured = {
+      ...settings,
+      providerInstances: {
+        [ompId]: {
+          ...settings.providerInstances[instanceId]!,
+          driver: ProviderDriverKind.make("omp"),
+        },
+      },
+    };
+    expect(
+      resolveTextGenerationModelSelection(configured, (candidate) => candidate === ompId),
+    ).toEqual(createModelSelection(ompId, "cox/gpt-6.1-sol"));
+  });
+
   it("falls back within the binding when its configured default is unavailable", () => {
     const configured = {
       ...settings,
