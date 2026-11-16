@@ -145,7 +145,7 @@ jobs:
           cp "$RUNNER_TEMP/cox-ios.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           xcodebuild archive -project apps/mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
             -sdk iphoneos -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
-            CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" DEVELOPER_TEAM="$TEAM_ID"
+            CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_IDENTITY="Apple Distribution"
           cat > ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -167,6 +167,11 @@ jobs:
           PLIST
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
             -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/ipa"
+      - name: Clean iOS signing credentials
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: |
+          security delete-keychain cox-mobile-build || true
+          rm -f "$RUNNER_TEMP/cox-ios.p12" "$RUNNER_TEMP/cox-ios.mobileprovision" cox-ios-profile.plist ExportOptions.plist
       - name: Generate IPA checksums and verify metadata
         run: |
           set -euo pipefail
