@@ -183,3 +183,55 @@ jobs:
             ${{ runner.temp }}/ipa/SHA256SUMS
             ${{ runner.temp }}/ipa/release-metadata.json
           if-no-files-found: error
+  publish:
+    needs: [android-lite, ios-ipa]
+    if: github.repository == 'doublepi123/cox' && startsWith(github.ref, 'refs/tags/mobile-v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: mobile-assets-${{ github.ref_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: cox-mobile-android
+          path: downloads/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: cox-mobile-ios-ipa
+          path: downloads/ios
+      - name: Verify checksums and publish mobile release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          (cd downloads/android && sha256sum -c SHA256SUMS)
+          (cd downloads/ios && sha256sum -c SHA256SUMS)
+          mkdir -p publish-assets
+          version="${RELEASE_TAG#mobile-v}"
+          for apk in downloads/android/*.apk; do
+            base="$(basename "$apk")"
+            cp "$apk" "publish-assets/cox-mobile-${version}-${base}"
+          done
+          for ipa in downloads/ios/*.ipa; do
+            base="$(basename "$ipa")"
+            cp "$ipa" "publish-assets/cox-mobile-${version}-${base}"
+          done
+          cp downloads/android/release-metadata.json "publish-assets/release-metadata-android-${version}.json"
+          cp downloads/ios/release-metadata.json "publish-assets/release-metadata-ios-${version}.json"
+          (
+            cd publish-assets
+            find . -maxdepth 1 -type f ! -name "MOBILE-SHA256SUMS-${version}.txt" -printf '%f\0' | sort -z | xargs -0 sha256sum > "MOBILE-SHA256SUMS-${version}.txt"
+          )
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+              --title "Cox Mobile $version" \
+              --notes "Cox Mobile ($RELEASE_TAG) pure-remote client packages for Android 8+ Lite (.apk) and iOS 17+ (.ipa)." \
+              publish-assets/*
+          else
+            gh release upload "$RELEASE_TAG" publish-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          fi
