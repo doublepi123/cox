@@ -12,7 +12,7 @@ import {
 const execute = promisify(execFile);
 
 export async function macCommand(command: string, args: readonly string[]) {
-  return execute("/usr/bin/" + command, [...args], {
+  return execute(command === "spctl" ? "/usr/sbin/spctl" : "/usr/bin/" + command, [...args], {
     encoding: "utf8",
     timeout: 120_000,
     maxBuffer: 4 * 1024 * 1024,
