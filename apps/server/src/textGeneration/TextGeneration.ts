@@ -113,11 +113,20 @@ export const make = Effect.gen(function* () {
     if (resolved) selection = resolved;
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const selected = snapshots.find((provider) => provider.instanceId === selection.instanceId);
+    const disabled =
+      selected !== undefined &&
+      (!resolveProjectProviderInstanceEnabled(settings, projectId ?? null, selection.instanceId) ||
+        selected.enabled !== true);
     const unusable =
       selected?.enabled === true &&
       selected.status === "error" &&
       (!selected.installed || selected.auth.status === "unauthenticated");
-    if (unusable || exhaustedUsageWindow(selected, now, selection.model) || resolved === null) {
+    if (
+      disabled ||
+      unusable ||
+      exhaustedUsageWindow(selected, now, selection.model) ||
+      resolved === null
+    ) {
       const fallback = fallbackTextGenerationModelSelection(
         settings,
         (instanceId, driver, candidate) => {
@@ -142,6 +151,11 @@ export const make = Effect.gen(function* () {
         return yield* new TextGenerationError({
           operation,
           detail: "No available text generation model is configured for the agent's model binding.",
+        });
+      else if (disabled)
+        return yield* new TextGenerationError({
+          operation,
+          detail: `Text generation provider '${selection.instanceId}' is disabled and no enabled fallback is available.`,
         });
     }
     return yield* resolveInstance(registry, operation, selection.instanceId).pipe(

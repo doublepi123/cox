@@ -107,11 +107,13 @@ describe("bound text generation defaults", () => {
 
   it("selects an enabled OMP binding when the default text provider is disabled", () => {
     const ompId = ProviderInstanceId.make("omp");
+    const bound = settings.providerInstances[instanceId];
+    if (bound === undefined) throw new Error("OMP fixture requires the configured binding");
     const configured = {
       ...settings,
       providerInstances: {
         [ompId]: {
-          ...settings.providerInstances[instanceId]!,
+          ...bound,
           driver: ProviderDriverKind.make("omp"),
         },
       },
