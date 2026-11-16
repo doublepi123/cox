@@ -1161,6 +1161,7 @@ describe("notification settings patches", () => {
       notifications: { webhooks: [barkChannel] },
     });
     expect(withChannel.notifications).toEqual({
+      publicBaseUrl: null,
       webPushEnabled: true,
       webhooks: [barkChannel],
     });
@@ -1169,6 +1170,7 @@ describe("notification settings patches", () => {
       notifications: { webPushEnabled: false },
     });
     expect(disabled.notifications).toEqual({
+      publicBaseUrl: null,
       webPushEnabled: false,
       webhooks: [barkChannel],
     });
@@ -1177,6 +1179,7 @@ describe("notification settings patches", () => {
       notifications: { webhooks: [ntfyChannel] },
     });
     expect(replaced.notifications).toEqual({
+      publicBaseUrl: null,
       webPushEnabled: false,
       webhooks: [ntfyChannel],
     });
