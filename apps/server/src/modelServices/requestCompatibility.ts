@@ -1,6 +1,6 @@
 import type { ModelServiceProtocol } from "@t3tools/contracts";
 
-const GPT_REASONING_MODEL = /^gpt-[5-9](?:[.-]|$)/i;
+const GPT_REASONING_MODEL = /^(?:openai\/)?gpt-(?:5\.6|6\.1)-sol$/;
 const CHAT_COMPLETION_BUDGET_MODEL = /^(?:gpt-[5-9]|o[1-9])(?:[.-]|$)/i;
 
 export function withoutForcedToolChoice(
@@ -105,6 +105,31 @@ export function modelServiceRequestOutputBudget(
       for (const [field] of outputBudgetFields(protocol, converted)) delete converted[field];
     }
     const result = modelServiceRequestOutputBudget(protocol, model, converted, value);
+    const thinking = result.body.thinking;
+    if (
+      protocol === "anthropic-messages" &&
+      thinking !== null &&
+      typeof thinking === "object" &&
+      !Array.isArray(thinking) &&
+      "type" in thinking &&
+      thinking.type === "enabled"
+    ) {
+      const budget = "budget_tokens" in thinking ? thinking.budget_tokens : undefined;
+      const normalized = {
+        ...result.body,
+        thinking:
+          value <= 1024
+            ? { type: "disabled" }
+            : {
+                ...thinking,
+                budget_tokens: Math.min(
+                  value - 1,
+                  Math.max(1024, typeof budget === "number" ? budget : 1024),
+                ),
+              },
+      };
+      return explicit ? { body: normalized } : { ...result, body: normalized };
+    }
     return explicit ? { body: result.body } : result;
   }
   if (
@@ -177,7 +202,7 @@ export function modelServiceRequestBody(
   model: string,
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-  if (!GPT_REASONING_MODEL.test(model.slice(model.lastIndexOf("/") + 1))) return body;
+  if (!GPT_REASONING_MODEL.test(model)) return body;
   if (protocol === "openai-chat" && body.reasoning_effort === "ultra") {
     return { ...body, reasoning_effort: "max" };
   }

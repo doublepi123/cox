@@ -244,6 +244,84 @@ describe("model metadata output budgets", () => {
     expect(result.error).toContain("Conflicting");
   });
 
+  it.each([
+    { limit: 8192, budget: 8192, expected: 8191 },
+    { limit: 4096, budget: 8192, expected: 4095 },
+    { limit: 1025, budget: 8192, expected: 1024 },
+    { limit: 1024, budget: 8192, expected: undefined },
+    { limit: 512, budget: 8192, expected: undefined },
+    { limit: 4096, budget: 512, expected: 1024 },
+    { limit: 8192, budget: 2048, expected: 2048 },
+    { limit: 8192, budget: undefined, expected: 1024 },
+  ])(
+    "fits converted thinking $budget inside final output $limit",
+    ({ limit, budget, expected }) => {
+      for (const explicit of [true, false]) {
+        const thinking = Object.freeze({
+          type: "enabled",
+          ...(budget === undefined ? {} : { budget_tokens: budget }),
+          display: "omitted",
+        });
+        const body = Object.freeze({ max_tokens: 16384, thinking, messages: [] });
+        const result = modelServiceRequestOutputBudget("anthropic-messages", "model", body, limit, {
+          protocol: "openai-responses",
+          body: explicit ? { max_output_tokens: limit } : {},
+        });
+        expect(result).toEqual({
+          body: {
+            ...body,
+            max_tokens: limit,
+            thinking:
+              expected === undefined
+                ? { type: "disabled" }
+                : { ...thinking, budget_tokens: expected },
+          },
+          ...(explicit ? {} : { field: "max_tokens" }),
+        });
+      }
+    },
+  );
+
+  it.each([undefined, { type: "disabled" }, { type: "adaptive" }])(
+    "preserves converted thinking without an enabled budget: %s",
+    (thinking) => {
+      const body = { max_tokens: 16384, ...(thinking === undefined ? {} : { thinking }) };
+      const result = modelServiceRequestOutputBudget("anthropic-messages", "model", body, 1024, {
+        protocol: "openai-responses",
+        body: {},
+      });
+      expect(result.body).toEqual({ ...body, max_tokens: 1024 });
+    },
+  );
+
+  it.each([undefined, "anthropic-messages"] as const)(
+    "preserves native thinking and caller budget with original protocol %s",
+    (protocol) => {
+      const body = Object.freeze({
+        max_tokens: 8192,
+        thinking: { type: "enabled", budget_tokens: 4096 },
+      });
+      const result = modelServiceRequestOutputBudget(
+        "anthropic-messages",
+        "model",
+        body,
+        1024,
+        protocol === undefined ? undefined : { protocol, body },
+      );
+      expect(result.body).toBe(body);
+    },
+  );
+
+  it("preserves converted thinking when no final output budget is available", () => {
+    const body = { max_tokens: 16384, thinking: { type: "enabled", budget_tokens: 8192 } };
+    expect(
+      modelServiceRequestOutputBudget("anthropic-messages", "model", body, undefined, {
+        protocol: "openai-responses",
+        body: {},
+      }).body,
+    ).toBe(body);
+  });
+
   it("does not inject metadata outside Gemini's integer range", () => {
     const body = { generationConfig: { temperature: 0.2 } };
     expect(modelServiceRequestOutputBudget("gemini", "model", body, 2147483648)).toEqual({ body });
@@ -263,8 +341,8 @@ describe("model metadata output budgets", () => {
 });
 
 describe("OpenAI wire effort compatibility", () => {
-  it.each(["gpt-6.1-sol", "openai/gpt-6.1-sol", "gpt-5.6-sol"])(
-    "matches native Codex's ultra to max conversion for %s",
+  it.each(["gpt-6.1-sol", "openai/gpt-6.1-sol", "gpt-5.6-sol", "openai/gpt-5.6-sol"])(
+    "maps ultra to the supported wire maximum for known alias %s",
     (model) => {
       const chat = {
         model,
@@ -301,14 +379,32 @@ describe("OpenAI wire effort compatibility", () => {
     },
   );
 
-  it.each(["Vendor/Exact", "qwen3.8-max", "claude-opus-4-8", "custom-gpt-6.1-sol", "o3"])(
-    "preserves service-defined effort for %s",
-    (model) => {
-      const body = { reasoning_effort: "ultra", reasoning: { effort: "ultra" } };
-      expect(modelServiceRequestBody("openai-chat", model, body)).toBe(body);
-      expect(modelServiceRequestBody("openai-responses", model, body)).toBe(body);
-    },
-  );
+  it.each([
+    "Vendor/Exact",
+    "qwen3.8-max",
+    "claude-opus-4-8",
+    "custom-gpt-6.1-sol",
+    "o3",
+    "gpt-5",
+    "gpt-5.4",
+    "gpt-5.6",
+    "gpt-6.1",
+    "gpt-6.1-sol-preview",
+    "gpt-6.2-sol",
+    "gpt-7-sol",
+    "gpt-9.1-sol",
+    "gpt-6.1-sol-custom",
+    "gpt-5.6-luna",
+    "custom/gpt-6.1-sol",
+    "custom/openai/gpt-6.1-sol",
+    "openai/custom/gpt-6.1-sol",
+    "openai/gpt-6.2-sol",
+    "openai/gpt-6.1",
+  ])("preserves service-defined effort for %s", (model) => {
+    const body = { reasoning_effort: "ultra", reasoning: { effort: "ultra" } };
+    expect(modelServiceRequestBody("openai-chat", model, body)).toBe(body);
+    expect(modelServiceRequestBody("openai-responses", model, body)).toBe(body);
+  });
 
   it.each(["anthropic-messages", "gemini"] satisfies ReadonlyArray<ModelServiceProtocol>)(
     "keeps the original request for %s",
