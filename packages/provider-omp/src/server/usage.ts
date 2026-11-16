@@ -23,10 +23,17 @@ const Usage = Schema.Struct({
   cacheRead: Schema.optional(Schema.Unknown),
   cacheWrite: Schema.optional(Schema.Unknown),
   reasoning: Schema.optional(Schema.Unknown),
+  reasoningTokens: Schema.optional(Schema.Unknown),
   cost: Schema.optional(Schema.Struct({ total: Schema.Unknown })),
 });
 const Identity = { id: Schema.NonEmptyString, timestamp: Schema.String };
-const Model = { provider: Schema.NonEmptyString, model: Schema.NonEmptyString };
+const Model = {
+  provider: Schema.NonEmptyString,
+  model: Schema.NonEmptyString,
+  responseModel: Schema.optional(Schema.NonEmptyString),
+  upstreamModel: Schema.optional(Schema.NonEmptyString),
+  upstreamProvider: Schema.optional(Schema.NonEmptyString),
+};
 const Entry = Schema.Union([
   Schema.Struct({ type: Schema.Literal("session"), id: Schema.NonEmptyString }),
   Schema.Struct({
@@ -36,13 +43,13 @@ const Entry = Schema.Union([
       Schema.Struct({
         ...Model,
         role: Schema.Literal("assistant"),
-        responseModel: Schema.optional(Schema.NonEmptyString),
         usage: Usage,
       }),
       Schema.Struct({ role: Schema.Literal("toolResult"), usage: Usage }),
     ]),
   }),
   Schema.Struct({ ...Identity, ...Model, type: Schema.Literal("usage"), usage: Usage }),
+  Schema.Struct({ ...Identity, ...Model, type: Schema.Literal("model_usage"), usage: Usage }),
   Schema.Struct({
     ...Identity,
     type: Schema.Literals(["compaction", "branch_summary"]),
@@ -67,11 +74,7 @@ const parseOmpUsageRecord = (
   const source = entry.type === "message" ? entry.message : entry;
   const usage = source.usage;
   const rateModel =
-    "model" in source
-      ? "responseModel" in source
-        ? (source.responseModel ?? source.model)
-        : source.model
-      : undefined;
+    "model" in source ? (source.responseModel ?? source.upstreamModel ?? source.model) : undefined;
   const model = "provider" in source ? `${source.provider}/${rateModel}` : "Tools/summaries";
   const outputTokens = tokenCount(usage.output);
   const totals = {
@@ -79,7 +82,7 @@ const parseOmpUsageRecord = (
     cachedInputTokens: tokenCount(usage.cacheRead),
     cacheCreationTokens: tokenCount(usage.cacheWrite),
     outputTokens,
-    reasoningTokens: Math.min(outputTokens, tokenCount(usage.reasoning)),
+    reasoningTokens: Math.min(outputTokens, tokenCount(usage.reasoningTokens ?? usage.reasoning)),
   };
   const cost = usage.cost?.total;
   const reportedCostUsd =
@@ -107,8 +110,19 @@ export const ompUsageFormat: TranscriptUsageFormat<typeof OmpScanState.Type> = {
     timestamp: true,
     provider: true,
     model: true,
+    responseModel: true,
+    upstreamModel: true,
+    upstreamProvider: true,
     usage: true,
-    message: { role: true, provider: true, model: true, responseModel: true, usage: true },
+    message: {
+      role: true,
+      provider: true,
+      model: true,
+      responseModel: true,
+      upstreamModel: true,
+      upstreamProvider: true,
+      usage: true,
+    },
   },
   usageMarkers: ['"usage"', '"session"'],
   parseLine: (line, state) => {
