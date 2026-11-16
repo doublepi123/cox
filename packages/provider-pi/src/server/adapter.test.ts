@@ -3614,6 +3614,62 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect("keeps ended tools terminal when background progress arrives later", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent, observed } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.takeRequest("prompt");
+      yield* fake.emit({ type: "agent_start" });
+      for (const isError of [false, true]) {
+        const toolCallId = isError ? "failed-task" : "completed-task";
+        yield* fake.emit({
+          type: "tool_execution_end",
+          toolCallId,
+          toolName: "task",
+          isError,
+          result: { content: [{ type: "text", text: "dispatch settled" }] },
+        });
+        yield* takeEvent(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.nativeItemRef?.nativeId === toolCallId,
+        );
+        yield* fake.emit({
+          type: "tool_execution_update",
+          toolCallId,
+          toolName: "task",
+          partialResult: { content: [{ type: "text", text: "Background task complete." }] },
+        });
+        yield* fake.emit({
+          type: "tool_execution_end",
+          toolCallId: `barrier-${toolCallId}`,
+          toolName: "marker",
+          result: { content: [] },
+        });
+        yield* takeEvent(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.nativeItemRef?.nativeId === `barrier-${toolCallId}`,
+        );
+        const latest = observed.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.nativeItemRef?.nativeId === toolCallId,
+        );
+        assert.isTrue(latest?.type === "turn_item.updated");
+        if (latest?.type !== "turn_item.updated") return;
+        assert.equal(latest.turnItem.status, isError ? "failed" : "completed");
+        assert.isNotNull(latest.turnItem.completedAt);
+      }
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect("nests tools called through another tool under their caller", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;

@@ -397,6 +397,7 @@ interface ActivePiTurn {
   readonly streamItems: Map<string, PiStreamItemState>;
   readonly toolArgs: Map<string, unknown>;
   readonly toolStartedAt: Map<string, DateTime.Utc>;
+  readonly endedToolCalls: Set<string>;
   readonly commandOutputBytes: Map<string, number>;
   interrupted: boolean;
   nativeAborted: boolean;
@@ -1404,6 +1405,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         // Pi tags every phase of a call made through ctx.executeTool, such as from a codemode script.
         const parentToolCallId = recordString(event, "parentToolCallId");
         if (toolCallId === undefined) return;
+        if (phase !== "end" && turn.endedToolCalls.has(toolCallId)) return;
+        if (phase === "end") turn.endedToolCalls.add(toolCallId);
         if (phase === "update" && (toolName === "bash" || toolName === "powershell")) {
           yield* emitCommandOutputDelta(turn, toolCallId, event["partialResult"]);
           return;
@@ -3235,6 +3238,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               streamItems: new Map(),
               toolArgs: new Map(),
               toolStartedAt: new Map(),
+              endedToolCalls: new Set(),
               commandOutputBytes: new Map(),
               interrupted: false,
               nativeAborted: false,

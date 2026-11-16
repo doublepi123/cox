@@ -362,6 +362,15 @@ it.skipIf(!process.env.COX_OMP_NPM_TEST_LAUNCHER)(
             ),
             "Native task completion must project through the Cox adapter",
           );
+          const taskItem = captured.findLast(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "dynamic_tool" &&
+              event.turnItem.toolName === "task",
+          );
+          assert(taskItem?.type === "turn_item.updated");
+          assert.equal(taskItem.turnItem.status, "completed");
+          assert.notEqual(taskItem.turnItem.completedAt, null);
           const source = providerThread.nativeThreadRef?.nativeId;
           assert(source);
           const fork = yield* runtime.forkThread({
