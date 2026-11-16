@@ -3259,6 +3259,12 @@ export const en = {
   "Ntfy topic URL": "Ntfy topic URL",
   "Optional for unauthenticated Webhooks": "Optional for unauthenticated Webhooks",
   "Outbound Webhooks": "Outbound Webhooks",
+  "Server URL for notification links": "Server URL for notification links",
+  "Save server URL": "Save server URL",
+  "Use the HTTP(S) origin that opens this Cox server from your phone.":
+    "Use the HTTP(S) origin that opens this Cox server from your phone.",
+  "Enter an HTTP(S) origin without a path, credentials, query, or fragment.":
+    "Enter an HTTP(S) origin without a path, credentials, query, or fragment.",
   "Permits a plain http:// Webhook URL on your LAN. Public endpoints should use HTTPS.":
     "Permits a plain http:// Webhook URL on your LAN. Public endpoints should use HTTPS.",
   "Push disabled on this device": "Push disabled on this device",

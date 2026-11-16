@@ -7,6 +7,7 @@ import { ServerConfig } from "../config.ts";
 import { NotificationSubscriptionRepository } from "../persistence/NotificationSubscriptions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { WebPushService } from "./WebPushService.ts";
+import { notificationBaseOrigin } from "./notificationLinks.ts";
 import {
   resolveWebhookChannelSecret,
   WebhookNotificationError,
@@ -26,10 +27,17 @@ export const makeAgentNotificationDelivery = Effect.gen(function* () {
   const secretResolver = yield* SecretResolver;
   return Effect.fnUntraced(function* (message: WebhookNotificationMessage) {
     const notificationSettings = (yield* settings.getSettings).notifications;
+    const notification = {
+      ...message,
+      deepLinkUrl: new URL(
+        message.threadPath,
+        notificationBaseOrigin(notificationSettings.publicBaseUrl, config),
+      ).toString(),
+    };
     const pushDelivery = Effect.gen(function* () {
       if (!notificationSettings.webPushEnabled) return;
       const targets = yield* subscriptions.listDeliverableSubscriptions({ now: message.timestamp });
-      const payload = new TextEncoder().encode(yield* encodeMessage(message));
+      const payload = new TextEncoder().encode(yield* encodeMessage(notification));
       yield* Effect.forEach(
         targets,
         (target) =>
@@ -67,7 +75,7 @@ export const makeAgentNotificationDelivery = Effect.gen(function* () {
             Effect.provideService(SecretResolver, secretResolver),
           );
           yield* Effect.tryPromise({
-            try: () => webhook.deliver(channel, message, secret),
+            try: () => webhook.deliver(channel, notification, secret),
             catch: (error) =>
               error instanceof WebhookNotificationError
                 ? error

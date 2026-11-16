@@ -1,12 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { AuthSessionId, NodeId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import { NodeId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/sql/SqlClient";
 import { AgentAttentionNotifier } from "./AgentAttentionNotifier.ts";
 import { NotificationSubscriptionRepository } from "../persistence/NotificationSubscriptions.ts";
-import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
 import {
   commit,
@@ -19,38 +17,14 @@ import {
   thread,
   threadId,
 } from "./AgentAttentionNotifier.testkit.ts";
-import { keys, receiver } from "./notificationReceiver.testkit.ts";
+import { receiver } from "./notificationReceiver.testkit.ts";
+import { initialize } from "./initializeAgentNotifier.testkit.ts";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(DateTime.toEpochMillis(now));
 });
 afterEach(() => vi.useRealTimers());
-
-const initialize = (pushEndpoint: string) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO auth_sessions (session_id, subject, scopes, method, issued_at, expires_at, revoked_at)
-    VALUES ('session', 'owner', '[]', 'browser-session-cookie', '2026-11-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z', NULL)`;
-    const subscriptions = yield* NotificationSubscriptionRepository;
-    for (const suffix of ["/push", "/gone"]) {
-      yield* subscriptions.upsertSubscription({
-        sessionId: AuthSessionId.make("session"),
-        endpoint: `${pushEndpoint}${suffix}`,
-        endpointOrigin: pushEndpoint,
-        keys,
-        label: suffix,
-        userAgent: null,
-        createdAt: DateTime.formatIso(now),
-      });
-    }
-    yield* (yield* ServerSecretStore).set(
-      "notifications.webhook.aG9vaw.secret",
-      new TextEncoder().encode("vault-secret"),
-    );
-    yield* commit({ type: "thread.created", payload: thread });
-    yield* commit({ type: "run.created", payload: run("run-1") });
-  });
 
 it("delivers and decrypts each real attention or root outcome once and prunes HTTP 410 subscriptions", async () => {
   await using push = await receiver(true);
@@ -87,8 +61,9 @@ it("delivers and decrypts each real attention or root outcome once and prunes HT
           expect(webhook).toMatchObject({
             kind: expected.shift(),
             threadPath: "/environment/attention-thread",
-            deepLinkUrl: "/environment/attention-thread",
+            deepLinkUrl: "http://127.0.0.1:0/environment/attention-thread",
           });
+          expect(new URL(webhook.deepLinkUrl).origin).toBe("http://127.0.0.1:0");
         }
         const stored =
           yield* (yield* NotificationSubscriptionRepository).listDeliverableSubscriptions({

@@ -13,6 +13,7 @@ import {
   ThreadId,
   TurnItemId,
   NotificationWebhookChannelId,
+  type NotificationWebhookChannel,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2Run,
@@ -148,12 +149,20 @@ export const commit = (event: EventInput, owner = threadId) =>
     }),
   );
 
-export const layers = (webhookUrl: string) => {
+export const layers = (
+  webhookUrl: string,
+  options: {
+    readonly publicBaseUrl?: string;
+    readonly environmentId?: string;
+    readonly webhooks?: readonly NotificationWebhookChannel[];
+  } = {},
+) => {
   const settings = {
     ...DEFAULT_SERVER_SETTINGS,
     notifications: {
+      publicBaseUrl: options.publicBaseUrl ?? null,
       webPushEnabled: true,
-      webhooks: [
+      webhooks: options.webhooks ?? [
         {
           id: NotificationWebhookChannelId.make("hook"),
           label: "Probe",
@@ -171,7 +180,7 @@ export const layers = (webhookUrl: string) => {
   const dependencies = Layer.mergeAll(
     Layer.mock(ServerSettingsService)({ getSettings: Effect.succeed(settings) }),
     Layer.mock(ServerEnvironment)({
-      getEnvironmentId: Effect.succeed(EnvironmentId.make("environment")),
+      getEnvironmentId: Effect.succeed(EnvironmentId.make(options.environmentId ?? "environment")),
     }),
     Layer.mock(SecretResolver)({}),
     Layer.effect(Push.WebPushService, Push.make({ allowLoopbackHttpForTest: true })).pipe(

@@ -3,6 +3,9 @@ import * as Schema from "effect/Schema";
 
 import { AuthSessionId, IsoDateTime, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { SettingsSecretValue } from "./settingsSecretValue.ts";
+import { NotificationPublicBaseUrl } from "./notificationPublicBaseUrl.ts";
+
+export { NotificationPublicBaseUrl } from "./notificationPublicBaseUrl.ts";
 
 export const NotificationEventKind = Schema.Literals([
   "turn_completed",
@@ -195,6 +198,9 @@ export const NotificationWebhookChannel = Schema.Struct({
 export type NotificationWebhookChannel = typeof NotificationWebhookChannel.Type;
 
 export const MobileNotificationSettings = Schema.Struct({
+  publicBaseUrl: Schema.NullOr(NotificationPublicBaseUrl).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   webPushEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   webhooks: Schema.Array(NotificationWebhookChannel)
     .check(Schema.isMaxLength(MAX_NOTIFICATION_WEBHOOKS))
@@ -205,6 +211,7 @@ export type MobileNotificationSettings = typeof MobileNotificationSettings.Type;
 // Webhooks patch as whole lists of full entries so a merged settings file always
 // re-decodes through NotificationWebhookChannel, including its URL policy.
 export const MobileNotificationSettingsPatch = Schema.Struct({
+  publicBaseUrl: Schema.optionalKey(Schema.NullOr(NotificationPublicBaseUrl)),
   webPushEnabled: Schema.optionalKey(Schema.Boolean),
   webhooks: Schema.optionalKey(
     Schema.Array(NotificationWebhookChannel).check(Schema.isMaxLength(MAX_NOTIFICATION_WEBHOOKS)),

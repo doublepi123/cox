@@ -70,6 +70,11 @@ describe("notifications settings", () => {
     using _fixture = fixture(state);
     await page.viewport(390, 844);
     await using screen = await render(panel());
+    await expect
+      .element(
+        screen.getByRole("textbox", { name: "Server URL for notification links", exact: true }),
+      )
+      .toHaveValue(window.location.origin);
     await screen.getByRole("button", { name: "Add Webhook", exact: true }).click();
     await screen.getByRole("textbox", { name: "Channel name", exact: true }).fill("Phone Bark");
     await screen
@@ -77,6 +82,7 @@ describe("notifications settings", () => {
       .fill("https://api.day.app/device-key/");
     await screen.getByRole("button", { name: "Add channel", exact: true }).click();
     await expect.element(screen.getByRole("heading", { name: "Phone Bark" })).toBeVisible();
+    expect(state.settings.notifications.publicBaseUrl).toBe(window.location.origin);
     await screen.getByRole("button", { name: "Send Test", exact: true }).click();
 
     await expect.element(page.getByText("Test Webhook sent", { exact: true })).toBeVisible();
@@ -98,6 +104,45 @@ describe("notifications settings", () => {
         .element()
         .getBoundingClientRect().height,
     ).toBeGreaterThanOrEqual(44);
+  });
+
+  it("validates, normalizes, saves and clears the server origin at desktop width", async () => {
+    using _fixture = fixture(state);
+    await page.viewport(1280, 900);
+    await using screen = await render(panel());
+    const input = screen.getByRole("textbox", {
+      name: "Server URL for notification links",
+      exact: true,
+    });
+    const save = screen.getByRole("button", { name: "Save server URL", exact: true });
+    await input.fill("https://cox.example.com/thread");
+    await save.click();
+    await expect.element(screen.getByRole("alert")).toBeVisible();
+    expect(state.settings.notifications.publicBaseUrl).toBeNull();
+    await input.fill("https://cox.example.com:443/");
+    await save.click();
+    await expect
+      .poll(() => state.settings.notifications.publicBaseUrl)
+      .toBe("https://cox.example.com");
+    await input.fill("");
+    await save.click();
+    await expect.poll(() => state.settings.notifications.publicBaseUrl).toBeNull();
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(1280);
+  });
+
+  it("shows the configured origin when server settings arrive after mounting", async () => {
+    using _fixture = fixture(state);
+    await using screen = await render(panel());
+    state.settings = {
+      ...state.settings,
+      notifications: { ...state.settings.notifications, publicBaseUrl: "https://saved.cox.test" },
+    };
+    for (const listener of state.listeners) listener();
+    await expect
+      .element(
+        screen.getByRole("textbox", { name: "Server URL for notification links", exact: true }),
+      )
+      .toHaveValue("https://saved.cox.test");
   });
 
   it("keeps Webhooks usable on insecure HTTP with disabled push and Chinese guidance", async () => {

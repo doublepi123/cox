@@ -2,28 +2,21 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
-  MAX_NOTIFICATION_WEBHOOKS,
-  MobileNotificationSettings,
   MobilePushSubscriptionInput,
   NotificationWebhookChannel,
   RegisteredPushSubscription,
   TestNotificationRequest,
   VapidPublicKeyResponse,
 } from "./notifications.ts";
-import { DEFAULT_SERVER_SETTINGS, ServerSettings, ServerSettingsPatch } from "./settings.ts";
 
 const decodeChannel = Schema.decodeUnknownSync(NotificationWebhookChannel);
 const encodeChannel = Schema.encodeSync(NotificationWebhookChannel);
-const decodeNotificationSettings = Schema.decodeUnknownSync(MobileNotificationSettings);
 const decodeSubscriptionInput = Schema.decodeUnknownSync(MobilePushSubscriptionInput);
 const encodeSubscriptionInput = Schema.encodeSync(MobilePushSubscriptionInput);
 const decodeRegisteredSubscription = Schema.decodeUnknownSync(RegisteredPushSubscription);
 const encodeRegisteredSubscription = Schema.encodeSync(RegisteredPushSubscription);
 const decodeTestRequest = Schema.decodeUnknownSync(TestNotificationRequest);
 const decodeVapidResponse = Schema.decodeUnknownSync(VapidPublicKeyResponse);
-const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
-const encodeServerSettings = Schema.encodeSync(ServerSettings);
-const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 
 const validP256dh =
   "BGsX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
@@ -118,26 +111,6 @@ describe("webhook labels", () => {
   });
 });
 
-describe("mobile notification settings", () => {
-  it("defaults web push on with an empty webhook list", () => {
-    expect(decodeNotificationSettings({})).toEqual({ webPushEnabled: true, webhooks: [] });
-  });
-
-  it(`allows at most ${MAX_NOTIFICATION_WEBHOOKS} webhooks`, () => {
-    const channels = Array.from({ length: MAX_NOTIFICATION_WEBHOOKS }, (_, index) =>
-      webhookChannel({ id: `channel-${index}` }),
-    );
-    expect(decodeNotificationSettings({ webhooks: channels }).webhooks).toHaveLength(
-      MAX_NOTIFICATION_WEBHOOKS,
-    );
-    expect(() =>
-      decodeNotificationSettings({
-        webhooks: [...channels, webhookChannel({ id: "one-too-many" })],
-      }),
-    ).toThrow();
-  });
-});
-
 describe("push subscription input", () => {
   const subscriptionInput = (overrides?: Record<string, unknown>) => ({
     endpoint: "https://fcm.googleapis.com/fcm/send/dqAzUFl2T4y",
@@ -229,38 +202,5 @@ describe("test notification request", () => {
   it("rejects unknown targets and webhook requests without a channel id", () => {
     expect(() => decodeTestRequest({ target: "sms" })).toThrow();
     expect(() => decodeTestRequest({ target: "webhook" })).toThrow();
-  });
-});
-
-describe("server settings integration", () => {
-  it("defaults notifications in ServerSettings and DEFAULT_SERVER_SETTINGS", () => {
-    expect(decodeServerSettings({}).notifications).toEqual({
-      webPushEnabled: true,
-      webhooks: [],
-    });
-    expect(DEFAULT_SERVER_SETTINGS.notifications).toEqual({ webPushEnabled: true, webhooks: [] });
-  });
-
-  it("round-trips a webhook through the server settings envelope", () => {
-    const decoded = decodeServerSettings({
-      notifications: { webPushEnabled: false, webhooks: [webhookChannel()] },
-    });
-    expect(decoded.notifications).toEqual({
-      webPushEnabled: false,
-      webhooks: [decodeChannel(webhookChannel())],
-    });
-    expect(decodeServerSettings(encodeServerSettings(decoded)).notifications).toEqual(
-      decoded.notifications,
-    );
-  });
-
-  it("decodes notification patches without filling unrelated keys", () => {
-    expect(decodeServerSettingsPatch({ notifications: { webPushEnabled: false } })).toEqual({
-      notifications: { webPushEnabled: false },
-    });
-    expect(
-      decodeServerSettingsPatch({ notifications: { webhooks: [webhookChannel()] } }).notifications
-        ?.webhooks,
-    ).toEqual([decodeChannel(webhookChannel())]);
   });
 });

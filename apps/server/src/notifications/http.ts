@@ -2,7 +2,6 @@ import {
   AuthOrchestrationOperateScope,
   EnvironmentHttpApi,
   EnvironmentInternalError,
-  EnvironmentNotificationTestRateLimitedError,
   EnvironmentRequestInvalidError,
   ThreadId,
 } from "@t3tools/contracts";
@@ -10,7 +9,6 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
@@ -18,7 +16,6 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import {
   annotateEnvironmentRequest,
-  currentEnvironmentTraceId,
   failEnvironmentInternal,
   failEnvironmentInvalidRequest,
   failEnvironmentNotFound,
@@ -34,12 +31,10 @@ import {
   WebhookNotificationService,
 } from "./WebhookNotificationService.ts";
 import { WebPushService } from "./WebPushService.ts";
+import { makeNotificationTestQuota } from "./notificationTestQuota.ts";
 
-const TEST_NOTIFICATION_LIMIT = 5;
-const TEST_NOTIFICATION_WINDOW_MS = 60_000;
 const TEST_PUSH_TITLE = "Cox test notification";
 const TEST_PUSH_BODY = "If you can read this, web push delivery works.";
-const TEST_WEBHOOK_BODY = "If you can read this, webhook delivery works.";
 
 const TestPushPayload = Schema.Struct({
   title: Schema.String,
@@ -80,37 +75,7 @@ export const layer = HttpApiBuilder.group(
     const catchRepositoryError = (cause: unknown) =>
       failEnvironmentInternal("internal_error", cause);
 
-    const attemptLog = yield* Ref.make(new Map<string, ReadonlyArray<number>>());
-    const consumeTestQuota = Effect.fn("environment.notifications.consumeTestQuota")(function* (
-      sessionId: string,
-    ) {
-      const now = yield* Clock.currentTimeMillis;
-      const cutoff = now - TEST_NOTIFICATION_WINDOW_MS;
-      const retained = new Map<string, ReadonlyArray<number>>();
-      let sessionAttempts: ReadonlyArray<number> = [];
-      for (const [key, timestamps] of yield* Ref.get(attemptLog)) {
-        const fresh = timestamps.filter((timestamp) => timestamp > cutoff);
-        if (key === sessionId) sessionAttempts = fresh;
-        else if (fresh.length > 0) retained.set(key, fresh);
-      }
-      if (sessionAttempts.length >= TEST_NOTIFICATION_LIMIT) {
-        const retryAfterSeconds = Math.max(
-          1,
-          Math.min(
-            ...sessionAttempts.map((timestamp) =>
-              Math.ceil((timestamp + TEST_NOTIFICATION_WINDOW_MS - now) / 1000),
-            ),
-          ),
-        );
-        const traceId = yield* currentEnvironmentTraceId;
-        return yield* new EnvironmentNotificationTestRateLimitedError({
-          code: "test_rate_limited",
-          retryAfterSeconds,
-          traceId,
-        });
-      }
-      yield* Ref.set(attemptLog, retained.set(sessionId, [...sessionAttempts, now]));
-    });
+    const consumeTestQuota = yield* makeNotificationTestQuota;
 
     return handlers
       .handle(
@@ -228,16 +193,21 @@ export const layer = HttpApiBuilder.group(
           );
           const request = yield* HttpServerRequest.HttpServerRequest;
           const origin = HttpServerRequest.toURL(request);
+          const baseOrigin =
+            settings.notifications.publicBaseUrl ??
+            (Option.isSome(origin) ? origin.value.origin : undefined);
           const message: WebhookNotificationMessage = {
             event: "notifications.test",
             kind: "human_attention",
             threadId: ThreadId.make("test"),
             threadPath: "/settings/notifications",
-            ...(Option.isSome(origin)
-              ? { deepLinkUrl: `${origin.value.origin}/settings/notifications` }
+            ...(baseOrigin !== undefined
+              ? {
+                  deepLinkUrl: new URL("/settings/notifications", baseOrigin).toString(),
+                }
               : {}),
             title: TEST_PUSH_TITLE,
-            body: TEST_WEBHOOK_BODY,
+            body: "If you can read this, webhook delivery works.",
             timestamp: nowIso(nowMillis),
           };
           const dispatcher = new WebhookNotificationService({

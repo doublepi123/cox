@@ -88,8 +88,9 @@ export function EnvironmentNotificationsSettings({
       <WebhookSettingsSection
         baseUrl={baseUrl}
         channels={settings.notifications.webhooks}
+        publicBaseUrl={settings.notifications.publicBaseUrl}
         readOnly={readOnly}
-        onSave={(webhooks) => save({ webhooks: [...webhooks] })}
+        onSave={save}
       />
     </>
   );

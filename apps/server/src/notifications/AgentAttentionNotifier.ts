@@ -18,7 +18,6 @@ import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
 import { NotificationSubscriptionRepository } from "../persistence/NotificationSubscriptions.ts";
-import type { WebhookNotificationMessage } from "./WebhookNotificationService.ts";
 import { makeAgentNotificationDelivery } from "./AgentNotificationDelivery.ts";
 
 interface Candidate {
@@ -114,12 +113,11 @@ export const make = Effect.gen(function* () {
       )
         return;
       const threadPath = `/${encodeURIComponent(environmentId)}/${encodeURIComponent(thread.id)}`;
-      const message: WebhookNotificationMessage = {
+      yield* deliver({
         event: dedupeKey,
         kind: candidate.kind,
         threadId: thread.id,
         threadPath,
-        deepLinkUrl: threadPath,
         title: thread.title,
         body: {
           human_attention: "Your agent needs your input.",
@@ -127,8 +125,7 @@ export const make = Effect.gen(function* () {
           turn_failed: "Your agent's turn failed.",
         }[candidate.kind],
         timestamp: now,
-      };
-      yield* deliver(message);
+      });
     });
     yield* Effect.forkScoped(
       Effect.forever(

@@ -1,4 +1,8 @@
-import { MAX_NOTIFICATION_WEBHOOKS, type NotificationWebhookChannel } from "@t3tools/contracts";
+import {
+  MAX_NOTIFICATION_WEBHOOKS,
+  type MobileNotificationSettingsPatch,
+  type NotificationWebhookChannel,
+} from "@t3tools/contracts";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
@@ -12,27 +16,53 @@ import {
 } from "./NotificationWebhookEditor";
 import { sendTestNotification } from "./notificationsApi";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+import {
+  NotificationPublicBaseUrlField,
+  parseNotificationPublicBaseUrl,
+} from "./NotificationPublicBaseUrlField";
 
 interface WebhookSettingsSectionProps {
   readonly baseUrl: string;
   readonly channels: readonly NotificationWebhookChannel[];
+  readonly publicBaseUrl: string | null;
   readonly readOnly: boolean;
-  readonly onSave: (channels: readonly NotificationWebhookChannel[]) => Promise<boolean>;
+  readonly onSave: (patch: MobileNotificationSettingsPatch) => Promise<boolean>;
 }
 
 export function WebhookSettingsSection({
   baseUrl,
   channels,
+  publicBaseUrl,
   readOnly,
   onSave,
 }: WebhookSettingsSectionProps) {
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [draftOrigin, setDraftOrigin] = useState<string | null>(null);
+  const origin =
+    draftOrigin ??
+    publicBaseUrl ??
+    (typeof window !== "undefined" && /^https?:\/\//.test(window.location.origin)
+      ? window.location.origin
+      : "");
 
   const persist = async (next: readonly NotificationWebhookChannel[]) => {
+    const parsedOrigin = parseNotificationPublicBaseUrl(origin);
+    if (publicBaseUrl === null && parsedOrigin === undefined) {
+      toastManager.add({
+        type: "error",
+        title: t("Enter an HTTP(S) origin without a path, credentials, query, or fragment."),
+      });
+      return false;
+    }
     setBusy("save");
-    const saved = await onSave(next);
+    const saved = await onSave({
+      webhooks: [...next],
+      ...(publicBaseUrl === null && parsedOrigin !== undefined
+        ? { publicBaseUrl: parsedOrigin }
+        : {}),
+    });
     setBusy(null);
     return saved;
   };
@@ -93,6 +123,12 @@ export function WebhookSettingsSection({
           "Send Bark, Telegram, Ntfy, or generic JSON notifications without browser Web Push. Configure up to 10 channels.",
         )}
       </p>
+      <NotificationPublicBaseUrlField
+        value={origin}
+        onChange={setDraftOrigin}
+        disabled={readOnly || busy !== null}
+        onSave={(publicBaseUrl) => onSave({ publicBaseUrl })}
+      />
       {channels.length === 0 && editingId !== "new" ? (
         <SettingsRow
           title={t("No Webhooks configured.")}

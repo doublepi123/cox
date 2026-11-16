@@ -3121,6 +3121,12 @@ export const zh = {
   "Ntfy topic URL": "Ntfy 主题地址",
   "Optional for unauthenticated Webhooks": "无需身份验证的 Webhook 可留空",
   "Outbound Webhooks": "出站 Webhook",
+  "Server URL for notification links": "通知链接的服务器地址",
+  "Save server URL": "保存服务器地址",
+  "Use the HTTP(S) origin that opens this Cox server from your phone.":
+    "使用手机访问此 Cox 服务器的 HTTP(S) 来源地址。",
+  "Enter an HTTP(S) origin without a path, credentials, query, or fragment.":
+    "请输入不含路径、凭据、查询参数或片段的 HTTP(S) 来源地址。",
   "Permits a plain http:// Webhook URL on your LAN. Public endpoints should use HTTPS.":
     "允许在局域网中使用纯 http:// Webhook 地址。公共端点应使用 HTTPS。",
   "Push disabled on this device": "已在此设备上停用推送",
