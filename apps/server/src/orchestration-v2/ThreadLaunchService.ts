@@ -23,6 +23,7 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -543,10 +544,12 @@ const make = Effect.gen(function* () {
         if (setup.completion) {
           const awaitCompletion = Effect.gen(function* () {
             const completion = yield* setup.completion!;
-            yield* setupTracker.stage(threadId, "setup-script", {
-              status: completion.exitCode === 0 ? "done" : "failed",
-              detail: `exited with ${completion.exitCode ?? "no exit code"}`,
-            });
+            yield* setupTracker.stageStatus(
+              threadId,
+              "setup-script",
+              completion.exitCode === 0 ? "done" : "failed",
+              `exited with ${completion.exitCode ?? "no exit code"}`,
+            );
             if (completion.exitCode !== 0 && !setup.async)
               return yield* mapError(
                 input,
@@ -555,14 +558,18 @@ const make = Effect.gen(function* () {
               )(`Setup script exited with ${completion.exitCode ?? "no exit code"}.`);
           });
           if (setup.async) {
-            awaitAsyncSetup = awaitCompletion.pipe(
+            const asyncSetup = yield* awaitCompletion.pipe(
               Effect.catchCause((cause) =>
-                setupTracker.stage(threadId, "setup-script", {
-                  status: "failed",
-                  detail: failureDetail(Cause.squash(cause)),
-                }),
+                setupTracker.stageStatus(
+                  threadId,
+                  "setup-script",
+                  "failed",
+                  failureDetail(Cause.squash(cause)),
+                ),
               ),
+              Effect.forkChild,
             );
+            awaitAsyncSetup = Fiber.join(asyncSetup);
           } else {
             yield* awaitCompletion;
           }

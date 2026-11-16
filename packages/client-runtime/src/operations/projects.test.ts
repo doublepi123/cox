@@ -9,11 +9,26 @@ import {
   getCloneDirectoryName,
   getCloneDirectoryPath,
   getDefaultCloneUrl,
+  getAddProjectInitialQuery,
   normalizePastedCloneUrl,
 } from "./projects.ts";
 import type { EnvironmentProject } from "../state/models.ts";
+import { isFilesystemBrowseQuery } from "../state/projects.ts";
 
 describe("add project shared logic", () => {
+  it("starts the picker on a browsable path under home for a bare relative base", () => {
+    expect(isFilesystemBrowseQuery(getAddProjectInitialQuery("Desktop/dev"))).toBe(true);
+    expect(getAddProjectInitialQuery(" Desktop/dev ")).toBe("~/Desktop/dev/");
+    expect(getAddProjectInitialQuery("/srv/code")).toBe("/srv/code/");
+    expect(getAddProjectInitialQuery("~")).toBe("~/");
+    expect(getAddProjectInitialQuery("~/code")).toBe("~/code/");
+    expect(getAddProjectInitialQuery("./work")).toBe("./work/");
+    expect(getAddProjectInitialQuery("../work")).toBe("../work/");
+    expect(getAddProjectInitialQuery("C:\\dev")).toBe("C:\\dev\\");
+    expect(getAddProjectInitialQuery(undefined)).toBe("~/");
+    expect(getAddProjectInitialQuery(" ")).toBe("~/");
+  });
+
   it("routes owner/repository shorthand to GitHub over HTTPS", () => {
     expect(normalizePastedCloneUrl("imputnet/helium")).toBe(
       "https://github.com/imputnet/helium.git",
