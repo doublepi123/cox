@@ -2,6 +2,10 @@ import type { ModelServiceProtocol } from "@t3tools/contracts";
 import * as Data from "effect/Data";
 import { makeModelServiceSseParser } from "./sse.ts";
 import { makeChatOutputTracker } from "./responseOutput.ts";
+import { makeChatStreamTracker } from "./streamChat.ts";
+import { incompleteAnthropicReasons, makeAnthropicStreamTracker } from "./streamAnthropic.ts";
+import { makeGeminiStreamTracker } from "./streamGemini.ts";
+import { makeResponsesStreamTracker } from "./streamResponses.ts";
 
 export class ModelServiceStreamError extends Data.TaggedError("ModelServiceStreamError")<{
   readonly reason:
@@ -30,6 +34,8 @@ const finishReasons = new Set([
   "end_turn",
   "stop_sequence",
   "pause_turn",
+  "tool_use",
+  "model_context_window_exceeded",
   "refusal",
   "STOP",
   "MAX_TOKENS",
@@ -43,24 +49,12 @@ const finishReasons = new Set([
   "max_output_tokens",
 ]);
 const incompleteChatReasons = new Set(["length", "max_tokens", "content_filter"]);
-interface ChatStreamTool {
-  id: string;
-  name: string;
-  arguments: string;
-}
-interface ChatStreamChoice {
-  reason: string | null;
-  tools: Map<number, ChatStreamTool>;
-}
 
 export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
   const parse = makeModelServiceSseParser();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const output = protocol === "openai-chat" ? makeChatOutputTracker() : undefined;
   const reasons = new Set<string>();
-  const chatChoices = new Map<number, ChatStreamChoice>();
-  let toolCount = 0;
-  let toolCharacters = 0;
   let bytes = 0;
   let terminal: "none" | "completed" | "incomplete" | "failed" | "error" = "none";
   let terminalEvents = 0;
@@ -77,113 +71,15 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
       fail("duplicate_terminal_event", "The model service sent duplicate terminal events.");
     terminal = state;
   };
+  const reject = (detail: string): never => fail("invalid_stream_event", detail);
+  const anthropic = makeAnthropicStreamTracker(reject);
+  const gemini = makeGeminiStreamTracker(reject);
+  const responses = makeResponsesStreamTracker(reject);
   const reason = (value: unknown) => {
     if (typeof value === "string" && value.length)
       reasons.add(finishReasons.has(value) ? value : "other");
   };
-  const observeChatChoice = (raw: unknown) => {
-    const choice = record(raw);
-    const index = choice.index ?? 0;
-    if (!Number.isSafeInteger(index) || typeof index !== "number" || index < 0 || index >= 128)
-      return fail("invalid_stream_event", "The model service sent an invalid Chat choice index.");
-    const state = chatChoices.get(index) ?? {
-      reason: null,
-      tools: new Map<number, ChatStreamTool>(),
-    };
-    if (state.reason !== null) {
-      const trailer = record(choice.delta);
-      const accounting =
-        (choice.finish_reason == null || choice.finish_reason === state.reason) &&
-        [trailer.content, trailer.reasoning_content, trailer.reasoning, trailer.refusal].every(
-          (value) => value == null || value === "",
-        ) &&
-        (trailer.tool_calls == null ||
-          (Array.isArray(trailer.tool_calls) && trailer.tool_calls.length === 0)) &&
-        trailer.function_call == null;
-      if (accounting) return;
-      return fail("invalid_stream_event", "The model service continued a finished Chat choice.");
-    }
-    chatChoices.set(index, state);
-    if (choice.delta != null && (typeof choice.delta !== "object" || Array.isArray(choice.delta)))
-      return fail("invalid_stream_event", "The model service sent an invalid Chat delta.");
-    const delta = record(choice.delta);
-    if (delta.tool_calls != null && !Array.isArray(delta.tool_calls))
-      return fail("invalid_stream_event", "The model service sent invalid Chat tool calls.");
-    const parts = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
-    const toolParts = parts.map((raw: unknown) => ({ raw, legacy: false }));
-    if (delta.function_call != null)
-      toolParts.push({ raw: { function: delta.function_call }, legacy: true });
-    for (const { raw, legacy } of toolParts) {
-      const part = record(raw);
-      const toolIndex = legacy ? -1 : (part.index ?? 0);
-      if (
-        typeof toolIndex !== "number" ||
-        !Number.isSafeInteger(toolIndex) ||
-        toolIndex < (legacy ? -1 : 0) ||
-        toolIndex >= 4096
-      )
-        return fail("invalid_stream_event", "The model service sent an invalid Chat tool index.");
-      let tool = state.tools.get(toolIndex);
-      if (tool === undefined) {
-        if (++toolCount > 4096)
-          return fail("stream_limit", "The model service sent too many Chat tool calls.");
-        tool = { id: "", name: "", arguments: "" };
-        state.tools.set(toolIndex, tool);
-      }
-      const fn = record(part.function);
-      for (const [key, value] of [
-        ["id", part.id],
-        ["name", fn.name],
-      ] as const) {
-        if (value == null) continue;
-        if (typeof value !== "string" || (value && tool[key] && tool[key] !== value))
-          return fail("invalid_stream_event", "The model service changed a Chat tool identity.");
-        if (value) {
-          toolCharacters += value.length - tool[key].length;
-          tool[key] = value;
-        }
-      }
-      if (fn.arguments != null) {
-        if (typeof fn.arguments !== "string")
-          return fail(
-            "invalid_stream_event",
-            "The model service sent invalid Chat tool arguments.",
-          );
-        toolCharacters += fn.arguments.length;
-        tool.arguments += fn.arguments;
-      }
-      if (toolCharacters > 16 * 1024 * 1024)
-        return fail("stream_limit", "The model service sent oversized Chat tool arguments.");
-    }
-    if (choice.finish_reason == null) return;
-    if (typeof choice.finish_reason !== "string" || !choice.finish_reason)
-      return fail("invalid_stream_event", "The model service sent an invalid Chat finish reason.");
-    state.reason = choice.finish_reason;
-    reason(state.reason);
-    if (incompleteChatReasons.has(state.reason)) return;
-    for (const [toolIndex, tool] of state.tools) {
-      let argumentsValue: unknown;
-      try {
-        argumentsValue = JSON.parse(tool.arguments);
-      } catch {
-        return fail(
-          "invalid_stream_event",
-          "The model service sent incomplete Chat tool arguments.",
-        );
-      }
-      if (
-        !tool.name ||
-        (toolIndex !== -1 && !tool.id) ||
-        argumentsValue === null ||
-        typeof argumentsValue !== "object" ||
-        Array.isArray(argumentsValue)
-      )
-        return fail(
-          "invalid_stream_event",
-          "The model service sent incomplete Chat tool arguments or identity.",
-        );
-    }
-  };
+  const chat = makeChatStreamTracker(fail, reason);
   const observe = (frame: string) => {
     const data = frame.slice(5).trim();
     if (data === "[DONE]") {
@@ -192,8 +88,8 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
       doneMarker = true;
       if (protocol === "openai-chat") {
         if (
-          chatChoices.size === 0 ||
-          [...chatChoices.values()].some((choice) => choice.reason === null)
+          chat.choices.size === 0 ||
+          [...chat.choices.values()].some((choice) => choice.reason === null)
         )
           return fail(
             "missing_terminal_event",
@@ -232,9 +128,10 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
     if (protocol === "openai-chat") {
       if (!Array.isArray(event.choices))
         return fail("invalid_stream_event", "The model service sent an invalid Chat stream event.");
-      for (const choice of event.choices) observeChatChoice(choice);
+      for (const choice of event.choices) chat.observe(choice);
       output?.observe(event);
     } else if (protocol === "openai-responses") {
+      responses.observe(event);
       const state =
         event.type === "response.completed"
           ? "completed"
@@ -254,14 +151,16 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
         mark(state);
       }
     } else if (protocol === "anthropic-messages") {
+      anthropic.observe(event);
       reason(record(event.delta).stop_reason);
       if (event.type === "message_stop")
         mark(
-          [...reasons].some((value) => ["max_tokens", "refusal"].includes(value))
+          [...reasons].some((value) => incompleteAnthropicReasons.has(value))
             ? "incomplete"
             : "completed",
         );
     } else {
+      gemini.observe(event);
       const candidates = Array.isArray(event.candidates) ? event.candidates : [];
       for (const candidate of candidates) reason(record(candidate).finishReason);
       if (record(event.promptFeedback).blockReason) reason("SAFETY");
@@ -321,8 +220,7 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
           "The model service stream ended with an incomplete SSE frame.",
         );
       }
-      if (protocol === "gemini" && terminal === "none" && reasons.size)
-        mark([...reasons].every((value) => value === "STOP") ? "completed" : "incomplete");
+      if (protocol === "gemini" && terminal === "none") mark(gemini.finish());
       if (terminal === "none")
         fail(
           "missing_terminal_event",

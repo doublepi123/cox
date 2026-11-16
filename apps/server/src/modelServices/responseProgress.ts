@@ -103,21 +103,23 @@ export function modelServiceStreamEvent(
   }
   const candidates = Array.isArray(event.candidates) ? event.candidates : [];
   return {
-    progress: candidates.some((value) => {
-      const candidate = record(value);
-      const parts = record(candidate.content).parts;
-      return (
-        typeof candidate.finishReason === "string" ||
-        (Array.isArray(parts) &&
-          parts.some((value) => {
-            const part = record(value);
-            return (
-              nonempty(part.text) ||
-              Boolean(part.functionCall || part.inlineData || part.executableCode)
-            );
-          }))
-      );
-    }),
+    progress:
+      nonempty(record(event.promptFeedback).blockReason) ||
+      candidates.some((value) => {
+        const candidate = record(value);
+        const parts = record(candidate.content).parts;
+        return (
+          typeof candidate.finishReason === "string" ||
+          (Array.isArray(parts) &&
+            parts.some((value) => {
+              const part = record(value);
+              return (
+                nonempty(part.text) ||
+                Boolean(part.functionCall || part.inlineData || part.executableCode)
+              );
+            }))
+        );
+      }),
   };
 }
 

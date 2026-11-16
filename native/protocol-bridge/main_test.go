@@ -377,7 +377,7 @@ func TestResponsesToChatStrictCompletionAndIncomplete(t *testing.T) {
 	s, _ := start(t, "openai", "openai-response", `{"messages":[{"role":"user","content":"hello"}]}`, true)
 	for _, frame := range []string{
 		`{"type":"response.created","response":{"id":"resp-fixture","created_at":1}}`,
-		`{"type":"response.output_text.delta","delta":"partial"}`,
+		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"partial"}`,
 	} {
 		if out := s.handle(input{Type: "chunk", Chunk: "data: " + frame}); out.Error != "" {
 			t.Fatal(out.Error)

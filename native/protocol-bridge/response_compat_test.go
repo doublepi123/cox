@@ -82,6 +82,12 @@ func TestGeminiFinishReasons(t *testing.T) {
 					}
 					var events []map[string]any
 					if stream {
+						if upstream == "claude" {
+							out := s.handle(input{Type: "chunk", Chunk: `data: {"type":"message_start","message":{"id":"msg","type":"message","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":0}}}`})
+							if out.Error != "" {
+								t.Fatal(out.Error)
+							}
+						}
 						out := s.handle(input{Type: "chunk", Chunk: "data: " + raw})
 						if out.Error != "" {
 							t.Fatal(out.Error)
