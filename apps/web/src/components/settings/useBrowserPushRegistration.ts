@@ -64,11 +64,13 @@ export function useBrowserPushRegistration({
           }
         }
       } catch (error) {
-        if (!(error instanceof Error)) throw error;
+        if (!(error instanceof Error)) {
+          if (active) setLoading(false);
+          throw error;
+        }
         if (active) setLoadFailed(true);
-      } finally {
-        if (active) setLoading(false);
       }
+      if (active) setLoading(false);
     };
     void load();
     return () => {

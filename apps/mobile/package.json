@@ -9,7 +9,7 @@
     "build": "vp build",
     "typecheck": "tsc --noEmit",
     "test": "vp test run",
-    "verify:package": "node scripts/verify-package.ts",
+    "verify:package": "vp build && node scripts/verify-package.ts",
     "smoke": "node scripts/smoke-mobile-e2e.mjs"
   },
   "dependencies": {

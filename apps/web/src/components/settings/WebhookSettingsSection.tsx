@@ -69,9 +69,8 @@ export function WebhookSettingsSection({
         title: t("Test Webhook was not delivered"),
         description: error instanceof Error ? error.message : t("Try the test Webhook again."),
       });
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   return (

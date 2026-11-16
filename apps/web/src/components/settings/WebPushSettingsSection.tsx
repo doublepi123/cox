@@ -73,6 +73,7 @@ export function WebPushSettingsSection({
             title: t("Server Web Push is disabled"),
             description: t("Turn on Server Web Push before enabling this device."),
           });
+          setBusy(null);
           return;
         }
         const subscription = await subscribeBrowserToWebPush(vapid.publicKey);
@@ -88,11 +89,15 @@ export function WebPushSettingsSection({
         ]);
         toastManager.add({ type: "success", title: t("Push enabled on this device") });
       } else {
-        if (!currentRegistration) return;
+        if (!currentRegistration) {
+          setBusy(null);
+          return;
+        }
         const result = await deletePushSubscription(baseUrl, currentRegistration.id);
         if (!result.deleted) {
           setSubscriptions(await fetchPushSubscriptions(baseUrl));
           toastManager.add({ type: "warning", title: t("Push subscription was not deleted") });
+          setBusy(null);
           return;
         }
         await unsubscribeBrowserFromWebPush();
@@ -109,9 +114,8 @@ export function WebPushSettingsSection({
         title: t("Could not change this device's Web Push setting"),
         description: errorMessage(error, t("Try the Web Push request again.")),
       });
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   const remove = async (subscription: RegisteredPushSubscription) => {
@@ -122,6 +126,7 @@ export function WebPushSettingsSection({
       if (!result.deleted) {
         setSubscriptions(await fetchPushSubscriptions(baseUrl));
         toastManager.add({ type: "warning", title: t("Push subscription was not deleted") });
+        setBusy(null);
         return;
       }
       if (subscription.id === currentRegistration?.id) {
@@ -137,9 +142,8 @@ export function WebPushSettingsSection({
         title: t("Push subscription was not deleted"),
         description: errorMessage(error, t("Try deleting the subscription again.")),
       });
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   const sendTest = async () => {
@@ -160,9 +164,8 @@ export function WebPushSettingsSection({
         title: t("Test push was not delivered"),
         description: errorMessage(error, t("Try the test push again.")),
       });
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   return (
