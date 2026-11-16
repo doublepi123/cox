@@ -5,6 +5,7 @@ import {
   ChatAttachmentId,
   EnvironmentId,
   NodeId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
@@ -59,6 +60,7 @@ import { omoTodoSnapshot } from "../../../provider-omo/src/server/todo.ts";
 import { OmoLifecycle, omoTaskEvent } from "../../../provider-omo/src/server/runtime.ts";
 import { omoDagEvent } from "../../../provider-omo/src/server/dag.ts";
 import { applyOmoRuntimePolicy } from "../../../provider-omo/src/server/permissions.ts";
+import { OmpSubagents } from "../../../provider-omp/src/server/subagents.ts";
 
 const layerTest = Layer.mergeAll(
   NodeServices.layer,
@@ -346,7 +348,7 @@ const makeFakePi: Effect.Effect<FakePi> = Effect.gen(function* () {
       case "extension_request":
         return record.name === "cox.omo.todo"
           ? { ...base, data: todoSnapshot }
-          : record.name === "cox.omo.tasks"
+          : record.name === "cox.omo.tasks" || record.name === "cox.omp.tasks"
             ? { ...base, data: nativeSubagents }
             : base;
       case "get_messages":
@@ -1167,6 +1169,55 @@ describe("PiAdapterV2", () => {
         );
       }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
+  it.effect("preserves OMP native timestamps through the shared subagent consumer", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const agents = new OmpSubagents();
+      for (const [status, milliseconds] of [
+        ["started", 1000],
+        ["completed", 2000],
+      ] as const)
+        agents.observe(
+          {
+            type: "subagent_lifecycle",
+            payload: { id: "native-time", agent: "worker", status, sessionFile: "/child-time" },
+          },
+          milliseconds,
+        );
+      fake.setNativeSubagents(agents.snapshot(FAKE_SESSION_FILE));
+      const { runtime, takeEvent } = yield* openRuntime(
+        fake,
+        "default",
+        THREAD_ID,
+        SESSION_ID,
+        undefined,
+        undefined,
+        {
+          driver: ProviderDriverKind.make("omp"),
+          label: "Oh My Pi",
+          connect: makePiRpcConnection,
+          buildLaunch: buildPiRpcLaunch,
+          materializeExtension: materializePiT3McpExtension,
+          nativeSubagents: { requestName: "cox.omp.tasks" },
+        },
+      );
+      yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      const event = yield* takeEvent((event) => event.type === "subagent.updated");
+      if (event.type !== "subagent.updated")
+        return yield* Effect.die("Expected the actual OMP subagent projection");
+      if (event.subagent.startedAt === null || event.subagent.completedAt === null)
+        return yield* Effect.die("Expected both native OMP lifecycle timestamps");
+      assert.equal(DateTime.toEpochMillis(event.subagent.startedAt), 1000);
+      assert.equal(DateTime.toEpochMillis(event.subagent.updatedAt), 2000);
+      assert.equal(DateTime.toEpochMillis(event.subagent.completedAt), 2000);
+      assert.equal(event.subagent.status, "completed");
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect(
     "projects scoped OMO native tasks once, restores completed tasks, and preserves their run while updating outside a turn",
     () =>

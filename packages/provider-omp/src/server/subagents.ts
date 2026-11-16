@@ -1,5 +1,6 @@
 import { type PiRpcConnection, type PiRpcRecord } from "@t3tools/provider-pi/server";
 import type { ProviderNativeSubagentTranscript } from "@t3tools/provider-core/server/ProviderAdapter";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { ompRecord } from "./framing.ts";
@@ -42,6 +43,8 @@ function messageText(message: PiRpcRecord): string {
 export class OmpSubagents {
   private generation = 0;
   private readonly agents = new Map<string, typeof Agent.Type>();
+  private readonly startedAt = new Map<string, number>();
+  private readonly completedAt = new Map<string, number>();
   private readonly transcripts = new Map<
     string,
     {
@@ -54,6 +57,8 @@ export class OmpSubagents {
   reset() {
     this.generation++;
     this.agents.clear();
+    this.startedAt.clear();
+    this.completedAt.clear();
     this.transcripts.clear();
   }
 
@@ -93,11 +98,33 @@ export class OmpSubagents {
       status: payload.status === "started" ? "running" : (progress.status ?? payload.status),
       lastUpdate: updatedAt,
     });
-    if (parsed._tag === "Some") this.agents.set(id, parsed.value);
+    if (parsed._tag === "Some") {
+      const wasTerminal =
+        previous !== undefined && ["completed", "failed", "aborted"].includes(previous.status);
+      const isTerminal = ["completed", "failed", "aborted"].includes(parsed.value.status);
+      if (
+        wasTerminal &&
+        !isTerminal &&
+        previous?.lastUpdate !== undefined &&
+        parsed.value.lastUpdate !== undefined &&
+        parsed.value.lastUpdate <= previous.lastUpdate
+      )
+        return;
+      this.agents.set(id, parsed.value);
+      if (payload.status === "started" && !this.startedAt.has(id))
+        this.startedAt.set(id, updatedAt);
+      if (
+        ["completed", "failed", "aborted"].includes(parsed.value.status) &&
+        !this.completedAt.has(id)
+      )
+        this.completedAt.set(id, updatedAt);
+    }
     while (this.agents.size > 256) {
       const oldest = this.agents.keys().next();
       if (oldest.done) break;
       this.agents.delete(oldest.value);
+      this.startedAt.delete(oldest.value);
+      this.completedAt.delete(oldest.value);
       this.transcripts.delete(oldest.value);
     }
   }
@@ -111,6 +138,8 @@ export class OmpSubagents {
           const finished = !["pending", "running"].includes(agent.status);
           const progress = agent.progress ?? {};
           const transcript = this.transcripts.get(agent.id);
+          const startedAt = this.startedAt.get(agent.id);
+          const completedAt = this.completedAt.get(agent.id);
           return {
             nativeTaskId: `${nativeThreadId}/${agent.id}`,
             taskRef: agent.id,
@@ -121,7 +150,17 @@ export class OmpSubagents {
             finished,
             stopReason:
               agent.status === "aborted" ? "aborted" : agent.status === "failed" ? "error" : "stop",
-            updatedAt: agent.lastUpdate,
+            ...(startedAt !== undefined
+              ? { startedAt: DateTime.formatIso(DateTime.makeUnsafe(startedAt)) }
+              : {}),
+            ...(completedAt !== undefined
+              ? {
+                  completedAt: DateTime.formatIso(DateTime.makeUnsafe(completedAt)),
+                }
+              : {}),
+            ...(agent.lastUpdate === undefined
+              ? {}
+              : { updatedAt: DateTime.formatIso(DateTime.makeUnsafe(agent.lastUpdate)) }),
             model: progress.resolvedModelIdentity ?? progress.resolvedModel,
             messages: [
               {
@@ -151,7 +190,20 @@ export class OmpSubagents {
     const generation = this.generation;
     const roster = decodeAgents(yield* request({ type: "get_subagents" }));
     if (generation !== this.generation) return;
-    for (const agent of roster.subagents) this.agents.set(agent.id, agent);
+    for (const agent of roster.subagents) {
+      const previous = this.agents.get(agent.id);
+      const previousTerminal =
+        previous !== undefined && ["completed", "failed", "aborted"].includes(previous.status);
+      if (
+        previous !== undefined &&
+        previous.lastUpdate !== undefined &&
+        agent.lastUpdate !== undefined &&
+        (agent.lastUpdate < previous.lastUpdate ||
+          (previousTerminal && agent.lastUpdate <= previous.lastUpdate))
+      )
+        continue;
+      this.agents.set(agent.id, agent);
+    }
     for (const agent of [...this.agents.values()].slice(-32)) {
       if (agent.sessionFile === undefined) continue;
       const transcript = this.transcripts.get(agent.id) ?? {
