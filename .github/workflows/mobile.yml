@@ -31,6 +31,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - run: pnpm --filter @cox/mobile exec cap copy android
       - name: Detect signing credentials
