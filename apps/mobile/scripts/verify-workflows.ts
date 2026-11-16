@@ -84,7 +84,7 @@ export async function verifyMobileWorkflows(workflowsDir: string): Promise<void>
           ? [
               "pnpm --filter @cox/mobile build",
               "pnpm --filter @cox/mobile verify:package",
-              "cap copy android",
+              "cap sync android",
               "testDebugUnitTest assembleDebug",
               "testDebugUnitTest assembleRelease",
               "-lt 20971520",
