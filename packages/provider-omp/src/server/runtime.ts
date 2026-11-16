@@ -12,6 +12,7 @@ import {
   type PiRpcSpawnOptions,
 } from "@t3tools/provider-pi/server";
 import { OmpFrameDecoder, OmpPromptFrames, ompRecord } from "./framing.ts";
+import { ompCompactionEvent } from "./compaction.ts";
 import { OmpSubagents } from "./subagents.ts";
 import { OmpTodoUpdates } from "./todo.ts";
 import { ompForkBeforeEntry } from "./session.ts";
@@ -189,7 +190,7 @@ export const makeOmpRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
     });
     yield* Effect.gen(function* () {
       while (true) {
-        const event = yield* Queue.take(connection.events);
+        const event = ompCompactionEvent(yield* Queue.take(connection.events));
         switch (event.type) {
           case "ready":
             yield* Deferred.succeed(ready, undefined);
