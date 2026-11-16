@@ -65,6 +65,7 @@ import {
 } from "./recovery.ts";
 import { makeRecoveryTracker } from "./recoveryTracker.ts";
 import { ChildProcessSpawner } from "effect/process";
+import { modelServiceRequestRouting } from "./requestRouting.ts";
 import { parse as parseYamlText, stringify as stringifyYamlValue } from "yaml";
 import {
   HttpClient,
@@ -786,7 +787,14 @@ export const make = Effect.gen(function* () {
         message:
           "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
       });
-    const candidateProtocols = modelServiceCandidateProtocols(service, boundCandidate, incoming);
+    const routing = modelServiceRequestRouting({
+      incoming,
+      body,
+      countTokens,
+      candidates: modelServiceCandidateProtocols(service, boundCandidate, incoming),
+    });
+    if (routing.error) return gatewayErrorResponse(incoming, routing.error.status, routing.error);
+    const candidateProtocols = routing.protocols;
     let protocolIndex = 0;
     const initialProtocol = candidateProtocols[0];
     if (!initialProtocol)
@@ -795,11 +803,6 @@ export const make = Effect.gen(function* () {
       });
     let currentProtocol: ModelServiceProtocol = initialProtocol;
     const selected = models.find((model) => model.id === boundCandidate.id) ?? boundCandidate;
-    if (countTokens && currentProtocol !== incoming)
-      return yield* new ModelServiceError({
-        detail: "Token counting is unavailable across different model protocols.",
-        status: 501,
-      });
     const stream =
       body.stream === true ||
       (incoming === "gemini" && url.pathname.endsWith(":streamGenerateContent"));
@@ -1565,7 +1568,9 @@ export const make = Effect.gen(function* () {
       ),
     );
     const stateful =
-      countTokens || Boolean(body.background || body.previous_response_id || body.conversation);
+      countTokens ||
+      routing.statefulResponses ||
+      Boolean(body.background || body.previous_response_id || body.conversation);
     const convertedTools = record(initialBridge?.body ?? body).tools;
     const upstreamTools =
       Array.isArray(convertedTools) &&

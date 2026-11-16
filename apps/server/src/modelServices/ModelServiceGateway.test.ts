@@ -877,25 +877,31 @@ it.layer(layer)("model service gateway", (it) => {
       const kimi = yield* harness({
         modelId: "kimi-k3.1-pro",
         protocols: ["openai-chat", "anthropic-messages"],
+        respond: () => Response.json({ input_tokens: 11 }),
       });
       expect(
         (yield* kimi.invoke("/v1/messages/count_tokens", {
           model: "kimi-k3.1-pro",
           messages: [],
         })).status,
-      ).toBe(501);
-      expect(kimi.calls).toHaveLength(0);
+      ).toBe(200);
+      expect(kimi.calls.map((call) => new URL(call.url).pathname)).toEqual([
+        "/v1/messages/count_tokens",
+      ]);
       const gpt = yield* harness({
         modelId: "gpt-6.1-terra",
         protocols: ["openai-responses", "anthropic-messages"],
+        respond: () => Response.json({ input_tokens: 13 }),
       });
       expect(
         (yield* gpt.invoke("/v1/messages/count_tokens", {
           model: "gpt-6.1-terra",
           messages: [],
         })).status,
-      ).toBe(501);
-      expect(gpt.calls).toHaveLength(0);
+      ).toBe(200);
+      expect(gpt.calls.map((call) => new URL(call.url).pathname)).toEqual([
+        "/v1/messages/count_tokens",
+      ]);
     }).pipe(Effect.scoped),
   );
 
@@ -1498,6 +1504,97 @@ it.layer(layer)("model service gateway", (it) => {
         expect((yield* h.invoke("/v1/v1/messages", body)).status).toBe(404);
         expect(h.calls).toHaveLength(6);
       }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { previous_response_id: "prior-response" },
+    { conversation: "prior-conversation" },
+    { background: true },
+    { background: false },
+  ])("uses only an allowed native Responses route for state-bearing input (%j)", (state) =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        modelId: "claude-stateful",
+        protocols: ["anthropic-messages", "openai-responses"],
+        recovery: { retryEnabled: true, retryNonTransientErrors: true, maxAttempts: 3 },
+        respond: () => Response.json({ status: "completed", output: [] }),
+      });
+      const result = yield* h.invoke("/v1/responses", {
+        model: "claude-stateful",
+        input: "next",
+        ...state,
+      });
+      expect(result.status).toBe(200);
+      expect(h.calls.map((call) => new URL(call.url).pathname)).toEqual(["/v1/responses"]);
+      expect(sentBody(h.calls[0]!)).toMatchObject(state);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { protocols: ["anthropic-messages"], modelProtocols: ["anthropic-messages"] },
+    {
+      protocols: ["anthropic-messages", "openai-responses"],
+      modelProtocols: ["anthropic-messages"],
+    },
+    {
+      protocols: ["anthropic-messages", "openai-chat"],
+      modelProtocols: ["anthropic-messages", "openai-responses"],
+    },
+  ] satisfies ReadonlyArray<{
+    protocols: ModelServiceConfig["protocols"];
+    modelProtocols: ModelServiceConfig["protocols"];
+  }>)(
+    "refuses a state-bearing Responses request outside its native protocol intersection (%j)",
+    (configuration) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ ...configuration, modelId: "claude-stateful" });
+        const result = yield* h.invoke("/v1/responses", {
+          model: "claude-stateful",
+          input: "next",
+          conversation: "private-prior-conversation",
+        });
+        expect(result.status).toBe(422);
+        expect(result.text).toContain("native Responses");
+        expect(result.text).not.toContain("private-prior-conversation");
+        expect(h.calls).toHaveLength(0);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "counts Anthropic tokens on the allowed native route despite GPT family preference",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({
+          modelId: "gpt-6.1-sol",
+          protocols: ["openai-responses", "anthropic-messages"],
+          respond: () => Response.json({ input_tokens: 23 }),
+        });
+        const result = yield* h.invoke("/v1/messages/count_tokens", {
+          model: "gpt-6.1-sol",
+          messages: [{ role: "user", content: "hello" }],
+        });
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text)).toEqual({ input_tokens: 23 });
+        expect(h.calls.map((call) => new URL(call.url).pathname)).toEqual([
+          "/v1/messages/count_tokens",
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not bypass model protocol restrictions for Anthropic token counting", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        protocols: ["openai-responses", "anthropic-messages"],
+        modelProtocols: ["openai-responses"],
+      });
+      const result = yield* h.invoke("/v1/messages/count_tokens", {
+        model: "Vendor/Exact",
+        messages: [],
+      });
+      expect(result.status).toBe(501);
+      expect(result.text).toContain("native Anthropic");
+      expect(h.calls).toHaveLength(0);
+    }).pipe(Effect.scoped),
   );
 
   it.effect.each(
@@ -3092,10 +3189,9 @@ it.layer(layer)("model service gateway", (it) => {
               });
             }
             return stream
-              ? new Response(
-                  'data: {"type":"response.output_text.delta","delta":"recovered safely"}\n\ndata: {"type":"response.completed","response":{"status":"completed","output":[]}}\n\n',
-                  { headers: { "content-type": "text/event-stream" } },
-                )
+              ? new Response(sseFrame({ type: "response.completed", response: responsesAnswer }), {
+                  headers: { "content-type": "text/event-stream" },
+                })
               : Response.json(responsesAnswer);
           },
         });
@@ -3295,7 +3391,7 @@ it.layer(layer)("model service gateway", (it) => {
                 controller = output;
                 output.enqueue(
                   new TextEncoder().encode(
-                    'data: {"type":"response.output_text.delta","delta":"already delivered"}\n\n',
+                    'data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"already delivered"}\n\n',
                   ),
                 );
               },
@@ -3423,6 +3519,21 @@ it.layer(layer)("model service gateway", (it) => {
                   content_index: 0,
                   delta: item.content[0]!.text,
                 },
+                {
+                  type: "response.output_text.done",
+                  item_id: item.id,
+                  output_index: 0,
+                  content_index: 0,
+                  text: item.content[0]!.text,
+                },
+                {
+                  type: "response.content_part.done",
+                  item_id: item.id,
+                  output_index: 0,
+                  content_index: 0,
+                  part: item.content[0],
+                },
+                { type: "response.output_item.done", output_index: 0, item },
                 { type: "response.completed", response },
               ]
                 .map((event) => `data: ${JSON.stringify(event)}\n\n`)
@@ -3515,7 +3626,12 @@ it.layer(layer)("model service gateway", (it) => {
     {
       protocol: "openai-responses",
       path: "/v1/responses",
-      chunk: { type: "response.output_text.delta", delta: "before stop" },
+      chunk: {
+        type: "response.output_text.delta",
+        output_index: 0,
+        content_index: 0,
+        delta: "before stop",
+      },
     },
     {
       protocol: "anthropic-messages",
@@ -3542,6 +3658,20 @@ it.layer(layer)("model service gateway", (it) => {
             new Response(
               new ReadableStream({
                 start(controller) {
+                  if (scenario.protocol === "anthropic-messages")
+                    controller.enqueue(
+                      new TextEncoder().encode(
+                        sseFrame({
+                          type: "message_start",
+                          message: { type: "message", role: "assistant", content: [] },
+                        }) +
+                          sseFrame({
+                            type: "content_block_start",
+                            index: 0,
+                            content_block: { type: "text", text: "" },
+                          }),
+                      ),
+                    );
                   controller.enqueue(
                     new TextEncoder().encode(`data: ${JSON.stringify(scenario.chunk)}\n\n`),
                   );
@@ -3866,8 +3996,20 @@ it.layer(layer)("model service gateway", (it) => {
         respond: () =>
           new Response(
             ++calls === 1
-              ? 'data: {"type":"response.output_item.added","item":{"type":"web_search_call","id":"failed-search"}}\n\ndata: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
-              : 'data: {"type":"response.output_text.delta","delta":"found"}\n\ndata: {"type":"response.completed","response":{"status":"completed","output":[]}}\n\n',
+              ? 'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"failed-search"}}\n\ndata: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
+              : sseFrame({
+                  type: "response.completed",
+                  response: {
+                    status: "completed",
+                    output: [
+                      {
+                        type: "message",
+                        role: "assistant",
+                        content: [{ type: "output_text", text: "found" }],
+                      },
+                    ],
+                  },
+                }),
             { headers: { "content-type": "text/event-stream" } },
           ),
       });
@@ -5666,7 +5808,7 @@ it.layer(layer)("model service gateway", (it) => {
         input: "next",
       });
       expect(response.status).toBe(422);
-      expect(response.text).toContain("complete conversation input");
+      expect(response.text).toContain("native Responses");
       expect(h.calls).toEqual([]);
     }).pipe(Effect.scoped),
   );
