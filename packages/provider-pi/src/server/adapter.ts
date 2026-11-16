@@ -432,6 +432,7 @@ interface PendingPiPrompt {
   readonly method: "select" | "confirm" | "input" | "editor";
   readonly questionId: string;
   readonly approvalKey: string;
+  readonly nativeSessionApproval: boolean;
   readonly expiresAt: number | null;
   expirationFiber: Fiber.Fiber<void> | null;
   runtimeRequest: OrchestrationV2RuntimeRequest;
@@ -1863,7 +1864,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         if (nativeRequestId === undefined) return;
         const approvalTitle = recordString(event, "title") ?? "";
         const approvalKey = `${approvalTitle.length}:${approvalTitle}${recordString(event, "message") ?? ""}`;
-        if (method === "confirm" && sessionApprovals.has(approvalKey)) {
+        const nativeSessionApproval = event.nativeSessionApproval === true;
+        if (method === "confirm" && !nativeSessionApproval && sessionApprovals.has(approvalKey)) {
           yield* connection.send({
             type: "extension_ui_response",
             id: nativeRequestId,
@@ -1955,6 +1957,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           method,
           questionId: nativeRequestId,
           approvalKey,
+          nativeSessionApproval,
           expiresAt,
           expirationFiber: null,
           runtimeRequest,
@@ -3490,10 +3493,15 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               type: "extension_ui_response",
               id: pending.nativeRequestId,
               ...response,
+              ...(pending.nativeSessionApproval ? { decision: requestInput.decision } : {}),
             });
             pendingPrompts.delete(String(requestInput.requestId));
             if (pending.expirationFiber !== null) yield* Fiber.interrupt(pending.expirationFiber);
-            if (pending.method === "confirm" && requestInput.decision === "acceptForSession") {
+            if (
+              pending.method === "confirm" &&
+              !pending.nativeSessionApproval &&
+              requestInput.decision === "acceptForSession"
+            ) {
               sessionApprovals.add(pending.approvalKey);
             }
             const resolvedAt = yield* DateTime.now;

@@ -112,7 +112,7 @@ export class OmpPromptFrames {
   private error: string | undefined;
   private readonly approvals = new Map<
     string,
-    { readonly accept: string; readonly deny: string }
+    { readonly accept: string; readonly deny: string; readonly session: string | undefined }
   >();
   private readonly pending = new Map<
     string,
@@ -171,15 +171,32 @@ export class OmpPromptFrames {
       !choices.includes("Deny")
     )
       return event;
-    this.approvals.set(event.id, { accept, deny: "Deny" });
-    return { ...event, method: "confirm", message: event.title };
+    const session = choices.find(
+      (value): value is string =>
+        typeof value === "string" && /^Approve .+ for this session$/.test(value),
+    );
+    this.approvals.set(event.id, { accept, deny: "Deny", session });
+    return {
+      ...event,
+      method: "confirm",
+      message: event.title,
+      ...(session === undefined ? {} : { nativeSessionApproval: true }),
+    };
   }
 
   uiResponse(record: PiRpcRecord): PiRpcRecord {
     const labels = typeof record.id === "string" ? this.approvals.get(record.id) : undefined;
     if (labels === undefined) return record;
     this.approvals.delete(String(record.id));
-    return { ...record, value: record.confirmed === true ? labels.accept : labels.deny };
+    return {
+      ...record,
+      value:
+        record.cancelled !== true && record.confirmed === true
+          ? record.decision === "acceptForSession" && labels.session !== undefined
+            ? labels.session
+            : labels.accept
+          : labels.deny,
+    };
   }
 
   queueUpdate(event: PiRpcRecord) {

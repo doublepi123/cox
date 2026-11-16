@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { OmpFrameDecoder } from "./framing.ts";
+import { OmpFrameDecoder, OmpPromptFrames } from "./framing.ts";
 import type { PiRpcRecord } from "@t3tools/provider-pi/server";
 
 function chunks(value: PiRpcRecord): PiRpcRecord[] {
@@ -14,6 +14,37 @@ function chunks(value: PiRpcRecord): PiRpcRecord[] {
     data: bytes.subarray(index * 256 * 1024, (index + 1) * 256 * 1024).toString("base64"),
   }));
 }
+
+describe("OMP native approval responses", () => {
+  it.each([
+    [
+      { confirmed: true, decision: "acceptForSession" },
+      "Approve mcp__cox__delegate_task for this session",
+    ],
+    [{ confirmed: true, decision: "accept" }, "Approve"],
+    [{ confirmed: false, decision: "decline" }, "Deny"],
+    [{ cancelled: true, confirmed: true, decision: "acceptForSession" }, "Deny"],
+  ])("preserves the native choice for %j", (response, value) => {
+    const frames = new OmpPromptFrames();
+    const request = frames.uiRequest({
+      id: "approval",
+      method: "select",
+      title: "Allow tool: mcp__cox__delegate_task\nTask: first",
+      options: ["Approve", "Approve mcp__cox__delegate_task for this session", "Deny"],
+      timeout: 123,
+    });
+    expect(request).toMatchObject({ method: "confirm", nativeSessionApproval: true, timeout: 123 });
+    expect(frames.uiResponse({ id: "approval", ...response })).toMatchObject({ value });
+  });
+
+  it("keeps nonapproval questions and their responses unchanged", () => {
+    const frames = new OmpPromptFrames();
+    const question = { id: "question", method: "select", options: ["One", "Two"] };
+    expect(frames.uiRequest(question)).toEqual(question);
+    const answer = { id: "question", value: "Two", extra: 1 };
+    expect(frames.uiResponse(answer)).toEqual(answer);
+  });
+});
 
 describe("OMP protocol v2 frames", () => {
   it("restores a large UTF-8 response without losing its request id", () => {

@@ -154,9 +154,45 @@ describe("buildOmpLaunch", () => {
     }).args;
     expect(args.filter((arg) => arg === "--extension")).toHaveLength(1);
   });
+
+  it.each(["--extension", "-e"])("recognizes %s equals extension paths", (flag) => {
+    const args = buildOmpLaunch({
+      launchArgs: [`${flag}=/cache/cox-omp-extension.ts`],
+      environment: {},
+      mcpSession: undefined,
+      extensionPath: "/cache/cox-omp-extension.ts",
+    }).args;
+    expect(args).toEqual(["--mode", "rpc-ui", "--extension=/cache/cox-omp-extension.ts"]);
+  });
 });
 
 describe("OMP extension source", () => {
+  it("declares direct delegation while retaining exec approval and optional discovery", async () => {
+    const registered: Array<{ name: string; approval: string; loadMode: string }> = [];
+    const source = OMP_EXTENSION_SOURCE.replace(
+      'import coxBridge from "./pi-t3-mcp-extension.ts";',
+      `const coxBridge = async (host) => {
+        for (const name of ["orchestrator_capabilities", "task_status", "delegate_task", "optional_echo"])
+          host.registerTool({ name: "mcp__cox__" + name });
+      };`,
+    );
+    const extension = await import(
+      `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+    );
+    await extension.default({
+      registerTool: (tool: { name: string; approval: string; loadMode: string }) =>
+        registered.push(tool),
+    });
+    expect(
+      registered.map(({ name, approval, loadMode }) => ({ name, approval, loadMode })),
+    ).toEqual([
+      { name: "mcp__cox__orchestrator_capabilities", approval: "read", loadMode: "essential" },
+      { name: "mcp__cox__task_status", approval: "read", loadMode: "essential" },
+      { name: "mcp__cox__delegate_task", approval: "exec", loadMode: "essential" },
+      { name: "mcp__cox__optional_echo", approval: "exec", loadMode: "discoverable" },
+    ]);
+  });
+
   it("reuses the materialized Pi MCP bridge instead of embedding an MCP client", () => {
     expect(OMP_EXTENSION_SOURCE).toContain('from "./pi-t3-mcp-extension.ts"');
     expect(OMP_EXTENSION_SOURCE).not.toContain("tools/list");
@@ -166,7 +202,7 @@ describe("OMP extension source", () => {
   it("adapts omp registration to native approval tiers and awaits active tool updates", () => {
     expect(OMP_EXTENSION_SOURCE).toContain('approval: READ_TOOLS.has(base) ? "read" : "exec"');
     expect(OMP_EXTENSION_SOURCE).toContain(
-      'loadMode: READ_TOOLS.has(base) ? "essential" : "discoverable"',
+      'loadMode: DIRECT_TOOLS.has(base) ? "essential" : "discoverable"',
     );
     expect(OMP_EXTENSION_SOURCE).toContain('mcpServerName: "cox"');
     expect(OMP_EXTENSION_SOURCE).toContain("target.setActiveTools(toolNames)");

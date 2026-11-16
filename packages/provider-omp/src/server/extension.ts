@@ -27,7 +27,7 @@ export function ompApprovalMode(
 }
 
 const OMP_BRIDGE_INSTRUCTIONS =
-  "Cox tools use their full mcp__cox__<name> names, such as mcp__cox__orchestrator_capabilities, mcp__cox__delegate_task and mcp__cox__task_status; mcp__cox__delegate_task takes the work in task, not prompt. Prefer omp's native task tool for generic subagent or parallel work; use Cox delegation only when Cox orchestration is explicitly requested or the native tool cannot provide the capability. Discover optional tools with tool_search using their full mcp__cox__ names when available. Never invent native task tools or switch between native and Cox delegation silently after an error, exclusion or denial.";
+  "Cox tools use their full mcp__cox__<name> names, such as mcp__cox__orchestrator_capabilities, mcp__cox__delegate_task and mcp__cox__task_status; mcp__cox__delegate_task takes the work in task, not prompt. Prefer omp's native task tool for generic subagent or parallel work; use Cox delegation only when Cox orchestration is explicitly requested or the native tool cannot provide the capability. Discover optional tools with read at xd://, read xd://mcp__cox__<name> for their parameter schema, and execute with write at that path using content containing the JSON arguments object. Never invent native task tools or switch between native and Cox delegation silently after an error, exclusion or denial.";
 
 export const OMP_EXTENSION_SOURCE = `\
 import coxBridge from "./pi-t3-mcp-extension.ts";
@@ -35,6 +35,7 @@ import coxBridge from "./pi-t3-mcp-extension.ts";
 const APPROVAL_ENV = ${JSON.stringify(OMP_APPROVAL_MODE_ENV)};
 const MCP_PREFIX = "mcp__cox__";
 const READ_TOOLS = new Set(["orchestrator_capabilities", "task_status"]);
+const DIRECT_TOOLS = new Set([...READ_TOOLS, "delegate_task"]);
 
 export default async function coxOmpExtension(omp) {
   const pendingToolUpdates = new Set();
@@ -67,7 +68,7 @@ export default async function coxOmpExtension(omp) {
           register(base === undefined ? tool : {
             ...tool,
             approval: READ_TOOLS.has(base) ? "read" : "exec",
-            loadMode: READ_TOOLS.has(base) ? "essential" : "discoverable",
+            loadMode: DIRECT_TOOLS.has(base) ? "essential" : "discoverable",
             mcpServerName: "cox",
             mcpToolName: base,
           });
@@ -143,7 +144,7 @@ function withoutControlledOmpArguments(args: ReadonlyArray<string>): ReadonlyArr
       if (arg === controlled) index += 1;
       continue;
     }
-    filtered.push(arg);
+    filtered.push(arg.startsWith("-e=") ? `--extension=${arg.slice(3)}` : arg);
   }
   return filtered;
 }
@@ -152,11 +153,11 @@ function hasExplicitExtension(args: ReadonlyArray<string>, extensionPath: string
   const wanted = extensionPath.replace(/\\/g, "/").replace(/\/+$/, "");
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg !== "--extension" && arg !== "-e") continue;
-    const configured = args[index + 1];
+    const flag = ["--extension", "-e"].find((flag) => arg === flag || arg?.startsWith(`${flag}=`));
+    if (flag === undefined || arg === undefined) continue;
+    const configured = arg === flag ? args[++index] : arg.slice(flag.length + 1);
     if (configured !== undefined && configured.replace(/\\/g, "/").replace(/\/+$/, "") === wanted)
       return true;
-    index += 1;
   }
   return false;
 }

@@ -4954,6 +4954,41 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect.each(["accept", "acceptForSession", "decline", "cancel"] as const)(
+    "preserves native session approval decision %s without caching confirmations",
+    (decision) =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const { runtime, takeEvent } = yield* openRuntime(fake);
+        yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        for (const id of ["native-first", "native-again"]) {
+          yield* fake.emit({
+            type: "extension_ui_request",
+            id,
+            method: "confirm",
+            title: "Allow tool: example",
+            nativeSessionApproval: true,
+          });
+          const pending = yield* takeEvent(
+            (event) =>
+              event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+          );
+          if (pending.type !== "runtime_request.updated") throw new Error("Missing approval");
+          assert.equal(pending.runtimeRequest.kind, "command");
+          yield* runtime.respondToRuntimeRequest({
+            requestId: pending.runtimeRequest.id,
+            decision,
+          });
+          const response = yield* fake.takeRequest("extension_ui_response");
+          assert.equal(response["decision"], decision);
+        }
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect("remembers session approvals only for identical confirmation content", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;
