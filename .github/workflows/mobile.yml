@@ -34,7 +34,7 @@ jobs:
         with:
           packages: platform-tools
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - run: pnpm --filter @cox/mobile exec cap copy android
+      - run: pnpm --filter @cox/mobile exec cap sync android
       - name: Detect signing credentials
         id: signing
         env:
