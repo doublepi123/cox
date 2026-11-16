@@ -1,6 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Real HTTP servers verify fetch redirect credential isolation.
+import { createServer, type Server } from "node:http";
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { makeGatewayModels, parseGatewayModel } from "./GatewayModels.ts";
 
@@ -21,6 +24,81 @@ const snapshot: ServerProvider = {
 };
 
 describe("gateway models", () => {
+  it("does not forward gateway credentials to redirect targets with the real fetch client", async () => {
+    const listen = (server: Server) =>
+      new Promise<string>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address();
+          if (!address || typeof address === "string") {
+            reject(new Error("Expected a TCP address"));
+            return;
+          }
+          resolve(`http://127.0.0.1:${address.port}`);
+        });
+      });
+    let targetRequests = 0;
+    const gatewayRequests: Array<{
+      url: string | undefined;
+      authorization: string | undefined;
+      apiKey: string | string[] | undefined;
+    }> = [];
+    let redirectStatus = 302;
+    const target = createServer((_request, response) => {
+      targetRequests++;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [{ id: "redirected-model" }] }));
+    });
+    let targetUrl = "";
+    const source = createServer((request, response) => {
+      gatewayRequests.push({
+        url: request.url,
+        authorization: request.headers.authorization,
+        apiKey: request.headers["x-api-key"],
+      });
+      response.writeHead(redirectStatus, { location: `${targetUrl}/models` });
+      response.end();
+    });
+    try {
+      targetUrl = await listen(target);
+      const baseUrl = await listen(source);
+      for (const status of [301, 302, 303, 307, 308]) {
+        redirectStatus = status;
+        const error = await Effect.runPromise(
+          Effect.gen(function* () {
+            const gateway = yield* makeGatewayModels({
+              instanceId,
+              driver: ProviderDriverKind.make("claudeAgent"),
+              baseUrl,
+              apiKey: "private-test-key",
+              customModels: [],
+            });
+            return yield* Effect.flip(gateway.refresh);
+          }).pipe(Effect.provide(FetchHttpClient.layer)),
+        );
+        expect(error.detail).not.toContain("private-test-key");
+        expect(targetRequests).toBe(0);
+      }
+      expect(gatewayRequests).toEqual(
+        Array.from({ length: 5 }, () => ({
+          url: "/v1/models",
+          authorization: "Bearer private-test-key",
+          apiKey: "private-test-key",
+        })),
+      );
+    } finally {
+      await Promise.all(
+        [source, target].map(
+          (server) =>
+            new Promise<void>((resolve) => {
+              server.closeAllConnections();
+              server.close(() => resolve());
+            }),
+        ),
+      );
+    }
+  });
+
   it.effect("supplements Codex Ultra after manual max-only gateway capabilities are merged", () =>
     Effect.gen(function* () {
       const http = HttpClient.make((request) =>
