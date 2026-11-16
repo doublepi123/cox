@@ -95,6 +95,7 @@ jobs:
           }
           NODE
       - run: pnpm typecheck
+      - run: pnpm --filter @cox/mobile exec playwright-core install --with-deps --only-shell chromium
       - run: pnpm test
       - run: pnpm release:npm
       - name: Smoke-test the npm installation
