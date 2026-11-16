@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.97 — 2026-11-16
+
+- Keep state-bearing Responses requests on an allowed native Responses route,
+  and select allowed native Anthropic routes for token counting before applying
+  model-family preferences. Reject unavailable native routes without bypassing
+  service or model protocol restrictions.
+- Preserve Gemini prompt safety blocks without retrying them. Converted safety
+  results retain their destination protocol's refusal or incomplete status.
+- Validate Responses output completion and snapshots, Anthropic block lifecycles,
+  Gemini candidate termination and tool-call arguments in both the gateway and
+  native protocol bridge. Truncated replies retain their incomplete status.
+- Fit converted Anthropic thinking budgets below the final output limit and
+  disable thinking when that limit is too small. Restrict `ultra` to `max`
+  conversion to the explicitly supported GPT Sol aliases.
+- Protect model discovery's existing manual-redirect policy with real HTTP
+  credential-isolation tests for same-origin and cross-origin redirects.
+
 ## 0.1.96 — 2026-11-15
 
 - Add Oh My Pi (`omp`) as an independent, disabled-by-default provider with
