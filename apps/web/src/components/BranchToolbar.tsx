@@ -135,7 +135,7 @@ export function MobileBranchStatus() {
   return (
     <span
       data-mobile-branch-status={running ? "running" : environment.connection.phase}
-      className="pointer-events-none fixed top-0 z-30 flex h-(--workspace-topbar-height) w-5 items-center justify-center left-[calc(env(safe-area-inset-left)+3.5rem)]"
+      className="pointer-events-none fixed top-0 z-30 flex h-(--workspace-topbar-height) w-3 items-center justify-center left-[calc(env(safe-area-inset-left)+3rem)]"
     >
       <ConnectionStatusDot
         tooltipText={running ? t("Running") : t(connectionStatusTitle(environment.connection))}
