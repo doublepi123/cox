@@ -23,6 +23,10 @@ on:
         description: Publish to an existing desktop-v tag after all native tests pass
         default: false
         type: boolean
+      cox_tag:
+        description: Attach bundled installers to this existing Cox GitHub release (v*), using the latest desktop-v client
+        default: ""
+        type: string
 permissions:
   actions: read
   contents: read
@@ -30,7 +34,7 @@ jobs:
   resolve:
     if: github.repository == 'doublepi123/cox' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     outputs:
       client_ref: ${{ steps.plan.outputs.client_ref }}
       client_commit: ${{ steps.plan.outputs.client_commit }}

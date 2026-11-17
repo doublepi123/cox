@@ -24,6 +24,71 @@ export function latestDesktopTag(releases: readonly unknown[]): string {
   return "desktop-v" + versions[0];
 }
 
+export const NPM_PROPAGATION_ATTEMPTS = 60;
+export const NPM_PROPAGATION_DELAY_MS = 30_000;
+
+async function listGithubReleases(api: (path: string) => Promise<unknown>): Promise<unknown[]> {
+  const releases: unknown[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const result = await api("releases?per_page=100&page=" + page);
+    if (!Array.isArray(result)) throw new Error("Invalid GitHub release inventory.");
+    releases.push(...result);
+    if (result.length < 100) break;
+  }
+  return releases;
+}
+
+export async function waitForPublishedBackend(
+  fetchRelease: (
+    version: string,
+  ) => Promise<{ version: string; integrity: string; compatible: boolean }>,
+  options: {
+    readonly minimum?: string;
+    readonly version: string;
+    readonly attempts?: number;
+    readonly delayMs?: number;
+    readonly sleep?: (ms: number) => Promise<void>;
+    readonly log?: (message: string) => void;
+  },
+): Promise<{ version: string; integrity: string }> {
+  const requested = isBackendVersion(options.minimum) ? options.minimum : options.version;
+  const attempts = options.attempts ?? NPM_PROPAGATION_ATTEMPTS;
+  const delayMs = options.delayMs ?? NPM_PROPAGATION_DELAY_MS;
+  const sleep = options.sleep ?? ((ms) => setTimeout(ms));
+  const log = options.log ?? ((message) => console.warn(message));
+  let failure: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const release = await fetchRelease(requested);
+      if (!release.compatible)
+        throw new Error("The latest Cox requires a newer compatible desktop client.");
+      if (options.minimum && compareBackendVersions(release.version, options.minimum) < 0)
+        throw new Error("npm is still propagating the new Cox version.");
+      return { version: release.version, integrity: release.integrity };
+    } catch (error) {
+      failure = error;
+      if (
+        error instanceof Error &&
+        error.message === "The latest Cox requires a newer compatible desktop client."
+      )
+        throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      log(
+        "Waiting for npm to publish Cox " +
+          requested +
+          " (attempt " +
+          (attempt + 1) +
+          "/" +
+          attempts +
+          "): " +
+          detail,
+      );
+    }
+    if (attempt < attempts - 1) await sleep(delayMs);
+  }
+  throw failure;
+}
+
 export interface DesktopReleasePlan {
   readonly client_ref: string;
   readonly client_commit: string;
@@ -96,27 +161,34 @@ export async function resolveDesktopRelease(input: {
     if (names.length !== 1)
       throw new Error("The publishing run must identify exactly one stable Cox npm version.");
     minimum = names[0]!;
+    backendVersion = minimum;
     releaseTag = "v" + minimum;
-    const releases: unknown[] = [];
-    for (let page = 1; page <= 20; page++) {
-      const result = await input.api("releases?per_page=100&page=" + page);
-      if (!Array.isArray(result)) throw new Error("Invalid GitHub release inventory.");
-      releases.push(...result);
-      if (result.length < 100) break;
-    }
-    clientRef = latestDesktopTag(releases);
+    clientRef = latestDesktopTag(await listGithubReleases(input.api));
   } else if (input.eventName === "workflow_dispatch") {
     const inputs = record(event.inputs ?? {});
-    clientRef =
-      typeof inputs.client_ref === "string" && inputs.client_ref ? inputs.client_ref : "main";
-    backendVersion =
-      typeof inputs.cox_version === "string" && inputs.cox_version ? inputs.cox_version : "latest";
-    publish = inputs.publish === "true" || inputs.publish === true;
-    includeClientOnly = inputs.client_only === "true" || inputs.client_only === true;
-    clientRelease = clientRef.startsWith("desktop-v");
-    releaseTag = clientRef;
-    if (publish && (!clientRelease || !isBackendVersion(clientRef.slice(9))))
-      throw new Error("Manual publishing requires an existing desktop-v version tag.");
+    const coxTag = typeof inputs.cox_tag === "string" ? inputs.cox_tag : "";
+    if (coxTag.startsWith("v") && isBackendVersion(coxTag.slice(1))) {
+      minimum = coxTag.slice(1);
+      backendVersion = minimum;
+      releaseTag = coxTag;
+      publish = inputs.publish === "true" || inputs.publish === true;
+      includeClientOnly = false;
+      clientRelease = false;
+      clientRef = latestDesktopTag(await listGithubReleases(input.api));
+    } else {
+      clientRef =
+        typeof inputs.client_ref === "string" && inputs.client_ref ? inputs.client_ref : "main";
+      backendVersion =
+        typeof inputs.cox_version === "string" && inputs.cox_version
+          ? inputs.cox_version
+          : "latest";
+      publish = inputs.publish === "true" || inputs.publish === true;
+      includeClientOnly = inputs.client_only === "true" || inputs.client_only === true;
+      clientRelease = clientRef.startsWith("desktop-v");
+      releaseTag = clientRef;
+      if (publish && (!clientRelease || !isBackendVersion(clientRef.slice(9))))
+        throw new Error("Manual publishing requires an existing desktop-v version tag.");
+    }
   } else throw new Error("Unsupported desktop release trigger.");
   if (!/^[A-Za-z0-9._/-]+$/.test(clientRef)) throw new Error("Invalid desktop source ref.");
   const sourceRef = clientRef.startsWith("desktop-v") ? "refs/tags/" + clientRef : clientRef;
@@ -164,28 +236,12 @@ async function main() {
       if (!response.ok) throw new Error("GitHub release lookup failed: HTTP " + response.status);
       return response.json() as Promise<unknown>;
     },
-    latest: async (nodeVersion, minimum, version) => {
-      let failure: unknown;
-      for (let attempt = 0; attempt < 30; attempt++) {
-        try {
-          const release = await fetchBackendRelease(
-            nodeVersion,
-            AbortSignal.timeout(30_000),
-            fetch,
-            version,
-          );
-          if (minimum && compareBackendVersions(release.version, minimum) < 0)
-            throw new Error("npm is still propagating the new Cox version.");
-          if (!release.compatible)
-            throw new Error("The latest Cox requires a newer compatible desktop client.");
-          return { version: release.version, integrity: release.integrity };
-        } catch (error) {
-          failure = error;
-        }
-        if (attempt < 29) await setTimeout(30_000);
-      }
-      throw failure;
-    },
+    latest: (nodeVersion, minimum, version = "latest") =>
+      waitForPublishedBackend(
+        (requested) =>
+          fetchBackendRelease(nodeVersion, AbortSignal.timeout(30_000), fetch, requested),
+        minimum === undefined ? { version } : { minimum, version },
+      ),
   });
   for (const [key, value] of Object.entries(plan))
     await appendFile(process.env.GITHUB_OUTPUT!, key + "=" + value + "\n");

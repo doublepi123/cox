@@ -6,6 +6,9 @@
   `get_state`. The settle probe retries while streaming or queued input remain,
   and a later native `done` still emits `agent_settled` instead of being treated
   as a duplicate.
+- Pin desktop combination builds to the published Cox npm packument instead of
+  waiting on the delayed `latest` dist-tag, retry until that version is readable,
+  and allow attaching those installers to an existing Cox GitHub release.
 
 ## 0.1.99 — 2026-11-17
 

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { latestDesktopTag, resolveDesktopRelease } from "./release-plan.ts";
+import {
+  latestDesktopTag,
+  resolveDesktopRelease,
+  waitForPublishedBackend,
+} from "./release-plan.ts";
 
 const manifest = (version = "0.2.0") => ({
   encoding: "base64",
@@ -72,7 +76,33 @@ describe("independent desktop release matrix", () => {
       flavors: '["bundled"]',
       client_release: "false",
     });
-    expect(latest).toHaveBeenCalledWith("26.12.1", "0.1.99", "latest");
+    expect(latest).toHaveBeenCalledWith("26.12.1", "0.1.99", "0.1.99");
+  });
+  it("attaches bundled installers to an existing Cox tag from a manual run", async () => {
+    const api = vi.fn(async (path: string) => {
+      if (path.startsWith("releases?"))
+        return [{ tag_name: "desktop-v0.2.29" }, { tag_name: "v0.1.99" }];
+      if (path.startsWith("commits/")) return { sha: COMMIT };
+      return manifest("0.2.29");
+    });
+    const latest = vi.fn(async () => ({ version: "0.1.99", integrity: "verified-fixture" }));
+    const result = await resolveDesktopRelease({
+      eventName: "workflow_dispatch",
+      refName: "main",
+      event: { inputs: { cox_tag: "v0.1.99", publish: "true" } },
+      api,
+      latest,
+    });
+    expect(result).toMatchObject({
+      release_tag: "v0.1.99",
+      client_ref: "desktop-v0.2.29",
+      client_version: "0.2.29",
+      flavors: '["bundled"]',
+      publish: "true",
+      client_release: "false",
+      skip: "false",
+    });
+    expect(latest).toHaveBeenCalledWith("26.12.1", "0.1.99", "0.1.99");
   });
   it("rejects mismatched client tags and failed/unofficial npm publications", async () => {
     await expect(
@@ -140,5 +170,58 @@ describe("independent desktop release matrix", () => {
       flavors: '["bundled"]',
       cox_version: "0.1.99",
     });
+  });
+});
+
+describe("npm packument wait for combination releases", () => {
+  it("requests the published version, not the latest dist-tag, and retries until it appears", async () => {
+    const slept: number[] = [];
+    const logs: string[] = [];
+    const fetchRelease = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Cox update download failed: HTTP 404"))
+      .mockResolvedValueOnce({ version: "0.1.98", integrity: "stale", compatible: true })
+      .mockResolvedValueOnce({
+        version: "0.1.99",
+        integrity: "verified-fixture",
+        compatible: true,
+      });
+    await expect(
+      waitForPublishedBackend(fetchRelease, {
+        minimum: "0.1.99",
+        version: "latest",
+        attempts: 4,
+        delayMs: 15,
+        sleep: async (ms) => {
+          slept.push(ms);
+        },
+        log: (message) => logs.push(message),
+      }),
+    ).resolves.toEqual({ version: "0.1.99", integrity: "verified-fixture" });
+    expect(fetchRelease.mock.calls).toEqual([["0.1.99"], ["0.1.99"], ["0.1.99"]]);
+    expect(slept).toEqual([15, 15]);
+    expect(logs).toHaveLength(2);
+  });
+  it("does not retry an incompatible Cox release", async () => {
+    const slept: number[] = [];
+    const fetchRelease = vi.fn(async () => ({
+      version: "0.1.99",
+      integrity: "verified-fixture",
+      compatible: false,
+    }));
+    await expect(
+      waitForPublishedBackend(fetchRelease, {
+        minimum: "0.1.99",
+        version: "latest",
+        attempts: 4,
+        delayMs: 15,
+        sleep: async (ms) => {
+          slept.push(ms);
+        },
+        log: () => {},
+      }),
+    ).rejects.toThrow("newer compatible desktop client");
+    expect(fetchRelease).toHaveBeenCalledOnce();
+    expect(slept).toEqual([]);
   });
 });
