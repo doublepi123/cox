@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.98 — 2026-11-17
+## 0.1.99 — 2026-11-17
 
 - Accept official OMO Native `omo-ai` 5.1.69 or newer instead of pinning an exact
   runtime. Install now tracks `latest` with a minimum version, and memory
@@ -21,6 +21,23 @@
   versions.
 - Fail closed on Android WebViews without `MULTI_PROFILE` during Cloudflare
   Access preflight instead of sending cookieless login requests.
+
+## 0.1.98 — 2026-11-17
+
+- Prevent legacy gateway model discovery from following redirects and forwarding
+  credentials to an unexpected destination.
+- Restore CI browser dependencies, mobile smoke build prerequisites, migration
+  expectations and notification-setting defaults.
+- Include mobile-friendly navigation, touch terminal controls, viewport-safe
+  sheets, upload recovery, Web Push and authenticated webhook notifications
+  added since 0.1.97.
+- Isolate idle ACP child-session output from the root conversation while
+  preserving loaded/resumed session replay.
+- Normalize bare relative Add Project directories against the home directory
+  consistently.
+- Prioritize custom thread-title instructions over generic title formatting.
+- Record asynchronous setup completion immediately while retaining Cox's
+  existing branch-name timeout.
 
 ## 0.1.97 — 2026-11-16
 
