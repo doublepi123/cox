@@ -3,6 +3,7 @@ package dev.doublepi.cox.mobile
 import android.content.Intent
 import android.net.Uri
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
@@ -21,10 +22,20 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     private val pool = linkedMapOf<String, WorkspaceView>()
     private val policy = WorkspacePoolPolicy()
     private var overlay: FrameLayout? = null
+    private var activePill: TextView? = null
     private var activeName: String? = null
+    private var imeVisible = false
+    private var webSwitcherMounted = false
+    private var launcherColor: Int? = null
+    internal val hasActiveOverlay: Boolean
+        get() = overlay != null || preflight.hasActiveSignIn
     private val downloads by lazy { WorkspaceDownloads(context.applicationContext) }
     private val preflight by lazy {
-        WorkspacePreflight(this) { profileName -> pool.remove(profileName)?.destroy() }
+        WorkspacePreflight(
+            plugin = this,
+            evictPooledView = { profileName -> pool.remove(profileName)?.destroy() },
+            restoreLauncherBars = { restoreLauncherChrome() },
+        )
     }
     private val host = object : WorkspaceHost {
         override val activity get() = this@CoxWorkspaceWebViewPlugin.activity
@@ -46,6 +57,42 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
             catch (_: android.content.ActivityNotFoundException) {
                 android.widget.Toast.makeText(activity, "Install a browser to open this server", android.widget.Toast.LENGTH_LONG).show()
             }
+        }
+        override fun onWorkspaceChromeChanged(profileName: String, backgroundColor: Int) {
+            if (activeName != profileName) return
+            overlay?.setBackgroundColor(backgroundColor)
+            WorkspaceChrome.applySystemBars(activity, backgroundColor)
+            activePill?.let { WorkspaceChrome.styleServersPill(it, isLightSurfaceColor(backgroundColor)) }
+        }
+        override fun onWebSwitcherChanged(profileName: String, mounted: Boolean) {
+            if (activeName != profileName) return
+            webSwitcherMounted = mounted
+            syncPillVisibility()
+        }
+    }
+
+    internal fun restoreLauncherChrome() {
+        val bg = launcherColor ?: WorkspaceChrome.defaultBackgroundColor(activity)
+        WorkspaceChrome.applySystemBars(activity, bg)
+        bridge?.webView?.setBackgroundColor(bg)
+    }
+
+    private fun syncPillVisibility() {
+        activePill?.visibility =
+            if (shouldShowFallbackServersPill(imeVisible, webSwitcherMounted)) View.VISIBLE
+            else View.GONE
+    }
+
+    @PluginMethod
+    fun syncLauncherTheme(call: PluginCall) {
+        activity.runOnUiThread {
+            val hex = call.getString("color")
+            val parsed = hex?.let(::parseHexColor)
+            launcherColor = parsed
+            if (!hasActiveOverlay) {
+                restoreLauncherChrome()
+            }
+            call.resolve()
         }
     }
 
@@ -141,24 +188,30 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
 
     private fun show(workspace: WorkspaceView) {
         dismiss()
-        val root = container()
+        activeName = workspace.identity.profileName
+        imeVisible = false
+        webSwitcherMounted = workspace.webSwitcherMounted
+        val bg = workspace.currentBackgroundColor
+        val root = container(bg)
         (workspace.webView.parent as? ViewGroup)?.removeView(workspace.webView)
         root.addView(workspace.webView, FrameLayout.LayoutParams(-1, -1))
-        root.addView(Button(activity).apply {
-            text = "Servers"
-            contentDescription = "Return to server switcher; hold to manage connections"
-            setOnClickListener { host.launchEvent("openServerSwitcher") }
-            setOnLongClickListener { host.launchEvent("openConnectionManager"); true }
-        }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
-            topMargin = (12 * context.resources.displayMetrics.density).toInt()
-            marginEnd = topMargin
-        })
-        activeName = workspace.identity.profileName
+        val pill = WorkspaceChrome.createDraggableServersPill(
+            activity = activity,
+            lightSurface = isLightSurfaceColor(bg),
+            onTap = { host.launchEvent("openServerSwitcher") },
+            onLongPress = { host.launchEvent("openConnectionManager") },
+        )
+        activePill = pill
+        root.addView(pill)
+        syncPillVisibility()
+        WorkspaceChrome.applySystemBars(activity, bg)
+        workspace.refreshChromeProbe()
     }
 
     private fun showIsolationPanel(identity: WorkspaceIdentity) {
         dismiss()
-        val root = container()
+        val bg = WorkspaceChrome.defaultBackgroundColor(activity)
+        val root = container(bg)
         val panel = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -167,23 +220,31 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         panel.addView(TextView(activity).apply {
             text = "Isolated multi-server workspaces require an updated Android System WebView. Update it in the Play Store, or open this server in your browser."
             textSize = 18f
+            setTextColor(if (isLightSurfaceColor(bg)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
         })
         panel.addView(Button(activity).apply {
             text = "Open in Browser"
+            isAllCaps = false
             setOnClickListener { host.openExternal(identity.origin) }
         })
         panel.addView(Button(activity).apply {
             text = "Back to Launcher"
+            isAllCaps = false
             setOnClickListener { dismiss() }
         })
         root.addView(panel, FrameLayout.LayoutParams(-1, -1))
+        WorkspaceChrome.applySystemBars(activity, bg)
     }
 
-    private fun container(): FrameLayout {
+    private fun container(backgroundColor: Int): FrameLayout {
         val root = FrameLayout(activity).apply {
-            setBackgroundColor(android.graphics.Color.WHITE)
-            fitsSystemWindows = true
+            setBackgroundColor(backgroundColor)
+            fitsSystemWindows = false
             isClickable = true
+        }
+        WorkspaceChrome.installChildWebViewInsetsShield(root) { visible ->
+            imeVisible = visible
+            syncPillVisibility()
         }
         activity.addContentView(root, ViewGroup.LayoutParams(-1, -1))
         overlay = root
@@ -191,12 +252,19 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     }
 
     private fun dismiss() {
+        activePill = null
+        imeVisible = false
+        webSwitcherMounted = false
+        val hadOverlay = overlay != null
         overlay?.let { root ->
             root.removeAllViews()
             (root.parent as? ViewGroup)?.removeView(root)
         }
         overlay = null
         activeName = null
+        if (hadOverlay && !preflight.hasActiveSignIn) {
+            restoreLauncherChrome()
+        }
     }
 
     override fun handleOnDestroy() {

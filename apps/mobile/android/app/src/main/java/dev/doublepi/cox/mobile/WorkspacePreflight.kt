@@ -40,10 +40,13 @@ internal fun validatePreflightTarget(identity: WorkspaceIdentity, requestUrl: St
 internal class WorkspacePreflight(
     private val plugin: CoxWorkspaceWebViewPlugin,
     private val evictPooledView: (String) -> Unit,
+    private val restoreLauncherBars: () -> Unit,
 ) {
     private var signInOverlay: FrameLayout? = null
     private var signInWebView: WebView? = null
     private var backCallback: OnBackPressedCallback? = null
+    internal val hasActiveSignIn: Boolean
+        get() = signInOverlay != null
 
     private fun verifyLauncherCaller() {
         val page = URI(plugin.bridge.webView.url ?: "")
@@ -61,15 +64,10 @@ internal class WorkspacePreflight(
                 )
                 val requestUrl = requireNotNull(call.getString("url"))
                 val targetUri = validatePreflightTarget(identity, requestUrl)
-                if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-                    call.reject(
-                        "This Android WebView cannot isolate Cloudflare Access cookies. Update Android System WebView, or open the server in a browser.",
-                        "gateway_unavailable",
-                    )
-                    return@runOnUiThread
-                }
-                val cookieHeader = ProfileStore.getInstance().getOrCreateProfile(identity.profileName)
-                    .cookieManager.getCookie(requestUrl)
+                val cookieHeader = if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                    ProfileStore.getInstance().getOrCreateProfile(identity.profileName)
+                        .cookieManager.getCookie(requestUrl)
+                } else null
                 Thread {
                     try {
                         val connection = targetUri.toURL().openConnection()
@@ -192,19 +190,27 @@ internal class WorkspacePreflight(
                 }
                 val density = activity.resources.displayMetrics.density
                 val pad = (12 * density).toInt()
+                val isZh = Locale.getDefault().language.lowercase(Locale.ROOT).startsWith("zh")
+                val headerColor = Color.parseColor("#151518")
+                webView.setBackgroundColor(headerColor)
                 val header = LinearLayout(activity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setBackgroundColor(Color.parseColor("#151518"))
-                    setPadding(pad, pad, pad, pad)
+                    setBackgroundColor(headerColor)
+                    setPadding(pad, (8 * density).toInt(), pad, (8 * density).toInt())
                 }
                 header.addView(TextView(activity).apply {
                     text = "Cloudflare Access"
                     setTextColor(Color.parseColor("#F5F5F5"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 }, LinearLayout.LayoutParams(0, -2, 1f))
-                header.addView(Button(activity).apply {
-                    text = "Cancel"
+                header.addView(TextView(activity).apply {
+                    text = if (isZh) "取消" else "Cancel"
+                    gravity = Gravity.CENTER
+                    minHeight = (34 * density).toInt()
+                    setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    WorkspaceChrome.styleServersPill(this, false)
                     setOnClickListener { finish("gateway_cancelled", "Cloudflare Access sign-in was cancelled.") }
                 })
                 val layout = LinearLayout(activity).apply {
@@ -213,11 +219,13 @@ internal class WorkspacePreflight(
                     addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
                 }
                 val root = FrameLayout(activity).apply {
-                    setBackgroundColor(Color.parseColor("#151518"))
-                    fitsSystemWindows = true
+                    setBackgroundColor(headerColor)
+                    fitsSystemWindows = false
                     isClickable = true
                     addView(layout, FrameLayout.LayoutParams(-1, -1))
                 }
+                WorkspaceChrome.installChildWebViewInsetsShield(root)
+                WorkspaceChrome.applySystemBars(activity, headerColor)
                 if (activity is ComponentActivity) {
                     val callback = object : OnBackPressedCallback(true) {
                         override fun handleOnBackPressed() {
@@ -240,6 +248,7 @@ internal class WorkspacePreflight(
     }
 
     fun closeSignIn() {
+        val hadOverlay = signInOverlay != null
         backCallback?.remove()
         backCallback = null
         signInWebView?.let { view ->
@@ -253,5 +262,8 @@ internal class WorkspacePreflight(
             (root.parent as? ViewGroup)?.removeView(root)
         }
         signInOverlay = null
+        if (hadOverlay) {
+            restoreLauncherBars()
+        }
     }
 }

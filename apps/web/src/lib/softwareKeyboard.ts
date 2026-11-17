@@ -32,6 +32,11 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
   const keyboard = win?.navigator.virtualKeyboard;
   const viewportStyle = win?.document?.documentElement.style;
   let previous = viewport ? viewportSnapshot(viewport) : undefined;
+  let baselineWidth = previous ? Math.round(previous.width * previous.scale) : undefined;
+  let baselineHeight =
+    previous && win
+      ? Math.max(win.innerHeight, Math.round(previous.height * previous.scale))
+      : undefined;
 
   const syncViewportHeight = () => {
     if (!viewport || !viewportStyle) return;
@@ -55,12 +60,23 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
     if (!viewport || !win) return;
     syncViewportHeight();
     const current = viewportSnapshot(viewport);
+    const unscaledWidth = Math.round(current.width * current.scale);
+    const unscaledHeight = Math.round(current.height * current.scale);
+    if (baselineWidth === undefined || Math.abs(unscaledWidth - baselineWidth) > 2) {
+      baselineWidth = unscaledWidth;
+      baselineHeight = Math.max(win.innerHeight, unscaledHeight);
+      viewportOpen = false;
+      previous = current;
+      notify();
+      return;
+    }
+    baselineHeight = Math.max(baselineHeight ?? 0, win.innerHeight, unscaledHeight);
     // Adapted from Ionic's keyboard assist, MIT, Copyright (c) 2015-present Drifty Co.
     // https://github.com/ionic-team/ionic-framework/blob/main/core/src/utils/keyboard/keyboard.ts
     const scaledHeightDifference = previous
       ? (previous.height - current.height) * current.scale
       : 0;
-    if (Math.abs(current.height - win.innerHeight / current.scale) <= 1) {
+    if (Math.abs(current.height - baselineHeight / current.scale) <= 1) {
       viewportOpen = false;
     } else if (
       !viewportOpen &&
@@ -83,8 +99,10 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
     if (listeners.size === 0) {
       if (viewport) {
         previous = viewportSnapshot(viewport);
+        baselineWidth = Math.round(previous.width * previous.scale);
+        baselineHeight = Math.max(win.innerHeight, Math.round(previous.height * previous.scale));
         // A composer can mount after the keyboard has already opened.
-        viewportOpen = win.innerHeight - previous.height * previous.scale > KEYBOARD_THRESHOLD;
+        viewportOpen = baselineHeight - previous.height * previous.scale > KEYBOARD_THRESHOLD;
         viewport.addEventListener("resize", onViewportResize);
         viewport.addEventListener("scroll", syncViewportHeight);
         syncViewportHeight();

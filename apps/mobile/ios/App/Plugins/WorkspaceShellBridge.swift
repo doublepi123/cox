@@ -15,12 +15,34 @@ extension WorkspaceSession {
         (() => {
           const config = \(json);
           if (window !== window.top || location.origin !== config.origin) return;
+          const post = payload => window.webkit.messageHandlers.coxMobileShell.postMessage(payload);
           window.__coxMobileShell__ = Object.freeze({
             info: Object.freeze(config.info),
             bridgeToken: config.bridgeToken,
-            postMessage: payload => window.webkit.messageHandlers.coxMobileShell.postMessage(payload)
+            postMessage: post
           });
           window.dispatchEvent(new Event("cox:mobile-shell-change"));
+          const sync = () => {
+            const bodyBg = document.body ? getComputedStyle(document.body).backgroundColor : null;
+            const rootBg = document.documentElement ? getComputedStyle(document.documentElement).backgroundColor : null;
+            const meta = document.querySelector('meta[name="theme-color"]')?.getAttribute("content");
+            const chosen = [bodyBg, rootBg, meta].find(v => v && v !== "transparent" && v !== "rgba(0, 0, 0, 0)");
+            if (chosen) post({ type: "syncThemeColor", color: chosen, bridgeToken: config.bridgeToken });
+          };
+          sync();
+          if (!window.__coxChromeObserverInstalled__) {
+            window.__coxChromeObserverInstalled__ = true;
+            let timer = 0;
+            new MutationObserver(() => {
+              clearTimeout(timer);
+              timer = setTimeout(sync, 40);
+            }).observe(document.documentElement, {
+              attributes: true,
+              subtree: true,
+              childList: true,
+              attributeFilter: ["class", "style", "data-theme-id", "content", "data-mobile-server-switcher"]
+            });
+          }
         })();
         """
         let controller = webView.configuration.userContentController
@@ -87,6 +109,10 @@ extension WorkspaceSession {
                     red: rgba[0] / 255, green: rgba[1] / 255,
                     blue: rgba[2] / 255, alpha: rgba[3] / 255
                 )
+                self.webView.evaluateJavaScript("Boolean(document.querySelector('[data-mobile-server-switcher]'))") { [weak self] mounted, _ in
+                    guard let self, self.isActive else { return }
+                    (self.presenter as? WorkspaceViewController)?.webSwitcherMounted = (mounted as? Bool) == true
+                }
             }
         case .saveBlobDownload(let name, let data):
             exports.presenter = presenter

@@ -2,6 +2,7 @@ import { pipe } from "effect/Function";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
 import { useSyncExternalStore } from "react";
+import { syncMobileThemeColor } from "../mobile/mobileShellBridge";
 import {
   applyThemePalette,
   CUSTOM_THEMES_STORAGE_KEY,
@@ -256,11 +257,13 @@ export function syncBrowserChromeTheme() {
   );
   if (themeColorMetas.length === 0) {
     ensureThemeColorMetaTag().setAttribute("content", backgroundColor);
+    syncMobileThemeColor(backgroundColor);
     return;
   }
   for (const element of themeColorMetas) {
     element.setAttribute("content", backgroundColor);
   }
+  syncMobileThemeColor(backgroundColor);
 }
 function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview = true } = {}) {
   if (typeof document === "undefined" || typeof window === "undefined") return;

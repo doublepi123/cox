@@ -36,6 +36,7 @@ export class GatewaySignInError extends Error {
 }
 
 interface WorkspacePlugin {
+  syncLauncherTheme?(options: { readonly color: string | null }): Promise<void>;
   requestProfileUrl?(request: ProfileUrlRequest): Promise<ProfileUrlResponse>;
   signInToGateway?(request: GatewaySignInRequest): Promise<void>;
   openWorkspace(profile: WorkspaceProfile): Promise<void>;
@@ -119,6 +120,16 @@ export async function signInToWorkspaceGateway(request: GatewaySignInRequest): P
       throw new GatewaySignInError("gateway_unavailable", error.message, { cause: error });
     }
     throw error;
+  }
+}
+
+export async function syncNativeLauncherTheme(color: string | null): Promise<void> {
+  if (hasNativeWorkspace() && typeof CoxWorkspaceWebView.syncLauncherTheme === "function") {
+    try {
+      await CoxWorkspaceWebView.syncLauncherTheme({ color });
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+    }
   }
 }
 

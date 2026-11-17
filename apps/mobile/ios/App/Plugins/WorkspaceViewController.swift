@@ -5,25 +5,61 @@ final class WorkspaceViewController: UIViewController {
     var onLauncher: ((String) -> Void)?
     private let pill = UIButton(type: .system)
     private weak var workspace: WKWebView?
+    private var keyboardVisible = false
+    private var positioned = false
+    var webSwitcherMounted = false {
+        didSet { updatePillVisibility() }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
-        pill.setTitle("Servers", for: .normal)
+        view.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+        let isZh = Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") == true
+        pill.setTitle(isZh ? "服务器" : "Servers", for: .normal)
+        pill.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
         pill.accessibilityLabel = "Open server switcher"
-        pill.backgroundColor = .secondarySystemBackground
-        pill.layer.cornerRadius = 22
-        pill.layer.shadowOpacity = 0.25
-        pill.frame = CGRect(x: 12, y: 120, width: 100, height: 44)
+        pill.backgroundColor = .secondarySystemBackground.withAlphaComponent(0.92)
+        pill.setTitleColor(.label, for: .normal)
+        pill.layer.cornerRadius = 18
+        pill.layer.borderWidth = 1 / UIScreen.main.scale
+        pill.layer.borderColor = UIColor.separator.cgColor
+        pill.layer.shadowOpacity = 0.18
+        pill.layer.shadowRadius = 6
+        pill.layer.shadowOffset = CGSize(width: 0, height: 2)
+        pill.frame = CGRect(x: 12, y: 12, width: 84, height: 36)
         pill.addTarget(self, action: #selector(openSwitcher), for: .touchUpInside)
         pill.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag)))
         pill.menu = UIMenu(children: [
-            UIAction(title: "Connection Manager") { [weak self] _ in
+            UIAction(title: isZh ? "连接管理" : "Connection Manager") { [weak self] _ in
                 self?.onLauncher?("openConnectionManager")
             },
-            UIAction(title: "Reload") { [weak self] _ in self?.workspace?.reload() }
+            UIAction(title: isZh ? "刷新" : "Reload") { [weak self] _ in self?.workspace?.reload() }
         ])
         view.addSubview(pill)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillShow),
+            name: UIResponder.keyboardWillShowNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillHide),
+            name: UIResponder.keyboardWillHideNotification, object: nil
+        )
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func keyboardWillShow() {
+        keyboardVisible = true
+        updatePillVisibility()
+    }
+
+    @objc private func keyboardWillHide() {
+        keyboardVisible = false
+        updatePillVisibility()
+    }
+
+    private func updatePillVisibility() {
+        pill.isHidden = keyboardVisible || webSwitcherMounted
     }
 
     func display(_ webView: WKWebView) {
@@ -43,13 +79,19 @@ final class WorkspaceViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        let safe = view.safeAreaLayoutGuide.layoutFrame
+        if !positioned && safe.width > 0 {
+            positioned = true
+            pill.center = CGPoint(x: safe.maxX - 54, y: safe.minY + 28)
+        }
         clampPill()
     }
 
     private func clampPill() {
         let safe = view.safeAreaLayoutGuide.layoutFrame
+        guard safe.width > 0, safe.height > 0 else { return }
         pill.center = CGPoint(
-            x: min(max(pill.center.x, safe.minX + 50), safe.maxX - 50),
+            x: min(max(pill.center.x, safe.minX + 46), safe.maxX - 46),
             y: min(max(pill.center.y, safe.minY + 22), safe.maxY - 22)
         )
     }
@@ -63,7 +105,7 @@ final class WorkspaceViewController: UIViewController {
         clampPill()
         if gesture.state == .ended {
             let safe = view.safeAreaLayoutGuide.layoutFrame
-            pill.center.x = pill.center.x < safe.midX ? safe.minX + 50 : safe.maxX - 50
+            pill.center.x = pill.center.x < safe.midX ? safe.minX + 46 : safe.maxX - 46
         }
     }
 }

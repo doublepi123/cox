@@ -121,6 +121,20 @@ describe("software keyboard detection", () => {
     unsubscribe();
   });
 
+  it("detects keyboard open and close when resizes-content shrinks innerHeight with visualViewport", () => {
+    const { store, resize, win } = fixture();
+    const unsubscribe = store.subscribe(() => {});
+
+    win.innerHeight = 527;
+    resize(527);
+    expect(store.getSnapshot()).toBe(true);
+
+    win.innerHeight = 844;
+    resize(844);
+    expect(store.getSnapshot()).toBe(false);
+    unsubscribe();
+  });
+
   it("recognizes keyboard closure despite viewport rounding at high zoom", () => {
     const { store, resize } = fixture();
     resize(211, 98, 4);

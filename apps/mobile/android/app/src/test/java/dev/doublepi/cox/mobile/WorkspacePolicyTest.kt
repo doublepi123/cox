@@ -117,4 +117,14 @@ class WorkspacePolicyTest {
             }
         }
     }
+
+    @Test fun fallbackPillHidesDuringImeOrMountedWebSwitcherAndClampsDrag() {
+        assertTrue(shouldShowFallbackServersPill(imeVisible = false, webSwitcherMounted = false))
+        assertFalse(shouldShowFallbackServersPill(imeVisible = true, webSwitcherMounted = false))
+        assertFalse(shouldShowFallbackServersPill(imeVisible = false, webSwitcherMounted = true))
+        assertFalse(shouldShowFallbackServersPill(imeVisible = true, webSwitcherMounted = true))
+        assertEquals(12f, clampPillCoordinate(-40f, 12f, 300f), 0.001f)
+        assertEquals(300f, clampPillCoordinate(420f, 12f, 300f), 0.001f)
+        assertEquals(12f, clampPillCoordinate(50f, 12f, 4f), 0.001f)
+    }
 }
