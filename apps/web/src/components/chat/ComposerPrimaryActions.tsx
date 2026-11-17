@@ -106,6 +106,7 @@ export function StopGenerationButton({
               "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
               className,
             )}
+            data-stop-generation=""
             {...props}
             disabled={disabled}
             onClick={() => {

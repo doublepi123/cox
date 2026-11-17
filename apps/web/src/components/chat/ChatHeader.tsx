@@ -274,6 +274,7 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <div
       ref={breadcrumbContainerRef}
+      data-chat-header-title=""
       className={cn(
         "flex min-w-0 flex-1 items-center gap-2 sm:gap-3 [-webkit-app-region:no-drag]",
         rightPanelOpen ? "pr-10" : "pr-28",
@@ -382,7 +383,7 @@ export const ChatHeader = memo(function ChatHeader({
                     onClick={openMenuFromTitle}
                     onDoubleClick={canOperateThread ? handleTitleDoubleClick : undefined}
                     onBlur={cancelPendingTitleMenu}
-                    className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring max-sm:min-h-11 max-sm:flex-1 max-sm:overflow-hidden max-sm:rounded-md"
                   />
                 }
               >

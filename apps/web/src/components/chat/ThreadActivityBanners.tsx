@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Fragment } from "react";
 import { useTranslation } from "../../i18n";
+import { useIsCompactPhoneViewport } from "../../mobile/mobileShellBridge";
 import { tickTextContent } from "~/lib/tickTextContent";
 import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
@@ -62,6 +63,34 @@ export function visibleExtensionStatuses(
   });
 }
 
+type ExtensionStatusTone = "blocked" | "running" | "settled" | "neutral";
+
+function extensionStatusTone(text: string): ExtensionStatusTone {
+  const head = text.slice(0, 96);
+  if (/\b(blocked|paused|held)\b/i.test(head)) return "blocked";
+  if (/\b(achieved|completed)\b/i.test(head)) return "settled";
+  if (/\b(reflecting|pursuing|running)\b/i.test(head)) return "running";
+  return "neutral";
+}
+
+function splitLongExtensionStatus(
+  text: string,
+): { readonly title: string; readonly separator: string; readonly body: string } | null {
+  const match = /^(.{1,48}?)([:：]\s+)([\s\S]{48,})$/u.exec(text);
+  const title = match?.[1]?.trim();
+  const separator = match?.[2];
+  const body = match?.[3];
+  if (!title || !separator || !body) return null;
+  return { title, separator, body };
+}
+
+const extensionToneClassName: Record<ExtensionStatusTone, string> = {
+  blocked: "text-warning-foreground",
+  running: "text-info-foreground",
+  settled: "text-success-foreground",
+  neutral: "",
+};
+
 function ExtensionStatusDisclosure({
   statuses,
   providerLabel,
@@ -70,6 +99,7 @@ function ExtensionStatusDisclosure({
   readonly providerLabel: string;
 }) {
   const { t: translateUi } = useTranslation();
+  const compact = useIsCompactPhoneViewport();
   const label = translateUi("{provider} extension status", { provider: providerLabel });
   const texts = statuses.map((status) =>
     status.kind === "memory" ? translateUi(status.text) : status.text,
@@ -78,6 +108,9 @@ function ExtensionStatusDisclosure({
     0,
     statuses.findIndex((status) => status.key === "goal-wait"),
   );
+  const summary = texts[summaryIndex] ?? "";
+  const split = compact ? splitLongExtensionStatus(summary) : null;
+  const tone = extensionStatusTone(summary);
   const reflecting = statuses.some(
     (status) => status.kind === "memory" && status.text === "Memory reflecting",
   );
@@ -86,19 +119,37 @@ function ExtensionStatusDisclosure({
       <PopoverTrigger
         render={<ComposerBanner.Row render={<button type="button" />} />}
         aria-label={label}
-        className="pe-2 sm:pe-1.5"
+        data-extension-status-tone={tone}
+        className={cn("pe-2 sm:pe-1.5", split && "items-start")}
       >
-        <ComposerBanner.Icon>
+        <ComposerBanner.Icon
+          className={cn(split && "pt-2.5", compact && extensionToneClassName[tone])}
+        >
           {reflecting ? (
             <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
           ) : (
             <CircleDashedIcon />
           )}
         </ComposerBanner.Icon>
-        <ComposerBanner.Content className="leading-7 sm:leading-6">
-          <span className="min-w-0 flex-1 whitespace-normal break-words font-medium">
-            {texts[summaryIndex]}
-          </span>
+        <ComposerBanner.Content className={cn("leading-7 sm:leading-6", split && "items-start")}>
+          {split ? (
+            <span className="grid min-w-0 flex-1 gap-1 py-1.5 text-start">
+              <span className="truncate font-semibold">{split.title}</span>
+              <span className="sr-only">{split.separator}</span>
+              <span className="line-clamp-2 font-normal leading-5 text-muted-foreground">
+                {split.body}
+              </span>
+            </span>
+          ) : (
+            <span
+              className={cn(
+                "min-w-0 flex-1 font-medium",
+                compact ? "line-clamp-2" : "whitespace-normal break-words",
+              )}
+            >
+              {summary}
+            </span>
+          )}
           {texts.length > 1 ? (
             <span className="flex-none text-muted-foreground tabular-nums">
               +{texts.length - 1}

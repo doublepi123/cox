@@ -39,7 +39,6 @@ import {
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import { MobileBranchStatus } from "./BranchToolbar";
-import { MobileWorkspaceBar } from "./mobile/MobileWorkspaceBar";
 import { useIsCompactPhoneViewport } from "../mobile/mobileShellBridge";
 
 import ThreadSidebar from "./Sidebar";
@@ -365,7 +364,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const sidebarProviderStyle = {
     "--sidebar-width": `${clampThreadSidebarWidth(sidebarWidth, sidebarMinimumWidth, sidebarMaximumWidth)}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
-    ...(compactPhoneViewport ? { "--workspace-topbar-height": "48px" } : {}),
+    ...(compactPhoneViewport ? { "--workspace-topbar-height": "52px" } : {}),
   } as CSSProperties;
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
@@ -402,7 +401,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl />
-        <MobileWorkspaceBar />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );
