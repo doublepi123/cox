@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.100 — 2026-11-17
+
 - Finish OMO turns whose first idle-wait settlement missed a still-busy
   `get_state`. The settle probe retries while streaming or queued input remain,
   and a later native `done` still emits `agent_settled` instead of being treated
