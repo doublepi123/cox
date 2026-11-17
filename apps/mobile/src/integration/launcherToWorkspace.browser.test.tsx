@@ -256,4 +256,101 @@ describe("launcher to workspace integration", () => {
     ]);
     await expect.element(serverRow("LAN Box")).toBeInTheDocument();
   });
+
+  it("completes Cloudflare Access sign-in via native profile preflight on Add and connect and remembers thread location", async () => {
+    const ids = [SERVER_A_ID, SERVER_B_ID];
+    const authedProfiles = new Set<string>();
+    let rejectCancelOnce = true;
+    native.setHandlers({
+      requestProfileUrl: async ({ profileId, origin, url }) => {
+        if (!authedProfiles.has(profileId)) {
+          return {
+            status: 302,
+            headers: {
+              location: `https://broad-sun-37d6.cloudflareaccess.com/cdn-cgi/access/login/dd.yang.sarl?redirect_url=${encodeURIComponent(new URL(url).pathname)}`,
+            },
+            body: "",
+          };
+        }
+        if (url === `${origin}/.well-known/t3/environment`) {
+          return {
+            status: 200,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              environmentId: ENVIRONMENT_A,
+              label: "CF Remote",
+              serverVersion: "0.1.98",
+            }),
+          };
+        }
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ auth: { loginMode: "password" } }),
+        };
+      },
+      signInToGateway: async ({ profileId }) => {
+        if (rejectCancelOnce) {
+          rejectCancelOnce = false;
+          throw Object.assign(new Error("Cancelled"), { code: "gateway_cancelled" });
+        }
+        authedProfiles.add(profileId);
+      },
+    });
+    const store = new ConnectionStore({
+      storage: localStorage,
+      now: () => "2026-11-17T03:35:00.000Z",
+      newId: () => ids.shift() ?? SERVER_B_ID,
+    });
+    renderApp(store);
+
+    await page.getByRole("button", { name: t("addServer") }).click();
+    await page.getByLabelText(t("originLabel")).fill("https://dd.yang.sarl");
+    await page.getByRole("checkbox", { name: t("savePasswordInVault") }).click();
+    await page.getByLabelText(t("vaultPassword")).fill("cf-cox-password");
+    await page.getByRole("button", { name: t("saveAndConnect") }).click();
+
+    await expect
+      .element(page.getByTestId("server-editor-error"))
+      .toHaveTextContent(t("gatewayCancelled"));
+    expect(native.calls.forgetProfile).toEqual([
+      { profileId: SERVER_A_ID, origin: "https://dd.yang.sarl" },
+    ]);
+    expect(store.getSnapshot().profiles).toEqual([]);
+
+    await page.getByRole("button", { name: t("saveAndConnect") }).click();
+    await expect.element(page.getByRole("status")).toHaveTextContent(t("connectionReady"));
+
+    expect(native.calls.signInToGateway).toHaveLength(2);
+    expect(native.calls.unlockAndAutofillPassword).toEqual([
+      {
+        profileId: SERVER_B_ID,
+        canonicalOrigin: "https://dd.yang.sarl",
+        allowInsecureHttp: false,
+      },
+    ]);
+    expect(native.calls.openWorkspace).toEqual([
+      {
+        profileId: SERVER_B_ID,
+        origin: "https://dd.yang.sarl",
+        allowInsecureHttp: false,
+        lastThreadPath: null,
+        label: "CF Remote",
+        serverCount: 1,
+        gatewayLogin: false,
+      },
+    ]);
+
+    native.emitLocation(SERVER_B_ID, "/env-cf/thread-99");
+    await serverRow("CF Remote")
+      .getByRole("button", { name: t("connect") })
+      .click();
+    await expect.poll(() => native.calls.openWorkspace.length).toBe(2);
+    expect(native.calls.openWorkspace[1]).toEqual(
+      expect.objectContaining({
+        profileId: SERVER_B_ID,
+        lastThreadPath: "/env-cf/thread-99",
+      }),
+    );
+  });
 });

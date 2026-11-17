@@ -115,6 +115,8 @@ class CoxVaultPlugin : Plugin() {
     }
 
     private fun establishSession(call: PluginCall, target: Binding, profileName: String) {
+        val existingCookies = ProfileStore.getInstance().getOrCreateProfile(profileName)
+            .cookieManager.getCookie(target.origin)
         execute {
             try {
                 val stored = JSONObject(requireNotNull(secrets.getString(target.id, null)))
@@ -129,6 +131,9 @@ class CoxVaultPlugin : Plugin() {
                     connection.requestMethod = "POST"
                     connection.setRequestProperty("Origin", target.origin)
                     connection.setRequestProperty("Content-Type", "application/json")
+                    if (!existingCookies.isNullOrBlank()) {
+                        connection.setRequestProperty("Cookie", existingCookies)
+                    }
                     connection.doOutput = true
                     val body = JSONObject().put("credential", stored.getString("password")).toString()
                     connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }

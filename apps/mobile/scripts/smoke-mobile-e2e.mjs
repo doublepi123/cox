@@ -8,7 +8,7 @@ import { seedThread } from "./lib/smoke-fixtures.mjs";
 import { addServer, assertServerIsolation } from "./lib/smoke-connections.mjs";
 import {
   httpServers,
-  installInspectProxy,
+  startCloudflareAccessProxy,
   startStaticServer,
   startWebhookReceiver,
 } from "./lib/smoke-http.mjs";
@@ -135,19 +135,27 @@ try {
   const launcherOrigin = "http://127.0.0.1:" + launcherPort;
   report.launcherOrigin = launcherOrigin;
   report.webhookOrigin = "http://127.0.0.1:" + webhookPort;
+  const cfPort = await reservePort();
+  const cfGateway = startCloudflareAccessProxy({
+    port: cfPort,
+    upstreamPort: serverA.port,
+  });
+  await cfGateway.listening;
   await startStaticServer(join(mobileRoot, "dist"), launcherPort);
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--host-resolver-rules=MAP cox.test 127.0.0.1,MAP team.cloudflareaccess.com 127.0.0.1",
+    ],
+  });
   report.chromium = browser.version();
   const launcherContext = await browser.newContext({
     viewport: VIEWPORT,
     isMobile: true,
     hasTouch: true,
+    ignoreHTTPSErrors: true,
   });
-  await installInspectProxy(
-    launcherContext,
-    servers.map((server) => server.origin),
-    launcherOrigin,
-  );
   const launcher = await launcherContext.newPage();
   watchPage(launcher, "launcher");
   const native = await installNativeWorkspace(launcher, browser, watchPage);
@@ -190,6 +198,27 @@ try {
     await assertServerIsolation([workspaceA, workspaceB], servers, shot);
   });
   await native.switchToLauncher(workspaceB);
+  await step(
+    "Cloudflare Access HTTPS server completes Add and connect with isolated gateway sign-in",
+    async () => {
+      const waitOpened = native.prepareOpenWait();
+      await launcher.getByRole("button", { name: "Add server" }).click();
+      await launcher.getByLabel("Display name").fill("CF Server A");
+      await launcher.getByLabel("Server origin").fill(cfGateway.origin);
+      await launcher.getByRole("button", { name: "Add and connect" }).click();
+      const workspaceCf = await waitOpened();
+      assert.equal(native.gatewayApprovals.length, 1);
+      assert.equal(native.gatewayApprovals[0].origin, cfGateway.origin);
+      await signIn(workspaceCf, { ...serverA, origin: cfGateway.origin });
+      await workspaceCf.page
+        .locator("[data-mobile-workspace-bar]")
+        .getByRole("button", { name: "Threads", exact: true })
+        .click();
+      await visible(workspaceCf.page.getByText(serverA.title, { exact: true }).last());
+      await workspaceCf.page.keyboard.press("Escape");
+      await native.switchToLauncher(workspaceCf);
+    },
+  );
   await step("changed Server B identity blocks reconnect before native handoff", async () => {
     await stopCoxServer(children[1]);
     const identityFile = join(serverB.home, "userdata/environment-id");

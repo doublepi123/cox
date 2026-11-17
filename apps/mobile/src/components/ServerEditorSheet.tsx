@@ -8,6 +8,7 @@ interface ServerEditorSheetProps {
   readonly profile: SavedServerProfile | null;
   readonly initialOrigin: string;
   readonly onSave: (draft: ServerDraft) => Promise<void>;
+  readonly onSaveAndConnect?: (draft: ServerDraft) => Promise<void>;
   readonly onClose: () => void;
   readonly t: Translator;
 }
@@ -25,17 +26,18 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
   const [savePasswordInVault, setSavePasswordInVault] = useState(
     props.profile?.hasSavedPassword ?? false,
   );
-  const [saving, setSaving] = useState(false);
+  const [savingMode, setSavingMode] = useState<"save" | "connect" | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const t = props.t;
+  const saving = savingMode !== null;
+  const showAddAndConnect = props.profile === null && props.onSaveAndConnect !== undefined;
 
   const close = () => {
     if (!saving) props.onClose();
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const runSave = async (mode: "save" | "connect") => {
     let normalizedOrigin: string;
     try {
       normalizedOrigin = normalizeRemoteOrigin(origin, { allowInsecureHttp });
@@ -53,25 +55,35 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
       return;
     }
     setError(null);
-    setSaving(true);
+    setSavingMode(mode);
     let saved = false;
+    const draft: ServerDraft = {
+      ...(props.profile ? { id: props.profile.id } : {}),
+      label,
+      origin: normalizedOrigin,
+      allowInsecureHttp: normalizedOrigin.startsWith("http://") && allowInsecureHttp,
+      savePasswordInVault,
+      ...(savePasswordInVault && password ? { password } : {}),
+      requireBiometric: true,
+    };
     try {
-      await props.onSave({
-        ...(props.profile ? { id: props.profile.id } : {}),
-        label,
-        origin: normalizedOrigin,
-        allowInsecureHttp: normalizedOrigin.startsWith("http://") && allowInsecureHttp,
-        savePasswordInVault,
-        ...(savePasswordInVault && password ? { password } : {}),
-        requireBiometric: true,
-      });
+      if (mode === "connect" && props.onSaveAndConnect) {
+        await props.onSaveAndConnect(draft);
+      } else {
+        await props.onSave(draft);
+      }
       saved = true;
     } catch (caught) {
       setError(formatConnectionError(caught, t));
     } finally {
-      setSaving(false);
+      setSavingMode(null);
     }
     if (saved) props.onClose();
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await runSave(showAddAndConnect ? "connect" : "save");
   };
 
   return (
@@ -152,6 +164,16 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
             {error}
           </p>
         ) : null}
+        {showAddAndConnect ? (
+          <button
+            type="submit"
+            className="button button-primary submit-button"
+            disabled={saving}
+            aria-busy={savingMode === "connect"}
+          >
+            {savingMode === "connect" ? t("connectingServer") : t("saveAndConnect")}
+          </button>
+        ) : null}
         <div className="sheet-actions">
           <button
             type="button"
@@ -162,12 +184,13 @@ export function ServerEditorSheet(props: ServerEditorSheetProps) {
             {t("cancel")}
           </button>
           <button
-            type="submit"
-            className="button button-primary submit-button"
+            type={showAddAndConnect ? "button" : "submit"}
+            className={`button ${showAddAndConnect ? "button-secondary" : "button-primary"} submit-button`}
+            onClick={showAddAndConnect ? () => void runSave("save") : undefined}
             disabled={saving}
-            aria-busy={saving}
+            aria-busy={savingMode === "save"}
           >
-            {saving ? t("saving") : t("saveServer")}
+            {savingMode === "save" ? t("saving") : t("saveServer")}
           </button>
         </div>
       </form>

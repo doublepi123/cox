@@ -8,6 +8,8 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CoxWorkspaceWebViewPlugin"
     public let jsName = "CoxWorkspaceWebView"
     public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "requestProfileUrl", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "signInToGateway", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openWorkspace", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "closeWorkspace", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "forgetProfile", returnType: CAPPluginReturnPromise)
@@ -29,6 +31,38 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
+    @objc public func requestProfileUrl(_ call: CAPPluginCall) {
+        Task { @MainActor [weak self] in
+            await WorkspacePreflight.requestProfileUrl(call, page: self?.bridge?.webView?.url)
+        }
+    }
+
+    @objc public func signInToGateway(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, WorkspacePreflight.isLauncher(self.bridge?.webView?.url),
+                  let id = call.getString("profileId").flatMap(WorkspaceProfile.validID),
+                  let input = call.getString("origin"),
+                  let origin = WorkspaceProfile.canonicalOrigin(input, allowHTTP: false),
+                  !self.deleting.contains(id),
+                  let presenter = self.bridge?.viewController else {
+                return call.reject("Cloudflare Access sign-in unavailable.", "gateway_unavailable")
+            }
+            self.dispose(id)
+            let controller = WorkspaceGatewaySignInController(profileId: id, origin: origin) { result in
+                switch result {
+                case .success:
+                    call.resolve()
+                case .failure:
+                    call.reject("Cloudflare Access sign-in was cancelled.", "gateway_cancelled")
+                }
+            }
+            let nav = UINavigationController(rootViewController: controller)
+            nav.modalPresentationStyle = .pageSheet
+            nav.presentationController?.delegate = controller
+            presenter.present(nav, animated: true)
+        }
+    }
+
     @objc public func openWorkspace(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return call.reject("Workspace unavailable.") }
@@ -48,8 +82,10 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
             )
             if let existing = self.sessions[id],
                existing.profile.origin != origin ||
-                existing.profile.allowInsecureHttp != profile.allowInsecureHttp {
-                return call.reject("Forget the existing profile before changing its origin.")
+                existing.profile.allowInsecureHttp != profile.allowInsecureHttp ||
+                existing.profile.label != profile.label ||
+                existing.profile.serverCount != profile.serverCount {
+                self.dispose(id)
             }
             if let session = self.sessions[id] {
                 self.show(session)

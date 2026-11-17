@@ -6,6 +6,14 @@ import {
   type RemoteServerInspection,
 } from "@t3tools/shared/remoteServerAdmission";
 import { biometricVault, VaultError, type BiometricVault } from "../vault/biometricVault";
+import {
+  canSignInToWorkspaceGateway,
+  createProfileFetcher,
+  forgetWorkspaceProfile,
+  GatewaySignInError,
+  signInToWorkspaceGateway,
+  type GatewaySignInRequest,
+} from "../workspace/workspacePlugin";
 
 export const CONNECTION_STORAGE_KEY = "cox.mobile.connections.v1";
 
@@ -46,9 +54,22 @@ export interface ConnectionStorage {
   setItem(key: string, value: string): void;
 }
 
+export interface ProfileFetcherTarget {
+  readonly profileId: string;
+  readonly origin: string;
+  readonly allowInsecureHttp: boolean;
+}
+
 export interface ConnectionStoreOptions {
   readonly storage: ConnectionStorage;
   readonly fetcher?: typeof fetch;
+  readonly profileFetcher?: (target: ProfileFetcherTarget) => typeof fetch;
+  readonly canSignInToGateway?: () => boolean;
+  readonly signInToGateway?: (request: GatewaySignInRequest) => Promise<void>;
+  readonly cleanupUnsavedProfile?: (profile: {
+    readonly id: string;
+    readonly origin: string;
+  }) => Promise<void>;
   readonly now?: () => string;
   readonly newId?: () => string;
   readonly vault?: BiometricVault;
@@ -156,7 +177,13 @@ export class ConnectionStore {
   readonly getSnapshot = (): ConnectionSnapshot => this.snapshot;
 
   private readonly storage: ConnectionStorage;
-  private readonly fetcher: typeof fetch;
+  private readonly profileFetcher: (target: ProfileFetcherTarget) => typeof fetch;
+  private readonly canSignInToGateway: () => boolean;
+  private readonly signInToGateway: (request: GatewaySignInRequest) => Promise<void>;
+  private readonly cleanupUnsavedProfile: (profile: {
+    readonly id: string;
+    readonly origin: string;
+  }) => Promise<void>;
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly vault: BiometricVault;
@@ -165,34 +192,92 @@ export class ConnectionStore {
 
   constructor(options: ConnectionStoreOptions) {
     this.storage = options.storage;
-    this.fetcher = options.fetcher ?? fetch;
+    const explicitFetcher = options.fetcher;
+    this.profileFetcher =
+      options.profileFetcher ??
+      (explicitFetcher ? () => explicitFetcher : (target) => createProfileFetcher(target));
+    this.canSignInToGateway =
+      options.canSignInToGateway ??
+      (options.signInToGateway ? () => true : canSignInToWorkspaceGateway);
+    this.signInToGateway = options.signInToGateway ?? signInToWorkspaceGateway;
+    this.cleanupUnsavedProfile = options.cleanupUnsavedProfile ?? forgetWorkspaceProfile;
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? (() => crypto.randomUUID());
     this.vault = options.vault ?? biometricVault;
     this.snapshot = decodeSnapshot(this.storage.getItem(CONNECTION_STORAGE_KEY));
   }
 
+  private async safeCleanupProfile(profile: {
+    readonly id: string;
+    readonly origin: string;
+  }): Promise<void> {
+    try {
+      await this.cleanupUnsavedProfile(profile);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+    }
+  }
+
+  private async inspectWithGateway(
+    target: ProfileFetcherTarget,
+    pinnedEnvironmentId: string | undefined,
+    isUnsaved: boolean,
+  ): Promise<{ readonly inspection: RemoteServerInspection; readonly usedGateway: boolean }> {
+    const runInspect = () =>
+      inspectRemoteServer(target.origin, {
+        allowInsecureHttp: target.allowInsecureHttp,
+        ...(pinnedEnvironmentId !== undefined ? { pinnedEnvironmentId } : {}),
+        fetcher: this.profileFetcher(target),
+      });
+    try {
+      return { inspection: await runInspect(), usedGateway: false };
+    } catch (error) {
+      if (!(error instanceof RemoteGatewayRequiredError) || !this.canSignInToGateway()) {
+        throw error;
+      }
+      try {
+        await this.signInToGateway({ profileId: target.profileId, origin: error.origin });
+        return { inspection: await runInspect(), usedGateway: true };
+      } catch (signInError) {
+        if (isUnsaved) {
+          await this.safeCleanupProfile({ id: target.profileId, origin: target.origin });
+        }
+        throw signInError;
+      }
+    }
+  }
+
   async saveServer(draft: ServerDraft): Promise<SavedServerProfile> {
-    const existing = draft.id === undefined ? undefined : this.requireProfile(draft.id);
     const allowInsecureHttp = /^http:\/\//i.test(draft.origin.trim()) && draft.allowInsecureHttp;
     const origin = normalizeRemoteOrigin(draft.origin, { allowInsecureHttp });
-    const inspection = await inspectRemoteServer(origin, {
-      allowInsecureHttp,
-      ...(existing ? { pinnedEnvironmentId: existing.pinnedEnvironmentId } : {}),
-      fetcher: this.fetcher,
-    });
-    const profile = this.profileFromInspection(draft, inspection, existing);
-    if (draft.savePasswordInVault) {
-      if (draft.password) {
-        await this.vault.savePassword({
-          profileId: profile.id,
-          canonicalOrigin: profile.origin,
-          password: draft.password,
-          requireBiometric: draft.requireBiometric ?? true,
-        });
-      } else if (!existing?.hasSavedPassword || existing.origin !== profile.origin) {
-        throw new VaultError("invalid_input");
-      }
+    const existing =
+      draft.id !== undefined
+        ? this.requireProfile(draft.id)
+        : this.snapshot.profiles.find((candidate) => candidate.origin === origin);
+    if (
+      draft.savePasswordInVault &&
+      !draft.password &&
+      (!existing?.hasSavedPassword || existing.origin !== origin)
+    ) {
+      throw new VaultError("invalid_input");
+    }
+    const profileId = existing?.id ?? this.newId();
+    const { inspection } = await this.inspectWithGateway(
+      { profileId, origin, allowInsecureHttp },
+      existing && existing.origin === origin ? existing.pinnedEnvironmentId : undefined,
+      existing === undefined,
+    );
+    const profile = this.profileFromInspection(draft, inspection, existing, profileId);
+    if (draft.savePasswordInVault && draft.password) {
+      await this.vault.savePassword({
+        profileId: profile.id,
+        canonicalOrigin: profile.origin,
+        password: draft.password,
+        requireBiometric: draft.requireBiometric ?? true,
+      });
+    }
+    if (existing && existing.origin !== profile.origin) {
+      await this.safeCleanupProfile({ id: existing.id, origin: existing.origin });
     }
     const profiles = existing
       ? this.snapshot.profiles.map((candidate) =>
@@ -211,16 +296,20 @@ export class ConnectionStore {
     const existing = this.requireProfile(id);
     let inspection: RemoteServerInspection;
     try {
-      inspection = await inspectRemoteServer(existing.origin, {
-        allowInsecureHttp: existing.allowInsecureHttp,
-        pinnedEnvironmentId: existing.pinnedEnvironmentId,
-        fetcher: this.fetcher,
-      });
+      ({ inspection } = await this.inspectWithGateway(
+        {
+          profileId: existing.id,
+          origin: existing.origin,
+          allowInsecureHttp: existing.allowInsecureHttp,
+        },
+        existing.pinnedEnvironmentId,
+        false,
+      ));
     } catch (error) {
       const healthStatus =
         error instanceof RemoteEnvironmentMismatchError
           ? "identity_mismatch"
-          : error instanceof RemoteGatewayRequiredError
+          : error instanceof RemoteGatewayRequiredError || error instanceof GatewaySignInError
             ? "gateway_required"
             : "unreachable";
       this.updateHealth(id, healthStatus);
@@ -266,6 +355,17 @@ export class ConnectionStore {
     if (destination !== fromIndex) this.commit(profiles);
   }
 
+  rememberThreadPath(id: string, path: string): void {
+    if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return;
+    const existing = this.snapshot.profiles.find((profile) => profile.id === id);
+    if (!existing || existing.lastThreadPath === path) return;
+    this.commit(
+      this.snapshot.profiles.map((candidate) =>
+        candidate.id === id ? { ...candidate, lastThreadPath: path } : candidate,
+      ),
+    );
+  }
+
   async forget(id: string): Promise<void> {
     const profile = this.snapshot.profiles.find((candidate) => candidate.id === id);
     if (!profile) return;
@@ -307,18 +407,22 @@ export class ConnectionStore {
     draft: ServerDraft,
     inspection: RemoteServerInspection,
     existing: SavedServerProfile | undefined,
+    profileId: string,
   ): SavedServerProfile {
     return {
-      id: existing?.id ?? this.newId(),
+      id: profileId,
       label: draft.label.trim() || inspection.label,
       origin: inspection.origin,
       allowInsecureHttp: inspection.origin.startsWith("http://") && draft.allowInsecureHttp,
       pinnedEnvironmentId: inspection.environmentId,
       lastServerVersion: inspection.serverVersion,
       hasSavedPassword: draft.savePasswordInVault,
-      lastThreadPath: existing?.lastThreadPath ?? null,
-      lastConnectedAt: existing?.lastConnectedAt ?? null,
-      healthStatus: existing?.healthStatus ?? "unverified",
+      lastThreadPath:
+        existing && existing.origin === inspection.origin ? existing.lastThreadPath : null,
+      lastConnectedAt:
+        existing && existing.origin === inspection.origin ? existing.lastConnectedAt : null,
+      healthStatus:
+        existing && existing.origin === inspection.origin ? existing.healthStatus : "unverified",
     };
   }
 

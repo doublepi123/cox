@@ -71,4 +71,50 @@ class WorkspacePolicyTest {
         assertTrue(policy.commit(target, "b".repeat(64)))
         assertEquals("external", policy.route("https://login.example/login"))
     }
+
+    @Test fun midSessionCloudflareAccessExpiryReentersBarrierAndRejectsLookalikeHost() {
+        val policy = GatewayHandoff(identity, false)
+        val initial = "${identity.origin}/threads/1"
+        val firstToken = "a".repeat(64)
+        policy.start(initial)
+        assertTrue(policy.commit(initial, firstToken))
+        assertEquals("external", policy.route("https://evilcloudflareaccess.com/login"))
+
+        val cfChallenge = "https://broad-sun-37d6.cloudflareaccess.com/cdn-cgi/access/login/dd.yang.sarl"
+        assertEquals("load", policy.route(cfChallenge))
+        assertFalse(policy.accepts(identity.origin, true, firstToken))
+        assertNull(policy.start(cfChallenge))
+        assertEquals("load", policy.route("https://accounts.example/sso"))
+        assertNull(policy.start("https://accounts.example/sso"))
+        assertFalse(policy.commit("https://accounts.example/sso", "b".repeat(64)))
+
+        val authorized = "${identity.origin}/cdn-cgi/access/authorized?nonce=1"
+        assertEquals("load", policy.route(authorized))
+        assertNull(policy.start(authorized))
+        assertFalse(policy.commit(authorized, "b".repeat(64)))
+
+        val blank = requireNotNull(policy.start(initial))
+        policy.start(blank)
+        assertEquals(initial, policy.finishBarrier(blank))
+        policy.start(initial)
+        val renewedToken = "c".repeat(64)
+        assertTrue(policy.commit(initial, renewedToken))
+        assertTrue(policy.accepts(identity.origin, true, renewedToken))
+        assertEquals("external", policy.route("https://accounts.example/sso"))
+    }
+
+    @Test fun preflightTargetAllowsOnlyCanonicalAdmissionEndpoints() {
+        assertEquals("/.well-known/t3/environment", validatePreflightTarget(identity, "${identity.origin}/.well-known/t3/environment").rawPath)
+        assertEquals("/api/auth/session", validatePreflightTarget(identity, "${identity.origin}/api/auth/session").rawPath)
+        for (rejected in listOf(
+            "${identity.origin}/api/projects",
+            "${identity.origin}/.well-known/t3/environment?x=1",
+            "https://other:3773/.well-known/t3/environment",
+            "http://host:3773/.well-known/t3/environment",
+        )) {
+            assertThrows(IllegalArgumentException::class.java) {
+                validatePreflightTarget(identity, rejected)
+            }
+        }
+    }
 }

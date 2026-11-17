@@ -4,6 +4,7 @@ import {
   RemoteGatewayRequiredError,
 } from "@t3tools/shared/remoteServerAdmission";
 import { VaultError } from "./vault/biometricVault";
+import { GatewaySignInError } from "./workspace/workspacePlugin";
 
 export const LOCALE_STORAGE_KEY = "cox.mobile.locale";
 
@@ -53,7 +54,9 @@ const en = {
   vaultUnavailable:
     "The native vault could not complete the operation. Unlock your device and try again.",
   saveServer: "Verify and save",
+  saveAndConnect: "Add and connect",
   saving: "Checking server",
+  connectingServer: "Connecting...",
   cancel: "Cancel",
   close: "Close",
   qrTitle: "Scan a server URL",
@@ -82,6 +85,8 @@ const en = {
   invalidOrigin: "Enter a valid server origin without credentials, a path, query, or fragment.",
   httpOptInRequired: "Enable the explicit HTTP option before using a plain HTTP server.",
   gatewayRequired: "Cloudflare Access login required on connect.",
+  gatewayCancelled: "Cloudflare Access sign-in was cancelled.",
+  gatewayUnavailable: "Cloudflare Access sign-in could not be opened.",
   identityMismatch:
     "The server identity changed. Connecting is blocked. Forget this profile and add it again only if the change was expected.",
   passwordRequired: "The server must enable COX_AUTH_PASSWORD.",
@@ -136,7 +141,9 @@ const zhCN: Record<TranslationKey, string> = {
   vaultInvalid: "启用保险箱或更改服务器地址前，请输入密码。",
   vaultUnavailable: "原生保险箱无法完成操作。请解锁设备后重试。",
   saveServer: "验证并保存",
+  saveAndConnect: "添加并连接",
   saving: "正在检查服务器",
+  connectingServer: "正在连接...",
   cancel: "取消",
   close: "关闭",
   qrTitle: "扫描服务器 URL",
@@ -164,6 +171,8 @@ const zhCN: Record<TranslationKey, string> = {
   invalidOrigin: "请输入不含凭据、路径、查询参数或片段的有效服务器源地址。",
   httpOptInRequired: "使用明文 HTTP 服务器前，必须显式启用 HTTP 选项。",
   gatewayRequired: "连接时需要先登录 Cloudflare Access。",
+  gatewayCancelled: "已取消 Cloudflare Access 登录。",
+  gatewayUnavailable: "无法打开 Cloudflare Access 登录页面。",
   identityMismatch:
     "服务器身份已变化，连接已被阻止。仅在确认这是预期变更时，忘记此配置并重新添加。",
   passwordRequired: "服务器必须启用 COX_AUTH_PASSWORD。",
@@ -206,6 +215,9 @@ const vaultErrorKeys: Record<VaultError["code"], TranslationKey> = {
 
 export function formatConnectionError(error: unknown, t: Translator): string {
   if (error instanceof VaultError) return t(vaultErrorKeys[error.code]);
+  if (error instanceof GatewaySignInError) {
+    return error.code === "gateway_cancelled" ? t("gatewayCancelled") : t("gatewayUnavailable");
+  }
   if (error instanceof RemoteGatewayRequiredError) return t("gatewayRequired");
   if (error instanceof RemoteEnvironmentMismatchError) return t("identityMismatch");
   if (error instanceof RemoteAdmissionError) return t(admissionErrorKeys[error.code]);

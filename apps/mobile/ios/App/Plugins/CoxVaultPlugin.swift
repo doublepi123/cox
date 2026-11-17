@@ -111,6 +111,9 @@ public class CoxVaultPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionTaskDelegate
                 request.httpMethod = "POST"
                 request.setValue(requestedOrigin.absoluteString, forHTTPHeaderField: "Origin")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                for (field, value) in await WorkspaceCookies.headerFields(for: requestedOrigin, profileId: profileUuid) {
+                    request.setValue(value, forHTTPHeaderField: field)
+                }
                 request.httpBody = try JSONSerialization.data(withJSONObject: ["credential": stored.password])
                 let configuration = URLSessionConfiguration.ephemeral
                 configuration.httpCookieStorage = nil

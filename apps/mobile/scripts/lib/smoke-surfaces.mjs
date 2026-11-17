@@ -17,7 +17,12 @@ export async function assertPhoneLayout(page) {
 export async function signIn(workspace, server) {
   const page = workspace.page;
   await page.getByLabel("Password", { exact: true }).fill(server.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await Promise.all([
+    page.waitForResponse((res) => res.url().endsWith("/api/auth/browser-session") && res.ok(), {
+      timeout: 20_000,
+    }),
+    page.getByRole("button", { name: "Sign in" }).click(),
+  ]);
   await page.goto(new URL(`/${server.environmentId}/${server.threadId}`, server.origin).href);
   await visible(page.locator("[data-mobile-workspace-bar]"));
   await visible(page.getByText(server.title, { exact: true }).first());

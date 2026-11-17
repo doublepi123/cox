@@ -18,6 +18,7 @@ import {
   forgetWorkspaceProfile,
   hasNativeWorkspace,
   openWorkspace,
+  subscribeWorkspaceLocation,
 } from "./workspace/workspacePlugin";
 
 type ActiveSheet =
@@ -51,10 +52,56 @@ export function App({ store }: AppProps) {
 
   useEffect(() => applyThemePreference(theme), [theme]);
 
+  useEffect(() => {
+    let active = true;
+    let dispose: (() => void) | undefined;
+    void subscribeWorkspaceLocation(({ profileId, path }) => {
+      store.rememberThreadPath(profileId, path);
+    }).then((cleanup) => {
+      if (active) dispose = cleanup;
+      else cleanup();
+    });
+    return () => {
+      active = false;
+      dispose?.();
+    };
+  }, [store]);
+
   const saveServer = async (draft: ServerDraft) => {
     await store.saveServer(draft);
     setError(null);
     setNotice(null);
+  };
+
+  const openSavedProfile = async (id: string) => {
+    let profile: SavedServerProfile;
+    let gatewayLogin = false;
+    try {
+      profile = await store.connect(id);
+    } catch (caught) {
+      const saved = store.getSnapshot().profiles.find((entry) => entry.id === id);
+      if (!(caught instanceof RemoteGatewayRequiredError) || !hasNativeWorkspace() || !saved)
+        throw caught;
+      profile = saved;
+      gatewayLogin = true;
+    }
+    await openWorkspace({
+      profileId: profile.id,
+      origin: profile.origin,
+      allowInsecureHttp: profile.allowInsecureHttp,
+      label: profile.label,
+      lastThreadPath: profile.lastThreadPath,
+      serverCount: store.getSnapshot().profiles.length,
+      gatewayLogin,
+    });
+    setNotice(t("connectionReady"));
+  };
+
+  const saveAndConnectServer = async (draft: ServerDraft) => {
+    const saved = await store.saveServer(draft);
+    setError(null);
+    setNotice(null);
+    await openSavedProfile(saved.id);
   };
 
   const connect = async (id: string) => {
@@ -62,27 +109,7 @@ export function App({ store }: AppProps) {
     setError(null);
     setNotice(null);
     try {
-      let profile: SavedServerProfile;
-      let gatewayLogin = false;
-      try {
-        profile = await store.connect(id);
-      } catch (caught) {
-        const saved = profiles.find((entry) => entry.id === id);
-        if (!(caught instanceof RemoteGatewayRequiredError) || !hasNativeWorkspace() || !saved)
-          throw caught;
-        profile = saved;
-        gatewayLogin = true;
-      }
-      await openWorkspace({
-        profileId: profile.id,
-        origin: profile.origin,
-        allowInsecureHttp: profile.allowInsecureHttp,
-        label: profile.label,
-        lastThreadPath: profile.lastThreadPath,
-        serverCount: profiles.length,
-        gatewayLogin,
-      });
-      setNotice(t("connectionReady"));
+      await openSavedProfile(id);
     } catch (caught) {
       setError(formatConnectionError(caught, t));
     } finally {
@@ -204,6 +231,7 @@ export function App({ store }: AppProps) {
           profile={sheet.profile}
           initialOrigin={sheet.origin}
           onSave={saveServer}
+          onSaveAndConnect={saveAndConnectServer}
           onClose={() => setSheet(null)}
           t={t}
         />

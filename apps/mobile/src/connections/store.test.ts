@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { VaultError, type BiometricVault } from "../vault/biometricVault";
+import { GatewaySignInError } from "../workspace/workspacePlugin";
 import { RemoteEnvironmentMismatchError } from "@t3tools/shared/remoteServerAdmission";
 import {
   CONNECTION_STORAGE_KEY,
@@ -395,6 +396,104 @@ describe("mobile connection store", () => {
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(store.getSnapshot().profiles).toEqual([saved]);
     expect(savePassword).toHaveBeenCalledTimes(1);
+  });
+
+  it("authenticates Cloudflare Access in the isolated profile before saving and reconnecting", async () => {
+    const storage = new MemoryStorage();
+    const authedProfiles = new Set<string>();
+    const signInToGateway = vi.fn(async ({ profileId }: { readonly profileId: string }) => {
+      authedProfiles.add(profileId);
+    });
+    const cleanupUnsavedProfile = vi.fn().mockResolvedValue(undefined);
+    const store = new ConnectionStore({
+      storage,
+      now: () => "2026-11-17T03:30:00.000Z",
+      newId: () => IDS[0],
+      signInToGateway,
+      cleanupUnsavedProfile,
+      profileFetcher:
+        ({ profileId, origin }) =>
+        async (input) => {
+          const url =
+            input instanceof Request ? input.url : input instanceof URL ? input.href : input;
+          if (!authedProfiles.has(profileId)) {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                location: `https://broad-sun-37d6.cloudflareaccess.com/cdn-cgi/access/login?redirect_url=${encodeURIComponent(new URL(url).pathname)}`,
+              },
+            });
+          }
+          if (url === `${origin}/.well-known/t3/environment`) {
+            return Response.json({
+              environmentId: "env-cf-access",
+              label: "Remote CF Box",
+              serverVersion: "0.1.98",
+            });
+          }
+          return Response.json({ auth: { loginMode: "password" } });
+        },
+    });
+
+    const saved = await store.saveServer(draft("https://dd.yang.sarl", { label: "" }));
+
+    expect(signInToGateway).toHaveBeenCalledWith({
+      profileId: IDS[0],
+      origin: "https://dd.yang.sarl",
+    });
+    expect(cleanupUnsavedProfile).not.toHaveBeenCalled();
+    expect(saved).toMatchObject({
+      id: IDS[0],
+      label: "Remote CF Box",
+      origin: "https://dd.yang.sarl",
+      pinnedEnvironmentId: "env-cf-access",
+      lastServerVersion: "0.1.98",
+    });
+
+    authedProfiles.clear();
+    const connected = await store.connect(saved.id);
+    expect(signInToGateway).toHaveBeenCalledTimes(2);
+    expect(connected.healthStatus).toBe("verified");
+  });
+
+  it("wipes temporary profile storage when Cloudflare Access sign-in is cancelled during first add", async () => {
+    const storage = new MemoryStorage();
+    const cleanupUnsavedProfile = vi.fn().mockResolvedValue(undefined);
+    const store = new ConnectionStore({
+      storage,
+      newId: () => IDS[0],
+      signInToGateway: () => Promise.reject(new GatewaySignInError("gateway_cancelled")),
+      cleanupUnsavedProfile,
+      profileFetcher: () => async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://team.cloudflareaccess.com/cdn-cgi/access/login" },
+        }),
+    });
+
+    await expect(store.saveServer(draft("https://dd.yang.sarl"))).rejects.toMatchObject({
+      code: "gateway_cancelled",
+    });
+
+    expect(cleanupUnsavedProfile).toHaveBeenCalledWith({
+      id: IDS[0],
+      origin: "https://dd.yang.sarl",
+    });
+    expect(store.getSnapshot().profiles).toEqual([]);
+  });
+
+  it("persists only safe workspace relative paths on rememberThreadPath", async () => {
+    const storage = new MemoryStorage();
+    const { fetcher } = admissionFetcher();
+    const store = createStore(storage, fetcher);
+    const saved = await store.saveServer(draft("https://cox.example.com"));
+
+    store.rememberThreadPath(saved.id, "//evil.example/phish");
+    store.rememberThreadPath(saved.id, "/\\evil");
+    expect(store.getSnapshot().profiles[0]?.lastThreadPath).toBeNull();
+
+    store.rememberThreadPath(saved.id, "/env-mobile-a/thread-42");
+    expect(store.getSnapshot().profiles[0]?.lastThreadPath).toBe("/env-mobile-a/thread-42");
   });
 
   it("does not save a profile if the native vault refuses its credential", async () => {

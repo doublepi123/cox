@@ -23,6 +23,9 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     private var overlay: FrameLayout? = null
     private var activeName: String? = null
     private val downloads by lazy { WorkspaceDownloads(context.applicationContext) }
+    private val preflight by lazy {
+        WorkspacePreflight(this) { profileName -> pool.remove(profileName)?.destroy() }
+    }
     private val host = object : WorkspaceHost {
         override val activity get() = this@CoxWorkspaceWebViewPlugin.activity
         override val downloads get() = this@CoxWorkspaceWebViewPlugin.downloads
@@ -44,6 +47,16 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
                 android.widget.Toast.makeText(activity, "Install a browser to open this server", android.widget.Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    @PluginMethod
+    fun requestProfileUrl(call: PluginCall) {
+        preflight.requestProfileUrl(call)
+    }
+
+    @PluginMethod
+    fun signInToGateway(call: PluginCall) {
+        preflight.signInToGateway(call)
     }
 
     @PluginMethod
@@ -187,6 +200,7 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        preflight.closeSignIn()
         dismiss()
         pool.values.forEach { it.destroy() }
         pool.clear()
