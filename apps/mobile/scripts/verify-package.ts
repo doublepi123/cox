@@ -112,6 +112,61 @@ async function verifyDist(distDir: string, failures: string[]): Promise<readonly
   return names;
 }
 
+type PlistScalar = boolean | string | "collection";
+
+function parseRootPlistDict(xml: string): ReadonlyMap<string, PlistScalar> {
+  const entries = new Map<string, PlistScalar>();
+  const tokenPattern =
+    /<(\/?)(dict|array)\s*>|<(true|false)\s*\/>|<key>([\s\S]*?)<\/key>|<string>([\s\S]*?)<\/string>/g;
+  let depth = 0;
+  let pendingKey: string | undefined;
+  for (const match of xml.matchAll(tokenPattern)) {
+    const closing = match[1] === "/";
+    const collectionTag = match[2];
+    const boolTag = match[3];
+    const keyText = match[4];
+    const stringText = match[5];
+    if (collectionTag !== undefined) {
+      if (closing) {
+        depth -= 1;
+      } else {
+        if (depth === 1 && pendingKey !== undefined) {
+          entries.set(pendingKey, "collection");
+          pendingKey = undefined;
+        }
+        depth += 1;
+      }
+    } else if (depth === 1 && keyText !== undefined) {
+      pendingKey = keyText.trim();
+    } else if (depth === 1 && pendingKey !== undefined) {
+      if (boolTag !== undefined) {
+        entries.set(pendingKey, boolTag === "true");
+        pendingKey = undefined;
+      } else if (stringText !== undefined) {
+        entries.set(pendingKey, stringText.trim());
+        pendingKey = undefined;
+      }
+    }
+  }
+  return entries;
+}
+
+async function verifyIosInfoPlist(pbxprojPath: string, failures: string[]): Promise<void> {
+  const plistPath = join(dirname(pbxprojPath), "..", "App", "Info.plist");
+  const content = await readTextFile(plistPath, "ios/App/App/Info.plist", failures);
+  if (content === "") return;
+  const entries = parseRootPlistDict(content);
+  if (entries.get("ITSAppUsesNonExemptEncryption") !== false) {
+    failures.push("ios/App/App/Info.plist must set ITSAppUsesNonExemptEncryption to false");
+  }
+  for (const key of ["NSCameraUsageDescription", "NSFaceIDUsageDescription"] as const) {
+    const value = entries.get(key);
+    if (typeof value !== "string" || value.length === 0) {
+      failures.push(`ios/App/App/Info.plist must declare non-empty ${key}`);
+    }
+  }
+}
+
 function verifyIosProject(pbxproj: string, failures: string[]): void {
   for (const line of missingLines(pbxproj, requiredIosPbxprojLines)) {
     failures.push(`ios/App/App.xcodeproj/project.pbxproj must contain "${line}"`);
@@ -161,6 +216,7 @@ export async function verifyMobilePackage(paths: MobilePackagePaths): Promise<re
     failures,
   );
   verifyIosProject(pbxproj, failures);
+  await verifyIosInfoPlist(paths.iosPbxprojPath, failures);
   await verifyAndroidProject(paths.androidGradlePath, failures);
   if (failures.length > 0) throw new MobilePackageVerificationError(failures);
   await verifyMobileWorkflows(

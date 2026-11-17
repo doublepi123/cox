@@ -96,6 +96,8 @@ export async function verifyMobileWorkflows(workflowsDir: string): Promise<void>
               "cap copy ios",
               "-sdk iphoneos",
               "CoxMobile.xcarchive",
+              "MARKETING_VERSION=",
+              "CURRENT_PROJECT_VERSION=",
               "CODE_SIGNING_ALLOWED=NO",
               "CODE_SIGNING_REQUIRED=NO",
               "Products/Applications/App.app",
@@ -103,6 +105,7 @@ export async function verifyMobileWorkflows(workflowsDir: string): Promise<void>
               "zip -qry cox-mobile-unsigned.ipa Payload",
               "-exportArchive",
               "shasum -a 256 *.ipa > SHA256SUMS",
+              "xcrun altool --upload-app",
             ];
       for (const command of required) {
         if (!commands.includes(command))

@@ -62,6 +62,20 @@ const variablesGradleTemplate = [
   "}",
 ].join("\n");
 
+const infoPlistTemplate = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  '<plist version="1.0">',
+  "<dict>",
+  "\t<key>ITSAppUsesNonExemptEncryption</key>",
+  "\t<false/>",
+  "\t<key>NSCameraUsageDescription</key>",
+  "\t<string>Scan a Cox server QR code to fill its connection URL.</string>",
+  "\t<key>NSFaceIDUsageDescription</key>",
+  "\t<string>Use Face ID to unlock saved Cox server passwords.</string>",
+  "</dict>",
+  "</plist>",
+].join("\n");
+
 const tempRoots: string[] = [];
 
 async function createPackageFixture(): Promise<MobilePackagePaths> {
@@ -77,7 +91,9 @@ async function createPackageFixture(): Promise<MobilePackagePaths> {
   await mkdir(join(root, "android", "app"), { recursive: true });
   await writeFile(join(root, "android", "app", "build.gradle"), buildGradleTemplate, "utf8");
   await writeFile(join(root, "android", "variables.gradle"), variablesGradleTemplate, "utf8");
+  await mkdir(join(root, "ios", "App", "App"), { recursive: true });
   await mkdir(join(root, "ios", "App", "App.xcodeproj"), { recursive: true });
+  await writeFile(join(root, "ios", "App", "App", "Info.plist"), infoPlistTemplate, "utf8");
   await writeFile(
     join(root, "ios", "App", "App.xcodeproj", "project.pbxproj"),
     pbxprojTemplate,
@@ -171,12 +187,39 @@ describe("mobile package verification", () => {
   });
 
   it.each([
+    ["<false/>", "<true/>", "ITSAppUsesNonExemptEncryption"],
+    [
+      "<string>Use Face ID to unlock saved Cox server passwords.</string>",
+      "<string>   </string>",
+      "NSFaceIDUsageDescription",
+    ],
+    [
+      "<string>Scan a Cox server QR code to fill its connection URL.</string>",
+      "<string></string>",
+      "NSCameraUsageDescription",
+    ],
+  ])("rejects an iOS Info.plist with invalid %s", async (original, replacement, reason) => {
+    const paths = await createPackageFixture();
+    await writeFile(
+      join(paths.iosPbxprojPath, "..", "..", "App", "Info.plist"),
+      infoPlistTemplate.replace(original, replacement),
+      "utf8",
+    );
+
+    const failure = await verificationFailure(paths);
+
+    expect(failure.message).toContain(reason);
+  });
+
+  it.each([
     ["workflow_dispatch:", "invalid_trigger:", "workflow_dispatch"],
     ['"mobile-v*"', '"desktop-v*"', "mobile-v*"],
     ["android-lite:", "android:", "android-lite"],
     ["-lt 20971520", "-le 20971520", "20971520"],
     ["zip -qry cox-mobile-unsigned.ipa Payload", "true", "Payload"],
     ["sha256sum *.apk > SHA256SUMS", "true", "SHA256SUMS"],
+    ["CURRENT_PROJECT_VERSION=", "BUILD_NUMBER_UNUSED=", "CURRENT_PROJECT_VERSION="],
+    ["xcrun altool --upload-app", "echo skipped", "xcrun altool --upload-app"],
     ["if: steps.signing.outputs.signed == 'true'", "if: secrets.CERT != ''", "secrets"],
   ])("rejects a release workflow with broken %s", async (original, replacement, reason) => {
     const paths = await createPackageFixture();
@@ -186,7 +229,7 @@ describe("mobile package verification", () => {
     });
     const workflowPath = join(workflowsDir, "mobile.yml");
     const workflow = await readFile(workflowPath, "utf8");
-    await writeFile(workflowPath, workflow.replace(original, replacement));
+    await writeFile(workflowPath, workflow.replaceAll(original, replacement));
 
     const failure = await verificationFailure({ ...paths, workflowsDir });
 

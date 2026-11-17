@@ -29,7 +29,14 @@ const info = plist.parse(readFileSync(new URL("ios/App/App/Info.plist", mobile),
 assert.equal(info.NSAppTransportSecurity.NSAllowsArbitraryLoadsInWebContent, true);
 assert.notEqual(info.NSAppTransportSecurity.NSAllowsArbitraryLoads, true);
 assert.equal(info.CFBundleIdentifier, "$(PRODUCT_BUNDLE_IDENTIFIER)");
-console.log("PASS: ATS exception is WebContent-only; global arbitrary loads remain disabled.");
+assert.equal(info.ITSAppUsesNonExemptEncryption, false);
+assert.equal(typeof info.NSFaceIDUsageDescription, "string");
+assert.ok(info.NSFaceIDUsageDescription.trim().length > 0);
+assert.equal(typeof info.NSCameraUsageDescription, "string");
+assert.ok(info.NSCameraUsageDescription.trim().length > 0);
+console.log(
+  "PASS: ATS exception is WebContent-only; encryption compliance and privacy strings are set.",
+);
 
 const plugins = new URL("ios/App/Plugins/", mobile);
 const files = readdirSync(plugins).filter((name) => name.endsWith(".swift"));
