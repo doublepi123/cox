@@ -20,7 +20,7 @@ import {
 } from "./baseSchemas.ts";
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
-import { SettingsSecretValue } from "./settingsSecretValue.ts";
+import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
 import { ModelServiceId, ModelServiceConfig } from "./modelService.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
@@ -1764,6 +1764,8 @@ export function requiredScopesForServerSettingsPatch(
   if (Object.values(patch.secretProviders ?? {}).some((entry) => entry === null)) {
     changesSettings = true;
   }
+  // A reference can name any secret the store holds; choosing where one goes is provider authority.
+  if (containsSecretReference(patch)) changesProviders = true;
   return [
     ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),

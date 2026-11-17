@@ -226,6 +226,21 @@ it.layer(layerTest)("ProjectFaviconResolverLive", (it) => {
       }),
     );
 
+    it.effect("skips source metadata beyond the favicon scan limit", () =>
+      Effect.gen(function* () {
+        const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(
+          cwd,
+          "index.html",
+          `<!-- ${" ".repeat(128 * 1024)} --><link rel="icon" href="/brand/logo.svg">`,
+        );
+        yield* writeTextFile(cwd, "public/brand/logo.svg", "<svg>brand</svg>");
+
+        expect(yield* resolver.resolvePath(cwd)).toBeNull();
+      }),
+    );
+
     it.effect("returns a found favicon without waiting for lower-ranked probes", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
