@@ -10,7 +10,9 @@ import { OmoReasoningLevel } from "@t3tools/contracts";
 import { OmoRoleName, type OmoSettings } from "../settings.ts";
 import { omoInstanceDirectory } from "./usage.ts";
 
-export const OMO_VERSION = "5.1.69";
+export const MINIMUM_OMO_VERSION = "5.1.69";
+export const OMO_VERSION = MINIMUM_OMO_VERSION;
+export const OMO_INSTALL_SPEC = "latest";
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const isOmoRoleName = Schema.is(OmoRoleName);
 const isOmoReasoningLevel = Schema.is(OmoReasoningLevel);

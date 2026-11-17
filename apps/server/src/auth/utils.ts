@@ -86,6 +86,11 @@ export function timingSafeEqualBase64Url(left: string, right: string): boolean {
   return NodeCrypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+export function timingSafeEqualString(left: string, right: string): boolean {
+  const digest = (value: string) => NodeCrypto.createHash("sha256").update(value).digest();
+  return NodeCrypto.timingSafeEqual(digest(left), digest(right));
+}
+
 function normalizeNonEmptyString(value: string | null | undefined): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -147,7 +152,7 @@ function inferOs(userAgent: string | undefined): string | undefined {
   return undefined;
 }
 
-function readRemoteAddressFromSource(source: unknown): string | undefined {
+export function readRemoteAddressFromSource(source: unknown): string | undefined {
   if (!source || typeof source !== "object") {
     return undefined;
   }

@@ -161,8 +161,8 @@ export const zh = {
   "OMO setup": "OMO 设置",
   "Installing OMO Native…": "正在安装 OMO Native…",
   "OMO Native {version} is installed.": "已安装 OMO Native {version}。",
-  "Install the tested OMO Native runtime (omo-ai 5.1.69).":
-    "安装经过验证的 OMO Native 运行时（omo-ai 5.1.69）。",
+  "Install the tested OMO Native runtime (omo-ai 5.1.69 or newer).":
+    "安装经过验证的 OMO Native 运行时（omo-ai 5.1.69 或更新版本）。",
   "Update OMO Native": "更新 OMO Native",
   "Install OMO Native": "一键安装 OMO Native",
   "Uses the custom OMO binary path below.": "使用下方自定义的 OMO 可执行文件路径。",

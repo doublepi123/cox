@@ -39,6 +39,8 @@ const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(Response));
 const encode = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const encoder = new TextEncoder();
 const isModelServiceError = Schema.is(ModelServiceError);
+export const PROTOCOL_BRIDGE_BUILD_HINT =
+  "The protocol converter is unavailable. Build it with `node scripts/build-protocol-bridge.ts` before using protocol conversion or running gateway conversion tests.";
 
 export const openProtocolBridge = Effect.fn("openProtocolBridge")(
   function* (options: {
@@ -59,15 +61,25 @@ export const openProtocolBridge = Effect.fn("openProtocolBridge")(
       new URL(`../../../../native/protocol-bridge/dist/${name}`, import.meta.url),
     );
     const binary = (yield* fs.exists(bundled)) ? bundled : source;
-    if (!(yield* fs.exists(binary)))
+    const info = yield* fs.stat(binary).pipe(Effect.orElseSucceed(() => undefined));
+    if (!info || info.type !== "File")
       return yield* new ModelServiceError({
         status: 503,
-        detail:
-          "The protocol converter is unavailable. Build Cox before using protocol conversion.",
+        detail: PROTOCOL_BRIDGE_BUILD_HINT,
       });
-    const child = yield* spawner.spawn(
-      ChildProcess.make(binary, [], { stdin: "pipe", stdout: "pipe", stderr: "pipe" }),
-    );
+    const child = yield* spawner
+      .spawn(ChildProcess.make(binary, [], { stdin: "pipe", stdout: "pipe", stderr: "pipe" }))
+      .pipe(
+        Effect.timeout("5 seconds"),
+        Effect.mapError((error) =>
+          isModelServiceError(error)
+            ? error
+            : new ModelServiceError({
+                status: 503,
+                detail: PROTOCOL_BRIDGE_BUILD_HINT,
+              }),
+        ),
+      );
     const input = yield* Queue.bounded<Uint8Array>(1);
     const output = yield* Queue.bounded<string, ModelServiceError>(1);
     const stopped = new ModelServiceError({

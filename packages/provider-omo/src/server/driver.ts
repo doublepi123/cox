@@ -24,7 +24,7 @@ import { makePiInstallation, makePiTextGeneration } from "@t3tools/provider-pi/s
 import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
 import { OmoSettings } from "../settings.ts";
 import { OMO_DRIVER, OmoAdapterDriver, type OmoAdapterEnv } from "./adapter.ts";
-import { prepareOmoConfiguration, OMO_VERSION } from "./configuration.ts";
+import { prepareOmoConfiguration, MINIMUM_OMO_VERSION, OMO_INSTALL_SPEC } from "./configuration.ts";
 import { initialOmoSnapshot, checkOmoStatus } from "./status.ts";
 import { buildOmoLaunch, materializeOmoExtension } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
@@ -62,8 +62,8 @@ export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
           command: "omo",
           label: "OMO Native",
           packageName: "omo-ai",
-          version: OMO_VERSION,
-          minimumVersion: OMO_VERSION,
+          version: OMO_INSTALL_SPEC,
+          minimumVersion: MINIMUM_OMO_VERSION,
         },
       });
       const prepared = yield* prepareOmoConfiguration(

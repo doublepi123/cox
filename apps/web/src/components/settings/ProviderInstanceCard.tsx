@@ -761,9 +761,13 @@ export function ProviderInstanceCard({
   const compatibility = enabled ? liveProvider?.compatibilityAdvisory : undefined;
   const statusKey = enabled ? getProviderStatusKey(effectiveProvider) : "disabled";
   const statusStyle = PROVIDER_STATUS_STYLES[statusKey];
-  const summary = enabled
-    ? getProviderSummary(effectiveProvider, language)
-    : { headline: t("Disabled"), detail: null };
+  const summary = (() => {
+    const base = enabled
+      ? getProviderSummary(effectiveProvider, language)
+      : { headline: t("Disabled"), detail: null as string | null };
+    const warning = instance.modelServiceWarning?.trim();
+    return warning ? { ...base, detail: [base.detail, warning].filter(Boolean).join(" ") } : base;
+  })();
   const authEmail = liveProvider?.auth.email?.trim();
   const isAuthenticated = enabled && liveProvider?.auth.status === "authenticated";
   const authLabel =

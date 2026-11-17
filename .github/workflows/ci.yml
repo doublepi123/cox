@@ -47,6 +47,51 @@ jobs:
       - run: pnpm --filter @cox/mobile verify:package
       - run: pnpm build
       - run: pnpm mobile:smoke
+  native-compat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: omo-min
+            kind: omo
+            spec: omo-ai@5.1.69
+          - name: omo-latest
+            kind: omo
+            spec: omo-ai@5.1.75
+          - name: omp-min
+            kind: omp
+            spec: "@oh-my-pi/pi-coding-agent@18.20.2"
+          - name: omp-latest
+            kind: omp
+            spec: "@oh-my-pi/pi-coding-agent@18.22.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install native runtime
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/native-${{ matrix.name }}"
+          npm install --prefix "$prefix" --ignore-scripts --no-audit --no-fund "${{ matrix.spec }}"
+          if [ "${{ matrix.kind }}" = "omo" ]; then
+            echo "COX_OMO_NPM_TEST_LAUNCHER=$prefix/node_modules/.bin/omo" >> "$GITHUB_ENV"
+            echo "COX_OMO_NATIVE_TEST_ROOT=$prefix/node_modules/omo-ai" >> "$GITHUB_ENV"
+          else
+            bun_prefix="$RUNNER_TEMP/bun-${{ matrix.name }}"
+            npm install --prefix "$bun_prefix" --ignore-scripts --no-audit --no-fund "@oven/bun-linux-x64@1.4.4"
+            echo "COX_OMP_NPM_TEST_LAUNCHER=$prefix/node_modules/.bin/omp" >> "$GITHUB_ENV"
+            echo "COX_OMP_BUN_PATH=$bun_prefix/node_modules/@oven/bun-linux-x64/bin/bun" >> "$GITHUB_ENV"
+          fi
+      - name: Run native compatibility tests
+        run: |
+          set -euo pipefail
+          chmod +x "${COX_OMO_NPM_TEST_LAUNCHER:-}" "${COX_OMP_NPM_TEST_LAUNCHER:-}" "${COX_OMP_BUN_PATH:-}" 2>/dev/null || true
+          if [ "${{ matrix.kind }}" = "omo" ]; then
+            pnpm exec vp test run --project root packages/provider-omo --maxWorkers=1
+          else
+            pnpm exec vp test run --project root packages/provider-omp --maxWorkers=1
+          fi
   distribution:
     needs: [core, server, web]
     runs-on: ubuntu-24.04

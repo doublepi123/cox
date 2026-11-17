@@ -16,7 +16,7 @@ import { ChildProcessSpawner } from "effect/process";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { CommandResolutionCache, resolveCommandPath } from "@t3tools/shared/shell";
 import { makeOmpInstallation } from "./installation.ts";
-import { OMP_BUN_VERSION, OMP_VERSION } from "./configuration.ts";
+import { OMP_BUN_VERSION, OMP_INSTALL_SPEC, OMP_VERSION } from "./configuration.ts";
 
 const assertPath = (
   actual: string | null | undefined,
@@ -243,7 +243,7 @@ it.layer(NodeServices.layer)("Omp installation", (it) => {
         else assert.isTrue(bunCall.at(-1)!.startsWith("@oven/bun-"));
         assert.isTrue(bunCall[bunCall.indexOf("--prefix") + 1]!.startsWith(h.instanceDirectory));
         assert.isTrue(
-          h.calls.some((args) => args.includes(`@oh-my-pi/pi-coding-agent@${OMP_VERSION}`)),
+          h.calls.some((args) => args.includes(`@oh-my-pi/pi-coding-agent@${OMP_INSTALL_SPEC}`)),
         );
         assert.equal(
           yield* fs.readFileString(h.bunExecutablePath),

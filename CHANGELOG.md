@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.98 — 2026-11-17
+
+- Accept OMO Native `omo-ai` 5.1.69 and newer instead of pinning an exact
+  release. Installs use the latest compatible npm package, runtime assets follow
+  the installed Senpi engine, and memory integration detects anchors across
+  versions. Required patch failures degrade automatic memory with a status
+  warning instead of blocking OMO startup.
+- Strip Git credential overlay variables (`GIT_CONFIG_COUNT` / `KEY_*` /
+  `VALUE_*`) from OMO memory environments so GitHub Actions-style git config
+  overlays cannot leave `GIT_CONFIG_KEY_0` missing.
+- Hand agents a loopback model-gateway URL when Cox listens on `0.0.0.0`, `::`,
+  or a LAN address, and reject non-loopback gateway clients. Compare gateway
+  tokens in constant time and bind scoped session suffixes to one instance.
+- Isolate model-service materialize failures per instance, surface
+  `modelServiceWarning`, and degrade only unavailable OMO roles instead of
+  disabling the whole instance when other models remain.
+- Return HTTP 400 for malformed Gemini model identifiers, fail fast when the
+  protocol converter binary is missing, and run OMO/OMP native compatibility
+  tests in CI against the minimum and current latest verified versions.
+- Document that Android WebViews without `MULTI_PROFILE` cannot complete
+  Cloudflare Access login because CF cookies have no isolated store.
+
 ## 0.1.97 — 2026-11-16
 
 - Keep state-bearing Responses requests on an allowed native Responses route,

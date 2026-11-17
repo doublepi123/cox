@@ -30,6 +30,7 @@ import {
   HttpClientRequest,
   HttpClientResponse,
   HttpRouter,
+  HttpServer,
   HttpServerRequest,
   HttpServerResponse,
 } from "effect/http";
@@ -37,9 +38,36 @@ import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
 import { TestClock } from "effect/testing";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- protocol-bridge presence is a sync fixture for conversion tests.
+import * as NodeFS from "node:fs";
+// @effect-diagnostics-next-line nodeBuiltinImport:off
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
+import * as NetAddress from "effect/net/NetAddress";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { make } from "./ModelServiceGateway.ts";
+import { PROTOCOL_BRIDGE_BUILD_HINT } from "./ProtocolBridge.ts";
+
+const protocolBridgeBinary = NodePath.resolve(
+  NodeURL.fileURLToPath(new URL("../../../../native/protocol-bridge/dist", import.meta.url)),
+  `cox-protocol-bridge-${process.platform}-${process.arch}${process.platform === "win32" ? ".exe" : ""}`,
+);
+const protocolBridgeReady = (() => {
+  try {
+    return NodeFS.statSync(protocolBridgeBinary).isFile();
+  } catch {
+    return false;
+  }
+})();
+const requireProtocolBridge = () => {
+  if (!protocolBridgeReady) throw new Error(PROTOCOL_BRIDGE_BUILD_HINT);
+};
+const gatewayRequest = (input: Request, address = "127.0.0.1") => {
+  const request = HttpServerRequest.fromWeb(input);
+  Object.assign(request.source, { remoteAddress: address });
+  return request;
+};
 import { resolveClaudeModelServiceCatalog } from "../provider/ClaudeModelCatalog.ts";
 import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
@@ -314,7 +342,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     body?: unknown,
     headers: Record<string, string> = {},
   ) {
-    const request = HttpServerRequest.fromWeb(
+    const request = gatewayRequest(
       new Request("http://127.0.0.1/api/model-gateway" + path, {
         method: body === undefined ? "GET" : "POST",
         headers: {
@@ -349,10 +377,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     return Effect.runPromiseWith(context)(
       Effect.gen(function* () {
         const response = yield* gateway.handle.pipe(
-          Effect.provideService(
-            HttpServerRequest.HttpServerRequest,
-            HttpServerRequest.fromWeb(request),
-          ),
+          Effect.provideService(HttpServerRequest.HttpServerRequest, gatewayRequest(request)),
         );
         const body = yield* Effect.promise(() => HttpServerResponse.toWeb(response).arrayBuffer());
         return new Response(body, { status: response.status, headers: response.headers });
@@ -379,6 +404,7 @@ it.layer(layer)("model service gateway", (it) => {
     (convert) =>
       withGatewayDiagnostics((logs) =>
         Effect.gen(function* () {
+          if (convert) requireProtocolBridge();
           for (const gpt of [false, true]) {
             const modelId = gpt ? "gpt-6.1-terra" : "claude-fable";
             const tool = {
@@ -1983,7 +2009,7 @@ it.layer(layer)("model service gateway", (it) => {
                 { headers: { "content-type": "text/event-stream" } },
               ),
           });
-          const request = HttpServerRequest.fromWeb(
+          const request = gatewayRequest(
             new Request("http://127.0.0.1/api/model-gateway/v1/responses", {
               method: "POST",
               headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
@@ -2375,7 +2401,7 @@ it.layer(layer)("model service gateway", (it) => {
           const response = yield* h.gateway.handle.pipe(
             Effect.provideService(
               HttpServerRequest.HttpServerRequest,
-              HttpServerRequest.fromWeb(
+              gatewayRequest(
                 new Request("http://127.0.0.1/api/model-gateway/v1/responses", {
                   method: "POST",
                   headers: {
@@ -2623,7 +2649,7 @@ it.layer(layer)("model service gateway", (it) => {
         );
         yield* h.gateway.lifecycle.observe(session, recoveryTurn("integrity-stop"));
         yield* Effect.gen(function* () {
-          const request = HttpServerRequest.fromWeb(
+          const request = gatewayRequest(
             new Request("http://127.0.0.1/api/model-gateway/v1/chat/completions", {
               method: "POST",
               headers: {
@@ -3687,7 +3713,7 @@ it.layer(layer)("model service gateway", (it) => {
         yield* h.gateway.lifecycle.begin(session, recoveryInput("a"), () => Effect.void);
         yield* h.gateway.lifecycle.observe(session, recoveryTurn("a"));
         yield* Effect.gen(function* () {
-          const request = HttpServerRequest.fromWeb(
+          const request = gatewayRequest(
             new Request(`http://127.0.0.1/api/model-gateway${scenario.path}`, {
               method: "POST",
               headers: {
@@ -4498,7 +4524,7 @@ it.layer(layer)("model service gateway", (it) => {
       const response = yield* h.gateway.handle.pipe(
         Effect.provideService(
           HttpServerRequest.HttpServerRequest,
-          HttpServerRequest.fromWeb(
+          gatewayRequest(
             new Request("http://127.0.0.1/api/model-gateway/v1/chat/completions", {
               method: "POST",
               headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
@@ -5099,7 +5125,7 @@ it.layer(layer)("model service gateway", (it) => {
               { headers: { "content-type": "text/event-stream" } },
             ),
         });
-        const request = HttpServerRequest.fromWeb(
+        const request = gatewayRequest(
           new Request("http://127.0.0.1/api/model-gateway/v1/messages", {
             method: "POST",
             headers: { "x-api-key": String(h.token), "content-type": "application/json" },
@@ -5923,7 +5949,7 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect.each(["agentModels", "categoryModels"])(
-    "disables missing explicit OMO %s without model fallback",
+    "clears missing explicit OMO %s so they inherit the main model",
     (field) =>
       Effect.gen(function* () {
         const h = yield* harness({ driver: "omo" });
@@ -5931,13 +5957,15 @@ it.layer(layer)("model service gateway", (it) => {
           const result = yield* h.gateway.materialize(yield* h.settings.getSettings, {
             [instanceId]: { ...h.instances[instanceId]!, config: { [field]: { oracle: slug } } },
           });
-          expect(result[instanceId]?.enabled).toBe(false);
+          expect(result[instanceId]?.enabled).not.toBe(false);
+          expect(record(record(result[instanceId]?.config)[field]).oracle).toBe("");
+          expect(result[instanceId]?.modelServiceWarning).toContain("oracle");
         }
         expect(h.calls).toEqual([]);
       }).pipe(Effect.scoped),
   );
 
-  it.effect("disables stale OMO roles and inherits an available main default", () =>
+  it.effect("degrades stale OMO roles and inherits an available main default", () =>
     Effect.gen(function* () {
       const h = yield* harness({ driver: "omo" });
       const current = yield* h.settings.getSettings;
@@ -5954,11 +5982,109 @@ it.layer(layer)("model service gateway", (it) => {
       const result = yield* h.gateway.materialize(changed, {
         [instanceId]: { ...instance, config: { agentModels: { oracle: "cox/Vendor/Exact" } } },
       });
-      expect(result[instanceId]?.enabled).toBe(false);
+      expect(result[instanceId]?.enabled).not.toBe(false);
+      expect(record(record(result[instanceId]?.config).agentModels).oracle).toBe("");
+      expect(record(result[instanceId]!.config).model).toBe("hidden");
+      expect(result[instanceId]?.modelServiceWarning).toContain("oracle");
       const mainResult = yield* h.gateway.materialize(changed, h.instances);
       expect(mainResult[instanceId]?.enabled).toBe(false);
+      expect(mainResult[instanceId]?.modelServiceWarning).toContain("No available models");
       const inherited = yield* h.gateway.materialize(changed, { [instanceId]: instance });
       expect(record(inherited[instanceId]!.config).model).toBe("hidden");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["0.0.0.0", "::", "192.168.1.20"] as const)(
+    "hands agents a loopback gateway URL when the server listens on %s",
+    (hostname) =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo" }).pipe(
+          Effect.provide(
+            Layer.mock(HttpServer.HttpServer)({
+              address: NetAddress.inetAddressFromIpStringUnsafe(hostname, 3773),
+            }),
+          ),
+        );
+        const fs = yield* FileSystem.FileSystem;
+        const models = JSON.parse(
+          yield* fs.readFileString(String(h.config.agentDir) + "/models.json"),
+        );
+        expect(models.providers.cox.baseUrl).toBe("http://127.0.0.1:3773/api/model-gateway/v1");
+        expect(JSON.stringify(models)).not.toContain(hostname === "::" ? "[::]" : hostname);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("rejects non-loopback model gateway clients", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      const remote = gatewayRequest(
+        new Request("http://127.0.0.1/api/model-gateway/v1/models", {
+          headers: { authorization: `Bearer ${h.token}` },
+        }),
+        "192.168.1.50",
+      );
+      const response = yield* h.gateway.handle.pipe(
+        Effect.provideService(HttpServerRequest.HttpServerRequest, remote),
+      );
+      expect(response.status).toBe(403);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rejects a session token reused on another instance", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      const otherId = ProviderInstanceId.make("other-binding");
+      const second = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        ...h.instances,
+        [otherId]: {
+          ...h.instances[instanceId]!,
+          driver: ProviderDriverKind.make("codex"),
+        },
+      });
+      const otherToken = second[otherId]!.environment?.find(
+        (entry) => entry.name === "COX_MODEL_SERVICE_KEY",
+      )?.value;
+      expect(typeof otherToken).toBe("string");
+      const session = ProviderSessionId.make("shared-session");
+      const first = yield* h.invoke("/v1/models", undefined, {
+        authorization: `Bearer ${h.token}.${session}`,
+      });
+      expect(first.status).toBe(200);
+      const reused = yield* h.invoke("/v1/models", undefined, {
+        authorization: `Bearer ${otherToken}.${session}`,
+      });
+      expect(reused.status).toBe(401);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("returns 400 for a malformed Gemini model identifier", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ protocol: "gemini" });
+      const result = yield* h.invoke("/v1beta/models/foo%ZZ:generateContent", {
+        contents: [],
+      });
+      expect(result.status).toBe(400);
+      expect(result.text).toContain("Invalid model identifier");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("isolates a corrupt omp config.yml so other instances still materialize", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "omp" });
+      const fs = yield* FileSystem.FileSystem;
+      yield* fs.writeFileString(String(h.config.agentDir) + "/config.yml", "{");
+      const otherId = ProviderInstanceId.make("healthy-omp");
+      const result = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        [instanceId]: h.instances[instanceId]!,
+        [otherId]: {
+          ...h.instances[instanceId]!,
+          driver: ProviderDriverKind.make("codex"),
+        },
+      });
+      expect(result[instanceId]?.enabled).toBe(false);
+      expect(result[instanceId]?.modelServiceWarning).toContain("omp config.yml");
+      expect(result[otherId]?.enabled).not.toBe(false);
+      expect(record(result[otherId]!.config).apiKey).toBeTypeOf("string");
     }).pipe(Effect.scoped),
   );
 

@@ -17,6 +17,12 @@ export const formatHostForUrl = (host: string): string =>
 export const resolveHeadlessConnectionString = (host: string | undefined, port: number): string =>
   `http://${formatHostForUrl(!host || isWildcardHost(host) ? "127.0.0.1" : host)}:${port}`;
 
+export const loopbackServeOrigin = (host: string | undefined, port: number): string =>
+  `http://${host === "::1" || host === "[::1]" ? "[::1]" : "127.0.0.1"}:${port}`;
+
+export const listeningPort = (address: unknown, fallbackPort: number): number =>
+  resolveListeningPort(address, fallbackPort);
+
 const resolveListeningPort = (address: unknown, fallbackPort: number): number => {
   if (
     typeof address === "object" &&

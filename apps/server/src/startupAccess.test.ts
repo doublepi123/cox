@@ -8,6 +8,7 @@ import * as NetAddress from "effect/net/NetAddress";
 import * as ServerConfig from "./config.ts";
 import {
   formatHeadlessServeOutput,
+  loopbackServeOrigin,
   resolveHeadlessConnectionString,
   resolveHeadlessServeAccessInfo,
 } from "./startupAccess.ts";
@@ -16,6 +17,14 @@ it("formats loopback addresses for the local browser", () => {
   expect(resolveHeadlessConnectionString("::1", 4773)).toBe("http://[::1]:4773");
   expect(resolveHeadlessConnectionString("0.0.0.0", 4773)).toBe("http://127.0.0.1:4773");
   expect(resolveHeadlessConnectionString("::", 4773)).toBe("http://127.0.0.1:4773");
+});
+
+it("rewrites wildcard and LAN listen addresses to a loopback origin for agents", () => {
+  expect(loopbackServeOrigin("0.0.0.0", 3773)).toBe("http://127.0.0.1:3773");
+  expect(loopbackServeOrigin("::", 3773)).toBe("http://127.0.0.1:3773");
+  expect(loopbackServeOrigin("192.168.1.20", 3773)).toBe("http://127.0.0.1:3773");
+  expect(loopbackServeOrigin("::1", 3773)).toBe("http://[::1]:3773");
+  expect(loopbackServeOrigin("[::1]", 3773)).toBe("http://[::1]:3773");
 });
 
 for (const loginMode of ["local", "password"] as const) {

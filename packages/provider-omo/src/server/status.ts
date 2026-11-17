@@ -19,10 +19,11 @@ import {
   parsePiDiscoveredCommands,
   withPiBuiltinSlashCommands,
 } from "@t3tools/provider-pi/server";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import type { OmoSettings } from "../settings.ts";
+import { MINIMUM_OMO_VERSION } from "./configuration.ts";
 import { buildOmoLaunch } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
-import { OMO_VERSION } from "./configuration.ts";
 
 const presentation = {
   displayName: "OMO Native",
@@ -110,9 +111,9 @@ export const checkOmoStatus = Effect.fn("checkOmoStatus")(function* (
       return fallback(
         "OMO Native is not installed. Install it in Cox or select the official omo binary.",
       );
-    if (version !== OMO_VERSION)
+    if (compareSemverVersions(version, MINIMUM_OMO_VERSION) < 0)
       return fallback(
-        `Cox currently supports the verified OMO Native ${OMO_VERSION} runtime. Select that version or install it in Cox.`,
+        `OMO Native ${version} is unsupported. Update to OMO Native ${MINIMUM_OMO_VERSION} or newer.`,
         true,
         version,
       );

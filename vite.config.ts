@@ -14,8 +14,18 @@ export default defineConfig({
   test: {
     environment: "node",
     exclude: excluded,
-    hookTimeout: 60_000,
-    testTimeout: 60_000,
+    hookTimeout:
+      process.env.COX_OMO_NPM_TEST_LAUNCHER ||
+      process.env.COX_OMO_NATIVE_TEST_ROOT ||
+      process.env.COX_OMP_NPM_TEST_LAUNCHER
+        ? 180_000
+        : 60_000,
+    testTimeout:
+      process.env.COX_OMO_NPM_TEST_LAUNCHER ||
+      process.env.COX_OMO_NATIVE_TEST_ROOT ||
+      process.env.COX_OMP_NPM_TEST_LAUNCHER
+        ? 180_000
+        : 60_000,
     allowOnly: !process.env.CI,
     retry: 0,
     fakeTimers: {

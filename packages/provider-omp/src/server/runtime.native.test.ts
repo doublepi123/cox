@@ -29,6 +29,8 @@ import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { it } from "vite-plus/test";
 import { OmpAdapterDriver } from "./adapter.ts";
+import { compareSemverVersions } from "@t3tools/shared/semver";
+import { MINIMUM_OMP_VERSION } from "./configuration.ts";
 import { checkOmpProviderStatus } from "./status.ts";
 
 const ModelRequest = Schema.Struct({
@@ -202,7 +204,10 @@ it.skipIf(!process.env.COX_OMP_NPM_TEST_LAUNCHER)(
             inventory?.installed &&
               inventory.models.some((model) => model.slug === "fixture/fixture"),
           );
-          assert.equal(inventory.version, "18.20.2");
+          assert.ok(
+            inventory.version &&
+              compareSemverVersions(inventory.version, MINIMUM_OMP_VERSION) >= 0,
+          );
           for (const binaryPath of [path.join(temporary, "missing-omp"), bun]) {
             const unavailable = yield* checkOmpProviderStatus(
               { ...config, binaryPath },
