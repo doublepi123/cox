@@ -302,3 +302,9 @@ upstream checkout, live state or permission default was changed.
 | `dff0b1159b` | excluded    | Explain relay unlink errors                               | Remote relays and T3 Connect remain excluded.                                                                                                                                                               |
 | `22dc6f9e98` | excluded    | Keep task prompts clear of mobile microphone              | Native mobile dictation is out of scope.                                                                                                                                                                    |
 | `8e6a732305` | adapted     | Move a scheduled task to another thread                   | Local Web picker, older-thread search, permission-aware submission and destination validation. Preserve new-thread/continuing/fresh-session modes, schedule, history and secret handling.                   |
+
+## November 17 follow-up
+
+Cox baseline `bb75e77907`; upstream `4860a73069..b46edac5c199` (204 commits).
+Adapted: 14. The commit-by-commit record is [docs/upstream-ports-2026-11-17.md](docs/upstream-ports-2026-11-17.md).
+MCP retry authorization (`1adc05b844`) was already covered. No version bump.
