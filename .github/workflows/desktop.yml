@@ -42,7 +42,7 @@ jobs:
       - run: pnpm --filter @cox/desktop build
       - run: pnpm --filter @cox/desktop package
       - run: pnpm --filter @cox/desktop verify:mac
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
       - run: pnpm --filter @cox/desktop smoke
       - run: pnpm --filter @cox/desktop smoke:app
       - run: pnpm --filter @cox/desktop smoke:mac-update
