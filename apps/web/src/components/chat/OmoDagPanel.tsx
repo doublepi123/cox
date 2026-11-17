@@ -45,6 +45,7 @@ import {
 import { isContextMenuOpen } from "../../contextMenuFallback";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../lib/utils";
+import { useIsCompactPhoneViewport } from "../../mobile/mobileShellBridge";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { useQuietThreadProjection } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
@@ -173,7 +174,7 @@ function GraphPresentationToggle({
 }) {
   const { t } = useTranslation();
   const buttonClass =
-    "inline-flex h-6 cursor-pointer items-center gap-1 rounded px-1.5 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "inline-flex h-11 cursor-pointer items-center gap-1 rounded px-3 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-6 sm:px-1.5";
   return (
     <div
       className={cn("flex shrink-0 rounded-md bg-muted/65 p-0.5", className)}
@@ -304,6 +305,20 @@ function GraphNodeCard({
   );
 }
 
+function readPinchGesture(
+  pointers: ReadonlyMap<number, { readonly x: number; readonly y: number }>,
+) {
+  const [first, second] = [...pointers.values()];
+  if (!first || !second) return null;
+  const distance = Math.hypot(second.x - first.x, second.y - first.y);
+  const x = (first.x + second.x) / 2;
+  const y = (first.y + second.y) / 2;
+  if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return { distance, x, y };
+}
+
 function GraphView({
   run,
   environmentId,
@@ -323,7 +338,12 @@ function GraphView({
   const viewportRef = useRef<HTMLDivElement>(null);
   const layout = layoutOmoDag(run);
   const layoutRef = useRef(layout);
-  const panRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const pointersRef = useRef<Map<number, { readonly x: number; readonly y: number }>>(new Map());
+  const pinchRef = useRef<{
+    readonly distance: number;
+    readonly x: number;
+    readonly y: number;
+  } | null>(null);
   const [transform, setTransform] = useState({ x: 8, y: 8, scale: 1 });
   const instructionsId = useId();
   const markerId = useId().replaceAll(":", "");
@@ -365,19 +385,22 @@ function GraphView({
 
   const zoom = useCallback((factor: number, focus?: { x: number; y: number }) => {
     const viewport = viewportRef.current;
-    if (!viewport) return;
+    if (!viewport || !Number.isFinite(factor) || factor <= 0) return;
     const rect = viewport.getBoundingClientRect();
     const point = focus ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
     const localX = point.x - rect.left;
     const localY = point.y - rect.top;
     setTransform((current) => {
+      if (!Number.isFinite(current.scale) || current.scale <= 0) return current;
       const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current.scale * factor));
       const ratio = scale / current.scale;
-      return {
+      const next = {
         scale,
         x: localX - (localX - current.x) * ratio,
         y: localY - (localY - current.y) * ratio,
       };
+      return Number.isFinite(next.x) && Number.isFinite(next.y) ? next : current;
     });
   }, []);
 
@@ -418,27 +441,59 @@ function GraphView({
     ) {
       return;
     }
+    const pointers = pointersRef.current;
+    if (pointers.size >= 2) return;
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
-    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    pinchRef.current = pointers.size === 2 ? readPinchGesture(pointers) : null;
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current;
-    if (pan?.pointerId !== event.pointerId) return;
-    const deltaX = event.clientX - pan.x;
-    const deltaY = event.clientY - pan.y;
-    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
-    setTransform((current) => ({ ...current, x: current.x + deltaX, y: current.y + deltaY }));
+    const pointers = pointersRef.current;
+    const previous = pointers.get(event.pointerId);
+    if (!previous) return;
+    const point = { x: event.clientX, y: event.clientY };
+    pointers.set(event.pointerId, point);
+    if (pointers.size === 1) {
+      const deltaX = point.x - previous.x;
+      const deltaY = point.y - previous.y;
+      if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      setTransform((current) => ({ ...current, x: current.x + deltaX, y: current.y + deltaY }));
+      return;
+    }
+    const pinch = readPinchGesture(pointers);
+    if (!pinch) {
+      pinchRef.current = null;
+      return;
+    }
+    const previousPinch = pinchRef.current;
+    pinchRef.current = pinch;
+    if (!previousPinch) return;
+    zoom(pinch.distance / previousPinch.distance, { x: pinch.x, y: pinch.y });
   };
 
-  const stopPointerPan = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (panRef.current?.pointerId !== event.pointerId) return;
-    panRef.current = null;
+  const stopPointerGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.delete(event.pointerId)) return;
+    pinchRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
+
+  useEffect(() => {
+    const pointers = pointersRef.current;
+    return () => {
+      const viewport = viewportRef.current;
+      if (viewport) {
+        for (const pointerId of pointers.keys()) {
+          if (viewport.hasPointerCapture(pointerId)) viewport.releasePointerCapture(pointerId);
+        }
+      }
+      pointers.clear();
+      pinchRef.current = null;
+    };
+  }, []);
 
   return (
     <div
@@ -530,8 +585,9 @@ function GraphView({
             : undefined
         }
         onPointerMove={onPointerMove}
-        onPointerUp={stopPointerPan}
-        onPointerCancel={stopPointerPan}
+        onPointerUp={stopPointerGesture}
+        onPointerCancel={stopPointerGesture}
+        onLostPointerCapture={stopPointerGesture}
         onKeyDown={(event) => {
           if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
             event.preventDefault();
@@ -934,9 +990,10 @@ function OmoDagRunsPanel({
   readonly providers: ReadonlyArray<ServerProvider>;
 }) {
   const { t } = useTranslation();
+  const compactPhone = useIsCompactPhoneViewport();
   const [selectedRunId, setSelectedRunId] = useState(runs[0]!.id);
   const [selection, setSelection] = useState<GraphSelection>(null);
-  const [view, setView] = useState<GraphPresentation>("graph");
+  const [view, setView] = useState<GraphPresentation>(compactPhone ? "list" : "graph");
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const expandButtonId = useId();
   const run = runs.find((candidate) => candidate.id === selectedRunId) ?? runs[0]!;
@@ -997,7 +1054,13 @@ function OmoDagRunsPanel({
             {" · "}
             {t("Generation {generation}", { generation: run.generation })}
           </span>
-          <GraphPresentationToggle view={view} onChange={setView} />
+          <GraphPresentationToggle
+            view={view}
+            onChange={(nextView) => {
+              setView(nextView);
+              if (compactPhone && nextView === "graph") setExpandedRunId(run.id);
+            }}
+          />
         </div>
         {run.truncated ? (
           <p className="mt-1.5 text-2xs text-warning">

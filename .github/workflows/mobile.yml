@@ -1,0 +1,344 @@
+name: Cox mobile packages
+on:
+  workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: "Upload signed iOS IPA to App Store Connect / TestFlight when credentials are configured"
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "mobile-v*"
+  pull_request:
+    paths:
+      - apps/mobile/**
+      - packages/shared/**
+      - packages/contracts/**
+      - pnpm-lock.yaml
+      - .github/workflows/mobile.yml
+permissions:
+  contents: read
+jobs:
+  android-lite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - run: npm install --global pnpm@12.14.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cox/mobile build
+      - run: pnpm --filter @cox/mobile verify:package
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: pnpm --filter @cox/mobile exec cap sync android
+      - name: Resolve Android version numbers
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == mobile-v* ]]; then
+            version_name="${GITHUB_REF_NAME#mobile-v}"
+          else
+            version_name="$(node -p "require('./apps/mobile/package.json').version")"
+          fi
+          version_code=$(( GITHUB_RUN_NUMBER * 100 + ${GITHUB_RUN_ATTEMPT:-1} ))
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+      - name: Detect signing credentials
+        id: signing
+        env:
+          COX_MOBILE_ANDROID_KEYSTORE_BASE64: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_BASE64 }}
+          COX_MOBILE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_PASSWORD }}
+          COX_MOBILE_ANDROID_KEYSTORE_ALIAS: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_ALIAS }}
+          COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD }}
+        run: |
+          signed=false
+          if [[ -n "$COX_MOBILE_ANDROID_KEYSTORE_BASE64" && -n "$COX_MOBILE_ANDROID_KEYSTORE_PASSWORD" && -n "$COX_MOBILE_ANDROID_KEYSTORE_ALIAS" && -n "$COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD" ]]; then
+            signed=true
+          fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+      - run: ./gradlew testDebugUnitTest assembleDebug -PcoxMobileVersionCode="${{ steps.version.outputs.version_code }}" -PcoxMobileVersionName="${{ steps.version.outputs.version_name }}"
+        if: steps.signing.outputs.signed != 'true'
+        working-directory: apps/mobile/android
+      - name: Build signed release APK
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          COX_MOBILE_ANDROID_KEYSTORE_BASE64: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_BASE64 }}
+          COX_MOBILE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_PASSWORD }}
+          COX_MOBILE_ANDROID_KEYSTORE_ALIAS: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_ALIAS }}
+          COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD }}
+        working-directory: apps/mobile/android
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$COX_MOBILE_ANDROID_KEYSTORE_BASE64" | base64 --decode > cox-release.keystore
+          cat > keystore.properties <<PROPERTIES
+          storeFile=cox-release.keystore
+          storePassword=$COX_MOBILE_ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$COX_MOBILE_ANDROID_KEYSTORE_ALIAS
+          keyPassword=$COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD
+          PROPERTIES
+          ./gradlew testDebugUnitTest assembleRelease -PcoxMobileVersionCode="${{ steps.version.outputs.version_code }}" -PcoxMobileVersionName="${{ steps.version.outputs.version_name }}"
+      - name: Clean Android signing credentials
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: |
+          rm -f apps/mobile/android/cox-release.keystore apps/mobile/android/keystore.properties
+      - name: Verify APK size and generate checksums
+        env:
+          ANDROID_SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/android-release"
+          find apps/mobile/android/app/build/outputs/apk -name '*.apk' -exec cp {} "$RUNNER_TEMP/android-release/" \;
+          cd "$RUNNER_TEMP/android-release"
+          for apk in *.apk; do
+            test "$(stat -c %s "$apk")" -lt 20971520
+            if [[ "$ANDROID_SIGNED" == "true" ]]; then
+              "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+            fi
+          done
+          applicationId="$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id ./*.apk)"
+          printf '{"applicationId":"%s"}\n' "$applicationId" > release-metadata.json
+          sha256sum *.apk > SHA256SUMS
+          node "$GITHUB_WORKSPACE/apps/mobile/scripts/verify-package.ts" --release-dir "$PWD"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-mobile-android
+          path: ${{ runner.temp }}/android-release/
+          if-no-files-found: error
+  ios-ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - run: npm install --global pnpm@12.14.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cox/mobile build
+      - run: pnpm --filter @cox/mobile verify:package
+      - run: pnpm --filter @cox/mobile exec cap copy ios
+      - name: Select Xcode 26 SDK
+        run: |
+          set -euo pipefail
+          xcode_app="$(ls -1d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$xcode_app" ]]; then
+            echo "Xcode 26+ is required by App Store Connect but was not found under /Applications" >&2
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode_app/Contents/Developer"
+          xcodebuild -version
+      - name: Resolve iOS version numbers
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == mobile-v* ]]; then
+            raw_version="${GITHUB_REF_NAME#mobile-v}"
+          else
+            raw_version="$(node -p "require('./apps/mobile/package.json').version")"
+          fi
+          marketing_version="${raw_version%%-*}"
+          marketing_version="${marketing_version%%+*}"
+          if [[ ! "$marketing_version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "Invalid Apple CFBundleShortVersionString derived from '$raw_version': '$marketing_version'" >&2
+            exit 1
+          fi
+          build_version="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT:-1}"
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
+          echo "build_version=$build_version" >> "$GITHUB_OUTPUT"
+      - name: Detect signing credentials
+        id: signing
+        env:
+          COX_MOBILE_APPLE_CERT_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_BASE64 }}
+          COX_MOBILE_APPLE_CERT_PASSWORD: ${{ secrets.COX_MOBILE_APPLE_CERT_PASSWORD }}
+          COX_MOBILE_APPLE_CERT_PROFILE_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_PROFILE_BASE64 }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          UPLOAD_TESTFLIGHT_INPUT: ${{ inputs.upload_testflight }}
+        run: |
+          signed=false
+          if [[ -n "$COX_MOBILE_APPLE_CERT_BASE64" && -n "$COX_MOBILE_APPLE_CERT_PASSWORD" && -n "$COX_MOBILE_APPLE_CERT_PROFILE_BASE64" ]]; then
+            signed=true
+          fi
+          testflight=false
+          if [[ "$signed" == "true" && -n "$APPLE_API_KEY_BASE64" && -n "$APPLE_API_KEY_ID" && -n "$APPLE_API_ISSUER" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/mobile-v* ]]; then
+              testflight=true
+            elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${UPLOAD_TESTFLIGHT_INPUT:-true}" == "true" ]]; then
+              testflight=true
+            fi
+          fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+          echo "testflight=$testflight" >> "$GITHUB_OUTPUT"
+      - name: Archive and package unsigned device IPA
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -project apps/mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
+            MARKETING_VERSION="${{ steps.version.outputs.marketing_version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build_version }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" AD_HOC_CODE_SIGNING_ALLOWED=YES archive
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/CoxMobile.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/ipa/Payload/App.app"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry cox-mobile-unsigned.ipa Payload)
+      - name: Archive and export a signed IPA
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          COX_MOBILE_APPLE_CERT_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_BASE64 }}
+          COX_MOBILE_APPLE_CERT_PASSWORD: ${{ secrets.COX_MOBILE_APPLE_CERT_PASSWORD }}
+          COX_MOBILE_APPLE_CERT_PROFILE_BASE64: ${{ secrets.COX_MOBILE_APPLE_CERT_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="cox-mobile-build"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          printf '%s' "$COX_MOBILE_APPLE_CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/cox-ios.p12"
+          printf '%s' "$COX_MOBILE_APPLE_CERT_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/cox-ios.mobileprovision"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cox-ios.p12" -k "$KEYCHAIN" -P "$COX_MOBILE_APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security cms -D -i "$RUNNER_TEMP/cox-ios.mobileprovision" > cox-ios-profile.plist
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' cox-ios-profile.plist)"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' cox-ios-profile.plist)"
+          TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' cox-ios-profile.plist)"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/cox-ios.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          xcodebuild archive -project apps/mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
+            MARKETING_VERSION="${{ steps.version.outputs.marketing_version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build_version }}" \
+            CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_IDENTITY="Apple Distribution"
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>dev.doublepi.cox.mobile</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/CoxMobile.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/ipa"
+      - name: Clean iOS signing credentials
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: |
+          security delete-keychain cox-mobile-build || true
+          rm -f "$RUNNER_TEMP/cox-ios.p12" "$RUNNER_TEMP/cox-ios.mobileprovision" cox-ios-profile.plist ExportOptions.plist
+      - name: Generate IPA checksums and verify metadata
+        run: |
+          set -euo pipefail
+          applicationId="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$RUNNER_TEMP/CoxMobile.xcarchive/Products/Applications/App.app/Info.plist")"
+          cd "$RUNNER_TEMP/ipa"
+          printf '{"applicationId":"%s"}\n' "$applicationId" > release-metadata.json
+          shasum -a 256 *.ipa > SHA256SUMS
+          node "$GITHUB_WORKSPACE/apps/mobile/scripts/verify-package.ts" --release-dir "$PWD"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cox-mobile-ios-ipa
+          path: |
+            ${{ runner.temp }}/ipa/*.ipa
+            ${{ runner.temp }}/ipa/SHA256SUMS
+            ${{ runner.temp }}/ipa/release-metadata.json
+          if-no-files-found: error
+      - name: Upload signed IPA to TestFlight
+        if: steps.signing.outputs.testflight == 'true'
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/private_keys" "$HOME/.appstoreconnect/private_keys"
+          key_file="$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key_file"
+          cp "$key_file" "$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+          ipa_file="$(find "$RUNNER_TEMP/ipa" -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [[ -z "$ipa_file" ]]; then
+            echo "No signed IPA found in $RUNNER_TEMP/ipa" >&2
+            exit 1
+          fi
+          API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/private_keys" xcrun altool --upload-app \
+            --type ios \
+            --file "$ipa_file" \
+            --apiKey "$APPLE_API_KEY_ID" \
+            --apiIssuer "$APPLE_API_ISSUER"
+      - name: Clean App Store Connect API key
+        if: always() && steps.signing.outputs.testflight == 'true'
+        run: |
+          rm -rf "$RUNNER_TEMP/private_keys" "$HOME/.appstoreconnect/private_keys"
+  publish:
+    needs: [android-lite, ios-ipa]
+    if: github.repository == 'doublepi123/cox' && startsWith(github.ref, 'refs/tags/mobile-v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: mobile-assets-${{ github.ref_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: cox-mobile-android
+          path: downloads/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: cox-mobile-ios-ipa
+          path: downloads/ios
+      - name: Verify checksums and publish mobile release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          (cd downloads/android && sha256sum -c SHA256SUMS)
+          (cd downloads/ios && sha256sum -c SHA256SUMS)
+          mkdir -p publish-assets
+          version="${RELEASE_TAG#mobile-v}"
+          for apk in downloads/android/*.apk; do
+            base="$(basename "$apk")"
+            cp "$apk" "publish-assets/cox-mobile-${version}-${base}"
+          done
+          for ipa in downloads/ios/*.ipa; do
+            base="$(basename "$ipa")"
+            cp "$ipa" "publish-assets/cox-mobile-${version}-${base}"
+          done
+          cp downloads/android/release-metadata.json "publish-assets/release-metadata-android-${version}.json"
+          cp downloads/ios/release-metadata.json "publish-assets/release-metadata-ios-${version}.json"
+          (
+            cd publish-assets
+            find . -maxdepth 1 -type f ! -name "MOBILE-SHA256SUMS-${version}.txt" -printf '%f\0' | sort -z | xargs -0 sha256sum > "MOBILE-SHA256SUMS-${version}.txt"
+          )
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+              --title "Cox Mobile $version" \
+              --notes "Cox Mobile ($RELEASE_TAG) pure-remote client packages for Android 8+ Lite (.apk) and iOS 17+ (.ipa)." \
+              publish-assets/*
+          else
+            gh release upload "$RELEASE_TAG" publish-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          fi

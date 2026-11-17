@@ -69,8 +69,8 @@ cox
 
 - Web 界面，以及本地的 Node HTTP/WebSocket 服务端。
 - 本地智能体提供商、项目、对话、流式聊天、终端会话、Git/工作树和检查点。
-- 提供 macOS / Windows Electron 桌面客户端；不提供 React Native/iOS/Android 应用，也不通过应用商店分发。
-- 桌面客户端可直连用户自行部署的 Cox 服务端；不包含 T3 Connect、Clerk 云账号、中继、隧道服务、托管应用、服务发现或托管远程环境。
+- 提供 macOS / Windows Electron 桌面客户端、面向 iOS 17+ 与 Android 8+ 轻量版的纯远程客户端 [Cox Mobile](apps/mobile/README.md)（`@cox/mobile`），以及在手机本地运行 Linux 环境的独立 Android 应用 [CoCode](docs/mobile-cocode-interop.md)（`io.cocode.app`）。
+- 桌面端与移动端均可直连用户自行部署的 Cox 服务端；不包含云账号、T3 Connect、隧道服务、托管应用、服务发现、跨服数据聚合或托管远程环境。
 - 不使用上游的发布/更新服务，也不会自动从 T3 安装中迁移数据。
 
 默认本地运行不代表离线推理。智能体提供商仍会使用各自配置的模型服务，Git 集成也可能访问你配置的代码托管平台。提供商认证和本地凭据存储功能仍然保留。
@@ -165,6 +165,35 @@ pnpm start
 
 Cox 默认监听本机回环地址，不要把它直接暴露给不受信任的网络。如需从其他设备访问，见[密码登录与远程访问](#密码登录与远程访问)。智能体能够操作文件系统和终端，因此本地认证和来源（Origin）检查始终必不可少。
 
+## 移动端访问与后台通知
+
+### 手机浏览器与主屏幕 PWA（`@t3tools/web`）
+
+配置 `COX_AUTH_PASSWORD` 后，可以通过 Tailscale HTTPS、Cloudflare Tunnel（配合 Cloudflare Access）或 TLS 反向代理，直接在手机或平板浏览器中打开 Cox。针对 `360px-430px` 触控窄屏视口，`@t3tools/web` 会把代码差异（Diff）与预览面板切换为全宽单层抽屉（`<640px` 默认采用单列统一差异视图），在屏幕底部提供单手拇指操作栏（集中放置**对话列表**、**新建对话**、**变更/Diff**、**终端**，以及在 Cox Mobile 内显示的**服务器切换**入口，弹出软键盘时自动收起），并根据可视视口高度约束 `ask_user_question` 提问、工具审批和密钥输入面板，避免软键盘遮挡操作按钮。
+
+各核心工作区均针对触控操作做了适配：Ghostty WASM 终端支持单击生效与双击锁定的 `Ctrl` / `Alt` 粘滞修饰键、剪贴板粘贴、字号缩放与单指纵向回滚；OMO Native 多智能体依赖图在手机上默认展示紧凑波次列表，可一键展开支持双指捏合缩放和单指平移的全屏图谱抽屉；移动端上传大于 `2 MB` 的相机照片时支持客户端压缩，蜂窝网络波动导致 10 分钟签名上传凭证过期时会自动重签重试一次并完整保留输入草稿。在 HTTPS 源下，`/sw.js` 对页面导航严格采用网络优先（`cache: "no-store"`），确保服务端升级后不会因旧缓存引发协议版本不匹配。
+
+### Cox Mobile 原生远程壳（`@cox/mobile`）
+
+[`apps/mobile`](apps/mobile/README.md)（包名 `@cox/mobile`，iOS Bundle ID 与 Android Application ID 均为 `dev.doublepi.cox.mobile`）是面向 **iOS 17+**（基于 `WKWebsiteDataStore(forIdentifier:)`）和 **Android 8+ 轻量版**（基于 `androidx.webkit` `MULTI_PROFILE`，APK 体积小于 `20 MB`）的纯远程客户端。它只用 Capacitor 承载本地连接管理器，不包含本地后端或客户端自更新器；进入工作区后，原生的隔离 WebView 会直接在目标服务器同源地址上加载该服务端自带的配套 Web 界面。
+
+- **多服务器存储隔离与快速切换**：最多在内存中保留 2 个活跃工作区 WebView（LRU 缓存池）并提供原生悬浮 `Servers` 切换球；连接预检（`/.well-known/t3/environment` 与 `/api/auth/session`）会绑定服务器的 `environmentId`，移除服务器时先彻底销毁对应容器的 Cookie 与网页存储。
+- **生物识别密码保险箱与 Cloudflare Access 衔接**：`CoxVaultPlugin` 将可选保存的服务器密码存入 Apple Keychain（Face ID / Touch ID）或 Android Keystore `EncryptedSharedPreferences`（`BiometricPrompt`），解锁后仅在原生层请求 `POST /api/auth/browser-session` 并将会话 Cookie 写入对应服务器的隔离存储，绝不向远程网页暴露密码或凭据读取接口。遇到 Cloudflare Access 网关验证时，通过隔离的 `GatewayHandoff` 屏障完成身份提供商登录，回到受信任同源主框架后才重新注入带 256 位随机令牌的受限 `window.__coxMobileShell__` 桥接对象。
+- **传输安全策略**：默认要求 `https://`（如 `https://cox.example.com`）；仅当目标服务器启用 `COX_AUTH_PASSWORD` 且用户在单个服务器配置中显式勾选确认后，才允许连接受密码保护的局域网或 Tailscale 明文 HTTP 地址（例如 `http://192.0.2.10:3773`）。
+- **构建与验证命令**：在仓库根目录可运行 `pnpm mobile:dev`、`pnpm mobile:build`、`pnpm mobile:test`、`pnpm mobile:smoke` 以及 `pnpm --filter @cox/mobile verify:package`。原生工程构建与侧载说明见 [`apps/mobile/README.md`](apps/mobile/README.md)（英文）。
+
+### 独立 Android 版 `CoCode`（`io.cocode.app`）协同共存
+
+Android 设备可以同时安装轻量的纯远程客户端 `@cox/mobile`（`dev.doublepi.cox.mobile`）与独立版 [`CoCode`](site/cocode/index.html)（`io.cocode.app`），两者包名、签名与数据目录完全独立。如果你的代码仓库和智能体都在电脑、家庭服务器或云主机上，需要体积小巧的多服务器远程驾驶舱，请选择 `@cox/mobile`；如果你想在无需 root、不依赖电脑的情况下直接在 Android 手机本地通过 Alpine Linux / PRoot 运行 Cox 服务端（`127.0.0.1:3773`）与各类智能体 CLI（同时兼顾远程连接），请选择 `CoCode`。两款客户端共享同一套 Android WebView 安全边界：强制要求 `MULTI_PROFILE` 并在系统 WebView 过旧时安全拦截展示 `IsolationPanel`（提供浏览器打开入口，绝不回退到全局默认 `CookieManager`）、Cloudflare Access `GatewayHandoff` 隔离验证、逐跳校验同源的带 Cookie 文件下载以及 `environmentId` 身份固定。完整对比与 `coxMobileShell` 桥接协议说明见 [`docs/mobile-cocode-interop.md`](docs/mobile-cocode-interop.md)（英文）。
+
+### 后台智能体通知（`/settings/notifications`）
+
+手机锁屏或切到后台后，系统会在数秒内挂起页面 WebSocket。你可以在 **设置 → 通知**（`/settings/notifications`，对应受认证保护的 `/api/notifications/*` 接口）中配置零官方云端的后台提醒：
+
+- **自托管 Web Push（RFC 8291 / 8292 VAPID）**：Cox 不提供任何 Cox 官方云中转或账号服务。你的 Cox 服务端在本地自动生成并持久化 P-256 VAPID 密钥对，使用浏览器订阅中的 P-256 公钥对通知内容进行端到端加密（`aes128gcm`），并将密文直接提交给浏览器自带的标准推送端点（如 Apple、Google 或 Mozilla 推送服务），推送通道仅转发不透明密文、无法读取明文内容。浏览器 Web Push 要求通过 HTTPS 访问；在 iOS 16.4+ Safari 上，还需要先将 Cox 页面“添加到主屏幕”以独立 PWA 模式打开。
+- **加固防 SSRF 的出站 Webhook**：最多可配置 10 个 **Bark**、**Telegram Bot**、**Ntfy** 或带 `X-Cox-Signature-256` HMAC-SHA256 签名的**通用 JSON** 通知通道。出站 Webhook 不依赖浏览器推送环境，适用于 `@cox/mobile`、`CoCode` 以及纯 HTTP 局域网部署（勾选**允许专用网络 HTTP** 后可调用内网 `http://` 地址，同时依然拦截本服务自身端口、链路本地/云元数据网段及一切 HTTP 重定向）。在 iOS 上推荐使用 **Bark**，即使 Cox 服务端运行在纯 HTTP 内网环境中，也能收到带会话直达深链的 `timeSensitive` 原生即时推送。
+- **精准事件过滤**：仅针对未归档、未免打扰的顶层对话，在出现真实人工交互请求（`ask_user_question` 提问、命令/文件/权限/MCP 审批、密钥输入提示）以及根轮次完成或失败时发送通知，自动静默过滤 OMO 内部的合成等待标记（`goal_blocked`、`goal_paused`、`stalled`、`interrupted_run` 及纯文本 `question`）与子智能体中间完成事件。
+
 ## 密码登录与远程访问
 
 桌面客户端可通过原生菜单的**连接管理**在本机与已保存的远程服务器之间切换。远程地址必须是 `https://cox.example.com` 这样的 HTTPS origin，服务端必须配置 `COX_AUTH_PASSWORD`；不接受 URL 中的凭据、明文 HTTP 或忽略证书错误。远程服务端提供与其版本匹配的 Web UI，并沿用 Cox 密码登录、同源 HTTPS API 和 WSS 连接。连接配置不保存密码。每个服务器使用独立的浏览器资料；忘记服务器会清除对应的本地会话和缓存。远程页面无权管理本地后端或桌面更新。从本地模式切出时，经确认后才停止自有后端；断开或退出远程模式不会停止服务端上的 Agent 和终端。身份验证代理的第三方 SSO 跳转不会嵌入桌面窗口。
@@ -199,6 +228,8 @@ pnpm build
 
 - `apps/web`：浏览器界面。
 - `apps/server`：本地 API、智能体进程与编排。
+- `apps/desktop`：macOS 与 Windows Electron 桌面客户端。
+- `apps/mobile`：面向 iOS 17+ 与 Android 8+ 轻量版的 `@cox/mobile` 纯远程 Capacitor 启动器与原生隔离 WebView 客户端。
 - `packages/client-runtime`：浏览器状态与本地连接运行时。
 - `packages/contracts`、`packages/shared`：通信协议契约与共享工具。
 - `packages/provider-*`：本地智能体适配器。

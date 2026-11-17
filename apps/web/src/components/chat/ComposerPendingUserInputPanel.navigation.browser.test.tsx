@@ -7,9 +7,13 @@ import {
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import { makeThreadRequestsResolvedAnnouncer } from "@t3tools/client-runtime/state/thread-requests";
+import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react";
 import { expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
+
+import "~/index.css";
 
 vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
   ...(await importOriginal()),
@@ -17,9 +21,12 @@ vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
 }));
 
 import { act, fakeTimers, render } from "../../../test/render";
+import { useSoftwareKeyboardOpen } from "~/hooks/useSoftwareKeyboardOpen";
+import { derivePendingUserInputProgress } from "../../pendingUserInput";
 import type { PendingUserInput } from "../../session-logic";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import { Select, SelectTrigger } from "../ui/select";
+import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { usePendingThreadRequests } from "./usePendingThreadRequests";
 
@@ -39,6 +46,26 @@ const prompt = {
   })),
 };
 
+const mobilePrompt: PendingUserInput = {
+  requestId: RuntimeRequestId.make("question-mobile"),
+  createdAt: "2026-11-15T00:00:00.000Z",
+  dismissible: false,
+  responseCapability: "live",
+  questions: [0, 1, 2, 3].map((index) => ({
+    id: `mobile-question-${index}`,
+    header: `Mobile question ${index + 1}`,
+    question: `Choose for mobile question ${index + 1}`,
+    options:
+      index === 0
+        ? Array.from({ length: 8 }, (_, optionIndex) => ({
+            label: `Mobile option ${optionIndex + 1}`,
+            description: `Touch target ${optionIndex + 1}`,
+          }))
+        : [{ label: "Continue", description: "Continue to the next question" }],
+    multiSelect: index === 0,
+  })),
+};
+
 const shortcutPrompt: PendingUserInput = {
   requestId: RuntimeRequestId.make("question-shortcuts"),
   createdAt: "2026-10-31T00:00:00.000Z",
@@ -54,6 +81,151 @@ const shortcutPrompt: PendingUserInput = {
     },
   ],
 };
+
+async function mobileSoftwareKeyboardScope() {
+  const previousViewport = { width: window.innerWidth, height: window.innerHeight };
+  await page.viewport(390, 844);
+  expect(Object.getOwnPropertyDescriptor(window, "visualViewport")?.value).toBeUndefined();
+  expect(window.visualViewport).not.toBeNull();
+  expect(window.visualViewport?.constructor.name).toBe("VisualViewport");
+  expect(window.visualViewport?.height).toBe(844);
+  return {
+    async [Symbol.asyncDispose]() {
+      await page.viewport(previousViewport.width, previousViewport.height);
+    },
+  };
+}
+
+const mobileProgress = derivePendingUserInputProgress(mobilePrompt.questions, {}, 0);
+
+function SoftwareKeyboardHost({ children }: { readonly children: ReactNode }) {
+  useSoftwareKeyboardOpen();
+  return children;
+}
+
+function MobileChatComposerFixture() {
+  useSoftwareKeyboardOpen();
+  const promptRef = useRef("");
+  const composerRef = useRef<ChatComposerHandle | null>(null);
+  const composerImagesRef = useRef<
+    ComponentProps<typeof ChatComposer>["composerImagesRef"]["current"]
+  >([]);
+  const composerFilesRef = useRef<
+    ComponentProps<typeof ChatComposer>["composerFilesRef"]["current"]
+  >([]);
+  const composerTerminalContextsRef = useRef<
+    ComponentProps<typeof ChatComposer>["composerTerminalContextsRef"]["current"]
+  >([]);
+  return (
+    <div
+      data-testid="mobile-visual-viewport"
+      className="fixed inset-x-0 top-0 flex flex-col justify-end overflow-hidden"
+      style={{ height: "var(--visual-viewport-height, 100dvh)" }}
+    >
+      <div className="relative mt-auto">
+        <ChatComposer
+          composerDraftTarget={threadRef}
+          environmentId={threadRef.environmentId}
+          canOperateThread
+          attachmentUploadsCapabilityKnown={false}
+          supportsAttachmentUploads={false}
+          supportsQuestionAttachments={false}
+          maxFileAttachmentBytes={null}
+          routeKind="server"
+          routeThreadRef={threadRef}
+          draftId={null}
+          multipleModelSelections={null}
+          supportsMultipleModels={false}
+          onMultipleModelSelectionsChange={() => {}}
+          activeThreadId={threadRef.threadId}
+          activeThread={undefined}
+          activeThreadShell={null}
+          promptHistoryMessages={[]}
+          forceExpandedOnMobile
+          projectSelectionRequired={false}
+          phase="ready"
+          canInterrupt={false}
+          isSendBusy={false}
+          canResume={false}
+          sendDisabledReason={null}
+          isPreparingWorktree={false}
+          isCompacting={false}
+          bannerItems={[]}
+          resumeCompactionTokens={null}
+          keepFullHistory={false}
+          onToggleKeepFullHistory={() => {}}
+          environmentUnavailable={null}
+          activePendingApproval={null}
+          pendingApprovals={[]}
+          onHeldRequestIdsChange={() => {}}
+          pendingUserInputs={[mobilePrompt]}
+          activePendingProgress={mobileProgress}
+          activePendingResolvedAnswers={null}
+          activePendingIsResponding={false}
+          activePendingDraftAnswers={{}}
+          activePendingQuestionIndex={0}
+          respondingRequestIds={[]}
+          showPlanFollowUpPrompt={false}
+          activeProposedPlan={null}
+          threadSyncPhase={null}
+          runtimeMode="full-access"
+          interactionMode="default"
+          lockedProvider={null}
+          providerStatuses={[]}
+          providerCatalogKnown={false}
+          activeProjectDefaultModelSelection={null}
+          activeThreadModelSelection={null}
+          activeProjectId={null}
+          activeContextWindow={null}
+          compactThreadUnavailable={false}
+          compactDisabled={false}
+          compactDisabledReason={null}
+          resolvedTheme="dark"
+          settings={DEFAULT_UNIFIED_SETTINGS}
+          keybindings={DEFAULT_RESOLVED_KEYBINDINGS}
+          terminalOpen={false}
+          gitCwd={null}
+          pullRequestProjectId={null}
+          pullRequestRepository={null}
+          threadPullRequests={undefined}
+          onComposerOverlayHeightChange={() => {}}
+          permissionsShownInStrip={false}
+          promptRef={promptRef}
+          composerImagesRef={composerImagesRef}
+          composerFilesRef={composerFilesRef}
+          composerTerminalContextsRef={composerTerminalContextsRef}
+          composerRef={composerRef}
+          onPageScrollKeyDown={() => {}}
+          onPageScrollKeyUp={() => {}}
+          onPageScrollRelease={() => {}}
+          editingQueuedAttachments={null}
+          onRemoveEditingQueuedAttachment={() => {}}
+          onCompactContext={() => {}}
+          onSend={() => {}}
+          onResume={() => {}}
+          onInterrupt={() => {}}
+          onImplementPlanInNewThread={() => {}}
+          onSelectActivePendingUserInputOption={() => {}}
+          onAdvanceActivePendingUserInput={() => {}}
+          onDismissActivePendingUserInput={() => {}}
+          onPreviousActivePendingUserInputQuestion={() => {}}
+          onChangeActivePendingUserInputCustomAnswer={() => {}}
+          onProviderModelSelect={() => {}}
+          onOpenProviderSetup={() => {}}
+          getModelDisabledReason={() => null}
+          toggleInteractionMode={() => {}}
+          handleRuntimeModeChange={() => {}}
+          handleInteractionModeChange={() => {}}
+          focusComposer={() => {}}
+          scheduleComposerFocus={() => {}}
+          setThreadError={() => {}}
+          onExpandImage={() => {}}
+          onFileOpen={() => {}}
+        />
+      </div>
+    </div>
+  );
+}
 
 function questionProjection(threadId: ThreadId, requestIds = ["first", "second"]) {
   const projection = makeThreadProjectionFixture();
@@ -325,3 +497,82 @@ it.each<{ focus: string; control: ReactNode; toggles: boolean }>([
     expect(onToggleOption.mock.calls).toEqual(toggles ? [["question", "Incremental"]] : []);
   },
 );
+
+it("keeps a four-question prompt scrollable with 44px options when the visual viewport shrinks", async () => {
+  await using _viewport = await mobileSoftwareKeyboardScope();
+  await using screen = await render(
+    <SoftwareKeyboardHost>
+      <ComposerPendingUserInputPanel
+        pendingUserInputs={[mobilePrompt]}
+        cwd={undefined}
+        threadRef={threadRef}
+        respondingRequestIds={[]}
+        answers={{}}
+        questionIndex={0}
+        onToggleOption={vi.fn()}
+        onAdvance={vi.fn()}
+        onDismiss={vi.fn()}
+      />
+    </SoftwareKeyboardHost>,
+  );
+  await expect.element(screen.getByText("1/4")).toBeVisible();
+  const rows = Array.from(screen.container.querySelectorAll<HTMLElement>("button[aria-pressed]"));
+  expect(rows).toHaveLength(8);
+  for (const row of rows) {
+    expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+  }
+  const scroller = screen.container.querySelector<HTMLElement>(
+    '[data-slot="scroll-area-viewport"]',
+  );
+  if (!scroller) throw new Error("Missing pending-question scroll viewport");
+  await page.viewport(390, 480);
+  await expect.poll(() => getComputedStyle(scroller).maxHeight).toBe("264px");
+  expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
+  await act(() => {
+    scroller.scrollTop = scroller.scrollHeight;
+  });
+  expect(scroller.scrollTop).toBeGreaterThan(0);
+  const lastRow = rows.at(-1);
+  if (!lastRow) throw new Error("Missing final pending-question option");
+  expect(lastRow.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    scroller.getBoundingClientRect().bottom + 1,
+  );
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+});
+
+it("keeps the integrated composer answer and submit controls above a 480px software keyboard", async () => {
+  await using _viewport = await mobileSoftwareKeyboardScope();
+  await using screen = await render(<MobileChatComposerFixture />);
+  expect(
+    getComputedStyle(document.documentElement).getPropertyValue("--visual-viewport-height").trim(),
+  ).toBe("844px");
+  await expect.element(screen.getByText("1/4")).toBeVisible();
+
+  await page.viewport(390, 480);
+
+  expect(window.visualViewport?.height).toBe(480);
+  await expect
+    .poll(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--visual-viewport-height")
+        .trim(),
+    )
+    .toBe("480px");
+  const scroller = screen.container.querySelector<HTMLElement>(
+    '[data-slot="scroll-area-viewport"]',
+  );
+  if (!scroller) throw new Error("Missing integrated pending-question scroll viewport");
+  expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
+  await act(() => {
+    scroller.scrollTop = scroller.scrollHeight;
+  });
+  expect(scroller.scrollTop).toBeGreaterThan(0);
+  const editor = screen.getByTestId("composer-editor").element();
+  const submit = screen.getByRole("button", { name: "Next", exact: true }).element();
+  for (const control of [editor, submit]) {
+    const bounds = control.getBoundingClientRect();
+    expect(bounds.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeLessThanOrEqual(480);
+    expect(bounds.height).toBeGreaterThan(0);
+  }
+});

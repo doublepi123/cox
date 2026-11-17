@@ -249,6 +249,55 @@ describe("compressImageForStash", () => {
   });
 });
 
+describe("mobile photo preparation", () => {
+  it.each(["image/jpeg", "image/png", "image/webp"])(
+    "compresses a camera photo above 2 MiB on compact viewports: %s",
+    async (type) => {
+      vi.stubGlobal("window", { innerWidth: 390 });
+      stubCanvasPipeline(() => 120_000);
+      const original = makeFile(3 * 1024 * 1024, type);
+
+      const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
+
+      expect(result.ok && result.recompressed).toBe(true);
+      expect(result.ok && result.file.size).toBe(120_000);
+      expect(result.ok && result.file.type).toBe("image/webp");
+    },
+  );
+
+  it.each(["image/gif", "image/svg+xml", "image/png"])(
+    "keeps excluded formats or desktop photos unchanged: %s",
+    async (type) => {
+      vi.stubGlobal("window", { innerWidth: type === "image/png" ? 1024 : 390 });
+      stubCanvasPipeline(() => 120_000);
+      const original = makeFile(3 * 1024 * 1024, type);
+
+      const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
+
+      expect(result.ok && result.file).toBe(original);
+      expect(createImageBitmap).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["malformed_input", "larger_output"])(
+    "falls back to original bytes for %s on mobile",
+    async (scenario) => {
+      vi.stubGlobal("window", { innerWidth: 390 });
+      stubCanvasPipeline(() => 4 * 1024 * 1024);
+      if (scenario === "malformed_input") {
+        vi.mocked(createImageBitmap).mockRejectedValue(
+          new DOMException("Invalid image", "EncodingError"),
+        );
+      }
+      const original = makeFile(3 * 1024 * 1024);
+
+      const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
+
+      expect(result).toEqual({ ok: true, file: original, recompressed: false });
+    },
+  );
+});
+
 describe("composer image thumbnails", () => {
   it("gives the compressed file its source's thumbnail without decoding it again", async () => {
     stubCanvasPipeline(() => 3);

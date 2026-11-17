@@ -261,6 +261,15 @@ async function setup() {
   await setProviders([]);
 }
 
+async function phoneViewport() {
+  await page.viewport(390, 844);
+  return {
+    async [Symbol.asyncDispose]() {
+      await page.viewport(1280, 900);
+    },
+  };
+}
+
 describe("EnvironmentProviderSettings routing", () => {
   it.each([
     ["error", "连接失败"],
@@ -297,27 +306,36 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(state.updateSettings).not.toHaveBeenCalled();
   });
 
-  it("lists OMO first and persists accessible row reordering", async () => {
-    await setup();
-    await using _screen = await render(panel());
+  it.each(["Move OMO Native down", "Move Codex up"] as const)(
+    "persists phone-accessible row reordering with %s",
+    async (actionLabel) => {
+      await setup();
+      await using _viewport = await phoneViewport();
+      await using _screen = await render(panel());
 
-    const selectedLabels = Array.from(
-      document.querySelectorAll<HTMLButtonElement>('button[aria-pressed][aria-label^="Select "]'),
-      (element) => element.getAttribute("aria-label"),
-    );
-    expect(selectedLabels.slice(0, 4)).toEqual([
-      "Select OMO Native",
-      "Select Codex",
-      "Select Claude",
-      "Select Oh My Pi",
-    ]);
+      const selectedLabels = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('button[aria-pressed][aria-label^="Select "]'),
+        (element) => element.getAttribute("aria-label"),
+      );
+      expect(selectedLabels.slice(0, 4)).toEqual([
+        "Select OMO Native",
+        "Select Codex",
+        "Select Claude",
+        "Select Oh My Pi",
+      ]);
 
-    await userEvent.click(page.getByRole("button", { name: "Move OMO Native down" }));
+      const action = page.getByRole("button", { name: actionLabel });
+      const box = action.element().getBoundingClientRect();
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+      await userEvent.click(action);
 
-    expect(state.updateSettings).toHaveBeenCalledWith({
-      providerInstanceOrder: ["codex", "omo", "claudeAgent", "omp"],
-    });
-  });
+      expect(state.updateSettings).toHaveBeenCalledWith({
+        providerInstanceOrder: ["codex", "omo", "claudeAgent", "omp"],
+      });
+    },
+  );
 
   it("hides a tombstoned default from the provider list", async () => {
     await setup();
@@ -331,21 +349,41 @@ describe("EnvironmentProviderSettings routing", () => {
     await expect.element(page.getByRole("button", { name: "Select OMO Native" })).toBeVisible();
   });
 
-  it("deletes an unconfigured default through the shared confirmation flow", async () => {
-    await setup();
-    await using _screen = await render(panel({ targetInstanceId: codexId }));
-
-    await userEvent.click(page.getByRole("button", { name: "Delete instance codex" }));
-
-    expect(state.confirm).toHaveBeenCalledWith("Delete provider instance 'codex'?", {
-      variant: "destructive",
-    });
-    expect(state.mutateProviderInstance).toHaveBeenCalledWith({
-      operation: "remove",
+  it.each([
+    {
       instanceId: codexId,
+      instanceName: "codex",
       driver: ProviderDriverKind.make("codex"),
-    });
-  });
+    },
+    {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      instanceName: "claudeAgent",
+      driver: ProviderDriverKind.make("claudeAgent"),
+    },
+  ] as const)(
+    "deletes an unconfigured default through the shared confirmation flow",
+    async ({ instanceId, instanceName, driver }) => {
+      await setup();
+      await using _viewport = await phoneViewport();
+      await using _screen = await render(panel({ targetInstanceId: instanceId }));
+
+      const action = page.getByRole("button", { name: `Delete instance ${instanceName}` });
+      const box = action.element().getBoundingClientRect();
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+      await userEvent.click(action);
+
+      expect(state.confirm).toHaveBeenCalledWith(`Delete provider instance '${instanceName}'?`, {
+        variant: "destructive",
+      });
+      expect(state.mutateProviderInstance).toHaveBeenCalledWith({
+        operation: "remove",
+        instanceId,
+        driver,
+      });
+    },
+  );
 
   it("resets a dirty default without tombstoning it", async () => {
     await setup();

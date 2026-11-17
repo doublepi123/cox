@@ -1,4 +1,5 @@
 export * from "./baseSchemas.ts";
+export * from "./mobileShellBridge.ts";
 export * from "./assistantCitations.ts";
 export * from "./composerContext.ts";
 export * from "./composerContextClipboard.ts";
@@ -63,6 +64,7 @@ export * from "./secretRequest.ts";
 export * from "./secretReference.ts";
 export * from "./settingsSecretValue.ts";
 export * from "./modelService.ts";
+export * from "./notifications.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./browserUi.ts";
 export { DesktopUpdateProgress } from "./desktopShell.ts";

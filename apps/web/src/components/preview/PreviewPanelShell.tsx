@@ -11,8 +11,10 @@ import {
   usePreviewPanelInlineSize,
 } from "~/hooks/usePreviewPanelInlineSize";
 import { RESIZABLE_WIDTH_PROPERTY } from "~/hooks/useResizableWidth";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { canReturnFocusTo, workspaceAreaProps } from "../../lib/workspaceFocus";
 import { cn } from "~/lib/utils";
+import { RIGHT_PANEL_SHEET_MEDIA_QUERY } from "~/rightPanelLayout";
 
 import { RightPanelResizeHandle } from "./RightPanelResizeHandle";
 
@@ -64,8 +66,10 @@ function PreviewPanelShellFrame(
   props: PreviewPanelShellProps & { inlineSize: PreviewPanelInlineSize },
 ) {
   const panelArea = workspaceAreaProps("panel", 4, props.workspaceLabel ?? "Workspace panel");
-  const isInline = props.mode === "inline";
-  const collapsible = isInline && props.open !== undefined;
+  const forceSheet = useMediaQuery(RIGHT_PANEL_SHEET_MEDIA_QUERY);
+  const resolvedMode = forceSheet && props.mode === "inline" ? "sheet" : props.mode;
+  const isInline = resolvedMode === "inline";
+  const collapsible = props.mode === "inline" && props.open !== undefined;
   const open = props.open ?? true;
   const maximized = props.maximized ?? false;
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -153,10 +157,12 @@ function PreviewPanelShellFrame(
               "flex-1"
             : "shrink-0 border-l border-border"
           : "w-full",
-        collapsible &&
+        isInline &&
+          collapsible &&
           "[[data-panel-animations=true]_&]:transition-[width] [[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
-        collapsible && open && "[[data-panel-animations=true]_&]:starting:w-0!",
+        isInline && collapsible && open && "[[data-panel-animations=true]_&]:starting:w-0!",
         collapsible && !open && "pointer-events-none",
+        !isInline && collapsible && !open && "hidden",
       )}
       style={
         isInline
@@ -171,7 +177,7 @@ function PreviewPanelShellFrame(
             } as CSSProperties)
           : undefined
       }
-      data-preview-panel-mode={props.mode}
+      data-preview-panel-mode={resolvedMode}
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
       {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}
@@ -181,16 +187,16 @@ function PreviewPanelShellFrame(
         className={cn(
           "h-full min-h-0 w-full",
           collapsible && "overflow-clip",
-          collapsible && !maximized && "flex justify-end",
+          isInline && collapsible && !maximized && "flex justify-end",
         )}
       >
         <div
           className={cn(
             "flex h-full min-h-0 min-w-0 flex-col",
-            collapsible && !maximized && "shrink-0",
+            isInline && collapsible && !maximized && "shrink-0",
           )}
           style={
-            collapsible && !maximized
+            isInline && collapsible && !maximized
               ? { width: `calc(var(${RESIZABLE_WIDTH_PROPERTY}) - 1px)` }
               : undefined
           }

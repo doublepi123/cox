@@ -508,7 +508,7 @@ function ProviderModelRow({
     <div
       data-model-slug={model.slug}
       className={cn(
-        "grid h-7 grid-cols-[1.5rem_minmax(0,1fr)_auto_minmax(5.5rem,auto)_auto] items-center gap-2 rounded-md px-2 transition-colors hover:bg-muted/30",
+        "grid h-11 grid-cols-[2.75rem_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md px-2 transition-colors hover:bg-muted/30 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 sm:h-7 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto_minmax(5.5rem,auto)_auto]",
         isHidden && "opacity-50",
       )}
     >
@@ -558,7 +558,7 @@ function ProviderModelRow({
           <span className="shrink-0 text-2xs text-muted-foreground/70">{t("custom")}</span>
         ) : null}
       </span>
-      <span className="text-2xs text-muted-foreground/70">
+      <span className="text-2xs text-muted-foreground/70 max-sm:hidden">
         {capLabels.length > 0 ? (
           <span className="hidden sm:inline">{capLabels.join(" · ")}</span>
         ) : null}

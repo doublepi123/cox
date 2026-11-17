@@ -350,6 +350,87 @@ describe("attachmentUploadQueue", () => {
     );
   });
 
+  it.each([401, 403, 410])(
+    "refreshes an expired %s upload once without changing the draft text",
+    async (status) => {
+      const image = makeImage("expired-token");
+      const draftId = DraftId.make("draft-token-recovery");
+      const prompt = "Keep my draft 100% intact.\nIncluding another line.";
+      useComposerDraftStore.getState().setPrompt(draftId, prompt);
+      let minted = 0;
+      mocks.runAtomCommand.mockImplementation(async (_registry: unknown, command: unknown) => {
+        if (command !== mocks.createUploadUrl) return { _tag: "Success", value: undefined };
+        minted += 1;
+        return {
+          _tag: "Success",
+          value: {
+            attachmentId: `fresh-token-${minted}`,
+            relativeUrl: `/api/attachments/upload/fresh-token-${minted}`,
+            expiresAt: 1,
+          },
+        };
+      });
+      try {
+        startAttachmentUpload({ environmentId: firstEnvironment, image, draftTarget: draftId });
+        await Promise.resolve();
+        const settled = awaitAttachmentUploads([image.id]);
+        TestXmlHttpRequest.requests[0]?.complete(status);
+        await vi.waitFor(() => expect(TestXmlHttpRequest.requests).toHaveLength(2));
+        TestXmlHttpRequest.requests[1]?.complete();
+        await settled;
+
+        expect(readAttachmentUpload(image.id)).toMatchObject({
+          status: "ready",
+          attachmentId: "fresh-token-2",
+        });
+        expect(TestXmlHttpRequest.requests[1]?.url).toBe(
+          "https://environment.test/api/attachments/upload/fresh-token-2",
+        );
+        expect(useComposerDraftStore.getState().getComposerDraft(draftId)?.prompt).toBe(prompt);
+        expect(
+          mocks.runAtomCommand.mock.calls.filter(
+            ([, command]) => command === mocks.createUploadUrl,
+          ),
+        ).toHaveLength(2);
+      } finally {
+        useComposerDraftStore.getState().clearComposerContent(draftId);
+      }
+    },
+  );
+
+  it.each([403, 500, "network"] as const)(
+    "stops after the refreshed upload fails with %s, including after reconnect",
+    async (failure) => {
+      const image = makeImage("bounded-retry");
+      const draftId = DraftId.make("draft-bounded-retry");
+      const prompt = "Draft survives failed uploads and reconnects.";
+      useComposerDraftStore.getState().setPrompt(draftId, prompt);
+      try {
+        startAttachmentUpload({ environmentId: firstEnvironment, image, draftTarget: draftId });
+        await Promise.resolve();
+        const settled = awaitAttachmentUploads([image.id]);
+        TestXmlHttpRequest.requests[0]?.complete(403);
+        await vi.waitFor(() => expect(TestXmlHttpRequest.requests).toHaveLength(2));
+        setConnected(firstEnvironment, false);
+        setConnected(firstEnvironment, true);
+        const request = TestXmlHttpRequest.requests[1];
+        if (failure === "network") request?.listeners.get("error")?.();
+        else request?.complete(failure);
+        await settled;
+        await Promise.resolve();
+
+        expect(readAttachmentUpload(image.id)).toMatchObject({
+          status: "failed",
+          reason: expect.stringContaining("Retry the attachment"),
+        });
+        expect(TestXmlHttpRequest.requests).toHaveLength(2);
+        expect(useComposerDraftStore.getState().getComposerDraft(draftId)?.prompt).toBe(prompt);
+      } finally {
+        useComposerDraftStore.getState().clearComposerContent(draftId);
+      }
+    },
+  );
+
   it("persists a background completion's ids to the draft with no composer mounted", async () => {
     const draftId = DraftId.make("draft-background-upload");
     const file = makeFile("background");

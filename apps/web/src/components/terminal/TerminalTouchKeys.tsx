@@ -5,9 +5,13 @@ import {
   ArrowUpIcon,
   type LucideIcon,
 } from "lucide-react";
+import { useSyncExternalStore } from "react";
 
 import { useTranslation } from "../../i18n";
 import type { TerminalKeyPress } from "~/terminal/ghostty/surface";
+import type { TerminalTouchModifiers } from "~/terminal/ghostty/touchModifiers";
+import { useTouchTerminalFontSize } from "./touchFontSize";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 export interface TerminalTouchKey {
   readonly id: string;
@@ -52,8 +56,21 @@ export const TERMINAL_TOUCH_KEYS: ReadonlyArray<TerminalTouchKey> = [
   },
 ];
 
-export function TerminalTouchKeys({ onPress }: { onPress: (press: TerminalKeyPress) => void }) {
+export function TerminalTouchKeys({
+  onPress,
+  modifiers,
+  onPaste,
+}: {
+  readonly onPress: (press: TerminalKeyPress) => void;
+  readonly modifiers: TerminalTouchModifiers;
+  readonly onPaste: () => void;
+}) {
   const { t } = useTranslation();
+  const state = useSyncExternalStore(modifiers.subscribe, modifiers.getSnapshot);
+  const compact = useMediaQuery("max-sm");
+  const [fontSize, setFontSize] = useTouchTerminalFontSize(compact ? 13 : 12);
+  const buttonClass =
+    "flex h-10 min-w-10 shrink-0 cursor-pointer touch-manipulation select-none items-center justify-center rounded-lg border border-border/70 bg-muted/40 px-2 font-mono text-sm text-foreground active:bg-accent";
   return (
     <div
       role="toolbar"
@@ -61,6 +78,21 @@ export function TerminalTouchKeys({ onPress }: { onPress: (press: TerminalKeyPre
       data-terminal-touch-keys
       className="box-content flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-t border-border/70 bg-background px-1.5 pb-safe [scrollbar-width:none]"
     >
+      {(["ctrl", "alt"] as const).map((modifier) => (
+        <button
+          key={modifier}
+          type="button"
+          aria-label={modifier === "ctrl" ? "Ctrl" : "Alt"}
+          aria-pressed={state[modifier] !== "off"}
+          data-modifier-state={state[modifier]}
+          className={`${buttonClass} aria-pressed:bg-accent`}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={(event) => modifiers.tap(modifier, event.timeStamp)}
+        >
+          {modifier === "ctrl" ? "Ctrl" : "Alt"}
+          {state[modifier] === "locked" ? <span className="ml-1 text-[10px]">lock</span> : null}
+        </button>
+      ))}
       {TERMINAL_TOUCH_KEYS.map(({ id, label, text, icon: Icon, press }) => (
         <button
           key={id}
@@ -74,6 +106,32 @@ export function TerminalTouchKeys({ onPress }: { onPress: (press: TerminalKeyPre
           {Icon ? <Icon aria-hidden className="size-4" /> : text}
         </button>
       ))}
+      <button
+        type="button"
+        className={buttonClass}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={onPaste}
+      >
+        Paste
+      </button>
+      <button
+        type="button"
+        aria-label="Decrease terminal font size"
+        className={buttonClass}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => setFontSize(fontSize - 1)}
+      >
+        A-
+      </button>
+      <button
+        type="button"
+        aria-label="Increase terminal font size"
+        className={buttonClass}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => setFontSize(fontSize + 1)}
+      >
+        A+
+      </button>
     </div>
   );
 }

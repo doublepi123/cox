@@ -29,9 +29,9 @@ import { assetEnvironment } from "../state/assets";
 import { attachmentEnvironment } from "../state/attachments";
 import { readEnvironmentScope, readPreparedConnection } from "../state/session";
 import type { AttachmentUploadState, ReadyAttachmentUpload } from "./attachmentUploadState";
+import { AttachmentUploadRejectedError, uploadBytes } from "./attachmentUploadTransport";
 
 const MAX_UPLOADS_PER_ENVIRONMENT = 3;
-const UPLOAD_TIMEOUT_MS = 5 * 60_000;
 
 interface AttachmentUploadStore {
   readonly uploadsByImageId: Readonly<Record<string, AttachmentUploadState>>;
@@ -53,6 +53,7 @@ interface UploadJob {
   resolveSettled: () => void;
   attachmentId: string | null;
   cancelled: boolean;
+  canReconnectRetry: boolean;
   abort: (() => void) | null;
   stopWatchingConnection: () => void;
 }
@@ -130,38 +131,6 @@ function deletePendingUpload(environmentId: EnvironmentId, attachmentId: string)
     environmentId,
     attachmentId,
   });
-}
-
-function uploadBytes(input: {
-  readonly url: string;
-  readonly file: File;
-  readonly mimeType: string;
-  readonly onProgress: (progress: number) => void;
-}): { readonly done: Promise<void>; readonly abort: () => void } {
-  const xhr = new XMLHttpRequest();
-  const done = new Promise<void>((resolve, reject) => {
-    xhr.open("POST", input.url, true);
-    xhr.timeout = UPLOAD_TIMEOUT_MS;
-    xhr.setRequestHeader("Content-Type", input.mimeType);
-    xhr.upload.addEventListener("progress", (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        input.onProgress(event.loaded / event.total);
-      }
-    });
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
-      } else {
-        reject(new Error(`Upload rejected (${xhr.status})`));
-      }
-    });
-    xhr.addEventListener("error", () => reject(new Error("Upload failed")));
-    xhr.addEventListener("timeout", () => reject(new Error("Upload timed out")));
-    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
-    xhr.send(input.file);
-  });
-
-  return { done, abort: () => xhr.abort() };
 }
 
 async function runUpload(job: UploadJob): Promise<void> {
@@ -261,57 +230,75 @@ async function runUpload(job: UploadJob): Promise<void> {
     });
     return;
   }
-  const result = await runAttachmentUploadCycle({
-    registry: appAtomRegistry,
-    createUploadUrl: attachmentEnvironment.createUploadUrl,
-    remove: attachmentEnvironment.remove,
-    environmentId: job.environmentId,
-    upload: {
-      ...(job.image.type === "file" ? { type: "file" as const } : {}),
-      name: job.image.name,
-      mimeType,
-      sizeBytes: file.size,
-    },
-    resolveUploadUrl: (relativeUrl) => {
-      if (
-        job.cancelled ||
-        !readEnvironmentScope(job.environmentId, AuthOrchestrationOperateScope)
-      ) {
-        return null;
-      }
-      const connection = readPreparedConnection(job.environmentId);
-      return connection ? resolveAssetUrl(connection.httpBaseUrl, relativeUrl) : null;
-    },
-    transport: (url) =>
-      uploadBytes({
-        url,
-        file,
+  const upload = () =>
+    runAttachmentUploadCycle({
+      registry: appAtomRegistry,
+      createUploadUrl: attachmentEnvironment.createUploadUrl,
+      remove: attachmentEnvironment.remove,
+      environmentId: job.environmentId,
+      upload: {
+        ...(job.image.type === "file" ? { type: "file" as const } : {}),
+        name: job.image.name,
         mimeType,
-        onProgress: (progress) => {
-          const step = Math.floor(progress * 20);
-          if (step === lastStep || job.cancelled) {
-            return;
-          }
-          lastStep = step;
-          setUploadState(job.image.id, {
-            status: "uploading",
-            environmentId: job.environmentId,
-            progress,
-            ...(job.previous ? { previous: job.previous } : {}),
-          });
-        },
-      }),
-    onMinted: (attachmentId) => {
-      if (job.cancelled && readEnvironmentScope(job.environmentId, AuthOrchestrationOperateScope)) {
-        return "cancel";
-      }
-      job.attachmentId = attachmentId;
-      return "continue";
-    },
-    onTransferStart: (abort) => {
-      job.abort = abort;
-    },
-  });
+        sizeBytes: file.size,
+      },
+      resolveUploadUrl: (relativeUrl) => {
+        if (
+          job.cancelled ||
+          !readEnvironmentScope(job.environmentId, AuthOrchestrationOperateScope)
+        ) {
+          return null;
+        }
+        const connection = readPreparedConnection(job.environmentId);
+        return connection ? resolveAssetUrl(connection.httpBaseUrl, relativeUrl) : null;
+      },
+      transport: (url) =>
+        uploadBytes({
+          url,
+          file,
+          mimeType,
+          onProgress: (progress) => {
+            const step = Math.floor(progress * 20);
+            if (step === lastStep || job.cancelled) {
+              return;
+            }
+            lastStep = step;
+            setUploadState(job.image.id, {
+              status: "uploading",
+              environmentId: job.environmentId,
+              progress,
+              ...(job.previous ? { previous: job.previous } : {}),
+            });
+          },
+        }),
+      onMinted: (attachmentId) => {
+        if (
+          job.cancelled &&
+          readEnvironmentScope(job.environmentId, AuthOrchestrationOperateScope)
+        ) {
+          return "cancel";
+        }
+        job.attachmentId = attachmentId;
+        return "continue";
+      },
+      onTransferStart: (abort) => {
+        job.abort = abort;
+      },
+    });
+  let result = await upload();
+  if (
+    result.status === "failed" &&
+    result.step === "transfer" &&
+    result.error instanceof AttachmentUploadRejectedError &&
+    result.error.tokenExpired &&
+    !job.cancelled &&
+    readEnvironmentScope(job.environmentId, AuthOrchestrationOperateScope)
+  ) {
+    job.canReconnectRetry = false;
+    if (result.attachmentId) deletePendingUpload(job.environmentId, result.attachmentId);
+    lastStep = -1;
+    result = await upload();
+  }
   job.abort = null;
   if (result.status === "cancelled" || job.cancelled) {
     return;
@@ -447,6 +434,7 @@ export function startAttachmentUpload(input: {
     resolveSettled,
     attachmentId: null,
     cancelled: false,
+    canReconnectRetry: true,
     abort: null,
     stopWatchingConnection: () => {},
   };
@@ -468,6 +456,7 @@ export function startAttachmentUpload(input: {
     void job.settled.then(() => {
       if (
         jobsByImageId.get(job.image.id) === job &&
+        job.canReconnectRetry &&
         readAttachmentUpload(job.image.id)?.status === "failed" &&
         isConnected()
       ) {

@@ -20,6 +20,7 @@ import {
 import symbolsFontUrl from "./fonts/SymbolsNerdFontMono-Regular.woff2?url";
 import { isMonospaceFamily } from "../../appearanceFonts";
 import { observeResize } from "../../lib/observeResize";
+import type { TerminalTouchModifiers } from "./touchModifiers";
 
 const DEFAULT_TERMINAL_FONT_SIZE = 12;
 const MIN_TERMINAL_FONT_SIZE = 6;
@@ -550,6 +551,7 @@ export interface GhosttyTerminalSurfaceOptions {
 }
 
 export class GhosttyTerminalSurface {
+  private touchModifiers: TerminalTouchModifiers | null = null;
   readonly canvas: HTMLCanvasElement;
   readonly input: HTMLTextAreaElement;
   readonly scrollbar: HTMLDivElement;
@@ -1003,12 +1005,22 @@ export class GhosttyTerminalSurface {
   pressKey(press: TerminalKeyPress): void {
     if (this.disposed) return;
     this.clearPrimedCopy();
-    const event = terminalKeyPressInput(press);
+    const modifiers = this.touchModifiers?.getSnapshot();
+    const event = terminalKeyPressInput({
+      ...press,
+      ctrlKey: press.ctrlKey || (modifiers?.ctrl !== undefined && modifiers.ctrl !== "off"),
+      altKey: press.altKey || (modifiers?.alt !== undefined && modifiers.alt !== "off"),
+    });
     const data = this.core.encodeKey(event);
     if (data.length === 0) return;
     this.options.onData(data);
     const release = this.core.encodeKey(event, "release");
     if (release.length > 0) this.options.onData(release);
+    this.touchModifiers?.consume();
+  }
+
+  setTouchModifiers(modifiers: TerminalTouchModifiers): void {
+    this.touchModifiers = modifiers;
   }
 
   // The terminal selection is the only browser-readable PRIMARY-like buffer.
@@ -1141,6 +1153,12 @@ export class GhosttyTerminalSurface {
     // IME candidates belong to the textarea, even if the key also resembles
     // a local shortcut. Safari signals the initial composition with code 229.
     if (isTerminalCompositionKey(event, this.composing)) {
+      return;
+    }
+    if (this.touchModifiers?.active && [...event.key].length === 1) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.options.onData(this.encodeTouchInput(event.key));
       return;
     }
     const mac = isMacPlatform(navigator.platform);
@@ -1357,7 +1375,9 @@ export class GhosttyTerminalSurface {
   private readonly onCompositionEnd = (event: CompositionEvent) => {
     this.composing = false;
     const data = this.input.value || event.data;
-    if (data.length > 0) this.options.onData(data);
+    if (data.length > 0) {
+      this.options.onData(this.encodeTouchInput(data));
+    }
     this.input.value = "";
     this.compositionInputToSuppress = data;
     this.compositionSuppressionTimer = window.setTimeout(() => {
@@ -1376,9 +1396,29 @@ export class GhosttyTerminalSurface {
       return;
     }
     this.clearCompositionInputSuppression();
-    if (data.length > 0) this.options.onData(data);
+    if (data.length > 0) {
+      this.options.onData(this.encodeTouchInput(data));
+    }
     this.input.value = "";
   };
+
+  private encodeTouchInput(text: string): string {
+    return (
+      this.touchModifiers?.encode(text, (key, ctrl, alt) =>
+        this.core.encodeKey({
+          key,
+          code: "",
+          ctrlKey: ctrl,
+          altKey: alt,
+          metaKey: false,
+          shiftKey: false,
+          isComposing: false,
+          repeat: false,
+          getModifierState: () => false,
+        }),
+      ) ?? text
+    );
+  }
 
   private clearCompositionInputSuppression(): void {
     if (this.compositionSuppressionTimer !== null) {
@@ -1391,8 +1431,11 @@ export class GhosttyTerminalSurface {
   private readonly onPointerDown = (event: PointerEvent) => {
     this.linkActivationRequestId += 1;
     if (event.pointerType === "touch") {
+      if (!event.isPrimary || this.touchScroll !== null) {
+        this.touchScroll = null;
+        return;
+      }
       event.preventDefault();
-      if (!event.isPrimary || this.touchScroll !== null) return;
       this.touchScroll = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -1402,7 +1445,6 @@ export class GhosttyTerminalSurface {
         moved: false,
       };
       this.clearHoveredLink();
-      this.canvas.setPointerCapture(event.pointerId);
       return;
     }
     this.focus();

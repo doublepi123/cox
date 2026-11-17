@@ -6,9 +6,23 @@ import {
   SecretProviderId,
   SecretProviderKind,
   type ServerSettings,
+  NotificationWebhookChannel,
 } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { SecretResolver } from "@t3tools/secret-provider-core/server/SecretResolver";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as FileSystem from "effect/FileSystem";
+import * as ServerConfig from "./config.ts";
+import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as SqlitePersistence from "./persistence/Sqlite.ts";
+import * as Settings from "./serverSettings.ts";
+import { resolveWebhookChannelSecret } from "./notifications/WebhookNotificationService.ts";
 import {
   mapSettingsSecretValues,
+  SECRET_REDACTED,
   withoutRemovedSecretProviderReferences,
 } from "./settingsSecrets.ts";
 
@@ -17,6 +31,7 @@ const kept = SecretProviderId.make("kept");
 const instanceId = ProviderInstanceId.make("pi_secrets");
 const reference = { provider: removed, reference: "op://Private/item/field" };
 const retained = { provider: kept, reference: "op://Work/item/field" };
+const decodeWebhookChannel = Schema.decodeSync(NotificationWebhookChannel);
 const provider = {
   kind: SecretProviderKind.make("one_password"),
   label: "Vault",
@@ -100,5 +115,83 @@ describe("removed secret provider references", () => {
       settings.providerInstances[instanceId]?.environment,
     );
     expect(new Set(slots).size).toBe(slots.length);
+  });
+});
+
+describe("webhook secret persistence", () => {
+  it("stores, redacts, preserves, clears and removes channel credentials through settings patches", async () => {
+    const channel = decodeWebhookChannel({
+      id: "private/channel",
+      label: "Private channel",
+      provider: "json",
+      url: "https://example.test/hook",
+      secret: "webhook-private-key",
+      events: ["human_attention"],
+    });
+    const layer = Settings.layer.pipe(
+      Layer.provideMerge(ServerSecretStore.layer),
+      Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
+      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "cox-webhook-secrets-" })),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* Settings.ServerSettingsService;
+        const store = yield* ServerSecretStore.ServerSecretStore;
+        const fs = yield* FileSystem.FileSystem;
+        const config = yield* ServerConfig.ServerConfig;
+        const name = `notifications.webhook.${Buffer.from(channel.id).toString("base64url")}.secret`;
+        const saved = yield* service.updateSettings({ notifications: { webhooks: [channel] } });
+        const redacted = Settings.redactServerSettingsForClient(saved).notifications.webhooks[0];
+        expect(redacted?.secret).toBe(SECRET_REDACTED);
+        expect(yield* store.get(name)).toEqual(
+          Option.some(new TextEncoder().encode("webhook-private-key")),
+        );
+        expect(yield* fs.readFileString(config.settingsPath)).not.toContain("webhook-private-key");
+        const sentinel = { ...channel, secret: SECRET_REDACTED };
+        yield* service.updateSettings({ notifications: { webhooks: [sentinel] } });
+        expect((yield* service.getSettings).notifications.webhooks[0]?.secret).toBe(
+          "webhook-private-key",
+        );
+        expect(
+          yield* resolveWebhookChannelSecret(sentinel).pipe(
+            Effect.provideService(ServerSecretStore.ServerSecretStore, store),
+            Effect.provideService(SecretResolver, {
+              read: () => Effect.succeed([]),
+              invalidate: () => Effect.void,
+              label: () => Effect.succeed(""),
+            }),
+          ),
+        ).toBe("webhook-private-key");
+        yield* service.updateSettings({
+          notifications: { webhooks: [{ ...channel, secret: "" }] },
+        });
+        expect(yield* store.get(name)).toEqual(Option.none());
+        expect((yield* service.getSettings).notifications.webhooks[0]?.secret).toBe("");
+        yield* service.updateSettings({ notifications: { webhooks: [channel] } });
+        yield* service.updateSettings({ notifications: { webhooks: [] } });
+        expect(yield* store.get(name)).toEqual(Option.none());
+      }).pipe(Effect.provide(layer), Effect.scoped),
+    );
+  });
+
+  it("removes webhook references when their secret provider is removed", () => {
+    const channel = decodeWebhookChannel({
+      id: "reference",
+      label: "Reference",
+      provider: "json",
+      url: "https://example.test/hook",
+      secret: reference,
+      events: [],
+    });
+    const current = {
+      ...settings,
+      notifications: { ...settings.notifications, webhooks: [channel] },
+    };
+    const cleaned = withoutRemovedSecretProviderReferences(current, {
+      ...current,
+      secretProviders: { [kept]: provider },
+    });
+    expect(cleaned.notifications.webhooks[0]?.secret).toBe("");
   });
 });

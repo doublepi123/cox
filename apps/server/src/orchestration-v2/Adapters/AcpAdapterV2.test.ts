@@ -2463,6 +2463,14 @@ describe("AcpAdapterV2", () => {
         },
       });
 
+      yield* sessionUpdateHandler!({
+        sessionId: "mock-child-session",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Child private work" },
+        },
+      });
+
       const snapshot = yield* runtime.readThreadSnapshot({ providerThread });
       assert.deepEqual(
         snapshot.messages.map((message) => message.text),
@@ -3646,6 +3654,11 @@ describe("AcpAdapterV2", () => {
         const startupMethods = yield* pollProtocolMethods(protocolEvents);
         assert.include(startupMethods, "session/resume");
         assert.notInclude(startupMethods, "session/new");
+        const loaded = yield* runtime.readThreadSnapshot({ providerThread });
+        assert.deepEqual(
+          loaded.messages.map((message) => `${message.role}:${message.text}`),
+          ["user:replay"],
+        );
 
         yield* runtime.resumeThread({ providerThread, modelSelection, runtimePolicy });
         assert.notInclude(yield* pollProtocolMethods(protocolEvents), "session/resume");

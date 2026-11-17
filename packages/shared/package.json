@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./remoteServerAdmission": {
+      "types": "./src/remoteServerAdmission.ts",
+      "import": "./src/remoteServerAdmission.ts"
+    },
     "./omoRecommendations": {
       "types": "./src/omoRecommendations.ts",
       "import": "./src/omoRecommendations.ts"

@@ -152,7 +152,13 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
             revision: entry.revision + 1,
           };
       }
-      state.settings = { ...state.settings, modelServices: services };
+      state.settings = {
+        ...state.settings,
+        modelServices: services,
+        ...(input.patch.modelServiceOrder === undefined
+          ? {}
+          : { modelServiceOrder: [...input.patch.modelServiceOrder] }),
+      };
       notify();
       return { _tag: "Success", value: undefined };
     });
@@ -1106,8 +1112,8 @@ describe("model services settings", () => {
     await expect
       .element(screen.getByRole("group", { name: "Configured model services" }))
       .toBeVisible();
-    const primary = screen.getByRole("button", { name: /Shared API/ });
-    const backup = screen.getByRole("button", { name: /Backup API/ });
+    const primary = screen.getByRole("button", { name: /^Shared API/ });
+    const backup = screen.getByRole("button", { name: /^Backup API/ });
     await expect.element(primary).toHaveAttribute("aria-pressed", "true");
     await expect.element(backup).toHaveAttribute("aria-pressed", "false");
     expect(primary.element().textContent).toContain("1 model");
@@ -1118,6 +1124,86 @@ describe("model services settings", () => {
     await expect
       .element(screen.getByLabelText("API URL", { exact: true }))
       .toHaveValue("https://backup.test/v1");
+  });
+
+  it.each(["Move Shared API down", "Move Backup API up"] as const)(
+    "persists phone-accessible service reordering with %s across remounts",
+    async (actionLabel) => {
+      const backupId = ModelServiceId.make("backup");
+      setup({
+        [id]: configured,
+        [backupId]: {
+          ...configured,
+          name: "Backup API",
+          baseUrl: "https://backup.test/v1",
+          models: [],
+        },
+      });
+      const originalWidth = window.innerWidth;
+      const originalHeight = window.innerHeight;
+      await page.viewport(390, 844);
+      try {
+        await using screen = await render(
+          <EnvironmentModelServices environmentId={environmentId} />,
+        );
+        const serviceOrder = () =>
+          Array.from(
+            document.querySelectorAll<HTMLElement>("[data-model-service-row]"),
+            (element) => element.getAttribute("data-model-service-row"),
+          );
+        expect(serviceOrder()).toEqual([id, backupId]);
+        await expect
+          .element(screen.getByRole("button", { name: "Move Shared API up", exact: true }))
+          .toBeDisabled();
+        await expect
+          .element(screen.getByRole("button", { name: "Move Backup API down", exact: true }))
+          .toBeDisabled();
+
+        const action = screen.getByRole("button", { name: actionLabel, exact: true });
+        const drag = screen.getByRole("button", { name: "Drag Shared API", exact: true });
+        for (const control of [action, drag]) {
+          const box = control.element().getBoundingClientRect();
+          expect(box.width).toBeGreaterThanOrEqual(44);
+          expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+        expect(drag.element().getAttribute("draggable")).toBe("true");
+        expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+        await action.click();
+
+        expect(state.save).toHaveBeenCalledWith({
+          environmentId,
+          input: { patch: { modelServiceOrder: [backupId, id] } },
+        });
+        expect(state.settings.modelServiceOrder).toEqual([backupId, id]);
+        expect(serviceOrder()).toEqual([backupId, id]);
+
+        await screen.unmount();
+        await using _reopened = await render(
+          <EnvironmentModelServices environmentId={environmentId} />,
+        );
+        expect(serviceOrder()).toEqual([backupId, id]);
+      } finally {
+        await page.viewport(originalWidth, originalHeight);
+      }
+    },
+  );
+
+  it("keeps the remove-service action at least 44px tall on a phone", async () => {
+    setup({ [id]: configured });
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    await page.viewport(390, 844);
+    try {
+      await using _screen = await render(
+        <EnvironmentModelServices environmentId={environmentId} />,
+      );
+      const remove = _screen.getByRole("button", { name: "Remove service", exact: true });
+      const box = remove.element().getBoundingClientRect();
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    } finally {
+      await page.viewport(originalWidth, originalHeight);
+    }
   });
 
   it("tests the current models, ignores failures without deleting them and allows restoring one", async () => {
@@ -1295,7 +1381,7 @@ describe("model services settings", () => {
       expect(picker.element().scrollWidth).toBeLessThanOrEqual(picker.element().clientWidth);
       expect(
         screen
-          .getByRole("button", { name: /newapi/ })
+          .getByRole("button", { name: /^newapi/ })
           .element()
           .getBoundingClientRect().height,
       ).toBeGreaterThanOrEqual(44);

@@ -10,6 +10,10 @@ import { Button, InlineButton } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import {
+  triggerMobileHapticSelection,
+  useIsCompactPhoneViewport,
+} from "../../mobile/mobileShellBridge";
 
 interface ComposerPendingApprovalActionsProps {
   presentation?: "composer" | "inline" | "touch";
@@ -53,6 +57,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
   const { t } = useTranslation();
+  const compactPhone = useIsCompactPhoneViewport();
   const optionLabel = (label: string) =>
     LOCALIZED_APPROVAL_OPTION_LABELS.has(label) ? t(label) : label;
   const primaryOptions = options.filter(
@@ -61,18 +66,19 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
   const moreOptions = options.filter(
     (option) => option.decision !== "decline" && option.decision !== "accept",
   );
+  const respond = (decision: ProviderApprovalDecision) => {
+    if (disabled || isResponding || !canRespond) return;
+    triggerMobileHapticSelection();
+    void onRespondToApproval(requestId, decision);
+  };
 
   return (
-    <>
+    <div className="contents max-sm:flex max-sm:max-h-[min(55dvh,calc(var(--visual-viewport-height,100dvh)-9rem))] max-sm:min-w-0 max-sm:flex-wrap max-sm:items-center max-sm:gap-2 max-sm:overflow-y-auto max-sm:overscroll-contain [&_button]:max-sm:min-h-11 [&_button]:max-sm:min-w-11">
       {primaryOptions.map((option) => {
         const buttonProps = {
           disabled: disabled || isResponding || !canRespond,
           "aria-description": option.warning,
-          onClick: () => {
-            if (!disabled && !isResponding && canRespond) {
-              void onRespondToApproval(requestId, option.decision);
-            }
-          },
+          onClick: () => respond(option.decision),
         };
         const content = (
           <>
@@ -89,6 +95,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
             <InlineButton
               key={option.decision}
               {...buttonProps}
+              touchTarget="padded"
               tone={option.decision === "accept" ? "default" : "muted"}
             >
               {content}
@@ -136,13 +143,10 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
               const item = (
                 <MenuItem
                   key={option.decision}
-                  density={presentation === "touch" ? "touch" : "default"}
+                  density={presentation === "touch" || compactPhone ? "touch" : "default"}
                   disabled={disabled || isResponding || !canRespond}
                   aria-description={option.warning}
-                  onClick={() => {
-                    if (!disabled && !isResponding && canRespond)
-                      void onRespondToApproval(requestId, option.decision);
-                  }}
+                  onClick={() => respond(option.decision)}
                 >
                   {option.warning ? <TriangleAlertIcon className="size-3 text-warning" /> : null}
                   <span className="min-w-0 whitespace-normal wrap-break-word">
@@ -162,6 +166,6 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           </MenuPopup>
         </Menu>
       ) : null}
-    </>
+    </div>
   );
 });

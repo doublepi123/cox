@@ -12,6 +12,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as ByteSize from "effect/ByteSize";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ProviderDriverError } from "./Errors.ts";
 import { gatewayBaseUrl } from "./gatewayConfiguration.ts";
@@ -209,6 +210,7 @@ export const makeGatewayModels = Effect.fn("makeGatewayModels")(function* (input
       message: "Gateway model pagination could not be completed.",
     });
   }).pipe(
+    Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
     Effect.timeout("20 seconds"),
     Effect.mapError(
       () =>

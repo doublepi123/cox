@@ -2396,6 +2396,9 @@ it.effect.each([0, 1])("releases an async setup before its completion with exit 
         settled?.stages.find((stage) => stage.id === "setup-script")?.status,
         exitCode === 0 ? "done" : "failed",
       );
+      assert.isNotNull(
+        settled?.stages.find((stage) => stage.id === "setup-script")?.endedAt ?? null,
+      );
       assert.equal(
         (yield* threads.getThreadProjection(launched.threadId)).runs[0]?.status,
         "starting",

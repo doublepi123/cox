@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ComponentType, type KeyboardEvent } f
 import {
   GlobeIcon,
   ArchiveIcon,
+  BellIcon,
   FlaskConicalIcon,
   BotIcon,
   Layers3Icon,
@@ -57,6 +58,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/diagnostics": WrenchIcon,
   "/settings/appearance": PaletteIcon,
   "/settings/chat": MessageSquareTextIcon,
+  "/settings/notifications": BellIcon,
   "/settings/diffs": FileDiffIcon,
   "/settings/projects": PanelsTopLeftIcon,
   "/settings/keybindings": KeyboardIcon,

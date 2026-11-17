@@ -178,12 +178,33 @@ function languageScope() {
   };
 }
 
-async function viewportScope(width: number) {
+async function viewportScope(width: number, height = 900) {
   const previous = { width: window.innerWidth, height: window.innerHeight };
-  await page.viewport(width, 900);
+  await page.viewport(width, height);
   return {
     [Symbol.asyncDispose]: () => page.viewport(previous.width, previous.height),
   };
+}
+
+async function emitPointer(
+  element: HTMLElement,
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  point: { readonly id: number; readonly x: number; readonly y: number },
+) {
+  await act(() => {
+    element.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: point.id,
+        pointerType: "touch",
+        isPrimary: point.id === 1,
+        clientX: point.x,
+        clientY: point.y,
+        button: 0,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
 }
 
 function themeScope(theme: "light" | "dark") {
@@ -201,6 +222,7 @@ function themeScope(theme: "light" | "dark") {
 
 it("renders real dependencies, waves, run metadata and links only for available children", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   state.subagents = [
     coordinator(graph({ truncated: true })),
     nativeTask("task-research", {
@@ -273,6 +295,7 @@ it("renders real dependencies, waves, run metadata and links only for available 
 
 it("supports zoom, reset, fit, keyboard pan and wheel scrolling without graph mutations", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   state.subagents = [coordinator(graph())];
   await using screen = await render(
     <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
@@ -316,6 +339,7 @@ it("supports zoom, reset, fit, keyboard pan and wheel scrolling without graph mu
 
 it("keeps the selected run stable across projection refreshes and run ordering changes", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   const older = graph({
     runId: "older",
     name: "Older run",
@@ -373,8 +397,9 @@ it.each([
     expect(rectangle.left).toBeGreaterThanOrEqual(0);
     expect(rectangle.right).toBeLessThanOrEqual(width);
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+    const initialView = width < 640 ? "List view" : "Graph view";
     await expect
-      .element(screen.getByRole("button", { name: "Graph view" }))
+      .element(screen.getByRole("button", { name: initialView }))
       .toHaveAttribute("aria-pressed", "true");
 
     await screen.getByRole("button", { name: "List view" }).click();
@@ -401,6 +426,7 @@ it.each([
 
 it("expands the current run into a larger graph dialog", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   state.subagents = [coordinator(graph())];
   await using screen = await render(
     <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
@@ -426,6 +452,7 @@ it("expands the current run into a larger graph dialog", async () => {
 
 it("shares node selection between the expanded dialog and the side panel", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   state.subagents = [coordinator(graph())];
   await using screen = await render(
     <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
@@ -454,6 +481,7 @@ it("shares node selection between the expanded dialog and the side panel", async
 
 it("closes the expanded graph with Escape and returns focus to the expand button", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   state.subagents = [coordinator(graph())];
   await using screen = await render(
     <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
@@ -474,6 +502,7 @@ it("closes the expanded graph with Escape and returns focus to the expand button
 
 it("opens the expanded graph on double-click of empty side canvas only", async () => {
   using _language = languageScope();
+  await using _viewport = await viewportScope(1280);
   state.subagents = [coordinator(graph())];
   await using screen = await render(
     <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
@@ -487,6 +516,111 @@ it("opens the expanded graph on double-click of empty side canvas only", async (
 
   await userEvent.dblClick(viewport, { position: { x: 4, y: 4 } });
   await expect.element(dialog).toBeVisible();
+});
+
+it("defaults a 390px phone to waves and opens a full-screen graph with one tap", async () => {
+  using _language = languageScope();
+  await using _viewport = await viewportScope(390, 844);
+  state.subagents = [coordinator(graph())];
+  await using screen = await render(
+    <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
+  );
+  await expect
+    .element(screen.getByRole("button", { name: "List view" }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect.element(screen.getByText("Depends on Design, Build", { exact: true })).toBeVisible();
+  const graphToggle = screen.getByRole("button", { name: "Graph view" });
+  expect(graphToggle.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+
+  await graphToggle.click();
+
+  const dialog = page.getByRole("dialog", { name: "Mass ULW implementation" });
+  await expect.element(dialog).toBeVisible();
+  await expect
+    .element(dialog.getByRole("region", { name: "Interactive dependency graph" }))
+    .toBeVisible();
+  await expect.poll(() => dialog.element().getBoundingClientRect().width).toBe(390);
+  await expect.poll(() => dialog.element().getBoundingClientRect().height).toBe(844);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+});
+
+it("pans and clamps touch pinch zoom without invalid transforms or captured pointers", async () => {
+  using _language = languageScope();
+  await using _viewport = await viewportScope(390, 844);
+  state.subagents = [coordinator(graph())];
+  await using screen = await render(
+    <OmoDagPanel environmentId={environmentId} threadId={threadId} />,
+  );
+  await screen.getByRole("button", { name: "Graph view" }).click();
+  const dialog = page.getByRole("dialog", { name: "Mass ULW implementation" });
+  const viewport = dialog.getByRole("region", { name: "Interactive dependency graph" });
+  await expect.element(viewport).toBeVisible();
+  const viewportElement = viewport.element();
+  if (!(viewportElement instanceof HTMLElement)) throw new Error("Missing HTML graph viewport");
+  const element = viewportElement;
+  const captured = new Set<number>();
+  const spies = [
+    vi.spyOn(element, "setPointerCapture").mockImplementation((pointerId) => {
+      captured.add(pointerId);
+    }),
+    vi
+      .spyOn(element, "hasPointerCapture")
+      .mockImplementation((pointerId) => captured.has(pointerId)),
+    vi.spyOn(element, "releasePointerCapture").mockImplementation((pointerId) => {
+      captured.delete(pointerId);
+    }),
+  ];
+  using _captures = {
+    [Symbol.dispose]() {
+      for (const spy of spies) spy.mockRestore();
+    },
+  };
+  const scale = () => Number(element.getAttribute("data-scale"));
+  const panX = () => Number(element.getAttribute("data-pan-x"));
+  const panY = () => Number(element.getAttribute("data-pan-y"));
+
+  const initialX = panX();
+  const initialY = panY();
+  await emitPointer(element, "pointerdown", { id: 1, x: 100, y: 100 });
+  await emitPointer(element, "pointermove", { id: 1, x: 140, y: 130 });
+  await emitPointer(element, "pointerup", { id: 1, x: 140, y: 130 });
+  expect(panX()).toBe(initialX + 40);
+  expect(panY()).toBe(initialY + 30);
+  expect(captured.size).toBe(0);
+
+  await emitPointer(element, "pointerdown", { id: 1, x: 100, y: 100 });
+  await emitPointer(element, "pointerdown", { id: 2, x: 200, y: 100 });
+  expect(captured).toEqual(new Set([1, 2]));
+  await emitPointer(element, "pointermove", { id: 2, x: 600, y: 100 });
+  expect(scale()).toBe(2);
+  await emitPointer(element, "pointermove", { id: 2, x: 1000, y: 100 });
+  expect(scale()).toBe(2);
+  await emitPointer(element, "pointermove", { id: 2, x: 105, y: 100 });
+  expect(scale()).toBe(0.35);
+  await emitPointer(element, "pointermove", { id: 2, x: 100, y: 100 });
+  expect(scale()).toBe(0.35);
+  expect(Number.isFinite(panX())).toBe(true);
+  expect(Number.isFinite(panY())).toBe(true);
+  await emitPointer(element, "pointermove", { id: 2, x: 200, y: 100 });
+  await emitPointer(element, "pointermove", { id: 2, x: 1000, y: 100 });
+  expect(scale()).toBe(2);
+
+  await emitPointer(element, "pointercancel", { id: 2, x: 1000, y: 100 });
+  expect(captured).toEqual(new Set([1]));
+  const cancelledX = panX();
+  const cancelledY = panY();
+  await emitPointer(element, "pointermove", { id: 2, x: 1200, y: 200 });
+  expect(panX()).toBe(cancelledX);
+  expect(panY()).toBe(cancelledY);
+  await emitPointer(element, "pointercancel", { id: 1, x: 100, y: 100 });
+  expect(captured.size).toBe(0);
+  await emitPointer(element, "pointermove", { id: 1, x: 300, y: 300 });
+  expect(panX()).toBe(cancelledX);
+  expect(panY()).toBe(cancelledY);
+
+  const graphSurface = element.querySelector<HTMLElement>(".origin-top-left");
+  expect(graphSurface?.style.transform).not.toMatch(/NaN|Infinity/);
+  expect(Number.isFinite(scale())).toBe(true);
 });
 
 it("returns no panel for graph-less workflows", async () => {

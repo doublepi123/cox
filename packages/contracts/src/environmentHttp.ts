@@ -53,6 +53,20 @@ import {
 import { Project, ProjectMutation, ProjectSnapshot } from "./project.ts";
 import { LocalServiceUpdateState } from "./localServiceUpdate.ts";
 import {
+  DeletePushSubscriptionResponse,
+  MobilePushSubscriptionInput,
+  NOTIFICATION_PUSH_SUBSCRIPTIONS_PATH,
+  NOTIFICATION_PUSH_SUBSCRIPTION_PATH,
+  NOTIFICATION_TEST_PATH,
+  NOTIFICATION_VAPID_PUBLIC_KEY_PATH,
+  PushSubscriptionsListResponse,
+  PushSubscriptionId,
+  RegisteredPushSubscription,
+  TestNotificationRequest,
+  TestNotificationResponse,
+  VapidPublicKeyResponse,
+} from "./notifications.ts";
+import {
   PullRequestDiffInput,
   PullRequestDiffResult,
   PullRequestOperationError,
@@ -161,6 +175,26 @@ export class EnvironmentAuthRateLimitedError extends Schema.TaggedError<Environm
   }
 }
 
+export class EnvironmentNotificationTestRateLimitedError extends Schema.TaggedError<EnvironmentNotificationTestRateLimitedError>()(
+  "EnvironmentNotificationTestRateLimitedError",
+  {
+    code: Schema.Literal("test_rate_limited"),
+    retryAfterSeconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    traceId: TrimmedNonEmptyString,
+  },
+  { httpApiStatus: 429 },
+) {
+  [HttpServerRespondable.symbol]() {
+    return HttpServerResponse.schemaJson(EnvironmentNotificationTestRateLimitedError)(this, {
+      status: 429,
+    });
+  }
+
+  override get message(): string {
+    return `Too many test notifications. Try again in ${this.retryAfterSeconds} seconds.`;
+  }
+}
+
 export class EnvironmentScopeRequiredError extends Schema.TaggedError<EnvironmentScopeRequiredError>()(
   "EnvironmentScopeRequiredError",
   {
@@ -216,7 +250,10 @@ export class EnvironmentInternalError extends Schema.TaggedError<EnvironmentInte
   }
 }
 
-export const EnvironmentResourceNotFoundReason = Schema.Literals(["thread_not_found"]);
+export const EnvironmentResourceNotFoundReason = Schema.Literals([
+  "thread_not_found",
+  "push_subscription_not_found",
+]);
 export type EnvironmentResourceNotFoundReason = typeof EnvironmentResourceNotFoundReason.Type;
 
 export class EnvironmentResourceNotFoundError extends Schema.TaggedError<EnvironmentResourceNotFoundError>()(
@@ -621,6 +658,62 @@ class EnvironmentLocalServiceUpdatesHttpApi extends HttpApiGroup.make("localServ
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
+// HttpApiBuilder.layer type-requires a handler layer for every group; apps/server mounts
+// handlers for this group in apps/server/src/notifications/http.ts.
+export class EnvironmentNotificationsHttpApi extends HttpApiGroup.make("notifications")
+  .add(
+    HttpApiEndpoint.get("vapidPublicKey", NOTIFICATION_VAPID_PUBLIC_KEY_PATH, {
+      headers: OptionalBearerHeaders,
+      success: VapidPublicKeyResponse,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get("pushSubscriptions", NOTIFICATION_PUSH_SUBSCRIPTIONS_PATH, {
+      headers: OptionalBearerHeaders,
+      success: PushSubscriptionsListResponse,
+      error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("pushSubscriptionCreate", NOTIFICATION_PUSH_SUBSCRIPTIONS_PATH, {
+      headers: OptionalBearerHeaders,
+      payload: MobilePushSubscriptionInput,
+      success: RegisteredPushSubscription,
+      error: [
+        EnvironmentRequestInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentInternalError,
+      ],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.make("DELETE")("pushSubscriptionDelete", NOTIFICATION_PUSH_SUBSCRIPTION_PATH, {
+      headers: OptionalBearerHeaders,
+      params: Schema.Struct({ id: PushSubscriptionId }),
+      success: DeletePushSubscriptionResponse,
+      error: [
+        EnvironmentRequestInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentResourceNotFoundError,
+        EnvironmentInternalError,
+      ],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("test", NOTIFICATION_TEST_PATH, {
+      headers: OptionalBearerHeaders,
+      payload: TestNotificationRequest,
+      success: TestNotificationResponse,
+      error: [
+        EnvironmentRequestInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentNotificationTestRateLimitedError,
+        EnvironmentInternalError,
+      ],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentLocalServiceUpdatesHttpApi)
   .add(EnvironmentMetadataHttpApi)
@@ -629,4 +722,5 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentOrchestrationHttpApi)
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentProjectsHttpApi)
-  .add(EnvironmentWebhooksHttpApi) {}
+  .add(EnvironmentWebhooksHttpApi)
+  .add(EnvironmentNotificationsHttpApi) {}

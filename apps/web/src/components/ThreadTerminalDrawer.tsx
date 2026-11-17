@@ -90,6 +90,8 @@ import { FileMetadataThreadContext } from "../hooks/FileMetadataThreadProvider";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { TerminalTouchKeys } from "./terminal/TerminalTouchKeys";
+import { TerminalTouchModifiers } from "../terminal/ghostty/touchModifiers";
+import { useTouchTerminalFontSize } from "./terminal/touchFontSize";
 import { attachedTerminalSessionAtom } from "../state/terminalSessions";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { serverEnvironment } from "../state/server";
@@ -623,12 +625,16 @@ function TerminalSessionViewport({
       terminal: settings.fontFamilyTerminal,
     }),
   );
-  const terminalFontSize = useClientSettings((settings) =>
+  const preferredTerminalFontSize = useClientSettings((settings) =>
     resolveTerminalFontSizePreference({
       advanced: advancedTypography,
       code: settings.fontSizeCode,
       terminal: settings.fontSizeTerminal,
     }),
+  );
+  const compactTerminal = useMediaQuery("max-sm");
+  const [terminalFontSize] = useTouchTerminalFontSize(
+    compactTerminal ? 13 : preferredTerminalFontSize,
   );
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
   // Keyed by the launch (see TerminalViewport), so the atom is fixed for this surface.
@@ -1555,6 +1561,7 @@ export default function ThreadTerminalDrawer({
   const compactLayout = useMediaQuery("max-sm");
   const coarsePointer = useMediaQuery({ pointer: "coarse" });
   const terminalSurfacesRef = useRef<Map<string, GhosttyTerminalSurface> | null>(null);
+  const [touchModifiers] = useState(() => new TerminalTouchModifiers());
   const [advancedTypography] = useLocalStorage(
     TYPOGRAPHY_ADVANCED_STORAGE_KEY,
     false,
@@ -1749,12 +1756,27 @@ export default function ThreadTerminalDrawer({
   ) => {
     const surfaces = terminalSurfacesRef.current ?? new Map<string, GhosttyTerminalSurface>();
     terminalSurfacesRef.current = surfaces;
-    if (attached) surfaces.set(terminalId, surface);
-    else if (surfaces.get(terminalId) === surface) surfaces.delete(terminalId);
+    if (attached) {
+      surface.setTouchModifiers(touchModifiers);
+      surfaces.set(terminalId, surface);
+    } else if (surfaces.get(terminalId) === surface) surfaces.delete(terminalId);
   };
   const pressActiveTerminalKey = (press: TerminalKeyPress) => {
     if (!canOperateTerminal) return;
     terminalSurfacesRef.current?.get(resolvedActiveTerminalId)?.pressKey(press);
+  };
+  const pasteActiveTerminal = () => {
+    if (!canOperateTerminal) return;
+    const surface = terminalSurfacesRef.current?.get(resolvedActiveTerminalId);
+    void surface
+      ?.pasteFromClipboard(() => readTextFromClipboard("terminal input"))
+      .catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: "Unable to read the clipboard",
+          description: error instanceof Error ? error.message : "Clipboard access failed.",
+        });
+      });
   };
 
   const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -2092,7 +2114,11 @@ export default function ThreadTerminalDrawer({
         </div>
       </div>
       {coarsePointer && canOperateTerminal ? (
-        <TerminalTouchKeys onPress={pressActiveTerminalKey} />
+        <TerminalTouchKeys
+          onPress={pressActiveTerminalKey}
+          modifiers={touchModifiers}
+          onPaste={pasteActiveTerminal}
+        />
       ) : null}
     </aside>
   );

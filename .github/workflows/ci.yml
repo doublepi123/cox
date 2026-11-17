@@ -14,6 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: pnpm typecheck
+      - run: pnpm --filter @cox/mobile exec playwright-core install --with-deps --only-shell chromium
       - run: pnpm test
       - run: pnpm exec vp test run --project root packages --maxWorkers=4
       - run: pnpm --filter @t3tools/client-runtime test
@@ -33,6 +34,19 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm --filter @t3tools/web exec playwright install --with-deps --only-shell chromium
       - run: pnpm --filter @t3tools/web exec vp test run --project unit --project browser --maxWorkers=2
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm --filter @cox/mobile exec playwright-core install --with-deps --only-shell chromium
+      - run: pnpm --filter @cox/mobile typecheck
+      - run: pnpm mobile:test
+      - run: pnpm mobile:build
+      - run: pnpm --filter @cox/mobile verify:package
+      - run: pnpm build
+      - run: pnpm mobile:smoke
   distribution:
     needs: [core, server, web]
     runs-on: ubuntu-24.04

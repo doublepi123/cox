@@ -31,6 +31,7 @@ import {
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import { MobileNotificationSettings, MobileNotificationSettingsPatch } from "./notifications.ts";
 import { ProjectScript, type ProjectMutation } from "./project.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
@@ -1394,7 +1395,11 @@ export const ServerSettings = Schema.Struct({
   modelServices: Schema.Record(ModelServiceId, ModelServiceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  modelServiceOrder: Schema.Array(ModelServiceId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  notifications: MobileNotificationSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1705,6 +1710,7 @@ export const ServerSettingsPatch = Schema.Struct({
       otlpLogsUrl: Schema.optionalKey(TrimmedString),
     }),
   ),
+  notifications: Schema.optionalKey(MobileNotificationSettingsPatch),
   /** Merges per host, replacing patched fields whole; redaction markers retain secrets, empty or omitted secrets remove them. */
   sourceControlHosts: Schema.optionalKey(Schema.Record(Schema.String, SourceControlHostSettings)),
   // Replace whole maps to avoid half-merged driver configs.
@@ -1714,6 +1720,7 @@ export const ServerSettingsPatch = Schema.Struct({
   modelServices: Schema.optionalKey(
     Schema.Record(ModelServiceId, Schema.NullOr(ModelServiceConfig)),
   ),
+  modelServiceOrder: Schema.optionalKey(Schema.Array(ModelServiceId)),
   // Merge per source to avoid racing other edits; null removes an entry.
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
@@ -1745,6 +1752,7 @@ export function requiredScopesForServerSettingsPatch(
       key === "providerInstanceOrder" ||
       key === "deletedDefaultProviderInstances" ||
       key === "modelServices" ||
+      key === "modelServiceOrder" ||
       key === "usageLimitSources" ||
       key === "secretProviders"
     ) {

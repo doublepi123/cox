@@ -3370,7 +3370,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               {showMobilePendingAnswerActions ? (
                 <div
                   data-chat-composer-mobile-pending-actions="true"
-                  className="flex items-center justify-end gap-2 pt-1.5"
+                  className="flex min-h-11 items-center justify-end gap-2 pt-1.5 [&_button]:min-h-11"
                 >
                   {canInterrupt ? (
                     <StopGenerationButton

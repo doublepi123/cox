@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "cryptoRandomUUID": "off",
+          "globalDate": "off",
+          "globalFetch": "off",
+          "globalTimers": "off"
+        }
+      }
+    ]
+  },
+  "include": ["src", "scripts", "vite.config.ts", "capacitor.config.ts"]
+}

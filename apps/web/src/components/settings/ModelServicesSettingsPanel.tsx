@@ -27,7 +27,10 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { cn, randomUUID } from "../../lib/utils";
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   CheckIcon,
+  GripVerticalIcon,
   Layers3Icon,
   MoreHorizontalIcon,
   PlusIcon,
@@ -66,6 +69,8 @@ export const MODEL_SERVICE_PROTOCOL_LABELS: Record<ModelServiceProtocol, string>
 };
 const protocols = Object.keys(MODEL_SERVICE_PROTOCOL_LABELS) as ModelServiceProtocol[];
 const decodeService = Schema.decodeUnknownSync(ModelServiceConfig);
+const serviceReorderControlClass =
+  "inline-flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent/80 disabled:cursor-default disabled:opacity-40 min-[641px]:min-h-7 min-[641px]:min-w-7";
 
 function modelTestMessage(message: string, t: ReturnType<typeof useTranslation>["t"]) {
   const status = /^Model test failed \(HTTP ([0-9]{3})\)\.$/.exec(message)?.[1];
@@ -112,10 +117,47 @@ export function EnvironmentModelServices({
   const canManage = useEnvironmentScope(environmentId, "providers:manage");
   const readOnly = !canManage || projectScoped;
   const [editing, setEditing] = useState<ModelServiceId | null>(null);
+  const update = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
   const services = settings.modelServices;
-  const entries = Object.entries(services) as Array<[ModelServiceId, ModelServiceConfig]>;
+  const unorderedEntries = Object.entries(services) as Array<[ModelServiceId, ModelServiceConfig]>;
+  const orderedIds = new Set<ModelServiceId>();
+  const entries: Array<[ModelServiceId, ModelServiceConfig]> = [];
+  for (const id of settings.modelServiceOrder) {
+    const service = services[id];
+    if (service === undefined || orderedIds.has(id)) continue;
+    orderedIds.add(id);
+    entries.push([id, service]);
+  }
+  for (const entry of unorderedEntries) {
+    if (!orderedIds.has(entry[0])) entries.push(entry);
+  }
   const first = entries[0]?.[0];
   const selected = editing ?? first;
+  const persistOrder = (nextOrder: ReadonlyArray<ModelServiceId>) => {
+    void update({ environmentId, input: { patch: { modelServiceOrder: [...nextOrder] } } });
+  };
+  const moveService = (id: ModelServiceId, direction: -1 | 1) => {
+    const index = entries.findIndex(([entryId]) => entryId === id);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= entries.length) return;
+    const nextOrder = entries.map(([entryId]) => entryId);
+    const current = nextOrder[index];
+    const displaced = nextOrder[nextIndex];
+    if (current === undefined || displaced === undefined) return;
+    nextOrder[index] = displaced;
+    nextOrder[nextIndex] = current;
+    persistOrder(nextOrder);
+  };
+  const dropService = (sourceId: ModelServiceId, targetId: ModelServiceId) => {
+    const sourceIndex = entries.findIndex(([entryId]) => entryId === sourceId);
+    const targetIndex = entries.findIndex(([entryId]) => entryId === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+    const nextOrder = entries.map(([entryId]) => entryId);
+    const [moved] = nextOrder.splice(sourceIndex, 1);
+    if (moved === undefined) return;
+    nextOrder.splice(targetIndex, 0, moved);
+    persistOrder(nextOrder);
+  };
   return (
     <SettingsSection
       title={t("Model services")}
@@ -151,43 +193,100 @@ export function EnvironmentModelServices({
             aria-label={t("Configured model services")}
             className="flex flex-wrap gap-1.5 rounded-xl border border-border/60 bg-muted/25 p-1.5"
           >
-            {entries.map(([id, service]) => {
+            {entries.map(([id, service], index) => {
               const active = selected === id;
               return (
-                <button
+                <div
                   key={id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setEditing(id)}
-                  className={cn(
-                    "group flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left outline-hidden transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:w-auto sm:min-w-60",
-                    active
-                      ? "bg-background text-foreground shadow-xs/10 ring-1 ring-border/70"
-                      : "text-muted-foreground hover:bg-background/65 hover:text-foreground",
-                  )}
+                  data-model-service-row={id}
+                  className="flex w-full min-w-0 items-center gap-1 min-[641px]:w-auto"
+                  onDragOver={(event) => {
+                    if (readOnly) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    if (readOnly) return;
+                    event.preventDefault();
+                    const transferredId = event.dataTransfer.getData("text/plain");
+                    const source = entries.find(([entryId]) => entryId === transferredId);
+                    if (source) dropService(source[0], id);
+                  }}
                 >
-                  <span
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setEditing(id)}
                     className={cn(
-                      "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                      "group flex min-h-11 w-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-3 py-2 text-left outline-hidden transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring min-[641px]:w-auto min-[641px]:min-w-60",
                       active
-                        ? "bg-primary/10 text-primary"
-                        : "bg-background/60 text-muted-foreground group-hover:bg-background",
+                        ? "bg-background text-foreground shadow-xs/10 ring-1 ring-border/70"
+                        : "text-muted-foreground hover:bg-background/65 hover:text-foreground",
                     )}
                   >
-                    <Layers3Icon className="size-4" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{service.name}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {t(service.models.length === 1 ? "{name} model" : "{name} models", {
-                        name: service.models.length,
-                      })}
+                    <span
+                      className={cn(
+                        "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "bg-background/60 text-muted-foreground group-hover:bg-background",
+                      )}
+                    >
+                      <Layers3Icon className="size-4" aria-hidden="true" />
                     </span>
-                  </span>
-                  {active ? (
-                    <CheckIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{service.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {t(service.models.length === 1 ? "{name} model" : "{name} models", {
+                          name: service.models.length,
+                        })}
+                      </span>
+                    </span>
+                    {active ? (
+                      <CheckIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                    ) : null}
+                  </button>
+                  {!readOnly ? (
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        draggable
+                        aria-label={t("Drag {name}", { name: service.name })}
+                        title={t("Drag {name}", { name: service.name })}
+                        className={cn(
+                          serviceReorderControlClass,
+                          "cursor-grab active:cursor-grabbing",
+                        )}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", id);
+                        }}
+                      >
+                        <GripVerticalIcon className="size-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === 0}
+                        aria-label={t("Move {name} up", { name: service.name })}
+                        title={t("Move up")}
+                        className={serviceReorderControlClass}
+                        onClick={() => moveService(id, -1)}
+                      >
+                        <ArrowUpIcon className="size-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === entries.length - 1}
+                        aria-label={t("Move {name} down", { name: service.name })}
+                        title={t("Move down")}
+                        className={serviceReorderControlClass}
+                        onClick={() => moveService(id, 1)}
+                      >
+                        <ArrowDownIcon className="size-4" aria-hidden="true" />
+                      </button>
+                    </div>
                   ) : null}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -592,7 +691,7 @@ function ModelServiceEditor({
           {t("Models")} ({models.length})
         </h3>
         {service && !readOnly ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 max-sm:[&_button]:min-h-11">
             <Button
               size="sm"
               variant="outline"
@@ -806,7 +905,11 @@ function ModelServiceEditor({
             )}
           >
             {models.map((model) => (
-              <div key={model.id} data-model-row={model.id} className="grid min-w-0 gap-3 py-3">
+              <div
+                key={model.id}
+                data-model-row={model.id}
+                className="grid min-w-0 gap-3 py-3 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11"
+              >
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                   <p className="break-all text-sm">
                     {!model.name || model.name === model.id
@@ -1280,7 +1383,7 @@ function ModelServiceEditor({
             {t("Bound agents: {count}", { count: bound })}
           </p>
           <Button
-            size="sm"
+            size="touch"
             variant="outline"
             disabled={busy || bound > 0}
             onClick={() => {

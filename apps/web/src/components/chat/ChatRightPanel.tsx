@@ -1,6 +1,12 @@
 import { XIcon } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { usePreviewPanelInlineSize } from "../../hooks/usePreviewPanelInlineSize";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useTranslation } from "../../i18n";
+import {
+  RIGHT_PANEL_SHEET_CONTAINER_MAX_WIDTH,
+  RIGHT_PANEL_SHEET_MEDIA_QUERY,
+} from "../../rightPanelLayout";
 import { Button } from "../ui/button";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { RightPanelTabs, type RightPanelTabsProps } from "../RightPanelTabs";
@@ -22,7 +28,7 @@ type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "ma
 export function ChatRightPanel(props: ChatRightPanelProps) {
   const { t } = useTranslation();
   const {
-    sheet,
+    sheet: requestedSheet,
     workspaceLayoutElement,
     widthStorageKey,
     sheetAnimationDurationMs,
@@ -31,6 +37,20 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     layoutControls,
     ...tabs
   } = props;
+  const viewportSheet = useMediaQuery(RIGHT_PANEL_SHEET_MEDIA_QUERY);
+  const containerSheet = useSyncExternalStore(
+    (onChange) => {
+      if (!workspaceLayoutElement) return () => {};
+      const observer = new ResizeObserver(onChange);
+      observer.observe(workspaceLayoutElement);
+      return () => observer.disconnect();
+    },
+    () =>
+      workspaceLayoutElement !== null &&
+      workspaceLayoutElement.clientWidth <= RIGHT_PANEL_SHEET_CONTAINER_MAX_WIDTH,
+    () => false,
+  );
+  const sheet = requestedSheet || viewportSheet || containerSheet;
   const inlineSize = usePreviewPanelInlineSize({
     container: workspaceLayoutElement,
     widthStorageKey,

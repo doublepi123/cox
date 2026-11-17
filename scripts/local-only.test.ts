@@ -1,6 +1,12 @@
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import {
+  assertDistributionManifestsAreLocalOnly,
+  assertMobileDirectoryIsRemoteOnly,
+  assertMobileManifestIsLocalOnly,
+} from "./lib/local-only.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
@@ -169,7 +175,6 @@ describe("local-only distribution boundary", () => {
 
   it("does not ship removed application or infrastructure surfaces", () => {
     for (const directory of [
-      "apps/mobile",
       "apps/marketing",
       "infra",
       ".repos",
@@ -195,30 +200,66 @@ describe("local-only distribution boundary", () => {
   });
 
   it("isolates the desktop shell and keeps mobile and cloud dependencies out of manifests", () => {
-    const manifests = ["package.json", "scripts/package.json"];
-    for (const directory of ["apps", "packages"]) {
-      for (const entry of NodeFS.readdirSync(NodePath.join(root, directory))) {
-        const relative = NodePath.join(directory, entry, "package.json");
-        if (NodeFS.existsSync(NodePath.join(root, relative))) manifests.push(relative);
-      }
-    }
-    const forbidden =
-      /^(?:@clerk\/|@expo\/|expo(?:-|$)|electron(?:-|$)|@electron\/|react-native(?:-|$)|@react-native\/|@react-navigation\/|@t3tools\/(?:ssh|tailscale)$|alchemy$|@alchemy\.run\/)/;
-    for (const relative of manifests) {
-      const manifest = JSON.parse(NodeFS.readFileSync(NodePath.join(root, relative), "utf8"));
-      const dependencies = {
-        ...manifest.dependencies,
-        ...manifest.devDependencies,
-        ...manifest.optionalDependencies,
-      };
-      for (const name of Object.keys(dependencies)) {
-        if (
-          relative === NodePath.join("apps", "desktop", "package.json") &&
-          /^(?:electron(?:-|$)|@electron\/)/.test(name)
-        )
-          continue;
-        expect(forbidden.test(name), `${relative}: ${name}`).toBe(false);
-      }
+    assertDistributionManifestsAreLocalOnly(root);
+  });
+
+  it.each([
+    ["src/backend.ts", 'import { spawn } from "node:child_process";'],
+    ["src/localBackend.ts", 'import { execFile } from "child_process";'],
+    ["android/app/src/main/java/Foo.kt", 'fun start() = ProcessBuilder("proot").start()'],
+    ["src/backendSpawner.ts", "export const start = () => {};"],
+    ["src/archive/alpine-rootfs.tar.gz", ""],
+  ])("rejects local backend capabilities in mobile runtime %s", (relative, source) => {
+    const fixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mobile-runtime-"));
+    try {
+      const mobile = NodePath.join(fixture, "apps/mobile");
+      const filename = NodePath.join(mobile, relative);
+      NodeFS.mkdirSync(NodePath.dirname(filename), { recursive: true });
+      NodeFS.writeFileSync(filename, source);
+      expect(() => assertMobileDirectoryIsRemoteOnly(mobile)).toThrow(relative);
+    } finally {
+      NodeFS.rmSync(fixture, { recursive: true, force: true });
     }
   });
+
+  it("permits Capacitor runtime with host smoke scripts and ignored artifacts", () => {
+    const fixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mobile-runtime-"));
+    try {
+      const mobile = NodePath.join(fixture, "apps/mobile");
+      for (const relative of [
+        "scripts/smoke-mobile-e2e.mjs",
+        "node_modules/backendSpawner/index.js",
+        "dist/local-backend.js",
+        "build/spawnBackend.js",
+        "ios/Pods/Launcher.m",
+        "android/.gradle/Launcher.kt",
+        "src/backend.test.ts",
+        "src/backend.spec.ts",
+      ]) {
+        const filename = NodePath.join(mobile, relative);
+        NodeFS.mkdirSync(NodePath.dirname(filename), { recursive: true });
+        NodeFS.writeFileSync(filename, 'import { spawn } from "node:child_process";');
+      }
+      NodeFS.writeFileSync(
+        NodePath.join(mobile, "package.json"),
+        JSON.stringify({ private: true, dependencies: { "@capacitor/core": "8.0.0" } }),
+      );
+      NodeFS.writeFileSync(
+        NodePath.join(mobile, "src/App.tsx"),
+        'import { Capacitor } from "@capacitor/core"; export const native = Capacitor.isNativePlatform();',
+      );
+      expect(() => assertMobileDirectoryIsRemoteOnly(mobile)).not.toThrow();
+    } finally {
+      NodeFS.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["@clerk/expo", "react-native", "node-pty", "expo"])(
+    "rejects forbidden mobile dependency %s",
+    (name) => {
+      expect(() => assertMobileManifestIsLocalOnly({ dependencies: { [name]: "1.0.0" } })).toThrow(
+        `apps/mobile/package.json: ${name}`,
+      );
+    },
+  );
 });

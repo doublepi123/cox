@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+import "~/index.css";
 import { act, render, type Screen } from "../../../test/render";
 import { PreviewPanelShell } from "./PreviewPanelShell";
 
@@ -12,10 +13,16 @@ function Workspace(props: { open: boolean; present?: boolean; children?: ReactNo
       <div data-workspace-area="composer">
         <input aria-label="Message New thread" />
       </div>
-      <button type="button" aria-label="Toggle right panel" data-right-panel-toggle />
+      <button type="button" aria-label="Toggle right panel" data-right-panel-toggle>
+        Toggle panel
+      </button>
       {(props.present ?? true) ? (
         <PreviewPanelShell mode="inline" open={props.open}>
-          {props.children ?? <div role="region" aria-label="Open a surface" tabIndex={-1} />}
+          {props.children ?? (
+            <div role="region" aria-label="Open a surface" tabIndex={-1}>
+              Panel content
+            </div>
+          )}
         </PreviewPanelShell>
       ) : null}
     </div>
@@ -29,6 +36,45 @@ async function openPanelFromComposer(screen: Screen) {
 }
 
 describe("PreviewPanelShell focus", () => {
+  it.each([390, 1280])(
+    "preserves controlled collapse and focus with responsive presentation at %ipx",
+    async (width) => {
+      const previous = { width: window.innerWidth, height: window.innerHeight };
+      await using _viewport = {
+        [Symbol.asyncDispose]: () => page.viewport(previous.width, previous.height),
+      };
+      await page.viewport(width, 844);
+      await using screen = await render(<Workspace open={false} />);
+      await openPanelFromComposer(screen);
+      const panel = screen.container.querySelector("[data-preview-panel-mode]");
+      expect(panel).toBeInstanceOf(HTMLElement);
+      if (!(panel instanceof HTMLElement)) throw new Error("Preview panel is missing");
+      expect(panel.dataset.previewPanelMode).toBe(width <= 768 ? "sheet" : "inline");
+      await expect.element(screen.getByRole("region", { name: "Open a surface" })).toBeVisible();
+      if (width <= 768) {
+        expect(panel.getBoundingClientRect().width).toBe(panel.parentElement?.clientWidth);
+        expect(panel.querySelector('[role="separator"]')).toBeNull();
+        expect(
+          screen.getByRole("region", { name: "Open a surface" }).element().getBoundingClientRect()
+            .width,
+        ).toBe(panel.clientWidth);
+      }
+
+      await screen.rerender(<Workspace open={false} />);
+
+      await expect
+        .element(screen.getByRole("textbox", { name: "Message New thread" }))
+        .toHaveFocus();
+      expect(panel).toHaveAttribute("inert");
+      expect(panel).toHaveAttribute("data-workspace-unavailable", "true");
+      if (width <= 768) {
+        expect(panel.getBoundingClientRect().width).toBe(0);
+      } else {
+        expect(panel.style.width).toBe("0px");
+      }
+    },
+  );
+
   it("returns focus to the composer when a panel opened from it collapses", async () => {
     await using screen = await render(<Workspace open={false} />);
     await openPanelFromComposer(screen);
