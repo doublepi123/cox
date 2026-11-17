@@ -24,6 +24,7 @@ import {
   exerciseDiff,
   exerciseNotifications,
   exerciseTerminal,
+  mobileSidebar,
   serverSwitcher,
   signIn,
   threadsButton,
@@ -215,6 +216,7 @@ try {
       await threadsButton(workspaceCf.page).click();
       await visible(workspaceCf.page.getByText(serverA.title, { exact: true }).last());
       await workspaceCf.page.keyboard.press("Escape");
+      await mobileSidebar(workspaceCf.page).waitFor({ state: "hidden", timeout: 5_000 });
       await native.switchToLauncher(workspaceCf);
     },
   );

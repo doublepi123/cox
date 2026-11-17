@@ -57,7 +57,14 @@ export function notificationDeepLinkTests() {
       const reply = new Promise<unknown>((resolve) => {
         session.on("Target.receivedMessageFromTarget", ({ message }) => {
           const parsed: unknown = JSON.parse(message);
-          resolve(parsed);
+          if (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            "id" in parsed &&
+            parsed.id === 1
+          ) {
+            resolve(parsed);
+          }
         });
       });
       await session.send("Target.sendMessageToTarget", {

@@ -17,16 +17,29 @@ export const terminalButton = (page) =>
 
 export async function serverSwitcher(page) {
   const sheet = mobileSidebar(page);
-  if (!(await sheet.isVisible())) {
-    await threadsButton(page).click();
-    await visible(sheet);
+  const pill = sheet.locator("[data-mobile-server-switcher]");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!(await sheet.isVisible())) await threadsButton(page).click();
+    try {
+      await pill.waitFor({ state: "visible", timeout: 5_000 });
+      return pill;
+    } catch (error) {
+      if (attempt === 1) {
+        const text = await sheet.innerText().catch(() => "");
+        throw new Error(`Server switcher not visible. Sidebar text: ${text.slice(0, 500)}`, {
+          cause: error,
+        });
+      }
+      await page.keyboard.press("Escape");
+      await sheet.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
+    }
   }
-  const pill = page.locator("[data-mobile-server-switcher]");
-  await visible(pill);
   return pill;
 }
 
 const mobileSidebar = (page) => page.locator('[data-mobile="true"][data-sidebar="sidebar"]');
+
+export { mobileSidebar };
 
 export async function closeMobileSidebar(page) {
   const sheet = mobileSidebar(page);
