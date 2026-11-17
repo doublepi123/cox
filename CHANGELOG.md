@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.101 — 2026-11-17
+
+- Polish the phone chat screen: roomier message type, compact tool rows, and a
+  goal card with a title, state color, and a clamped body that still opens the
+  full status list.
+- Remove the bottom session bar. Threads, new chat, changes, and the terminal
+  stay on the header and in the sidebar, and the server switcher moves into the
+  sidebar so it no longer covers the composer. The composer sits on the safe area.
+- Let the thread title use the width between the sidebar button and the panel
+  icons, and keep the square icon on the stop button.
+
 ## 0.1.100 — 2026-11-17
 
 - Finish OMO turns whose first idle-wait settlement missed a still-busy
