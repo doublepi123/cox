@@ -88,6 +88,7 @@ export async function verifyMobileWorkflows(workflowsDir: string): Promise<void>
               "testDebugUnitTest assembleDebug",
               "testDebugUnitTest assembleRelease",
               "-lt 20971520",
+              "apksigner",
               "sha256sum *.apk > SHA256SUMS",
             ]
           : [

@@ -216,6 +216,7 @@ describe("mobile package verification", () => {
     ['"mobile-v*"', '"desktop-v*"', "mobile-v*"],
     ["android-lite:", "android:", "android-lite"],
     ["-lt 20971520", "-le 20971520", "20971520"],
+    ["apksigner", "echo unsigned", "apksigner"],
     ["zip -qry cox-mobile-unsigned.ipa Payload", "true", "Payload"],
     ["sha256sum *.apk > SHA256SUMS", "true", "SHA256SUMS"],
     ["CURRENT_PROJECT_VERSION=", "BUILD_NUMBER_UNUSED=", "CURRENT_PROJECT_VERSION="],

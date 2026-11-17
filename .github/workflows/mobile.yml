@@ -41,6 +41,18 @@ jobs:
           packages: platform-tools
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - run: pnpm --filter @cox/mobile exec cap sync android
+      - name: Resolve Android version numbers
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == mobile-v* ]]; then
+            version_name="${GITHUB_REF_NAME#mobile-v}"
+          else
+            version_name="$(node -p "require('./apps/mobile/package.json').version")"
+          fi
+          version_code=$(( GITHUB_RUN_NUMBER * 100 + ${GITHUB_RUN_ATTEMPT:-1} ))
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
       - name: Detect signing credentials
         id: signing
         env:
@@ -54,7 +66,7 @@ jobs:
             signed=true
           fi
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
-      - run: ./gradlew testDebugUnitTest assembleDebug
+      - run: ./gradlew testDebugUnitTest assembleDebug -PcoxMobileVersionCode="${{ steps.version.outputs.version_code }}" -PcoxMobileVersionName="${{ steps.version.outputs.version_name }}"
         if: steps.signing.outputs.signed != 'true'
         working-directory: apps/mobile/android
       - name: Build signed release APK
@@ -67,6 +79,7 @@ jobs:
         working-directory: apps/mobile/android
         run: |
           set -euo pipefail
+          umask 077
           printf '%s' "$COX_MOBILE_ANDROID_KEYSTORE_BASE64" | base64 --decode > cox-release.keystore
           cat > keystore.properties <<PROPERTIES
           storeFile=cox-release.keystore
@@ -74,8 +87,14 @@ jobs:
           keyAlias=$COX_MOBILE_ANDROID_KEYSTORE_ALIAS
           keyPassword=$COX_MOBILE_ANDROID_KEYSTORE_KEY_PASSWORD
           PROPERTIES
-          ./gradlew testDebugUnitTest assembleRelease
+          ./gradlew testDebugUnitTest assembleRelease -PcoxMobileVersionCode="${{ steps.version.outputs.version_code }}" -PcoxMobileVersionName="${{ steps.version.outputs.version_name }}"
+      - name: Clean Android signing credentials
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: |
+          rm -f apps/mobile/android/cox-release.keystore apps/mobile/android/keystore.properties
       - name: Verify APK size and generate checksums
+        env:
+          ANDROID_SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/android-release"
@@ -83,6 +102,9 @@ jobs:
           cd "$RUNNER_TEMP/android-release"
           for apk in *.apk; do
             test "$(stat -c %s "$apk")" -lt 20971520
+            if [[ "$ANDROID_SIGNED" == "true" ]]; then
+              "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+            fi
           done
           applicationId="$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id ./*.apk)"
           printf '{"applicationId":"%s"}\n' "$applicationId" > release-metadata.json

@@ -4,6 +4,9 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+def coxVersionCode = (project.findProperty("coxMobileVersionCode") ?: "1").toInteger()
+def coxVersionName = (project.findProperty("coxMobileVersionName") ?: "0.1.1").toString()
+
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
@@ -17,8 +20,8 @@ android {
         applicationId "dev.doublepi.cox.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode coxVersionCode
+        versionName coxVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
