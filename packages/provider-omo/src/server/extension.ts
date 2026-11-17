@@ -115,10 +115,16 @@ export default async function coxOmo(pi) {
     registries.set(registry, scoped);
     return scoped;
   };
+  let memoryWarning;
   const memory = process.env.COX_OMO_EPHEMERAL === "1" || process.env.COX_OMO_AUTOMATIC_MEMORY === "0"
     ? { name: "memory", register() {} }
     : await createCoxOmoMemoryComponent({ root: runtime.packageRoot, config, env: process.env,
-      resolveModule: runtime.resolveModule, resolveImport: runtime.resolveImport, loadModules: runtime.loadModules });
+      resolveModule: runtime.resolveModule, resolveImport: runtime.resolveImport, loadModules: runtime.loadModules }).catch(error => {
+        memoryWarning = error instanceof Error ? error.message : String(error);
+        return { name: "memory", register() {}, diagnostics: [memoryWarning] };
+      });
+  if (!memoryWarning && Array.isArray(memory.diagnostics) && memory.diagnostics.length)
+    memoryWarning = memory.diagnostics.join(" ");
   const components = entry.omoSenpiComponents.filter(c => !excluded.has(c.name) &&
     (c.name !== "task" || process.env.COX_OMO_TOOLS_REQUIRED !== "0")).map(c =>
     c.name === "task" ? tasks.createTaskComponent({ loadConfig: () => ({ config, diagnostics: [], layers: [], sources: [] }) }) :
@@ -201,6 +207,7 @@ export default async function coxOmo(pi) {
       coxOrchestrationReady: coxOrchestration.coxOrchestrationReady,
       nativeTask: { required, registered: nativeTaskRegistered, status: nativeTaskStatus },
       coxOrchestration: { ...coxOrchestration, required: coxRequired },
+      ...(memoryWarning ? { memory: { warning: memoryWarning } } : {}),
     };
   });
 }

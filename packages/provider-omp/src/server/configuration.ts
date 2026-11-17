@@ -4,7 +4,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { tokenizeCliArgs } from "@t3tools/shared/cliArgs";
 
-export const OMP_VERSION = "18.20.2";
+import { OMP_MINIMUM_VERSION } from "./compatibility.ts";
+
+export { OMP_INSTALL_SPEC, OMP_MINIMUM_VERSION, isSupportedOmpVersion } from "./compatibility.ts";
+export const OMP_VERSION = OMP_MINIMUM_VERSION;
 export const OMP_BUN_VERSION = "1.4.4";
 
 const API_KEY_VARIABLES: Readonly<Record<string, string>> = {

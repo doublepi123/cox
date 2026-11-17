@@ -478,9 +478,13 @@ export const checkOmpProviderStatus = Effect.fn("checkOmpProviderStatus")(functi
     probe: {
       installed: true,
       version,
-      status: discovery.authenticated ? "ready" : "warning",
+      status: ompSettings.modelServiceWarning || !discovery.authenticated ? "warning" : "ready",
       auth: { status: discovery.authenticated ? "authenticated" : "unauthenticated", type: "omp" },
-      ...(message === undefined ? {} : { message }),
+      ...(ompSettings.modelServiceWarning || message === undefined
+        ? ompSettings.modelServiceWarning
+          ? { message: ompSettings.modelServiceWarning }
+          : {}
+        : { message }),
     },
   });
 });

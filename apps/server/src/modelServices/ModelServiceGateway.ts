@@ -65,6 +65,8 @@ import {
 } from "./recovery.ts";
 import { makeRecoveryTracker } from "./recoveryTracker.ts";
 import { ChildProcessSpawner } from "effect/process";
+import * as NetAddress from "effect/net/NetAddress";
+import { isLoopbackAddress, timingSafeEqualUtf8 } from "../auth/utils.ts";
 import { modelServiceRequestRouting } from "./requestRouting.ts";
 import { parse as parseYamlText, stringify as stringifyYamlValue } from "yaml";
 import {
@@ -191,6 +193,23 @@ interface RuntimeBinding {
   readonly token: string;
   readonly binding: ModelServiceBinding;
   readonly driver: string;
+  readonly instanceId: ProviderInstanceId;
+}
+
+const isProviderSessionId = Schema.is(ProviderSessionId);
+
+function modelGatewayOrigin(
+  address: NetAddress.SocketAddress | undefined,
+  fallbackHost: string | undefined,
+  fallbackPort: number,
+): string {
+  if (address !== undefined && NetAddress.isInetAddress(address)) {
+    const host = NetAddress.isLoopback(address.address)
+      ? NetAddress.formatUrlHostString(NetAddress.formatIp(address.address))
+      : "127.0.0.1";
+    return `http://${host}:${address.port}`;
+  }
+  return `http://${fallbackHost === "::1" ? "[::1]" : "127.0.0.1"}:${fallbackPort}`;
 }
 
 export class ModelServiceGateway extends Context.Service<
@@ -218,12 +237,15 @@ export const make = Effect.gen(function* () {
   const http = yield* HttpClient.HttpClient;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const bindings = new Map<ProviderInstanceId, RuntimeBinding>();
+  const sessionOwners = new Map<string, ProviderInstanceId>();
   const loads = new Map<string, ModelServiceRecoveryLoad>();
   const lifecycle = makeRecoveryTracker();
   const server = yield* Effect.serviceOption(HttpServer.HttpServer);
-  const origin = Option.isSome(server)
-    ? HttpServer.formatAddress(server.value.address)
-    : `http://${config.host === "::1" ? "[::1]" : "127.0.0.1"}:${config.port}`;
+  const origin = modelGatewayOrigin(
+    Option.isSome(server) ? server.value.address : undefined,
+    config.host,
+    config.port,
+  );
   const baseUrl = origin.replace(/\/+$/, "") + PREFIX;
   const writeRuntimeText = Effect.fn("ModelServiceGateway.writeRuntimeFile")(function* (
     file: string,
@@ -260,440 +282,507 @@ export const make = Effect.gen(function* () {
           bindings.delete(id);
           continue;
         }
-        const service = current.modelServices[binding.serviceId];
-        if (
-          !service ||
-          !(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver)
-        )
-          return yield* new ModelServiceError({
-            detail: "The agent's model service is missing or unsupported.",
-          });
-        const models = boundModelServiceModels(service, binding);
-        const activeModels = models.filter((model) => model.available !== false);
-        const unavailableRole =
-          instance.driver === "omo" &&
-          [record(instance.config).agentModels, record(instance.config).categoryModels].some(
-            (roleModels) =>
-              Object.values(record(roleModels)).some(
-                (slug) =>
-                  slug !== "" &&
-                  (typeof slug !== "string" ||
-                    !activeModels.some((model) => `cox/${model.id}` === slug)),
-              ),
+        yield* Effect.gen(function* () {
+          const service = current.modelServices[binding.serviceId];
+          if (
+            !service ||
+            !(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver)
+          ) {
+            bindings.delete(id);
+            next[id] = {
+              ...instance,
+              enabled: false,
+              config: {
+                ...record(instance.config),
+                enabled: false,
+                modelServiceWarning: "The agent's model service is missing or unsupported.",
+              },
+            };
+            return;
+          }
+          const models = boundModelServiceModels(service, binding);
+          const activeModels = models.filter((model) => model.available !== false);
+          const unavailableRoles =
+            instance.driver === "omo"
+              ? [
+                  record(instance.config).agentModels,
+                  record(instance.config).categoryModels,
+                ].flatMap((roleModels, index) =>
+                  Object.entries(record(roleModels)).flatMap(([role, slug]) =>
+                    slug !== "" &&
+                    (typeof slug !== "string" ||
+                      !activeModels.some((model) => `cox/${model.id}` === slug))
+                      ? [`${index === 0 ? "agent" : "category"} ${role} (${String(slug)})`]
+                      : [],
+                  ),
+                )
+              : [];
+          if (activeModels.length === 0) {
+            bindings.delete(id);
+            next[id] = {
+              ...instance,
+              enabled: false,
+              config: {
+                ...record(instance.config),
+                enabled: false,
+                modelServiceWarning: "No advertised models remain for this model service binding.",
+              },
+            };
+            return;
+          }
+          const warning =
+            unavailableRoles.length > 0
+              ? `These OMO role models are no longer advertised: ${unavailableRoles.join(", ")}. Cox preserved the selection so it can be repaired in settings.`
+              : undefined;
+          const selected =
+            activeModels.find((model) => model.id === binding.defaultModel)?.id ??
+            activeModels[0]!.id;
+          const prior = bindings.get(id);
+          const token =
+            prior?.binding.serviceId === binding.serviceId
+              ? prior.token
+              : yield* crypto.randomUUIDv4();
+          bindings.set(id, { token, binding, driver: instance.driver, instanceId: id });
+          const native = record(instance.config);
+          const protocol = modelServiceAgentProtocol(instance.driver, service);
+          const multiProtocol = new Set(service.protocols).size > 1;
+          const directory = path.join(config.baseDir, "model-services", "runtime", id);
+          const runtimeModels = activeModels.map((model) => ({
+            slug: modelServiceModelSlug(instance.driver, model.id),
+            name: model.name ?? model.id,
+            ...(model.capabilities
+              ? { capabilities: modelServiceAgentCapabilities(instance.driver, model.capabilities) }
+              : {}),
+          }));
+          const environment = [...(instance.environment ?? [])].filter(
+            (variable) =>
+              variable.name !== "COX_MODEL_SERVICE_KEY" &&
+              variable.name !== "COX_MODEL_SERVICE_WARNING" &&
+              !(
+                instance.driver === "claudeAgent" &&
+                variable.name === "CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+              ) &&
+              !(instance.driver === "omo" && variable.name === "COX_OMO_GATEWAY_TIMEOUT_MS"),
           );
-        if (activeModels.length === 0 || unavailableRole) {
-          bindings.delete(id);
-          next[id] = {
-            ...instance,
-            enabled: false,
-            config: { ...record(instance.config), enabled: false },
-          };
-          continue;
-        }
-        const selected =
-          activeModels.find((model) => model.id === binding.defaultModel)?.id ??
-          activeModels[0]!.id;
-        const prior = bindings.get(id);
-        const token =
-          prior?.binding.serviceId === binding.serviceId
-            ? prior.token
-            : yield* crypto.randomUUIDv4();
-        bindings.set(id, { token, binding, driver: instance.driver });
-        const native = record(instance.config);
-        const protocol = modelServiceAgentProtocol(instance.driver, service);
-        const multiProtocol = new Set(service.protocols).size > 1;
-        const directory = path.join(config.baseDir, "model-services", "runtime", id);
-        const runtimeModels = activeModels.map((model) => ({
-          slug: modelServiceModelSlug(instance.driver, model.id),
-          name: model.name ?? model.id,
-          ...(model.capabilities
-            ? { capabilities: modelServiceAgentCapabilities(instance.driver, model.capabilities) }
-            : {}),
-        }));
-        const environment = [...(instance.environment ?? [])].filter(
-          (variable) =>
-            variable.name !== "COX_MODEL_SERVICE_KEY" &&
-            !(
-              instance.driver === "claudeAgent" && variable.name === "CLAUDE_CODE_MAX_OUTPUT_TOKENS"
-            ) &&
-            !(instance.driver === "omo" && variable.name === "COX_OMO_GATEWAY_TIMEOUT_MS"),
-        );
-        environment.push({ name: "COX_MODEL_SERVICE_KEY", value: token, sensitive: true });
-        if (instance.driver === "claudeAgent") {
-          const maxOutputTokens = activeModels.find(
-            (model) => model.id === selected,
-          )?.maxOutputTokens;
-          if (maxOutputTokens)
+          environment.push({ name: "COX_MODEL_SERVICE_KEY", value: token, sensitive: true });
+          if (warning)
             environment.push({
-              name: "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
-              value: String(maxOutputTokens),
+              name: "COX_MODEL_SERVICE_WARNING",
+              value: warning,
               sensitive: false,
             });
-          environment.push({ name: "CLAUDE_CODE_MAX_RETRIES", value: "0", sensitive: false });
-          environment.push({
-            name: "API_TIMEOUT_MS",
-            value: String(service.recovery.budgetMs + 30_000),
-            sensitive: false,
-          });
-        }
-        const additions: Record<string, unknown> = { customModels: runtimeModels };
-        if (instance.driver === "codex" || instance.driver === "claudeAgent") {
-          additions.baseUrl = baseUrl + "/v1";
-          additions.apiKey = token;
-        }
-        if (instance.driver === "codex") {
-          const catalog = path.join(directory, "codex-models.json");
-          yield* write(catalog, {
-            models: models.map((model, index) => {
-              const descriptors = modelServiceAgentCapabilities(
-                "codex",
-                model.capabilities,
-              )?.optionDescriptors;
-              const reasoning = descriptors?.find(
-                (descriptor) => descriptor.id === "reasoningEffort",
-              );
-              const speed = descriptors?.find((descriptor) => descriptor.id === "serviceTier");
-              const tiers =
-                speed?.type === "select"
-                  ? speed.options.filter((option) => option.id !== "default")
-                  : [];
-              const levels = reasoning?.type === "select" ? reasoning.options : [];
-              return {
-                slug: model.id,
-                display_name: model.name ?? model.id,
-                description: model.name ?? model.id,
-                default_reasoning_level:
-                  levels.find((option) => option.isDefault)?.id ?? levels[0]?.id ?? null,
-                supported_reasoning_levels: levels.map((option) => ({
-                  effort: option.id,
-                  description: option.label,
-                })),
-                ...(tiers.length
-                  ? {
-                      service_tiers: tiers.map((tier) => ({
-                        id: tier.id,
-                        name: tier.label,
-                        description: tier.description ?? "",
-                      })),
-                      default_service_tier:
-                        speed?.type === "select"
-                          ? (speed.currentValue ??
-                            speed.options.find((option) => option.isDefault)?.id ??
-                            null)
-                          : null,
-                    }
-                  : {}),
-                shell_type: "shell_command",
-                visibility: model.available === false ? "hide" : "list",
-                supported_in_api: true,
-                priority: index,
-                availability_nux: null,
-                upgrade: null,
-                model_messages: null,
-                base_instructions:
-                  "You are a coding agent. Follow the user's instructions and use the available tools to complete the task.",
-                include_skills_usage_instructions: true,
-                include_plugin_usage_instructions: true,
-                include_apps_usage_instructions: false,
-                supports_reasoning_summary_parameter: false,
-                default_reasoning_summary: "none",
-                support_verbosity: false,
-                default_verbosity: null,
-                apply_patch_tool_type: null,
-                web_search_tool_type: "text",
-                truncation_policy: { mode: "tokens", limit: 10000 },
-                ...(model.capabilities?.contextWindow
-                  ? {
-                      context_window: model.capabilities.contextWindow,
-                      max_context_window: model.capabilities.contextWindow,
-                    }
-                  : {}),
-                effective_context_window_percent: 95,
-                experimental_supported_tools: [],
-                input_modalities: model.capabilities?.supportsImages ? ["text", "image"] : ["text"],
-                supports_search_tool: false,
-                supports_experimental_context: false,
-              };
-            }),
-          });
-          const catalogArgument = yield* encode(`model_catalog_json=${yield* encode(catalog)}`);
-          const modelArgument = yield* encode(`model=${yield* encode(selected)}`);
-          additions.launchArgs = `${typeof native.launchArgs === "string" ? native.launchArgs : ""} -c ${catalogArgument} -c ${modelArgument}`;
-        }
-        if (instance.driver === "claudeAgent") {
-          for (const name of [
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-          ])
-            environment.push({ name, value: selected, sensitive: false });
-        }
-        if (instance.driver === "pi" || instance.driver === "omo") {
-          const agentDir = path.join(directory, instance.driver);
-          {
-            const settingsPath = path.join(agentDir, "settings.json");
-            const runtimeSettingsText = (yield* fs.exists(settingsPath))
-              ? yield* fs.readFileString(settingsPath)
-              : "{}";
-            const existing = record(yield* decode(runtimeSettingsText));
-            const retry = record(existing.retry);
-            const timeoutMs = service.recovery.budgetMs + 30_000;
-            if (instance.driver === "omo")
+          if (instance.driver === "claudeAgent") {
+            const maxOutputTokens = activeModels.find(
+              (model) => model.id === selected,
+            )?.maxOutputTokens;
+            if (maxOutputTokens)
               environment.push({
-                name: "COX_OMO_GATEWAY_TIMEOUT_MS",
-                value: String(timeoutMs),
+                name: "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+                value: String(maxOutputTokens),
                 sensitive: false,
               });
-            yield* write(settingsPath, {
-              ...existing,
-              httpIdleTimeoutMs: timeoutMs,
-              retry: {
-                ...retry,
-                enabled: false,
-                ...(instance.driver === "pi" ? { maxRetries: 0 } : {}),
-                provider: {
-                  ...record(retry.provider),
-                  ...(instance.driver === "pi"
-                    ? { maxRetries: 0 }
-                    : { streamStartTimeoutMs: timeoutMs, keepAliveTimeoutMs: timeoutMs }),
-                  timeoutMs,
-                },
-              },
+            environment.push({ name: "CLAUDE_CODE_MAX_RETRIES", value: "0", sensitive: false });
+            environment.push({
+              name: "API_TIMEOUT_MS",
+              value: String(service.recovery.budgetMs + 30_000),
+              sensitive: false,
             });
           }
-          yield* write(path.join(agentDir, "models.json"), {
-            providers: {
-              cox: {
-                baseUrl:
-                  protocol === "anthropic-messages"
-                    ? baseUrl
-                    : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
-                api: API_NAMES[protocol],
-                apiKey: "$COX_MODEL_SERVICE_KEY",
-                ...(protocol === "openai-responses" && !multiProtocol
-                  ? { compat: { supportsStrictMode: true } }
-                  : {}),
-                models: activeModels.flatMap((model) => {
-                  const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
-                  if (!resolvedProtocol) return [];
-                  const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
-                  const thinking = modelServiceAgentCapabilities(
-                    instance.driver,
-                    model.capabilities,
-                  )?.optionDescriptors?.[0];
-                  const levels = thinking?.type === "select" ? thinking.options : [];
-                  return [
-                    {
-                      id: model.id,
-                      name: model.name ?? model.id,
-                      ...(multiProtocol
-                        ? {
-                            api: API_NAMES[nativeProtocol],
-                            baseUrl:
-                              nativeProtocol === "anthropic-messages"
-                                ? baseUrl
-                                : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
-                          }
-                        : {}),
-                      ...(levels.length
-                        ? {
-                            reasoning: true,
-                            thinkingLevelMap: Object.fromEntries(
-                              ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map(
-                                (level) => [
-                                  level,
-                                  levels.some((option) => option.id === level)
-                                    ? level === "off"
-                                      ? "none"
-                                      : level
-                                    : null,
-                                ],
-                              ),
-                            ),
-                          }
-                        : {}),
-                      ...(model.capabilities?.contextWindow
-                        ? { contextWindow: model.capabilities.contextWindow }
-                        : {}),
-                      ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
-                      ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
-                      ...(nativeProtocol === "openai-responses" && multiProtocol
-                        ? { compat: { supportsStrictMode: true } }
-                        : nativeProtocol !== "gemini" &&
-                            FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
-                          ? { compat: { supportsForcedToolChoice: false } }
-                          : {}),
-                    },
-                  ];
-                }),
-              },
-            },
-          });
-          Object.assign(additions, {
-            agentDir,
-            sessionDir: path.join(agentDir, "sessions"),
-            provider: "cox",
-            model: selected,
-            apiKey: "",
-            ...(instance.driver === "omo" ? { modelServiceManaged: true } : {}),
-          });
-        }
-        if (instance.driver === "omp") {
-          const agentDir = path.join(directory, "omp");
-          const configPath = path.join(agentDir, "config.yml");
-          const timeoutSeconds = Math.ceil((service.recovery.budgetMs + 30_000) / 1000);
-          {
-            const existingText = (yield* fs.exists(configPath))
-              ? yield* fs.readFileString(configPath)
-              : "{}";
-            const existing = record(
-              yield* Effect.try({
-                try: () => parseYamlText(existingText) as unknown,
-                catch: () =>
-                  new ModelServiceError({
-                    detail: "Could not parse the existing omp config.yml.",
-                  }),
+          const additions: Record<string, unknown> = { customModels: runtimeModels };
+          if (instance.driver === "codex" || instance.driver === "claudeAgent") {
+            additions.baseUrl = baseUrl + "/v1";
+            additions.apiKey = token;
+          }
+          if (instance.driver === "codex") {
+            const catalog = path.join(directory, "codex-models.json");
+            yield* write(catalog, {
+              models: models.map((model, index) => {
+                const descriptors = modelServiceAgentCapabilities(
+                  "codex",
+                  model.capabilities,
+                )?.optionDescriptors;
+                const reasoning = descriptors?.find(
+                  (descriptor) => descriptor.id === "reasoningEffort",
+                );
+                const speed = descriptors?.find((descriptor) => descriptor.id === "serviceTier");
+                const tiers =
+                  speed?.type === "select"
+                    ? speed.options.filter((option) => option.id !== "default")
+                    : [];
+                const levels = reasoning?.type === "select" ? reasoning.options : [];
+                return {
+                  slug: model.id,
+                  display_name: model.name ?? model.id,
+                  description: model.name ?? model.id,
+                  default_reasoning_level:
+                    levels.find((option) => option.isDefault)?.id ?? levels[0]?.id ?? null,
+                  supported_reasoning_levels: levels.map((option) => ({
+                    effort: option.id,
+                    description: option.label,
+                  })),
+                  ...(tiers.length
+                    ? {
+                        service_tiers: tiers.map((tier) => ({
+                          id: tier.id,
+                          name: tier.label,
+                          description: tier.description ?? "",
+                        })),
+                        default_service_tier:
+                          speed?.type === "select"
+                            ? (speed.currentValue ??
+                              speed.options.find((option) => option.isDefault)?.id ??
+                              null)
+                            : null,
+                      }
+                    : {}),
+                  shell_type: "shell_command",
+                  visibility: model.available === false ? "hide" : "list",
+                  supported_in_api: true,
+                  priority: index,
+                  availability_nux: null,
+                  upgrade: null,
+                  model_messages: null,
+                  base_instructions:
+                    "You are a coding agent. Follow the user's instructions and use the available tools to complete the task.",
+                  include_skills_usage_instructions: true,
+                  include_plugin_usage_instructions: true,
+                  include_apps_usage_instructions: false,
+                  supports_reasoning_summary_parameter: false,
+                  default_reasoning_summary: "none",
+                  support_verbosity: false,
+                  default_verbosity: null,
+                  apply_patch_tool_type: null,
+                  web_search_tool_type: "text",
+                  truncation_policy: { mode: "tokens", limit: 10000 },
+                  ...(model.capabilities?.contextWindow
+                    ? {
+                        context_window: model.capabilities.contextWindow,
+                        max_context_window: model.capabilities.contextWindow,
+                      }
+                    : {}),
+                  effective_context_window_percent: 95,
+                  experimental_supported_tools: [],
+                  input_modalities: model.capabilities?.supportsImages
+                    ? ["text", "image"]
+                    : ["text"],
+                  supports_search_tool: false,
+                  supports_experimental_context: false,
+                };
               }),
-            );
-            const providers = record(existing.providers);
-            const retry = record(existing.retry);
-            yield* writeYaml(configPath, {
-              ...existing,
-              providers: {
-                ...providers,
-                streamFirstEventTimeoutSeconds: timeoutSeconds,
-                streamIdleTimeoutSeconds: timeoutSeconds,
-              },
-              retry: {
-                ...retry,
-                enabled: false,
-                maxRetries: 0,
-              },
             });
+            const catalogArgument = yield* encode(`model_catalog_json=${yield* encode(catalog)}`);
+            const modelArgument = yield* encode(`model=${yield* encode(selected)}`);
+            additions.launchArgs = `${typeof native.launchArgs === "string" ? native.launchArgs : ""} -c ${catalogArgument} -c ${modelArgument}`;
           }
-          yield* writeYaml(path.join(agentDir, "models.yml"), {
-            providers: {
-              cox: {
-                baseUrl:
-                  protocol === "anthropic-messages"
-                    ? baseUrl
-                    : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
-                api: API_NAMES[protocol],
-                apiKey: "COX_MODEL_SERVICE_KEY",
-                ...(protocol === "openai-responses" && !multiProtocol
-                  ? { compat: { supportsStrictMode: true } }
-                  : {}),
-                models: activeModels.flatMap((model) => {
-                  const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
-                  if (!resolvedProtocol) return [];
-                  const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
-                  const thinking = modelServiceAgentCapabilities("omp", model.capabilities)
-                    ?.optionDescriptors?.[0];
-                  const levels = thinking?.type === "select" ? thinking.options : [];
-                  const efforts = levels.flatMap((option) =>
-                    option.id === "off" ? [] : [option.id],
-                  );
-                  return [
-                    {
-                      id: model.id,
-                      name: model.name ?? model.id,
-                      ...(multiProtocol
-                        ? {
-                            api: API_NAMES[nativeProtocol],
-                            baseUrl:
-                              nativeProtocol === "anthropic-messages"
-                                ? baseUrl
-                                : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
-                          }
-                        : {}),
-                      ...(efforts.length
-                        ? { reasoning: true, thinking: { mode: "effort", efforts } }
-                        : {}),
-                      ...(model.capabilities?.contextWindow
-                        ? { contextWindow: model.capabilities.contextWindow }
-                        : {}),
-                      ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
-                      ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
-                      ...(nativeProtocol === "openai-responses" && multiProtocol
-                        ? { compat: { supportsStrictMode: true } }
-                        : nativeProtocol !== "gemini" &&
-                            FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(model.id.split("/").at(-1)!)
-                          ? { compat: { supportsForcedToolChoice: false } }
-                          : {}),
-                    },
-                  ];
-                }),
-              },
-            },
-          });
-          Object.assign(additions, {
-            agentDir,
-            sessionDir: path.join(agentDir, "sessions"),
-            provider: "cox",
-            model: selected,
-            apiKey: "",
-          });
-        }
-        if (instance.driver === "opencode") {
-          const opencode = {
-            provider: {
-              cox: {
-                name: service.name,
-                npm: SDK_PACKAGES[protocol],
-                options: {
-                  baseURL: baseUrl + (!multiProtocol && protocol === "gemini" ? "/v1beta" : "/v1"),
-                  apiKey: token,
+          if (instance.driver === "claudeAgent") {
+            for (const name of [
+              "ANTHROPIC_MODEL",
+              "ANTHROPIC_DEFAULT_SONNET_MODEL",
+              "ANTHROPIC_DEFAULT_OPUS_MODEL",
+              "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            ])
+              environment.push({ name, value: selected, sensitive: false });
+          }
+          if (instance.driver === "pi" || instance.driver === "omo") {
+            const agentDir = path.join(directory, instance.driver);
+            {
+              const settingsPath = path.join(agentDir, "settings.json");
+              const runtimeSettingsText = (yield* fs.exists(settingsPath))
+                ? yield* fs.readFileString(settingsPath)
+                : "{}";
+              const existing = record(yield* decode(runtimeSettingsText));
+              const retry = record(existing.retry);
+              const timeoutMs = service.recovery.budgetMs + 30_000;
+              if (instance.driver === "omo")
+                environment.push({
+                  name: "COX_OMO_GATEWAY_TIMEOUT_MS",
+                  value: String(timeoutMs),
+                  sensitive: false,
+                });
+              yield* write(settingsPath, {
+                ...existing,
+                httpIdleTimeoutMs: timeoutMs,
+                retry: {
+                  ...retry,
+                  enabled: false,
+                  ...(instance.driver === "pi" ? { maxRetries: 0 } : {}),
+                  provider: {
+                    ...record(retry.provider),
+                    ...(instance.driver === "pi"
+                      ? { maxRetries: 0 }
+                      : { streamStartTimeoutMs: timeoutMs, keepAliveTimeoutMs: timeoutMs }),
+                    timeoutMs,
+                  },
                 },
-                models: Object.fromEntries(
-                  activeModels.flatMap((model) => {
+              });
+            }
+            yield* write(path.join(agentDir, "models.json"), {
+              providers: {
+                cox: {
+                  baseUrl:
+                    protocol === "anthropic-messages"
+                      ? baseUrl
+                      : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
+                  api: API_NAMES[protocol],
+                  apiKey: "$COX_MODEL_SERVICE_KEY",
+                  ...(protocol === "openai-responses" && !multiProtocol
+                    ? { compat: { supportsStrictMode: true } }
+                    : {}),
+                  models: activeModels.flatMap((model) => {
                     const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
                     if (!resolvedProtocol) return [];
                     const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
+                    const thinking = modelServiceAgentCapabilities(
+                      instance.driver,
+                      model.capabilities,
+                    )?.optionDescriptors?.[0];
+                    const levels = thinking?.type === "select" ? thinking.options : [];
                     return [
-                      [
-                        model.id,
-                        {
-                          name: model.name ?? model.id,
-                          ...(multiProtocol
-                            ? {
-                                provider: {
-                                  npm: SDK_PACKAGES[nativeProtocol],
-                                  ...(nativeProtocol === "gemini"
-                                    ? { options: { baseURL: baseUrl + "/v1beta" } }
-                                    : {}),
-                                },
-                              }
+                      {
+                        id: model.id,
+                        name: model.name ?? model.id,
+                        ...(multiProtocol
+                          ? {
+                              api: API_NAMES[nativeProtocol],
+                              baseUrl:
+                                nativeProtocol === "anthropic-messages"
+                                  ? baseUrl
+                                  : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
+                            }
+                          : {}),
+                        ...(levels.length
+                          ? {
+                              reasoning: true,
+                              thinkingLevelMap: Object.fromEntries(
+                                ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map(
+                                  (level) => [
+                                    level,
+                                    levels.some((option) => option.id === level)
+                                      ? level === "off"
+                                        ? "none"
+                                        : level
+                                      : null,
+                                  ],
+                                ),
+                              ),
+                            }
+                          : {}),
+                        ...(model.capabilities?.contextWindow
+                          ? { contextWindow: model.capabilities.contextWindow }
+                          : {}),
+                        ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
+                        ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
+                        ...(nativeProtocol === "openai-responses" && multiProtocol
+                          ? { compat: { supportsStrictMode: true } }
+                          : nativeProtocol !== "gemini" &&
+                              FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(
+                                model.id.split("/").at(-1)!,
+                              )
+                            ? { compat: { supportsForcedToolChoice: false } }
                             : {}),
-                          ...(model.capabilities?.contextWindow
-                            ? {
-                                limit: {
-                                  context: model.capabilities.contextWindow,
-                                  output:
-                                    model.maxOutputTokens ??
-                                    Math.min(model.capabilities.contextWindow, 32_000),
-                                },
-                              }
-                            : {}),
-                        },
-                      ],
+                      },
                     ];
                   }),
-                ),
+                },
               },
+            });
+            Object.assign(additions, {
+              agentDir,
+              sessionDir: path.join(agentDir, "sessions"),
+              provider: "cox",
+              model: selected,
+              apiKey: "",
+              ...(instance.driver === "omo" ? { modelServiceManaged: true } : {}),
+            });
+          }
+          if (instance.driver === "omp") {
+            const agentDir = path.join(directory, "omp");
+            const configPath = path.join(agentDir, "config.yml");
+            const timeoutSeconds = Math.ceil((service.recovery.budgetMs + 30_000) / 1000);
+            {
+              const existingText = (yield* fs.exists(configPath))
+                ? yield* fs.readFileString(configPath)
+                : "{}";
+              const existing = record(
+                yield* Effect.try({
+                  try: () => parseYamlText(existingText) as unknown,
+                  catch: () =>
+                    new ModelServiceError({
+                      detail: "Could not parse the existing omp config.yml.",
+                    }),
+                }),
+              );
+              const providers = record(existing.providers);
+              const retry = record(existing.retry);
+              yield* writeYaml(configPath, {
+                ...existing,
+                providers: {
+                  ...providers,
+                  streamFirstEventTimeoutSeconds: timeoutSeconds,
+                  streamIdleTimeoutSeconds: timeoutSeconds,
+                },
+                retry: {
+                  ...retry,
+                  enabled: false,
+                  maxRetries: 0,
+                },
+              });
+            }
+            yield* writeYaml(path.join(agentDir, "models.yml"), {
+              providers: {
+                cox: {
+                  baseUrl:
+                    protocol === "anthropic-messages"
+                      ? baseUrl
+                      : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
+                  api: API_NAMES[protocol],
+                  apiKey: "COX_MODEL_SERVICE_KEY",
+                  ...(protocol === "openai-responses" && !multiProtocol
+                    ? { compat: { supportsStrictMode: true } }
+                    : {}),
+                  models: activeModels.flatMap((model) => {
+                    const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
+                    if (!resolvedProtocol) return [];
+                    const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
+                    const thinking = modelServiceAgentCapabilities("omp", model.capabilities)
+                      ?.optionDescriptors?.[0];
+                    const levels = thinking?.type === "select" ? thinking.options : [];
+                    const efforts = levels.flatMap((option) =>
+                      option.id === "off" ? [] : [option.id],
+                    );
+                    return [
+                      {
+                        id: model.id,
+                        name: model.name ?? model.id,
+                        ...(multiProtocol
+                          ? {
+                              api: API_NAMES[nativeProtocol],
+                              baseUrl:
+                                nativeProtocol === "anthropic-messages"
+                                  ? baseUrl
+                                  : baseUrl + (nativeProtocol === "gemini" ? "/v1beta" : "/v1"),
+                            }
+                          : {}),
+                        ...(efforts.length
+                          ? { reasoning: true, thinking: { mode: "effort", efforts } }
+                          : {}),
+                        ...(model.capabilities?.contextWindow
+                          ? { contextWindow: model.capabilities.contextWindow }
+                          : {}),
+                        ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
+                        ...(model.capabilities?.supportsImages ? { input: ["text", "image"] } : {}),
+                        ...(nativeProtocol === "openai-responses" && multiProtocol
+                          ? { compat: { supportsStrictMode: true } }
+                          : nativeProtocol !== "gemini" &&
+                              FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(
+                                model.id.split("/").at(-1)!,
+                              )
+                            ? { compat: { supportsForcedToolChoice: false } }
+                            : {}),
+                      },
+                    ];
+                  }),
+                },
+              },
+            });
+            Object.assign(additions, {
+              agentDir,
+              sessionDir: path.join(agentDir, "sessions"),
+              provider: "cox",
+              model: selected,
+              apiKey: "",
+            });
+          }
+          if (instance.driver === "opencode") {
+            const opencode = {
+              provider: {
+                cox: {
+                  name: service.name,
+                  npm: SDK_PACKAGES[protocol],
+                  options: {
+                    baseURL:
+                      baseUrl + (!multiProtocol && protocol === "gemini" ? "/v1beta" : "/v1"),
+                    apiKey: token,
+                  },
+                  models: Object.fromEntries(
+                    activeModels.flatMap((model) => {
+                      const resolvedProtocol = modelServiceUpstreamProtocol(
+                        service,
+                        model,
+                        protocol,
+                      );
+                      if (!resolvedProtocol) return [];
+                      const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
+                      return [
+                        [
+                          model.id,
+                          {
+                            name: model.name ?? model.id,
+                            ...(multiProtocol
+                              ? {
+                                  provider: {
+                                    npm: SDK_PACKAGES[nativeProtocol],
+                                    ...(nativeProtocol === "gemini"
+                                      ? { options: { baseURL: baseUrl + "/v1beta" } }
+                                      : {}),
+                                  },
+                                }
+                              : {}),
+                            ...(model.capabilities?.contextWindow
+                              ? {
+                                  limit: {
+                                    context: model.capabilities.contextWindow,
+                                    output:
+                                      model.maxOutputTokens ??
+                                      Math.min(model.capabilities.contextWindow, 32_000),
+                                  },
+                                }
+                              : {}),
+                          },
+                        ],
+                      ];
+                    }),
+                  ),
+                },
+              },
+              enabled_providers: ["cox"],
+              model: `cox/${selected}`,
+              small_model: `cox/${selected}`,
+            };
+            environment.push({
+              name: "OPENCODE_CONFIG_CONTENT",
+              value: yield* encode(opencode),
+              sensitive: true,
+            });
+            additions.serverUrl = "";
+          }
+          next[id] = {
+            ...instance,
+            environment,
+            config: {
+              ...native,
+              ...additions,
+              ...(warning ? { modelServiceWarning: warning } : { modelServiceWarning: undefined }),
             },
-            enabled_providers: ["cox"],
-            model: `cox/${selected}`,
-            small_model: `cox/${selected}`,
           };
-          environment.push({
-            name: "OPENCODE_CONFIG_CONTENT",
-            value: yield* encode(opencode),
-            sensitive: true,
-          });
-          additions.serverUrl = "";
-        }
-        next[id] = { ...instance, environment, config: { ...native, ...additions } };
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              bindings.delete(id);
+              next[id] = {
+                ...instance,
+                enabled: false,
+                config: {
+                  ...record(instance.config),
+                  enabled: false,
+                  modelServiceWarning: isModelServiceError(error)
+                    ? error.detail
+                    : "Could not prepare this agent's model service configuration.",
+                },
+              };
+            }),
+          ),
+        );
       }
       return next;
     },
@@ -708,6 +797,15 @@ export const make = Effect.gen(function* () {
 
   const handle = Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
+    const remote = Option.getOrUndefined(request.remoteAddress);
+    if (remote !== undefined && remote.length > 0 && !isLoopbackAddress(remote))
+      return gatewayErrorResponse(
+        incomingProtocol(new URL(request.url, "http://127.0.0.1").pathname),
+        401,
+        {
+          message: "Model gateway authentication required.",
+        },
+      );
     const url = new URL(request.url, "http://127.0.0.1");
     const countTokens = url.pathname === PREFIX + "/v1/messages/count_tokens";
     const incoming = incomingProtocol(url.pathname);
@@ -715,15 +813,33 @@ export const make = Effect.gen(function* () {
       request.headers.authorization?.replace(/^Bearer /i, "") ??
       request.headers["x-api-key"] ??
       request.headers["x-goog-api-key"];
-    const runtime = token
-      ? [...bindings.values()].find((entry) => entry.token === token.split(".")[0])
-      : undefined;
+    const separator = token?.indexOf(".") ?? -1;
+    const secret =
+      token === undefined ? undefined : separator === -1 ? token : token.slice(0, separator);
+    const sessionSuffix =
+      token === undefined || separator === -1 ? undefined : token.slice(separator + 1);
+    let runtime: RuntimeBinding | undefined;
+    if (secret !== undefined)
+      for (const entry of bindings.values())
+        if (timingSafeEqualUtf8(entry.token, secret)) runtime = entry;
     if (!runtime || request.headers.origin)
       return gatewayErrorResponse(incoming, 401, {
         message: "Model gateway authentication required.",
       });
+    if (sessionSuffix !== undefined) {
+      if (!isProviderSessionId(sessionSuffix))
+        return gatewayErrorResponse(incoming, 401, {
+          message: "Model gateway authentication required.",
+        });
+      const owner = sessionOwners.get(sessionSuffix);
+      if (owner !== undefined && owner !== runtime.instanceId)
+        return gatewayErrorResponse(incoming, 401, {
+          message: "Model gateway authentication required.",
+        });
+      sessionOwners.set(sessionSuffix, runtime.instanceId);
+    }
     const service = (yield* settings.getSettings).modelServices[runtime.binding.serviceId];
-    const sessionId = token?.slice(runtime.token.length + 1);
+    const sessionId = sessionSuffix;
     if (!service?.enabled)
       return gatewayErrorResponse(incoming, 503, {
         message: "This model service is unavailable.",
@@ -764,14 +880,18 @@ export const make = Effect.gen(function* () {
       sessionId ? ProviderSessionId.make(sessionId) : undefined,
       requestId,
     );
-    const googleId =
-      incoming === "gemini"
-        ? decodeURIComponent(
+    let googleId: string | undefined;
+    if (incoming === "gemini") {
+      googleId = yield* Effect.try({
+        try: () =>
+          decodeURIComponent(
             url.pathname
               .slice((PREFIX + "/v1beta/models/").length)
               .replace(/:(?:streamGenerateContent|generateContent)$/, ""),
-          )
-        : undefined;
+          ),
+        catch: () => new ModelServiceError({ status: 400, detail: "Invalid model path." }),
+      });
+    }
     const requested = googleId ?? (typeof body.model === "string" ? body.model : "");
     const boundCandidate = service.models.find(
       (model) =>

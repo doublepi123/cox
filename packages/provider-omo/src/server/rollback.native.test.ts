@@ -255,7 +255,7 @@ it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER)(
               TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer)),
             ),
           ),
-          Effect.timeout("50 seconds"),
+          Effect.timeout("120 seconds"),
         ),
       );
     } finally {

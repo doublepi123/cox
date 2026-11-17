@@ -23,13 +23,17 @@ import * as DateTime from "effect/DateTime";
 import { parse as parseYaml } from "yaml";
 import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import * as NetAddress from "effect/net/NetAddress";
 import {
   HttpClient,
   HttpClientRequest,
   HttpClientResponse,
   HttpRouter,
+  HttpServer,
   HttpServerRequest,
   HttpServerResponse,
 } from "effect/http";
@@ -46,6 +50,23 @@ import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAda
 import { createModelSelection } from "@t3tools/shared/model";
 import { ClaudeSettings } from "@t3tools/contracts";
 import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/ProviderAdapter";
+
+const requireProtocolBridge = Effect.fn("ModelGateway.test.requireProtocolBridge")(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const name = `cox-protocol-bridge-${process.platform}-${process.arch}${process.platform === "win32" ? ".exe" : ""}`;
+  const file = yield* path.fromFileUrl(
+    new URL("../../../../native/protocol-bridge/dist/" + name, import.meta.url),
+  );
+  const info = yield* fs.stat(file).pipe(Effect.option);
+  if (Option.isNone(info) || info.value.type !== "File") {
+    return yield* Effect.die(
+      new Error(
+        `The protocol converter is not built (${file}). Run \`node scripts/build-protocol-bridge.ts\` before running model gateway conversion tests.`,
+      ),
+    );
+  }
+});
 
 const serviceId = ModelServiceId.make("shared-test");
 const instanceId = ProviderInstanceId.make("bound-test");
@@ -313,8 +334,9 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     path: string,
     body?: unknown,
     headers: Record<string, string> = {},
+    remoteAddress?: string,
   ) {
-    const request = HttpServerRequest.fromWeb(
+    let request = HttpServerRequest.fromWeb(
       new Request("http://127.0.0.1/api/model-gateway" + path, {
         method: body === undefined ? "GET" : "POST",
         headers: {
@@ -325,6 +347,8 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       }),
     );
+    if (remoteAddress !== undefined)
+      request = request.modify({ remoteAddress: Option.some(remoteAddress) });
     const response = yield* gateway.handle.pipe(
       Effect.provideService(HttpServerRequest.HttpServerRequest, request),
     );
@@ -379,6 +403,7 @@ it.layer(layer)("model service gateway", (it) => {
     (convert) =>
       withGatewayDiagnostics((logs) =>
         Effect.gen(function* () {
+          if (convert) yield* requireProtocolBridge();
           for (const gpt of [false, true]) {
             const modelId = gpt ? "gpt-6.1-terra" : "claude-fable";
             const tool = {
@@ -1051,19 +1076,159 @@ it.layer(layer)("model service gateway", (it) => {
         const otherId = ProviderInstanceId.make("other-binding");
         const original = h.instances[instanceId]!;
         const result = yield* h.gateway.materialize(changed, {
-          [instanceId]: { ...original, config: { [field]: { oracle: "cox/Vendor/Exact" } } },
+          [instanceId]: {
+            ...original,
+            modelService: {
+              serviceId,
+              modelIds: ["Vendor/Exact", "hidden"],
+              defaultModel: "Vendor/Exact",
+            },
+            config: { [field]: { oracle: "cox/Vendor/Exact" } },
+          },
           [otherId]: {
             ...original,
             driver: ProviderDriverKind.make("codex"),
             modelService: { serviceId, modelIds: ["hidden"], defaultModel: "hidden" },
           },
         });
-        expect(result[instanceId]?.enabled).toBe(false);
-        expect(record(result[instanceId]?.config).enabled).toBe(false);
+        expect(result[instanceId]?.enabled).toBe(true);
+        expect(record(result[instanceId]?.config).enabled).not.toBe(false);
+        expect(record(result[instanceId]?.config).modelServiceWarning).toContain(
+          "no longer advertised",
+        );
+        expect(
+          record(result[instanceId]?.config).agentModels ??
+            record(result[instanceId]?.config).categoryModels,
+        ).toEqual({ oracle: "cox/Vendor/Exact" });
         expect(result[otherId]?.enabled).toBe(true);
         expect(record(result[otherId]?.config).launchArgs).toContain("hidden");
-        expect((yield* h.invoke("/v1/models")).status).toBe(401);
+        expect((yield* h.invoke("/v1/models", undefined, {}, "127.0.0.1")).status).toBe(200);
       }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    ["0.0.0.0", "http://127.0.0.1:3773/api/model-gateway"],
+    ["::", "http://127.0.0.1:3773/api/model-gateway"],
+    ["192.168.1.10", "http://127.0.0.1:3773/api/model-gateway"],
+    ["127.0.0.1", "http://127.0.0.1:3773/api/model-gateway"],
+    ["::1", "http://[::1]:3773/api/model-gateway"],
+  ] as const)("hands agents a loopback gateway origin when listening on %s", ([host, expected]) =>
+    Effect.gen(function* () {
+      const http = HttpClient.make(() => Effect.die("unused"));
+      const gateway = yield* make.pipe(
+        Effect.provideService(HttpClient.HttpClient, http),
+        Effect.provideService(
+          HttpServer.HttpServer,
+          HttpServer.HttpServer.of({
+            address: NetAddress.inetAddressFromIpStringUnsafe(host, 3773),
+            serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
+          }),
+        ),
+      );
+      const settings = yield* ServerSettingsService;
+      const materialized = yield* gateway.materialize(yield* settings.getSettings, {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("omo"),
+          enabled: true,
+          modelService: {
+            serviceId,
+            modelIds: ["Vendor/Exact"],
+            defaultModel: "Vendor/Exact",
+          },
+          config: {},
+        },
+      });
+      const models = JSON.parse(
+        yield* (yield* FileSystem.FileSystem).readFileString(
+          `${String(record(materialized[instanceId]!.config).agentDir)}/models.json`,
+        ),
+      ) as { providers: { cox: { baseUrl: string } } };
+      expect(models.providers.cox.baseUrl).toBe(expected + "/v1");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rejects non-loopback gateway clients", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      expect((yield* h.invoke("/v1/models", undefined, {}, "192.168.1.20")).status).toBe(401);
+      expect((yield* h.invoke("/v1/models", undefined, {}, "127.0.0.1")).status).toBe(200);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("binds a session suffix to the issuing instance", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      const session = ProviderSessionId.make("gateway-session-a");
+      expect(
+        (yield* h.invoke("/v1/models", undefined, {
+          authorization: `Bearer ${h.token}.${session}`,
+        })).status,
+      ).toBe(200);
+      expect(
+        (yield* h.invoke("/v1/models", undefined, { authorization: `Bearer ${h.token}.` })).status,
+      ).toBe(401);
+      const otherId = ProviderInstanceId.make("other-binding");
+      const other = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        ...h.instances,
+        [otherId]: {
+          ...h.instances[instanceId]!,
+          driver: ProviderDriverKind.make("codex"),
+          modelService: { serviceId, modelIds: ["hidden"], defaultModel: "hidden" },
+        },
+      });
+      const otherToken = other[otherId]!.environment?.find(
+        (item) => item.name === "COX_MODEL_SERVICE_KEY",
+      )?.value;
+      expect(typeof otherToken).toBe("string");
+      expect(
+        (yield* h.invoke("/v1/models", undefined, {
+          authorization: `Bearer ${otherToken}.${session}`,
+        })).status,
+      ).toBe(401);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("returns 400 for a malformed Gemini model path", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ protocol: "gemini" });
+      expect(
+        (yield* h.invoke("/v1beta/models/Vendor%ZZExact:generateContent", { contents: [] })).status,
+      ).toBe(400);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("isolates a corrupt omp config.yml from other bindings", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({ driver: "codex" });
+      const ompId = ProviderInstanceId.make("omp-corrupt");
+      const otherId = ProviderInstanceId.make("other-binding");
+      const ompInstance = {
+        driver: ProviderDriverKind.make("omp"),
+        enabled: true,
+        modelService: {
+          serviceId,
+          modelIds: ["Vendor/Exact"],
+          defaultModel: "Vendor/Exact",
+        },
+        config: {},
+      };
+      const first = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        [ompId]: ompInstance,
+        [otherId]: h.instances[instanceId]!,
+      });
+      const fs = yield* FileSystem.FileSystem;
+      yield* fs.writeFileString(
+        `${String(record(first[ompId]!.config).agentDir)}/config.yml`,
+        ":\n  - not: yaml: [",
+      );
+      const result = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+        [ompId]: ompInstance,
+        [otherId]: h.instances[instanceId]!,
+      });
+      expect(result[ompId]?.enabled).toBe(false);
+      expect(record(result[ompId]?.config).modelServiceWarning).toContain("omp config.yml");
+      expect(result[otherId]?.enabled).toBe(true);
+    }).pipe(Effect.scoped),
   );
 
   it.effect.each([100, 600_000, 1_800_000])(
@@ -5923,7 +6088,7 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect.each(["agentModels", "categoryModels"])(
-    "disables missing explicit OMO %s without model fallback",
+    "keeps OMO enabled and warns for missing explicit %s without model fallback",
     (field) =>
       Effect.gen(function* () {
         const h = yield* harness({ driver: "omo" });
@@ -5931,13 +6096,18 @@ it.layer(layer)("model service gateway", (it) => {
           const result = yield* h.gateway.materialize(yield* h.settings.getSettings, {
             [instanceId]: { ...h.instances[instanceId]!, config: { [field]: { oracle: slug } } },
           });
-          expect(result[instanceId]?.enabled).toBe(false);
+          expect(result[instanceId]?.enabled).toBe(true);
+          expect(record(result[instanceId]?.config).enabled).not.toBe(false);
+          expect(record(result[instanceId]?.config).modelServiceWarning).toContain(
+            "no longer advertised",
+          );
+          expect(record(result[instanceId]?.config)[field]).toEqual({ oracle: slug });
         }
         expect(h.calls).toEqual([]);
       }).pipe(Effect.scoped),
   );
 
-  it.effect("disables stale OMO roles and inherits an available main default", () =>
+  it.effect("warns on stale OMO roles and inherits an available main default", () =>
     Effect.gen(function* () {
       const h = yield* harness({ driver: "omo" });
       const current = yield* h.settings.getSettings;
@@ -5954,11 +6124,22 @@ it.layer(layer)("model service gateway", (it) => {
       const result = yield* h.gateway.materialize(changed, {
         [instanceId]: { ...instance, config: { agentModels: { oracle: "cox/Vendor/Exact" } } },
       });
-      expect(result[instanceId]?.enabled).toBe(false);
+      expect(result[instanceId]?.enabled).toBe(true);
+      expect(record(result[instanceId]?.config).modelServiceWarning).toContain(
+        "no longer advertised",
+      );
+      expect(record(result[instanceId]?.config).agentModels).toEqual({
+        oracle: "cox/Vendor/Exact",
+      });
+      expect(record(result[instanceId]!.config).model).toBe("hidden");
       const mainResult = yield* h.gateway.materialize(changed, h.instances);
       expect(mainResult[instanceId]?.enabled).toBe(false);
+      expect(record(mainResult[instanceId]?.config).modelServiceWarning).toContain(
+        "No advertised models remain",
+      );
       const inherited = yield* h.gateway.materialize(changed, { [instanceId]: instance });
       expect(record(inherited[instanceId]!.config).model).toBe("hidden");
+      expect(record(inherited[instanceId]!.config).modelServiceWarning).toBeUndefined();
     }).pipe(Effect.scoped),
   );
 

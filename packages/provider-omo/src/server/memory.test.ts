@@ -433,17 +433,39 @@ describe("Cox native global memory", () => {
     expect(() => scoped.registerProvider("anthropic")).toThrow("cannot change");
   });
 
-  it("fails closed on unverified, oversized or incompatible native sources", async () => {
+  it("keeps git config keys while sanitizing secrets from the memory environment", async () => {
+    const { nativeOptions } = await fixture({
+      environment: {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "user.name",
+        GIT_CONFIG_VALUE_0: "Cox Fixture",
+        OPENAI_API_KEY: "secret",
+      },
+    });
+    expect(nativeOptions?.env.GIT_CONFIG_COUNT).toBe("1");
+    expect(nativeOptions?.env.GIT_CONFIG_KEY_0).toBe("user.name");
+    expect(nativeOptions?.env.GIT_CONFIG_VALUE_0).toBe("Cox Fixture");
+    expect(nativeOptions?.env.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  it("fails closed on oversized or incompatible native sources", async () => {
     const factory = await loadFactory();
-    for (const source of ["export default {}", "x".repeat(2 * 1024 * 1024 + 1)])
-      await expect(
-        factory({
-          root: "/fixture/runtime",
-          config: {},
-          env: { COX_OMO_MEMORY_HOME: "/fixture/memory" },
-          readModule: async () => ({ source }),
-        }),
-      ).rejects.toThrow("verified");
+    await expect(
+      factory({
+        root: "/fixture/runtime",
+        config: {},
+        env: { COX_OMO_MEMORY_HOME: "/fixture/memory" },
+        readModule: async () => ({ source: "x".repeat(2 * 1024 * 1024 + 1) }),
+      }),
+    ).rejects.toThrow("source limit");
+    await expect(
+      factory({
+        root: "/fixture/runtime",
+        config: {},
+        env: { COX_OMO_MEMORY_HOME: "/fixture/memory" },
+        readModule: async () => ({ source: "export default {}" }),
+      }),
+    ).rejects.toThrow("interfaces");
     await expect(factory({ config: {}, env: { COX_OMO_MEMORY_HOME: "relative" } })).rejects.toThrow(
       "absolute",
     );

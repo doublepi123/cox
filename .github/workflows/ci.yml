@@ -47,6 +47,49 @@ jobs:
       - run: pnpm --filter @cox/mobile verify:package
       - run: pnpm build
       - run: pnpm mobile:smoke
+  native-omo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        omo-version: ["5.1.69", "latest"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - run: |
+          prefix="$HOME/.cox-ci/omo-${{ matrix.omo-version }}"
+          mkdir -p "$prefix"
+          npm install --prefix "$prefix" "omo-ai@${{ matrix.omo-version }}"
+          root="$prefix/node_modules/omo-ai"
+          launcher="$root/bin/omo.js"
+          test -f "$launcher"
+          echo "COX_OMO_NPM_TEST_LAUNCHER=$launcher" >> "$GITHUB_ENV"
+          echo "COX_OMO_NATIVE_TEST_ROOT=$root" >> "$GITHUB_ENV"
+      - run: pnpm --filter @t3tools/provider-omo test -- --fileParallelism=false --maxWorkers=1 src/server/*.native.test.ts
+  native-omp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        omp-version: ["18.20.2", "18.22.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: |
+          prefix="$HOME/.cox-ci/omp-${{ matrix.omp-version }}"
+          mkdir -p "$prefix"
+          npm install --prefix "$prefix" "@oh-my-pi/pi-coding-agent@${{ matrix.omp-version }}" "@oven/bun-linux-x64@1.4.4"
+          launcher="$prefix/node_modules/.bin/omp"
+          bun="$prefix/node_modules/@oven/bun-linux-x64/bin/bun"
+          test -x "$launcher" || launcher="$prefix/node_modules/@oh-my-pi/pi-coding-agent/dist/omp.js"
+          test -e "$launcher"
+          test -e "$bun"
+          echo "COX_OMP_NPM_TEST_LAUNCHER=$launcher" >> "$GITHUB_ENV"
+          echo "COX_OMP_BUN_PATH=$bun" >> "$GITHUB_ENV"
+      - run: pnpm --filter @t3tools/provider-omp test -- --fileParallelism=false --maxWorkers=1 src/server/*.native.test.ts
   distribution:
     needs: [core, server, web]
     runs-on: ubuntu-24.04

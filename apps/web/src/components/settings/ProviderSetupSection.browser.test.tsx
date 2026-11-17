@@ -505,7 +505,7 @@ describe("OMO setup", () => {
       input: { instanceId },
     });
     expect(setup.authState).not.toHaveBeenCalled();
-    expect(screen.container.textContent).toContain("omo-ai 5.1.69");
+    expect(screen.container.textContent).toContain("omo-ai 5.1.69 or newer");
   });
 
   it("shows installation progress, cancellation and retry after failure", async () => {

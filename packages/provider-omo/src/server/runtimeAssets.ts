@@ -1,3 +1,5 @@
+import { OMO_MINIMUM_VERSION, OMO_PERMISSION_CAPABILITY } from "./compatibility.ts";
+
 export interface OmoRuntimeAssetPath {
   readonly sep: string;
   join(...paths: ReadonlyArray<string>): string;
@@ -57,9 +59,33 @@ export interface OmoScopedRuntimeModules {
   readonly blockedImports: ReadonlyArray<string>;
 }
 
-function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
-  const version = "5.1.69";
-  const engineVersion = "2026.11.10-2";
+function createOmoRuntimeAssetResolver(
+  path: OmoRuntimeAssetPath,
+  compatibility: {
+    readonly minimumVersion: string;
+    readonly permissionCapability: "set_permission_preset_v1";
+  },
+) {
+  const minimumVersion = compatibility.minimumVersion;
+  const versionAtLeast = (actual: string, minimum: string) => {
+    const parse = (value: string) =>
+      String(value)
+        .split(".")
+        .map((part) => {
+          const match = /^(\d+)/.exec(part);
+          return match ? Number(match[1]) : 0;
+        });
+    const left = parse(actual);
+    const right = parse(minimum);
+    const length = Math.max(left.length, right.length);
+    for (let index = 0; index < length; index++) {
+      const a = left[index] ?? 0;
+      const b = right[index] ?? 0;
+      if (a > b) return true;
+      if (a < b) return false;
+    }
+    return true;
+  };
   const record = (value: unknown): Readonly<Record<string, unknown>> =>
     typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as Readonly<Record<string, unknown>>)
@@ -74,8 +100,6 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
   };
 
   return {
-    version,
-    engineVersion,
     resolve(snapshot: OmoRuntimeAssetSnapshot): OmoRuntimeAssets {
       if (!path.isAbsolute(snapshot.executablePath))
         throw new Error("Cox requires an absolute path for the running OMO executable.");
@@ -139,8 +163,12 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
         );
       const manifest = record(selected.manifest);
       const plugin = record(selected.pluginManifest);
-      if (!["omo-ai", "omo"].includes(String(manifest.name)) || manifest.version !== version)
-        throw new Error(`Cox requires official OMO ${version} runtime assets.`);
+      const packageVersion = String(manifest.version ?? "");
+      if (
+        !["omo-ai", "omo"].includes(String(manifest.name)) ||
+        !versionAtLeast(packageVersion, minimumVersion)
+      )
+        throw new Error(`Cox requires official OMO ${minimumVersion} or newer runtime assets.`);
       if (plugin.name !== "@code-yeongyu/omo-senpi" || plugin.version !== manifest.version)
         throw new Error("The OMO plugin identity or version does not match its runtime.");
       if (!selected.entryExists || !selected.taskExists)
@@ -148,12 +176,15 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
           "The OMO runtime is missing its official omo.js or omo-task.js plugin asset.",
         );
       const standalone = manifest.name === "omo";
+      const engine = record(selected.engine?.manifest);
+      const dependency = record(manifest.dependencies)["@code-yeongyu/senpi"];
+      const embedded = record(snapshot.embeddedManifest);
       if (standalone) {
-        const embedded = record(snapshot.embeddedManifest);
         if (
           snapshot.compiled !== true ||
-          embedded.omoAiVersion !== version ||
-          embedded.enginePin !== engineVersion ||
+          embedded.omoAiVersion !== packageVersion ||
+          typeof embedded.enginePin !== "string" ||
+          embedded.enginePin.length === 0 ||
           typeof embedded.manifestSha !== "string" ||
           !/^[a-f0-9]{64}$/.test(embedded.manifestSha) ||
           selected.provisionedManifestSha !== embedded.manifestSha
@@ -162,10 +193,9 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
             "The OMO standalone assets do not match this executable's embedded runtime manifest.",
           );
       } else {
-        const dependency = record(manifest.dependencies)["@code-yeongyu/senpi"];
-        const engine = record(selected.engine?.manifest);
         if (
-          dependency !== engineVersion ||
+          typeof dependency !== "string" ||
+          dependency.length === 0 ||
           engine.name !== "@code-yeongyu/senpi" ||
           engine.version !== dependency ||
           !selected.engine?.entryExists
@@ -174,6 +204,7 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
         if (snapshot.compiled)
           throw new Error("A standalone OMO process cannot use an unrelated npm engine.");
       }
+      const engineVersion = standalone ? String(embedded.enginePin) : String(engine.version);
       const enginePackageRoot = standalone ? selected.root : selected.engine!.root;
       if (snapshot.sdkRoot !== undefined && !same(snapshot.sdkRoot, enginePackageRoot)) {
         const marker = record(snapshot.sdkSnapshot);
@@ -191,7 +222,7 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
       }
       if (
         snapshot.sdkVersion !== undefined &&
-        snapshot.sdkVersion !== (standalone ? version : engineVersion)
+        snapshot.sdkVersion !== (standalone ? packageVersion : engineVersion)
       )
         throw new Error("The running OMO SDK version does not match the selected runtime assets.");
       const pluginRoot = path.join(selected.root, "plugin");
@@ -201,13 +232,13 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
         pluginRoot,
         entryPath: path.join(pluginRoot, "extensions", "omo.js"),
         taskPath: path.join(pluginRoot, "extensions", "omo-task.js"),
-        version,
+        version: packageVersion,
         engineVersion,
         enginePackageRoot,
         engineRoot: standalone ? null : path.join(enginePackageRoot, "dist"),
         permissions: {
           kind: "native-rpc",
-          capability: "set_permission_preset_v1",
+          capability: compatibility.permissionCapability,
           fallbackPreset: "ask",
           parentBinding: standalone ? "native-rpc" : "installed-engine",
           decisionModulePath: standalone
@@ -219,21 +250,20 @@ function createOmoRuntimeAssetResolver(path: OmoRuntimeAssetPath) {
   };
 }
 
+export const OMO_RUNTIME_ASSET_COMPATIBILITY = {
+  minimumVersion: OMO_MINIMUM_VERSION,
+  permissionCapability: OMO_PERMISSION_CAPABILITY,
+} as const;
+
 export function resolveOmoRuntimeAssets(
   snapshot: OmoRuntimeAssetSnapshot,
   path: OmoRuntimeAssetPath,
 ): OmoRuntimeAssets {
-  return createOmoRuntimeAssetResolver(path).resolve(snapshot);
+  return createOmoRuntimeAssetResolver(path, OMO_RUNTIME_ASSET_COMPATIBILITY).resolve(snapshot);
 }
 
-export const OMO_RUNTIME_ASSET_COMPATIBILITY = {
-  version: "5.1.69",
-  engineVersion: "2026.11.10-2",
-  permissionCapability: "set_permission_preset_v1",
-} as const;
-
 export const OMO_RUNTIME_ASSETS_SOURCE = `
-const coxOmoRuntimeAssetResolver = (${createOmoRuntimeAssetResolver.toString()})(await import("node:path"));
+const coxOmoRuntimeAssetResolver = (${createOmoRuntimeAssetResolver.toString()})(await import("node:path"), ${JSON.stringify(OMO_RUNTIME_ASSET_COMPATIBILITY)});
 ${String.raw`
 async function loadCoxOmoRuntimeAssets(options = {}) {
   const path = await import("node:path");

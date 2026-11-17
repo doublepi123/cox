@@ -30,6 +30,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { it } from "vite-plus/test";
 import { OmpAdapterDriver } from "./adapter.ts";
 import { checkOmpProviderStatus } from "./status.ts";
+import { isSupportedOmpVersion } from "./compatibility.ts";
 
 const ModelRequest = Schema.Struct({
   model: Schema.String,
@@ -202,7 +203,7 @@ it.skipIf(!process.env.COX_OMP_NPM_TEST_LAUNCHER)(
             inventory?.installed &&
               inventory.models.some((model) => model.slug === "fixture/fixture"),
           );
-          assert.equal(inventory.version, "18.20.2");
+          assert(typeof inventory.version === "string" && isSupportedOmpVersion(inventory.version));
           for (const binaryPath of [path.join(temporary, "missing-omp"), bun]) {
             const unavailable = yield* checkOmpProviderStatus(
               { ...config, binaryPath },

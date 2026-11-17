@@ -50,6 +50,9 @@ export const OmpSettings = makeProviderSettingsSchema(
         providerSettingsForm: { clearWhenEmpty: "omit" },
       }),
     ),
+    modelServiceWarning: Schema.optionalKey(Schema.String).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
   },
   {
     order: ["provider", "model", "apiKey", "agentDir", "binaryPath", "launchArgs"],

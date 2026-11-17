@@ -86,6 +86,19 @@ export function timingSafeEqualBase64Url(left: string, right: string): boolean {
   return NodeCrypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+export function timingSafeEqualUtf8(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, "utf8");
+  const rightBuffer = Buffer.from(right, "utf8");
+  const size = Math.max(leftBuffer.length, rightBuffer.length, 1);
+  const paddedLeft = Buffer.alloc(size);
+  const paddedRight = Buffer.alloc(size);
+  leftBuffer.copy(paddedLeft);
+  rightBuffer.copy(paddedRight);
+  return (
+    NodeCrypto.timingSafeEqual(paddedLeft, paddedRight) && leftBuffer.length === rightBuffer.length
+  );
+}
+
 function normalizeNonEmptyString(value: string | null | undefined): string | undefined {
   if (typeof value !== "string") {
     return undefined;

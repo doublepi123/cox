@@ -2,6 +2,7 @@ import { ModelServiceError, type ModelServiceProtocol } from "@t3tools/contracts
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -59,11 +60,12 @@ export const openProtocolBridge = Effect.fn("openProtocolBridge")(
       new URL(`../../../../native/protocol-bridge/dist/${name}`, import.meta.url),
     );
     const binary = (yield* fs.exists(bundled)) ? bundled : source;
-    if (!(yield* fs.exists(binary)))
+    const binaryInfo = yield* fs.stat(binary).pipe(Effect.option);
+    if (Option.isNone(binaryInfo) || binaryInfo.value.type !== "File")
       return yield* new ModelServiceError({
         status: 503,
         detail:
-          "The protocol converter is unavailable. Build Cox before using protocol conversion.",
+          "The protocol converter is unavailable. Build Cox before using protocol conversion. Run `node scripts/build-protocol-bridge.ts` in development.",
       });
     const child = yield* spawner.spawn(
       ChildProcess.make(binary, [], { stdin: "pipe", stdout: "pipe", stderr: "pipe" }),

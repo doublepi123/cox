@@ -61,10 +61,15 @@ internal class WorkspacePreflight(
                 )
                 val requestUrl = requireNotNull(call.getString("url"))
                 val targetUri = validatePreflightTarget(identity, requestUrl)
-                val cookieHeader = if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-                    ProfileStore.getInstance().getOrCreateProfile(identity.profileName)
-                        .cookieManager.getCookie(requestUrl)
-                } else null
+                if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                    call.reject(
+                        "This Android WebView cannot isolate Cloudflare Access cookies. Update Android System WebView, or open the server in a browser.",
+                        "gateway_unavailable",
+                    )
+                    return@runOnUiThread
+                }
+                val cookieHeader = ProfileStore.getInstance().getOrCreateProfile(identity.profileName)
+                    .cookieManager.getCookie(requestUrl)
                 Thread {
                     try {
                         val connection = targetUri.toURL().openConnection()

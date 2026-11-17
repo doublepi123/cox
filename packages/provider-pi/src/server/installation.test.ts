@@ -193,7 +193,7 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
             command: "omo",
             label: "OMO Native",
             packageName: "omo-ai",
-            version: "5.1.69",
+            version: "latest",
             minimumVersion: "5.1.69",
           },
         }
@@ -542,7 +542,7 @@ it.layer(NodeServices.layer)("Pi installation", (it) => {
       assert.equal(state.driver, "omo");
       assert.equal(state.phase, "succeeded");
       assert.equal(state.installedVersion, "5.1.69");
-      assert.isTrue(h.calls.some((args) => args.includes("omo-ai@5.1.69")));
+      assert.isTrue(h.calls.some((args) => args.includes("omo-ai@latest")));
       assert.isTrue(h.installation.executablePath.startsWith(path.join(h.root, "tools", "omo")));
       const resolved = yield* resolveCommandPath("omo", { env: h.installation.environment }).pipe(
         Effect.provideService(CommandResolutionCache, h.commandCache),

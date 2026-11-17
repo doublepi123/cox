@@ -9,8 +9,10 @@ import { piEnvironment } from "@t3tools/provider-pi/server";
 import { OmoReasoningLevel } from "@t3tools/contracts";
 import { OmoRoleName, type OmoSettings } from "../settings.ts";
 import { omoInstanceDirectory } from "./usage.ts";
+import { OMO_MINIMUM_VERSION } from "./compatibility.ts";
 
-export const OMO_VERSION = "5.1.69";
+export { OMO_INSTALL_SPEC, OMO_MINIMUM_VERSION, isSupportedOmoVersion } from "./compatibility.ts";
+export const OMO_VERSION = OMO_MINIMUM_VERSION;
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const isOmoRoleName = Schema.is(OmoRoleName);
 const isOmoReasoningLevel = Schema.is(OmoReasoningLevel);
@@ -72,9 +74,7 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
   const resolve = (model: string | undefined): string | undefined => {
     const result = model || selected;
     if (settings.modelServiceManaged && (result === undefined || !available.has(result)))
-      throw new Error(
-        `OMO role model '${result ?? ""}' is not available in this model service binding.`,
-      );
+      return undefined;
     return result;
   };
   const assign = (

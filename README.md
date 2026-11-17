@@ -237,8 +237,8 @@ native model settings. Cox does not advertise Fast when neither catalog reports 
 ### Oh My Pi
 
 Oh My Pi (`omp`) is a separate, disabled-by-default provider. Open **Settings → Providers**,
-select **Oh My Pi**, and choose **Install** to install the tested
-`@oh-my-pi/pi-coding-agent 18.20.2` release. Cox installs the required Bun runtime in its own
+select **Oh My Pi**, and choose **Install** to install
+`@oh-my-pi/pi-coding-agent` 18.20.2 or newer. Cox installs the required Bun runtime in its own
 tools directory when needed; it does not replace the Node runtime used by Cox. You can also
 select an existing `omp` executable with **Binary path**.
 
@@ -255,7 +255,7 @@ it does not start an agent turn.
 ### OMO Native
 
 OMO Native is an independent, disabled-by-default provider. Enable it in **Settings →
-Providers** and use **Install** to install the tested `omo-ai 5.1.69` release into Cox's
+Providers** and use **Install** to install `omo-ai` 5.1.69 or newer into Cox's
 tools directory. An existing official `omo` binary can also be selected by absolute path.
 Independent instances keep credentials, native settings, sessions and tasks under Cox's
 state directory; an explicit OMO configuration directory can use existing credentials.
@@ -321,9 +321,9 @@ It is shared across that instance's projects, stored in Cox's own instance direc
 uses the user's global `~/.omo` memory. Remote synchronization is disabled. Background memory
 models use the bound Cox catalog and gateway; Cox waits for their tracked work before settling
 the turn. Without a Cox model-service binding, local memory remains available but background
-model work is disabled. Official OMO 5.1.69 npm and standalone runtimes are supported; their
-memory source identities are checked explicitly, so unsupported upgrades fail visibly rather
-than loading unverified compatibility patches.
+model work is disabled. Official OMO 5.1.69 or newer npm and standalone runtimes are supported.
+Memory integration uses structural feature detection rather than pinning minified source hashes,
+and reports a status warning when a safety patch cannot be applied instead of refusing to start.
 Native terminal onboarding, terminal side panels, telemetry, device services and remote thread
 tools are not enabled in Cox sessions. Cox injects its own role configuration without writing
 the user's global or project `omo.json`. Saved `deep` assignments route through the native
@@ -454,7 +454,7 @@ COX_AUTH_PASSWORD='use-a-long-random-password' cox --no-browser
 
 The password protects localhost as well as external access. Configuring a password never changes the listen address automatically. A browser stays signed in for up to 30 days. After 10 failed attempts within 5 minutes, password sign-in pauses until that window passes. When a service manager runs Cox, keep the variable in an environment file that only you can read rather than on the command line. The previous name, `T3CODE_AUTH_PASSWORD`, is still accepted.
 
-To listen beyond loopback, explicitly pass `--host 0.0.0.0`, `--host ::`, or a numeric IPv4/IPv6 address together with `COX_AUTH_PASSWORD`; DNS hostnames other than `localhost` are rejected. Development Web URLs remain restricted to loopback. Use HTTPS for nonlocal browser access, typically with a TLS reverse proxy forwarding to Cox. The desktop client requires HTTPS and password authentication for remote connections. CLI `auth session issue/list/revoke` commands are a trusted local control plane: they reuse the persisted authentication policy without changing it, even when the shell does not inherit the service's password environment.
+To listen beyond loopback, explicitly pass `--host 0.0.0.0`, `--host ::`, or a numeric IPv4/IPv6 address together with `COX_AUTH_PASSWORD`; DNS hostnames other than `localhost` are rejected. Agents still receive a loopback model-gateway URL (`127.0.0.1` or `[::1]`) so local runtimes can connect; the listen address is not copied into those URLs. Development Web URLs remain restricted to loopback. Use HTTPS for nonlocal browser access, typically with a TLS reverse proxy forwarding to Cox. The desktop client requires HTTPS and password authentication for remote connections. CLI `auth session issue/list/revoke` commands are a trusted local control plane: they reuse the persisted authentication policy without changing it, even when the shell does not inherit the service's password environment.
 
 Password sign-in is meant for personal use on a trusted internal network. Do not rely on it alone on the public internet: the password would be the only barrier in front of agents that run commands and edit files. For internet access, put an authenticating proxy in front of Cox, such as Cloudflare Access with Cloudflare Tunnel, or a similar identity-aware proxy or VPN, and keep the password as a second layer. The proxy must use HTTPS, support WebSockets, and preserve the public host in `Host`; untrusted forwarded headers do not authorize browser origins.
 

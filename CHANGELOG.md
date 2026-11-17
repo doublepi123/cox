@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.98 — 2026-11-17
+
+- Accept official OMO Native `omo-ai` 5.1.69 or newer instead of pinning an exact
+  runtime. Install now tracks `latest` with a minimum version, and memory
+  integration uses structural feature detection with a status warning when a
+  safety patch cannot be applied.
+- Preserve `GIT_CONFIG_KEY_*` while sanitizing OMO memory environment secrets so
+  git configuration from `GIT_CONFIG_COUNT`/`VALUE` stays consistent.
+- Hand agents a loopback model-gateway URL when Cox listens on `0.0.0.0`, `::`,
+  or a LAN address. Reject non-loopback gateway clients, compare tokens in
+  constant time, bind a session suffix to the issuing instance, and return 400
+  for malformed Gemini model paths.
+- Keep an OMO instance enabled when only some bound role models become
+  unavailable, preserve the selection, and surface a warning. Isolate OMP
+  `config.yml` parse and write failures per instance instead of failing every
+  binding.
+- Accept Oh My Pi 18.20.2 or newer, including 18.22.0. Native OMO and OMP
+  compatibility tests run in CI against the minimum and latest verified
+  versions.
+- Fail closed on Android WebViews without `MULTI_PROFILE` during Cloudflare
+  Access preflight instead of sending cookieless login requests.
+
 ## 0.1.97 — 2026-11-16
 
 - Keep state-bearing Responses requests on an allowed native Responses route,

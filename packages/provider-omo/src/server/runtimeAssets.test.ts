@@ -95,10 +95,55 @@ describe("official OMO runtime asset selection", () => {
       permissions: { kind: "native-rpc" },
     });
     expect(OMO_RUNTIME_ASSET_COMPATIBILITY).toEqual({
-      version,
-      engineVersion,
+      minimumVersion: version,
       permissionCapability: "set_permission_preset_v1",
     });
+  });
+
+  it("accepts a newer official npm runtime whose engine matches the package dependency", () => {
+    const newer = "5.1.75";
+    const newerEngine = "2026.11.15-2";
+    expect(
+      resolve({
+        ...npm(),
+        sdkVersion: newerEngine,
+        packages: [
+          {
+            ...npmPackage(),
+            manifest: {
+              name: "omo-ai",
+              version: newer,
+              dependencies: { "@code-yeongyu/senpi": newerEngine },
+            },
+            pluginManifest: { name: "@code-yeongyu/omo-senpi", version: newer },
+            engine: {
+              root: engineRoot,
+              manifest: { name: "@code-yeongyu/senpi", version: newerEngine },
+              entryExists: true,
+            },
+          },
+        ],
+      }),
+    ).toMatchObject({ version: newer, engineVersion: newerEngine, kind: "npm" });
+  });
+
+  it("rejects official npm runtimes below the minimum version", () => {
+    expect(() =>
+      resolve({
+        ...npm(),
+        packages: [
+          {
+            ...npmPackage(),
+            manifest: {
+              name: "omo-ai",
+              version: "5.1.68",
+              dependencies: { "@code-yeongyu/senpi": engineVersion },
+            },
+            pluginManifest: { name: "@code-yeongyu/omo-senpi", version: "5.1.68" },
+          },
+        ],
+      }),
+    ).toThrow("5.1.69 or newer");
   });
 
   it("prefers the native standalone root over a stale configured npm root", () => {
@@ -189,7 +234,7 @@ describe("official OMO runtime asset selection", () => {
   it.each([
     undefined,
     {},
-    { ...embeddedManifest, enginePin: "2026.11.09-1" },
+    { ...embeddedManifest, enginePin: "" },
     { ...embeddedManifest, omoAiVersion: "5.1.68" },
     { ...embeddedManifest, manifestSha: "b".repeat(64) },
     { ...embeddedManifest, manifestSha: "invalid" },

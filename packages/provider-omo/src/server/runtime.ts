@@ -7,6 +7,7 @@ import {
   type PiRpcRecord,
   type PiRpcSpawnOptions,
 } from "@t3tools/provider-pi/server";
+import { OMO_MINIMUM_VERSION } from "./compatibility.ts";
 import { omoTaskTranscript } from "./subagents.ts";
 import { OmoDagUpdates, omoDagRunIdsFromRpc, omoDagSnapshotFromRpc } from "./dag.ts";
 import { OmoFailureRecovery } from "./failureRecovery.ts";
@@ -462,8 +463,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
     if (!Array.isArray(info.capabilities) || !info.capabilities.includes("session_lifecycle"))
       return yield* new PiRpcError({
         operation: "startup",
-        detail:
-          "OMO Native requires the session_lifecycle capability. Install the supported omo-ai 5.1.69 runtime.",
+        detail: `OMO Native requires the session_lifecycle capability. Install OMO Native ${OMO_MINIMUM_VERSION} or newer.`,
       });
     if (!info.capabilities.includes("set_permission_preset_v1"))
       return yield* new PiRpcError({
@@ -602,6 +602,18 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           };
         }
         if (input.type !== "get_state") return response;
+        if (
+          options.env.COX_OMO_EXTENSION_REQUIRED === "1" &&
+          record(selectionBaseline).model === undefined
+        ) {
+          const initialized = record(
+            yield* connection.request(
+              { type: "extension_request", name: "cox.omo.ready", data: {} },
+              timeoutMs,
+            ),
+          );
+          selectionBaseline = record(initialized.selectionBaseline);
+        }
         bindState(response);
         return yield* Effect.try({
           try: () =>

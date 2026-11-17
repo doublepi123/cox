@@ -22,7 +22,7 @@ import {
 import type { OmoSettings } from "../settings.ts";
 import { buildOmoLaunch } from "./extension.ts";
 import { makeOmoRpcConnection } from "./runtime.ts";
-import { OMO_VERSION } from "./configuration.ts";
+import { OMO_MINIMUM_VERSION, isSupportedOmoVersion } from "./configuration.ts";
 
 const presentation = {
   displayName: "OMO Native",
@@ -71,7 +71,7 @@ export const initialOmoSnapshot = Effect.fn("initialOmoSnapshot")(function* (
       auth: { status: "unknown" },
       message: settings.enabled
         ? "Checking OMO Native availability..."
-        : "OMO Native is disabled in Cox settings.",
+        : (settings.modelServiceWarning ?? "OMO Native is disabled in Cox settings."),
     },
   });
 });
@@ -110,9 +110,9 @@ export const checkOmoStatus = Effect.fn("checkOmoStatus")(function* (
       return fallback(
         "OMO Native is not installed. Install it in Cox or select the official omo binary.",
       );
-    if (version !== OMO_VERSION)
+    if (!isSupportedOmoVersion(version))
       return fallback(
-        `Cox currently supports the verified OMO Native ${OMO_VERSION} runtime. Select that version or install it in Cox.`,
+        `OMO Native ${version} is unsupported. Install OMO Native ${OMO_MINIMUM_VERSION} or newer.`,
         true,
         version,
       );
@@ -162,9 +162,14 @@ export const checkOmoStatus = Effect.fn("checkOmoStatus")(function* (
         version,
         status: discovered.length ? "ready" : "warning",
         auth: { status: discovered.length ? "authenticated" : "unauthenticated", type: "omo" },
-        ...(discovered.length
+        ...(discovered.length && !settings.modelServiceWarning
           ? {}
-          : { message: "Configure a model service binding or OMO Native model credentials." }),
+          : {
+              message:
+                settings.modelServiceWarning ??
+                "Configure a model service binding or OMO Native model credentials.",
+            }),
+        ...(settings.modelServiceWarning ? { status: "warning" as const } : {}),
       },
     });
   }).pipe(

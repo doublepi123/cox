@@ -258,12 +258,12 @@ describe("OMO model configuration", () => {
       models_distribution: "round_robin",
     });
     expect(native.task.state_dir).toEqual("/isolated/tasks");
-    expect(() =>
+    expect(
       omoTaskConfiguration(
         { ...config, agentModels: { explore: "anthropic/foreign" } },
         "/isolated/tasks",
-      ),
-    ).toThrow("not available");
+      ).agents.explore?.models,
+    ).toEqual([]);
   });
 
   it("does not double-prefix a model selector and rejects invalid roles", () => {
