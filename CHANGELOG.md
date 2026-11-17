@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.102 — 2026-11-17
+
+- Point the phone smoke test at the header controls after the session bar was
+  removed, so threads, changes, and the terminal are opened from there.
+- Retry a 404 while desktop packaging downloads the published Cox tarball, so
+  a slow registry edge does not fail the combination builds.
+
 ## 0.1.101 — 2026-11-17
 
 - Polish the phone chat screen: roomier message type, compact tool rows, and a
