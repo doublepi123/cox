@@ -132,6 +132,8 @@ async function loadReady(
     readonly coxOrchestrationReady: boolean;
     readonly nativeTask: { readonly status: string };
     readonly coxOrchestration: CoxHealth;
+    readonly memoryWarning?: string;
+    readonly memoryAvailable?: boolean;
   };
 }
 
@@ -161,9 +163,9 @@ describe("OMO readiness separates native tasks from Cox orchestration", () => {
     expect(registrations).toBe(1);
     await loadReady({ memoryEnabled: false, onMemoryRegistered: () => registrations++ });
     expect(registrations).toBe(1);
-    await expect(loadReady({ memoryFailure: true })).rejects.toThrow(
-      "Memory initialization refused",
-    );
+    const failed = await loadReady({ memoryFailure: true });
+    expect(failed.memoryWarning).toContain("Memory initialization refused");
+    expect(failed.memoryAvailable).toBe(false);
   });
   it("installs native-first routing even when Cox delegation tools are available", async () => {
     let installed:

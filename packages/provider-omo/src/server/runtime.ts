@@ -7,6 +7,7 @@ import {
   type PiRpcRecord,
   type PiRpcSpawnOptions,
 } from "@t3tools/provider-pi/server";
+import { MINIMUM_OMO_VERSION } from "./configuration.ts";
 import { omoTaskTranscript } from "./subagents.ts";
 import { OmoDagUpdates, omoDagRunIdsFromRpc, omoDagSnapshotFromRpc } from "./dag.ts";
 import { OmoFailureRecovery } from "./failureRecovery.ts";
@@ -462,8 +463,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
     if (!Array.isArray(info.capabilities) || !info.capabilities.includes("session_lifecycle"))
       return yield* new PiRpcError({
         operation: "startup",
-        detail:
-          "OMO Native requires the session_lifecycle capability. Install the supported omo-ai 5.1.69 runtime.",
+        detail: `OMO Native requires the session_lifecycle capability. Install OMO Native ${MINIMUM_OMO_VERSION} or newer.`,
       });
     if (!info.capabilities.includes("set_permission_preset_v1"))
       return yield* new PiRpcError({
@@ -499,6 +499,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
             operation: "set_model",
             detail: "The requested model is outside this Cox model service binding.",
           });
+        let preservedBaseline: PiRpcRecord | undefined;
         if (["new_session", "switch_session", "fork"].includes(String(input.type))) {
           lifecycle.reset();
           failureRecovery.reset();
@@ -507,6 +508,7 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           bindingGeneration++;
           dagHeads.clear();
           boundState = {};
+          preservedBaseline = selectionBaseline;
           selectionBaseline = {};
           taskTranscripts.clear();
         }
@@ -551,7 +553,9 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
               data: {},
             }),
           );
-          selectionBaseline = record(initialized.selectionBaseline);
+          const nextBaseline = record(initialized.selectionBaseline);
+          selectionBaseline =
+            nextBaseline.model !== undefined ? nextBaseline : (preservedBaseline ?? nextBaseline);
         }
         if (input.type === "abort") {
           const stopped = yield* Effect.gen(function* () {

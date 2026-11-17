@@ -39,7 +39,7 @@ const SETUP_COPY = {
     runtime: "OMO Native",
     installing: "Installing OMO Native…",
     installed: "OMO Native {version} is installed.",
-    description: "Install the tested OMO Native runtime (omo-ai 5.1.69).",
+    description: "Install the tested OMO Native runtime (omo-ai 5.1.69 or newer).",
     enable: "Enable OMO Native",
     update: "Update OMO Native",
     install: "Install OMO Native",

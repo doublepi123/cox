@@ -95,10 +95,55 @@ describe("official OMO runtime asset selection", () => {
       permissions: { kind: "native-rpc" },
     });
     expect(OMO_RUNTIME_ASSET_COMPATIBILITY).toEqual({
-      version,
-      engineVersion,
+      minimumVersion: version,
       permissionCapability: "set_permission_preset_v1",
     });
+  });
+
+  it("accepts newer official npm runtimes with their matching Senpi engine", () => {
+    const newer = "5.1.75";
+    const newerEngine = "2026.11.15-2";
+    expect(
+      resolve({
+        ...npm(),
+        sdkVersion: newerEngine,
+        packages: [
+          {
+            ...npmPackage(),
+            manifest: {
+              name: "omo-ai",
+              version: newer,
+              dependencies: { "@code-yeongyu/senpi": newerEngine },
+            },
+            pluginManifest: { name: "@code-yeongyu/omo-senpi", version: newer },
+            engine: {
+              root: engineRoot,
+              manifest: { name: "@code-yeongyu/senpi", version: newerEngine },
+              entryExists: true,
+            },
+          },
+        ],
+      }),
+    ).toMatchObject({ version: newer, engineVersion: newerEngine });
+  });
+
+  it("accepts a newer standalone engine pin when the embedded manifest matches", () => {
+    const newer = "5.1.75";
+    const newerEngine = "2026.11.15-2";
+    expect(
+      resolve({
+        ...standalone(),
+        sdkVersion: newer,
+        embeddedManifest: { omoAiVersion: newer, enginePin: newerEngine, manifestSha },
+        packages: [
+          {
+            ...standalonePackage(),
+            manifest: { name: "omo", version: newer },
+            pluginManifest: { name: "@code-yeongyu/omo-senpi", version: newer },
+          },
+        ],
+      }),
+    ).toMatchObject({ version: newer, engineVersion: newerEngine });
   });
 
   it("prefers the native standalone root over a stale configured npm root", () => {
@@ -189,7 +234,7 @@ describe("official OMO runtime asset selection", () => {
   it.each([
     undefined,
     {},
-    { ...embeddedManifest, enginePin: "2026.11.09-1" },
+    { ...embeddedManifest, enginePin: "" },
     { ...embeddedManifest, omoAiVersion: "5.1.68" },
     { ...embeddedManifest, manifestSha: "b".repeat(64) },
     { ...embeddedManifest, manifestSha: "invalid" },
@@ -232,7 +277,7 @@ describe("official OMO runtime asset selection", () => {
     const { engine: _engine, ...withoutEngine } = candidate;
     expect(() =>
       resolve({ ...npm(), packages: [{ ...withoutEngine, ...(engine ? { engine } : {}) }] }),
-    ).toThrow("matching pinned Senpi engine");
+    ).toThrow("matching Senpi engine");
   });
 
   it("fails instead of selecting another valid npm install after the chosen one is corrupt", () => {
@@ -420,7 +465,7 @@ describe("generated native extension asset loader", () => {
 
   it("does not skip an incompatible nearest Senpi to use a stale valid ancestor copy", async () => {
     const installed = await fixture({ brokenNearestEngine: true });
-    await expect(installed.load()).rejects.toThrow("matching pinned Senpi engine");
+    await expect(installed.load()).rejects.toThrow("matching Senpi engine");
   });
 
   it("restricts sibling plugin requests to present basenames in the selected installation", async () => {

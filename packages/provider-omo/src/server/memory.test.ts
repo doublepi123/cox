@@ -435,17 +435,39 @@ describe("Cox native global memory", () => {
 
   it("fails closed on unverified, oversized or incompatible native sources", async () => {
     const factory = await loadFactory();
-    for (const source of ["export default {}", "x".repeat(2 * 1024 * 1024 + 1)])
-      await expect(
-        factory({
-          root: "/fixture/runtime",
-          config: {},
-          env: { COX_OMO_MEMORY_HOME: "/fixture/memory" },
-          readModule: async () => ({ source }),
-        }),
-      ).rejects.toThrow("verified");
+    await expect(
+      factory({
+        root: "/fixture/runtime",
+        config: {},
+        env: { COX_OMO_MEMORY_HOME: "/fixture/memory" },
+        readModule: async () => ({ source: "export default {}" }),
+      }),
+    ).rejects.toThrow("compatibility patches");
+    await expect(
+      factory({
+        root: "/fixture/runtime",
+        config: {},
+        env: { COX_OMO_MEMORY_HOME: "/fixture/memory" },
+        readModule: async () => ({ source: "x".repeat(2 * 1024 * 1024 + 1) }),
+      }),
+    ).rejects.toThrow("source limit");
     await expect(factory({ config: {}, env: { COX_OMO_MEMORY_HOME: "relative" } })).rejects.toThrow(
       "absolute",
     );
+  });
+
+  it("drops Git config overlays instead of leaving GIT_CONFIG_COUNT without keys", async () => {
+    const { nativeOptions } = await fixture({
+      environment: {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+        GIT_CONFIG_VALUE_0: "AUTHORIZATION: basic leaked",
+        COX_MODEL_SERVICE_KEY: "keep-me",
+      },
+    });
+    expect(nativeOptions?.env.GIT_CONFIG_COUNT).toBeUndefined();
+    expect(nativeOptions?.env.GIT_CONFIG_KEY_0).toBeUndefined();
+    expect(nativeOptions?.env.GIT_CONFIG_VALUE_0).toBeUndefined();
+    expect(nativeOptions?.env.COX_MODEL_SERVICE_KEY).toBe("keep-me");
   });
 });

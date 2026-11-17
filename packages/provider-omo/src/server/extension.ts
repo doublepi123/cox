@@ -41,14 +41,66 @@ export default async function coxOmo(pi) {
   pi.on("session_start", (_event, ctx) => runtime.assertNativeSession(ctx));
   let selectionError;
   let selectionBaseline;
+  let lastStartCtx;
   pi.rpc.handle("cox.omo.prepare", async data => {
+    try {
+      const previous = JSON.parse(process.env.COX_OMO_SESSION_SELECTION || "{}");
+      if (!selectionBaseline?.model && typeof previous.model === "string" && previous.model.includes("/")) {
+        const separator = previous.model.indexOf("/");
+        selectionBaseline = {
+          model: { provider: previous.model.slice(0, separator), id: previous.model.slice(separator + 1) },
+          thinkingLevel: selectionBaseline?.thinkingLevel ?? previous.thinking,
+        };
+      }
+    } catch {}
     process.env.COX_OMO_SESSION_SELECTION = JSON.stringify(data);
     return { prepared: true };
   });
+  const snapshotModel = model =>
+    model?.provider && model?.id ? { provider: String(model.provider), id: String(model.id) } : undefined;
+  const modelFromSession = async ctx => {
+    try {
+      const fromContext = snapshotModel(ctx.model);
+      if (fromContext) return fromContext;
+    } catch {}
+    try {
+      const entries = ctx.sessionManager?.getEntries?.() ?? [];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (entry?.type === "model_change" && typeof entry.provider === "string" && typeof entry.modelId === "string")
+          return { provider: entry.provider, id: entry.modelId };
+      }
+    } catch {}
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    try {
+      const file = ctx.sessionManager?.getSessionFile?.();
+      if (file) {
+        const lines = (await readFile(file, "utf8")).trim().split("\\n");
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const entry = JSON.parse(lines[i]);
+          if (entry?.type === "model_change" && typeof entry.provider === "string" && typeof entry.modelId === "string")
+            return { provider: entry.provider, id: entry.modelId };
+        }
+      }
+    } catch {}
+    try {
+      const agentDir = process.env.OMO_CODING_AGENT_DIR || process.env.SENPI_CODING_AGENT_DIR;
+      if (!agentDir) return;
+      const settings = JSON.parse(await readFile(join(agentDir, "settings.json"), "utf8"));
+      if (typeof settings.defaultProvider === "string" && typeof settings.defaultModel === "string")
+        return { provider: settings.defaultProvider, id: settings.defaultModel };
+    } catch {}
+  };
   pi.on("session_start", async (event, ctx) => {
     if (event.reason === "reload") return;
     selectionError = undefined;
-    selectionBaseline = { model: ctx.model, thinkingLevel: pi.getThinkingLevel?.() };
+    lastStartCtx = ctx;
+    const restored = await modelFromSession(ctx);
+    selectionBaseline = {
+      model: restored ?? selectionBaseline?.model,
+      thinkingLevel: pi.getThinkingLevel?.() ?? ctx.thinkingLevel ?? selectionBaseline?.thinkingLevel,
+    };
     try {
       const selection = JSON.parse(process.env.COX_OMO_SESSION_SELECTION || "{}");
       if (selection.model && selection.model !== "default") {
@@ -115,10 +167,15 @@ export default async function coxOmo(pi) {
     registries.set(registry, scoped);
     return scoped;
   };
+  let memoryWarning;
   const memory = process.env.COX_OMO_EPHEMERAL === "1" || process.env.COX_OMO_AUTOMATIC_MEMORY === "0"
     ? { name: "memory", register() {} }
     : await createCoxOmoMemoryComponent({ root: runtime.packageRoot, config, env: process.env,
-      resolveModule: runtime.resolveModule, resolveImport: runtime.resolveImport, loadModules: runtime.loadModules });
+      resolveModule: runtime.resolveModule, resolveImport: runtime.resolveImport, loadModules: runtime.loadModules })
+      .catch(error => {
+        memoryWarning = error instanceof Error ? error.message : String(error);
+        return { name: "memory", register() {} };
+      });
   const components = entry.omoSenpiComponents.filter(c => !excluded.has(c.name) &&
     (c.name !== "task" || process.env.COX_OMO_TOOLS_REQUIRED !== "0")).map(c =>
     c.name === "task" ? tasks.createTaskComponent({ loadConfig: () => ({ config, diagnostics: [], layers: [], sources: [] }) }) :
@@ -182,6 +239,12 @@ export default async function coxOmo(pi) {
   });
   pi.rpc.handle("cox.omo.ready", async () => {
     if (selectionError) throw new Error(selectionError);
+    if (!selectionBaseline?.model && lastStartCtx) {
+      selectionBaseline = {
+        model: await modelFromSession(lastStartCtx),
+        thinkingLevel: selectionBaseline?.thinkingLevel ?? pi.getThinkingLevel?.() ?? lastStartCtx.thinkingLevel,
+      };
+    }
     await bridge.ensureReady().catch(() => undefined);
     const coxOrchestration = bridge.getHealth();
     const tool = pi.getAllTools().find(tool => tool.name === "task");
@@ -201,6 +264,8 @@ export default async function coxOmo(pi) {
       coxOrchestrationReady: coxOrchestration.coxOrchestrationReady,
       nativeTask: { required, registered: nativeTaskRegistered, status: nativeTaskStatus },
       coxOrchestration: { ...coxOrchestration, required: coxRequired },
+      memoryWarning,
+      memoryAvailable: !memoryWarning && process.env.COX_OMO_AUTOMATIC_MEMORY !== "0" && process.env.COX_OMO_EPHEMERAL !== "1",
     };
   });
 }

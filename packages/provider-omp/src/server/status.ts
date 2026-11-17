@@ -35,7 +35,7 @@ import {
   withOmpBuiltinSlashCommands,
   type OmpDiscoveredCommands,
 } from "./commands.ts";
-import { configuredOmpLaunchArgs, ompEnvironment, OMP_VERSION } from "./configuration.ts";
+import { configuredOmpLaunchArgs, ompEnvironment, MINIMUM_OMP_VERSION } from "./configuration.ts";
 import { buildOmpLaunch } from "./extension.ts";
 import { makeOmpRpcConnection } from "./runtime.ts";
 
@@ -48,7 +48,7 @@ const OMP_PRESENTATION = {
 
 const VERSION_PROBE_TIMEOUT_MS = 4_000;
 const OMP_RPC_DISCOVERY_TIMEOUT_MS = 30_000;
-export const MINIMUM_OMP_VERSION = OMP_VERSION;
+export { MINIMUM_OMP_VERSION };
 
 function recordField(input: unknown, key: string): unknown {
   return typeof input === "object" && input !== null

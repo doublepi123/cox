@@ -165,8 +165,8 @@ export const en = {
   "OMO setup": "OMO setup",
   "Installing OMO Native…": "Installing OMO Native…",
   "OMO Native {version} is installed.": "OMO Native {version} is installed.",
-  "Install the tested OMO Native runtime (omo-ai 5.1.69).":
-    "Install the tested OMO Native runtime (omo-ai 5.1.69).",
+  "Install the tested OMO Native runtime (omo-ai 5.1.69 or newer).":
+    "Install the tested OMO Native runtime (omo-ai 5.1.69 or newer).",
   "Update OMO Native": "Update OMO Native",
   "Install OMO Native": "Install OMO Native",
   "Uses the custom OMO binary path below.": "Uses the custom OMO binary path below.",

@@ -28,7 +28,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { OMP_BUN_VERSION, OMP_VERSION } from "./configuration.ts";
+import { OMP_BUN_VERSION, MINIMUM_OMP_VERSION, OMP_INSTALL_SPEC } from "./configuration.ts";
 
 const BUN_PLATFORM_PACKAGES: Readonly<Record<string, string>> = {
   "darwin-arm64": "@oven/bun-darwin-aarch64",
@@ -88,8 +88,8 @@ export const makeOmpInstallation = Effect.fn("makeOmpInstallation")(function* (o
       command: "omp",
       label: "Oh My Pi",
       packageName: "@oh-my-pi/pi-coding-agent",
-      version: OMP_VERSION,
-      minimumVersion: OMP_VERSION,
+      version: OMP_INSTALL_SPEC,
+      minimumVersion: MINIMUM_OMP_VERSION,
     },
   });
   const error = (detail: string) =>

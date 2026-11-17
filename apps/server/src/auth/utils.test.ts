@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveAuthClientMetadata, resolveSessionCookieName } from "./utils.ts";
+import {
+  deriveAuthClientMetadata,
+  resolveSessionCookieName,
+  timingSafeEqualString,
+} from "./utils.ts";
 
 describe("deriveAuthClientMetadata", () => {
   it("labels Electron user agents as Electron instead of Chrome", () => {
@@ -149,5 +153,13 @@ describe("session cookie isolation", () => {
     });
 
     expect(first).toBe(second);
+  });
+});
+
+describe("timingSafeEqualString", () => {
+  it("matches equal strings and rejects different ones", () => {
+    expect(timingSafeEqualString("gateway-token", "gateway-token")).toBe(true);
+    expect(timingSafeEqualString("gateway-token", "gateway-token!")).toBe(false);
+    expect(timingSafeEqualString("", "gateway-token")).toBe(false);
   });
 });

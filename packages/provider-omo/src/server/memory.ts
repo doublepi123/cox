@@ -17,8 +17,9 @@ async function createCoxOmoMemoryComponent(options) {
   const memoryEnv = { ...environment, OMO_MEMORY_HOME: home };
   delete memoryEnv.OMO_MEMORY_PUSH_SYNC;
   delete memoryEnv.OMO_MEMORY_RUN_SUPERVISOR_PATH;
+  const gitConfigOverlay = /^GIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)$/;
   for (const key of Object.keys(memoryEnv))
-    if (key !== "COX_MODEL_SERVICE_KEY" && /(?:KEY|TOKEN|PASSWORD|SECRET|^OMO_MEMORY_(?:SUPERVISOR|KILL|TEST)|^NODE_OPTIONS$)/i.test(key)) delete memoryEnv[key];
+    if (key !== "COX_MODEL_SERVICE_KEY" && (gitConfigOverlay.test(key) || /(?:KEY|TOKEN|PASSWORD|SECRET|^OMO_MEMORY_(?:SUPERVISOR|KILL|TEST)|^NODE_OPTIONS$)/i.test(key))) delete memoryEnv[key];
   let selected;
   const permit = model => managed && model?.provider === "cox" && allowed.has(model.provider + "/" + model.id);
   const reference = model => model?.provider && model?.id ? model.provider + "/" + model.id : undefined;
@@ -113,29 +114,10 @@ async function createCoxOmoMemoryComponent(options) {
     scopedObjects.set(target, proxy);
     return proxy;
   };
-  const sourceHashes = {
-    "omo.js": "907e403c374cdee81877d79ec1813adbca1d51d3101ea49b68a1cfb42832a632",
-    "omo-task.js": "ae1f9b564c8ce70033620bfd9b08c19ba3f8ac825fa3ebc6b4a2efd5f5622250",
-    "omo-memory-commands.js": "f98ebd5cc37e3d0dff8646063f50c59a8724f4e59f65724f55f8017e9d94193e",
-    "omo-memory-memfs.js": "868fe0c25f75d8a528b9771a0ea99405cb6d31f1ee90cc6689f4725c0e4d1b3a",
-    "omo-memory-doctor.js": "43d4c07fbad29697db3e23d2f6dfc9d1347fe23184b9cf085521244fdcb15ef4",
-    "omo-memory-palace.js": "10cdfe689142e8c84072ba218c6a986db9711c39c989040c517dc5cf1b4046b9",
-    "omo-recall-store.js": "258ba11f360b928f32debc2861d26becf1e836bd95466e978f8cf847f4634474",
-    "memory-run-supervisor.mjs": "ca645f78833063f0632559832b33aa622bbfca12079c7d807a8cdacbc0404ccb",
-  };
-  const standaloneHashes = {
-    "omo.js": "7e9246cf1150f77fa7ff3278fb554c752da01b8cc6be9bdf835d0e28463f42bd",
-    "omo-task.js": "f60b0ab50f32081a139169951b317f059f37e6ba33ecd54ad39bf593ee430dad",
-    "omo-memory-commands.js": "2cc8487b9a90f36c41158be8b8c6108fd2a6bae4817195bfde97f92e276bd08e",
-    "omo-memory-memfs.js": "afc9da7bc4cb8dcdb2040eb95dced76839c23bf0edc851a75d899e1642a39963",
-    "omo-memory-doctor.js": "c9d938ee0c38a9ab701aa7eaebe199d77acb3fab99ea783aa8f6332233df6625",
-    "omo-memory-palace.js": "325c7c72ca92c28cff805aa423dbca2c1a48ef862db8d5b4f10d31e74c335ae7",
-    "omo-recall-store.js": "b33c2a74075e818475b96af5ef90e1ef8a4d26e10f9940dc4c29909069652856",
-    "memory-run-supervisor.mjs": "aa8b6a35651a46dfba5d53f6773997c88321ebaebb6d4a31e25052518865c2b9",
-  };
-  const replaceOne = (source, before, after) => {
-    if (source.split(before).length !== 2) throw new Error("The pinned OMO memory integration interface changed.");
-    return source.replace(before, after);
+  const applyOnce = (source, pattern, rewrite) => {
+    const global = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+    if ([...source.matchAll(global)].length !== 1) return { source, applied: false };
+    return { source: source.replace(pattern, rewrite), applied: true };
   };
   const loadNative = async () => {
     const root = options.root;
@@ -149,34 +131,70 @@ async function createCoxOmoMemoryComponent(options) {
       return { url, source: await readFile(file, "utf8") };
     });
     const modules = new Map();
-    let distribution;
-    for (const [name, hash] of Object.entries(sourceHashes)) {
+    const applied = new Set();
+    const names = ["omo.js", "omo-task.js", "omo-memory-commands.js", "omo-memory-memfs.js",
+      "omo-memory-doctor.js", "omo-memory-palace.js", "omo-recall-store.js", "memory-run-supervisor.mjs"];
+    for (const name of names) {
       const module = await readModule(name);
-      const actual = typeof module.source === "string" ? createHash("sha256").update(module.source).digest("hex") : undefined;
-      distribution ??= actual === hash ? sourceHashes : standaloneHashes;
-      if (typeof module.source !== "string" || Buffer.byteLength(module.source, "utf8") > 2 * 1024 * 1024 ||
-          actual !== distribution[name])
-        throw new Error("Cox memory requires the verified OMO Native 5.1.69 runtime sources.");
+      if (typeof module.source !== "string" || Buffer.byteLength(module.source, "utf8") > 2 * 1024 * 1024)
+        throw new Error("The OMO memory module exceeds the source limit or is not text.");
       let source = module.source;
-        if (source.includes('name:"post-commit",script:')) {
-          const hook = /name:"post-commit",script:(?:'(?:\\.|[^'\\])*'|[A-Za-z_$][\w$]*)/g;
-          if ([...source.matchAll(hook)].length !== 1) throw new Error("The OMO memory mirror interface changed.");
-          source = source.replace(hook, 'name:"post-commit",script:"#!/bin/sh\\nexit 0\\n"');
-        }
+      if (source.includes('name:"post-commit",script:')) {
+        const patched = applyOnce(source, /name:"post-commit",script:(?:'(?:\\.|[^'\\])*'|[A-Za-z_$][\w$]*)/,
+          'name:"post-commit",script:"#!/bin/sh\\nexit 0\\n"');
+        source = patched.source;
+        if (patched.applied) applied.add("post-commit");
+      }
+      if (name === "memory-run-supervisor.mjs") {
+        const patched = applyOnce(source, /env:(\w+\.env),detached:!1/,
+          "env:{...$1,COX_MODEL_SERVICE_KEY:process.env.COX_MODEL_SERVICE_KEY},detached:!1");
+        source = patched.source;
+        if (patched.applied) applied.add("supervisor-key");
+      }
       if (name === "omo.js") {
-        source = replaceOne(source, "async run(e,r){let i=[...gP,...e]",
-          'async run(e,r){if(e.some(v=>["push","fetch","pull","clone","ls-remote"].includes(v)))throw Error("Remote memory transport is disabled in Cox.");let i=[...gP,"-c","protocol.allow=never",...e]');
-        source = replaceOne(source, "if(!e.oneShot||q5(t,e.exists))", "if(true)");
-        source = replaceOne(source, "c=new M4({identity:f5(e),memoryRoot:", "c=new M4({...t.runnerOptions,env:t.env,supervisorPath:t.supervisorPath,identity:f5(e),memoryRoot:");
-        source = replaceOne(source, "env:F2(e.env),hardDeadlineAt:", "env:F2({...e.env,COX_MODEL_SERVICE_KEY:undefined}),hardDeadlineAt:");
-        source = replaceOne(source, "x=hae({sessions:o,loadConfig:t,cwd:l,env:r,now:n,logger:s.logger,",
-          "x=hae({sessions:o,loadConfig:t,cwd:l,env:r,now:n,logger:s.logger,...e.wiringOptions,");
-        source = replaceOne(source, "let u,f=new LH,p=v6(a,f)", "let u,f=e.work??new LH,p=v6(a,f)");
-        source += '\nexport {mae as createMemoryComponent,Is as memorySettingsSchema,p5 as createMemoryRuntime,sie as FactsExtractor};\n';
+        const component = [...source.matchAll(/function (\w+)\(/g)].reverse().find(match =>
+          source.slice(match.index, match.index + 1200).includes('return{name:"memory",register('));
+        const schema = source.match(/function \w+\(e\)\{return e\?\?(\w+)\.parse\(\{\}\)\}/);
+        const runtimeFn = [...source.matchAll(/function (\w+)\(\w+,\w+\)\{/g)].reverse().find(match =>
+          /new \w+\(\{identity:\w+\(\w+\),memoryRoot:/.test(source.slice(match.index, match.index + 800)));
+        const facts = source.match(/createFactsExtractor\?\?\(e=>new (\w+)\(e\)\)/);
+        const git = applyOnce(source, /async run\((\w+),(\w+)\)\{let (\w+)=\[\.\.\.(\w+),\.\.\.\1\]/,
+          'async run($1,$2){if($1.some(v=>["push","fetch","pull","clone","ls-remote"].includes(v)))throw Error("Remote memory transport is disabled in Cox.");let $3=[...$4,"-c","protocol.allow=never",...$1]');
+        source = git.source;
+        if (git.applied) applied.add("git-remote");
+        const oneshot = applyOnce(source, /if\(!\w+\.oneShot\|\|\w+\(\w+,\w+\.exists\)\)/, "if(true)");
+        source = oneshot.source;
+        if (oneshot.applied) applied.add("oneshot");
+        const runner = applyOnce(source, /(\w+=new \w+\()\{identity:(\w+\(\w+\)),memoryRoot:/,
+          "$1{...t.runnerOptions,env:t.env,supervisorPath:t.supervisorPath,identity:$2,memoryRoot:");
+        source = runner.source;
+        if (runner.applied) applied.add("runner-options");
+        const envKey = applyOnce(source, /env:(\w+)\((\w+)\.env\),hardDeadlineAt:/,
+          "env:$1({...$2.env,COX_MODEL_SERVICE_KEY:undefined}),hardDeadlineAt:");
+        source = envKey.source;
+        if (envKey.applied) applied.add("strip-gateway-key");
+        const wiring = applyOnce(source, /(\w+=\w+\(\{sessions:\w+,loadConfig:\w+,cwd:\w+,env:\w+,now:\w+,logger:\w+\.logger,)/,
+          "$1...e.wiringOptions,");
+        source = wiring.source;
+        if (wiring.applied) applied.add("wiring");
+        const work = applyOnce(source, /let (\w+),(\w+)=new (\w+),(\w+)=(\w+)\((\w+),\2\)/,
+          "let $1,$2=e.work??new $3,$4=$5($6,$2)");
+        source = work.source;
+        if (work.applied) applied.add("work-tracker");
+        if (component && schema && runtimeFn && facts) {
+          source += "\nexport {" + component[1] + " as createMemoryComponent," + schema[1] + " as memorySettingsSchema," + runtimeFn[1] + " as createMemoryRuntime," + facts[1] + " as FactsExtractor};\n";
+          applied.add("exports");
+        }
       }
       const url = module.url ?? resolveModule(name);
       modules.set(url, { name, source });
     }
+    const required = ["git-remote", "strip-gateway-key", "exports"];
+    if (managed) required.push("supervisor-key");
+    const failed = required.filter(label => !applied.has(label));
+    if (failed.length > 0)
+      throw new Error("Cox could not apply required OMO memory compatibility patches (" + failed.join(", ") +
+        "). Automatic memory is disabled until the OMO runtime matches a supported interface.");
     const privateDirectory = join(home, "runtime", "cox");
     const privateWrite = async (name, source) => {
       const file = join(privateDirectory, name);
@@ -225,8 +243,7 @@ async function createCoxOmoMemoryComponent(options) {
         packages: [], extensions: [], skills: [] }));
       await privateWrite("auth.json", "{}");
       const supervisor = modules.get(resolveModule("memory-run-supervisor.mjs")).source;
-      memoryEnv.OMO_MEMORY_RUN_SUPERVISOR_PATH = await privateWrite("memory-run-supervisor.mjs", replaceOne(supervisor,
-        "env:t.env,detached:!1", "env:{...t.env,COX_MODEL_SERVICE_KEY:process.env.COX_MODEL_SERVICE_KEY},detached:!1"));
+      memoryEnv.OMO_MEMORY_RUN_SUPERVISOR_PATH = await privateWrite("memory-run-supervisor.mjs", supervisor);
       for (const key of ["OMO_CODING_AGENT_DIR", "SENPI_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"]) memoryEnv[key] = privateDirectory;
     }
     const entryUrl = resolveModule("omo.js");

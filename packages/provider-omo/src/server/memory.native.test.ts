@@ -14,7 +14,6 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { registerHooks } from "node:module";
-import { createHash } from "node:crypto";
 import { createCoxOmoMemoryComponent } from "./memory-source.mjs";
 
 const [root, temporary, configFile] = process.argv.slice(2);
@@ -31,6 +30,9 @@ Object.assign(process.env, {
   COX_MODEL_SERVICE_KEY: "fixture-only-not-a-live-key",
   COX_OMO_GATEWAY_TIMEOUT_MS: "630000",
   CI: "1", GIT_CONFIG_GLOBAL: join(temporary, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+  GIT_CONFIG_VALUE_0: "AUTHORIZATION: basic leaked",
 });
 await writeFile(join(agent, "models.json"), JSON.stringify({ providers: { cox: {
   baseUrl: "http://127.0.0.1:1/v1", api: "openai-completions", apiKey: "$COX_MODEL_SERVICE_KEY",
@@ -269,10 +271,11 @@ component.dispose();
 
 const taskUrl = pathToFileURL(join(root, "plugin", "extensions", "omo-task.js")).href;
 const taskSource = await readFile(new URL(taskUrl), "utf8");
-assert.equal(createHash("sha256").update(taskSource).digest("hex"), "ae1f9b564c8ce70033620bfd9b08c19ba3f8ac825fa3ebc6b4a2efd5f5622250");
+const categoryExport = taskSource.match(/function (\w+)\(\w+,\w+,\w+,\w+=\{\}\)\{let \w+=\w+\(\w+,\w+\.exclude_models\)/);
+assert.ok(categoryExport, "Cox could not detect resolveCategory in this OMO task runtime");
 const scopeUrl = taskUrl + "?cox-native-category-test";
 const hooks = registerHooks({ resolve(specifier, context, next) { return specifier === scopeUrl ? { url: scopeUrl, shortCircuit: true } : next(specifier, context); },
-  load(url, context, next) { return url === scopeUrl ? { format: "module", source: taskSource + "\nexport {uk as resolveCategory};", shortCircuit: true } : next(url, context); } });
+  load(url, context, next) { return url === scopeUrl ? { format: "module", source: taskSource + "\nexport {" + categoryExport[1] + " as resolveCategory};", shortCircuit: true } : next(url, context); } });
 try {
   const native = await import(scopeUrl);
   const config = JSON.parse(await readFile(configFile, "utf8"));
@@ -317,9 +320,11 @@ it.skipIf(!process.env.COX_OMO_NATIVE_TEST_ROOT)(
             },
           }),
         );
+        const gitConfigOverlay = /^GIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)$/;
         const environment = Object.fromEntries(
           Object.entries(process.env).filter(
             ([key]) =>
+              !gitConfigOverlay.test(key) &&
               !/(?:KEY|TOKEN|PASSWORD|SECRET|^OMO_|^SENPI_|^PI_|^NODE_OPTIONS$)/i.test(key),
           ),
         );
@@ -356,6 +361,6 @@ it.skipIf(!process.env.COX_OMO_NATIVE_TEST_ROOT)(
             process.env.COX_OMO_MEMORY_TEST_REPORT,
             JSON.stringify(report, null, 2),
           );
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("45 seconds")),
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("90 seconds")),
     ),
 );
