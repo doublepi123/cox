@@ -16,8 +16,12 @@ export const terminalButton = (page) =>
   page.getByRole("button", { name: "Toggle terminal drawer", exact: true });
 
 export async function serverSwitcher(page) {
+  const sheet = mobileSidebar(page);
+  if (!(await sheet.isVisible())) {
+    await threadsButton(page).click();
+    await visible(sheet);
+  }
   const pill = page.locator("[data-mobile-server-switcher]");
-  if (!(await pill.isVisible())) await threadsButton(page).click();
   await visible(pill);
   return pill;
 }

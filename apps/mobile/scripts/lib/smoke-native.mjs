@@ -209,7 +209,8 @@ export async function installNativeWorkspace(launcher, browser, watchPage) {
     },
     async switchToLauncher(workspace) {
       switched = Promise.withResolvers();
-      await (await serverSwitcher(workspace.page)).click();
+      const pill = await serverSwitcher(workspace.page);
+      await pill.evaluate((element) => element.click());
       assert.equal(
         await withDeadline(switched.promise, 20_000, "Servers pill did not return to launcher."),
         workspace.profile.profileId,
