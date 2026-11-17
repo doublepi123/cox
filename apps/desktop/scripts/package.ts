@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmod, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { build, Platform, Arch } from "electron-builder";
 import { pruneDesktopPayload } from "../src/package-payload.ts";
 import { fetchBackendRelease, installBackendRelease } from "../src/backend-install.ts";
@@ -83,6 +84,35 @@ const environment = {
 };
 await rm(join(runtime, "include"), { recursive: true, force: true });
 await rm(join(runtime, "share", "man"), { recursive: true, force: true });
+async function installPublishedBackend(input: {
+  readonly release: Awaited<ReturnType<typeof fetchBackendRelease>>;
+  readonly directory: string;
+  readonly node: string;
+  readonly npm: string;
+  readonly environment: NodeJS.ProcessEnv;
+}) {
+  let failure: unknown;
+  for (let attempt = 0; attempt < 24; attempt++) {
+    try {
+      return await installBackendRelease({
+        release: input.release,
+        directory: input.directory,
+        node: input.node,
+        npm: input.npm,
+        environment: input.environment,
+        signal: AbortSignal.timeout(600_000),
+      });
+    } catch (error) {
+      failure = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("HTTP 404") || attempt === 23) throw error;
+      console.warn("Waiting for the Cox tarball (attempt " + (attempt + 1) + "/24): " + message);
+      await delay(30_000);
+    }
+  }
+  throw failure;
+}
+
 if (!clientOnly) {
   if (process.env.COX_DESKTOP_BACKEND_VERSION) {
     const release = await fetchBackendRelease(
@@ -91,13 +121,12 @@ if (!clientOnly) {
       fetch,
       process.env.COX_DESKTOP_BACKEND_VERSION,
     );
-    const installed = await installBackendRelease({
+    const installed = await installPublishedBackend({
       release,
       directory: join(stage, "backend-install"),
       node,
       npm,
       environment: process.env,
-      signal: AbortSignal.timeout(600_000),
     });
     await cp(installed, server, { recursive: true, verbatimSymlinks: true });
     coxVersion = release.version;

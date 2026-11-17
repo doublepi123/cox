@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readThreadFamily } from "./smoke-fixtures.mjs";
-import { assertPhoneLayout, signIn, visible } from "./smoke-surfaces.mjs";
+import { assertPhoneLayout, signIn, threadsButton, visible } from "./smoke-surfaces.mjs";
 
 export async function addServer(launcher, server) {
   await launcher.getByRole("button", { name: "Add server" }).click();
@@ -36,10 +36,7 @@ export async function assertServerIsolation(workspaces, servers, shot) {
   );
   assert.ok(JSON.stringify(projects).includes(serverB.projectId));
   assert.ok(!JSON.stringify(projects).includes(serverA.projectId));
-  await workspaceB.page
-    .locator("[data-mobile-workspace-bar]")
-    .getByRole("button", { name: "Threads", exact: true })
-    .click();
+  await threadsButton(workspaceB.page).click();
   await visible(workspaceB.page.getByText(serverB.title, { exact: true }).last());
   assert.equal(await workspaceB.page.getByText(serverA.title, { exact: true }).count(), 0);
   const ownFamily = await readThreadFamily(serverB, serverB.threadId);

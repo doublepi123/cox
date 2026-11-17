@@ -25,6 +25,7 @@ import {
   exerciseNotifications,
   exerciseTerminal,
   signIn,
+  threadsButton,
   visible,
 } from "./lib/smoke-surfaces.mjs";
 
@@ -210,10 +211,7 @@ try {
       assert.equal(native.gatewayApprovals.length, 1);
       assert.equal(native.gatewayApprovals[0].origin, cfGateway.origin);
       await signIn(workspaceCf, { ...serverA, origin: cfGateway.origin });
-      await workspaceCf.page
-        .locator("[data-mobile-workspace-bar]")
-        .getByRole("button", { name: "Threads", exact: true })
-        .click();
+      await threadsButton(workspaceCf.page).click();
       await visible(workspaceCf.page.getByText(serverA.title, { exact: true }).last());
       await workspaceCf.page.keyboard.press("Escape");
       await native.switchToLauncher(workspaceCf);

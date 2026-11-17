@@ -6,6 +6,15 @@ import { withDeadline } from "./smoke-runtime.mjs";
 
 export const visible = (locator) => locator.waitFor({ state: "visible", timeout: 60_000 });
 
+export const threadsButton = (page) =>
+  page.getByRole("button", { name: "Toggle main sidebar", exact: true });
+
+export const changesButton = (page) =>
+  page.getByRole("button", { name: "Toggle right panel", exact: true });
+
+export const terminalButton = (page) =>
+  page.getByRole("button", { name: "Toggle terminal drawer", exact: true });
+
 export async function assertPhoneLayout(page) {
   assert.equal(await page.getByText("Connect your agents", { exact: true }).count(), 0);
   assert.ok(
@@ -24,7 +33,7 @@ export async function signIn(workspace, server) {
     page.getByRole("button", { name: "Sign in" }).click(),
   ]);
   await page.goto(new URL(`/${server.environmentId}/${server.threadId}`, server.origin).href);
-  await visible(page.locator("[data-mobile-workspace-bar]"));
+  await visible(threadsButton(page));
   await visible(page.getByText(server.title, { exact: true }).first());
   await visible(page.getByText("Send a message to start the conversation.", { exact: true }));
   for (const dismiss of await page.getByRole("button", { name: /Dismiss .* provider/ }).all()) {
@@ -34,13 +43,15 @@ export async function signIn(workspace, server) {
 }
 
 export async function exerciseDiff(page, shot) {
-  await page
-    .locator("[data-mobile-workspace-bar]")
-    .getByRole("button", { name: "Changes" })
-    .click();
+  await changesButton(page).click();
   const sheet = page.getByRole("dialog");
   await visible(sheet);
-  await sheet.getByRole("button", { name: "Expand hello.ts", exact: true }).click();
+  const expand = sheet.getByRole("button", { name: "Expand hello.ts", exact: true });
+  if ((await expand.count()) === 0) {
+    await sheet.getByRole("button", { name: "Add panel surface", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Diff", exact: true }).click();
+  }
+  await expand.click();
   await visible(sheet.getByText("export const v = 2", { exact: false }).first());
   await assertPhoneLayout(page);
   await shot(page, "server-a-diff.png");
@@ -49,8 +60,7 @@ export async function exerciseDiff(page, shot) {
 }
 
 export async function exerciseTerminal(page, server, shot) {
-  const bar = page.locator("[data-mobile-workspace-bar]");
-  await bar.getByRole("button", { name: "Terminal", exact: true }).click();
+  await terminalButton(page).click();
   const drawer = page.locator("[data-thread-terminal-drawer]");
   await visible(drawer.locator("canvas"));
   const input = drawer.locator("textarea[data-workspace-focus-default]");
@@ -85,7 +95,7 @@ export async function exerciseTerminal(page, server, shot) {
   assert.equal(await ctrl.getAttribute("aria-pressed"), "true");
   await assertPhoneLayout(page);
   await shot(page, "server-a-terminal.png");
-  await bar.getByRole("button", { name: "Terminal", exact: true }).click();
+  await terminalButton(page).click();
   await drawer.waitFor({ state: "hidden" });
 }
 
