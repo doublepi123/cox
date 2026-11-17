@@ -99,6 +99,13 @@ const PI_UNSOLICITED_ACTIVITY_ERROR =
   "Pi started agent work outside an active T3 turn. The session was stopped to prevent invisible tool execution.";
 const SETTLE_PROBE_MAX_ATTEMPTS = 3;
 const SETTLE_PROBE_RETRY_DELAY = Duration.millis(100);
+const SETTLE_PROBE_BUSY_MAX_ATTEMPTS = 6;
+const settleProbeBusyDelay = (attempt: number) =>
+  Duration.millis(Math.min(100 * 2 ** Math.max(0, attempt - 1), 2_000));
+const settleProbeIsClean = (data: unknown) =>
+  recordField(data, "isStreaming") !== true &&
+  recordField(data, "isCompacting") !== true &&
+  (recordNumber(data, "pendingMessageCount") ?? 0) === 0;
 const encodeTodoSteps = Schema.encodeSync(
   Schema.fromJsonString(Schema.Array(OrchestrationV2PlanStep)),
 );
@@ -2755,13 +2762,17 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               yield* connection.terminate;
               return;
             }
-            if (
-              recordField(data, "isStreaming") !== true &&
-              recordField(data, "isCompacting") !== true &&
-              (recordNumber(data, "pendingMessageCount") ?? 0) === 0
-            ) {
+            if (settleProbeIsClean(data)) {
               turn.settleWhenIdle = false;
               if (state !== null) yield* finalizeTurn(state);
+              return;
+            }
+            if (recordField(data, "isCompacting") === true) return;
+            if (attempt < SETTLE_PROBE_BUSY_MAX_ATTEMPTS) {
+              yield* Effect.sleep(settleProbeBusyDelay(attempt)).pipe(
+                Effect.andThen(scheduleSettleProbe(turn, settleAfterAgentActivity, attempt + 1)),
+                Effect.forkIn(scope),
+              );
             }
             return;
           }

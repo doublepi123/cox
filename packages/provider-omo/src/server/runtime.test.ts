@@ -502,7 +502,7 @@ describe("OMO root work lifecycle", () => {
       finished.observe(
         lifecycle("done", 2, { waitingOn: { children: 0, background: [], human: [] } }),
       ),
-    ).toEqual([clear]);
+    ).toEqual([clear, { type: "agent_settled", aborted: false }]);
 
     const goal = started();
     goal.observe(
@@ -546,6 +546,45 @@ describe("OMO root work lifecycle", () => {
     expect(omoSessionState({ isStreaming: true, lifecycle: waiting(1).lifecycle })).toMatchObject({
       isStreaming: true,
     });
+  });
+
+  it("still emits agent_settled on terminal done after an idle-wait settlement", () => {
+    const mapper = new OmoLifecycle();
+    mapper.observe({ type: "agent_start", runId: "1c64dce8-b369-4f06-8d23-ac2a52b00c48" });
+    const waiting = (seq: number) =>
+      lifecycle("waiting_background", seq, {
+        runId: "1c64dce8-b369-4f06-8d23-ac2a52b00c48",
+        completionId: undefined,
+        runPaused: false,
+        holds: [],
+        waitingOn: {
+          children: 0,
+          background: [{ source: "cox-memory:2192925:247" }, { source: "cox-memory:2192925:250" }],
+          human: [],
+        },
+      });
+    expect(mapper.observe(waiting(514))).toEqual([]);
+    expect(mapper.observe({ type: "agent_idle" })).toEqual([
+      { type: "agent_settled", aborted: false },
+    ]);
+    expect(mapper.observe(waiting(515))).toEqual([]);
+    expect(
+      mapper.observe(
+        lifecycle("done", 516, {
+          runId: "1c64dce8-b369-4f06-8d23-ac2a52b00c48",
+          completionId: "01a1e81e-restored:1",
+          waitingOn: { children: 0, background: [], human: [] },
+        }),
+      ),
+    ).toEqual([{ type: "agent_settled", aborted: false }]);
+    expect(
+      mapper.observe(
+        lifecycle("done", 518, {
+          runId: "1c64dce8-b369-4f06-8d23-ac2a52b00c48",
+          completionId: "01a1e81e-restored:1",
+        }),
+      ),
+    ).toEqual([]);
   });
 });
 

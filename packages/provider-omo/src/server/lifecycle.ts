@@ -87,7 +87,6 @@ export class OmoLifecycle {
   private idle = false;
   private latest: PiRpcRecord | undefined;
   private waitStatus: string | undefined;
-  private idleSettledRun: string | undefined;
   private readonly completions = new Set<string>();
 
   reset() {
@@ -97,7 +96,6 @@ export class OmoLifecycle {
     this.idle = false;
     this.latest = undefined;
     this.waitStatus = undefined;
-    this.idleSettledRun = undefined;
     this.completions.clear();
   }
 
@@ -125,7 +123,6 @@ export class OmoLifecycle {
     if (event.type === "agent_start") {
       this.runId = typeof event.runId === "string" ? event.runId : undefined;
       this.idle = false;
-      this.idleSettledRun = undefined;
       if (this.runId !== undefined) this.completions.delete(`turn:${this.runId}`);
       return [...this.showWait(undefined), event];
     }
@@ -178,9 +175,6 @@ export class OmoLifecycle {
       const oldest = this.completions.values().next().value;
       if (oldest !== undefined) this.completions.delete(oldest);
     }
-    if (!idleWait && lifecycle.runId !== undefined && lifecycle.runId === this.idleSettledRun)
-      return [];
-    if (idleWait && typeof lifecycle.runId === "string") this.idleSettledRun = lifecycle.runId;
     return [
       ...(idleWait ? this.showWait(omoWaitStatusText(lifecycle)) : []),
       ...(lifecycle.state === "failed" ||

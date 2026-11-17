@@ -931,6 +931,94 @@ describe("PiAdapterV2", () => {
       assert.deepEqual(runtime.providerSession.extensionStatuses, []);
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
+  it.effect("does not finalize while a settle probe still sees pending delivery messages", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent, observed } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.takeRequest("prompt");
+      yield* fake.emit({ type: "agent_start" });
+      fake.queueState({ isStreaming: false, isCompacting: false, pendingMessageCount: 7 });
+      yield* fake.emit({ type: "agent_settled" });
+      yield* fake.takeRequest("get_state");
+      assert.isFalse(observed.some((event) => event.type === "turn.terminal"));
+      fake.queueState({ isStreaming: false, isCompacting: false, pendingMessageCount: 0 });
+      yield* fake.emit({ type: "agent_settled" });
+      const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isTrue(terminal.type === "turn.terminal" && terminal.status === "completed");
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+  it.effect("finalizes an OMO turn on later done after a not-clean idle-wait settle probe", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent, observed } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.takeRequest("prompt");
+      const lifecycle = new OmoLifecycle();
+      const send = (event: PiRpcRecord) =>
+        Effect.forEach(lifecycle.observe(event), (item) => fake.emit(item));
+      yield* send({ type: "agent_start", runId: "1c64dce8-b369-4f06-8d23-ac2a52b00c48" });
+      yield* send({
+        type: "message_end",
+        message: { role: "assistant", content: [], stopReason: "stop" },
+      });
+      const waiting = {
+        role: "root",
+        state: "waiting_background",
+        runId: "1c64dce8-b369-4f06-8d23-ac2a52b00c48",
+        seq: 514,
+        persisted: true,
+        restoring: false,
+        runActive: false,
+        runPaused: false,
+        holds: [],
+        waitingOn: {
+          children: 0,
+          background: [{ source: "cox-memory:2192925:247" }, { source: "cox-memory:2192925:250" }],
+          human: [],
+        },
+      };
+      fake.queueState({ isStreaming: true, isCompacting: false, pendingMessageCount: 7 });
+      assert.deepEqual(lifecycle.observe({ type: "session_lifecycle", lifecycle: waiting }), []);
+      yield* send({ type: "agent_idle" });
+      yield* fake.takeRequest("get_state");
+      assert.isFalse(observed.some((event) => event.type === "turn.terminal"));
+      fake.queueState({ isStreaming: false, isCompacting: false, pendingMessageCount: 0 });
+      yield* send({
+        type: "session_lifecycle",
+        lifecycle: {
+          ...waiting,
+          seq: 516,
+          state: "done",
+          completionId: "01a1e81e-restored:1",
+          waitingOn: { children: 0, background: [], human: [] },
+        },
+      });
+      const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isTrue(terminal.type === "turn.terminal" && terminal.status === "completed");
+      yield* send({
+        type: "session_lifecycle",
+        lifecycle: {
+          ...waiting,
+          seq: 518,
+          state: "done",
+          completionId: "01a1e81e-restored:1",
+          waitingOn: { children: 0, background: [], human: [] },
+        },
+      });
+      assert.equal(observed.filter((event) => event.type === "turn.terminal").length, 1);
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
   it.effect("accepts authoritative DAG retries at an unchanged completion timestamp", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;
