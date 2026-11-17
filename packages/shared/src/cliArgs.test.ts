@@ -27,6 +27,17 @@ describe("tokenizeCliArgs", () => {
     ).toEqual(["--config", "model=gpt 5", "--enable", "foo bar", "--config=profile=work profile"]);
   });
 
+  it("keeps Unicode whitespace inside an argument", () => {
+    for (const whitespace of ["\u00a0", "\u2003", "\u2028", "\u2029"]) {
+      const path = `/tmp/project${whitespace}name`;
+      expect(tokenizeCliArgs(`--add-dir ${path} --verbose`)).toEqual([
+        "--add-dir",
+        path,
+        "--verbose",
+      ]);
+    }
+  });
+
   it("preserves literal backslashes in path values", () => {
     expect(
       tokenizeCliArgs(String.raw`--config cacheDir=C:\Users\me --config "quoted=C:\Users\me"`),

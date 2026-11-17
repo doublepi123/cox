@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 
 import { makeAcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
 
@@ -194,5 +195,56 @@ describe("AcpMcpOverAcpBridge", () => {
         .pipe(Effect.flip);
       expect(failure.message).toContain("exceeds 8 MiB");
     }),
+  );
+
+  it.effect("stopCalls fails a call waiting on an endpoint that never answers", () =>
+    Effect.gen(function* () {
+      const started = Promise.withResolvers<void>();
+      const bridge = yield* makeAcpMcpOverAcpBridge({
+        endpoint: "http://127.0.0.1:1/mcp",
+        authorization: "Bearer bridge-test",
+        allocateConnectionId: Effect.succeed("connection-1"),
+        fetchImplementation: () => {
+          started.resolve();
+          return new Promise(() => {});
+        },
+      });
+      const { connectionId } = yield* bridge.connect({ serverId: "cox" });
+      const call = yield* bridge
+        .message({ connectionId, method: "tools/list" })
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* Effect.promise(() => started.promise);
+      yield* bridge.stopCalls;
+      expect((yield* Fiber.join(call)).message).toContain("The MCP call was stopped.");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("gives up when disconnect never answers", () =>
+    Effect.gen(function* () {
+      const bridge = yield* makeAcpMcpOverAcpBridge({
+        endpoint: "http://127.0.0.1:1/mcp",
+        authorization: "Bearer bridge-test",
+        allocateConnectionId: Effect.succeed("connection-1"),
+        fetchImplementation: async (_url, init) => {
+          if (init?.method === "DELETE") return new Promise(() => {});
+          const body = JSON.parse(String(init?.body)) as { readonly id?: unknown };
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: body.id,
+              result: { protocolVersion: "2025-06-18" },
+            }),
+            { headers: { "content-type": "application/json", "mcp-session-id": "session-42" } },
+          );
+        },
+      });
+      const { connectionId } = yield* bridge.connect({ serverId: "cox" });
+      yield* bridge.message({ connectionId, method: "initialize" });
+      const closing = yield* bridge
+        .disconnect({ connectionId })
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* TestClock.adjust("5 seconds");
+      expect((yield* Fiber.join(closing)).message).toContain("did not answer disconnect");
+    }).pipe(Effect.scoped),
   );
 });
