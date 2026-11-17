@@ -1151,7 +1151,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     >
       <div
         className={cn(
-          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2 pointer-coarse:min-h-12",
+          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2 pointer-coarse:min-h-12 max-[768px]:pl-[calc(env(safe-area-inset-left)+3.75rem)]",
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
