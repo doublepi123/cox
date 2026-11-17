@@ -119,6 +119,7 @@ export const invokeGatewayModels = Effect.fn("invokeGatewayModels")(function* (
       }),
     }),
   );
+  Object.assign(request.source, { remoteAddress: "127.0.0.1" });
   const response = yield* gateway.handle.pipe(
     Effect.provideService(HttpServerRequest.HttpServerRequest, request),
     Effect.scoped,
