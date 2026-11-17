@@ -65,8 +65,13 @@ export async function exerciseDiff(page, shot) {
   await visible(sheet);
   const expand = sheet.getByRole("button", { name: "Expand hello.ts", exact: true });
   if ((await expand.count()) === 0) {
-    await sheet.getByRole("button", { name: "Add panel surface", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Diff", exact: true }).click();
+    const openDiff = sheet.getByRole("button", { name: /^Diff\b/ });
+    if ((await openDiff.count()) > 0) {
+      await openDiff.first().click();
+    } else {
+      await sheet.getByRole("button", { name: "Add panel surface", exact: true }).click();
+      await page.getByRole("menuitem", { name: /^Diff\b/ }).click();
+    }
   }
   await expand.click();
   await visible(sheet.getByText("export const v = 2", { exact: false }).first());
