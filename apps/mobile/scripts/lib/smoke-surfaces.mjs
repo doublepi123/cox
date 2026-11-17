@@ -22,6 +22,15 @@ export async function serverSwitcher(page) {
   return pill;
 }
 
+const mobileSidebar = (page) => page.locator('[data-mobile="true"][data-sidebar="sidebar"]');
+
+export async function closeMobileSidebar(page) {
+  const sheet = mobileSidebar(page);
+  if (!(await sheet.isVisible())) return;
+  await threadsButton(page).click();
+  await sheet.waitFor({ state: "hidden" });
+}
+
 export async function assertPhoneLayout(page) {
   assert.equal(await page.getByText("Connect your agents", { exact: true }).count(), 0);
   assert.ok(
@@ -50,6 +59,7 @@ export async function signIn(workspace, server) {
 }
 
 export async function exerciseDiff(page, shot) {
+  await closeMobileSidebar(page);
   await changesButton(page).click();
   const sheet = page.getByRole("dialog");
   await visible(sheet);
@@ -67,6 +77,7 @@ export async function exerciseDiff(page, shot) {
 }
 
 export async function exerciseTerminal(page, server, shot) {
+  await closeMobileSidebar(page);
   await terminalButton(page).click();
   const drawer = page.locator("[data-thread-terminal-drawer]");
   await visible(drawer.locator("canvas"));
