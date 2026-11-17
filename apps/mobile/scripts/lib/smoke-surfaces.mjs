@@ -15,6 +15,13 @@ export const changesButton = (page) =>
 export const terminalButton = (page) =>
   page.getByRole("button", { name: "Toggle terminal drawer", exact: true });
 
+export async function serverSwitcher(page) {
+  const pill = page.locator("[data-mobile-server-switcher]");
+  if (!(await pill.isVisible())) await threadsButton(page).click();
+  await visible(pill);
+  return pill;
+}
+
 export async function assertPhoneLayout(page) {
   assert.equal(await page.getByText("Connect your agents", { exact: true }).count(), 0);
   assert.ok(

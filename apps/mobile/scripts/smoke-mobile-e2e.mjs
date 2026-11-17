@@ -24,6 +24,7 @@ import {
   exerciseDiff,
   exerciseNotifications,
   exerciseTerminal,
+  serverSwitcher,
   signIn,
   threadsButton,
   visible,
@@ -172,7 +173,7 @@ try {
   );
   await step("Server A chat displays its persisted thread without onboarding", async () => {
     await signIn(workspaceA, serverA);
-    const pill = workspaceA.page.locator("[data-mobile-server-switcher]");
+    const pill = await serverSwitcher(workspaceA.page);
     assert.match(await pill.innerText(), /Server A\s+2/);
     await shot(workspaceA.page, "server-a-chat.png");
   });

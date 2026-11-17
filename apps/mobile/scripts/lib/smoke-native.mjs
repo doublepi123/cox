@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import https from "node:https";
 import http from "node:http";
+import { serverSwitcher } from "./smoke-surfaces.mjs";
 import { withDeadline } from "./smoke-runtime.mjs";
 
 export const VIEWPORT = { width: 390, height: 844 };
@@ -208,7 +209,7 @@ export async function installNativeWorkspace(launcher, browser, watchPage) {
     },
     async switchToLauncher(workspace) {
       switched = Promise.withResolvers();
-      await workspace.page.locator("[data-mobile-server-switcher]").click();
+      await (await serverSwitcher(workspace.page)).click();
       assert.equal(
         await withDeadline(switched.promise, 20_000, "Servers pill did not return to launcher."),
         workspace.profile.profileId,
