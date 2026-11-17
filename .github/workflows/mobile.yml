@@ -106,6 +106,16 @@ jobs:
       - run: pnpm --filter @cox/mobile build
       - run: pnpm --filter @cox/mobile verify:package
       - run: pnpm --filter @cox/mobile exec cap copy ios
+      - name: Select Xcode 26 SDK
+        run: |
+          set -euo pipefail
+          xcode_app="$(ls -1d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$xcode_app" ]]; then
+            echo "Xcode 26+ is required by App Store Connect but was not found under /Applications" >&2
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode_app/Contents/Developer"
+          xcodebuild -version
       - name: Resolve iOS version numbers
         id: version
         run: |

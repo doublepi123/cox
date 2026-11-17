@@ -94,6 +94,7 @@ export async function verifyMobileWorkflows(workflowsDir: string): Promise<void>
               "pnpm --filter @cox/mobile build",
               "pnpm --filter @cox/mobile verify:package",
               "cap copy ios",
+              "xcode-select -s",
               "-sdk iphoneos",
               "CoxMobile.xcarchive",
               "MARKETING_VERSION=",

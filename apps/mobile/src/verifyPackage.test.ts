@@ -219,6 +219,7 @@ describe("mobile package verification", () => {
     ["zip -qry cox-mobile-unsigned.ipa Payload", "true", "Payload"],
     ["sha256sum *.apk > SHA256SUMS", "true", "SHA256SUMS"],
     ["CURRENT_PROJECT_VERSION=", "BUILD_NUMBER_UNUSED=", "CURRENT_PROJECT_VERSION="],
+    ["xcode-select -s", "echo default_xcode", "xcode-select -s"],
     ["xcrun altool --upload-app", "echo skipped", "xcrun altool --upload-app"],
     ["if: steps.signing.outputs.signed == 'true'", "if: secrets.CERT != ''", "secrets"],
   ])("rejects a release workflow with broken %s", async (original, replacement, reason) => {
