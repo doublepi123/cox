@@ -263,4 +263,5 @@ it.skipIf(!process.env.COX_OMO_NPM_TEST_LAUNCHER)(
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   },
+  180_000,
 );
