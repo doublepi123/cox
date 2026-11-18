@@ -70,12 +70,15 @@ it("keeps the selected connection visible when two conversation models share a n
     );
   }
   await using screen = await render(<Picker />);
-  await screen.getByRole("button", { name: "First connection · Shared model" }).click();
+  const trigger = screen.getByRole("button", { name: "Shared model" });
+  await expect.element(trigger).toBeVisible();
+  await trigger.click();
+  await expect
+    .element(page.getByRole("option", { name: /Shared model.*First connection/ }))
+    .toBeVisible();
   await page.getByRole("option", { name: /Shared model.*Second connection/ }).click();
   expect(select).toHaveBeenCalledWith(instanceId, "cox-ms-second");
-  await expect
-    .element(screen.getByRole("button", { name: "Second connection · Shared model" }))
-    .toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Shared model" })).toBeVisible();
 });
 
 it.each([

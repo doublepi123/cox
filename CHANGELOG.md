@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show only the model name on the composer model pill. The connection name
+  stays in the model picker, where it distinguishes models that share a name.
 - Match Cox Mobile's app icon and launch image to the web and desktop mark.
   iOS, Android, and the splash are generated from `cox.svg` instead of the
   Capacitor placeholder.
