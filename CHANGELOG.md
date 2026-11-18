@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.105 — 2026-11-18
+
+- Keep an enabled OMO Native binding enabled when its model service has no
+  warning. An empty warning was stored as a present value, which the provider
+  settings rejected, so a working binding was shown as disabled. A warning that
+  later clears is removed.
+- Wait until the published package can be downloaded before desktop combination
+  builds package it, so a brief registry delay does not drop the installers.
+
 ## 0.1.104 — 2026-11-18
 
 - Reconnect without asking the environment descriptor again when the server id
