@@ -98,7 +98,7 @@ final class WorkspaceViewController: UIViewController {
     }
 
     private func placePill(dockRight: Bool, fraction: Double) {
-        guard let band else { return }
+        guard let band = band() else { return }
         let y = band.minY + (band.maxY - band.minY) * CGFloat(min(max(fraction, 0), 1))
         pill.frame.origin = CGPoint(x: dockRight ? band.maxX : band.minX, y: y)
     }
@@ -106,7 +106,7 @@ final class WorkspaceViewController: UIViewController {
     @objc private func openSwitcher() { onLauncher?("openServerSwitcher") }
 
     @objc private func drag(_ gesture: UIPanGestureRecognizer) {
-        guard let band else { return }
+        guard let band = band() else { return }
         if gesture.state == .began || gesture.state == .changed { draggingPill = true }
         let translation = gesture.translation(in: view)
         var origin = pill.frame.origin

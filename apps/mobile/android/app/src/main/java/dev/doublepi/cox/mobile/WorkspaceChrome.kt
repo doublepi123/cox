@@ -126,7 +126,7 @@ internal object WorkspaceChrome {
         val right = safeAreaCssPixels(bars.right, density)
         val bottom = safeAreaCssPixels(bars.bottom, density)
         val left = safeAreaCssPixels(bars.left, density)
-        launcherSafeAreaScript =
+        val script =
             """
             (function(){
               var root = document.documentElement;
@@ -137,7 +137,8 @@ internal object WorkspaceChrome {
               root.style.setProperty('--cox-safe-left','$left');
             })();
             """.trimIndent()
-        webView.evaluateJavascript(launcherSafeAreaScript, null)
+        launcherSafeAreaScript = script
+        webView.evaluateJavascript(script, null)
     }
 
     fun republishLauncherSafeArea(webView: android.webkit.WebView) {
