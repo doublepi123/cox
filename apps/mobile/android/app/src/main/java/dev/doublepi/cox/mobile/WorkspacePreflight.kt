@@ -210,7 +210,7 @@ internal class WorkspacePreflight(
                     minHeight = (34 * density).toInt()
                     setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                    WorkspaceChrome.styleServersPill(this, false)
+                    WorkspaceChrome.styleCapsuleControl(this, false)
                     setOnClickListener { finish("gateway_cancelled", "Cloudflare Access sign-in was cancelled.") }
                 })
                 val layout = LinearLayout(activity).apply {

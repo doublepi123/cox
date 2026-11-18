@@ -5,19 +5,13 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.util.TypedValue
-import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
-import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import java.util.Locale
-import kotlin.math.abs
 
 internal fun parseHexColor(value: String): Int? {
     val trimmed = value.trim()
@@ -41,43 +35,14 @@ internal fun isLightSurfaceColor(color: Int): Boolean {
     return luminance >= 145.0
 }
 
-internal fun shouldShowFallbackServersPill(
-    imeVisible: Boolean,
-    webSwitcherMounted: Boolean,
-): Boolean = !imeVisible && !webSwitcherMounted
+internal enum class WorkspaceSystemBack { History, ConnectionManager }
 
-internal fun clampPillCoordinate(value: Float, minBound: Float, maxBound: Float): Float =
-    value.coerceIn(minBound, maxBound.coerceAtLeast(minBound))
+internal fun workspaceSystemBack(canGoBack: Boolean): WorkspaceSystemBack =
+    if (canGoBack) WorkspaceSystemBack.History else WorkspaceSystemBack.ConnectionManager
 
 internal fun safeAreaCssPixels(pixels: Int, density: Float): String {
     if (pixels <= 0 || density <= 0f || !density.isFinite()) return "0px"
     return String.format(Locale.US, "%.2fpx", pixels / density)
-}
-
-internal data class FallbackPillOrigin(val x: Int, val y: Int)
-
-internal fun fallbackServersPillOrigin(
-    parentWidth: Int,
-    parentHeight: Int,
-    pillWidth: Int,
-    pillHeight: Int,
-    insetLeft: Int,
-    insetTop: Int,
-    insetRight: Int,
-    insetBottom: Int,
-    headerClearance: Int,
-    composerClearance: Int,
-    edgeMargin: Int,
-    dockRight: Boolean,
-    yFraction: Float,
-): FallbackPillOrigin {
-    val minX = insetLeft + edgeMargin
-    val maxX = (parentWidth - insetRight - edgeMargin - pillWidth).coerceAtLeast(minX)
-    val minY = insetTop + headerClearance
-    val maxY = (parentHeight - insetBottom - composerClearance - pillHeight).coerceAtLeast(minY)
-    val fraction = yFraction.coerceIn(0f, 1f)
-    val y = minY + ((maxY - minY) * fraction).toInt()
-    return FallbackPillOrigin(x = if (dockRight) maxX else minX, y = y)
 }
 
 internal object WorkspaceChrome {
@@ -190,9 +155,9 @@ internal object WorkspaceChrome {
         }
     }
 
-    fun styleServersPill(pill: TextView, lightSurface: Boolean) {
-        val density = pill.resources.displayMetrics.density
-        pill.background = GradientDrawable().apply {
+    fun styleCapsuleControl(control: TextView, lightSurface: Boolean) {
+        val density = control.resources.displayMetrics.density
+        control.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 999f * density
             setColor(
@@ -205,130 +170,9 @@ internal object WorkspaceChrome {
                 else Color.parseColor("#38FFFFFF"),
             )
         }
-        pill.setTextColor(
+        control.setTextColor(
             if (lightSurface) Color.parseColor("#121712")
             else Color.parseColor("#F4F4F5"),
         )
-    }
-
-    fun createDraggableServersPill(
-        activity: Activity,
-        lightSurface: Boolean,
-        onTap: () -> Unit,
-        onLongPress: () -> Unit,
-    ): TextView {
-        val density = activity.resources.displayMetrics.density
-        val padH = (13f * density).toInt()
-        val heightPx = (34f * density).toInt()
-        val marginPx = (8f * density).toInt()
-        val headerClearance = (56f * density).toInt()
-        val composerClearance = (112f * density).toInt()
-        val touchSlop = ViewConfiguration.get(activity).scaledTouchSlop
-        val prefs = activity.getSharedPreferences("cox.workspace.serversPill", Context.MODE_PRIVATE)
-        var dockRight = prefs.getBoolean("dockRight", true)
-        var yFraction = prefs.getFloat("yFraction", 0.5f)
-        val isZh = Locale.getDefault().language.lowercase(Locale.ROOT).startsWith("zh")
-        val pill = TextView(activity).apply {
-            text = if (isZh) "服务器" else "Servers"
-            contentDescription = "Return to server switcher; hold to manage connections"
-            isAllCaps = false
-            gravity = Gravity.CENTER
-            minHeight = heightPx
-            setPadding(padH, 0, padH, 0)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
-            elevation = 4f * density
-            isClickable = true
-            isLongClickable = true
-            styleServersPill(this, lightSurface)
-            setOnClickListener { onTap() }
-            setOnLongClickListener {
-                onLongPress()
-                true
-            }
-        }
-        var downRawX = 0f
-        var downRawY = 0f
-        var startX = 0f
-        var startY = 0f
-        var dragging = false
-        fun origin(view: View, right: Boolean, fraction: Float): FallbackPillOrigin? {
-            val parent = view.parent as? View ?: return null
-            if (parent.width <= 0 || view.width <= 0) return null
-            val insets = ViewCompat.getRootWindowInsets(parent)
-                ?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            return fallbackServersPillOrigin(
-                parentWidth = parent.width,
-                parentHeight = parent.height,
-                pillWidth = view.width,
-                pillHeight = view.height,
-                insetLeft = insets?.left ?: 0,
-                insetTop = insets?.top ?: 0,
-                insetRight = insets?.right ?: 0,
-                insetBottom = insets?.bottom ?: 0,
-                headerClearance = headerClearance,
-                composerClearance = composerClearance,
-                edgeMargin = marginPx,
-                dockRight = right,
-                yFraction = fraction,
-            )
-        }
-        fun place(view: View) {
-            val next = origin(view, dockRight, yFraction) ?: return
-            view.x = next.x.toFloat()
-            view.y = next.y.toFloat()
-        }
-        pill.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-            if (!dragging) place(view)
-        }
-        pill.setOnTouchListener { view, event ->
-            val parent = view.parent as? View ?: return@setOnTouchListener false
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downRawX = event.rawX
-                    downRawY = event.rawY
-                    startX = view.x
-                    startY = view.y
-                    dragging = false
-                    false
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - downRawX
-                    val dy = event.rawY - downRawY
-                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                        dragging = true
-                        view.cancelLongPress()
-                    }
-                    if (dragging) {
-                        val minX = origin(view, false, yFraction)?.x?.toFloat() ?: marginPx.toFloat()
-                        val maxX = origin(view, true, yFraction)?.x?.toFloat() ?: minX
-                        val minY = origin(view, dockRight, 0f)?.y?.toFloat() ?: marginPx.toFloat()
-                        val maxY = origin(view, dockRight, 1f)?.y?.toFloat() ?: minY
-                        view.x = clampPillCoordinate(startX + dx, minX, maxX)
-                        view.y = clampPillCoordinate(startY + dy, minY, maxY)
-                        true
-                    } else {
-                        false
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) {
-                        dockRight = view.x + view.width / 2f >= parent.width / 2f
-                        val minY = origin(view, dockRight, 0f)?.y ?: 0
-                        val maxY = origin(view, dockRight, 1f)?.y ?: minY
-                        val span = (maxY - minY).coerceAtLeast(1)
-                        yFraction = ((view.y - minY) / span).coerceIn(0f, 1f)
-                        prefs.edit().putBoolean("dockRight", dockRight).putFloat("yFraction", yFraction).apply()
-                        place(view)
-                        dragging = false
-                        true
-                    } else {
-                        false
-                    }
-                }
-                else -> false
-            }
-        }
-        pill.layoutParams = FrameLayout.LayoutParams(-2, heightPx, Gravity.TOP or Gravity.START)
-        return pill
     }
 }

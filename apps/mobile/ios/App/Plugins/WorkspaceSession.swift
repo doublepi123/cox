@@ -91,7 +91,7 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         currentNavigation = navigation
-        (presenter as? WorkspaceViewController)?.webSwitcherMounted = false
+        (presenter as? WorkspaceViewController)?.noteMainFrameStarted()
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
@@ -133,6 +133,11 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
         onLocation?(url.path + (url.query.map { "?\($0)" } ?? "") + (url.fragment.map { "#\($0)" } ?? ""))
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard navigation === currentNavigation else { return }
+        (presenter as? WorkspaceViewController)?.noteMainFrameSettled()
+    }
+
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         detach(gateway: false)
         logger.error("workspace.renderer_terminated")
@@ -141,7 +146,13 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) {
         guard navigation === currentNavigation else { return }
+        (presenter as? WorkspaceViewController)?.noteMainFrameFailed()
         detach(gateway: policy.phase == .gatewayHandoff)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard navigation === currentNavigation else { return }
+        (presenter as? WorkspaceViewController)?.noteMainFrameFailed()
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction,

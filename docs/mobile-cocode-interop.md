@@ -9,7 +9,7 @@ Cox supports two complementary native Android packages alongside mobile browsers
 | **Application ID / surface** | `dev.doublepi.cox.mobile` (`apps/mobile` in this repository)                                                                   | `io.cocode.app` (standalone Android repository)                                                                          | System Safari / Chrome / Firefox (`apps/web`)                       |
 | **Supported OSes**           | iOS 17+ and Android 8.0+ (`minSdk = 26`, `targetSdk = 35`)                                                                     | Android 8.0+ (`minSdk = 26`, `targetSdk = 35`, `arm64-v8a` & `x86_64`)                                                   | Modern iOS / iPadOS and Android browsers                            |
 | **On-device Cox server**     | Never included (pure-remote launcher + isolated WebView shell, `<20 MB` APK)                                                   | Included: runs `@doublepi123/cox` (`127.0.0.1:3773`) and agent CLIs inside unrooted Alpine Linux + PRoot                 | None (browser client only)                                          |
-| **Remote Cox servers**       | Primary purpose: multi-server Connection Manager, 2-slot LRU WebView pool, floating **Servers** switcher                       | Supported alongside the local runtime (2-slot `Local` + `Remote` WebView pool)                                           | Single origin per browser tab or installed Home Screen PWA          |
+| **Remote Cox servers**       | Primary purpose: multi-server Connection Manager and a 2-slot LRU WebView pool                                              | Supported alongside the local runtime (2-slot `Local` + `Remote` WebView pool)                                           | Single origin per browser tab or installed Home Screen PWA          |
 | **Password storage**         | Optional native vault (`CoxVaultPlugin`: iOS Keychain + Face ID / Touch ID, Android Keystore `AES256_GCM` + `BiometricPrompt`) | App-private `EncryptedSharedPreferences` (`AES256_GCM` master key)                                                       | Browser password manager                                            |
 | **Transport policy**         | `https://` default; explicit per-server `allowInsecureHttp` opt-in for password-protected LAN/Tailscale HTTP                   | Loopback `127.0.0.1:3773` for local runtime; `https://` default + explicit `allowInsecureHttp` opt-in for remote servers | `https://` required for nonlocal access and Service Worker features |
 
@@ -54,14 +54,14 @@ window.dispatchEvent(new Event("cox:mobile-shell-change"));
 
 Every outbound message from `@t3tools/web` carries `bridgeToken` and matches one of the schemas in `MobileShellBridgeMessage`:
 
-- `{ type: "openServerSwitcher", bridgeToken }`: opens the native server switcher. Current web builds send it from the sidebar `MobileServerSwitcher`.
-- `{ type: "setServerSwitcherProvided", bridgeToken, provided }`: tells the native shell that this page has its own server switcher, so the floating pill should hide. `provided: false` restores the mid-screen fallback pill.
-- `{ type: "openConnectionManager", bridgeToken }`: returns to the launcher's full Connection Manager.
+- `{ type: "openServerSwitcher", bridgeToken }`: returns from the workspace to the Connection Manager. Current web builds send it from the sidebar `MobileServerSwitcher`.
+- `{ type: "setServerSwitcherProvided", bridgeToken, provided }`: tells the native shell that this page has its own server switcher. `provided: true` hides the iOS fallback Back control.
+- `{ type: "openConnectionManager", bridgeToken }`: returns to the launcher's full Connection Manager. Android system back and the iOS root edge swipe send the same native event.
 - `{ type: "syncThemeColor", bridgeToken, color }`: syncs the native container background to a validated CSS color (`<= 64` ASCII chars).
 - `{ type: "hapticSelection", bridgeToken }`: triggers native selection haptics on mobile prompt and approval taps.
 - `{ type: "saveBlobDownload", bridgeToken, dataUrl, filename, mimeType }`: exports `blob:` / `data:` downloads up to `COX_MOBILE_SHELL_MAX_DOWNLOAD_BYTES` (`16 MiB`) with path-traversal-free filenames.
 
-CoCode currently injects its narrower `CoCodeBridge` (`saveFile`, `themeColor`) for blob exports and status bar tinting. Because `@t3tools/web` treats `window.__coxMobileShell__` as optional capability detection (`useMobileShellInfo()` returns `null` when absent), current CoCode builds render the full mobile-optimized Cox Web UI cleanly without modification, and future CoCode releases can adopt `window.__coxMobileShell__` to light up the in-toolbar **Servers** pill and selection haptics using the exact same contract.
+CoCode currently injects its narrower `CoCodeBridge` (`saveFile`, `themeColor`) for blob exports and status bar tinting. Because `@t3tools/web` treats `window.__coxMobileShell__` as optional capability detection (`useMobileShellInfo()` returns `null` when absent), current CoCode builds render the full mobile-optimized Cox Web UI cleanly without modification, and future CoCode releases can adopt `window.__coxMobileShell__` to return to their server list and play selection haptics using the exact same contract.
 
 ## Background notifications across Cox Mobile, CoCode, and PWAs
 

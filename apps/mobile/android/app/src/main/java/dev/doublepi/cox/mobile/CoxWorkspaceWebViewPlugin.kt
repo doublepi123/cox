@@ -1,14 +1,15 @@
 package dev.doublepi.cox.mobile
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
 import com.getcapacitor.JSObject
@@ -22,10 +23,9 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     private val pool = linkedMapOf<String, WorkspaceView>()
     private val policy = WorkspacePoolPolicy()
     private var overlay: FrameLayout? = null
-    private var activePill: TextView? = null
+    private var activeWorkspace: WorkspaceView? = null
+    private var workspaceBack: OnBackPressedCallback? = null
     private var activeName: String? = null
-    private var imeVisible = false
-    private var webSwitcherMounted = false
     private var launcherColor: Int? = null
     internal val hasActiveOverlay: Boolean
         get() = overlay != null || preflight.hasActiveSignIn
@@ -62,12 +62,9 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
             if (activeName != profileName) return
             overlay?.setBackgroundColor(backgroundColor)
             WorkspaceChrome.applySystemBars(activity, backgroundColor)
-            activePill?.let { WorkspaceChrome.styleServersPill(it, isLightSurfaceColor(backgroundColor)) }
         }
         override fun onWebSwitcherChanged(profileName: String, mounted: Boolean) {
-            if (activeName != profileName) return
-            webSwitcherMounted = mounted
-            syncPillVisibility()
+            if (activeName != profileName || !mounted) return
         }
     }
 
@@ -75,12 +72,6 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         val bg = launcherColor ?: WorkspaceChrome.defaultBackgroundColor(activity)
         WorkspaceChrome.applySystemBars(activity, bg)
         bridge?.webView?.setBackgroundColor(bg)
-    }
-
-    private fun syncPillVisibility() {
-        activePill?.visibility =
-            if (shouldShowFallbackServersPill(imeVisible, webSwitcherMounted)) View.VISIBLE
-            else View.GONE
     }
 
     @PluginMethod
@@ -188,22 +179,12 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
 
     private fun show(workspace: WorkspaceView) {
         dismiss()
+        activeWorkspace = workspace
         activeName = workspace.identity.profileName
-        imeVisible = false
-        webSwitcherMounted = workspace.webSwitcherMounted
         val bg = workspace.currentBackgroundColor
         val root = container(bg)
         (workspace.webView.parent as? ViewGroup)?.removeView(workspace.webView)
         root.addView(workspace.webView, FrameLayout.LayoutParams(-1, -1))
-        val pill = WorkspaceChrome.createDraggableServersPill(
-            activity = activity,
-            lightSurface = isLightSurfaceColor(bg),
-            onTap = { host.launchEvent("openServerSwitcher") },
-            onLongPress = { host.launchEvent("openConnectionManager") },
-        )
-        activePill = pill
-        root.addView(pill)
-        syncPillVisibility()
         WorkspaceChrome.applySystemBars(activity, bg)
         workspace.refreshChromeProbe()
     }
@@ -242,19 +223,32 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
             fitsSystemWindows = false
             isClickable = true
         }
-        WorkspaceChrome.installChildWebViewInsetsShield(root) { visible ->
-            imeVisible = visible
-            syncPillVisibility()
+        WorkspaceChrome.installChildWebViewInsetsShield(root)
+        activity.getSharedPreferences("cox.workspace.serversPill", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply()
+        val callback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val web = activeWorkspace?.webView
+                if (web != null && workspaceSystemBack(web.canGoBack()) == WorkspaceSystemBack.History) {
+                    web.goBack()
+                } else {
+                    host.launchEvent("openConnectionManager")
+                }
+            }
         }
+        activity.onBackPressedDispatcher.addCallback(activity, callback)
+        workspaceBack = callback
         activity.addContentView(root, ViewGroup.LayoutParams(-1, -1))
         overlay = root
         return root
     }
 
     private fun dismiss() {
-        activePill = null
-        imeVisible = false
-        webSwitcherMounted = false
+        workspaceBack?.remove()
+        workspaceBack = null
+        activeWorkspace = null
         val hadOverlay = overlay != null
         overlay?.let { root ->
             root.removeAllViews()

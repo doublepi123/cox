@@ -199,7 +199,7 @@ export async function installNativeWorkspace(launcher, browser, watchPage) {
       return () => withDeadline(opened.promise, 30_000, "Native workspace did not open.");
     },
     async connect(label) {
-      assert.equal(activeProfileId, null, "Return through the Servers pill before connecting.");
+      assert.equal(activeProfileId, null, "Return through the web server switcher before connecting.");
       opened = Promise.withResolvers();
       await launcher
         .getByRole("listitem")
@@ -213,7 +213,7 @@ export async function installNativeWorkspace(launcher, browser, watchPage) {
       const pill = await serverSwitcher(workspace.page);
       await pill.evaluate((element) => element.click());
       assert.equal(
-        await withDeadline(switched.promise, 20_000, "Servers pill did not return to launcher."),
+        await withDeadline(switched.promise, 20_000, "Web server switcher did not return to launcher."),
         workspace.profile.profileId,
       );
     },

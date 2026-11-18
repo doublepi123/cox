@@ -191,7 +191,7 @@ try {
   await workspaceA.page.goto(
     new URL("/" + serverA.environmentId + "/" + serverA.threadId, serverA.origin).href,
   );
-  await step("Servers pill returns control to launcher through the tokened bridge", () =>
+  await step("Web server switcher returns control to launcher through the tokened bridge", () =>
     native.switchToLauncher(workspaceA),
   );
   const workspaceB = await step("Connect Server B invokes its isolated native workspace", () =>

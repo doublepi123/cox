@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Remove the native floating Servers pill from Cox Mobile. The sidebar
+  switcher still returns to the Connection Manager. Android system back does
+  the same from the workspace root, and iOS shows a Back control above the
+  page only when that page has no switcher or failed to load.
+
 ## 0.1.106 — 2026-11-18
 
 - Start an OMO Native instance when a role's thinking strength is not offered

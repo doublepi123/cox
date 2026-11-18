@@ -110,13 +110,20 @@ assert.match(
   sources.get("WorkspaceExports.swift"),
   /UIDocumentPickerViewController\(forExporting:/,
 );
-assert.match(sources.get("WorkspaceViewController.swift"), /UIPanGestureRecognizer/);
+assert.doesNotMatch(sources.get("WorkspaceViewController.swift"), /UIPanGestureRecognizer/);
+assert.match(
+  sources.get("WorkspaceViewController.swift"),
+  /removeObject\(forKey: "cox\.workspace\.serversPill\.dockRight"\)/,
+);
+assert.match(sources.get("WorkspaceViewController.swift"), /UIScreenEdgePanGestureRecognizer/);
+assert.match(sources.get("WorkspaceViewController.swift"), /openConnectionManager/);
+assert.match(sources.get("WorkspaceViewController.swift"), /webSwitcherMounted/);
 assert.match(
   sources.get("CoxLauncherViewController.swift"),
   /registerPluginInstance\(CoxWorkspaceWebViewPlugin\(\)\)/,
 );
 console.log(
-  "PASS: native recovery pill, document export, and launcher-only Capacitor registration.",
+  "PASS: workspace back to the Connection Manager, document export, and launcher-only Capacitor registration.",
 );
 console.log(
   "LIMIT: Linux structural verification does not compile UIKit/WebKit or execute an iOS device.",
