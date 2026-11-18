@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.1.106 — 2026-11-18
+
+- Start an OMO Native instance when a role's thinking strength is not offered
+  by its model. The strength is ignored for that role and the instance status
+  names the roles to correct, instead of the whole instance failing to start.
+- Say why OMO Native could not start. The status now carries the reason OMO
+  reported, and a start that takes longer than 30 seconds is reported as a
+  timeout.
+- Report in the conversation when automatic memory could not be set up for an
+  OMO Native session. Before, memory was silently off while the setting still
+  showed it on.
+
 ## 0.1.105 — 2026-11-18
 
 - Keep an enabled OMO Native binding enabled when its model service has no
