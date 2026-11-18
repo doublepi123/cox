@@ -19,6 +19,7 @@ import {
   isModelServiceSelection,
   isModelServiceTargetAvailable,
   modelServiceModelSlug,
+  modelServiceSourceLabels,
   modelServiceSources,
   modelServiceTargetName,
   modelServiceTargets,
@@ -219,6 +220,7 @@ export function getAppModelOptionsForInstance(
   const binding = settings.providerInstances?.[entry.instanceId]?.modelService;
   const bound = entry.snapshot.modelCatalogSource === "model-service" || binding !== undefined;
   const mixed = binding && modelServiceSources(binding).length > 1;
+  const sourceLabels = mixed ? modelServiceSourceLabels(settings.modelServices) : undefined;
   const targets = binding
     ? new Map(
         modelServiceTargets(settings.modelServices, binding).map(
@@ -236,8 +238,11 @@ export function getAppModelOptionsForInstance(
       );
       return {
         ...option,
-        ...(mixed && target
-          ? { name: modelServiceTargetName(target, false), subProvider: target.service.name }
+        ...(sourceLabels && target
+          ? {
+              name: modelServiceTargetName(target, false),
+              subProvider: sourceLabels.get(target.ref.serviceId) ?? target.service.name,
+            }
           : {}),
         ...(target && !isModelServiceTargetAvailable(target) ? { isUnavailable: true } : {}),
       };
@@ -252,7 +257,12 @@ export function getAppModelOptionsForInstance(
     options.push({
       slug: selectedModel,
       name: selectedTarget ? modelServiceTargetName(selectedTarget, false) : selectedModel,
-      ...(mixed && selectedTarget ? { subProvider: selectedTarget.service.name } : {}),
+      ...(sourceLabels && selectedTarget
+        ? {
+            subProvider:
+              sourceLabels.get(selectedTarget.ref.serviceId) ?? selectedTarget.service.name,
+          }
+        : {}),
       isCustom: false,
       isUnavailable: true,
     });

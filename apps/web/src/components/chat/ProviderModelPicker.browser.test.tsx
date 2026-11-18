@@ -24,6 +24,60 @@ import { render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { DockedPickerContext, ProviderModelPicker } from "./ProviderModelPicker";
 
+it("keeps the selected connection visible when two conversation models share a name", async () => {
+  const instanceId = ProviderInstanceId.make("codex");
+  const entries = deriveProviderInstanceEntries([
+    {
+      instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      modelCatalogSource: "model-service",
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      models: [],
+      slashCommands: [],
+      skills: [],
+    },
+  ]);
+  const options = new Map([
+    [
+      instanceId,
+      [
+        { slug: "cox-ms-first", name: "Shared model", subProvider: "First connection" },
+        { slug: "cox-ms-second", name: "Shared model", subProvider: "Second connection" },
+      ],
+    ],
+  ]);
+  const select = vi.fn();
+  function Picker() {
+    const [model, setModel] = useState("cox-ms-first");
+    return (
+      <ProviderModelPicker
+        environmentId={null}
+        activeInstanceId={instanceId}
+        model={model}
+        lockedProvider={null}
+        instanceEntries={entries}
+        modelOptionsByInstance={options}
+        onInstanceModelChange={(instance, selected) => {
+          select(instance, selected);
+          setModel(selected);
+        }}
+      />
+    );
+  }
+  await using screen = await render(<Picker />);
+  await screen.getByRole("button", { name: "First connection · Shared model" }).click();
+  await page.getByRole("option", { name: /Shared model.*Second connection/ }).click();
+  expect(select).toHaveBeenCalledWith(instanceId, "cox-ms-second");
+  await expect
+    .element(screen.getByRole("button", { name: "Second connection · Shared model" }))
+    .toBeVisible();
+});
+
 it.each([
   { kind: "codex", width: 320 },
   { kind: "claudeAgent", width: 320 },

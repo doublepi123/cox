@@ -10,6 +10,7 @@ import {
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
 import { createModelSelection } from "@t3tools/shared/model";
+import { modelServiceQualifiedId } from "@t3tools/shared/modelServices";
 import * as Schema from "effect/Schema";
 import { deriveEffectiveComposerModelState } from "./composerDraftStore";
 import { getComposerProviderState } from "./components/chat/composerProviderState";
@@ -79,6 +80,61 @@ function settingsWithProviderInstances(): UnifiedSettings {
 }
 
 describe("instance-scoped model selection", () => {
+  it("distinguishes identical model and connection names while retaining the exact selected route", () => {
+    const instanceId = ProviderInstanceId.make("codex-service");
+    const primary = ModelServiceId.make("primary");
+    const secondary = ModelServiceId.make("secondary");
+    const modelId = "gpt-fixture";
+    const primaryModel = modelServiceQualifiedId({ serviceId: primary, modelId });
+    const secondaryModel = modelServiceQualifiedId({ serviceId: secondary, modelId });
+    const driver = ProviderDriverKind.make("codex");
+    const primaryService = decodeModelService({
+      name: "Gateway",
+      baseUrl: "https://first.test/v1",
+      protocol: "openai-responses",
+      models: [{ id: modelId, name: "GPT Fixture" }],
+    });
+    const settings: UnifiedSettings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      modelServices: {
+        [primary]: primaryService,
+        [secondary]: { ...primaryService, baseUrl: "https://second.test/v1" },
+      },
+      providerInstances: {
+        [instanceId]: {
+          driver,
+          modelService: {
+            modelIds: [],
+            sources: [
+              { serviceId: primary, modelIds: [] },
+              { serviceId: secondary, modelIds: [] },
+            ],
+          },
+        },
+      },
+    };
+    const snapshot: ServerProvider = {
+      ...provider({ instanceId, models: [primaryModel, secondaryModel] }),
+      modelCatalogSource: "model-service",
+    };
+    const entry = deriveProviderInstanceEntries([snapshot])[0]!;
+    expect(getAppModelOptionsForInstance(settings, entry, secondaryModel)).toEqual([
+      expect.objectContaining({
+        slug: primaryModel,
+        name: "GPT Fixture",
+        subProvider: "Gateway · first.test",
+      }),
+      expect.objectContaining({
+        slug: secondaryModel,
+        name: "GPT Fixture",
+        subProvider: "Gateway · second.test",
+      }),
+    ]);
+    expect(
+      resolveAppModelSelectionForInstance(instanceId, settings, [snapshot], secondaryModel),
+    ).toBe(secondaryModel);
+  });
+
   it.each([false, true])(
     "keeps service-bound custom snapshot rows visible before and after source refresh (%s)",
     (refreshed) => {

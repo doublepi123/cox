@@ -6,6 +6,13 @@
 
 - Disable automatic first-turn planning in Cox-managed OMO instances so
   models such as Kimi K3.1 Pro can start a session with thinking enabled.
+- Explain when an agent has no model services to add. Show the connection
+  when choosing a default model, an OMO role model, or a conversation model
+  from several sources. Reset the default to the first available model if
+  its source or model is removed from the binding.
+- Extend the mobile workspace to the physical bottom of the screen. The
+  sidebar and chat backgrounds fill the home-indicator area, and only their
+  content is inset by the safe area.
 
 ## 0.2.0 — 2026-11-18
 
@@ -39,9 +46,6 @@
   switcher still returns to the Connection Manager. Android system back does
   the same from the workspace root, and iOS shows a Back control above the
   page only when that page has no switcher or failed to load.
-- Extend the mobile workspace to the physical bottom of the screen. The
-  sidebar and chat backgrounds fill the home-indicator area, and only their
-  content is inset by the safe area.
 - Make connecting from Cox Mobile feel continuous. The saved-server row shows
   that it is connecting immediately, the environment check and session check
   run together, and the workspace fades in over a matching background instead

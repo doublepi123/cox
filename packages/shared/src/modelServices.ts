@@ -267,6 +267,28 @@ export function isModelServiceTargetCompatible(target: ModelServiceTarget): bool
   );
 }
 
+export function modelServiceSourceLabels(services: ServerSettings["modelServices"]) {
+  const entries = Object.entries(services);
+  const nameCounts = new Map<string, number>();
+  for (const [, service] of entries) {
+    nameCounts.set(service.name, (nameCounts.get(service.name) ?? 0) + 1);
+  }
+  const labels = entries.map(([id, service]) => {
+    const host =
+      nameCounts.get(service.name)! > 1 && URL.canParse(service.baseUrl)
+        ? new URL(service.baseUrl).host
+        : "";
+    return [ModelServiceId.make(id), host ? `${service.name} · ${host}` : service.name] as const;
+  });
+  const labelCounts = new Map<string, number>();
+  for (const [, label] of labels) {
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  }
+  return new Map(
+    labels.map(([id, label]) => [id, labelCounts.get(label)! > 1 ? `${label} (${id})` : label]),
+  );
+}
+
 export function modelServiceTargetName(target: ModelServiceTarget, showSource: boolean): string {
   const { model, service } = target;
   const name =

@@ -560,6 +560,14 @@ export const en = {
   "Remove model source {name}": "Remove model source {name}",
   "Add model source": "Add model source",
   "Select a model service": "Select a model service",
+  "All configured model services have been added.":
+    "All configured model services have been added.",
+  "Add a connection in Model Services to choose a model source.":
+    "Add a connection in Model Services to choose a model source.",
+  "No model services are available to add.": "No model services are available to add.",
+  "Connection disabled": "Connection disabled",
+  "Split this connection by protocol first": "Split this connection by protocol first",
+  "No available models for agents": "No available models for agents",
   "First available model": "First available model",
   Primary: "Primary",
   "Model-list path": "Model-list path",

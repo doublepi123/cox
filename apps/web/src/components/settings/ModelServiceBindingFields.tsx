@@ -8,8 +8,10 @@ import { useId } from "react";
 import {
   isModelServiceTargetAvailable,
   modelServiceAgentProtocol,
+  modelServiceDefaultRef,
   modelServiceDefaultRuntimeId,
   modelServiceProtocols,
+  modelServiceSourceLabels,
   modelServiceSources,
   modelServiceTargetName,
   modelServiceTargets,
@@ -19,7 +21,8 @@ import {
 import { useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
 
-const selectClass = "min-h-11 min-w-0 w-full rounded-md border border-input bg-background px-2";
+const selectClass =
+  "min-h-11 min-w-0 w-full truncate rounded-md border border-input bg-background px-2";
 
 export function ModelServiceBindingFields({
   driver,
@@ -39,27 +42,58 @@ export function ModelServiceBindingFields({
   const sources = binding ? modelServiceSources(binding) : [];
   const targets = binding ? modelServiceTargets(services, binding) : [];
   const defaultId = binding ? modelServiceDefaultRuntimeId(binding) : undefined;
-  const setSources = ([first, ...rest]: ReadonlyArray<ModelServiceSource>) => {
+  const sourceLabels = modelServiceSourceLabels(services);
+  const showSource = sources.length > 1;
+  const setSources = (nextSources: ReadonlyArray<ModelServiceSource>) => {
+    const [first, ...rest] = nextSources;
     if (!first) {
       onChange(undefined);
-    } else if (binding?.serviceId === first.serviceId && !rest.length) {
-      onChange({ ...binding, modelIds: first.modelIds });
-    } else {
-      const next = binding && multiSourceModelServiceBinding(binding, services);
-      onChange({ ...next, modelIds: [], sources: [first, ...rest] });
+      return;
     }
+    const next =
+      binding?.serviceId === first.serviceId && nextSources.length === 1
+        ? { ...binding, modelIds: first.modelIds }
+        : {
+            ...(binding && multiSourceModelServiceBinding(binding, services)),
+            modelIds: [],
+            sources: [first, ...rest] as const,
+          };
+    const defaultRef = modelServiceDefaultRef(next);
+    if (
+      defaultRef &&
+      !nextSources.some(
+        (source) =>
+          source.serviceId === defaultRef.serviceId &&
+          (!source.modelIds.length || source.modelIds.includes(defaultRef.modelId)),
+      )
+    ) {
+      const { defaultModel: _legacy, defaultModelRef: _removed, ...remaining } = next;
+      onChange(remaining);
+      return;
+    }
+    onChange(next);
   };
-  const choices = Object.entries(services).filter(
-    ([serviceId, service]) =>
-      service.enabled &&
-      new Set(modelServiceProtocols(service)).size === 1 &&
-      !sources.some((source) => source.serviceId === serviceId),
-  );
+  const choices = Object.entries(services)
+    .filter(([serviceId]) => !sources.some((source) => source.serviceId === serviceId))
+    .map(([id, service]) => {
+      const serviceId = ModelServiceId.make(id);
+      const available = modelServiceTargets(services, { serviceId, modelIds: [] }).some(
+        isModelServiceTargetAvailable,
+      );
+      const reason = !service.enabled
+        ? t("Connection disabled")
+        : new Set(modelServiceProtocols(service)).size !== 1
+          ? t("Split this connection by protocol first")
+          : !available
+            ? t("No available models for agents")
+            : undefined;
+      return { serviceId, name: sourceLabels.get(serviceId) ?? service.name, reason };
+    });
+  const canAddSource = choices.some((choice) => !choice.reason);
   return (
     <div className="space-y-3">
       {sources.map((source) => {
-        const service = services[source.serviceId];
-        const sourceName = service?.name ?? source.serviceId;
+        const sourceName = sourceLabels.get(source.serviceId) ?? source.serviceId;
         const allModels = source.modelIds.length === 0;
         const sourceTargets = modelServiceTargets(services, {
           serviceId: source.serviceId,
@@ -76,7 +110,9 @@ export function ModelServiceBindingFields({
             disabled={readOnly}
             className="space-y-2 rounded-md border border-border px-3 pb-2"
           >
-            <legend className="px-1 text-sm font-medium">{sourceName}</legend>
+            <legend className="max-w-full px-1 text-sm font-medium [overflow-wrap:anywhere]">
+              {sourceName}
+            </legend>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="flex min-h-11 items-center gap-2 text-sm">
                 <input
@@ -146,31 +182,53 @@ export function ModelServiceBindingFields({
           </fieldset>
         );
       })}
-      <label className="grid gap-1.5 text-sm" htmlFor={`${id}-connection`}>
-        {t(sources.length ? "Add model source" : "Connection")}
-        <select
-          id={`${id}-connection`}
-          className={selectClass}
-          value=""
-          disabled={readOnly || choices.length === 0}
-          onChange={(event) => {
-            if (!event.target.value) return;
-            setSources([
-              ...sources,
-              { serviceId: ModelServiceId.make(event.target.value), modelIds: [] },
-            ]);
-          }}
-        >
-          <option value="">
-            {t(sources.length ? "Select a model service" : "Use independent agent configuration")}
-          </option>
-          {choices.map(([serviceId, service]) => (
-            <option key={serviceId} value={serviceId}>
-              {service.name}
+      {canAddSource ? (
+        <label className="grid gap-1.5 text-sm" htmlFor={`${id}-connection`}>
+          {t(sources.length ? "Add model source" : "Connection")}
+          <select
+            id={`${id}-connection`}
+            className={selectClass}
+            value=""
+            disabled={readOnly}
+            onChange={(event) => {
+              const choice = choices.find(
+                (entry) => entry.serviceId === event.target.value && !entry.reason,
+              );
+              if (choice) setSources([...sources, { serviceId: choice.serviceId, modelIds: [] }]);
+            }}
+          >
+            <option value="">
+              {t(sources.length ? "Select a model service" : "Use independent agent configuration")}
             </option>
-          ))}
-        </select>
-      </label>
+            {choices.map(({ serviceId, name, reason }) => (
+              <option key={serviceId} value={serviceId} disabled={Boolean(reason)}>
+                {reason ? `${name} · ${reason}` : name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <div className="space-y-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+          <p>
+            {t(
+              choices.length
+                ? "No model services are available to add."
+                : sources.length
+                  ? "All configured model services have been added."
+                  : "Add a connection in Model Services to choose a model source.",
+            )}
+          </p>
+          {choices.length ? (
+            <ul className="space-y-1">
+              {choices.map(({ serviceId, name, reason }) => (
+                <li key={serviceId}>
+                  {name} · {reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      )}
       {binding ? (
         <label className="grid gap-1.5 text-sm" htmlFor={`${id}-default-model`}>
           {t("Default model")}
@@ -197,28 +255,19 @@ export function ModelServiceBindingFields({
                 {t("Unavailable")}
               </option>
             ) : null}
-            {sources.map((source) => (
-              <optgroup
-                key={source.serviceId}
-                label={services[source.serviceId]?.name ?? source.serviceId}
-              >
-                {targets
-                  .filter((target) => target.ref.serviceId === source.serviceId)
-                  .filter(
-                    (target) => target.id === defaultId || isModelServiceTargetAvailable(target),
-                  )
-                  .map((target) => (
-                    <option
-                      key={target.id}
-                      value={target.id}
-                      disabled={!isModelServiceTargetAvailable(target)}
-                    >
-                      {modelServiceTargetName(target, false)}
-                      {isModelServiceTargetAvailable(target) ? "" : ` (${t("Unavailable")})`}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
+            {targets
+              .filter((target) => target.id === defaultId || isModelServiceTargetAvailable(target))
+              .map((target) => {
+                const available = isModelServiceTargetAvailable(target);
+                const name = modelServiceTargetName(target, false);
+                const source = sourceLabels.get(target.ref.serviceId);
+                return (
+                  <option key={target.id} value={target.id} disabled={!available}>
+                    {showSource && source ? `${source} · ${name}` : name}
+                    {available ? "" : ` (${t("Unavailable")})`}
+                  </option>
+                );
+              })}
           </select>
         </label>
       ) : null}

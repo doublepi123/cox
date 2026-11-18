@@ -517,6 +517,13 @@ export const zh = {
   "Remove model source {name}": "移除模型来源 {name}",
   "Add model source": "添加模型来源",
   "Select a model service": "选择模型服务",
+  "All configured model services have been added.": "已添加所有已配置的模型服务。",
+  "Add a connection in Model Services to choose a model source.":
+    "请先在「模型服务」中添加连接，再为 Agent 选择来源。",
+  "No model services are available to add.": "当前没有可添加的模型服务。",
+  "Connection disabled": "连接已禁用",
+  "Split this connection by protocol first": "请先按协议拆分此连接",
+  "No available models for agents": "此连接没有可供 Agent 使用的模型",
   "First available model": "第一个可用模型",
   Primary: "首选",
   "Model-list path": "模型列表路径",

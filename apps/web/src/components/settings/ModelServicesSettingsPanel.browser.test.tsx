@@ -1755,17 +1755,83 @@ describe("model services settings", () => {
 });
 
 describe("agent model service binding", () => {
+  it("explains why the only configured connection cannot be added again on mobile", async () => {
+    setup({ [id]: configured });
+    const { innerWidth, innerHeight } = window;
+    await page.viewport(390, 844);
+    try {
+      await using screen = await render(
+        <ModelServiceBindingSection
+          environmentId={environmentId}
+          instance={{
+            driver: ProviderDriverKind.make("codex"),
+            modelService: { modelIds: [], sources: [{ serviceId: id, modelIds: [] }] },
+          }}
+          readOnly={false}
+          onUpdate={vi.fn()}
+        />,
+      );
+      await expect
+        .element(screen.getByText("All configured model services have been added."))
+        .toBeVisible();
+      await expect
+        .element(screen.getByRole("combobox", { name: "Add model source", exact: true }))
+        .not.toBeInTheDocument();
+      await expect
+        .element(screen.getByRole("link", { name: "Manage model services" }))
+        .toBeVisible();
+    } finally {
+      await page.viewport(innerWidth, innerHeight);
+    }
+  });
+
+  it("explains which unbound connections must be configured before adding them", async () => {
+    const disabled = ModelServiceId.make("disabled");
+    const legacy = ModelServiceId.make("legacy");
+    const empty = ModelServiceId.make("empty");
+    setup({
+      [disabled]: { ...configured, name: "Disabled API", enabled: false },
+      [legacy]: decodeService({
+        name: "Legacy API",
+        baseUrl: "https://legacy.test",
+        protocols: ["openai-chat", "anthropic-messages"],
+        models: [{ id: "Vendor/Exact" }],
+      }),
+      [empty]: { ...configured, name: "Empty API", models: [] },
+    });
+    await using screen = await render(
+      <ModelServiceBindingSection
+        environmentId={environmentId}
+        instance={{ driver: ProviderDriverKind.make("codex") }}
+        readOnly={false}
+        onUpdate={vi.fn()}
+      />,
+    );
+    for (const reason of [
+      "No model services are available to add.",
+      "Disabled API · Connection disabled",
+      "Legacy API · Split this connection by protocol first",
+      "Empty API · No available models for agents",
+    ]) {
+      await expect.element(screen.getByText(reason, { exact: true })).toBeVisible();
+    }
+  });
+
   it("saves two model sources and a source-qualified default for matching upstream IDs", async () => {
     const secondId = ModelServiceId.make("other");
     setup({
       [id]: configured,
-      [secondId]: { ...configured, name: "Second API", protocol: "anthropic-messages" },
+      [secondId]: {
+        ...configured,
+        baseUrl: "https://second.test",
+        protocol: "anthropic-messages",
+      },
     });
     const update = vi.fn();
     await using screen = await render(
       <ModelServiceBindingSection
         environmentId={environmentId}
-        instance={{ driver: ProviderDriverKind.make("pi") }}
+        instance={{ driver: ProviderDriverKind.make("codex") }}
         readOnly={false}
         onUpdate={update}
       />,
@@ -1782,11 +1848,69 @@ describe("agent model service binding", () => {
       ] as const,
     };
     const defaultModelRef = { serviceId: secondId, modelId: "Vendor/Exact" };
-    await screen
-      .getByRole("combobox", { name: "Default model" })
-      .selectOptions(modelServiceRuntimeId(binding, defaultModelRef));
+    const defaultModel = screen.getByRole("combobox", { name: "Default model" });
+    await expect
+      .element(defaultModel.getByRole("option", { name: "Shared API · models.test · Exact model" }))
+      .toHaveValue(modelServiceRuntimeId(binding, { serviceId: id, modelId: "Vendor/Exact" }));
+    await expect
+      .element(defaultModel.getByRole("option", { name: "Shared API · second.test · Exact model" }))
+      .toHaveValue(modelServiceRuntimeId(binding, defaultModelRef));
+    await defaultModel.selectOptions(modelServiceRuntimeId(binding, defaultModelRef));
     await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
     expect(update.mock.calls[0]![0].modelService).toEqual({ ...binding, defaultModelRef });
+    await screen.rerender(
+      <ModelServiceBindingSection
+        environmentId={environmentId}
+        instance={update.mock.calls[0]![0]}
+        readOnly={false}
+        onUpdate={update}
+      />,
+    );
+    await screen
+      .getByRole("button", { name: "Remove model source Shared API · second.test", exact: true })
+      .click();
+    await expect.element(defaultModel).toHaveValue("");
+    await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
+    expect(update.mock.calls[1]![0].modelService).toEqual({
+      modelIds: [],
+      sources: [{ serviceId: id, modelIds: [] }],
+    });
+  });
+
+  it("shows both sources when assigning the same upstream model to an OMO role", async () => {
+    const secondId = ModelServiceId.make("other");
+    setup({
+      [id]: configured,
+      [secondId]: { ...configured, name: "Second API", protocol: "anthropic-messages" },
+    });
+    const binding = {
+      modelIds: [],
+      sources: [
+        { serviceId: id, modelIds: [] },
+        { serviceId: secondId, modelIds: [] },
+      ] as const,
+    };
+    const update = vi.fn().mockResolvedValue(true);
+    await using screen = await render(
+      <ModelServiceBindingSection
+        environmentId={environmentId}
+        instance={{ driver: ProviderDriverKind.make("omo"), modelService: binding }}
+        readOnly={false}
+        onUpdate={update}
+      />,
+    );
+    const role = screen.getByRole("combobox", { name: "explore", exact: true });
+    const first = `cox/${modelServiceRuntimeId(binding, { serviceId: id, modelId: "Vendor/Exact" })}`;
+    const second = `cox/${modelServiceRuntimeId(binding, { serviceId: secondId, modelId: "Vendor/Exact" })}`;
+    await expect
+      .element(role.getByRole("option", { name: "Shared API · Exact model" }))
+      .toHaveValue(first);
+    await expect
+      .element(role.getByRole("option", { name: "Second API · Exact model" }))
+      .toHaveValue(second);
+    await role.selectOptions(second);
+    await screen.getByRole("button", { name: "Apply OMO models" }).click();
+    expect(update.mock.calls[0]![0].config.agentModels.explore).toBe(second);
   });
 
   it.each(["codex", "claudeAgent"])(

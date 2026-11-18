@@ -2,10 +2,12 @@ import {
   OMO_REASONING_LEVELS,
   type OmoReasoningLevel,
   type ProviderInstanceConfig,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import {
   isModelServiceTargetAvailable,
   modelServiceDefaultRuntimeId,
+  modelServiceSourceLabels,
   modelServiceTargetName,
   type ModelServiceTarget,
 } from "@t3tools/shared/modelServices";
@@ -642,13 +644,20 @@ export function OmoSettingsSection({
   );
 }
 
-export function omoBoundRoleModels(targets: readonly ModelServiceTarget[]) {
+export function omoBoundRoleModels(
+  targets: readonly ModelServiceTarget[],
+  services: ServerSettings["modelServices"],
+) {
   const showSource = new Set(targets.map((target) => target.ref.serviceId)).size > 1;
-  return targets.filter(isModelServiceTargetAvailable).map((target) => ({
-    slug: `cox/${target.id}`,
-    name: modelServiceTargetName(target, false),
-    modelId: target.ref.modelId,
-    ...(showSource ? { sourceName: target.service.name } : {}),
-    reasoningLevels: omoModelReasoningLevels(target.model),
-  }));
+  const sourceLabels = modelServiceSourceLabels(services);
+  return targets.filter(isModelServiceTargetAvailable).map((target) => {
+    const name = modelServiceTargetName(target, false);
+    const source = sourceLabels.get(target.ref.serviceId);
+    return {
+      slug: `cox/${target.id}`,
+      name: showSource && source ? `${source} · ${name}` : name,
+      modelId: target.ref.modelId,
+      reasoningLevels: omoModelReasoningLevels(target.model),
+    };
+  });
 }

@@ -33,6 +33,7 @@ export function ModelServiceBindingSection({
   const services = useEnvironmentSettings(environmentId, (settings) => settings.modelServices);
   const [binding, setBinding] = useState<ModelServiceBinding | undefined>(instance.modelService);
   const savedBindingKey = JSON.stringify(instance.modelService ?? null);
+  const bindingChanged = JSON.stringify(binding ?? null) !== savedBindingKey;
   const [previousSavedBindingKey, setPreviousSavedBindingKey] = useState(savedBindingKey);
   if (previousSavedBindingKey !== savedBindingKey) {
     setPreviousSavedBindingKey(savedBindingKey);
@@ -72,13 +73,16 @@ export function ModelServiceBindingSection({
             <Button
               size="sm"
               variant="outline"
-              disabled={!canSave || saving}
+              disabled={!canSave || !bindingChanged || saving}
               onClick={() => {
-                const { modelService: _previous, ...rest } = instance;
-                onUpdate(binding ? { ...rest, modelService: binding } : rest);
+                const update = onUpdate(candidate);
+                if (update) {
+                  setSaving(true);
+                  void update.finally(() => setSaving(false));
+                }
               }}
             >
-              {t("Apply model service")}
+              {t(saving ? "Saving configuration…" : "Apply model service")}
             </Button>
           </div>
         ) : null}
@@ -89,7 +93,7 @@ export function ModelServiceBindingSection({
           onSavingChange={setSaving}
           onReset={() => setBinding(instance.modelService)}
           instance={candidate}
-          models={omoBoundRoleModels(targets)}
+          models={omoBoundRoleModels(targets, services)}
           canSave={canSave}
           readOnly={readOnly}
           onUpdate={onUpdate}

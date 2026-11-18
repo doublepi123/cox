@@ -178,13 +178,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     (activeEntry?.driverKind === "opencode" || activeEntry?.driverKind === "antigravity"
       ? undefined
       : selectedInstanceOptions[0]);
+  const selectedSource =
+    activeEntry?.snapshot.modelCatalogSource === "model-service"
+      ? selectedModel?.subProvider
+      : undefined;
+  const selectedSourcePrefix = selectedSource ? `${selectedSource} · ` : "";
   const triggerTitle = selectedModel
-    ? getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
+    ? `${selectedSourcePrefix}${getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)}`
     : props.model === ANTIGRAVITY_DEFAULT_MODEL
       ? "Choose model"
       : props.model || "Choose model";
   const triggerLabel = selectedModel
-    ? `${getDisplayModelName(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
+    ? `${selectedSourcePrefix}${getDisplayModelName(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
     : triggerTitle;
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
@@ -251,13 +256,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       options: props.modelOptionsByInstance.get(selection.instanceId) ?? [],
     });
     const unavailable = model?.isUnavailable ? " (Unavailable)" : "";
+    const source =
+      entry?.snapshot.modelCatalogSource === "model-service" ? model?.subProvider : undefined;
+    const sourcePrefix = source ? `${source} · ` : "";
     return {
       ...selection,
       entry,
       label: model
-        ? `${getTriggerDisplayModelName(model, entry?.driverKind)}${unavailable}`
+        ? `${sourcePrefix}${getTriggerDisplayModelName(model, entry?.driverKind)}${unavailable}`
         : selection.model,
-      fullLabel: model ? `${getDisplayModelName(model)}${unavailable}` : selection.model,
+      fullLabel: model
+        ? `${sourcePrefix}${getDisplayModelName(model)}${unavailable}`
+        : selection.model,
     };
   });
   const multipleLabel = selectedEntries
