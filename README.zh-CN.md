@@ -237,7 +237,7 @@ pnpm build
 
 内部包名仍沿用 `@t3tools/*`，以保持派生源码的兼容性；这并不表示会连接 T3 的云服务。
 
-Cox 图标维护在 `apps/web/public/cox.svg`，界面、启动画面和浏览器标签页图标（favicon）都复用这个文件。修改后请运行 `node scripts/generate-icons.mjs` 重新生成 PNG 和 ICO 版本。这个维护命令需要 Playwright 的无头 Chromium。
+Cox 图标维护在 `apps/web/public/cox.svg`，界面、启动画面、浏览器标签页图标（favicon）和 Cox Mobile 应用图标都复用这个文件。修改后请运行 `node scripts/generate-icons.mjs` 重新生成 PNG、ICO，以及 iOS、Android 和启动图。`node scripts/generate-icons.mjs --check` 会在 Capacitor 占位图标被提交时失败。这个维护命令需要 Playwright 的无头 Chromium。
 
 ## 署名与许可
 

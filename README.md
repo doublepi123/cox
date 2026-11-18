@@ -493,9 +493,11 @@ After the binding is configured, publish through the workflow with `authenticati
 
 Internal `@t3tools/*` package identifiers are retained to keep the derived source compatible; they do not imply a connection to T3 cloud services.
 
-The Cox icon is maintained in `apps/web/public/cox.svg` and reused by the interface, splash
-and browser favicon. After editing it, run `node scripts/generate-icons.mjs` to regenerate
-the PNG and ICO variants. This maintenance command requires Playwright's headless Chromium.
+The Cox icon is maintained in `apps/web/public/cox.svg` and reused by the interface, splash,
+browser favicon, and Cox Mobile app icons. After editing it, run `node scripts/generate-icons.mjs`
+to regenerate the PNG and ICO variants plus the iOS, Android, and launch images.
+`node scripts/generate-icons.mjs --check` fails if a Capacitor placeholder icon is committed.
+This maintenance command requires Playwright's headless Chromium.
 
 ## Attribution
 

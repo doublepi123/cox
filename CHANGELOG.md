@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Match Cox Mobile's app icon and launch image to the web and desktop mark.
+  iOS, Android, and the splash are generated from `cox.svg` instead of the
+  Capacitor placeholder.
+
 ## 0.2.1 — 2026-11-18
 
 - Disable automatic first-turn planning in Cox-managed OMO instances so
