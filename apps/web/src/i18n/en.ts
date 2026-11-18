@@ -2444,8 +2444,11 @@ export const en = {
   "Implement in a new thread": "Implement in a new thread",
   "The local server is unavailable.": "The local server is unavailable.",
   "Connecting to the server...": "Connecting to the server...",
-  "Connection interrupted. Reconnecting automatically...":
-    "Connection interrupted. Reconnecting automatically...",
+  "Connection interrupted. Reconnecting automatically. Your draft stays here until you send it.":
+    "Connection interrupted. Reconnecting automatically. Your draft stays here until you send it.",
+  "Not connected: message not sent": "Not connected: message not sent",
+  "Your draft is still in the composer. It is not sent automatically. Send it again after the connection returns.":
+    "Your draft is still in the composer. It is not sent automatically. Send it again after the connection returns.",
   "Connection paused while the browser reports offline.":
     "Connection paused while the browser reports offline.",
   "The client and server are not compatible. Reload or update Cox.":

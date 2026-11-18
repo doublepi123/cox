@@ -5,6 +5,7 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -55,6 +56,8 @@ export interface RpcSession {
   readonly probe: Effect.Effect<void, ConnectionAttemptError>;
   /** Frames received so far: proof the socket is alive that needs no reply. */
   readonly inboundFrames: Effect.Effect<number>;
+  /** Wall time of the newest inbound frame. Absent means the caller should treat the socket as fresh. */
+  readonly lastInboundFrameAt?: Effect.Effect<number>;
   readonly closed: Effect.Effect<never, ConnectionAttemptError>;
 }
 
@@ -216,11 +219,14 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     });
     // The protocol never reopens its socket, so every frame counted here came
     // from this session's one socket.
+    const clock = yield* Clock.Clock;
     let inboundFrames = 0;
+    let lastInboundFrameAtMs = clock.currentTimeMillisUnsafe();
     const countingWebSocketConstructor: typeof webSocketConstructor = (url, options) => {
       const socket = webSocketConstructor(url, options);
       socket.addEventListener("message", () => {
         inboundFrames += 1;
+        lastInboundFrameAtMs = clock.currentTimeMillisUnsafe();
       });
       return socket;
     };
@@ -432,6 +438,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
       ),
       probe,
       inboundFrames: Effect.sync(() => inboundFrames),
+      lastInboundFrameAt: Effect.sync(() => lastInboundFrameAtMs),
       closed: Effect.raceFirst(
         Deferred.await(disconnected),
         Deferred.await(configSubscriptionClosed),

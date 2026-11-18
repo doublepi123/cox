@@ -26,6 +26,8 @@ import {
   type SupervisorConnectionState,
 } from "./model.ts";
 import * as RpcSession from "../rpc/session.ts";
+import { PING_TIMEOUT } from "../rpc/protocol.ts";
+import { UNRESPONSIVE_HOST_HINT } from "../errors/network.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 
 import * as ConnectionWakeups from "./wakeups.ts";
@@ -38,9 +40,12 @@ const SESSION_LOSS_RETRY_DELAY_MS = 250;
 const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
 const establishmentTimeout = Duration.fromInputUnsafe(CONNECTION_ESTABLISHMENT_TIMEOUT);
 const synchronizationTimeout = Duration.fromInputUnsafe("75 seconds");
-const CONNECTION_PROBE_TIMEOUT = "15 seconds";
 const QUICK_CONNECTION_PROBE_TIMEOUT = "3 seconds";
+const SHORT_RESUME_PROBE_TIMEOUT = "3 seconds";
 const LONG_RESUME_PROBE_TIMEOUT = "1500 millis";
+const LIVENESS_CHECK_EVERY = "1 second";
+const OFFLINE_RETRY_DELAY_MS = 1_000;
+const OFFLINE_RETRY_LIMIT = 6;
 const FRAME_CHECK_EVERY = "100 millis";
 // A probe still unanswered this long checks the host with a fresh request. If
 // the host answers while the socket stays silent, the socket is dead.
@@ -456,7 +461,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         return QUICK_CONNECTION_PROBE_TIMEOUT;
       case "Wakeup":
         if (next.reason === "application-active") {
-          return CONNECTION_PROBE_TIMEOUT;
+          return SHORT_RESUME_PROBE_TIMEOUT;
         }
         // After a long suspension the data on screen is stale, so a slow
         // answer reconnects as quickly as a missing one, even on a remote
@@ -541,8 +546,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         silentSocket = yield* Effect.forkChild(awaitSilentSocket(lease));
         recheck = false;
       });
-      // The browser foreground probe allows a busy host 15 seconds,
-      // and a busy host can answer a fresh request before a queued probe.
+      // A short return to the app allows a busy host 3 seconds.
+      // A busy host can answer a fresh request before a queued probe.
       const armSilentSocketCheck = Effect.fnUntraced(function* (signal: SupervisorSignal) {
         if (signal._tag === "Wakeup" && signal.reason === "application-active") return;
         if (silentSocket !== undefined) {
@@ -748,6 +753,21 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       retryAt: null,
     });
 
+    const readLastInboundFrameAt =
+      active.lease.session.lastInboundFrameAt ?? Clock.currentTimeMillis;
+    const watchForegroundLiveness = Effect.gen(function* () {
+      const timeoutMs = Duration.toMillis(PING_TIMEOUT);
+      for (;;) {
+        yield* Effect.sleep(LIVENESS_CHECK_EVERY);
+        const age = (yield* Clock.currentTimeMillis) - (yield* readLastInboundFrameAt);
+        if (age > timeoutMs) {
+          return yield* new ConnectionTransientError({
+            reason: "timeout",
+            detail: `${target.label} stopped responding for ${Duration.toSeconds(PING_TIMEOUT)}s. ${UNRESPONSIVE_HOST_HINT}`,
+          });
+        }
+      }
+    });
     const connectedExit = yield* Effect.raceFirst(
       active.lease.session.closed.pipe(
         Effect.mapError((error): TracedAttemptFailure => ({
@@ -755,11 +775,19 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           attemptSpan: active.attemptSpan,
         })),
       ),
-      monitorConnectedLease(active.lease).pipe(
-        Effect.mapError((error): TracedAttemptFailure => ({
-          error,
-          attemptSpan: active.attemptSpan,
-        })),
+      Effect.raceFirst(
+        monitorConnectedLease(active.lease).pipe(
+          Effect.mapError((error): TracedAttemptFailure => ({
+            error,
+            attemptSpan: active.attemptSpan,
+          })),
+        ),
+        watchForegroundLiveness.pipe(
+          Effect.mapError((error): TracedAttemptFailure => ({
+            error,
+            attemptSpan: active.attemptSpan,
+          })),
+        ),
       ),
     ).pipe(exitUnlessInterrupted);
     const connectedForMs = (yield* Clock.currentTimeMillis) - connectedAt;
@@ -829,7 +857,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     Effect.map(
       (next) =>
         (next._tag === "Wakeup" && ConnectionWakeups.resetsRetryBackoff(next.reason)) ||
-        (next._tag === "NetworkChanged" && next.network === "online"),
+        (next._tag === "NetworkChanged" && next.network === "online") ||
+        next._tag === "RetryRequested",
     ),
   );
 
@@ -843,6 +872,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       pendingRetry = Option.none();
     };
     let replacing = false;
+    let offlineFailures = 0;
 
     for (;;) {
       if (yield* Ref.getAndSet(resetRetryState, false)) {
@@ -851,6 +881,9 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         pendingRetry = Option.none();
       }
       const currentIntent = yield* Ref.get(intent);
+      if (currentIntent.network !== "offline") {
+        offlineFailures = 0;
+      }
       if (!currentIntent.desired) {
         resetRetryLadder();
         latestFailure = null;
@@ -859,12 +892,14 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         yield* waitForSignal;
         continue;
       }
-      if (currentIntent.network === "offline" && !replacing && !loopback) {
+      const offlineRemote = currentIntent.network === "offline" && !replacing && !loopback;
+      if (offlineRemote && offlineFailures >= OFFLINE_RETRY_LIMIT) {
         yield* clearLease;
         yield* setState(offlineState(currentIntent, generation, failureCount + 1, latestFailure));
         const applicationActivated = yield* waitForSignal;
         if (applicationActivated) {
           resetRetryLadder();
+          offlineFailures = 0;
         }
         continue;
       }
@@ -872,7 +907,13 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       const attempt = failureCount + 1;
       const nextGeneration = generation + 1;
       const outcome: AttemptOutcome = yield* Effect.scoped(
-        runAttempt(attempt, nextGeneration, latestFailure, pendingRetry, replacing || loopback),
+        runAttempt(
+          attempt,
+          nextGeneration,
+          latestFailure,
+          pendingRetry,
+          replacing || loopback || offlineRemote,
+        ),
       );
       replacing = false;
       const failedProbe = yield* Ref.getAndSet(probeUnanswered, false);
@@ -886,6 +927,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         if (outcome.stable) {
           resetRetryLadder();
         }
+        offlineFailures = 0;
       }
       if (outcome._tag === "Interrupted") {
         if (outcome.resetRetry) {
@@ -926,10 +968,16 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       const firstLoss = outcome.established && failureCount === 0;
+      const failedWhileOffline = offlineRemote && !outcome.established;
+      if (failedWhileOffline) {
+        offlineFailures += 1;
+      }
       failureCount += 1;
-      const delayMs = firstLoss
-        ? Math.round(SESSION_LOSS_RETRY_DELAY_MS * (0.5 + (yield* Random.next) / 2))
-        : retryDelayMs(failureCount - 1, yield* Random.next);
+      const delayMs = failedWhileOffline
+        ? OFFLINE_RETRY_DELAY_MS
+        : firstLoss
+          ? Math.round(SESSION_LOSS_RETRY_DELAY_MS * (0.5 + (yield* Random.next) / 2))
+          : retryDelayMs(failureCount - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
         failureCount,

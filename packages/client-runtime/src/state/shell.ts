@@ -117,6 +117,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
   });
   const awaitingCompletion = yield* Ref.make(false);
   const authoritativeOmission = yield* Ref.make<string | null>(null);
+  const socketBaseline = yield* Ref.make(false);
   const sessionOmissions = new WeakMap<RpcSession, string | null>();
   const latestLiveSnapshot = yield* Ref.make<Option.Option<OrchestrationV2ShellSnapshot>>(
     Option.none(),
@@ -220,6 +221,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     items: ReadonlyArray<OrchestrationV2ShellStreamItem>,
     omission: string | null,
     pendingLinkIds?: ReadonlySet<ThreadId>,
+    fromHttp = false,
   ) {
     const initial = yield* SubscriptionRef.get(state);
     let waiting = yield* Ref.get(awaitingCompletion);
@@ -271,6 +273,15 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         continue;
       }
       const authoritative = item.resolvedRepositoryIdentityRoots === undefined;
+      const baseline = yield* Ref.get(socketBaseline);
+      if (
+        fromHttp &&
+        baseline &&
+        Option.isSome(next.snapshot) &&
+        item.snapshot.snapshotSequence < next.snapshot.value.snapshotSequence
+      ) {
+        continue;
+      }
       const nextSnapshot = mergeShellSnapshotProjects(
         Option.getOrNull(next.snapshot),
         item.snapshot,
@@ -412,56 +423,65 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         yield* Ref.set(awaitingCompletion, true);
         yield* setSynchronizing;
 
+        const current = yield* SubscriptionRef.get(state);
         const hasAuthoritativeSnapshot =
           omissionKey !== null && (yield* Ref.get(authoritativeOmission)) === omissionKey;
-        let canResume = hasAuthoritativeSnapshot;
-        let current = yield* SubscriptionRef.get(state);
-        if (!hasAuthoritativeSnapshot || Option.isNone(current.snapshot)) {
-          const prepared = yield* SubscriptionRef.get(supervisor.prepared).pipe(
-            Effect.flatMap(
-              Option.match({
-                onSome: Effect.succeed,
-                onNone: () =>
-                  SubscriptionRef.changes(supervisor.prepared).pipe(
-                    Stream.filter(Option.isSome),
-                    Stream.map((value) => value.value),
-                    Stream.runHead,
-                    Effect.map(Option.getOrThrow),
-                  ),
-              }),
-            ),
-          );
-          // HTTP and the socket must agree, or omitted children would return through the socket.
-          const httpSnapshot = yield* snapshotLoader.load(prepared, {
-            omitIdleSubagents,
-            omitOlderSettled,
-          });
-          if (Option.isSome(httpSnapshot)) {
-            yield* cancelActiveFill;
-            const previous = yield* SubscriptionRef.get(state);
-            const snapshot = reuseUnchangedThreadShells(
-              Option.getOrNull(previous.snapshot),
-              withoutDeferredPullRequests(httpSnapshot.value),
-            );
-            const pendingLinkIds = new Set(
-              httpSnapshot.value.loadPullRequests === undefined
-                ? []
-                : httpSnapshot.value.threads.map((thread) => thread.id),
-            );
-            yield* applyItems([{ kind: "snapshot", snapshot }], omissionKey, pendingLinkIds);
-            canResume = true;
-            current = yield* SubscriptionRef.get(state);
-            if (Option.isSome(current.snapshot)) {
-              yield* fillDeferredPullRequests(httpSnapshot.value, current.snapshot.value);
-            }
-          }
-        }
-
         const omission = {
           ...(omitIdleSubagents ? { omitIdleSubagents: true as const } : {}),
           ...(omitOlderSettled ? { omitOlderSettled: true as const } : {}),
         };
-        if (!canResume || Option.isNone(current.snapshot)) {
+        // A warm authoritative shell already resumes from its cursor. Otherwise
+        // the socket subscribes immediately and HTTP refreshes beside it. HTTP
+        // cannot rewind a newer socket baseline. The server still replaces a
+        // cursor with a full snapshot when the gap is too large or the cursor
+        // is ahead of the log.
+        if (!hasAuthoritativeSnapshot || Option.isNone(current.snapshot)) {
+          yield* Effect.forkIn(stateScope)(
+            Effect.gen(function* () {
+              const prepared = yield* SubscriptionRef.get(supervisor.prepared).pipe(
+                Effect.flatMap(
+                  Option.match({
+                    onSome: Effect.succeed,
+                    onNone: () =>
+                      SubscriptionRef.changes(supervisor.prepared).pipe(
+                        Stream.filter(Option.isSome),
+                        Stream.map((value) => value.value),
+                        Stream.runHead,
+                        Effect.map(Option.getOrThrow),
+                      ),
+                  }),
+                ),
+              );
+              const httpSnapshot = yield* snapshotLoader.load(prepared, {
+                omitIdleSubagents,
+                omitOlderSettled,
+              });
+              if (Option.isNone(httpSnapshot)) return;
+              yield* cancelActiveFill;
+              const previous = yield* SubscriptionRef.get(state);
+              const snapshot = reuseUnchangedThreadShells(
+                Option.getOrNull(previous.snapshot),
+                withoutDeferredPullRequests(httpSnapshot.value),
+              );
+              const pendingLinkIds = new Set(
+                httpSnapshot.value.loadPullRequests === undefined
+                  ? []
+                  : httpSnapshot.value.threads.map((thread) => thread.id),
+              );
+              yield* applyItems(
+                [{ kind: "snapshot", snapshot }],
+                omissionKey,
+                pendingLinkIds,
+                true,
+              );
+              const applied = yield* SubscriptionRef.get(state);
+              if (Option.isSome(applied.snapshot)) {
+                yield* fillDeferredPullRequests(httpSnapshot.value, applied.snapshot.value);
+              }
+            }),
+          );
+        }
+        if (Option.isNone(current.snapshot)) {
           return { ...omission, requestCompletionMarker: true as const };
         }
         return {
@@ -479,7 +499,10 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
       Stream.runForEachArray((entries) =>
         Effect.forEach(
           groupBySession(entries),
-          ([session, items]) => applyItems(items, sessionOmissions.get(session) ?? null),
+          ([session, items]) =>
+            Ref.set(socketBaseline, true).pipe(
+              Effect.andThen(applyItems(items, sessionOmissions.get(session) ?? null)),
+            ),
           { discard: true },
         ),
       ),

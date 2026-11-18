@@ -817,6 +817,76 @@ describe("environment shell synchronization", () => {
     }),
   );
 
+  it.effect("does not let a late HTTP snapshot rewind a newer socket baseline", () =>
+    Effect.gen(function* () {
+      const releaseHttp = yield* Deferred.make<void>();
+      const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
+      const subscribeInputs = yield* Queue.unbounded<unknown>();
+      const client = {
+        [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: (input: unknown) =>
+          Stream.unwrap(
+            Queue.offer(subscribeInputs, input).pipe(Effect.as(Stream.fromQueue(events))),
+          ),
+      } as unknown as WsRpcProtocolClient;
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make(Option.some(session(client))),
+        prepared: yield* SubscriptionRef.make(Option.some(PREPARED)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+      const cache = Persistence.EnvironmentCacheStore.of({
+        loadShell: () => Effect.succeedNone,
+        saveShell: () => Effect.void,
+        loadThread: () => Effect.succeedNone,
+        saveThread: () => Effect.void,
+        removeThread: () => Effect.void,
+        loadServerConfig: () => Effect.succeedNone,
+        saveServerConfig: () => Effect.void,
+        loadVcsRefs: () => Effect.succeedNone,
+        saveVcsRefs: () => Effect.void,
+        removeVcsRefs: () => Effect.void,
+        clearVcsRefs: () => Effect.void,
+        clear: () => Effect.void,
+      });
+      const snapshotLoader = ShellSnapshotLoader.ShellSnapshotLoader.of({
+        load: () =>
+          Deferred.await(releaseHttp).pipe(
+            Effect.as(
+              Option.some({
+                ...v2ShellSnapshot,
+                snapshotSequence: 3,
+                projects: [{ ...v2Project, title: "Old HTTP" }],
+              }),
+            ),
+          ),
+      });
+      const shellState = yield* makeEnvironmentShellState().pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.provideService(Persistence.EnvironmentCacheStore, cache),
+        Effect.provideService(ShellSnapshotLoader.ShellSnapshotLoader, snapshotLoader),
+      );
+      expect(yield* Queue.take(subscribeInputs)).toMatchObject({ requestCompletionMarker: true });
+      yield* Queue.offer(events, {
+        kind: "snapshot",
+        snapshot: {
+          ...v2ShellSnapshot,
+          snapshotSequence: 6,
+          projects: [{ ...v2Project, title: "Socket" }],
+        },
+      });
+      yield* Deferred.succeed(releaseHttp, undefined);
+      for (let index = 0; index < 20; index += 1) {
+        yield* Effect.yieldNow;
+      }
+      const state = yield* SubscriptionRef.get(shellState);
+      expect(Option.getOrThrow(state.snapshot).projects[0]?.title).toBe("Socket");
+      expect(Option.getOrThrow(state.snapshot).snapshotSequence).toBe(6);
+    }),
+  );
+
   it.effect("opts in to shell omissions and counts authoritative snapshots and removals", () =>
     Effect.gen(function* () {
       const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
@@ -875,12 +945,15 @@ describe("environment shell synchronization", () => {
       const stateWhere = (predicate: (state: EnvironmentShellState) => boolean) =>
         SubscriptionRef.changes(shellState).pipe(Stream.filter(predicate), Stream.runHead);
 
-      // Both transports must omit, or omitted children would come back through the socket.
+      // The socket subscribes immediately. HTTP uses the same omission flags beside it.
       expect(yield* Queue.take(subscribeInputs)).toMatchObject({
-        afterSequence: 1,
         omitIdleSubagents: true,
         omitOlderSettled: true,
+        requestCompletionMarker: true,
       });
+      while ((yield* Ref.get(loadOptions)).length === 0) {
+        yield* Effect.yieldNow;
+      }
       expect(yield* Ref.get(loadOptions)).toEqual([
         { omitIdleSubagents: true, omitOlderSettled: true },
       ]);

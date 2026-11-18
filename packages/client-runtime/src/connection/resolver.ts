@@ -13,6 +13,7 @@ import {
   orchestrationProtocolCompatibilityError,
 } from "./compatibility.ts";
 import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
+import type { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 
 export class ConnectionResolver extends Context.Service<
   ConnectionResolver,
@@ -26,6 +27,7 @@ export class ConnectionResolver extends Context.Service<
 export const make = Effect.gen(function* () {
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const httpClient = yield* HttpClient.HttpClient;
+  const verifiedDescriptors = new Map<string, ExecutionEnvironmentDescriptor>();
   const authorize = Effect.fn("clientRuntime.connection.local.authorize")(function* (
     entry: ConnectionCatalogEntry,
   ) {
@@ -47,6 +49,11 @@ export const make = Effect.gen(function* () {
       httpAuthorization: null,
       target,
     };
+    const cacheKey = `${target.httpBaseUrl}\0${target.environmentId}`;
+    const cached = verifiedDescriptors.get(cacheKey);
+    if (cached !== undefined && cached.environmentId === target.environmentId) {
+      return { prepared, descriptor: cached };
+    }
     const descriptor = yield* fetchRemoteEnvironmentDescriptor({
       httpBaseUrl: target.httpBaseUrl,
     }).pipe(
@@ -54,11 +61,13 @@ export const make = Effect.gen(function* () {
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
     if (descriptor.environmentId !== target.environmentId) {
+      verifiedDescriptors.delete(cacheKey);
       return yield* environmentMismatchError({
         expected: target.environmentId,
         actual: descriptor.environmentId,
       });
     }
+    verifiedDescriptors.set(cacheKey, descriptor);
     return { prepared, descriptor };
   });
 

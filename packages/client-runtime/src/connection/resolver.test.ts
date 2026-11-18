@@ -24,4 +24,23 @@ describe("local connection resolver", () => {
       expect(socket.searchParams.has("wsTicket")).toBe(false);
     }).pipe(Effect.provide(dependencies)),
   );
+
+  it.effect("skips the environment descriptor after the same id has been verified", () => {
+    let fetches = 0;
+    const layer = Layer.mergeAll(
+      RpcHttp.layerRemoteHttpClient(async () => {
+        fetches += 1;
+        return Response.json(descriptor);
+      }),
+      Layer.succeed(ClientCapabilities.ClientPresentation, {
+        metadata: { label: "Browser", deviceType: "desktop", surface: "web" },
+      }),
+    );
+    return Effect.gen(function* () {
+      const resolver = yield* Resolver.make;
+      yield* resolver.prepare(entry);
+      yield* resolver.prepare(entry);
+      expect(fetches).toBe(1);
+    }).pipe(Effect.provide(layer));
+  });
 });

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import { isClearComposerCommand } from "@t3tools/shared/composerTrigger";
 import { armFreshSession, disarmFreshSession, readFreshSessionArm } from "./freshSessionArms";
 import {
@@ -256,6 +257,7 @@ interface ComposerSendInput {
  * when it fails.
  */
 export function useComposerSend(input: ComposerSendInput) {
+  const { t } = useTranslation();
   const {
     environmentId,
     routeThreadKey,
@@ -463,8 +465,10 @@ export function useComposerSend(input: ComposerSendInput) {
       toastManager.add({
         ...stackedThreadToast({
           type: "warning",
-          title: "Not connected: message not sent",
-          description: "Reconnecting to the environment. Try again once it is connected.",
+          title: t("Not connected: message not sent"),
+          description: t(
+            "Your draft is still in the composer. It is not sent automatically. Send it again after the connection returns.",
+          ),
         }),
         id: `chat-send-environment-unavailable:${toastSlot}`,
       });

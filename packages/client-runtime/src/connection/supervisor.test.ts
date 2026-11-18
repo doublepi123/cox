@@ -120,6 +120,7 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
   readonly initialConfig?: (attempt: number) => Effect.Effect<ServerConfig, ConnectionAttemptError>;
   readonly checkHost?: (prepared: PreparedConnection) => Effect.Effect<ConnectionDriver.RouteCheck>;
   readonly inboundFrames?: Effect.Effect<number>;
+  readonly lastInboundFrameAt?: Effect.Effect<number>;
 }) {
   const networkStatus = yield* SubscriptionRef.make<NetworkStatus>(
     options?.networkStatus ?? "online",
@@ -172,6 +173,9 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
         ready: options?.ready?.(attempt) ?? Effect.void,
         probe: options?.probe?.(attempt) ?? Effect.void,
         inboundFrames: options?.inboundFrames ?? Effect.succeed(0),
+        ...(options?.lastInboundFrameAt
+          ? { lastInboundFrameAt: options.lastInboundFrameAt }
+          : {}),
         closed: Deferred.await(closed),
       } satisfies RpcSession.RpcSession),
       () => Ref.update(releaseCount, (count) => count + 1),
@@ -267,22 +271,18 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  it.effect("waits while offline and connects immediately when the network returns", () =>
+  it.effect("connects a reachable remote target while the network reports offline", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ networkStatus: "offline" });
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
         initiallyDesired: true,
       }).pipe(Effect.provide(harness.dependencies));
 
-      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
-      expect(yield* Ref.get(harness.prepareCount)).toBe(0);
-
-      yield* harness.setNetworkStatus("online");
       const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
 
       expect(ready).toMatchObject({
         desired: true,
-        network: "online",
+        network: "offline",
         phase: "connected",
         attempt: 1,
         generation: 1,
@@ -496,12 +496,15 @@ describe("EnvironmentSupervisor", () => {
           yield* TestClock.adjust(current.retryAt! - (yield* Clock.currentTimeMillis));
       }
       yield* harness.setNetworkStatus("offline");
-      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "backoff" && state.attempt === 5,
+      );
       yield* Ref.set(reachable, true);
       yield* harness.setNetworkStatus("online");
       const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
       expect(ready.attempt).toBe(1);
-      expect(yield* Ref.get(harness.prepareCount)).toBe(5);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(6);
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
@@ -1185,5 +1188,78 @@ describe("EnvironmentSupervisor", () => {
       expect(yield* Ref.get(harness.releaseCount)).toBe(1);
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
     }),
+  );
+
+  it.effect("retries a remote target while offline, then stops after the limit", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        networkStatus: "offline",
+        prepare: () => Effect.fail(transient("offline")),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        const waiting = yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "backoff" && state.attempt === attempt,
+        );
+        const delay = waiting.retryAt! - (yield* Clock.currentTimeMillis);
+        expect(delay).toBe(1_000);
+        yield* TestClock.adjust(delay);
+      }
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+      expect(yield* Ref.get(harness.prepareCount)).toBe(6);
+      yield* TestClock.adjust("30 seconds");
+      expect(yield* Ref.get(harness.prepareCount)).toBe(6);
+
+      yield* harness.setNetworkStatus("online");
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("drops a silent foreground socket one second after the 15 second timeout", () =>
+    Effect.gen(function* () {
+      const openedAt = yield* Clock.currentTimeMillis;
+      const harness = yield* makeHarness({
+        lastInboundFrameAt: Effect.succeed(openedAt),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* TestClock.adjust("15 seconds");
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connected");
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+
+      yield* TestClock.adjust("1 second");
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      expect(yield* Ref.get(harness.releaseCount)).toBe(1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("replaces a session that misses the short foreground probe within 3 seconds", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        probe: (attempt) => (attempt === 1 ? Effect.never : Effect.void),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.wake("application-active");
+      yield* TestClock.adjust("2999 millis");
+      expect((yield* SubscriptionRef.get(supervisor.state)).generation).toBe(1);
+
+      yield* TestClock.adjust("1 millis");
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2,
+      );
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 });

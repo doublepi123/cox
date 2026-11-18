@@ -64,7 +64,9 @@ it("localizes automatic reconnection, exposes the failure and retries the right 
   await using screen = await render(<Harness phase="reconnecting" error="WebSocket closed" />, {
     router: false,
   });
-  await expect.element(screen.getByText("连接已中断，正在自动重连…")).toBeVisible();
+  await expect
+    .element(screen.getByText("连接已中断，正在自动重连。草稿会留在输入框里，需要你自己再发送。"))
+    .toBeVisible();
   await expect.element(screen.getByText("WebSocket closed")).toBeVisible();
   await screen.getByRole("button", { name: "重新连接" }).click();
   expect(retry).toHaveBeenCalledExactlyOnceWith(environmentId);

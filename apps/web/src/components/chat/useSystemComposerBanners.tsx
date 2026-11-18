@@ -36,7 +36,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     const message = connecting
       ? "Connecting to the server..."
       : reconnecting
-        ? "Connection interrupted. Reconnecting automatically..."
+        ? "Connection interrupted. Reconnecting automatically. Your draft stays here until you send it."
         : connection?.phase === "offline"
           ? "Connection paused while the browser reports offline."
           : connection?.phase === "unsupported"

@@ -2329,7 +2329,11 @@ export const zh = {
   "Implement in a new thread": "在新对话中实施",
   "The local server is unavailable.": "本地服务不可用。",
   "Connecting to the server...": "正在连接服务器…",
-  "Connection interrupted. Reconnecting automatically...": "连接已中断，正在自动重连…",
+  "Connection interrupted. Reconnecting automatically. Your draft stays here until you send it.":
+    "连接已中断，正在自动重连。草稿会留在输入框里，需要你自己再发送。",
+  "Not connected: message not sent": "未连接：消息没有发出",
+  "Your draft is still in the composer. It is not sent automatically. Send it again after the connection returns.":
+    "草稿还在输入框里，不会自动发送。连接恢复后请再发送一次。",
   "Connection paused while the browser reports offline.": "浏览器报告网络离线，连接已暂停。",
   "The client and server are not compatible. Reload or update Cox.":
     "客户端与服务端不兼容，请刷新页面或更新 Cox。",
