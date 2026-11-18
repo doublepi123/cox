@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.107 — 2026-11-18
+
+- Choose one API protocol per model-center connection. An agent can use
+  models from several connections, including for individual OMO roles and
+  categories. Select a connection to disambiguate models with the same ID.
+- Preview and split legacy connections that use several protocols while
+  preserving their agent bindings, credentials, and model identifiers.
+- Configure input, output, cache read, and cache write prices per model, or
+  sync prices automatically from models.dev. Manual prices take precedence.
+
 - Remove the native floating Servers pill from Cox Mobile. The sidebar
   switcher still returns to the Connection Manager. Android system back does
   the same from the workspace root, and iOS shows a Back control above the
