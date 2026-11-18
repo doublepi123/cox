@@ -10,6 +10,8 @@
   when choosing a default model, an OMO role model, or a conversation model
   from several sources. Reset the default to the first available model if
   its source or model is removed from the binding.
+- Keep the mobile composer at full size after the keyboard closes. The
+  resting strip was dropping the attach button and shortening the placeholder.
 - Extend the mobile workspace to the physical bottom of the screen. The
   sidebar and chat backgrounds fill the home-indicator area, and only their
   content is inset by the safe area.

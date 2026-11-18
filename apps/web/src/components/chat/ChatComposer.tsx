@@ -516,7 +516,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadId,
     activeThread,
     promptHistoryMessages,
-    forceExpandedOnMobile,
     projectSelectionRequired,
     phase,
     canInterrupt,
@@ -1001,22 +1000,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
   const isSoftwareKeyboardOpen = useSoftwareKeyboardOpen();
-  const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [, setIsComposerFocused] = useState(false);
   const [composerSubmissionError, setComposerSubmissionError] = useState<string | null>(null);
   const [providerInputSubmissionError, setProviderInputSubmissionError] = useState<string | null>(
     null,
   );
   const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLDivElement | null>(null);
-  const [hasWrappedPrompt, observeWrappedPrompt] = useComposerMultilinePrompt();
-  const hasMultilinePrompt = prompt.includes("\n") || hasWrappedPrompt;
-  // A pending question stays expanded: its card moves into the banner dock,
-  // so collapsing would leave the surface empty and squashed beneath it.
-  const isComposerCollapsedMobile =
-    isMobileViewport &&
-    !forceExpandedOnMobile &&
-    !isComposerFocused &&
-    !hasMultilinePrompt &&
-    pendingUserInputs.length === 0;
+  const [, observeWrappedPrompt] = useComposerMultilinePrompt();
+  // Stay on the full composer after the keyboard closes. The collapsed strip
+  // drops the attach button, shortens the placeholder, and folds the model
+  // controls into one chip, so dismissing the keyboard looks like the box shrank.
+  const isComposerCollapsedMobile = false;
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const pasteAsTextShortcutUntilRef = useRef(0);
   const composerFormRef = useRef<HTMLFormElement>(null);
