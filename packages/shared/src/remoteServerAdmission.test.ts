@@ -59,21 +59,21 @@ describe("remote admission transport policy", () => {
 
 describe("remote admission identity and authentication", () => {
   it("reads the environment descriptor and session at the same time", async () => {
-    let inFlight = 0;
-    let maxInFlight = 0;
+    let started = 0;
+    let releaseBoth: () => void = () => {};
+    const bothStarted = new Promise<void>((resolve) => {
+      releaseBoth = resolve;
+    });
     const fetcher: typeof fetch = async (input) => {
-      inFlight += 1;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      inFlight -= 1;
+      started += 1;
+      if (started === 2) releaseBoth();
+      await bothStarted;
       return fetcherFor()(input);
     };
-    const started = performance.now();
-    await inspectRemoteServer("https://cox.example.com", { fetcher });
-    const elapsed = performance.now() - started;
-    expect(maxInFlight).toBe(2);
-    expect(elapsed).toBeGreaterThanOrEqual(40);
-    expect(elapsed).toBeLessThan(80);
+    const pending = inspectRemoteServer("https://cox.example.com", { fetcher });
+    await bothStarted;
+    expect(started).toBe(2);
+    await pending;
   });
 
   it("admits an opted-in HTTP server with a matching pin and trims display metadata", async () => {
