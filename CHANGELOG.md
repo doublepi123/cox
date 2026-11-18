@@ -2,16 +2,34 @@
 
 ## Unreleased
 
-## 0.1.107 — 2026-11-18
+## 0.2.0 — 2026-11-18
 
-- Choose one API protocol per model-center connection. An agent can use
-  models from several connections, including for individual OMO roles and
-  categories. Select a connection to disambiguate models with the same ID.
-- Preview and split legacy connections that use several protocols while
-  preserving their agent bindings, credentials, and model identifiers.
+### Breaking changes in the model gateway
+
+- New and split model-center connections use a single upstream API protocol.
+  Configure `protocol` on each connection. Legacy single-protocol connections
+  migrate automatically. For an existing multi-protocol connection, review and
+  confirm the split in Model Center. Cox keeps its legacy routing until the split
+  and preserves existing bindings, credentials, and model aliases when splitting.
+- An agent can use models from several connections, including across OMO roles
+  and categories. Settings integrations should use `sources` for connection
+  bindings and `defaultModelRef` with `serviceId` and `modelId` for the default.
+  This settings format requires Cox 0.2.0 or later. Back up settings before
+  upgrading if you need to return to an earlier version.
+- Gateway clients should read the model IDs from `GET /api/model-gateway/v1/models`
+  and send the returned ID. New bindings expose connection-specific IDs such as
+  `cox-ms-…`, so two connections can offer the same upstream model ID. Existing
+  IDs are preserved as aliases when an agent binding is migrated.
+- For a multi-source agent using OpenAI Responses, `previous_response_id` and
+  `conversation` IDs can only be reused while the gateway recognizes them for the
+  selected connection and its current revision. If the gateway returns HTTP 422
+  with `model_service_state_source_mismatch`, resend the conversation history
+  without that ID.
+
+### Other changes
+
 - Configure input, output, cache read, and cache write prices per model, or
   sync prices automatically from models.dev. Manual prices take precedence.
-
 - Remove the native floating Servers pill from Cox Mobile. The sidebar
   switcher still returns to the Connection Manager. Android system back does
   the same from the workspace root, and iOS shows a Back control above the
