@@ -8,18 +8,23 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import {
-  boundModelServiceModels,
-  isBoundModelServiceModelAllowed,
+  isModelServiceTargetCompatible,
   MODEL_SERVICE_AGENT_DRIVERS,
   modelServiceAgentProtocol,
   modelServiceAgentCapabilities,
+  modelServiceDefaultRuntimeId,
   modelServiceModelSlug,
+  modelServiceProtocols,
+  modelServiceSources,
+  modelServiceTargetName,
+  modelServiceTargets,
 } from "@t3tools/shared/modelServices";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -39,6 +44,7 @@ import {
 import { makeModelServiceStreamMonitor, ModelServiceStreamError } from "./streamIntegrity.ts";
 import { chatResponseOutput } from "./responseOutput.ts";
 import {
+  limitAnthropicRequestOutput,
   modelServiceRequestBody,
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
@@ -68,6 +74,10 @@ import { ChildProcessSpawner } from "effect/process";
 import * as NetAddress from "effect/net/NetAddress";
 import { isLoopbackAddress, timingSafeEqualUtf8 } from "../auth/utils.ts";
 import { modelServiceRequestRouting } from "./requestRouting.ts";
+import {
+  makeAnthropicResponseModelStream,
+  withAnthropicResponseModel,
+} from "./anthropicResponseModel.ts";
 import { parse as parseYamlText, stringify as stringifyYamlValue } from "yaml";
 import {
   HttpClient,
@@ -191,6 +201,7 @@ const recoveryFailureResponse = (
 
 interface RuntimeBinding {
   readonly token: string;
+  readonly routeProtocols: string;
   readonly binding: ModelServiceBinding;
   readonly driver: string;
   readonly instanceId: ProviderInstanceId;
@@ -238,6 +249,7 @@ export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const bindings = new Map<ProviderInstanceId, RuntimeBinding>();
   const sessionOwners = new Map<string, ProviderInstanceId>();
+  const responseStateRoutes = new Map<string, string | null>();
   const loads = new Map<string, ModelServiceRecoveryLoad>();
   const lifecycle = makeRecoveryTracker();
   const server = yield* Effect.serviceOption(HttpServer.HttpServer);
@@ -283,9 +295,9 @@ export const make = Effect.gen(function* () {
           continue;
         }
         yield* Effect.gen(function* () {
-          const service = current.modelServices[binding.serviceId];
+          const sources = modelServiceSources(binding);
           if (
-            !service ||
+            sources.some((source) => !Object.hasOwn(current.modelServices, source.serviceId)) ||
             !(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver)
           ) {
             bindings.delete(id);
@@ -300,7 +312,16 @@ export const make = Effect.gen(function* () {
             };
             return;
           }
-          const models = boundModelServiceModels(service, binding);
+          const showSource = sources.length > 1;
+          const models = modelServiceTargets(current.modelServices, binding)
+            .filter(isModelServiceTargetCompatible)
+            .map((target) => ({
+              ...target.model,
+              id: target.id,
+              name: modelServiceTargetName(target, showSource),
+              service: target.service,
+              upstreamModel: target.model,
+            }));
           const activeModels = models.filter((model) => model.available !== false);
           const unavailableRoles =
             instance.driver === "omo"
@@ -330,22 +351,47 @@ export const make = Effect.gen(function* () {
             };
             return;
           }
-          const warning =
-            unavailableRoles.length > 0
-              ? `These OMO role models are no longer advertised: ${unavailableRoles.join(", ")}. Cox preserved the selection so it can be repaired in settings.`
-              : undefined;
-          const selected =
-            activeModels.find((model) => model.id === binding.defaultModel)?.id ??
-            activeModels[0]!.id;
+          const defaultId = modelServiceDefaultRuntimeId(binding);
+          const warnings = [
+            ...(unavailableRoles.length > 0
+              ? [
+                  `These OMO role models are no longer advertised: ${unavailableRoles.join(", ")}. Cox preserved the selection so it can be repaired in settings.`,
+                ]
+              : []),
+            ...(showSource && defaultId && !activeModels.some((model) => model.id === defaultId)
+              ? [
+                  "The agent's configured default model is unavailable. Select an available model or update the default in settings.",
+                ]
+              : []),
+          ];
+          const warning = warnings.join(" ") || undefined;
+          const selectedModel =
+            activeModels.find((model) => model.id === defaultId) ?? activeModels[0]!;
+          const selected = selectedModel.id;
+          const service = selectedModel.service;
+          const timeoutMs =
+            activeModels.reduce(
+              (longest, model) => Math.max(longest, model.service.recovery.budgetMs),
+              0,
+            ) + 30_000;
           const prior = bindings.get(id);
+          const routeProtocols = sources
+            .map(({ serviceId }) =>
+              [
+                serviceId,
+                ...(binding.sources
+                  ? modelServiceProtocols(current.modelServices[serviceId]!)
+                  : []),
+              ].join(":"),
+            )
+            .toSorted()
+            .join(",");
           const token =
-            prior?.binding.serviceId === binding.serviceId
-              ? prior.token
-              : yield* crypto.randomUUIDv4();
-          bindings.set(id, { token, binding, driver: instance.driver, instanceId: id });
+            prior?.routeProtocols === routeProtocols ? prior.token : yield* crypto.randomUUIDv4();
           const native = record(instance.config);
           const protocol = modelServiceAgentProtocol(instance.driver, service);
-          const multiProtocol = new Set(service.protocols).size > 1;
+          const multiProtocol =
+            new Set(activeModels.flatMap((model) => modelServiceProtocols(model.service))).size > 1;
           const directory = path.join(config.baseDir, "model-services", "runtime", id);
           const runtimeModels = activeModels.map((model) => ({
             slug: modelServiceModelSlug(instance.driver, model.id),
@@ -372,9 +418,7 @@ export const make = Effect.gen(function* () {
               sensitive: false,
             });
           if (instance.driver === "claudeAgent") {
-            const maxOutputTokens = activeModels.find(
-              (model) => model.id === selected,
-            )?.maxOutputTokens;
+            const maxOutputTokens = showSource ? undefined : selectedModel.maxOutputTokens;
             if (maxOutputTokens)
               environment.push({
                 name: "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
@@ -384,7 +428,7 @@ export const make = Effect.gen(function* () {
             environment.push({ name: "CLAUDE_CODE_MAX_RETRIES", value: "0", sensitive: false });
             environment.push({
               name: "API_TIMEOUT_MS",
-              value: String(service.recovery.budgetMs + 30_000),
+              value: String(timeoutMs),
               sensitive: false,
             });
           }
@@ -492,7 +536,6 @@ export const make = Effect.gen(function* () {
                 : "{}";
               const existing = record(yield* decode(runtimeSettingsText));
               const retry = record(existing.retry);
-              const timeoutMs = service.recovery.budgetMs + 30_000;
               if (instance.driver === "omo")
                 environment.push({
                   name: "COX_OMO_GATEWAY_TIMEOUT_MS",
@@ -529,7 +572,11 @@ export const make = Effect.gen(function* () {
                     ? { compat: { supportsStrictMode: true } }
                     : {}),
                   models: activeModels.flatMap((model) => {
-                    const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
+                    const resolvedProtocol = modelServiceUpstreamProtocol(
+                      model.service,
+                      model.upstreamModel,
+                      protocol,
+                    );
                     if (!resolvedProtocol) return [];
                     const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
                     const thinking = modelServiceAgentCapabilities(
@@ -576,7 +623,7 @@ export const make = Effect.gen(function* () {
                           ? { compat: { supportsStrictMode: true } }
                           : nativeProtocol !== "gemini" &&
                               FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(
-                                model.id.split("/").at(-1)!,
+                                model.upstreamModel.id.split("/").at(-1)!,
                               )
                             ? { compat: { supportsForcedToolChoice: false } }
                             : {}),
@@ -598,7 +645,7 @@ export const make = Effect.gen(function* () {
           if (instance.driver === "omp") {
             const agentDir = path.join(directory, "omp");
             const configPath = path.join(agentDir, "config.yml");
-            const timeoutSeconds = Math.ceil((service.recovery.budgetMs + 30_000) / 1000);
+            const timeoutSeconds = Math.ceil(timeoutMs / 1000);
             {
               const existingText = (yield* fs.exists(configPath))
                 ? yield* fs.readFileString(configPath)
@@ -641,7 +688,11 @@ export const make = Effect.gen(function* () {
                     ? { compat: { supportsStrictMode: true } }
                     : {}),
                   models: activeModels.flatMap((model) => {
-                    const resolvedProtocol = modelServiceUpstreamProtocol(service, model, protocol);
+                    const resolvedProtocol = modelServiceUpstreamProtocol(
+                      model.service,
+                      model.upstreamModel,
+                      protocol,
+                    );
                     if (!resolvedProtocol) return [];
                     const nativeProtocol = multiProtocol ? resolvedProtocol : protocol;
                     const thinking = modelServiceAgentCapabilities("omp", model.capabilities)
@@ -675,7 +726,7 @@ export const make = Effect.gen(function* () {
                           ? { compat: { supportsStrictMode: true } }
                           : nativeProtocol !== "gemini" &&
                               FORCED_TOOL_CHOICE_REJECTING_MODEL_ID.test(
-                                model.id.split("/").at(-1)!,
+                                model.upstreamModel.id.split("/").at(-1)!,
                               )
                             ? { compat: { supportsForcedToolChoice: false } }
                             : {}),
@@ -697,7 +748,7 @@ export const make = Effect.gen(function* () {
             const opencode = {
               provider: {
                 cox: {
-                  name: service.name,
+                  name: showSource ? "Cox" : service.name,
                   npm: SDK_PACKAGES[protocol],
                   options: {
                     baseURL:
@@ -707,8 +758,8 @@ export const make = Effect.gen(function* () {
                   models: Object.fromEntries(
                     activeModels.flatMap((model) => {
                       const resolvedProtocol = modelServiceUpstreamProtocol(
-                        service,
-                        model,
+                        model.service,
+                        model.upstreamModel,
                         protocol,
                       );
                       if (!resolvedProtocol) return [];
@@ -767,6 +818,13 @@ export const make = Effect.gen(function* () {
               ...(warning ? { modelServiceWarning: warning } : {}),
             },
           };
+          bindings.set(id, {
+            token,
+            routeProtocols,
+            binding,
+            driver: instance.driver,
+            instanceId: id,
+          });
         }).pipe(
           Effect.catch((error) =>
             Effect.sync(() => {
@@ -840,24 +898,27 @@ export const make = Effect.gen(function* () {
         });
       sessionOwners.set(sessionSuffix, runtime.instanceId);
     }
-    const service = (yield* settings.getSettings).modelServices[runtime.binding.serviceId];
+    const services = (yield* settings.getSettings).modelServices;
     const sessionId = sessionSuffix;
-    if (!service?.enabled)
+    const sources = modelServiceSources(runtime.binding);
+    if (!sources.some((source) => services[source.serviceId]?.enabled))
       return gatewayErrorResponse(incoming, 503, {
         message: "This model service is unavailable.",
       });
-    const models = boundModelServiceModels(service, runtime.binding);
+    const targets = modelServiceTargets(services, runtime.binding);
     if (request.method === "GET" && url.pathname === PREFIX + "/v1/models")
       return HttpServerResponse.jsonUnsafe({
         object: "list",
-        data: models
-          .filter((model) => model.available !== false)
-          .map((model) => ({
-            id: model.id,
+        data: targets
+          .filter(
+            (target) => target.model.available !== false && isModelServiceTargetCompatible(target),
+          )
+          .map((target) => ({
+            id: target.id,
             object: "model",
-            display_name: model.name ?? model.id,
-            context_window: model.capabilities?.contextWindow,
-            supports_images: model.capabilities?.supportsImages,
+            display_name: modelServiceTargetName(target, sources.length > 1),
+            context_window: target.model.capabilities?.contextWindow,
+            supports_images: target.model.capabilities?.supportsImages,
           })),
         has_more: false,
       });
@@ -868,7 +929,7 @@ export const make = Effect.gen(function* () {
         message: "Model service request body is too large.",
         code: "request_too_large",
       });
-    const body = record(
+    const requestedBody = record(
       yield* request.json.pipe(
         Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(16 * 1024 * 1024)),
         Effect.mapError(
@@ -894,28 +955,101 @@ export const make = Effect.gen(function* () {
         catch: () => new ModelServiceError({ status: 400, detail: "Invalid model path." }),
       });
     }
-    const requested = googleId ?? (typeof body.model === "string" ? body.model : "");
-    const boundCandidate = service.models.find(
-      (model) =>
-        isBoundModelServiceModelAllowed(runtime.binding, model) &&
-        (model.id === requested || (incoming === "gemini" && model.id === `models/${requested}`)),
-    );
-    if (!boundCandidate)
+    const requested =
+      googleId ?? (typeof requestedBody.model === "string" ? requestedBody.model : "");
+    const target =
+      targets.find((entry) => entry.id === requested) ??
+      (incoming === "gemini"
+        ? targets.find((entry) => entry.id === `models/${requested}`)
+        : undefined);
+    if (!target || target.model.ignored === true || target.model.supportsTools === false)
       return gatewayErrorResponse(incoming, 403, {
         message: "This model is not allowed by the agent binding.",
       });
-    if (boundCandidate.available === false)
+    const {
+      service,
+      model: selected,
+      ref: { serviceId },
+    } = target;
+    const downstreamModel =
+      incoming === "anthropic-messages" &&
+      runtime.driver === "claudeAgent" &&
+      target.id !== selected.id
+        ? target.id
+        : undefined;
+    if (!service.enabled)
+      return gatewayErrorResponse(incoming, 503, {
+        message: "This model service is unavailable.",
+      });
+    if (selected.available === false)
       return gatewayErrorResponse(incoming, 503, {
         message:
           "This model is no longer advertised by the model service. Refresh its catalog or select another model.",
       });
+    const body =
+      runtime.driver === "claudeAgent" &&
+      sources.length > 1 &&
+      incoming === "anthropic-messages" &&
+      !countTokens
+        ? limitAnthropicRequestOutput(requestedBody, selected.maxOutputTokens)
+        : requestedBody;
     const routing = modelServiceRequestRouting({
       incoming,
       body,
       countTokens,
-      candidates: modelServiceCandidateProtocols(service, boundCandidate, incoming),
+      candidates: modelServiceCandidateProtocols(service, selected, incoming),
     });
     if (routing.error) return gatewayErrorResponse(incoming, routing.error.status, routing.error);
+    const stateKey = (kind: string, id: string) =>
+      `${runtime.token}:${sessionId?.length ?? 0}:${sessionId ?? ""}:${kind}:${id}`;
+    const stateRoute = `${serviceId}:${service.revision}`;
+    if (sources.length > 1 && incoming === "openai-responses") {
+      const linkedState = [
+        ["response", body.previous_response_id],
+        [
+          "conversation",
+          typeof body.conversation === "string" ? body.conversation : record(body.conversation).id,
+        ],
+      ] as const;
+      if (
+        linkedState.some(
+          ([kind, id]) =>
+            typeof id === "string" &&
+            id &&
+            responseStateRoutes.get(stateKey(kind, id)) !== stateRoute,
+        )
+      )
+        return gatewayErrorResponse(incoming, 422, {
+          code: "model_service_state_source_mismatch",
+          message:
+            "The response or conversation ID is not known for the selected model service. Send the conversation history without that ID.",
+        });
+    }
+    const rememberState = (response: unknown) => {
+      if (sources.length < 2 || incoming !== "openai-responses") return;
+      const value = record(response);
+      for (const [kind, id] of [
+        ["response", value.id],
+        [
+          "conversation",
+          typeof value.conversation === "string"
+            ? value.conversation
+            : record(value.conversation).id,
+        ],
+      ] as const) {
+        if (typeof id !== "string" || !id || id.length > 512) continue;
+        const key = stateKey(kind, id);
+        const prior = responseStateRoutes.get(key);
+        responseStateRoutes.delete(key);
+        responseStateRoutes.set(
+          key,
+          prior === undefined || prior === stateRoute ? stateRoute : null,
+        );
+      }
+      while (responseStateRoutes.size > 4096) {
+        responseStateRoutes.delete(responseStateRoutes.keys().next().value!);
+      }
+    };
     const candidateProtocols = routing.protocols;
     let protocolIndex = 0;
     const initialProtocol = candidateProtocols[0];
@@ -924,26 +1058,33 @@ export const make = Effect.gen(function* () {
         message: "No compatible upstream protocol is configured for this model.",
       });
     let currentProtocol: ModelServiceProtocol = initialProtocol;
-    const selected = models.find((model) => model.id === boundCandidate.id) ?? boundCandidate;
     const stream =
       body.stream === true ||
       (incoming === "gemini" && url.pathname.endsWith(":streamGenerateContent"));
-    const load = loads.get(runtime.binding.serviceId) ?? {
+    const load = loads.get(serviceId) ?? {
       inFlight: 0,
       hedges: 0,
       cooldownUntil: 0,
     };
-    loads.set(runtime.binding.serviceId, load);
+    loads.set(serviceId, load);
     const enabled = settings.getSettings.pipe(
-      Effect.map(
-        (current) =>
-          current.modelServices[runtime.binding.serviceId]?.enabled === true &&
-          [...bindings.values()].some(
-            (entry) =>
-              entry.token === runtime.token &&
-              entry.binding.serviceId === runtime.binding.serviceId,
-          ),
-      ),
+      Effect.map((current) => {
+        const entry = bindings.get(runtime.instanceId);
+        const currentService = current.modelServices[serviceId];
+        return (
+          currentService?.enabled === true &&
+          currentService.baseUrl === service.baseUrl &&
+          currentService.apiKey === service.apiKey &&
+          Equal.equals(currentService.headers, service.headers) &&
+          Equal.equals(modelServiceProtocols(currentService), modelServiceProtocols(service)) &&
+          entry?.token === runtime.token &&
+          modelServiceSources(entry.binding).some(
+            (source) =>
+              source.serviceId === serviceId &&
+              (source.modelIds.length === 0 || source.modelIds.includes(selected.id)),
+          )
+        );
+      }),
       Effect.orElseSucceed(() => false),
     );
     const diagnostic = (event: Readonly<Record<string, unknown>>) =>
@@ -951,6 +1092,7 @@ export const make = Effect.gen(function* () {
         requestId,
         sessionId,
         ...tracking.context,
+        serviceId,
         incoming,
         protocol: currentProtocol,
         ...event,
@@ -1094,7 +1236,11 @@ export const make = Effect.gen(function* () {
             value: selected.maxOutputTokens,
             source: "model_metadata",
           });
-        let requestBody = modelServiceRequestBody(protocol, selected.id, budget.body);
+        const upstreamBody =
+          protocol !== "gemini" && budget.body.model !== selected.id
+            ? { ...budget.body, model: selected.id }
+            : budget.body;
+        let requestBody = modelServiceRequestBody(protocol, selected.id, upstreamBody);
         if (protocol === "openai-chat") {
           const automatic = withoutForcedToolChoice(requestBody);
           canRepairForcedToolChoice ||= automatic !== requestBody;
@@ -1211,6 +1357,7 @@ export const make = Effect.gen(function* () {
           let bridgeFinishAttempted = false;
           let convertedFinalized = false;
           let downstreamEnded = false;
+          let rememberedResponse = false;
           let downstreamBytes = 0;
           let errorEmitted = false;
           let upstreamErrorCode: string | undefined;
@@ -1430,6 +1577,9 @@ export const make = Effect.gen(function* () {
                 ),
               )
             : checkedSource.pipe(Stream.map(({ chunk }) => chunk));
+          const modelStream = downstreamModel
+            ? makeAnthropicResponseModelStream(downstreamModel)
+            : undefined;
           const finalized = Stream.concat(
             converted,
             Stream.unwrap(
@@ -1463,20 +1613,30 @@ export const make = Effect.gen(function* () {
                 "downstream",
                 Effect.try({
                   try: () => {
-                    downstream.push(chunk);
-                    downstreamBytes += chunk.length;
-                    return chunk;
+                    const bytes = modelStream?.push(chunk) ?? chunk;
+                    downstream.push(bytes);
+                    if (!rememberedResponse && protocol === "openai-responses" && !bridge) {
+                      const response = downstream.responseState();
+                      if (response) {
+                        rememberState(response);
+                        rememberedResponse = true;
+                      }
+                    }
+                    downstreamBytes += bytes.length;
+                    return bytes;
                   },
                   catch: integrityError,
                 }),
               ),
             ),
+            Stream.filter((chunk) => chunk.length > 0),
             Stream.concat(
               Stream.fromEffect(
                 checked(
                   "downstream",
                   Effect.try({
                     try: () => {
+                      modelStream?.finish();
                       downstream.finish();
                       downstreamEnded = true;
                       const terminal = downstream.snapshot().terminal;
@@ -1657,7 +1817,13 @@ export const make = Effect.gen(function* () {
               source: "gateway",
             });
         }
-        return HttpServerResponse.jsonUnsafe(bridge ? yield* bridge.response(result) : result);
+        if (protocol === "openai-responses" && !bridge) rememberState(result);
+        const responseBody = bridge ? yield* bridge.response(result) : result;
+        return HttpServerResponse.jsonUnsafe(
+          downstreamModel
+            ? withAnthropicResponseModel(responseBody, downstreamModel)
+            : responseBody,
+        );
       },
       Effect.mapError((error) =>
         error instanceof ModelServiceRequestFailure

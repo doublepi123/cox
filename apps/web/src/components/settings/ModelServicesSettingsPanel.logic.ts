@@ -3,16 +3,24 @@ import type {
   ModelServiceId,
   ModelServiceModel,
   ProviderInstanceConfigMap,
+  ServerSettings,
 } from "@t3tools/contracts";
-import { boundModelServiceModels, modelServiceRoleReferences } from "@t3tools/shared/modelServices";
+import {
+  isModelServiceTargetAvailable,
+  modelServiceDefaultRef,
+  modelServiceRoleReferences,
+  modelServiceSources,
+  modelServiceTargets,
+} from "@t3tools/shared/modelServices";
 
 export function modelRemovalBlockingAgents(
   serviceId: ModelServiceId,
   service: ModelServiceConfig,
   modelId: string,
   instances: ProviderInstanceConfigMap,
+  services: ServerSettings["modelServices"] = { [serviceId]: service },
 ): readonly string[] {
-  return modelsRemovalBlockingAgents(serviceId, service, new Set([modelId]), instances);
+  return modelsRemovalBlockingAgents(serviceId, service, new Set([modelId]), instances, services);
 }
 
 export function modelsRemovalBlockingAgents(
@@ -20,6 +28,7 @@ export function modelsRemovalBlockingAgents(
   service: ModelServiceConfig,
   modelIds: ReadonlySet<string>,
   instances: ProviderInstanceConfigMap,
+  services: ServerSettings["modelServices"] = { [serviceId]: service },
 ): readonly string[] {
   if (modelIds.size === 0) return [];
   const remaining = {
@@ -28,19 +37,22 @@ export function modelsRemovalBlockingAgents(
   };
   return Object.entries(instances).flatMap(([id, instance]) => {
     const binding = instance.modelService;
-    if (!binding || binding.serviceId !== serviceId) return [];
-    const removesAvailableModel = boundModelServiceModels(service, binding).some(
-      (model) => modelIds.has(model.id) && model.available !== false,
+    if (!binding) return [];
+    const source = modelServiceSources(binding).find((entry) => entry.serviceId === serviceId);
+    if (!source) return [];
+    const defaultModel = modelServiceDefaultRef(binding);
+    const roles = modelServiceRoleReferences(instance);
+    const removed = modelServiceTargets(services, binding).filter(
+      (target) => target.ref.serviceId === serviceId && modelIds.has(target.ref.modelId),
     );
+    const remainingTargets = modelServiceTargets({ ...services, [serviceId]: remaining }, binding);
     if (
-      binding.modelIds.some((modelId) => modelIds.has(modelId)) ||
-      [...modelIds].some((modelId) =>
-        modelServiceRoleReferences(instance).includes(`cox/${modelId}`),
-      ) ||
-      (binding.defaultModel !== undefined && modelIds.has(binding.defaultModel)) ||
-      remaining.models.length === 0 ||
-      (removesAvailableModel &&
-        !boundModelServiceModels(remaining, binding).some((model) => model.available !== false))
+      source.modelIds.some((modelId) => modelIds.has(modelId)) ||
+      (defaultModel?.serviceId === serviceId && modelIds.has(defaultModel.modelId)) ||
+      removed.some((target) => roles.includes(`cox/${target.id}`)) ||
+      remainingTargets.length === 0 ||
+      (removed.some(isModelServiceTargetAvailable) &&
+        !remainingTargets.some(isModelServiceTargetAvailable))
     ) {
       return [instance.displayName || id];
     }
@@ -52,6 +64,7 @@ export function unlistedModelRemovalPlan(
   serviceId: ModelServiceId,
   service: ModelServiceConfig,
   instances: ProviderInstanceConfigMap,
+  services: ServerSettings["modelServices"] = { [serviceId]: service },
 ): {
   readonly removable: readonly ModelServiceModel[];
   readonly protected: readonly ModelServiceModel[];
@@ -62,20 +75,25 @@ export function unlistedModelRemovalPlan(
   const selectedIds = new Set(
     Object.values(instances).flatMap((instance) => {
       const binding = instance.modelService;
-      return binding?.serviceId === serviceId
-        ? [
-            ...binding.modelIds,
-            ...(binding.defaultModel ? [binding.defaultModel] : []),
-            ...modelServiceRoleReferences(instance)
-              .filter((slug) => slug.startsWith("cox/"))
-              .map((slug) => slug.slice(4)),
-          ]
-        : [];
+      if (!binding) return [];
+      const source = modelServiceSources(binding).find((entry) => entry.serviceId === serviceId);
+      if (!source) return [];
+      const defaultModel = modelServiceDefaultRef(binding);
+      const roles = modelServiceRoleReferences(instance);
+      return [
+        ...source.modelIds,
+        ...(defaultModel?.serviceId === serviceId ? [defaultModel.modelId] : []),
+        ...modelServiceTargets(services, binding).flatMap((target) =>
+          target.ref.serviceId === serviceId && roles.includes(`cox/${target.id}`)
+            ? [target.ref.modelId]
+            : [],
+        ),
+      ];
     }),
   );
   const removable = unlisted.filter((model) => !selectedIds.has(model.id));
   const removedIds = new Set(removable.map((model) => model.id));
-  if (modelsRemovalBlockingAgents(serviceId, service, removedIds, instances).length > 0)
+  if (modelsRemovalBlockingAgents(serviceId, service, removedIds, instances, services).length > 0)
     return { removable: [], protected: unlisted };
   return {
     removable,

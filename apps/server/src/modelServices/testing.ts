@@ -106,12 +106,7 @@ export const testModelService = Effect.fn("testModelService")(
       protocol: null,
       message: "No compatible protocol is configured for this model.",
     };
-    const candidates =
-      new Set(service.protocols).size > 1
-        ? modelServiceCandidateProtocols(service, model)
-        : service.protocols.filter(
-            (candidate) => !model.protocols || model.protocols.includes(candidate),
-          );
+    const candidates = modelServiceCandidateProtocols(service, model);
     for (const protocol of candidates) {
       const request = testRequest(service, protocol, model.id);
       const outcome = yield* Effect.scoped(

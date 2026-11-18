@@ -6,7 +6,11 @@ import {
 import * as Effect from "effect/Effect";
 import {
   MODEL_SERVICE_AGENT_DRIVERS,
+  modelServiceDefaultRef,
   modelServiceRoleReferences,
+  modelServiceSources,
+  modelServiceTargets,
+  sameModelServiceRef,
 } from "@t3tools/shared/modelServices";
 import { OmoSettings } from "@t3tools/provider-omo/settings";
 import * as Schema from "effect/Schema";
@@ -33,15 +37,34 @@ export function validateModelServiceBindings(settings: ServerSettings): string |
     if (!binding) continue;
     if (!(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver))
       return "This agent does not support a centrally managed model service.";
-    const service = settings.modelServices[binding.serviceId];
-    if (!service) return "Unbind agents before removing their model service.";
-    const models = service.models.filter(
-      (model) => binding.modelIds.length === 0 || binding.modelIds.includes(model.id),
-    );
+    const sources = modelServiceSources(binding);
+    if (new Set(sources.map((source) => source.serviceId)).size !== sources.length)
+      return "Each model service can be bound to an agent only once.";
+    for (const source of sources) {
+      if (!Object.hasOwn(settings.modelServices, source.serviceId))
+        return "Unbind agents before removing their model service.";
+      const service = settings.modelServices[source.serviceId];
+      if (!service) return "Unbind agents before removing their model service.";
+      const ids = new Set(service.models.map((model) => model.id));
+      if (source.modelIds.some((id) => !ids.has(id)))
+        return "The agent binding contains a missing or incompatible model.";
+    }
+    const models = modelServiceTargets(settings.modelServices, binding);
     if (!models.length) return "The agent binding needs at least one compatible model.";
-    if (binding.modelIds.some((id) => !models.some((model) => model.id === id)))
-      return "The agent binding contains a missing or incompatible model.";
-    if (binding.defaultModel && !models.some((model) => model.id === binding.defaultModel))
+    const aliases = binding.legacyAliases ?? [];
+    if (
+      new Set(aliases.map((entry) => entry.id)).size !== aliases.length ||
+      new Set(aliases.map((entry) => JSON.stringify(entry.model))).size !== aliases.length ||
+      new Set(models.map((model) => model.id)).size !== models.length ||
+      models.some((model) =>
+        aliases.some(
+          (alias) => alias.id === model.id && !sameModelServiceRef(alias.model, model.ref),
+        ),
+      )
+    )
+      return "The agent binding contains conflicting model identifiers.";
+    const defaultModel = modelServiceDefaultRef(binding);
+    if (defaultModel && !models.some((model) => sameModelServiceRef(model.ref, defaultModel)))
       return "The default model must be included in the agent binding.";
     if (instance.driver === "omo") {
       if (
@@ -60,16 +83,25 @@ export function ensureModelServiceRevisions(
   patch: ServerSettingsPatch,
 ): Effect.Effect<void, ModelServiceError> {
   for (const [id, entry] of Object.entries(patch.modelServices ?? {})) {
-    if (
-      entry &&
-      entry.revision !==
-        (settings.modelServices[id as keyof typeof settings.modelServices]?.revision ?? 0)
-    )
+    const prior = settings.modelServices[id as keyof typeof settings.modelServices];
+    if (entry && entry.revision !== (prior?.revision ?? 0))
       return Effect.fail(
         new ModelServiceError({
           detail: "The model service changed. Reload its current settings before saving.",
         }),
       );
+    if (entry && JSON.stringify(entry.protocols) !== JSON.stringify(prior?.protocols)) {
+      if (new Set(prior?.protocols).size > 1)
+        return Effect.fail(
+          new ModelServiceError({
+            detail: "Preview and split this service before changing its protocols.",
+          }),
+        );
+      if (new Set(entry.protocols).size > 1)
+        return Effect.fail(
+          new ModelServiceError({ detail: "Choose one API protocol per model service." }),
+        );
+    }
   }
   return Effect.void;
 }

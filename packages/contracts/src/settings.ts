@@ -22,6 +22,7 @@ import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
 import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
 import { ModelServiceId, ModelServiceConfig } from "./modelService.ts";
+import { ModelTokenPrice } from "./modelTokenPrice.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
 import {
@@ -535,18 +536,8 @@ export type ClientSettings = typeof ClientSettingsSchema.Type;
 
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientSettingsSchema)({});
 
-const UsageModelTokenPrice = Schema.Number.check(
-  Schema.isFinite(),
-  Schema.isGreaterThanOrEqualTo(0),
-);
-
 /** Omitted cache rates use the input rate. */
-export const UsageModelPriceOverride = Schema.Struct({
-  inputCostPerMillionTokens: UsageModelTokenPrice,
-  outputCostPerMillionTokens: UsageModelTokenPrice,
-  cacheReadCostPerMillionTokens: Schema.optionalKey(UsageModelTokenPrice),
-  cacheWriteCostPerMillionTokens: Schema.optionalKey(UsageModelTokenPrice),
-});
+export const UsageModelPriceOverride = ModelTokenPrice;
 export type UsageModelPriceOverride = typeof UsageModelPriceOverride.Type;
 
 export const makeBinaryPathSetting = (fallback: string) =>
@@ -1720,6 +1711,12 @@ export const ServerSettingsPatch = Schema.Struct({
   modelServices: Schema.optionalKey(
     Schema.Record(ModelServiceId, Schema.NullOr(ModelServiceConfig)),
   ),
+  splitModelService: Schema.optionalKey(
+    Schema.Struct({
+      serviceId: ModelServiceId,
+      revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+  ),
   modelServiceOrder: Schema.optionalKey(Schema.Array(ModelServiceId)),
   // Merge per source to avoid racing other edits; null removes an entry.
   usageLimitSources: Schema.optionalKey(
@@ -1752,6 +1749,7 @@ export function requiredScopesForServerSettingsPatch(
       key === "providerInstanceOrder" ||
       key === "deletedDefaultProviderInstances" ||
       key === "modelServices" ||
+      key === "splitModelService" ||
       key === "modelServiceOrder" ||
       key === "usageLimitSources" ||
       key === "secretProviders"

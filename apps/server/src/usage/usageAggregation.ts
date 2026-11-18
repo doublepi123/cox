@@ -9,6 +9,7 @@ import type {
 
 import { EMPTY_TOTALS, type UsageRecord } from "@t3tools/provider-core/server/usage";
 import { cacheSavingsUsd, priceUsage, type RateTable } from "./usagePricing.ts";
+import type { ModelServiceUsagePrice } from "./modelServicePricing.ts";
 
 // en-CA gives ISO-ordered parts in the requested zone; Date getters are host-local.
 function makeDayFormatter(timeZone: string): (timestampMs: number) => string {
@@ -67,6 +68,10 @@ export interface AggregateOptions {
   readonly rates: RateTable;
   readonly priceOverrides?: RateTable;
   readonly modelAliases?: ReadonlyMap<string, string>;
+  readonly modelServicePrice?: (
+    record: UsageRecord,
+    sourcePath?: string,
+  ) => ModelServiceUsagePrice | undefined;
   readonly resolution?: UsageResolution;
   readonly sinceTimeMs?: number;
   readonly untilTimeMs?: number;
@@ -129,7 +134,10 @@ export class UsageAggregator {
   }
 
   add(input: UsageRecord, sourcePath?: string): boolean {
-    const record = this.#mapModel(input);
+    const mapped = this.#mapModel(input);
+    const modelService =
+      mapped === input ? this.#options.modelServicePrice?.(input, sourcePath) : undefined;
+    const record = modelService ? { ...mapped, rateModel: modelService.rateModel } : mapped;
     if (record.dedupeKey !== null) {
       if (this.#seen.has(record.dedupeKey)) {
         this.#duplicatesDropped += 1;
@@ -160,9 +168,20 @@ export class UsageAggregator {
       this.#hourlyWindow === null
         ? -1
         : Math.floor((record.timestampMs - this.#hourlyWindow.sinceTimeMs) / HOUR_MS);
-    const bucket = this.#bucketFor(day, hourIndex, record.provider, record.model, sourcePath ?? "");
+    const bucket = this.#bucketFor(
+      day,
+      hourIndex,
+      record.provider,
+      modelService?.name ?? record.model,
+      sourcePath ?? "",
+    );
 
-    const priced = priceUsage(this.#options.rates, record, this.#options.priceOverrides);
+    const priced = priceUsage(
+      this.#options.rates,
+      record,
+      this.#options.priceOverrides,
+      modelService?.pricing,
+    );
 
     const totals = bucket.totals;
     totals.uncachedInputTokens += record.totals.uncachedInputTokens;
@@ -191,6 +210,7 @@ export class UsageAggregator {
       this.#options.rates,
       record,
       this.#options.priceOverrides,
+      modelService?.pricing,
     );
     bucket.records += 1;
     if (priced.costSource === "unpriced") bucket.unpricedRecords += 1;

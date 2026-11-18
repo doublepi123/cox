@@ -463,11 +463,26 @@ export const zh = {
   "Showing {count} of {total} refs": "已显示 {count} / {total} 个分支",
   'Create new ref "{name}"': "新建分支“{name}”",
   "Copy full path": "复制完整路径",
-  "Fill metadata from models.dev": "从 models.dev 补全参数",
+  "Sync prices and metadata from models.dev": "从 models.dev 同步价格和参数",
+  "Token pricing": "Token 计价",
+  "Price source": "价格来源",
+  "Manual price": "手动价格",
+  "models.dev price": "models.dev 价格",
+  "Automatic from models.dev": "从 models.dev 自动同步",
+  "USD per 1M tokens": "美元 / 百万 Token",
+  "Input price": "输入价格",
+  "Output price": "输出价格",
+  "Cache read price": "缓存读取价格",
+  "Cache write price": "缓存写入价格",
+  "USD per 1M tokens. Blank cache rates use the input rate.":
+    "单位为美元 / 百万 Token。缓存价格留空时按输入价计算。",
+  "Uses the latest synced models.dev price.": "使用最近同步的 models.dev 价格。",
+  "No models.dev price is currently available for this model.":
+    "当前没有此模型的 models.dev 价格。",
   "Input modalities": "输入模态",
   "Output modalities": "输出模态",
-  "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.":
-    "按模型 ID 精确匹配 models.dev，补全缺失参数。保留已有设置；未匹配的能力保留为未知。",
+  "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.":
+    "刷新模型时会按模型 ID 同步 models.dev 价格。手动价格优先。",
   "Could not fetch model metadata from models.dev. Try again later.":
     "无法从 models.dev 获取模型参数，请稍后重试。",
   "Model services": "模型服务中心",
@@ -480,13 +495,29 @@ export const zh = {
     "配置一次 API、获取模型，即可供兼容的编程助手共享使用。",
   "Connect to Cox to manage model services.": "连接 Cox 后即可管理模型服务。",
   "No model services configured.": "尚未配置模型服务。",
-  "Add a service with its API URL, API key and supported protocols.":
-    "填写 API 地址、API 密钥和支持的协议，添加模型服务。",
+  "Add a service with its API URL, API key and protocol.":
+    "填写 API 地址和 API 密钥，再选择一个协议来添加模型服务。",
   "Service name": "服务名称",
   "Remove stored API key": "移除已保存的 API 密钥",
   "Supported protocols": "支持的协议",
-  "The first selected protocol is used for model discovery. Each model can declare its own protocols.":
-    "使用首个选中的协议获取模型；每个模型也可以单独指定支持的协议。",
+  "API protocol": "API 协议",
+  "Split this legacy service into one connection per protocol.": "按协议将此旧服务拆分成独立连接。",
+  "Preview protocol split": "预览协议拆分",
+  "Split model service by protocol": "按协议拆分模型服务",
+  "Each connection uses the existing credentials. Existing Agent bindings and model selections follow the models below. Alternate protocols will require their own model selection.":
+    "每条连接沿用现有凭据。Agent 绑定和模型选择会随下方的模型一起迁移。如需使用其他协议，请选择该协议连接下的模型。",
+  "Previously eligible fallbacks: {protocols}": "以前可回退到：{protocols}",
+  "The model service changed. Close this dialog and preview the split again.":
+    "模型服务已更改。关闭此对话框后重新预览拆分。",
+  "Split model service": "拆分模型服务",
+  "Choose one API protocol per model service.": "每条模型服务连接只能选择一种 API 协议。",
+  "Preview and split this service before changing its protocols.":
+    "请先预览并拆分此服务，再更改协议。",
+  "Choose centrally managed model sources for this agent.": "为此 Agent 选择集中管理的模型来源。",
+  "Remove model source {name}": "移除模型来源 {name}",
+  "Add model source": "添加模型来源",
+  "Select a model service": "选择模型服务",
+  "First available model": "第一个可用模型",
   Primary: "首选",
   "Model-list path": "模型列表路径",
   "Optional path on the same service, such as /v1/models.":
@@ -599,7 +630,7 @@ export const zh = {
     "共 {count} 个兼容模型；需要时自动转换协议。",
   "The operation was interrupted. Retry to confirm its result.": "操作已中断，请重试以确认结果。",
   "The model service operation failed.": "模型服务操作失败。",
-  "Check the service name, API URL, protocols and request headers.":
+  "Check the service name, API URL, protocol and request headers.":
     "请检查服务名称、API 地址、协议和请求头。",
   "Could not fetch models. Check the URL, API key and model-list path.":
     "无法获取模型。请检查地址、API 密钥和模型列表路径。",

@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vite-plus/test";
 import { makeModelServiceSseParser } from "./sse.ts";
+import { makeAnthropicResponseModelStream } from "./anthropicResponseModel.ts";
 
 describe("model gateway SSE framing", () => {
+  it("preserves Anthropic events while identifying the selected Cox model in usage", () => {
+    const rewriter = makeAnthropicResponseModelStream("cox-ms-priced");
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const first =
+      'event: message_start\r\ndata: {"type":"message_start","message":{"type":"message","model":"upstream","usage":{"input_tokens":7}}}\r\n\r\n';
+    const rest = ': keepalive\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n';
+    const middle = first.indexOf('"upstream"');
+    expect(rewriter.push(encoder.encode(first.slice(0, middle)))).toHaveLength(0);
+    expect(decoder.decode(rewriter.push(encoder.encode(first.slice(middle) + rest)))).toBe(
+      first.replace('"upstream"', '"cox-ms-priced"') + rest,
+    );
+    expect(() => rewriter.finish()).not.toThrow();
+  });
   it("preserves event boundaries across chunks and CRLF, joining multiline data", () => {
     const parse = makeModelServiceSseParser();
     expect(parse(': keepalive\r\nevent: delta\r\ndata: {"text":')).toEqual([]);

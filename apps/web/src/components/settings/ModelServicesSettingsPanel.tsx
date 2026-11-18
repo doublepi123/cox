@@ -13,6 +13,9 @@ import { createModelServiceTestRunner } from "@t3tools/client-runtime/state/mode
 import {
   modelServiceCandidateProtocols,
   modelServiceDisplayName,
+  modelServiceProtocols,
+  modelServiceSources,
+  modelServiceSplitPlan,
 } from "@t3tools/shared/modelServices";
 import * as Schema from "effect/Schema";
 import {
@@ -39,6 +42,12 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import {
+  isUsagePriceEdit,
+  parseUsagePriceForm,
+  usagePriceForm,
+  USAGE_PRICE_FIELDS,
+} from "../usage/usagePriceForm";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -69,6 +78,12 @@ export const MODEL_SERVICE_PROTOCOL_LABELS: Record<ModelServiceProtocol, string>
 };
 const protocols = Object.keys(MODEL_SERVICE_PROTOCOL_LABELS) as ModelServiceProtocol[];
 const decodeService = Schema.decodeUnknownSync(ModelServiceConfig);
+const MODEL_PRICE_LABELS = {
+  inputCostPerMillionTokens: "Input price",
+  outputCostPerMillionTokens: "Output price",
+  cacheReadCostPerMillionTokens: "Cache read price",
+  cacheWriteCostPerMillionTokens: "Cache write price",
+} as const;
 const serviceReorderControlClass =
   "inline-flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent/80 disabled:cursor-default disabled:opacity-40 min-[641px]:min-h-7 min-[641px]:min-w-7";
 
@@ -294,7 +309,7 @@ export function EnvironmentModelServices({
       ) : !selected ? (
         <SettingsRow
           title={t("No model services configured.")}
-          description={t("Add a service with its API URL, API key and supported protocols.")}
+          description={t("Add a service with its API URL, API key and protocol.")}
         />
       ) : null}
       {selected ? (
@@ -323,7 +338,7 @@ function ModelServiceEditor({
   readonly id: ModelServiceId;
   readonly service: ModelServiceConfig | undefined;
   readonly environmentId: EnvironmentId;
-  readonly settings: Pick<ServerSettings, "providerInstances">;
+  readonly settings: Pick<ServerSettings, "providerInstances" | "modelServices">;
   readonly readOnly: boolean;
   readonly onDeleted: () => void;
 }) {
@@ -343,8 +358,10 @@ function ModelServiceEditor({
   const [apiKey, setApiKey] = useState("");
   const [clearKey, setClearKey] = useState(false);
   const [headers, setHeaders] = useState(JSON.stringify(service?.headers ?? {}, null, 2));
-  const [selectedProtocols, setProtocols] = useState<ReadonlyArray<ModelServiceProtocol>>(
-    service?.protocols ?? ["openai-chat"],
+  const serviceProtocols = service ? modelServiceProtocols(service) : [];
+  const legacy = new Set(serviceProtocols).size > 1;
+  const [protocol, setProtocol] = useState<ModelServiceProtocol>(
+    serviceProtocols[0] ?? "openai-chat",
   );
   const [modelsPath, setModelsPath] = useState(service?.modelsPath ?? "");
   const [enabled, setEnabled] = useState(service?.enabled ?? true);
@@ -371,12 +388,17 @@ function ModelServiceEditor({
   const cancelUnlistedRemoval = useRef<HTMLButtonElement>(null);
   const cancelClearModels = useRef<HTMLButtonElement>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [splitRevision, setSplitRevision] = useState<number | null>(null);
+  const splitPlan = splitRevision === null ? [] : modelServiceSplitPlan(settings.modelServices, id);
+  const splitChanged = splitRevision !== null && service?.revision !== splitRevision;
   const bound = Object.values(settings.providerInstances).filter(
-    (instance) => instance.modelService?.serviceId === id,
+    (instance) =>
+      instance.modelService &&
+      modelServiceSources(instance.modelService).some((source) => source.serviceId === id),
   ).length;
   const models = service?.models ?? [];
   const cleanup = service
-    ? unlistedModelRemovalPlan(id, service, settings.providerInstances)
+    ? unlistedModelRemovalPlan(id, service, settings.providerInstances, settings.modelServices)
     : { removable: [], protected: [] };
   const unlistedCount = cleanup.removable.length + cleanup.protected.length;
   const cleanupModels = cleanup.removable.filter((model) =>
@@ -386,7 +408,13 @@ function ModelServiceEditor({
     removingUnlisted !== null && service?.revision !== removingUnlisted.revision;
   const removalBlockers =
     service && removingModel
-      ? modelRemovalBlockingAgents(id, service, removingModel.id, settings.providerInstances)
+      ? modelRemovalBlockingAgents(
+          id,
+          service,
+          removingModel.id,
+          settings.providerInstances,
+          settings.modelServices,
+        )
       : [];
   const canRemoveModel =
     !readOnly &&
@@ -399,6 +427,7 @@ function ModelServiceEditor({
         service,
         new Set(models.map((model) => model.id)),
         settings.providerInstances,
+        settings.modelServices,
       )
     : [];
   const clearChanged =
@@ -418,7 +447,7 @@ function ModelServiceEditor({
     clearKey ||
     headers !== JSON.stringify(service.headers, null, 2) ||
     modelsPath !== (service.modelsPath ?? "") ||
-    JSON.stringify(selectedProtocols) !== JSON.stringify(service.protocols),
+    (!legacy && protocol !== serviceProtocols[0]),
   );
   const changed = Boolean(
     service &&
@@ -448,13 +477,18 @@ function ModelServiceEditor({
   function saveModel(model: ModelServiceModel) {
     if (readOnly || !service || !modelEditor) return;
     const previousId = modelEditor === "new" ? null : modelEditor.id;
+    const catalogPrice =
+      previousId === model.id
+        ? models.find((entry) => entry.id === previousId)?.modelsDevPrice
+        : undefined;
+    const nextModel = catalogPrice ? { ...model, modelsDevPrice: catalogPrice } : model;
     void run(async () => {
       const nextModels =
         previousId === null
-          ? [...models.filter((entry) => entry.id !== model.id), model]
+          ? [...models.filter((entry) => entry.id !== model.id), nextModel]
           : models
               .filter((entry) => entry.id !== model.id || entry.id === previousId)
-              .map((entry) => (entry.id === previousId ? model : entry));
+              .map((entry) => (entry.id === previousId ? nextModel : entry));
       const problem = commandError(
         await update({
           environmentId,
@@ -473,7 +507,7 @@ function ModelServiceEditor({
         baseUrl,
         apiKey: clearKey ? "" : apiKey.trim() || service?.apiKey || "",
         headers: JSON.parse(headers),
-        protocols: selectedProtocols,
+        ...(legacy ? { protocols: serviceProtocols } : { protocol }),
         modelsPath,
         enabled,
         recovery,
@@ -487,7 +521,7 @@ function ModelServiceEditor({
   }
   async function save(fetchModels: boolean) {
     const config = configuration();
-    if (!config) return "Check the service name, API URL, protocols and request headers.";
+    if (!config) return "Check the service name, API URL, protocol and request headers.";
     const result = await update({
       environmentId,
       input: { patch: { modelServices: { [id]: config } } },
@@ -562,39 +596,47 @@ function ModelServiceEditor({
           ) : null}
         </div>
         <div className="space-y-5 p-4 sm:p-5 lg:border-l lg:border-border/60 lg:bg-muted/10 lg:p-6">
-          <fieldset disabled={readOnly || busy} className="space-y-3">
-            <legend className="text-sm font-medium">{t("Supported protocols")}</legend>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t(
-                "The first selected protocol is used for model discovery. Each model can declare its own protocols.",
-              )}
-            </p>
-            <div className="grid gap-2">
-              {protocols.map((protocol) => (
-                <label
-                  key={protocol}
-                  className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-sm transition-colors hover:bg-accent/50 has-checked:bg-accent/60 sm:px-3 lg:border lg:border-border/50 lg:bg-background/60 lg:px-3 lg:has-checked:border-primary/20 lg:has-checked:bg-accent/60"
+          {legacy ? (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">{t("API protocol")}</legend>
+              <p className="text-sm">
+                {serviceProtocols.map((entry) => MODEL_SERVICE_PROTOCOL_LABELS[entry]).join(" / ")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("Split this legacy service into one connection per protocol.")}
+              </p>
+              {!readOnly && service ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || changed}
+                  onClick={() => {
+                    setError(null);
+                    setSplitRevision(service.revision);
+                  }}
                 >
-                  <Checkbox
-                    checked={selectedProtocols.includes(protocol)}
-                    onCheckedChange={(checked) =>
-                      setProtocols(
-                        checked === true
-                          ? [...selectedProtocols, protocol]
-                          : selectedProtocols.filter((value) => value !== protocol),
-                      )
-                    }
-                  />
-                  <span className="min-w-0 flex-1">{MODEL_SERVICE_PROTOCOL_LABELS[protocol]}</span>
-                  {selectedProtocols[0] === protocol ? (
-                    <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
-                      {t("Primary")}
-                    </span>
-                  ) : null}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+                  {t("Preview protocol split")}
+                </Button>
+              ) : null}
+            </fieldset>
+          ) : (
+            <label className="grid gap-1.5 text-sm font-medium">
+              <span>{t("API protocol")}</span>
+              <select
+                className="min-h-11 min-w-0 rounded-md border border-input bg-background px-2 font-normal"
+                disabled={readOnly || busy}
+                value={protocol}
+                onChange={(event) => setProtocol(event.target.value as ModelServiceProtocol)}
+              >
+                {protocols.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {MODEL_SERVICE_PROTOCOL_LABELS[entry]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="grid gap-2 text-sm font-medium">
             <span className="flex items-center justify-between gap-3">
               {t("Model-list path")}
@@ -686,6 +728,84 @@ function ModelServiceEditor({
           {error}
         </p>
       ) : null}
+      <AlertDialog
+        open={splitRevision !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setSplitRevision(null);
+        }}
+      >
+        <AlertDialogPopup bottomStickOnMobile={false}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Split model service by protocol")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "Each connection uses the existing credentials. Existing Agent bindings and model selections follow the models below. Alternate protocols will require their own model selection.",
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-64 space-y-3 overflow-auto text-sm">
+            {splitPlan.map((part) => (
+              <div key={part.serviceId}>
+                <p className="font-medium">
+                  {MODEL_SERVICE_PROTOCOL_LABELS[part.protocol]} ({part.models.length})
+                </p>
+                <ul>
+                  {part.models.map(({ model, alternatives }) => (
+                    <li key={model.id} className="break-all">
+                      {model.name ?? model.id}
+                      {alternatives.length ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {t("Previously eligible fallbacks: {protocols}", {
+                            protocols: alternatives
+                              .map((entry) => MODEL_SERVICE_PROTOCOL_LABELS[entry])
+                              .join(", "),
+                          })}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          {splitChanged || error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error ??
+                t("The model service changed. Close this dialog and preview the split again.")}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" disabled={busy} />}>
+              {t("Cancel")}
+            </AlertDialogClose>
+            <Button
+              disabled={
+                busy || readOnly || splitChanged || splitPlan.length < 2 || splitRevision === null
+              }
+              onClick={() => {
+                if (splitRevision === null) return;
+                void run(async () => {
+                  const problem = commandError(
+                    await update({
+                      environmentId,
+                      input: {
+                        patch: { splitModelService: { serviceId: id, revision: splitRevision } },
+                      },
+                    }),
+                  );
+                  if (!problem) {
+                    setSplitRevision(null);
+                    setName(`${service?.name} · ${protocol}`);
+                  }
+                  return problem;
+                });
+              }}
+            >
+              {t("Split model service")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 bg-muted/10 px-4 py-4 sm:px-5 lg:px-6">
         <h3 className="text-sm font-medium">
           {t("Models")} ({models.length})
@@ -785,7 +905,7 @@ function ModelServiceEditor({
                 )
               }
             >
-              {t("Fill metadata from models.dev")}
+              {t("Sync prices and metadata from models.dev")}
             </Button>
             <Button
               size="sm"
@@ -880,14 +1000,14 @@ function ModelServiceEditor({
         )}
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t(
-            "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
+            "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.",
           )}
         </p>
         {modelEditor === "new" && service && !readOnly ? (
           <ModelEditor
             key="new"
             model={undefined}
-            protocols={service.protocols}
+            protocols={serviceProtocols}
             busy={busy}
             error={error}
             onCancel={() => {
@@ -977,6 +1097,21 @@ function ModelServiceEditor({
                     </div>
                   ) : null}
                   <div className="col-span-2 min-w-0 space-y-1">
+                    {model.price || model.modelsDevPrice ? (
+                      <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                        <span>{t(model.price ? "Manual price" : "models.dev price")}</span>
+                        <span>{t("USD per 1M tokens")}</span>
+                        {USAGE_PRICE_FIELDS.map(({ key }) => {
+                          const amount = (model.price ?? model.modelsDevPrice)?.[key];
+                          return amount === undefined ? null : (
+                            <span key={key}>
+                              {t(MODEL_PRICE_LABELS[key])}{" "}
+                              {amount.toLocaleString(undefined, { maximumSignificantDigits: 12 })}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                     {model.available === false ? (
                       <p className="text-xs text-destructive">
                         {t("No longer advertised by the service")}
@@ -1010,14 +1145,14 @@ function ModelServiceEditor({
                     <p className="text-xs text-muted-foreground">
                       {t("Context")}:{" "}
                       {model.capabilities?.contextWindow?.toLocaleString() ?? t("Unknown")} ·{" "}
-                      {(service && new Set(service.protocols).size > 1
+                      {(service && legacy
                         ? [
                             ...modelServiceCandidateProtocols(service, model),
                             ...(model.protocols ?? []).filter(
-                              (protocol) => !service.protocols.includes(protocol),
+                              (protocol) => !serviceProtocols.includes(protocol),
                             ),
                           ]
-                        : (model.protocols ?? service?.protocols ?? [])
+                        : (model.protocols ?? serviceProtocols)
                       )
                         .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
                         .join(" / ")}
@@ -1104,7 +1239,7 @@ function ModelServiceEditor({
                   <ModelEditor
                     key={modelEditor.id}
                     model={modelEditor}
-                    protocols={service.protocols}
+                    protocols={serviceProtocols}
                     busy={busy}
                     error={error}
                     onCancel={() => {
@@ -1436,6 +1571,11 @@ function ModelEditor({
   const [name, setName] = useState(model?.name ?? "");
   const [context, setContext] = useState(model?.capabilities?.contextWindow?.toString() ?? "");
   const [output, setOutput] = useState(model?.maxOutputTokens?.toString() ?? "");
+  const [manualPrice, setManualPrice] = useState(model?.price !== undefined);
+  const [priceFields, setPriceFields] = useState(() =>
+    usagePriceForm("", model?.price ?? model?.modelsDevPrice),
+  );
+  const price = manualPrice ? parseUsagePriceForm({ ...priceFields, model: id })?.price : undefined;
   const [images, setImages] = useState(
     model?.capabilities?.supportsImages === undefined
       ? "unknown"
@@ -1475,7 +1615,14 @@ function ModelEditor({
       className="min-w-0 space-y-3 rounded-lg border border-primary/30 bg-muted/20 p-3"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!id.trim() || !validNumber(context) || !validNumber(output) || !selected.length) return;
+        if (
+          !id.trim() ||
+          !validNumber(context) ||
+          !validNumber(output) ||
+          (defaults.length > 1 && !selected.length) ||
+          (manualPrice && !price)
+        )
+          return;
         const levels = [...new Set(reasoning.split(/[,，\s]+/u).filter(Boolean))];
         const { currentValue, ...reasoningMetadata } = reasoningDescriptor ?? {
           id: "reasoningEffort",
@@ -1539,7 +1686,7 @@ function ModelEditor({
             : {}),
           id: id.trim(),
           name: name.trim() || modelServiceDisplayName(id.trim()),
-          protocols: selected,
+          ...(defaults.length > 1 || model?.protocols ? { protocols: selected } : {}),
           capabilities: {
             ...model?.capabilities,
             ...(reasoningDescriptor || levels.length || serviceTier || tiers.length
@@ -1550,6 +1697,7 @@ function ModelEditor({
           },
           ...(tools !== "unknown" ? { supportsTools: tools === "true" } : {}),
           ...(output ? { maxOutputTokens: Number(output) } : {}),
+          ...(price ? { price } : {}),
           source: "manual",
         });
       }}
@@ -1576,6 +1724,54 @@ function ModelEditor({
         {t("Display name")}
         <Input value={name} onChange={(event) => setName(event.target.value)} disabled={busy} />
       </label>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">{t("Token pricing")}</legend>
+        <label className="grid gap-1 text-sm">
+          {t("Price source")}
+          <select
+            aria-label={t("Price source")}
+            className="min-h-11 min-w-0 rounded-md border border-input bg-background px-2"
+            value={manualPrice ? "manual" : "models-dev"}
+            disabled={busy}
+            onChange={(event) => setManualPrice(event.target.value === "manual")}
+          >
+            <option value="models-dev">{t("Automatic from models.dev")}</option>
+            <option value="manual">{t("Manual price")}</option>
+          </select>
+        </label>
+        {manualPrice ? (
+          <>
+            <p className="text-xs text-muted-foreground">
+              {t("USD per 1M tokens. Blank cache rates use the input rate.")}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {USAGE_PRICE_FIELDS.map(({ key }) => (
+                <label className="grid gap-1 text-sm" key={key}>
+                  {t(MODEL_PRICE_LABELS[key])}
+                  <Input
+                    inputMode="decimal"
+                    disabled={busy}
+                    value={priceFields[key]}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (isUsagePriceEdit(priceFields[key], value))
+                        setPriceFields({ ...priceFields, [key]: value });
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {t(
+              model?.modelsDevPrice && id.trim() === model.id
+                ? "Uses the latest synced models.dev price."
+                : "No models.dev price is currently available for this model.",
+            )}
+          </p>
+        )}
+      </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           {t("Context window")}
@@ -1675,33 +1871,40 @@ function ModelEditor({
           )}
         </span>
       </label>
-      <fieldset disabled={busy} className="grid gap-1 sm:grid-cols-2">
-        <legend className="text-sm">{t("Supported protocols")}</legend>
-        {defaults.map((protocol) => (
-          <label
-            key={protocol}
-            className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm"
-          >
-            <Checkbox
-              checked={selected.includes(protocol)}
-              onCheckedChange={(checked) =>
-                setSelected(
-                  checked === true
-                    ? [...selected, protocol]
-                    : selected.filter((value) => value !== protocol),
-                )
-              }
-            />
-            {MODEL_SERVICE_PROTOCOL_LABELS[protocol]}
-          </label>
-        ))}
-      </fieldset>
+      {defaults.length > 1 ? (
+        <fieldset disabled={busy} className="grid gap-1 sm:grid-cols-2">
+          <legend className="text-sm">{t("Supported protocols")}</legend>
+          {defaults.map((protocol) => (
+            <label
+              key={protocol}
+              className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm"
+            >
+              <Checkbox
+                checked={selected.includes(protocol)}
+                onCheckedChange={(checked) =>
+                  setSelected(
+                    checked === true
+                      ? [...selected, protocol]
+                      : selected.filter((value) => value !== protocol),
+                  )
+                }
+              />
+              {MODEL_SERVICE_PROTOCOL_LABELS[protocol]}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
           type="submit"
           disabled={
-            busy || !id.trim() || !validNumber(context) || !validNumber(output) || !selected.length
+            busy ||
+            !id.trim() ||
+            !validNumber(context) ||
+            !validNumber(output) ||
+            (manualPrice && !price) ||
+            (defaults.length > 1 && !selected.length)
           }
         >
           {t("Save model")}

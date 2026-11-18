@@ -40,6 +40,28 @@ function settings(config: unknown = {}): ServerSettings {
 }
 
 describe("OMO model service validation", () => {
+  it("rejects a binding to an absent source whose ID matches an inherited property", () => {
+    const current = settings();
+    const instance = current.providerInstances[instanceId]!;
+    expect(
+      validateModelServiceBindings({
+        ...current,
+        providerInstances: {
+          [instanceId]: {
+            ...instance,
+            modelService: {
+              modelIds: [],
+              sources: [
+                { serviceId, modelIds: [] },
+                { serviceId: ModelServiceId.make("constructor"), modelIds: [] },
+              ],
+            },
+          },
+        },
+      }),
+    ).toContain("Unbind agents");
+  });
+
   it("accepts native defaults and valid custom role names in the same binding", () => {
     expect(
       validateModelServiceBindings(

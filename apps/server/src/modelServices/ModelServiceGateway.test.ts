@@ -17,6 +17,8 @@ import {
   RunId,
   NodeId,
   type ProviderInstanceConfigMap,
+  type ModelServiceBinding,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
@@ -48,6 +50,7 @@ import { resolveClaudeModelServiceCatalog } from "../provider/ClaudeModelCatalog
 import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { createModelSelection } from "@t3tools/shared/model";
+import { modelServiceRuntimeId } from "@t3tools/shared/modelServices";
 import { ClaudeSettings } from "@t3tools/contracts";
 import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/ProviderAdapter";
 import { OmoSettings } from "@t3tools/provider-omo/settings";
@@ -239,7 +242,7 @@ const withGatewayDiagnostics = <A, E, R>(
 const harness = Effect.fn("ModelGateway.test.harness")(function* (
   options: {
     readonly driver?: string;
-    readonly protocol?: ModelServiceConfig["protocols"][number];
+    readonly protocol?: NonNullable<ModelServiceConfig["protocol"]>;
     readonly protocols?: ModelServiceConfig["protocols"];
     readonly modelId?: string;
     readonly modelProtocols?: ModelServiceConfig["protocols"];
@@ -252,43 +255,47 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     readonly respond?: (
       request: import("effect/http/HttpClientRequest").HttpClientRequest,
     ) => Response;
+    readonly services?: ServerSettings["modelServices"];
+    readonly binding?: ModelServiceBinding;
   } = {},
 ) {
   const calls: import("effect/http/HttpClientRequest").HttpClientRequest[] = [];
-  const settings = yield* ServerSettingsService;
-  const previous = (yield* settings.getSettings).modelServices[serviceId];
-  yield* settings.updateSettings({
-    modelServices: {
-      [serviceId]: {
-        ...service,
-        revision: previous?.revision ?? 0,
-        protocols: options.protocols ?? [options.protocol ?? "openai-chat"],
-        ...(options.encryptedReasoningReplay
-          ? { encryptedReasoningReplay: options.encryptedReasoningReplay }
-          : {}),
-        models: service.models.map((model) => {
-          if (model.id !== "Vendor/Exact") return model;
-          const { maxOutputTokens: defaultBudget, ...rest } = model;
-          return {
-            ...rest,
-            id: options.modelId ?? model.id,
-            ...(options.modelProtocols ? { protocols: options.modelProtocols } : {}),
-            ...(options.modelCapabilities ? { capabilities: options.modelCapabilities } : {}),
-            ...(options.modelReplay ? { encryptedReasoningReplay: options.modelReplay } : {}),
-            ...(options.maxOutputTokens === null
-              ? {}
-              : { maxOutputTokens: options.maxOutputTokens ?? defaultBudget }),
-          };
-        }),
-        recovery: {
-          ...DEFAULT_MODEL_SERVICE_RECOVERY,
-          retryEnabled: false,
-          hedgeEnabled: false,
-          ...options.recovery,
+  const settings = yield* ServerSettingsService.pipe(
+    Effect.provide(
+      ServerSettingsService.layerTest({
+        modelServices: {
+          [serviceId]: {
+            ...service,
+            protocols: options.protocols ?? [options.protocol ?? "openai-chat"],
+            ...(options.encryptedReasoningReplay
+              ? { encryptedReasoningReplay: options.encryptedReasoningReplay }
+              : {}),
+            models: service.models.map((model) => {
+              if (model.id !== "Vendor/Exact") return model;
+              const { maxOutputTokens: defaultBudget, ...rest } = model;
+              return {
+                ...rest,
+                id: options.modelId ?? model.id,
+                ...(options.modelProtocols ? { protocols: options.modelProtocols } : {}),
+                ...(options.modelCapabilities ? { capabilities: options.modelCapabilities } : {}),
+                ...(options.modelReplay ? { encryptedReasoningReplay: options.modelReplay } : {}),
+                ...(options.maxOutputTokens === null
+                  ? {}
+                  : { maxOutputTokens: options.maxOutputTokens ?? defaultBudget }),
+              };
+            }),
+            recovery: {
+              ...DEFAULT_MODEL_SERVICE_RECOVERY,
+              retryEnabled: false,
+              hedgeEnabled: false,
+              ...options.recovery,
+            },
+          },
+          ...options.services,
         },
-      },
-    },
-  });
+      }),
+    ),
+  );
   const http = HttpClient.make((request) =>
     Effect.gen(function* () {
       calls.push(request);
@@ -315,13 +322,17 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
       );
     }),
   );
-  let gateway = yield* make.pipe(Effect.provideService(HttpClient.HttpClient, http));
+  const makeGateway = make.pipe(
+    Effect.provideService(HttpClient.HttpClient, http),
+    Effect.provideService(ServerSettingsService, settings),
+  );
+  let gateway = yield* makeGateway;
   const driver = ProviderDriverKind.make(options.driver ?? "codex");
   const instances: ProviderInstanceConfigMap = {
     [instanceId]: {
       driver,
       enabled: true,
-      modelService: {
+      modelService: options.binding ?? {
         serviceId,
         modelIds: [options.modelId ?? "Vendor/Exact"],
         defaultModel: options.modelId ?? "Vendor/Exact",
@@ -362,7 +373,7 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     return { status: response.status, headers: response.headers, text };
   }, Effect.scoped);
   const restart = Effect.fn("ModelGateway.test.restart")(function* () {
-    gateway = yield* make.pipe(Effect.provideService(HttpClient.HttpClient, http));
+    gateway = yield* makeGateway;
     const current = yield* gateway.materialize(yield* settings.getSettings, instances);
     const fresh = record(current[instanceId]!.config);
     token =
@@ -414,6 +425,147 @@ it("rejects a model-service warning that is present with an undefined value", ()
 });
 
 it.layer(layer)("model service gateway", (it) => {
+  it.effect(
+    "routes same-named models in one OMO instance to their own credentials and native APIs",
+    () =>
+      Effect.gen(function* () {
+        const secondary = ModelServiceId.make("messages-test");
+        const modelId = "Vendor/Exact";
+        const binding = {
+          modelIds: [],
+          sources: [
+            { serviceId, modelIds: [modelId] },
+            { serviceId: secondary, modelIds: [modelId] },
+          ],
+          defaultModelRef: { serviceId: secondary, modelId },
+        } satisfies ModelServiceBinding;
+        const primaryId = modelServiceRuntimeId(binding, { serviceId, modelId });
+        const secondaryId = modelServiceRuntimeId(binding, { serviceId: secondary, modelId });
+        const h = yield* harness({
+          driver: "omo",
+          binding,
+          services: {
+            [secondary]: decodeService({
+              name: "Messages",
+              baseUrl: "https://secondary.test",
+              apiKey: "secondary-fixture",
+              protocol: "anthropic-messages",
+              models: [{ id: modelId }],
+            }),
+          },
+          respond: (request) =>
+            request.url.endsWith("/messages")
+              ? Response.json({
+                  id: "msg_fixture",
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "text", text: "secondary answer" }],
+                  stop_reason: "end_turn",
+                })
+              : Response.json({
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "primary answer" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                }),
+        });
+        const fs = yield* FileSystem.FileSystem;
+        const native = JSON.parse(
+          yield* fs.readFileString(String(h.config.agentDir) + "/models.json"),
+        );
+        expect(h.config.model).toBe(secondaryId);
+        expect(native.providers.cox.models).toEqual([
+          expect.objectContaining({ id: primaryId, api: "openai-completions" }),
+          expect.objectContaining({ id: secondaryId, api: "anthropic-messages" }),
+        ]);
+        const messages = [{ role: "user", content: "hello" }];
+        expect(
+          (yield* h.invoke("/v1/chat/completions", { model: primaryId, messages })).status,
+        ).toBe(200);
+        expect(
+          (yield* h.invoke("/v1/messages", { model: secondaryId, messages, max_tokens: 16 }))
+            .status,
+        ).toBe(200);
+        expect(
+          (yield* h.invoke("/v1/messages", { model: modelId, messages, max_tokens: 16 })).status,
+        ).toBe(403);
+        expect(h.calls.map((request) => request.url)).toEqual([
+          "https://upstream.test/v1/chat/completions",
+          "https://secondary.test/v1/messages",
+        ]);
+        expect(h.calls[0]?.headers.authorization).toBe("Bearer private-upstream-key");
+        expect(h.calls[1]?.headers["x-api-key"]).toBe("secondary-fixture");
+        for (const request of h.calls) {
+          if (request.body._tag !== "Uint8Array") throw new Error("Expected JSON bytes");
+          expect(JSON.parse(new TextDecoder().decode(request.body.body)).model).toBe(modelId);
+        }
+        const settings = yield* h.settings.getSettings;
+        const alternate = settings.modelServices[secondary]!;
+        yield* h.settings.updateSettings({
+          modelServices: { [secondary]: { ...alternate, enabled: false } },
+        });
+        expect((yield* h.invoke("/v1/messages", { model: secondaryId, messages })).status).toBe(
+          503,
+        );
+        expect(
+          (yield* h.invoke("/v1/chat/completions", { model: primaryId, messages })).status,
+        ).toBe(200);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("keeps Responses state on the provider that issued it", () =>
+    Effect.gen(function* () {
+      const secondary = ModelServiceId.make("responses-test");
+      const modelId = "Vendor/Exact";
+      const binding = {
+        modelIds: [],
+        sources: [
+          { serviceId, modelIds: [] },
+          { serviceId: secondary, modelIds: [] },
+        ],
+      } satisfies ModelServiceBinding;
+      const primaryId = modelServiceRuntimeId(binding, { serviceId, modelId });
+      const secondaryId = modelServiceRuntimeId(binding, { serviceId: secondary, modelId });
+      const h = yield* harness({
+        protocol: "openai-responses",
+        binding,
+        services: {
+          [secondary]: decodeService({
+            name: "Backup Responses",
+            baseUrl: "https://secondary.test",
+            protocol: "openai-responses",
+            models: [{ id: modelId }],
+          }),
+        },
+        respond: () =>
+          Response.json({
+            id: "resp_primary_fixture",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "hello" }],
+              },
+            ],
+          }),
+      });
+      const input = { input: "test" };
+      const previous = { ...input, previous_response_id: "resp_primary_fixture" };
+      expect((yield* h.invoke("/v1/responses", { ...input, model: primaryId })).status).toBe(200);
+      expect((yield* h.invoke("/v1/responses", { ...previous, model: secondaryId })).status).toBe(
+        422,
+      );
+      expect(h.calls).toHaveLength(1);
+      expect((yield* h.invoke("/v1/responses", { ...previous, model: primaryId })).status).toBe(
+        200,
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect.each([false, true])(
     "passes native tool streams through and converts only mismatched clients (convert=%s)",
     (convert) =>
@@ -541,7 +693,7 @@ it.layer(layer)("model service gateway", (it) => {
         const h = yield* harness({
           driver,
           modelId: "openai/gpt-6.1-terra",
-          protocols: ["openai-chat", "openai-responses", "anthropic-messages"],
+          protocols: ["openai-chat", "openai-responses", "anthropic-messages", "gemini"],
           respond: () => Response.json(responsesAnswer),
         });
         const current = yield* h.settings.getSettings;
@@ -742,15 +894,6 @@ it.layer(layer)("model service gateway", (it) => {
               ],
               usage: { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 },
             });
-          },
-        });
-        const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
-        yield* h.settings.updateSettings({
-          modelServices: {
-            [serviceId]: {
-              ...current,
-              protocols: ["openai-chat", "openai-responses", "anthropic-messages", "gemini"],
-            },
           },
         });
         const catalog = yield* h.invoke("/v1/models");
@@ -5750,7 +5893,7 @@ it.layer(layer)("model service gateway", (it) => {
           modelServices: {
             [serviceId]: {
               ...current,
-              protocols: [protocol],
+              protocol,
               models: [{ ...current.models[0]!, id: "gpt-6.1-sol" }],
             },
           },
@@ -5828,7 +5971,7 @@ it.layer(layer)("model service gateway", (it) => {
           modelServices: {
             [serviceId]: {
               ...current,
-              protocols: [protocol],
+              protocol,
               models: [
                 {
                   ...current.models[0]!,
@@ -6002,7 +6145,7 @@ it.layer(layer)("model service gateway", (it) => {
       expect(h.calls).toEqual([]);
       const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
       yield* h.settings.updateSettings({
-        modelServices: { [serviceId]: { ...current, protocols: ["anthropic-messages"] } },
+        modelServices: { [serviceId]: { ...current, protocol: "anthropic-messages" } },
       });
       expect((yield* h.invoke("/v1/messages/count_tokens", body)).status).toBe(200);
       expect(h.calls[0]?.url).toBe("https://upstream.test/v1/messages/count_tokens");
@@ -6287,7 +6430,7 @@ it.layer(layer)("model service gateway", (it) => {
       });
       const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
       yield* h.settings.updateSettings({
-        modelServices: { [serviceId]: { ...current, protocols: ["openai-chat"] } },
+        modelServices: { [serviceId]: { ...current, protocol: "openai-chat" } },
       });
       yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
       const generated = JSON.parse(yield* fs.readFileString(file));

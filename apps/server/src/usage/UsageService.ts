@@ -41,6 +41,7 @@ import type {
 } from "@t3tools/provider-core/server/usage";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+import { createModelServiceUsagePricing } from "./modelServicePricing.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -738,6 +739,11 @@ export const make = Effect.gen(function* () {
       rates,
       priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
       modelAliases: resolveModelAliases(settings.usageModelAliases),
+      modelServicePrice: createModelServiceUsagePricing(settings, (dir) => {
+        const relative = path.relative(path.join(config.baseDir, "model-services", "runtime"), dir);
+        if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+        return relative.split(path.sep)[0];
+      }),
     });
 
     const sources: UsageSource[] = [];

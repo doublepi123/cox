@@ -11,6 +11,8 @@ import { Input } from "../ui/input";
 export type OmoRoleModel = {
   readonly slug: string;
   readonly name: string;
+  readonly modelId?: string;
+  readonly sourceName?: string;
   readonly reasoningLevels?: ReadonlyArray<OmoReasoningLevel>;
 };
 
@@ -63,6 +65,12 @@ export function OmoRoleCard({
     : "";
   const officialDiffers =
     official !== undefined && (slug !== official.model || level !== official.reasoning);
+  const modelsBySource = new Map<string | undefined, OmoRoleModel[]>();
+  for (const model of models) {
+    const group = modelsBySource.get(model.sourceName);
+    if (group) group.push(model);
+    else modelsBySource.set(model.sourceName, [model]);
+  }
   return (
     <div
       role="group"
@@ -131,11 +139,20 @@ export function OmoRoleCard({
                   {t("Unavailable model: {model}", { model: slug })}
                 </option>
               ) : null}
-              {models.map((model) => (
-                <option key={model.slug} value={model.slug}>
-                  {model.name}
-                </option>
-              ))}
+              {[...modelsBySource].map(([sourceName, entries]) => {
+                const options = entries.map((model) => (
+                  <option key={model.slug} value={model.slug}>
+                    {model.name}
+                  </option>
+                ));
+                return sourceName ? (
+                  <optgroup key={sourceName} label={sourceName}>
+                    {options}
+                  </optgroup>
+                ) : (
+                  options
+                );
+              })}
             </select>
           ) : (
             <label htmlFor={id} className="flex min-h-11 min-w-0 items-center">

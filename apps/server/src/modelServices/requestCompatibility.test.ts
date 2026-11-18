@@ -2,11 +2,26 @@ import { describe, expect, it } from "@effect/vitest";
 import type { ModelServiceProtocol } from "@t3tools/contracts";
 
 import {
+  limitAnthropicRequestOutput,
   modelServiceRequestBody,
   modelServiceRequestOutputBudget,
   withoutEncryptedReasoning,
   withoutForcedToolThinking,
 } from "./requestCompatibility.ts";
+
+it("bounds the Claude request and thinking budget by the selected model", () => {
+  const body = { max_tokens: 8192, thinking: { type: "enabled", budget_tokens: 4096 } };
+  expect(limitAnthropicRequestOutput(body, undefined)).toBe(body);
+  expect(limitAnthropicRequestOutput(body, 8192)).toBe(body);
+  expect(limitAnthropicRequestOutput(body, 2048)).toEqual({
+    max_tokens: 2048,
+    thinking: { type: "enabled", budget_tokens: 2047 },
+  });
+  expect(limitAnthropicRequestOutput(body, 1024)).toEqual({
+    max_tokens: 1024,
+    thinking: { type: "disabled" },
+  });
+});
 
 describe("forced tool thinking compatibility", () => {
   it("preserves forced tool selection and other request fields when disabling thinking", () => {

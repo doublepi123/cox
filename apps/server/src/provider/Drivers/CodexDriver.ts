@@ -58,7 +58,10 @@ import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { codexGatewayRuntime, hasGatewayConfiguration } from "../gatewayConfiguration.ts";
 import { makeGatewayModels } from "../GatewayModels.ts";
-import { modelServiceProviderModels } from "@t3tools/shared/modelServices";
+import {
+  modelServiceDefaultRuntimeId,
+  modelServiceProviderModels,
+} from "@t3tools/shared/modelServices";
 import { withCodexUltraCapabilities } from "@t3tools/shared/model";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
@@ -199,7 +202,10 @@ export const CodexDriver: ProviderDriver<
       continuationGroupKey: continuationIdentity.continuationKey,
     });
     const boundModels = modelService
-      ? modelServiceProviderModels(config.customModels, modelService.defaultModel).map((model) => ({
+      ? modelServiceProviderModels(
+          config.customModels,
+          modelServiceDefaultRuntimeId(modelService),
+        ).map((model) => ({
           ...model,
           capabilities: withCodexUltraCapabilities(model.capabilities),
         }))

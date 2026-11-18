@@ -28,7 +28,12 @@ import * as Schema from "effect/Schema";
 import { deepMerge } from "./Struct.ts";
 import { fromLenientJson } from "./schemaJson.ts";
 import { createModelSelection, readCustomModelEntries, resolveSelectableModel } from "./model.ts";
-import { boundModelServiceModels, modelServiceModelSlug } from "./modelServices.ts";
+import {
+  isModelServiceTargetAvailable,
+  modelServiceDefaultRuntimeId,
+  modelServiceModelSlug,
+  modelServiceTargets,
+} from "./modelServices.ts";
 import * as Equal from "effect/Equal";
 import {
   getBackgroundActivityBaseProfile,
@@ -77,14 +82,12 @@ export function textGenerationModelSelectionForInstance(
   const threadDefault = settings.defaultModelSelection;
   const preferred = defaultTextGenerationModel(driver);
   if (binding) {
-    const service = settings.modelServices[binding.serviceId];
-    if (!service?.enabled) return null;
-    const available = boundModelServiceModels(service, binding)
-      .filter((model) => model.available !== false)
+    const available = modelServiceTargets(settings.modelServices, binding)
+      .filter(isModelServiceTargetAvailable)
       .map((model) => ({ ...model, slug: modelServiceModelSlug(driver, model.id) }));
     if (selection && available.some((model) => model.slug === selection.model)) return selection;
     const model =
-      available.find((model) => model.id === binding.defaultModel) ??
+      available.find((model) => model.id === modelServiceDefaultRuntimeId(binding)) ??
       available.find(
         (model) => threadDefault?.instanceId === instanceId && model.slug === threadDefault.model,
       ) ??
@@ -496,6 +499,7 @@ export function applyServerSettingsPatch(
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
     modelServices: modelServicesPatch,
+    splitModelService: _splitModelService,
     secretProviders: secretProvidersPatch,
     sourceControlHosts: sourceControlHostsPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
@@ -697,6 +701,15 @@ export function applyServerSettingsPatch(
                   ? null
                   : {
                       ...service,
+                      models:
+                        current.modelServices[id as keyof typeof current.modelServices] &&
+                        new URL(
+                          current.modelServices[id as keyof typeof current.modelServices]!.baseUrl,
+                        ).hostname !== new URL(service.baseUrl).hostname
+                          ? service.models.map(
+                              ({ modelsDevPrice: _catalogPrice, ...model }) => model,
+                            )
+                          : service.models,
                       revision:
                         (current.modelServices[id as keyof typeof current.modelServices]
                           ?.revision ?? 0) + 1,

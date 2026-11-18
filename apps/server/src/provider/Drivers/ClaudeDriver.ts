@@ -1,4 +1,5 @@
 import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { modelServiceDefaultRuntimeId } from "@t3tools/shared/modelServices";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
@@ -143,7 +144,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
     const catalogService = yield* ModelCatalog.ModelCatalog;
     const boundCatalog = modelService
-      ? resolveClaudeModelServiceCatalog(config.customModels, modelService.defaultModel)
+      ? resolveClaudeModelServiceCatalog(
+          config.customModels,
+          modelServiceDefaultRuntimeId(modelService),
+        )
       : undefined;
     const modelCatalog = boundCatalog
       ? Effect.succeed(boundCatalog)

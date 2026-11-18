@@ -3,6 +3,7 @@ import type {
   ResolvedProviderInstanceEnvironment,
   SettingsSecretSlot,
 } from "@t3tools/contracts";
+import { modelServiceSources } from "@t3tools/shared/modelServices";
 
 export interface ProviderCredentialSecrets {
   readonly environment: ResolvedProviderInstanceEnvironment;
@@ -12,7 +13,7 @@ export interface ProviderCredentialSecrets {
 export interface ProviderCredentialFingerprint {
   readonly driver: ProviderInstanceConfig["driver"];
   readonly enabled: boolean;
-  readonly modelServiceId: string | null;
+  readonly modelServiceIds: ReadonlyArray<string>;
   readonly environment: ReadonlyArray<readonly [string, string]>;
   readonly configSecrets: ReadonlyArray<readonly [string, string | undefined, string]>;
 }
@@ -25,7 +26,11 @@ export function makeProviderCredentialFingerprint(
   return {
     driver: entry.driver,
     enabled,
-    modelServiceId: entry.modelService?.serviceId ?? null,
+    modelServiceIds: entry.modelService
+      ? modelServiceSources(entry.modelService)
+          .map((source) => source.serviceId)
+          .toSorted()
+      : [],
     environment: secrets.environment.map((item) => [item.name, item.value] as const),
     configSecrets: secrets.config.map((slot) => [slot.field, slot.key, slot.value] as const),
   };
@@ -38,7 +43,8 @@ export function sameProviderCredentialFingerprint(
   return (
     left.driver === right.driver &&
     left.enabled === right.enabled &&
-    left.modelServiceId === right.modelServiceId &&
+    left.modelServiceIds.length === right.modelServiceIds.length &&
+    left.modelServiceIds.every((id, index) => right.modelServiceIds[index] === id) &&
     left.environment.length === right.environment.length &&
     left.environment.every(
       ([name, value], index) =>

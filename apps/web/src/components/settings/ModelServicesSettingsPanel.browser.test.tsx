@@ -10,6 +10,7 @@ import {
   type UnifiedSettings,
 } from "@t3tools/contracts";
 import type { ReactNode } from "react";
+import { modelServiceRuntimeId } from "@t3tools/shared/modelServices";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
@@ -116,7 +117,7 @@ const configured = decodeService({
   name: "Shared API",
   baseUrl: "https://models.test/v1",
   apiKey: "••••••",
-  protocols: ["openai-chat"],
+  protocol: "openai-chat",
   models: [{ id: "Vendor/Exact", name: "Exact model", capabilities: { contextWindow: 64000 } }],
 });
 const notify = () => {
@@ -216,6 +217,34 @@ async function requestModelDeletion(
 }
 
 describe("model services settings", () => {
+  it("saves a manual price and can switch back to the synced price", async () => {
+    const catalogPrice = { inputCostPerMillionTokens: 1, outputCostPerMillionTokens: 3 };
+    setup({
+      [id]: { ...configured, models: [{ ...configured.models[0]!, modelsDevPrice: catalogPrice }] },
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    const edit = screen.getByRole("button", { name: "Edit model Exact model", exact: true });
+    const form = screen.getByRole("form", { name: "Edit model Exact model" });
+    await edit.click();
+    await form.getByLabelText("Price source").selectOptions("manual");
+    await form.getByLabelText("Input price", { exact: true }).fill("0");
+    await form.getByLabelText("Output price", { exact: true }).fill("5.5");
+    await form.getByLabelText("Cache read price", { exact: true }).fill("0.25");
+    await form.getByRole("button", { name: "Save model" }).click();
+    expect(state.settings.modelServices[id]?.models[0]).toMatchObject({
+      price: {
+        inputCostPerMillionTokens: 0,
+        outputCostPerMillionTokens: 5.5,
+        cacheReadCostPerMillionTokens: 0.25,
+      },
+      modelsDevPrice: catalogPrice,
+    });
+    await edit.click();
+    await form.getByLabelText("Price source").selectOptions("models-dev");
+    await form.getByRole("button", { name: "Save model" }).click();
+    expect(state.settings.modelServices[id]?.models[0]?.price).toBeUndefined();
+    expect(state.settings.modelServices[id]?.models[0]?.modelsDevPrice).toEqual(catalogPrice);
+  });
   it("saves a persistent replay policy without refreshing models or changing other service settings", async () => {
     setup({ [id]: configured });
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
@@ -1370,8 +1399,8 @@ describe("model services settings", () => {
     try {
       await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
       for (const label of language === "zh"
-        ? ["服务名称", "API 地址", "API 密钥", "支持的协议"]
-        : ["Service name", "API URL", "API key", "Supported protocols"]) {
+        ? ["服务名称", "API 地址", "API 密钥", "API 协议"]
+        : ["Service name", "API URL", "API key", "API protocol"]) {
         const element = screen.getByText(label, { exact: true }).element();
         expect(Number.parseFloat(getComputedStyle(element).fontSize)).toBeGreaterThanOrEqual(12);
       }
@@ -1395,7 +1424,7 @@ describe("model services settings", () => {
       expect(width < 640 ? fetchButton.width : fetchButton.right).toBeGreaterThan(250);
       if (desktop) {
         const name = screen.getByLabelText("服务名称", { exact: true }).element();
-        const protocols = screen.getByText("支持的协议", { exact: true }).element();
+        const protocols = screen.getByText("API 协议", { exact: true }).element();
         const nameBox = name.getBoundingClientRect();
         const protocolBox = protocols.getBoundingClientRect();
         expect(protocolBox.left).toBeGreaterThan(nameBox.right);
@@ -1436,7 +1465,7 @@ describe("model services settings", () => {
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
     await expect.element(screen.getByText("GPT-5", { exact: true })).toBeVisible();
     await screen
-      .getByRole("button", { name: "Fill metadata from models.dev", exact: true })
+      .getByRole("button", { name: "Sync prices and metadata from models.dev", exact: true })
       .click();
     expect(state.save).not.toHaveBeenCalled();
     expect(state.discover).toHaveBeenCalledWith({
@@ -1466,7 +1495,7 @@ describe("model services settings", () => {
       name: "New API",
       baseUrl: "https://models.test/v1",
       apiKey: "replacement-test-key",
-      protocols: ["openai-chat"],
+      protocol: "openai-chat",
     });
     expect(state.discover).toHaveBeenCalledWith({
       environmentId,
@@ -1726,6 +1755,40 @@ describe("model services settings", () => {
 });
 
 describe("agent model service binding", () => {
+  it("saves two model sources and a source-qualified default for matching upstream IDs", async () => {
+    const secondId = ModelServiceId.make("other");
+    setup({
+      [id]: configured,
+      [secondId]: { ...configured, name: "Second API", protocol: "anthropic-messages" },
+    });
+    const update = vi.fn();
+    await using screen = await render(
+      <ModelServiceBindingSection
+        environmentId={environmentId}
+        instance={{ driver: ProviderDriverKind.make("pi") }}
+        readOnly={false}
+        onUpdate={update}
+      />,
+    );
+    await screen.getByRole("combobox", { name: "Connection", exact: true }).selectOptions(id);
+    await screen
+      .getByRole("combobox", { name: "Add model source", exact: true })
+      .selectOptions(secondId);
+    const binding = {
+      modelIds: [],
+      sources: [
+        { serviceId: id, modelIds: [] },
+        { serviceId: secondId, modelIds: [] },
+      ] as const,
+    };
+    const defaultModelRef = { serviceId: secondId, modelId: "Vendor/Exact" };
+    await screen
+      .getByRole("combobox", { name: "Default model" })
+      .selectOptions(modelServiceRuntimeId(binding, defaultModelRef));
+    await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
+    expect(update.mock.calls[0]![0].modelService).toEqual({ ...binding, defaultModelRef });
+  });
+
   it.each(["codex", "claudeAgent"])(
     "binds a %s instance and restores its preserved independent configuration when unbound",
     async (driver) => {
@@ -1756,9 +1819,8 @@ describe("agent model service binding", () => {
       await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
       const bound = update.mock.calls[0]![0] as ProviderInstanceConfig;
       expect(bound.modelService).toEqual({
-        serviceId: id,
-        modelIds: ["Vendor/Exact"],
-        defaultModel: "Vendor/Exact",
+        modelIds: [],
+        sources: [{ serviceId: id, modelIds: ["Vendor/Exact"] }],
       });
       expect(bound.config).toEqual(instance.config);
       await screen.rerender(
@@ -1769,11 +1831,9 @@ describe("agent model service binding", () => {
           onUpdate={update}
         />,
       );
-      await act(async () => {
-        const element = select.element() as HTMLSelectElement;
-        element.value = "";
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-      });
+      await screen
+        .getByRole("button", { name: "Remove model source Shared API", exact: true })
+        .click();
       await screen.getByRole("button", { name: "Apply model service", exact: true }).click();
       expect(update.mock.calls[1]![0]).toEqual(instance);
     },
@@ -1792,5 +1852,31 @@ describe("agent model service binding", () => {
     await expect
       .element(screen.getByRole("button", { name: "Apply model service", exact: true }))
       .not.toBeInTheDocument();
+  });
+});
+
+it("previews a legacy protocol split before sending its saved revision", async () => {
+  setup({
+    [id]: decodeService({
+      name: "Legacy gateway",
+      baseUrl: "https://models.test",
+      revision: 7,
+      protocols: ["openai-responses", "anthropic-messages"],
+      models: [
+        { id: "gpt-fixture", name: "GPT fixture" },
+        { id: "claude-fixture", name: "Claude fixture" },
+      ],
+    }),
+  });
+  await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+  await screen.getByRole("button", { name: "Preview protocol split" }).click();
+  const preview = screen.getByRole("alertdialog", { name: "Split model service by protocol" });
+  await expect.element(preview.getByText("OpenAI Responses (1)", { exact: true })).toBeVisible();
+  await expect.element(preview.getByText("Anthropic Messages (1)", { exact: true })).toBeVisible();
+  expect(state.save).not.toHaveBeenCalled();
+  await preview.getByRole("button", { name: "Split model service", exact: true }).click();
+  expect(state.save).toHaveBeenCalledWith({
+    environmentId,
+    input: { patch: { splitModelService: { serviceId: id, revision: 7 } } },
   });
 });

@@ -104,7 +104,7 @@ const sharedModelService = {
   name: "Agentbox",
   baseUrl: "https://models.test/v1",
   enabled: true,
-  protocols: ["openai-responses", "openai-chat", "anthropic-messages", "gemini"],
+  protocol: "openai-responses",
   models: [{ id: "Vendor/Exact", name: "Exact model", capabilities: null }],
 };
 
@@ -333,9 +333,8 @@ describe("AddProviderInstanceDialog environment routing", () => {
           displayName: label,
           ...(config ? { config } : {}),
           modelService: {
-            serviceId: sharedServiceId,
             modelIds: [],
-            defaultModel: "Vendor/Exact",
+            sources: [{ serviceId: sharedServiceId, modelIds: [] }],
           },
         },
       });

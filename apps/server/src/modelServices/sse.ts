@@ -1,6 +1,6 @@
 import { ModelServiceError } from "@t3tools/contracts";
 
-export function makeModelServiceSseParser() {
+export function makeModelServiceSseParser(mode: "data" | "frame" = "data") {
   let buffer = "";
   let frames = 0;
   let dataFrames = 0;
@@ -23,10 +23,9 @@ export function makeModelServiceSseParser() {
         .split(/\r?\n/)
         .filter((line) => line.startsWith("data:"))
         .map((line) => line.slice(5).replace(/^ /, ""));
-      if (data.length) {
-        dataFrames++;
-        events.push(`data: ${data.join("\n")}`);
-      }
+      if (data.length) dataFrames++;
+      if (mode === "frame") events.push(frame + boundary[0]);
+      else if (data.length) events.push(`data: ${data.join("\n")}`);
     }
     if (buffer.length > 16 * 1024 * 1024)
       throw new ModelServiceError({ detail: "The model service sent an oversized stream event." });

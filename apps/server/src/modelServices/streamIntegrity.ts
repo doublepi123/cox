@@ -61,6 +61,7 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
   let doneMarker = false;
   let finished = false;
   let failure: ModelServiceStreamError | undefined;
+  let responseState: { readonly id: unknown; readonly conversation: unknown } | undefined;
   const fail = (reason: ModelServiceStreamError["reason"], detail: string): never => {
     failure = new ModelServiceStreamError({ reason, detail });
     throw failure;
@@ -148,6 +149,8 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
             "The model service sent an invalid Responses terminal event.",
           );
         reason(record(response.incomplete_details).reason);
+        if (state !== "failed")
+          responseState = { id: response.id, conversation: response.conversation };
         mark(state);
       }
     } else if (protocol === "anthropic-messages") {
@@ -188,6 +191,7 @@ export function makeModelServiceStreamMonitor(protocol: ModelServiceProtocol) {
   };
   return {
     push,
+    responseState: () => responseState,
     snapshot: () => ({
       ...parse.snapshot(),
       bytes,

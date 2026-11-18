@@ -6,8 +6,10 @@ import {
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
-  boundModelServiceModels,
+  isModelServiceTargetAvailable,
   MODEL_SERVICE_AGENT_DRIVERS,
+  modelServiceDefaultRuntimeId,
+  modelServiceTargets,
 } from "@t3tools/shared/modelServices";
 import { useTranslation } from "../../i18n";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -40,20 +42,18 @@ export function ModelServiceBindingSection({
   const [saving, setSaving] = useState(false);
   if (!(MODEL_SERVICE_AGENT_DRIVERS as ReadonlyArray<string>).includes(instance.driver))
     return null;
-  const service = binding ? services[binding.serviceId] : undefined;
-  const models = service
-    ? boundModelServiceModels(service, binding!).filter((model) => model.available !== false)
-    : [];
-  const hasModels = models.length > 0;
+  const targets = binding ? modelServiceTargets(services, binding) : [];
+  const hasModels = targets.some(isModelServiceTargetAvailable);
+  const defaultId = binding ? modelServiceDefaultRuntimeId(binding) : undefined;
+  const canSave =
+    !binding || (hasModels && (!defaultId || targets.some((model) => model.id === defaultId)));
   const { modelService: _previous, ...independent } = instance;
   const candidate = binding ? { ...independent, modelService: binding } : independent;
   return (
     <>
       <SettingsRow
         title={t("Model service")}
-        description={t(
-          "Share a centrally managed API connection and model catalog with this agent.",
-        )}
+        description={t("Choose centrally managed model sources for this agent.")}
         control={
           <Button size="sm" variant="ghost-muted" render={<Link to="/settings/model-services" />}>
             {t("Manage model services")}
@@ -72,7 +72,7 @@ export function ModelServiceBindingSection({
             <Button
               size="sm"
               variant="outline"
-              disabled={Boolean(binding?.serviceId) && !hasModels}
+              disabled={!canSave || saving}
               onClick={() => {
                 const { modelService: _previous, ...rest } = instance;
                 onUpdate(binding ? { ...rest, modelService: binding } : rest);
@@ -89,12 +89,8 @@ export function ModelServiceBindingSection({
           onSavingChange={setSaving}
           onReset={() => setBinding(instance.modelService)}
           instance={candidate}
-          models={omoBoundRoleModels(models)}
-          canSave={
-            !binding ||
-            (hasModels &&
-              (!binding.defaultModel || models.some((model) => model.id === binding.defaultModel)))
-          }
+          models={omoBoundRoleModels(targets)}
+          canSave={canSave}
           readOnly={readOnly}
           onUpdate={onUpdate}
         />

@@ -16,6 +16,7 @@ import {
   UsageLimitSourceId,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
+import { modelServiceRuntimeId, modelServiceSources } from "@t3tools/shared/modelServices";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -128,15 +129,27 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* settings.updateProviderInstance({ operation: "upsert", instanceId, instance });
         const current = (yield* settings.getSettings).modelServices[id]!;
         const saved = yield* settings.updateSettings({
-          modelServices: { [id]: { ...current, protocols: [protocol] } },
+          modelServices: { [id]: { ...current, protocol } },
         });
-        assert.deepEqual(saved.modelServices[id]?.protocols, [protocol]);
-        assert.deepEqual(saved.providerInstances[instanceId], instance);
+        assert.strictEqual(saved.modelServices[id]?.protocol, protocol);
+        const migrated = saved.providerInstances[instanceId]!;
+        assert.deepEqual(migrated.config, instance.config);
+        assert.deepEqual(migrated.modelService?.sources, [
+          { serviceId: id, modelIds: ["selected"] },
+        ]);
+        assert.deepEqual(migrated.modelService?.defaultModelRef, {
+          serviceId: id,
+          modelId: "selected",
+        });
+        assert.strictEqual(
+          modelServiceRuntimeId(migrated.modelService!, { serviceId: id, modelId: "selected" }),
+          "selected",
+        );
         const persisted = yield* decodeServerSettingsJson(
           yield* fs.readFileString(config.settingsPath),
         );
-        assert.deepEqual(persisted.modelServices[id]?.protocols, [protocol]);
-        assert.deepEqual(persisted.providerInstances[instanceId], instance);
+        assert.strictEqual(persisted.modelServices[id]?.protocol, protocol);
+        assert.deepEqual(persisted.providerInstances[instanceId], migrated);
         const fresh = yield* Effect.gen(function* () {
           const reloaded = yield* ServerSettingsModule.ServerSettingsService;
           return yield* reloaded.getSettings;
@@ -146,7 +159,81 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           ),
         );
         assert.deepEqual(fresh.modelServices[id], saved.modelServices[id]);
-        assert.deepEqual(fresh.providerInstances[instanceId], instance);
+        assert.deepEqual(fresh.providerInstances[instanceId], migrated);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect(
+    "splits an existing service and atomically migrates its credentials, default and OMO role bindings",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsModule.ServerSettingsService;
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const id = ModelServiceId.make("legacy-mixed");
+        const instanceId = ProviderInstanceId.make("mixed-omo");
+        const primary = "gpt-fixture";
+        const reviewer = "claude-fixture";
+        const connection = decodeModelService({
+          name: "Legacy mixed",
+          revision: 5,
+          baseUrl: "https://models.test",
+          apiKey: "split-test-key",
+          headers: { "x-tenant": "split-test-tenant" },
+          protocols: ["openai-responses", "anthropic-messages"],
+          models: [{ id: primary }, { id: reviewer }],
+        });
+        yield* settings.updateSettings({});
+        yield* writeFileStringAtomically({
+          filePath: config.settingsPath,
+          contents: JSON.stringify({
+            modelServices: { [id]: connection },
+            providerInstances: {
+              [instanceId]: {
+                driver: "omo",
+                config: { agentModels: { oracle: `cox/${reviewer}` } },
+                modelService: { serviceId: id, modelIds: [], defaultModel: primary },
+              },
+            },
+          }),
+        });
+        const stale = yield* Effect.exit(
+          settings.updateSettings({ splitModelService: { serviceId: id, revision: 4 } }),
+        );
+        assert.strictEqual(stale._tag, "Failure");
+        const migrated = yield* settings.updateSettings({
+          splitModelService: { serviceId: id, revision: 5 },
+        });
+        const binding = migrated.providerInstances[instanceId]!.modelService!;
+        const [first, second] = modelServiceSources(binding);
+        assert.strictEqual(first?.serviceId, id);
+        const otherId = second!.serviceId;
+        assert.strictEqual(migrated.modelServices[id]?.protocol, "openai-responses");
+        assert.strictEqual(migrated.modelServices[otherId]?.protocol, "anthropic-messages");
+        assert.strictEqual(migrated.modelServices[otherId]?.apiKey, "split-test-key");
+        assert.strictEqual(
+          migrated.modelServices[otherId]?.headers["x-tenant"],
+          "split-test-tenant",
+        );
+        assert.deepEqual(binding.defaultModelRef, { serviceId: id, modelId: primary });
+        assert.strictEqual(
+          modelServiceRuntimeId(binding, { serviceId: otherId, modelId: reviewer }),
+          reviewer,
+        );
+        assert.deepEqual(migrated.providerInstances[instanceId]?.config, {
+          agentModels: { oracle: `cox/${reviewer}` },
+        });
+        const raw = yield* fs.readFileString(config.settingsPath);
+        assert.isFalse(raw.includes("split-test-key"));
+        assert.isFalse(raw.includes("split-test-tenant"));
+        const fresh = yield* ServerSettingsModule.ServerSettingsService.pipe(
+          Effect.flatMap((reloaded) => reloaded.getSettings),
+          Effect.provide(
+            Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
+          ),
+        );
+        assert.deepEqual(fresh.providerInstances[instanceId]?.modelService, binding);
+        assert.strictEqual(fresh.modelServices[otherId]?.apiKey, "split-test-key");
       }).pipe(Effect.provide(layerServerSettings())),
   );
 

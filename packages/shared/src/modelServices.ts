@@ -1,11 +1,17 @@
+import { ModelServiceId } from "@t3tools/contracts";
+import { sha256 } from "@noble/hashes/sha2";
+import * as Hex from "effect/encoding/Hex";
 import type {
   ModelServiceBinding,
   ModelCapabilities,
   ModelServiceConfig,
   ModelServiceModel,
+  ModelServiceModelRef,
   ModelServiceProtocol,
+  ModelServiceSource,
   ServerProviderModel,
   ProviderInstanceConfig,
+  ServerSettings,
 } from "@t3tools/contracts";
 import {
   readCustomModelEntries,
@@ -80,9 +86,20 @@ export function modelServiceCandidateProtocols(
   model: ModelServiceModel,
   incoming?: ModelServiceProtocol,
 ): ReadonlyArray<ModelServiceProtocol> {
-  const serviceProtocols = new Set(service.protocols);
+  if (service.protocol !== undefined) {
+    const protocol = service.protocol;
+    return (!model.protocols || model.protocols.includes(protocol)) &&
+      (incoming === undefined ||
+        incoming === protocol ||
+        (CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(incoming) &&
+          CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(protocol)))
+      ? [protocol]
+      : [];
+  }
+  const configured = modelServiceProtocols(service);
+  const serviceProtocols = new Set(configured);
   const allowed = new Set(
-    (model.protocols ?? service.protocols).filter(
+    (model.protocols ?? configured).filter(
       (protocol) =>
         serviceProtocols.has(protocol) &&
         (incoming === undefined ||
@@ -103,8 +120,14 @@ export function modelServiceUpstreamProtocol(
   return modelServiceCandidateProtocols(service, model, incoming)[0];
 }
 
+export function modelServiceProtocols(
+  service: ModelServiceConfig,
+): ReadonlyArray<ModelServiceProtocol> {
+  return service.protocol === undefined ? service.protocols! : [service.protocol];
+}
+
 export function isBoundModelServiceModelAllowed(
-  binding: ModelServiceBinding,
+  binding: Pick<ModelServiceSource, "modelIds">,
   model: ModelServiceModel,
 ): boolean {
   return (
@@ -120,12 +143,12 @@ export function modelServiceAgentProtocol(
 ): ModelServiceProtocol {
   if (driver === "codex") return "openai-responses";
   if (driver === "claudeAgent") return "anthropic-messages";
-  return service.protocols[0];
+  return modelServiceProtocols(service)[0]!;
 }
 
 export function boundModelServiceModels(
   service: ModelServiceConfig,
-  binding: ModelServiceBinding,
+  binding: ModelServiceSource,
 ): ReadonlyArray<ModelServiceModel> {
   return service.models
     .filter(
@@ -137,6 +160,168 @@ export function boundModelServiceModels(
       ...model,
       name: !model.name || model.name === model.id ? modelServiceDisplayName(model.id) : model.name,
     }));
+}
+
+export function modelServiceSources(
+  binding: ModelServiceBinding,
+): ReadonlyArray<ModelServiceSource> {
+  return (
+    binding.sources ??
+    (binding.serviceId ? [{ serviceId: binding.serviceId, modelIds: binding.modelIds }] : [])
+  );
+}
+
+export function modelServiceDefaultRef(
+  binding: ModelServiceBinding,
+): ModelServiceModelRef | undefined {
+  return (
+    binding.defaultModelRef ??
+    (binding.serviceId && binding.defaultModel
+      ? { serviceId: binding.serviceId, modelId: binding.defaultModel }
+      : undefined)
+  );
+}
+
+export function sameModelServiceRef(
+  left: ModelServiceModelRef,
+  right: ModelServiceModelRef,
+): boolean {
+  return left.serviceId === right.serviceId && left.modelId === right.modelId;
+}
+
+const modelServiceRefKey = (model: ModelServiceModelRef) =>
+  JSON.stringify([model.serviceId, model.modelId]);
+const managedModelId = (key: string) =>
+  `cox-ms-${Hex.encode(sha256(new TextEncoder().encode(key)).subarray(0, 24))}`;
+
+export function modelServiceQualifiedId(model: ModelServiceModelRef): string {
+  return managedModelId(modelServiceRefKey(model));
+}
+
+export function modelServiceRuntimeId(
+  binding: ModelServiceBinding,
+  model: ModelServiceModelRef,
+): string {
+  if (!binding.sources) return model.modelId;
+  const legacy = binding.legacyAliases?.find((entry) => sameModelServiceRef(entry.model, model));
+  if (legacy) return legacy.id;
+  return modelServiceQualifiedId(model);
+}
+
+export function modelServiceDefaultRuntimeId(binding: ModelServiceBinding): string | undefined {
+  const model = modelServiceDefaultRef(binding);
+  return model ? modelServiceRuntimeId(binding, model) : undefined;
+}
+
+export function isModelServiceSelection(
+  binding: ModelServiceBinding,
+  driver: string,
+  slug: string,
+): boolean {
+  return (
+    binding.sources !== undefined &&
+    (slug.startsWith(modelServiceModelSlug(driver, "cox-ms-")) ||
+      binding.legacyAliases?.some((entry) => modelServiceModelSlug(driver, entry.id) === slug) ===
+        true)
+  );
+}
+
+export interface ModelServiceTarget {
+  readonly ref: ModelServiceModelRef;
+  readonly id: string;
+  readonly model: ModelServiceModel;
+  readonly service: ModelServiceConfig;
+}
+
+export function modelServiceTargets(
+  services: ServerSettings["modelServices"],
+  binding: ModelServiceBinding,
+): ReadonlyArray<ModelServiceTarget> {
+  const aliases = new Map(
+    binding.legacyAliases?.map((entry) => [modelServiceRefKey(entry.model), entry.id] as const),
+  );
+  return modelServiceSources(binding).flatMap((source) => {
+    if (!Object.hasOwn(services, source.serviceId)) return [];
+    const service = services[source.serviceId];
+    if (!service) return [];
+    return service.models.flatMap((model) => {
+      if (source.modelIds.length && !source.modelIds.includes(model.id)) return [];
+      const ref = { serviceId: source.serviceId, modelId: model.id };
+      const key = modelServiceRefKey(ref);
+      const id = binding.sources ? (aliases.get(key) ?? managedModelId(key)) : model.id;
+      return [{ ref, id, model, service }];
+    });
+  });
+}
+
+export function isModelServiceTargetAvailable(target: ModelServiceTarget): boolean {
+  return target.model.available !== false && isModelServiceTargetCompatible(target);
+}
+
+export function isModelServiceTargetCompatible(target: ModelServiceTarget): boolean {
+  return (
+    target.service.enabled &&
+    target.model.ignored !== true &&
+    target.model.supportsTools !== false &&
+    modelServiceUpstreamProtocol(target.service, target.model) !== undefined
+  );
+}
+
+export function modelServiceTargetName(target: ModelServiceTarget, showSource: boolean): string {
+  const { model, service } = target;
+  const name =
+    model.name && model.name !== model.id ? model.name : modelServiceDisplayName(model.id);
+  return showSource ? `${name} · ${service.name}` : name;
+}
+
+export function multiSourceModelServiceBinding(
+  binding: ModelServiceBinding,
+  services: ServerSettings["modelServices"],
+): ModelServiceBinding {
+  if (binding.sources) return binding;
+  const [source] = modelServiceSources(binding);
+  if (!source) return binding;
+  const defaultModelRef = modelServiceDefaultRef(binding);
+  return {
+    modelIds: [],
+    sources: [source],
+    ...(defaultModelRef ? { defaultModelRef } : {}),
+    legacyAliases: modelServiceTargets(services, binding).map((target) => ({
+      id: target.id,
+      model: target.ref,
+    })),
+  };
+}
+
+export function modelServiceSplitPlan(
+  services: ServerSettings["modelServices"],
+  serviceId: ModelServiceId,
+) {
+  if (!Object.hasOwn(services, serviceId)) return [];
+  const service = services[serviceId];
+  if (!service) return [];
+  const protocols = [...new Set(modelServiceProtocols(service))];
+  if (protocols.length < 2) return [];
+  const ids = new Set(Object.keys(services));
+  const models = service.models.map((model) => {
+    const candidates = modelServiceCandidateProtocols(service, model);
+    return { model, protocol: candidates[0] ?? protocols[0]!, alternatives: candidates.slice(1) };
+  });
+  return protocols.map((protocol, index) => {
+    let id = serviceId;
+    if (index > 0) {
+      const base = `${serviceId.slice(0, 40)}-${protocol}`;
+      let candidate = base;
+      for (let suffix = 2; ids.has(candidate); suffix += 1) candidate = `${base}-${suffix}`;
+      ids.add(candidate);
+      id = ModelServiceId.make(candidate);
+    }
+    return {
+      serviceId: id,
+      protocol,
+      models: models.filter((entry) => entry.protocol === protocol),
+    };
+  });
 }
 
 export function modelServiceModelSlug(driver: string, id: string): string {

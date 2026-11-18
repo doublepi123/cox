@@ -19,6 +19,7 @@ import { parseGatewayModel } from "../provider/GatewayModels.ts";
 import * as Settings from "../serverSettings.ts";
 import {
   modelServiceDisplayName,
+  modelServiceProtocols,
   preferredModelServiceProtocols,
 } from "@t3tools/shared/modelServices";
 import { enrichModelFromModelsDev, fetchModelsDevCatalog } from "./modelsDev.ts";
@@ -147,7 +148,9 @@ export function parseModelServiceModel(
   const familyPrimary = preferredOrder[0]!;
   const rawProtocols =
     declaredProtocols === undefined
-      ? [...defaults]
+      ? multiProtocolService
+        ? [...defaults]
+        : undefined
       : multiProtocolService &&
           declaredProtocols.length > 0 &&
           defaults.includes(familyPrimary) &&
@@ -156,8 +159,8 @@ export function parseModelServiceModel(
         : declaredProtocols;
   const protocols = multiProtocolService
     ? [
-        ...preferredOrder.filter((protocol) => rawProtocols.includes(protocol)),
-        ...rawProtocols.filter((protocol) => !preferredOrder.includes(protocol)),
+        ...preferredOrder.filter((protocol) => rawProtocols!.includes(protocol)),
+        ...rawProtocols!.filter((protocol) => !preferredOrder.includes(protocol)),
       ]
     : rawProtocols;
   const parameters = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : undefined;
@@ -180,7 +183,7 @@ export function parseModelServiceModel(
     id: model.slug,
     name: model.name === model.slug ? modelServiceDisplayName(model.slug) : model.name,
     capabilities: model.capabilities,
-    protocols,
+    ...(protocols ? { protocols } : {}),
     source: "discovered",
     available: true,
     ...(modalities(inputModalities) ? { inputModalities: modalities(inputModalities)! } : {}),
@@ -196,7 +199,8 @@ export function parseModelServiceModel(
 export const fetchModelServiceModels = Effect.fn("fetchModelServiceModels")(
   function* (service: ModelServiceConfig) {
     const http = yield* HttpClient.HttpClient;
-    const protocol = service.protocols[0];
+    const protocols = modelServiceProtocols(service);
+    const protocol = protocols[0]!;
     const url = service.modelsPath
       ? new URL(service.modelsPath, service.baseUrl.replace(/\/+$/, "") + "/")
       : modelServiceEndpoint(service, protocol, "models");
@@ -230,7 +234,7 @@ export const fetchModelServiceModels = Effect.fn("fetchModelServiceModels")(
       if (!Array.isArray(entries))
         return yield* new ModelServiceError({ detail: "The service did not return a model list." });
       for (const value of entries) {
-        const model = parseModelServiceModel(value, service.protocols);
+        const model = parseModelServiceModel(value, protocols);
         if (model) found.set(model.id, model);
       }
       const cursor =
@@ -290,6 +294,8 @@ export const discoverModelService = Effect.fn("discoverModelService")(
         models.set(model.id, {
           ...models.get(model.id)!,
           ...(model.ignored !== undefined ? { ignored: model.ignored } : {}),
+          ...(model.price ? { price: model.price } : {}),
+          ...(model.modelsDevPrice ? { modelsDevPrice: model.modelsDevPrice } : {}),
           ...(model.encryptedReasoningReplay !== undefined
             ? { encryptedReasoningReplay: model.encryptedReasoningReplay }
             : {}),

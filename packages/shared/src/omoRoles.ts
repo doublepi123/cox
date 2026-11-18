@@ -19,6 +19,7 @@ export interface OmoRoleInfo {
 
 export interface OmoCatalogModel {
   readonly slug: string;
+  readonly modelId?: string;
   readonly reasoningLevels?: ReadonlyArray<OmoReasoningLevel>;
 }
 
@@ -293,7 +294,7 @@ function indexCatalog(
 ): ReadonlyMap<string, OmoCatalogModel> {
   const byId = new Map<string, OmoCatalogModel>();
   for (const model of models) {
-    const key = normalizeOmoModelId(model.slug);
+    const key = normalizeOmoModelId(model.modelId ?? model.slug);
     if (!byId.has(key)) byId.set(key, model);
   }
   return byId;

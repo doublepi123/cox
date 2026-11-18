@@ -9,6 +9,12 @@ import {
   fetchModelsDevCatalog,
   parseModelsDevCatalog,
 } from "./modelsDev.ts";
+import { ModelServiceConfig, ModelServiceId } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { ServerSettingsService } from "../serverSettings.ts";
+import { syncModelServicePrices } from "./priceSync.ts";
+
+const decodeService = Schema.decodeSync(ModelServiceConfig);
 
 const metadata = {
   id: "gpt-test",
@@ -27,6 +33,75 @@ const enrich = (id: string) =>
   enrichModelFromModelsDev({ id, name: id, capabilities: null }, catalog, "https://proxy.test/v1");
 
 describe("models.dev model metadata", () => {
+  it("uses provider-specific prices and leaves conflicting exact matches unpriced", () => {
+    const cost = { input: 0, output: 3.5, cache_read: 0.25, cache_write: 1 };
+    const index = parseModelsDevCatalog({
+      gateway: { api: "https://gateway.test", models: { same: { id: "same", cost } } },
+      other: {
+        api: "https://other.test",
+        models: { same: { id: "same", cost: { ...cost, input: 2 } } },
+      },
+    });
+    const model = { id: "same", capabilities: null };
+    expect(enrichModelFromModelsDev(model, index, "https://gateway.test").modelsDevPrice).toEqual({
+      inputCostPerMillionTokens: 0,
+      outputCostPerMillionTokens: 3.5,
+      cacheReadCostPerMillionTokens: 0.25,
+      cacheWriteCostPerMillionTokens: 1,
+    });
+    expect(
+      enrichModelFromModelsDev(model, index, "https://no-match.test").modelsDevPrice,
+    ).toBeUndefined();
+  });
+
+  it.effect(
+    "updates automatic prices without replacing manual rates or rewriting an unchanged catalog",
+    () =>
+      Effect.gen(function* () {
+        const id = ModelServiceId.make("pricing");
+        const settings = yield* ServerSettingsService;
+        yield* syncModelServicePrices;
+        const updated = (yield* settings.getSettings).modelServices[id]!;
+        expect(updated.models[0]?.price?.inputCostPerMillionTokens).toBe(1);
+        expect(updated.models[0]?.modelsDevPrice?.inputCostPerMillionTokens).toBe(4);
+        yield* syncModelServicePrices;
+        expect((yield* settings.getSettings).modelServices[id]?.revision).toBe(updated.revision);
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [ModelServiceId.make("pricing")]: decodeService({
+                name: "Pricing",
+                baseUrl: "https://api.openai.com/v1",
+                protocol: "openai-chat",
+                models: [
+                  {
+                    id: "gpt-test",
+                    price: { inputCostPerMillionTokens: 1, outputCostPerMillionTokens: 2 },
+                    modelsDevPrice: { inputCostPerMillionTokens: 3, outputCostPerMillionTokens: 8 },
+                  },
+                ],
+              }),
+            },
+          }),
+        ),
+        Effect.provideService(
+          HttpClient.HttpClient,
+          HttpClient.make((request) =>
+            Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                Response.json({
+                  openai: {
+                    models: { "gpt-test": { ...metadata, cost: { input: 4, output: 9 } } },
+                  },
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+  );
   it("fills names, context, output, modalities, tools and reported reasoning options", () => {
     expect(enrich("gpt-test")).toMatchObject({
       id: "gpt-test",

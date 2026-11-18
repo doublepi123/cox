@@ -75,7 +75,10 @@ const parseOmpUsageRecord = (
   const usage = source.usage;
   const rateModel =
     "model" in source ? (source.responseModel ?? source.upstreamModel ?? source.model) : undefined;
-  const model = "provider" in source ? `${source.provider}/${rateModel}` : "Tools/summaries";
+  const model =
+    "provider" in source
+      ? `${source.provider}/${source.provider === "cox" ? source.model : rateModel}`
+      : "Tools/summaries";
   const outputTokens = tokenCount(usage.output);
   const totals = {
     uncachedInputTokens: tokenCount(usage.input),

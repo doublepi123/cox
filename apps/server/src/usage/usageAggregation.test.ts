@@ -1,8 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
+import { DEFAULT_SERVER_SETTINGS, ModelServiceConfig, ModelServiceId } from "@t3tools/contracts";
+import { modelServiceQualifiedId } from "@t3tools/shared/modelServices";
+import * as Schema from "effect/Schema";
 
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import type { RateTable } from "./usagePricing.ts";
 import type { UsageRecord } from "@t3tools/provider-core/server/usage";
+import { createModelServiceUsagePricing } from "./modelServicePricing.ts";
+
+const decodeService = Schema.decodeSync(ModelServiceConfig);
 
 const rates: RateTable = new Map([
   [
@@ -68,6 +74,81 @@ function aggregate(
 }
 
 describe("UsageAggregator", () => {
+  it("charges source-qualified models independently and preserves reported costs for catalog prices", () => {
+    const primary = ModelServiceId.make("manual-provider");
+    const secondary = ModelServiceId.make("catalog-provider");
+    const modelId = "same";
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      modelServices: {
+        [primary]: decodeService({
+          name: "Manual Provider",
+          baseUrl: "https://manual.example",
+          protocol: "openai-chat",
+          models: [
+            {
+              id: modelId,
+              price: {
+                inputCostPerMillionTokens: 2,
+                outputCostPerMillionTokens: 4,
+                cacheReadCostPerMillionTokens: 0,
+              },
+            },
+          ],
+        }),
+        [secondary]: decodeService({
+          name: "Catalog Provider",
+          baseUrl: "https://catalog.example",
+          protocol: "openai-chat",
+          models: [
+            {
+              id: modelId,
+              modelsDevPrice: { inputCostPerMillionTokens: 5, outputCostPerMillionTokens: 9 },
+            },
+          ],
+        }),
+      },
+    };
+    const aggregator = new UsageAggregator({
+      rates: new Map(),
+      sinceDay: "2026-08-01",
+      untilDay: "2026-08-31",
+      timeZone: "UTC",
+      modelServicePrice: createModelServiceUsagePricing(settings, () => undefined),
+    });
+    aggregator.add(
+      record({
+        model: `cox/${modelServiceQualifiedId({ serviceId: primary, modelId })}`,
+        provider: "omo",
+        reportedCostUsd: 2,
+      }),
+    );
+    aggregator.add(
+      record({
+        model: modelServiceQualifiedId({ serviceId: secondary, modelId }),
+      }),
+    );
+    aggregator.add(
+      record({
+        model: modelServiceQualifiedId({ serviceId: secondary, modelId }),
+        reportedCostUsd: 3,
+      }),
+    );
+    expect(aggregator.finish().buckets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          model: "same · Manual Provider",
+          costUsd: expect.closeTo(0.00042, 8),
+          records: 1,
+        }),
+        expect.objectContaining({
+          model: "same · Catalog Provider",
+          costUsd: expect.closeTo(3.006, 8),
+          records: 2,
+        }),
+      ]),
+    );
+  });
   it("splits a bucket's cost by category and speed", () => {
     const [bucket] = aggregate([record(), record({ speed: "fast" })]).buckets;
 

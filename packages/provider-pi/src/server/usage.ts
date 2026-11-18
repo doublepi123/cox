@@ -73,7 +73,10 @@ const parseRecord =
           ? (source.responseModel ?? source.model)
           : source.model
         : undefined;
-    const model = "provider" in source ? `${source.provider}/${rateModel}` : "Tools/summaries";
+    const model =
+      "provider" in source
+        ? `${source.provider}/${source.provider === "cox" ? source.model : rateModel}`
+        : "Tools/summaries";
     const outputTokens = tokenCount(usage.output);
     const totals = {
       // Pi's input/cache counters are already disjoint.

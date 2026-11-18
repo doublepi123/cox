@@ -504,11 +504,26 @@ export const en = {
   "Showing {count} of {total} refs": "Showing {count} of {total} refs",
   'Create new ref "{name}"': 'Create new ref "{name}"',
   "Copy full path": "Copy full path",
-  "Fill metadata from models.dev": "Fill metadata from models.dev",
+  "Sync prices and metadata from models.dev": "Sync prices and metadata from models.dev",
+  "Token pricing": "Token pricing",
+  "Price source": "Price source",
+  "Manual price": "Manual price",
+  "models.dev price": "models.dev price",
+  "Automatic from models.dev": "Automatic from models.dev",
+  "USD per 1M tokens": "USD per 1M tokens",
+  "Input price": "Input price",
+  "Output price": "Output price",
+  "Cache read price": "Cache read price",
+  "Cache write price": "Cache write price",
+  "USD per 1M tokens. Blank cache rates use the input rate.":
+    "USD per 1M tokens. Blank cache rates use the input rate.",
+  "Uses the latest synced models.dev price.": "Uses the latest synced models.dev price.",
+  "No models.dev price is currently available for this model.":
+    "No models.dev price is currently available for this model.",
   "Input modalities": "Input modalities",
   "Output modalities": "Output modalities",
-  "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.":
-    "Missing metadata is filled from models.dev using exact model IDs. Existing values are preserved; unmatched capabilities remain unknown.",
+  "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.":
+    "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.",
   "Could not fetch model metadata from models.dev. Try again later.":
     "Could not fetch model metadata from models.dev. Try again later.",
   "Model services": "Model services",
@@ -521,13 +536,31 @@ export const en = {
     "Configure an API once, discover its models, and share it with compatible coding agents.",
   "Connect to Cox to manage model services.": "Connect to Cox to manage model services.",
   "No model services configured.": "No model services configured.",
-  "Add a service with its API URL, API key and supported protocols.":
-    "Add a service with its API URL, API key and supported protocols.",
+  "Add a service with its API URL, API key and protocol.":
+    "Add a service with its API URL, API key and protocol.",
   "Service name": "Service name",
   "Remove stored API key": "Remove stored API key",
   "Supported protocols": "Supported protocols",
-  "The first selected protocol is used for model discovery. Each model can declare its own protocols.":
-    "The first selected protocol is used for model discovery. Each model can declare its own protocols.",
+  "API protocol": "API protocol",
+  "Split this legacy service into one connection per protocol.":
+    "Split this legacy service into one connection per protocol.",
+  "Preview protocol split": "Preview protocol split",
+  "Split model service by protocol": "Split model service by protocol",
+  "Each connection uses the existing credentials. Existing Agent bindings and model selections follow the models below. Alternate protocols will require their own model selection.":
+    "Each connection uses the existing credentials. Existing Agent bindings and model selections follow the models below. Alternate protocols will require their own model selection.",
+  "Previously eligible fallbacks: {protocols}": "Previously eligible fallbacks: {protocols}",
+  "The model service changed. Close this dialog and preview the split again.":
+    "The model service changed. Close this dialog and preview the split again.",
+  "Split model service": "Split model service",
+  "Choose one API protocol per model service.": "Choose one API protocol per model service.",
+  "Preview and split this service before changing its protocols.":
+    "Preview and split this service before changing its protocols.",
+  "Choose centrally managed model sources for this agent.":
+    "Choose centrally managed model sources for this agent.",
+  "Remove model source {name}": "Remove model source {name}",
+  "Add model source": "Add model source",
+  "Select a model service": "Select a model service",
+  "First available model": "First available model",
   Primary: "Primary",
   "Model-list path": "Model-list path",
   "Optional path on the same service, such as /v1/models.":
@@ -649,8 +682,8 @@ export const en = {
   "The operation was interrupted. Retry to confirm its result.":
     "The operation was interrupted. Retry to confirm its result.",
   "The model service operation failed.": "The model service operation failed.",
-  "Check the service name, API URL, protocols and request headers.":
-    "Check the service name, API URL, protocols and request headers.",
+  "Check the service name, API URL, protocol and request headers.":
+    "Check the service name, API URL, protocol and request headers.",
   "Could not fetch models. Check the URL, API key and model-list path.":
     "Could not fetch models. Check the URL, API key and model-list path.",
   "Could not prepare the agent's model service configuration.":

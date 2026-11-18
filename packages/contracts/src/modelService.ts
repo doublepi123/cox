@@ -2,9 +2,16 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { ModelCapabilities } from "./model.ts";
+import { ModelTokenPrice } from "./modelTokenPrice.ts";
+export { ModelTokenPrice } from "./modelTokenPrice.ts";
 
 import { ModelServiceId } from "./modelServiceBinding.ts";
-export { ModelServiceId, ModelServiceBinding } from "./modelServiceBinding.ts";
+export {
+  ModelServiceId,
+  ModelServiceBinding,
+  ModelServiceModelRef,
+  ModelServiceSource,
+} from "./modelServiceBinding.ts";
 
 export const ModelServiceProtocol = Schema.Literals([
   "openai-responses",
@@ -49,6 +56,8 @@ export const ModelServiceModel = Schema.Struct({
   inputModalities: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   outputModalities: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   supportsReasoning: Schema.optionalKey(Schema.Boolean),
+  price: Schema.optionalKey(ModelTokenPrice),
+  modelsDevPrice: Schema.optionalKey(ModelTokenPrice),
   encryptedReasoningReplay: Schema.optionalKey(ModelServiceEncryptedReasoningReplay),
   source: Schema.optionalKey(Schema.Literals(["discovered", "manual"])),
 });
@@ -87,7 +96,8 @@ export const ModelServiceConfig = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
     Schema.annotateKey({ settingsSecret: true }),
   ),
-  protocols: Schema.NonEmptyArray(ModelServiceProtocol),
+  protocol: Schema.optionalKey(ModelServiceProtocol),
+  protocols: Schema.optionalKey(Schema.NonEmptyArray(ModelServiceProtocol)),
   modelsPath: Schema.optionalKey(TrimmedString),
   models: Schema.Array(ModelServiceModel).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   discoveredAt: Schema.optionalKey(Schema.String),
@@ -96,7 +106,11 @@ export const ModelServiceConfig = Schema.Struct({
   recovery: ModelServiceRecovery.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_MODEL_SERVICE_RECOVERY)),
   ),
-});
+}).check(
+  Schema.makeFilter(
+    (service) => (service.protocol !== undefined) !== (service.protocols !== undefined),
+  ),
+);
 export type ModelServiceConfig = typeof ModelServiceConfig.Type;
 
 export const ModelServiceDiscoveryInput = Schema.Struct({

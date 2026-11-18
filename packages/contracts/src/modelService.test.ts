@@ -21,6 +21,17 @@ const decodeUrl = Schema.decodeSync(ModelServiceBaseUrl);
 const decodeId = Schema.decodeSync(ModelServiceId);
 
 describe("model service contracts", () => {
+  it("round-trips a single API protocol and rejects conflicting legacy settings", () => {
+    const input = {
+      name: "Single API",
+      baseUrl: "https://models.test",
+      protocol: "gemini",
+    } as const;
+    const service = decodeUnknownService(input);
+    expect(decodeService(encodeService(service))).toEqual(service);
+    expect(() => decodeUnknownService({ ...input, protocols: ["openai-chat"] })).toThrow();
+  });
+
   it("keeps encrypted replay opt-in and round-trips service and model overrides", () => {
     const legacy = decodeService({
       name: "Old service",

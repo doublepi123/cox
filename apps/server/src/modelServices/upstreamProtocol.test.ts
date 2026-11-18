@@ -8,6 +8,7 @@ const service = Schema.decodeSync(ModelServiceConfig)({
   baseUrl: "https://upstream.test",
   protocols: ["openai-chat", "openai-responses", "anthropic-messages", "gemini"],
 });
+const configuredProtocols = service.protocols!;
 
 describe("gateway upstream protocol", () => {
   it.each([
@@ -27,11 +28,11 @@ describe("gateway upstream protocol", () => {
     ["not-kimi-k3", "anthropic-messages"],
     ["kimish", "anthropic-messages"],
   ] as const)("routes %s independently of client protocol and configured order", (id, expected) => {
-    for (const incoming of service.protocols) {
-      for (const protocols of [service.protocols, [...service.protocols].reverse()]) {
+    for (const incoming of configuredProtocols) {
+      for (const protocols of [configuredProtocols, configuredProtocols.toReversed()]) {
         expect(
           modelServiceUpstreamProtocol(
-            { ...service, protocols: protocols as ModelServiceConfig["protocols"] },
+            { ...service, protocols: protocols as typeof configuredProtocols },
             { id, name: "gpt display name", capabilities: null },
             incoming,
           ),
@@ -41,8 +42,8 @@ describe("gateway upstream protocol", () => {
   });
 
   it("preserves every single-protocol route and ignores duplicate protocol entries", () => {
-    for (const protocol of service.protocols) {
-      for (const incoming of service.protocols) {
+    for (const protocol of configuredProtocols) {
+      for (const incoming of configuredProtocols) {
         for (const id of ["gpt-6", "kimi-k2.8-code"]) {
           expect(
             modelServiceUpstreamProtocol(

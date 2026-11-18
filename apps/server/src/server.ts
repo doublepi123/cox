@@ -95,6 +95,7 @@ import * as CodexInstallation from "./provider/CodexInstallation.ts";
 import * as ProviderInstallation from "./provider/providerInstallation.ts";
 import * as ProviderInstanceRegistry from "./provider/ProviderInstanceRegistry.ts";
 import * as ModelServiceGateway from "./modelServices/ModelServiceGateway.ts";
+import { layerModelServicePriceSync } from "./modelServices/priceSync.ts";
 import * as ProviderAdapterRegistry from "./orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 import * as ProviderUsageLimitsIngestion from "./provider/ProviderUsageLimitsIngestion.ts";
@@ -486,6 +487,7 @@ const layerProviderInstallationRefresh = Layer.effectDiscard(
 );
 
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+  layerModelServicePriceSync,
   layerThreadSettlementWorker,
   layerIdleCompactionWorker,
   StorageCleanup.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),

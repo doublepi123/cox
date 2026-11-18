@@ -15,6 +15,14 @@ import {
   readCustomModelEntries,
   resolveSelectableModel,
 } from "@t3tools/shared/model";
+import {
+  isModelServiceSelection,
+  isModelServiceTargetAvailable,
+  modelServiceModelSlug,
+  modelServiceSources,
+  modelServiceTargetName,
+  modelServiceTargets,
+} from "@t3tools/shared/modelServices";
 import { getComposerProviderState } from "./components/chat/composerProviderState";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import * as Arr from "effect/Array";
@@ -208,14 +216,47 @@ export function getAppModelOptionsForInstance(
   entry: ProviderInstanceEntry,
   selectedModel?: string | null,
 ): AppModelOption[] {
-  const bound =
-    entry.snapshot.modelCatalogSource === "model-service" ||
-    settings.providerInstances?.[entry.instanceId]?.modelService !== undefined;
+  const binding = settings.providerInstances?.[entry.instanceId]?.modelService;
+  const bound = entry.snapshot.modelCatalogSource === "model-service" || binding !== undefined;
+  const mixed = binding && modelServiceSources(binding).length > 1;
+  const targets = binding
+    ? new Map(
+        modelServiceTargets(settings.modelServices, binding).map(
+          (target) => [modelServiceModelSlug(entry.driverKind, target.id), target] as const,
+        ),
+      )
+    : undefined;
   const options: AppModelOption[] = entry.models
     .filter((model) => !model.isCustom || bound)
-    .map((model) =>
-      toAppModelOption(bound ? { ...model, isCustom: false } : model, entry.driverKind),
-    );
+    .map((model) => {
+      const target = targets?.get(model.slug);
+      const option = toAppModelOption(
+        bound ? { ...model, isCustom: false } : model,
+        entry.driverKind,
+      );
+      return {
+        ...option,
+        ...(mixed && target
+          ? { name: modelServiceTargetName(target, false), subProvider: target.service.name }
+          : {}),
+        ...(target && !isModelServiceTargetAvailable(target) ? { isUnavailable: true } : {}),
+      };
+    });
+  const selectedTarget = selectedModel ? targets?.get(selectedModel) : undefined;
+  if (
+    binding &&
+    selectedModel &&
+    (selectedTarget || isModelServiceSelection(binding, entry.driverKind, selectedModel)) &&
+    !options.some((option) => option.slug === selectedModel)
+  ) {
+    options.push({
+      slug: selectedModel,
+      name: selectedTarget ? modelServiceTargetName(selectedTarget, false) : selectedModel,
+      ...(mixed && selectedTarget ? { subProvider: selectedTarget.service.name } : {}),
+      isCustom: false,
+      isUnavailable: true,
+    });
+  }
   const seen = new Set(options.map((option) => option.slug));
   const builtInModelSlugs = new Set(
     Arr.filterMap(entry.models, (model) =>
@@ -242,8 +283,17 @@ export function getAppModelOptionsForInstance(
   }
 
   const preferences = readInstanceModelPreferences(settings, entry.instanceId);
+  const ordered = applyInstanceModelPreferences(options, preferences);
+  if (mixed) {
+    const sourceOrder = new Map<string, number>(
+      modelServiceSources(binding).map((source, index) => [source.serviceId, index] as const),
+    );
+    const rank = (option: AppModelOption) =>
+      sourceOrder.get(targets!.get(option.slug)?.ref.serviceId ?? "") ?? sourceOrder.size;
+    ordered.sort((left, right) => rank(left) - rank(right));
+  }
   return appendUnavailableDynamicModelSelection(
-    applyInstanceModelPreferences(options, preferences),
+    ordered,
     entry.models,
     entry.driverKind,
     selectedModel,

@@ -22,23 +22,29 @@ export interface ModelRate extends TokenRates {
 
 export type RateTable = ReadonlyMap<string, ModelRate>;
 
+export interface ModelServiceUsageRate {
+  readonly rate: ModelRate;
+  readonly manual: boolean;
+}
+
+export function modelTokenRates(prices: UsageModelPriceOverride): ModelRate {
+  return {
+    inputCostPerToken: prices.inputCostPerMillionTokens / 1_000_000,
+    outputCostPerToken: prices.outputCostPerMillionTokens / 1_000_000,
+    cacheReadCostPerToken:
+      (prices.cacheReadCostPerMillionTokens ?? prices.inputCostPerMillionTokens) / 1_000_000,
+    cacheCreationCostPerToken:
+      (prices.cacheWriteCostPerMillionTokens ?? prices.inputCostPerMillionTokens) / 1_000_000,
+    fast: null,
+    ultrafast: null,
+  };
+}
+
 export function createOverrideRateTable(
   overrides: Readonly<Record<string, UsageModelPriceOverride>>,
 ): RateTable {
   return new Map(
-    Object.entries(overrides).map(([model, prices]) => [
-      model.trim(),
-      {
-        inputCostPerToken: prices.inputCostPerMillionTokens / 1_000_000,
-        outputCostPerToken: prices.outputCostPerMillionTokens / 1_000_000,
-        cacheReadCostPerToken:
-          (prices.cacheReadCostPerMillionTokens ?? prices.inputCostPerMillionTokens) / 1_000_000,
-        cacheCreationCostPerToken:
-          (prices.cacheWriteCostPerMillionTokens ?? prices.inputCostPerMillionTokens) / 1_000_000,
-        fast: null,
-        ultrafast: null,
-      },
-    ]),
+    Object.entries(overrides).map(([model, prices]) => [model.trim(), modelTokenRates(prices)]),
   );
 }
 
@@ -238,9 +244,10 @@ export function priceUsage(
   table: RateTable,
   record: PricedRecord,
   overrides?: RateTable,
+  serviceRate?: ModelServiceUsageRate,
 ): PricedUsage {
   const { model, totals, reportedCostUsd } = record;
-  const override = overrides?.get(model.trim());
+  const override = serviceRate?.manual ? serviceRate.rate : overrides?.get(model.trim());
   const reported =
     override === undefined && reportedCostUsd !== null && Number.isFinite(reportedCostUsd)
       ? reportedCostUsd
@@ -251,7 +258,7 @@ export function priceUsage(
     categoryCostUsd: null,
     speedPremiumUsd: 0,
   });
-  const rate = override ?? lookupRate(table, record.rateModel ?? model);
+  const rate = override ?? serviceRate?.rate ?? lookupRate(table, record.rateModel ?? model);
   if (rate === null) {
     return reported === null ? unsplit(0, "unpriced") : unsplit(reported, "providerReported");
   }
@@ -279,9 +286,13 @@ export function cacheSavingsUsd(
   table: RateTable,
   record: PricedRecord,
   overrides?: RateTable,
+  serviceRate?: ModelServiceUsageRate,
 ): number {
-  const rate =
-    overrides?.get(record.model.trim()) ?? lookupRate(table, record.rateModel ?? record.model);
+  const rate = serviceRate?.manual
+    ? serviceRate.rate
+    : (overrides?.get(record.model.trim()) ??
+      serviceRate?.rate ??
+      lookupRate(table, record.rateModel ?? record.model));
   if (rate === null) return 0;
   const rates = ratesAt(rate, record.speed);
   return record.totals.cachedInputTokens * (rates.inputCostPerToken - rates.cacheReadCostPerToken);

@@ -1,9 +1,14 @@
 import {
   OMO_REASONING_LEVELS,
   type OmoReasoningLevel,
-  type ModelServiceModel,
   type ProviderInstanceConfig,
 } from "@t3tools/contracts";
+import {
+  isModelServiceTargetAvailable,
+  modelServiceDefaultRuntimeId,
+  modelServiceTargetName,
+  type ModelServiceTarget,
+} from "@t3tools/shared/modelServices";
 import { OmoRoleName } from "@t3tools/provider-omo/settings";
 import { omoModelReasoningLevels } from "@t3tools/shared/omoRecommendations";
 import {
@@ -371,18 +376,18 @@ export function OmoSettingsSection({
     instance.config && typeof instance.config === "object"
       ? Reflect.get(instance.config, "model")
       : undefined;
+  const defaultId = instance.modelService
+    ? modelServiceDefaultRuntimeId(instance.modelService)
+    : undefined;
+  const defaultModel = defaultId
+    ? models.find((model) => model.slug === `cox/${defaultId}`)
+    : models[0];
   const inheritedModel = managed
-    ? instance.modelService?.defaultModel
-      ? models.find((model) => model.slug === `cox/${instance.modelService?.defaultModel}`)?.name
-      : models[0]?.name
+    ? defaultModel?.name
     : typeof independentModel === "string" && independentModel.trim()
       ? independentModel
       : undefined;
-  const inheritedSlug = managed
-    ? instance.modelService?.defaultModel
-      ? models.find((model) => model.slug === `cox/${instance.modelService?.defaultModel}`)?.slug
-      : models[0]?.slug
-    : undefined;
+  const inheritedSlug = managed ? defaultModel?.slug : undefined;
   const invalid =
     managed &&
     [...Object.values(agentModels), ...Object.values(categoryModels)].some(
@@ -637,12 +642,13 @@ export function OmoSettingsSection({
   );
 }
 
-export function omoBoundRoleModels(models: readonly ModelServiceModel[]) {
-  return models
-    .filter((model) => model.available !== false)
-    .map((model) => ({
-      slug: `cox/${model.id}`,
-      name: model.name ?? model.id,
-      reasoningLevels: omoModelReasoningLevels(model),
-    }));
+export function omoBoundRoleModels(targets: readonly ModelServiceTarget[]) {
+  const showSource = new Set(targets.map((target) => target.ref.serviceId)).size > 1;
+  return targets.filter(isModelServiceTargetAvailable).map((target) => ({
+    slug: `cox/${target.id}`,
+    name: modelServiceTargetName(target, false),
+    modelId: target.ref.modelId,
+    ...(showSource ? { sourceName: target.service.name } : {}),
+    reasoningLevels: omoModelReasoningLevels(target.model),
+  }));
 }

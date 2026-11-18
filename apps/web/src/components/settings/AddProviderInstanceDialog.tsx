@@ -17,8 +17,9 @@ import {
   type ProviderInstanceEnvironmentVariable,
 } from "@t3tools/contracts";
 import {
-  boundModelServiceModels,
+  isModelServiceTargetAvailable,
   MODEL_SERVICE_AGENT_DRIVERS,
+  modelServiceTargets,
 } from "@t3tools/shared/modelServices";
 
 import {
@@ -245,10 +246,8 @@ export function AddProviderInstanceDialog({
   );
   const modelServices = settings.modelServices ?? {};
   const modelService = supportsModelService ? modelServiceByDriver[driver] : undefined;
-  const boundService = modelService ? modelServices[modelService.serviceId] : undefined;
   const modelServiceError = modelService
-    ? boundService &&
-      boundModelServiceModels(boundService, modelService).some((model) => model.available !== false)
+    ? modelServiceTargets(modelServices, modelService).some(isModelServiceTargetAvailable)
       ? null
       : t("Add or discover compatible models before binding an agent.")
     : null;

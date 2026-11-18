@@ -3,6 +3,40 @@ import type { ModelServiceProtocol } from "@t3tools/contracts";
 const GPT_REASONING_MODEL = /^(?:openai\/)?gpt-(?:5\.6|6\.1)-sol$/;
 const CHAT_COMPLETION_BUDGET_MODEL = /^(?:gpt-[5-9]|o[1-9])(?:[.-]|$)/i;
 
+export function limitAnthropicRequestOutput(
+  body: Readonly<Record<string, unknown>>,
+  maxOutputTokens: number | undefined,
+): Readonly<Record<string, unknown>> {
+  const requested = body.max_tokens;
+  if (
+    maxOutputTokens === undefined ||
+    typeof requested !== "number" ||
+    !Number.isSafeInteger(requested) ||
+    requested <= maxOutputTokens
+  )
+    return body;
+  const limited = { ...body, max_tokens: maxOutputTokens };
+  const thinking = body.thinking;
+  if (
+    thinking !== null &&
+    typeof thinking === "object" &&
+    "type" in thinking &&
+    thinking.type === "enabled" &&
+    "budget_tokens" in thinking &&
+    typeof thinking.budget_tokens === "number" &&
+    thinking.budget_tokens >= maxOutputTokens
+  ) {
+    return {
+      ...limited,
+      thinking:
+        maxOutputTokens <= 1024
+          ? { type: "disabled" }
+          : { ...thinking, budget_tokens: maxOutputTokens - 1 },
+    };
+  }
+  return limited;
+}
+
 export function withoutForcedToolChoice(
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {

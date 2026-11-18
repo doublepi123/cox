@@ -1,8 +1,13 @@
-import { ModelServiceError, type ModelServiceModel } from "@t3tools/contracts";
+import {
+  ModelServiceError,
+  type ModelServiceModel,
+  type ModelTokenPrice,
+} from "@t3tools/contracts";
 import { modelServiceDisplayName } from "@t3tools/shared/modelServices";
 import * as ByteSize from "effect/ByteSize";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
+import * as Equal from "effect/Equal";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
@@ -22,9 +27,27 @@ interface CatalogEntry {
   readonly provider: string;
   readonly apiHost: string | undefined;
   readonly canonicalId: string | undefined;
+  readonly price: ModelTokenPrice | undefined;
   readonly model: ModelServiceModel;
 }
 export type ModelsDevCatalog = ReadonlyMap<string, ReadonlyArray<CatalogEntry>>;
+
+function parsePrice(value: unknown): ModelTokenPrice | undefined {
+  const cost = record(value);
+  const rate = (raw: unknown) =>
+    typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : undefined;
+  const input = rate(cost.input);
+  const output = rate(cost.output);
+  if (input === undefined || output === undefined) return undefined;
+  const cacheRead = rate(cost.cache_read);
+  const cacheWrite = rate(cost.cache_write);
+  return {
+    inputCostPerMillionTokens: input,
+    outputCostPerMillionTokens: output,
+    ...(cacheRead === undefined ? {} : { cacheReadCostPerMillionTokens: cacheRead }),
+    ...(cacheWrite === undefined ? {} : { cacheWriteCostPerMillionTokens: cacheWrite }),
+  };
+}
 
 export function parseModelsDevCatalog(value: unknown): ModelsDevCatalog {
   const index = new Map<string, CatalogEntry[]>();
@@ -53,6 +76,7 @@ export function parseModelsDevCatalog(value: unknown): ModelsDevCatalog {
       const entry: CatalogEntry = {
         provider,
         apiHost,
+        price: parsePrice(raw.cost),
         canonicalId:
           typeof raw.canonical_model_id === "string" ? raw.canonical_model_id : undefined,
         model: {
@@ -97,11 +121,7 @@ const officialProviders: Readonly<Record<string, string>> = {
   "generativelanguage.googleapis.com": "google",
 };
 
-export function enrichModelFromModelsDev(
-  model: ModelServiceModel,
-  catalog: ModelsDevCatalog,
-  baseUrl: string,
-): ModelServiceModel {
+function modelsDevCandidates(model: ModelServiceModel, catalog: ModelsDevCatalog, baseUrl: string) {
   const candidates = catalog.get(model.id) ?? catalog.get(model.id.replace(/^models\//, "")) ?? [];
   const host = new URL(baseUrl).hostname;
   const hosted = candidates.filter((entry) => entry.apiHost === host);
@@ -109,13 +129,36 @@ export function enrichModelFromModelsDev(
     (entry) => entry.canonicalId === `${entry.provider}/${entry.model.id}`,
   );
   const firstParty = candidates.filter((entry) => entry.provider === officialProviders[host]);
-  const pool = hosted.length
+  return hosted.length
     ? hosted
     : firstParty.length
       ? firstParty
       : canonical.length === 1
         ? canonical
         : candidates;
+}
+
+export function syncModelPriceFromModelsDev(
+  model: ModelServiceModel,
+  catalog: ModelsDevCatalog,
+  baseUrl: string,
+): ModelServiceModel {
+  const candidates = modelsDevCandidates(model, catalog, baseUrl);
+  const first = candidates[0]?.price;
+  const price =
+    first && candidates.every((entry) => Equal.equals(first, entry.price)) ? first : undefined;
+  if (Equal.equals(price, model.modelsDevPrice)) return model;
+  const { modelsDevPrice: _previous, ...rest } = model;
+  return price ? { ...rest, modelsDevPrice: price } : rest;
+}
+
+export function enrichModelFromModelsDev(
+  model: ModelServiceModel,
+  catalog: ModelsDevCatalog,
+  baseUrl: string,
+): ModelServiceModel {
+  const pool = modelsDevCandidates(model, catalog, baseUrl);
+  model = syncModelPriceFromModelsDev(model, catalog, baseUrl);
   const match = pool[0]?.model;
   const used = (entry: ModelServiceModel) =>
     JSON.stringify([
