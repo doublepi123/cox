@@ -161,7 +161,7 @@ export function QueuedRunsControl({
       serverIndex: null,
       text: message.text,
       editable: true,
-      attachments: [] as ReadonlyArray<ContractChatAttachment>,
+      attachments: (message.attachments ?? []) as ReadonlyArray<ContractChatAttachment>,
       thumbnails: (message.attachments ?? [])
         .filter(isImageAttachment)
         .map<QueuedRowThumbnail>((attachment) => ({

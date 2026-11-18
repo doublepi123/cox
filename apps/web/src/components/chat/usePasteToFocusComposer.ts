@@ -1,4 +1,8 @@
-import { pasteTextToFocusComposer, shouldRedirectInputToComposer } from "./composerFocusRedirect";
+import {
+  pasteFilesToFocusComposer,
+  pasteTextToFocusComposer,
+  shouldRedirectInputToComposer,
+} from "./composerFocusRedirect";
 import { readPastedComposerContext } from "../composerInlineTokenPaste";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useEffect, useRef } from "react";
@@ -32,6 +36,13 @@ export function usePasteToFocusComposer(
       if (isCommandPaletteOpen() || isInSideChatPane(event.target)) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
+      const files = pasteFilesToFocusComposer(event);
+      if (files.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        composerRef.current?.addDroppedFiles(files);
+        return;
+      }
       const text = pasteTextToFocusComposer(event);
       const clipboardData = event.clipboardData;
       if (text === null || clipboardData === null) return;

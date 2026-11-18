@@ -13,6 +13,9 @@
 - Keep the mobile web page at the same scale when the keyboard opens and
   closes. The viewport scale is locked, and the composer field is at least
   16px so the browser does not zoom the whole UI on focus.
+- Queue an image while a turn is still running. A screenshot pasted onto the
+  timeline joins the composer, the queued row shows it, and the image is sent
+  with that message when the queue starts.
 - Keep the mobile composer at full size after the keyboard closes. The
   resting strip was dropping the attach button and shortening the placeholder.
 - Extend the mobile workspace to the physical bottom of the screen. The

@@ -85,3 +85,37 @@ export function pasteTextToFocusComposer(event: ClipboardEvent): string | null {
   const text = event.clipboardData.getData("text/plain");
   return text.length > 0 ? text : null;
 }
+
+/**
+ * Image and file payloads on a paste. Phone browsers often leave `files` empty
+ * and expose the screenshot only through clipboard items.
+ */
+export function clipboardFiles(
+  data: {
+    readonly files?: ArrayLike<File> | undefined;
+    readonly items?:
+      | ArrayLike<{ readonly kind: string; getAsFile(): File | null }>
+      | undefined;
+  } | null,
+): File[] {
+  if (!data) return [];
+  const fromItems =
+    data.items === undefined
+      ? []
+      : Array.from(data.items).flatMap((item) => {
+          if (item.kind !== "file") return [];
+          const file = item.getAsFile();
+          return file ? [file] : [];
+        });
+  return fromItems.length > 0 ? fromItems : Array.from(data.files ?? []);
+}
+
+/**
+ * Files on a paste that is not already aimed at a text field. A running turn
+ * leaves the composer blurred, and a screenshot pasted onto the timeline would
+ * otherwise be dropped while plain text is still queued.
+ */
+export function pasteFilesToFocusComposer(event: ClipboardEvent): File[] {
+  if (!shouldRedirectInputToComposer(event)) return [];
+  return clipboardFiles(event.clipboardData);
+}
