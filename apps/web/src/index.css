@@ -2647,6 +2647,15 @@ code {
   position: relative;
 }
 
+/* Phones zoom the whole page when the focused field is under 16px, and the
+   zoom resets when the keyboard closes. The field itself carries the floor so
+   it does not depend on a coarse-pointer media query. */
+@media (max-width: 40rem) {
+  .composer-tiptap {
+    font-size: var(--font-size-prompt-touch);
+  }
+}
+
 .composer-tiptap p {
   margin: 0;
 }
