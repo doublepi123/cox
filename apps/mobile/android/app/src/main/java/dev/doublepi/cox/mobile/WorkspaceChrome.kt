@@ -110,9 +110,28 @@ internal object WorkspaceChrome {
         launcherSafeAreaScript?.let { webView.evaluateJavascript(it, null) }
     }
 
+    fun workspaceSafeAreaScript(insets: Insets, density: Float): String {
+        val top = safeAreaCssPixels(insets.top, density)
+        val right = safeAreaCssPixels(insets.right, density)
+        val bottom = safeAreaCssPixels(insets.bottom, density)
+        val left = safeAreaCssPixels(insets.left, density)
+        return """
+            (function(){
+              var root = document.documentElement;
+              if (!root) return;
+              root.style.setProperty('--cox-safe-top','$top');
+              root.style.setProperty('--cox-safe-right','$right');
+              root.style.setProperty('--cox-safe-bottom','$bottom');
+              root.style.setProperty('--cox-safe-left','$left');
+            })();
+            """.trimIndent()
+    }
+
     fun installChildWebViewInsetsShield(
         target: View,
         onImeVisibilityChanged: ((Boolean) -> Unit)? = null,
+        edgeToEdge: Boolean = false,
+        onSafeArea: ((Insets) -> Unit)? = null,
     ) {
         var lastImeVisible: Boolean? = null
         val reportIme = { visible: Boolean ->
@@ -125,7 +144,8 @@ internal object WorkspaceChrome {
             val sysInsets = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
             )
-            view.setPadding(sysInsets.left, sysInsets.top, sysInsets.right, sysInsets.bottom)
+            if (edgeToEdge) onSafeArea?.invoke(sysInsets)
+            else view.setPadding(sysInsets.left, sysInsets.top, sysInsets.right, sysInsets.bottom)
             val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
             val decorHeight = view.rootView?.height ?: 0
             val heightDelta = (decorHeight - view.height).coerceAtLeast(0)

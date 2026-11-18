@@ -1261,16 +1261,16 @@ html[data-cox-desktop]
    Insets resolve to 0 when the browser already constrains the layout viewport
    to the safe area. */
 @utility pt-safe {
-  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px));
 }
 @utility pb-safe {
-  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--cox-safe-bottom, 0px));
 }
 @utility pl-safe {
-  padding-left: max(env(safe-area-inset-left), 0px);
+  padding-left: max(env(safe-area-inset-left, 0px), var(--cox-safe-left, 0px));
 }
 @utility pr-safe {
-  padding-right: max(env(safe-area-inset-right), 0px);
+  padding-right: max(env(safe-area-inset-right, 0px), var(--cox-safe-right, 0px));
 }
 
 /* Grain texture for chrome surfaces that float above the body (see the
@@ -1970,7 +1970,8 @@ body {
 
 html,
 body {
-  min-height: calc(100svh + env(safe-area-inset-top));
+  min-height: calc(100svh + max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px)));
+  background-color: var(--background);
   overscroll-behavior: none;
 }
 
@@ -1987,7 +1988,7 @@ body {
   overflow-x: clip;
   overflow-y: hidden;
   overscroll-behavior-y: none;
-  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px));
 }
 
 /* App-chrome grain. Baked into each surface's own background (behind

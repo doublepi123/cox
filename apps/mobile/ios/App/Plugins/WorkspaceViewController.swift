@@ -8,6 +8,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     private weak var workspace: WKWebView?
     private var webTopToSafe: NSLayoutConstraint?
     private var webTopToFallback: NSLayoutConstraint?
+    private var publishedSafeArea = ""
     private var pageFailed = false
     private var revealFallback = false
     private var revealItem: DispatchWorkItem?
@@ -63,21 +64,58 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         webView.isOpaque = false
         webView.backgroundColor = Self.canvasColor(for: traitCollection)
         webView.scrollView.backgroundColor = webView.backgroundColor
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         let painted = webView.url != nil && !webView.isLoading
         webView.alpha = painted ? 1 : 0
-        let topSafe = webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        if painted { webView.isOpaque = true }
+        let topSafe = webView.topAnchor.constraint(equalTo: view.topAnchor)
         let topFallback = webView.topAnchor.constraint(equalTo: fallback.bottomAnchor, constant: 6)
         webTopToSafe = topSafe
         webTopToFallback = topFallback
         NSLayoutConstraint.activate([
-            webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         updateFallback()
+        publishSafeArea()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        publishSafeArea()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        publishSafeArea()
+    }
+
+    private func publishSafeArea() {
+        guard let workspace, workspace.bounds.height > 0 else { return }
+        let frame = workspace.convert(workspace.bounds, to: view)
+        let top = max(0, view.safeAreaInsets.top - frame.minY)
+        let left = max(0, view.safeAreaInsets.left - frame.minX)
+        let bottom = max(0, frame.maxY - (view.bounds.maxY - view.safeAreaInsets.bottom))
+        let right = max(0, frame.maxX - (view.bounds.maxX - view.safeAreaInsets.right))
+        let signature = "\(top),\(right),\(bottom),\(left)"
+        if signature == publishedSafeArea { return }
+        publishedSafeArea = signature
+        let script = """
+        (function(){
+          var root = document.documentElement;
+          if (!root) return;
+          root.style.setProperty('--cox-safe-top','\(top)px');
+          root.style.setProperty('--cox-safe-right','\(right)px');
+          root.style.setProperty('--cox-safe-bottom','\(bottom)px');
+          root.style.setProperty('--cox-safe-left','\(left)px');
+        })();
+        """
+        workspace.evaluateJavaScript(script, completionHandler: nil)
     }
 
     func noteMainFrameStarted() {
+        publishedSafeArea = ""
         pageFailed = false
         revealFallback = false
         revealItem?.cancel()
@@ -89,6 +127,8 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     }
 
     func noteMainFrameSettled() {
+        publishedSafeArea = ""
+        publishSafeArea()
         revealWorkspaceContent()
         guard !pageFailed else { return }
         scheduleFallbackReveal()
@@ -106,10 +146,13 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         guard let workspace, workspace.alpha < 1 else { return }
         if UIAccessibility.isReduceMotionEnabled {
             workspace.alpha = 1
+            workspace.isOpaque = true
             return
         }
         UIView.animate(withDuration: 0.18, delay: 0, options: .curveEaseOut) {
             workspace.alpha = 1
+        } completion: { _ in
+            workspace.isOpaque = true
         }
     }
 

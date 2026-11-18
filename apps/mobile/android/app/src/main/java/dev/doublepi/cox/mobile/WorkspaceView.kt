@@ -46,6 +46,7 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
     var webSwitcherMounted: Boolean = false
         private set
     private var token: String? = null
+    private var safeAreaScript: String? = null
     private var destroyed = false
 
     init {
@@ -103,6 +104,16 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
         currentBackgroundColor = parsed
         webView.setBackgroundColor(parsed)
         host.onWorkspaceChromeChanged(identity.profileName, parsed)
+    }
+
+    fun applySafeArea(script: String) {
+        safeAreaScript = script
+        if (!destroyed) webView.evaluateJavascript(script, null)
+    }
+
+    fun republishSafeArea() {
+        val script = safeAreaScript ?: return
+        if (!destroyed) webView.evaluateJavascript(script, null)
     }
 
     fun prepareBackdrop(color: Int) {
@@ -316,6 +327,7 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
 
         override fun onPageCommitVisible(view: WebView, url: String) {
             inject(url)
+            republishSafeArea()
             host.onContentReady(identity.profileName)
         }
 

@@ -105,7 +105,7 @@ function SheetPopup({
             variant === "inset" &&
               "before:hidden sm:rounded-2xl sm:border sm:before:rounded-[calc(var(--radius-2xl)-1px)] sm:**:data-[slot=sheet-footer]:rounded-b-[calc(var(--radius-2xl)-1px)]",
             variant === "sidebar" &&
-              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
+              "h-full max-h-full w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
             variant === "right-panel" &&
               "w-[min(42vw,28rem)] min-w-80 max-w-[28rem] max-[768px]:w-full max-[768px]:max-w-none max-[768px]:min-w-0 max-[768px]:border-s-0 wco:mt-(--workspace-topbar-height) wco:h-[calc(100%-var(--workspace-topbar-height))] wco:max-h-[calc(100%-var(--workspace-topbar-height))]",
             instant &&

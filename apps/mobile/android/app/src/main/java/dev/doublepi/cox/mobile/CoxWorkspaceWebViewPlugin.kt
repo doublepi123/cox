@@ -202,7 +202,7 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         val bg = launcherColor ?: WorkspaceChrome.defaultBackgroundColor(activity)
         workspace.prepareBackdrop(bg)
         val painted = workspace.webView.progress == 100 && !workspace.webView.url.isNullOrEmpty()
-        val root = container(bg, hiddenUntilPaint = !painted)
+        val root = container(bg, hiddenUntilPaint = !painted, edgeToEdge = true)
         (workspace.webView.parent as? ViewGroup)?.removeView(workspace.webView)
         root.addView(workspace.webView, FrameLayout.LayoutParams(-1, -1))
         WorkspaceChrome.applySystemBars(activity, bg)
@@ -237,14 +237,26 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         WorkspaceChrome.applySystemBars(activity, bg)
     }
 
-    private fun container(backgroundColor: Int, hiddenUntilPaint: Boolean = false): FrameLayout {
+    private fun container(
+        backgroundColor: Int,
+        hiddenUntilPaint: Boolean = false,
+        edgeToEdge: Boolean = false,
+    ): FrameLayout {
         val root = FrameLayout(activity).apply {
             setBackgroundColor(backgroundColor)
             fitsSystemWindows = false
             isClickable = true
             if (hiddenUntilPaint && motionScale() != 0f) alpha = 0f
         }
-        WorkspaceChrome.installChildWebViewInsetsShield(root)
+        WorkspaceChrome.installChildWebViewInsetsShield(
+            root,
+            edgeToEdge = edgeToEdge,
+            onSafeArea = if (!edgeToEdge) null else { bars ->
+                activeWorkspace?.applySafeArea(
+                    WorkspaceChrome.workspaceSafeAreaScript(bars, root.resources.displayMetrics.density),
+                )
+            },
+        )
         activity.getSharedPreferences("cox.workspace.serversPill", Context.MODE_PRIVATE)
             .edit()
             .clear()

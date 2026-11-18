@@ -39,6 +39,9 @@
   switcher still returns to the Connection Manager. Android system back does
   the same from the workspace root, and iOS shows a Back control above the
   page only when that page has no switcher or failed to load.
+- Extend the mobile workspace to the physical bottom of the screen. The
+  sidebar and chat backgrounds fill the home-indicator area, and only their
+  content is inset by the safe area.
 - Make connecting from Cox Mobile feel continuous. The saved-server row shows
   that it is connecting immediately, the environment check and session check
   run together, and the workspace fades in over a matching background instead

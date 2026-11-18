@@ -3633,7 +3633,7 @@ export default function ChatView(props: ChatViewProps) {
                     </div>
                     <div
                       aria-hidden
-                      className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                      className="h-[calc(max(env(safe-area-inset-bottom,0px),var(--cox-safe-bottom,0px))+1rem)] bg-background sm:h-[calc(max(env(safe-area-inset-bottom,0px),var(--cox-safe-bottom,0px))+1.25rem)]"
                     />
                   </div>
                 </div>
