@@ -83,7 +83,7 @@ describe("mobile sidebar", () => {
         )
         .toBe(true);
       const bounds = panel.getBoundingClientRect();
-      expect(bounds.width).toBeCloseTo(Math.min(384, width - 16), 0);
+      expect(bounds.width).toBeCloseTo(width, 0);
       expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
       const search = dialog
         .getByRole("combobox", { name: "Search threads", exact: true })

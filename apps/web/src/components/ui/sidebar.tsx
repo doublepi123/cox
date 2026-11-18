@@ -30,7 +30,7 @@ import { announceSidebarVisibility } from "~/lib/accessibilityAnnouncements";
 import { useHistoryBackDismiss } from "~/lib/historyBackDismiss";
 
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "min(24rem, calc(100vw - 1rem))";
+const SIDEBAR_WIDTH_MOBILE = "100vw";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 const SIDEBAR_TITLEBAR_CONTROL_SIZE = "max-sm:[--workspace-titlebar-control-size:2.75rem]";

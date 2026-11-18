@@ -391,7 +391,7 @@ export function SettingsSidebarNav({
                             <h3
                               aria-hidden="true"
                               className={cn(
-                                "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
+                                "px-2 text-xs font-medium text-sidebar-muted-foreground",
                                 !showLabels && "max-md:hidden",
                               )}
                             >
@@ -415,6 +415,7 @@ export function SettingsSidebarNav({
                                       aria-selected={isActive}
                                       aria-current={isActive ? "page" : undefined}
                                       isActive={isActive}
+                                      className="text-sidebar-foreground"
                                       onClick={() => handleSectionClick(to)}
                                     >
                                       <Icon />

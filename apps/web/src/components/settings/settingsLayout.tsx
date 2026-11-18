@@ -500,12 +500,12 @@ export function SettingsRow({
             </span>
           </div>
           {description ? (
-            <p className="max-w-2xl [overflow-wrap:anywhere] text-pretty text-xs leading-relaxed text-muted-foreground">
+            <p className="max-w-2xl [overflow-wrap:anywhere] text-pretty text-xs leading-relaxed text-foreground/75">
               {typeof description === "string" ? t(description) : description}
             </p>
           ) : null}
           {renderedStatus ? (
-            <div className="pt-0.5 text-xs text-muted-foreground">{renderedStatus}</div>
+            <div className="pt-0.5 text-xs text-foreground/75">{renderedStatus}</div>
           ) : null}
         </div>
         {renderedControl ? (
