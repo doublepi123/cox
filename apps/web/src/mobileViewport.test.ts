@@ -1,10 +1,9 @@
-import { readFileSync } from "node:fs";
-
 import { expect, it } from "vite-plus/test";
 
+import indexHtml from "../index.html?raw";
+
 it("locks the page scale in the mobile viewport", () => {
-  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  const match = html.match(/name="viewport"\s+content="([^"]+)"/);
+  const match = indexHtml.match(/name="viewport"\s+content="([^"]+)"/);
   const content = match?.[1] ?? "";
   expect(content).toContain("width=device-width");
   expect(content).toContain("initial-scale=1");
