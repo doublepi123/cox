@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.1.104 — 2026-11-18
+
+- Reconnect without asking the environment descriptor again when the server id
+  is unchanged. A replaced server is still rejected from its config id.
+- Keep retrying a remote server that the browser reports as offline, up to six
+  one-second attempts, then wait for the network or a manual retry.
+- Notice a silent WebSocket within about a second after 15 seconds without a
+  frame. A short return to the app probes the live session for 3 seconds.
+- Start the shell socket beside its HTTP snapshot, and resume from the cached
+  sequence when that cursor is still valid. A gap that is too large still
+  falls back to a full snapshot.
+- Leave an unsent composer draft in place while reconnecting. It is not sent
+  until you send it again.
+
 ## 0.1.103 — 2026-11-18
 
 - Tell the mobile shell when the page provides its own server switcher, so a
