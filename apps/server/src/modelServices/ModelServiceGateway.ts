@@ -544,6 +544,9 @@ export const make = Effect.gen(function* () {
                 });
               yield* write(settingsPath, {
                 ...existing,
+                ...(instance.driver === "omo"
+                  ? { todo: { ...record(existing.todo), firstTurnPlan: "off" } }
+                  : {}),
                 httpIdleTimeoutMs: timeoutMs,
                 retry: {
                   ...retry,

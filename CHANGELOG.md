@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.1 — 2026-11-18
+
+- Disable automatic first-turn planning in Cox-managed OMO instances so
+  models such as Kimi K3.1 Pro can start a session with thinking enabled.
+
 ## 0.2.0 — 2026-11-18
 
 ### Breaking changes in the model gateway

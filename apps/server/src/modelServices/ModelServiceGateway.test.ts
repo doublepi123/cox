@@ -1169,6 +1169,7 @@ it.layer(layer)("model service gateway", (it) => {
         file,
         JSON.stringify({
           theme: "fixture",
+          todo: { firstTurnPlan: "force" },
           retry: {
             enabled: true,
             maxRetries: 7,
@@ -1180,6 +1181,7 @@ it.layer(layer)("model service gateway", (it) => {
       yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
       expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject({
         theme: "fixture",
+        todo: { firstTurnPlan: "force" },
         httpIdleTimeoutMs: 630_000,
         retry: {
           enabled: false,
@@ -1391,7 +1393,7 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect.each([100, 600_000, 1_800_000])(
-    "aligns managed OMO timeouts to the %s ms recovery budget",
+    "disables first-turn planning and aligns managed OMO timeouts for a %s ms recovery budget",
     (budgetMs) =>
       Effect.gen(function* () {
         const h = yield* harness({ driver: "omo", recovery: { budgetMs } });
@@ -1399,6 +1401,7 @@ it.layer(layer)("model service gateway", (it) => {
         const file = `${h.config.agentDir}/settings.json`;
         const timeoutMs = budgetMs + 30_000;
         const expected = {
+          todo: { firstTurnPlan: "off" },
           httpIdleTimeoutMs: timeoutMs,
           retry: {
             enabled: false,
@@ -1416,6 +1419,7 @@ it.layer(layer)("model service gateway", (it) => {
           JSON.stringify({
             ...expected,
             theme: "fixture",
+            todo: { firstTurnPlan: "force", turnEndBackstop: false },
             retry: { ...expected.retry, maxRetries: 7 },
           }),
         );
@@ -1428,6 +1432,7 @@ it.layer(layer)("model service gateway", (it) => {
         const updated = yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
         expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject({
           theme: "fixture",
+          todo: { firstTurnPlan: "off", turnEndBackstop: false },
           httpIdleTimeoutMs: 930_000,
           retry: {
             enabled: false,
