@@ -31,8 +31,6 @@
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 	</dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Scan a Cox server QR code to fill its connection URL.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to unlock saved Cox server passwords.</string>
 	<key>NSLocalNetworkUsageDescription</key>

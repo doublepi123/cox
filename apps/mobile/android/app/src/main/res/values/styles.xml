@@ -6,6 +6,10 @@
         <item name="android:windowBackground">#111215</item>
         <item name="android:statusBarColor">#111215</item>
         <item name="android:navigationBarColor">#111215</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="AppTheme">

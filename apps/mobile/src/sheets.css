@@ -1,10 +1,13 @@
 .sheet {
   position: fixed;
-  inset: auto 0 0;
+  inset: auto 0 max(var(--cox-safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
   margin: auto auto 0;
   width: min(100%, var(--content-max));
   max-width: 100%;
-  max-height: calc(100dvb - var(--space-12));
+  max-height: calc(
+    100dvb - var(--space-12) - max(var(--cox-safe-top, 0px), env(safe-area-inset-top, 0px)) -
+      max(var(--cox-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))
+  );
   padding: 0;
   border: 1px solid var(--border-default);
   border-bottom: 0;
@@ -19,7 +22,7 @@
 .sheet-panel {
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvb - var(--space-12));
+  max-height: inherit;
 }
 .sheet-header {
   display: flex;
@@ -49,13 +52,10 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-5);
-  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
   scrollbar-color: var(--border-strong) var(--bg-inset);
   scrollbar-width: thin;
 }
-.editor-form,
-.qr-scanner,
-.manual-qr {
+.editor-form {
   display: grid;
   gap: var(--space-4);
 }
@@ -121,13 +121,6 @@
 }
 .submit-button {
   min-width: 0;
-}
-.camera-preview {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: var(--radius-md);
-  background: var(--bg-inset);
-  object-fit: cover;
 }
 .confirm-sheet .sheet-body {
   display: grid;

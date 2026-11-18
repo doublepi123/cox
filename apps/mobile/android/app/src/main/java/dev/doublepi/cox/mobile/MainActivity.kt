@@ -2,8 +2,10 @@ package dev.doublepi.cox.mobile
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.webkit.WebView
 import com.getcapacitor.BridgeActivity
 import com.getcapacitor.Plugin
+import com.getcapacitor.WebViewListener
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,8 +19,15 @@ class MainActivity : BridgeActivity() {
         WorkspaceChrome.applySystemBars(this, WorkspaceChrome.defaultBackgroundColor(this))
         bridge?.webView?.let { webView ->
             webView.setBackgroundColor(WorkspaceChrome.defaultBackgroundColor(this))
-            WorkspaceChrome.installLauncherWebViewImeShield(webView)
+            WorkspaceChrome.installLauncherWebViewInsets(webView)
         }
+        bridge?.addWebViewListener(
+            object : WebViewListener() {
+                override fun onPageLoaded(webView: WebView) {
+                    WorkspaceChrome.republishLauncherSafeArea(webView)
+                }
+            },
+        )
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

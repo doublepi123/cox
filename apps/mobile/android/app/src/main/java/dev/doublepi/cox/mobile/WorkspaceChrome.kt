@@ -49,6 +49,11 @@ internal fun shouldShowFallbackServersPill(
 internal fun clampPillCoordinate(value: Float, minBound: Float, maxBound: Float): Float =
     value.coerceIn(minBound, maxBound.coerceAtLeast(minBound))
 
+internal fun safeAreaCssPixels(pixels: Int, density: Float): String {
+    if (pixels <= 0 || density <= 0f || !density.isFinite()) return "0px"
+    return String.format(Locale.US, "%.2fpx", pixels / density)
+}
+
 internal data class FallbackPillOrigin(val x: Int, val y: Int)
 
 internal fun fallbackServersPillOrigin(
@@ -76,6 +81,7 @@ internal fun fallbackServersPillOrigin(
 }
 
 internal object WorkspaceChrome {
+    private var launcherSafeAreaScript: String? = null
     fun defaultBackgroundColor(context: Context): Int {
         val night =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -85,6 +91,7 @@ internal object WorkspaceChrome {
 
     fun applySystemBars(activity: Activity, backgroundColor: Int) {
         val window = activity.window
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.decorView.setBackgroundColor(backgroundColor)
         @Suppress("DEPRECATION")
         run {
@@ -98,13 +105,43 @@ internal object WorkspaceChrome {
         }
     }
 
-    fun installLauncherWebViewImeShield(target: View) {
-        ViewCompat.setOnApplyWindowInsetsListener(target) { _, insets ->
+    fun installLauncherWebViewInsets(target: View) {
+        ViewCompat.setOnApplyWindowInsetsListener(target) { view, insets ->
+            publishLauncherSafeArea(view, insets)
             WindowInsetsCompat.Builder(insets)
                 .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
                 .setVisible(WindowInsetsCompat.Type.ime(), false)
                 .build()
         }
+        ViewCompat.requestApplyInsets(target)
+    }
+
+    private fun publishLauncherSafeArea(view: View, insets: WindowInsetsCompat) {
+        val webView = view as? android.webkit.WebView ?: return
+        val bars = insets.getInsets(
+            WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+        )
+        val density = view.resources.displayMetrics.density
+        val top = safeAreaCssPixels(bars.top, density)
+        val right = safeAreaCssPixels(bars.right, density)
+        val bottom = safeAreaCssPixels(bars.bottom, density)
+        val left = safeAreaCssPixels(bars.left, density)
+        launcherSafeAreaScript =
+            """
+            (function(){
+              var root = document.documentElement;
+              if (!root) return;
+              root.style.setProperty('--cox-safe-top','$top');
+              root.style.setProperty('--cox-safe-right','$right');
+              root.style.setProperty('--cox-safe-bottom','$bottom');
+              root.style.setProperty('--cox-safe-left','$left');
+            })();
+            """.trimIndent()
+        webView.evaluateJavascript(launcherSafeAreaScript, null)
+    }
+
+    fun republishLauncherSafeArea(webView: android.webkit.WebView) {
+        launcherSafeAreaScript?.let { webView.evaluateJavascript(it, null) }
     }
 
     fun installChildWebViewInsetsShield(

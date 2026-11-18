@@ -37,10 +37,14 @@ button {
 }
 
 .app-shell {
-  width: min(calc(100% - var(--space-8)), var(--content-max));
+  --safe-top: max(var(--cox-safe-top, 0px), env(safe-area-inset-top, 0px));
+  --safe-right: max(var(--cox-safe-right, 0px), env(safe-area-inset-right, 0px));
+  --safe-bottom: max(var(--cox-safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  --safe-left: max(var(--cox-safe-left, 0px), env(safe-area-inset-left, 0px));
+  width: min(100%, var(--content-max));
   margin-inline: auto;
-  padding-block: max(var(--space-6), env(safe-area-inset-top))
-    max(var(--space-8), env(safe-area-inset-bottom));
+  padding-inline: max(var(--space-4), var(--safe-left)) max(var(--space-4), var(--safe-right));
+  padding-block: max(var(--space-6), var(--safe-top)) max(var(--space-8), var(--safe-bottom));
 }
 .app-header {
   display: grid;
@@ -108,8 +112,10 @@ h3 {
 }
 .primary-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+.primary-actions > .button {
+  width: 100%;
 }
 
 .button {

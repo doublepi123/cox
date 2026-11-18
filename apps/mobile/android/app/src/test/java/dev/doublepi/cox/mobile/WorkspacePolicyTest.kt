@@ -126,6 +126,9 @@ class WorkspacePolicyTest {
         assertEquals(12f, clampPillCoordinate(-40f, 12f, 300f), 0.001f)
         assertEquals(300f, clampPillCoordinate(420f, 12f, 300f), 0.001f)
         assertEquals(12f, clampPillCoordinate(50f, 12f, 4f), 0.001f)
+        assertEquals("0px", safeAreaCssPixels(0, 2.75f))
+        assertEquals("24.00px", safeAreaCssPixels(66, 2.75f))
+        assertEquals("0px", safeAreaCssPixels(48, 0f))
         val mid = fallbackServersPillOrigin(
             parentWidth = 400,
             parentHeight = 800,

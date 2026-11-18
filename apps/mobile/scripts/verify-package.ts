@@ -159,7 +159,10 @@ async function verifyIosInfoPlist(pbxprojPath: string, failures: string[]): Prom
   if (entries.get("ITSAppUsesNonExemptEncryption") !== false) {
     failures.push("ios/App/App/Info.plist must set ITSAppUsesNonExemptEncryption to false");
   }
-  for (const key of ["NSCameraUsageDescription", "NSFaceIDUsageDescription"] as const) {
+  if (entries.has("NSCameraUsageDescription")) {
+    failures.push("ios/App/App/Info.plist must not declare NSCameraUsageDescription");
+  }
+  for (const key of ["NSFaceIDUsageDescription"] as const) {
     const value = entries.get(key);
     if (typeof value !== "string" || value.length === 0) {
       failures.push(`ios/App/App/Info.plist must declare non-empty ${key}`);

@@ -12,7 +12,8 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "signInToGateway", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openWorkspace", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "closeWorkspace", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "forgetProfile", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "forgetProfile", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "syncLauncherTheme", returnType: CAPPluginReturnPromise)
     ]
     private var sessions: [UUID: WorkspaceSession] = [:]
     private var recent: [UUID] = []
@@ -30,6 +31,14 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc public func syncLauncherTheme(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            (self?.bridge?.viewController as? CoxLauncherViewController)?
+                .applyStatusBar(forHex: call.getString("color"))
+            call.resolve()
+        }
+    }
 
     @objc public func requestProfileUrl(_ call: CAPPluginCall) {
         Task { @MainActor [weak self] in

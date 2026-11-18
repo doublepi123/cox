@@ -68,8 +68,6 @@ const infoPlistTemplate = [
   "<dict>",
   "\t<key>ITSAppUsesNonExemptEncryption</key>",
   "\t<false/>",
-  "\t<key>NSCameraUsageDescription</key>",
-  "\t<string>Scan a Cox server QR code to fill its connection URL.</string>",
   "\t<key>NSFaceIDUsageDescription</key>",
   "\t<string>Use Face ID to unlock saved Cox server passwords.</string>",
   "</dict>",
@@ -186,17 +184,29 @@ describe("mobile package verification", () => {
     expect(failure.message).toContain("minSdkVersion = 26");
   });
 
+  it("rejects an iOS Info.plist that declares camera usage", async () => {
+    const paths = await createPackageFixture();
+    const plistPath = join(paths.iosPbxprojPath, "..", "..", "App", "Info.plist");
+    const plist = await readFile(plistPath, "utf8");
+    await writeFile(
+      plistPath,
+      plist.replace(
+        "</dict>",
+        "\t<key>NSCameraUsageDescription</key>\n\t<string>Scan</string>\n</dict>",
+      ),
+    );
+
+    const failure = await verificationFailure(paths);
+
+    expect(failure.message).toContain("NSCameraUsageDescription");
+  });
+
   it.each([
     ["<false/>", "<true/>", "ITSAppUsesNonExemptEncryption"],
     [
       "<string>Use Face ID to unlock saved Cox server passwords.</string>",
       "<string>   </string>",
       "NSFaceIDUsageDescription",
-    ],
-    [
-      "<string>Scan a Cox server QR code to fill its connection URL.</string>",
-      "<string></string>",
-      "NSCameraUsageDescription",
     ],
   ])("rejects an iOS Info.plist with invalid %s", async (original, replacement, reason) => {
     const paths = await createPackageFixture();

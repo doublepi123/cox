@@ -1,6 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { RemoteGatewayRequiredError } from "@t3tools/shared/remoteServerAdmission";
-import { QrScannerSheet } from "./components/QrScannerSheet";
 import { ServerEditorSheet } from "./components/ServerEditorSheet";
 import { ServerList } from "./components/ServerList";
 import { Sheet } from "./components/Sheet";
@@ -27,7 +26,6 @@ type ActiveSheet =
       readonly profile: SavedServerProfile | null;
       readonly origin: string;
     }
-  | { readonly kind: "qr" }
   | { readonly kind: "forget"; readonly profile: SavedServerProfile }
   | null;
 
@@ -155,13 +153,6 @@ export function App({ store }: AppProps) {
           >
             {t("addServer")}
           </button>
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={() => setSheet({ kind: "qr" })}
-          >
-            {t("scanQr")}
-          </button>
         </div>
       </header>
       <main>
@@ -232,13 +223,6 @@ export function App({ store }: AppProps) {
           initialOrigin={sheet.origin}
           onSave={saveServer}
           onSaveAndConnect={saveAndConnectServer}
-          onClose={() => setSheet(null)}
-          t={t}
-        />
-      ) : null}
-      {sheet?.kind === "qr" ? (
-        <QrScannerSheet
-          onDetect={(origin) => setSheet({ kind: "editor", profile: null, origin })}
           onClose={() => setSheet(null)}
           t={t}
         />

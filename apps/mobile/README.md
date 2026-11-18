@@ -29,7 +29,7 @@ Because Cox Mobile loads the remote server's own `@t3tools/web` bundle, phone er
 
 ### 1. Local launcher vs isolated workspace WebViews
 
-Capacitor hosts only the local Connection Manager (`apps/mobile/src/App.tsx`), running on `capacitor://localhost` on iOS and `https://localhost` on Android. Saved server metadata lives in `apps/mobile/src/connections/store.ts`; QR scanning (`apps/mobile/src/components/QrScannerSheet.tsx`) accepts only `http://` or `https://` server origins, never pairing codes or invitation tokens.
+Capacitor hosts only the local Connection Manager (`apps/mobile/src/App.tsx`), running on `capacitor://localhost` on iOS and `https://localhost` on Android. Saved server metadata lives in `apps/mobile/src/connections/store.ts`. Servers are added by origin; the launcher does not scan pairing QR codes. The page pads for the status bar, notch, and gesture bar using `env(safe-area-inset-*)`, with native shells also publishing the same insets as `--cox-safe-*` because Android WebView often leaves the environment values at zero.
 
 When you tap **Connect**, preflight validation (`packages/shared/src/remoteServerAdmission.ts`) checks `GET /.well-known/t3/environment` and `GET /api/auth/session` without following cross-origin redirects. It verifies a valid Cox environment descriptor, pins `environmentId` on the saved profile so a replaced server can't silently inherit cookies, and requires `COX_AUTH_PASSWORD` (`loginMode === "password"`).
 

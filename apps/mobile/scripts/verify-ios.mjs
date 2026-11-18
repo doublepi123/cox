@@ -32,8 +32,7 @@ assert.equal(info.CFBundleIdentifier, "$(PRODUCT_BUNDLE_IDENTIFIER)");
 assert.equal(info.ITSAppUsesNonExemptEncryption, false);
 assert.equal(typeof info.NSFaceIDUsageDescription, "string");
 assert.ok(info.NSFaceIDUsageDescription.trim().length > 0);
-assert.equal(typeof info.NSCameraUsageDescription, "string");
-assert.ok(info.NSCameraUsageDescription.trim().length > 0);
+assert.equal(info.NSCameraUsageDescription, undefined);
 console.log(
   "PASS: ATS exception is WebContent-only; encryption compliance and privacy strings are set.",
 );
