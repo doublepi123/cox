@@ -10,3 +10,4 @@ export {
 } from "./server/configuration.ts";
 export { buildOmpLaunch, materializeOmpExtension } from "./server/extension.ts";
 export { ompUsageReader } from "./server/usage.ts";
+export { buildInitialOmpProviderSnapshot } from "./server/status.ts";

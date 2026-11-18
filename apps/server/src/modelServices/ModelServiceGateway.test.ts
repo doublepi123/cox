@@ -50,6 +50,10 @@ import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAda
 import { createModelSelection } from "@t3tools/shared/model";
 import { ClaudeSettings } from "@t3tools/contracts";
 import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/ProviderAdapter";
+import { OmoSettings } from "@t3tools/provider-omo/settings";
+import { initialOmoSnapshot, OmoDriver } from "@t3tools/provider-omo/server";
+import { OmpSettings } from "@t3tools/provider-omp/settings";
+import { buildInitialOmpProviderSnapshot, OmpDriver } from "@t3tools/provider-omp/server";
 
 const requireProtocolBridge = Effect.fn("ModelGateway.test.requireProtocolBridge")(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -72,6 +76,8 @@ const serviceId = ModelServiceId.make("shared-test");
 const instanceId = ProviderInstanceId.make("bound-test");
 const decodeService = Schema.decodeSync(ModelServiceConfig);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
+const decodeOmoSettings = Schema.decodeUnknownSync(OmoSettings);
+const decodeOmpSettings = Schema.decodeUnknownSync(OmpSettings);
 const requireCjs = NodeModule.createRequire(import.meta.url);
 const {
   default: Anthropic,
@@ -395,6 +401,16 @@ const harness = Effect.fn("ModelGateway.test.harness")(function* (
     restart,
     fetch,
   };
+});
+
+it("rejects a model-service warning that is present with an undefined value", () => {
+  for (const decode of [decodeOmoSettings, decodeOmpSettings]) {
+    expect(() => decode({ modelServiceWarning: undefined })).toThrow(/modelServiceWarning/);
+    expect(decode({}).modelServiceWarning).toBeUndefined();
+    expect(
+      decode({ modelServiceWarning: "Advertise the replacement model." }).modelServiceWarning,
+    ).toBe("Advertise the replacement model.");
+  }
 });
 
 it.layer(layer)("model service gateway", (it) => {
@@ -6098,7 +6114,8 @@ it.layer(layer)("model service gateway", (it) => {
           });
           expect(result[instanceId]?.enabled).toBe(true);
           expect(record(result[instanceId]?.config).enabled).not.toBe(false);
-          expect(record(result[instanceId]?.config).modelServiceWarning).toContain(
+          expect(typeof record(result[instanceId]?.config).modelServiceWarning).toBe("string");
+          expect(decodeOmoSettings(result[instanceId]?.config).modelServiceWarning).toContain(
             "no longer advertised",
           );
           expect(record(result[instanceId]?.config)[field]).toEqual({ oracle: slug });
@@ -6125,7 +6142,7 @@ it.layer(layer)("model service gateway", (it) => {
         [instanceId]: { ...instance, config: { agentModels: { oracle: "cox/Vendor/Exact" } } },
       });
       expect(result[instanceId]?.enabled).toBe(true);
-      expect(record(result[instanceId]?.config).modelServiceWarning).toContain(
+      expect(decodeOmoSettings(result[instanceId]?.config).modelServiceWarning).toContain(
         "no longer advertised",
       );
       expect(record(result[instanceId]?.config).agentModels).toEqual({
@@ -6139,8 +6156,125 @@ it.layer(layer)("model service gateway", (it) => {
       );
       const inherited = yield* h.gateway.materialize(changed, { [instanceId]: instance });
       expect(record(inherited[instanceId]!.config).model).toBe("hidden");
-      expect(record(inherited[instanceId]!.config).modelServiceWarning).toBeUndefined();
+      expect(Object.hasOwn(record(inherited[instanceId]!.config), "modelServiceWarning")).toBe(
+        false,
+      );
+      expect(decodeOmoSettings(inherited[instanceId]!.config).modelServiceWarning).toBeUndefined();
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "keeps a bound OMO provider enabled when a model-service warning is absent, present, or cleared",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omo" });
+        const fs = yield* FileSystem.FileSystem;
+        const healthy = h.materialized[instanceId]!;
+        const healthyConfig = record(healthy.config);
+        expect(healthy.enabled).toBe(true);
+        expect(Object.hasOwn(healthyConfig, "modelServiceWarning")).toBe(false);
+        expect(healthy.environment?.some((item) => item.name === "COX_MODEL_SERVICE_WARNING")).toBe(
+          false,
+        );
+        expect(OmoDriver.configSchema).toBe(OmoSettings);
+        const decoded = decodeOmoSettings(healthy.config);
+        expect(decoded.modelServiceWarning).toBeUndefined();
+        expect(decoded.modelServiceManaged).toBe(true);
+        expect(decoded.provider).toBe("cox");
+        expect(decoded.model).toBe("Vendor/Exact");
+        expect(decoded.customModels).toEqual([
+          expect.objectContaining({ slug: "cox/Vendor/Exact", name: "Exact" }),
+        ]);
+        const snapshot = yield* initialOmoSnapshot({ ...decoded, enabled: true });
+        expect(snapshot.enabled).toBe(true);
+        expect(snapshot.models.map((model) => model.slug)).toEqual(["cox/Vendor/Exact"]);
+        expect(snapshot.models[0]?.name).toBe("Exact");
+        const catalog = JSON.parse(
+          yield* fs.readFileString(String(decoded.agentDir) + "/models.json"),
+        );
+        expect(catalog.providers.cox.models.map((model: { id: string }) => model.id)).toEqual([
+          "Vendor/Exact",
+        ]);
+
+        const warned = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...healthy,
+            config: { ...healthyConfig, agentModels: { oracle: "cox/missing" } },
+          },
+        });
+        const warnedConfig = record(warned[instanceId]!.config);
+        expect(warned[instanceId]?.enabled).toBe(true);
+        expect(typeof warnedConfig.modelServiceWarning).toBe("string");
+        const warnedSettings = decodeOmoSettings(warned[instanceId]!.config);
+        expect(warnedSettings.modelServiceWarning).toContain("no longer advertised");
+        const warnedSnapshot = yield* initialOmoSnapshot({ ...warnedSettings, enabled: true });
+        expect(warnedSnapshot.enabled).toBe(true);
+        expect(warnedSnapshot.models.map((model) => model.slug)).toEqual(["cox/Vendor/Exact"]);
+
+        const recovered = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...warned[instanceId]!,
+            config: {
+              ...warnedConfig,
+              agentModels: { oracle: "cox/Vendor/Exact" },
+            },
+          },
+        });
+        const recoveredConfig = record(recovered[instanceId]!.config);
+        expect(recovered[instanceId]?.enabled).toBe(true);
+        expect(Object.hasOwn(recoveredConfig, "modelServiceWarning")).toBe(false);
+        expect(
+          recovered[instanceId]!.environment?.some(
+            (item) => item.name === "COX_MODEL_SERVICE_WARNING",
+          ),
+        ).toBe(false);
+        const recoveredSettings = decodeOmoSettings(recovered[instanceId]!.config);
+        expect(recoveredSettings.modelServiceWarning).toBeUndefined();
+        expect(recoveredSettings.agentModels).toEqual({ oracle: "cox/Vendor/Exact" });
+        const recoveredSnapshot = yield* initialOmoSnapshot({
+          ...recoveredSettings,
+          enabled: true,
+        });
+        expect(recoveredSnapshot.enabled).toBe(true);
+        expect(recoveredSnapshot.models.map((model) => model.slug)).toEqual(["cox/Vendor/Exact"]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "keeps a bound Oh My Pi provider enabled after a stale model-service warning is removed",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness({ driver: "omp" });
+        const fs = yield* FileSystem.FileSystem;
+        const stale = yield* h.gateway.materialize(yield* h.settings.getSettings, {
+          [instanceId]: {
+            ...h.materialized[instanceId]!,
+            config: {
+              ...record(h.materialized[instanceId]!.config),
+              modelServiceWarning: "stale binding warning",
+            },
+          },
+        });
+        const config = record(stale[instanceId]!.config);
+        expect(stale[instanceId]?.enabled).toBe(true);
+        expect(Object.hasOwn(config, "modelServiceWarning")).toBe(false);
+        expect(OmpDriver.configSchema).toBe(OmpSettings);
+        const decoded = decodeOmpSettings(stale[instanceId]!.config);
+        expect(decoded.modelServiceWarning).toBeUndefined();
+        expect(decoded.provider).toBe("cox");
+        expect(decoded.model).toBe("Vendor/Exact");
+        expect(decoded.customModels).toEqual([
+          expect.objectContaining({ slug: "cox/Vendor/Exact", name: "Exact" }),
+        ]);
+        const snapshot = yield* buildInitialOmpProviderSnapshot({ ...decoded, enabled: true });
+        expect(snapshot.enabled).toBe(true);
+        expect(snapshot.models.map((model) => model.slug)).toEqual(["default", "cox/Vendor/Exact"]);
+        expect(
+          parseYaml(yield* fs.readFileString(String(decoded.agentDir) + "/models.yml")),
+        ).toMatchObject({
+          providers: { cox: { models: [{ id: "Vendor/Exact" }] } },
+        });
+      }).pipe(Effect.scoped),
   );
 
   it.effect("removes Pi Responses compatibility when the service switches protocols", () =>

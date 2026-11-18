@@ -756,13 +756,15 @@ export const make = Effect.gen(function* () {
             });
             additions.serverUrl = "";
           }
+          const withoutWarning = { ...native };
+          delete withoutWarning.modelServiceWarning;
           next[id] = {
             ...instance,
             environment,
             config: {
-              ...native,
+              ...withoutWarning,
               ...additions,
-              ...(warning ? { modelServiceWarning: warning } : { modelServiceWarning: undefined }),
+              ...(warning ? { modelServiceWarning: warning } : {}),
             },
           };
         }).pipe(
