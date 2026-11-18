@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.1.103 — 2026-11-18
+
+- Tell the mobile shell when the page provides its own server switcher, so a
+  current native app can hide the floating Servers pill.
+- Reopen a phone sidebar after Escape finishes closing it, and keep the
+  right-panel tab bar clear of the floating sidebar button.
+- Fail in-flight MCP calls when an ACP turn stops, give up on a disconnect
+  after five seconds, and cancel interrupted response bodies.
+- Keep truncated document text well-formed, preserve Unicode whitespace in CLI
+  arguments, page GitHub diff files at 30, find `agy` on `PATH`, skip settlement
+  of deleted threads, and mark a parent task waiting when its child is.
+- Bound HTML preview, favicon, merge-credit, and signed URL checks. A settings
+  patch that names a secret reference also needs provider-management authority.
+
 ## 0.1.102 — 2026-11-17
 
 - Point the phone smoke test at the header controls after the session bar was
