@@ -126,5 +126,23 @@ class WorkspacePolicyTest {
         assertEquals(12f, clampPillCoordinate(-40f, 12f, 300f), 0.001f)
         assertEquals(300f, clampPillCoordinate(420f, 12f, 300f), 0.001f)
         assertEquals(12f, clampPillCoordinate(50f, 12f, 4f), 0.001f)
+        val mid = fallbackServersPillOrigin(
+            parentWidth = 400,
+            parentHeight = 800,
+            pillWidth = 80,
+            pillHeight = 36,
+            insetLeft = 0,
+            insetTop = 40,
+            insetRight = 0,
+            insetBottom = 24,
+            headerClearance = 56,
+            composerClearance = 112,
+            edgeMargin = 8,
+            dockRight = true,
+            yFraction = 0.5f,
+        )
+        assertEquals(312, mid.x)
+        assertTrue(mid.y > 40 + 56)
+        assertTrue(mid.y + 36 < 800 - 24 - 112)
     }
 }

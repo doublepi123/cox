@@ -52,9 +52,10 @@ window.__coxMobileShell__ = Object.freeze({
 window.dispatchEvent(new Event("cox:mobile-shell-change"));
 ```
 
-Every outbound message from `@t3tools/web` carries `bridgeToken` and matches one of five schemas in `MobileShellBridgeMessage`:
+Every outbound message from `@t3tools/web` carries `bridgeToken` and matches one of the schemas in `MobileShellBridgeMessage`:
 
-- `{ type: "openServerSwitcher", bridgeToken }`: opens the native server switcher (surfaced in `apps/web/src/components/mobile/MobileWorkspaceBar.tsx` when `useMobileShellInfo()` is present).
+- `{ type: "openServerSwitcher", bridgeToken }`: opens the native server switcher. Current web builds send it from the sidebar `MobileServerSwitcher`.
+- `{ type: "setServerSwitcherProvided", bridgeToken, provided }`: tells the native shell that this page has its own server switcher, so the floating pill should hide. `provided: false` restores the mid-screen fallback pill.
 - `{ type: "openConnectionManager", bridgeToken }`: returns to the launcher's full Connection Manager.
 - `{ type: "syncThemeColor", bridgeToken, color }`: syncs the native container background to a validated CSS color (`<= 64` ASCII chars).
 - `{ type: "hapticSelection", bridgeToken }`: triggers native selection haptics on mobile prompt and approval taps.

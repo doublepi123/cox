@@ -1,12 +1,29 @@
 import { ServerIcon } from "lucide-react";
+import { useEffect } from "react";
 
 import { useTranslation } from "../../i18n";
 import {
   openMobileServerSwitcher,
+  setMobileServerSwitcherProvided,
   triggerMobileHapticSelection,
   useMobileShellInfo,
 } from "../../mobile/mobileShellBridge";
 import { SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
+
+export function MobileServerSwitcherCapability() {
+  const shellInfo = useMobileShellInfo();
+  useEffect(() => {
+    if (!shellInfo) return;
+    setMobileServerSwitcherProvided(true);
+    const announce = () => setMobileServerSwitcherProvided(true);
+    window.addEventListener("cox:mobile-shell-change", announce);
+    return () => {
+      window.removeEventListener("cox:mobile-shell-change", announce);
+      setMobileServerSwitcherProvided(false);
+    };
+  }, [shellInfo]);
+  return null;
+}
 
 export function MobileServerSwitcher() {
   const { t } = useTranslation();

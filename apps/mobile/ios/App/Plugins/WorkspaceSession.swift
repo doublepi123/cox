@@ -91,6 +91,7 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         currentNavigation = navigation
+        (presenter as? WorkspaceViewController)?.webSwitcherMounted = false
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,

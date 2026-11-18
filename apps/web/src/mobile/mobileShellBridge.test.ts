@@ -7,6 +7,7 @@ import {
   getMobileShellInfo,
   openMobileConnectionManager,
   openMobileServerSwitcher,
+  setMobileServerSwitcherProvided,
   saveMobileBlobDownload,
   syncMobileThemeColor,
   triggerMobileHapticSelection,
@@ -41,6 +42,7 @@ describe("mobile shell bridge", () => {
 
     expect(getMobileShellInfo()).toEqual(info);
     expect(openMobileServerSwitcher()).toBe(true);
+    expect(setMobileServerSwitcherProvided(true)).toBe(true);
     expect(openMobileConnectionManager()).toBe(true);
     expect(syncMobileThemeColor("#abc")).toBe(true);
     expect(triggerMobileHapticSelection()).toBe(true);
@@ -49,6 +51,7 @@ describe("mobile shell bridge", () => {
     );
     expect(postMessage.mock.calls.map(([payload]) => payload)).toEqual([
       { type: "openServerSwitcher", bridgeToken: "secret-token" },
+      { type: "setServerSwitcherProvided", provided: true, bridgeToken: "secret-token" },
       { type: "openConnectionManager", bridgeToken: "secret-token" },
       { type: "syncThemeColor", color: "#abc", bridgeToken: "secret-token" },
       { type: "hapticSelection", bridgeToken: "secret-token" },

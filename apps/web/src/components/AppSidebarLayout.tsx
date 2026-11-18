@@ -39,6 +39,7 @@ import {
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import { MobileBranchStatus } from "./BranchToolbar";
+import { MobileServerSwitcherCapability } from "./mobile/MobileServerSwitcher";
 import { useIsCompactPhoneViewport } from "../mobile/mobileShellBridge";
 
 import ThreadSidebar from "./Sidebar";
@@ -398,6 +399,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         <MobileBranchStatus />
+        <MobileServerSwitcherCapability />
         {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl />

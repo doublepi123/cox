@@ -166,6 +166,11 @@ export const MobileShellBridgeMessage = Schema.Union([
     bridgeToken: TrimmedNonEmptyString,
   }),
   Schema.Struct({
+    type: Schema.Literal("setServerSwitcherProvided"),
+    bridgeToken: TrimmedNonEmptyString,
+    provided: Schema.Boolean,
+  }),
+  Schema.Struct({
     type: Schema.Literal("syncThemeColor"),
     bridgeToken: TrimmedNonEmptyString,
     color: cssColor,

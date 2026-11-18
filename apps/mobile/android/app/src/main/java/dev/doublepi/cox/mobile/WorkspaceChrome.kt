@@ -49,6 +49,32 @@ internal fun shouldShowFallbackServersPill(
 internal fun clampPillCoordinate(value: Float, minBound: Float, maxBound: Float): Float =
     value.coerceIn(minBound, maxBound.coerceAtLeast(minBound))
 
+internal data class FallbackPillOrigin(val x: Int, val y: Int)
+
+internal fun fallbackServersPillOrigin(
+    parentWidth: Int,
+    parentHeight: Int,
+    pillWidth: Int,
+    pillHeight: Int,
+    insetLeft: Int,
+    insetTop: Int,
+    insetRight: Int,
+    insetBottom: Int,
+    headerClearance: Int,
+    composerClearance: Int,
+    edgeMargin: Int,
+    dockRight: Boolean,
+    yFraction: Float,
+): FallbackPillOrigin {
+    val minX = insetLeft + edgeMargin
+    val maxX = (parentWidth - insetRight - edgeMargin - pillWidth).coerceAtLeast(minX)
+    val minY = insetTop + headerClearance
+    val maxY = (parentHeight - insetBottom - composerClearance - pillHeight).coerceAtLeast(minY)
+    val fraction = yFraction.coerceIn(0f, 1f)
+    val y = minY + ((maxY - minY) * fraction).toInt()
+    return FallbackPillOrigin(x = if (dockRight) maxX else minX, y = y)
+}
+
 internal object WorkspaceChrome {
     fun defaultBackgroundColor(context: Context): Int {
         val night =
@@ -156,8 +182,13 @@ internal object WorkspaceChrome {
         val density = activity.resources.displayMetrics.density
         val padH = (13f * density).toInt()
         val heightPx = (34f * density).toInt()
-        val marginPx = (12f * density).toInt()
+        val marginPx = (8f * density).toInt()
+        val headerClearance = (56f * density).toInt()
+        val composerClearance = (112f * density).toInt()
         val touchSlop = ViewConfiguration.get(activity).scaledTouchSlop
+        val prefs = activity.getSharedPreferences("cox.workspace.serversPill", Context.MODE_PRIVATE)
+        var dockRight = prefs.getBoolean("dockRight", true)
+        var yFraction = prefs.getFloat("yFraction", 0.5f)
         val isZh = Locale.getDefault().language.lowercase(Locale.ROOT).startsWith("zh")
         val pill = TextView(activity).apply {
             text = if (isZh) "服务器" else "Servers"
@@ -182,6 +213,35 @@ internal object WorkspaceChrome {
         var startX = 0f
         var startY = 0f
         var dragging = false
+        fun origin(view: View, right: Boolean, fraction: Float): FallbackPillOrigin? {
+            val parent = view.parent as? View ?: return null
+            if (parent.width <= 0 || view.width <= 0) return null
+            val insets = ViewCompat.getRootWindowInsets(parent)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            return fallbackServersPillOrigin(
+                parentWidth = parent.width,
+                parentHeight = parent.height,
+                pillWidth = view.width,
+                pillHeight = view.height,
+                insetLeft = insets?.left ?: 0,
+                insetTop = insets?.top ?: 0,
+                insetRight = insets?.right ?: 0,
+                insetBottom = insets?.bottom ?: 0,
+                headerClearance = headerClearance,
+                composerClearance = composerClearance,
+                edgeMargin = marginPx,
+                dockRight = right,
+                yFraction = fraction,
+            )
+        }
+        fun place(view: View) {
+            val next = origin(view, dockRight, yFraction) ?: return
+            view.x = next.x.toFloat()
+            view.y = next.y.toFloat()
+        }
+        pill.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            if (!dragging) place(view)
+        }
         pill.setOnTouchListener { view, event ->
             val parent = view.parent as? View ?: return@setOnTouchListener false
             when (event.actionMasked) {
@@ -201,10 +261,12 @@ internal object WorkspaceChrome {
                         view.cancelLongPress()
                     }
                     if (dragging) {
-                        val maxX = (parent.width - view.width - marginPx).toFloat()
-                        val maxY = (parent.height - view.height - marginPx).toFloat()
-                        view.x = clampPillCoordinate(startX + dx, marginPx.toFloat(), maxX)
-                        view.y = clampPillCoordinate(startY + dy, marginPx.toFloat(), maxY)
+                        val minX = origin(view, false, yFraction)?.x?.toFloat() ?: marginPx.toFloat()
+                        val maxX = origin(view, true, yFraction)?.x?.toFloat() ?: minX
+                        val minY = origin(view, dockRight, 0f)?.y?.toFloat() ?: marginPx.toFloat()
+                        val maxY = origin(view, dockRight, 1f)?.y?.toFloat() ?: minY
+                        view.x = clampPillCoordinate(startX + dx, minX, maxX)
+                        view.y = clampPillCoordinate(startY + dy, minY, maxY)
                         true
                     } else {
                         false
@@ -212,10 +274,13 @@ internal object WorkspaceChrome {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragging) {
-                        val maxX = (parent.width - view.width - marginPx).toFloat()
-                        val midX = parent.width / 2f
-                        val targetX = if (view.x + view.width / 2f < midX) marginPx.toFloat() else maxX.coerceAtLeast(marginPx.toFloat())
-                        view.animate().x(targetX).setDuration(140).start()
+                        dockRight = view.x + view.width / 2f >= parent.width / 2f
+                        val minY = origin(view, dockRight, 0f)?.y ?: 0
+                        val maxY = origin(view, dockRight, 1f)?.y ?: minY
+                        val span = (maxY - minY).coerceAtLeast(1)
+                        yFraction = ((view.y - minY) / span).coerceIn(0f, 1f)
+                        prefs.edit().putBoolean("dockRight", dockRight).putFloat("yFraction", yFraction).apply()
+                        place(view)
                         dragging = false
                         true
                     } else {
@@ -225,10 +290,7 @@ internal object WorkspaceChrome {
                 else -> false
             }
         }
-        pill.layoutParams = FrameLayout.LayoutParams(-2, heightPx, Gravity.TOP or Gravity.END).apply {
-            topMargin = (10f * density).toInt()
-            marginEnd = marginPx
-        }
+        pill.layoutParams = FrameLayout.LayoutParams(-2, heightPx, Gravity.TOP or Gravity.START)
         return pill
     }
 }

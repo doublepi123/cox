@@ -6,7 +6,9 @@ final class WorkspaceViewController: UIViewController {
     private let pill = UIButton(type: .system)
     private weak var workspace: WKWebView?
     private var keyboardVisible = false
-    private var positioned = false
+    private var draggingPill = false
+    private let dockKey = "cox.workspace.serversPill.dockRight"
+    private let yKey = "cox.workspace.serversPill.yFraction"
     var webSwitcherMounted = false {
         didSet { updatePillVisibility() }
     }
@@ -26,7 +28,7 @@ final class WorkspaceViewController: UIViewController {
         pill.layer.shadowOpacity = 0.18
         pill.layer.shadowRadius = 6
         pill.layer.shadowOffset = CGSize(width: 0, height: 2)
-        pill.frame = CGRect(x: 12, y: 12, width: 84, height: 36)
+        pill.frame = CGRect(x: 8, y: 8, width: 84, height: 36)
         pill.addTarget(self, action: #selector(openSwitcher), for: .touchUpInside)
         pill.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag)))
         pill.menu = UIMenu(children: [
@@ -79,33 +81,48 @@ final class WorkspaceViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let safe = view.safeAreaLayoutGuide.layoutFrame
-        if !positioned && safe.width > 0 {
-            positioned = true
-            pill.center = CGPoint(x: safe.maxX - 54, y: safe.minY + 28)
-        }
-        clampPill()
+        guard !draggingPill else { return }
+        placePill(dockRight: UserDefaults.standard.object(forKey: dockKey) as? Bool ?? true,
+                  fraction: UserDefaults.standard.object(forKey: yKey) as? Double ?? 0.5)
     }
 
-    private func clampPill() {
+    private func band() -> (minX: CGFloat, maxX: CGFloat, minY: CGFloat, maxY: CGFloat)? {
         let safe = view.safeAreaLayoutGuide.layoutFrame
-        guard safe.width > 0, safe.height > 0 else { return }
-        pill.center = CGPoint(
-            x: min(max(pill.center.x, safe.minX + 46), safe.maxX - 46),
-            y: min(max(pill.center.y, safe.minY + 22), safe.maxY - 22)
-        )
+        guard safe.width > 0, safe.height > 0, pill.bounds.width > 0 else { return nil }
+        let margin: CGFloat = 8
+        let minX = safe.minX + margin
+        let maxX = max(minX, safe.maxX - margin - pill.bounds.width)
+        let minY = safe.minY + 56
+        let maxY = max(minY, safe.maxY - 112 - pill.bounds.height)
+        return (minX, maxX, minY, maxY)
+    }
+
+    private func placePill(dockRight: Bool, fraction: Double) {
+        guard let band else { return }
+        let y = band.minY + (band.maxY - band.minY) * CGFloat(min(max(fraction, 0), 1))
+        pill.frame.origin = CGPoint(x: dockRight ? band.maxX : band.minX, y: y)
     }
 
     @objc private func openSwitcher() { onLauncher?("openServerSwitcher") }
 
     @objc private func drag(_ gesture: UIPanGestureRecognizer) {
+        guard let band else { return }
+        if gesture.state == .began || gesture.state == .changed { draggingPill = true }
         let translation = gesture.translation(in: view)
-        pill.center = CGPoint(x: pill.center.x + translation.x, y: pill.center.y + translation.y)
+        var origin = pill.frame.origin
+        origin.x = min(max(origin.x + translation.x, band.minX), band.maxX)
+        origin.y = min(max(origin.y + translation.y, band.minY), band.maxY)
+        pill.frame.origin = origin
         gesture.setTranslation(.zero, in: view)
-        clampPill()
-        if gesture.state == .ended {
+        if gesture.state == .ended || gesture.state == .cancelled {
             let safe = view.safeAreaLayoutGuide.layoutFrame
-            pill.center.x = pill.center.x < safe.midX ? safe.minX + 46 : safe.maxX - 46
+            let dockRight = pill.center.x >= safe.midX
+            let span = max(band.maxY - band.minY, 1)
+            let fraction = Double((pill.frame.minY - band.minY) / span)
+            UserDefaults.standard.set(dockRight, forKey: dockKey)
+            UserDefaults.standard.set(min(max(fraction, 0), 1), forKey: yKey)
+            placePill(dockRight: dockRight, fraction: fraction)
+            draggingPill = false
         }
     }
 }

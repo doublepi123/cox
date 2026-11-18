@@ -124,6 +124,7 @@ export async function installNativeWorkspace(launcher, browser, watchPage) {
                 return;
               case "hapticSelection":
               case "syncThemeColor":
+              case "setServerSwitcherProvided":
                 return;
               default:
                 throw new Error(`Unexpected mobile shell message: ${message.type}`);

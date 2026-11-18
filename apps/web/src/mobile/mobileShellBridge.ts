@@ -93,6 +93,10 @@ export function openMobileServerSwitcher(): boolean {
   return send({ type: "openServerSwitcher" });
 }
 
+export function setMobileServerSwitcherProvided(provided: boolean): boolean {
+  return send({ type: "setServerSwitcherProvided", provided });
+}
+
 export function openMobileConnectionManager(): boolean {
   return send({ type: "openConnectionManager" });
 }

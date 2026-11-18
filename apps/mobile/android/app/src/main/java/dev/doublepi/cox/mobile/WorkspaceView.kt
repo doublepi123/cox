@@ -110,7 +110,6 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
             """
             (() => {
               if (window !== window.top || location.origin !== ${JSONObject.quote(identity.origin)}) return null;
-              const switcher = Boolean(document.querySelector("[data-mobile-server-switcher]"));
               const probe = (raw) => {
                 if (!raw || raw === "transparent" || raw === "rgba(0, 0, 0, 0)") return null;
                 const c = document.createElement("canvas");
@@ -127,7 +126,7 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
               const bodyBg = document.body ? getComputedStyle(document.body).backgroundColor : null;
               const rootBg = document.documentElement ? getComputedStyle(document.documentElement).backgroundColor : null;
               const hex = probe(bodyBg) || probe(rootBg) || probe(meta);
-              return JSON.stringify({ hex, switcher });
+              return JSON.stringify({ hex });
             })()
             """.trimIndent(),
         ) { rawResult ->
@@ -137,11 +136,6 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
                 val obj = JSONObject(decoded)
                 val hex = obj.optString("hex", "")
                 parseHexColor(hex)?.let(::applyBackgroundColor)
-                val mounted = obj.optBoolean("switcher", false)
-                if (webSwitcherMounted != mounted) {
-                    webSwitcherMounted = mounted
-                    host.onWebSwitcherChanged(identity.profileName, mounted)
-                }
             } catch (_: Exception) {
             }
         }
@@ -153,6 +147,14 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
         if (!navigation.accepts(origin, mainFrame, message.optString("bridgeToken"))) return
         when (message.optString("type")) {
             "openServerSwitcher", "openConnectionManager" -> host.launchEvent(message.getString("type"))
+            "setServerSwitcherProvided" -> {
+                if (!message.has("provided")) return
+                val provided = message.optBoolean("provided")
+                if (webSwitcherMounted != provided) {
+                    webSwitcherMounted = provided
+                    host.onWebSwitcherChanged(identity.profileName, provided)
+                }
+            }
             "hapticSelection" -> webView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             "syncThemeColor" -> {
                 val rawColor = message.optString("color")
@@ -221,7 +223,7 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
                   attributes: true,
                   subtree: true,
                   childList: true,
-                  attributeFilter: ["class", "style", "data-theme-id", "content", "data-mobile-server-switcher"]
+                  attributeFilter: ["class", "style", "data-theme-id", "content"]
                 });
               }
             })();

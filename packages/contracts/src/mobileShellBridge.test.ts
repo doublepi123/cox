@@ -10,6 +10,22 @@ import {
 const decodeMessage = Schema.decodeUnknownOption(MobileShellBridgeMessage);
 const decodeInfo = Schema.decodeUnknownOption(MobileShellInfo);
 
+it("accepts a tokenized server-switcher capability and rejects a missing flag", () => {
+  assert.equal(
+    decodeMessage({ type: "setServerSwitcherProvided", bridgeToken: "token", provided: true })._tag,
+    "Some",
+  );
+  assert.equal(
+    decodeMessage({ type: "setServerSwitcherProvided", bridgeToken: "token", provided: false })
+      ._tag,
+    "Some",
+  );
+  assert.equal(
+    decodeMessage({ type: "setServerSwitcherProvided", bridgeToken: "token" })._tag,
+    "None",
+  );
+});
+
 it("requires a non-empty token on every bridge message", () => {
   const valid = decodeMessage({ type: "hapticSelection", bridgeToken: "token" });
   const missing = decodeMessage({ type: "hapticSelection" });

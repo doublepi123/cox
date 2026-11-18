@@ -40,7 +40,7 @@ extension WorkspaceSession {
               attributes: true,
               subtree: true,
               childList: true,
-              attributeFilter: ["class", "style", "data-theme-id", "content", "data-mobile-server-switcher"]
+              attributeFilter: ["class", "style", "data-theme-id", "content"]
             });
           }
         })();
@@ -83,6 +83,8 @@ extension WorkspaceSession {
         switch request {
         case .openServerSwitcher:
             onLauncher?("openServerSwitcher")
+        case .setServerSwitcherProvided(let provided):
+            (presenter as? WorkspaceViewController)?.webSwitcherMounted = provided
         case .openConnectionManager:
             onLauncher?("openConnectionManager")
         case .hapticSelection:
@@ -109,10 +111,6 @@ extension WorkspaceSession {
                     red: rgba[0] / 255, green: rgba[1] / 255,
                     blue: rgba[2] / 255, alpha: rgba[3] / 255
                 )
-                self.webView.evaluateJavaScript("Boolean(document.querySelector('[data-mobile-server-switcher]'))") { [weak self] mounted, _ in
-                    guard let self, self.isActive else { return }
-                    (self.presenter as? WorkspaceViewController)?.webSwitcherMounted = (mounted as? Bool) == true
-                }
             }
         case .saveBlobDownload(let name, let data):
             exports.presenter = presenter
@@ -123,6 +121,7 @@ extension WorkspaceSession {
 
 enum WorkspaceShellRequest {
     case openServerSwitcher, openConnectionManager, hapticSelection
+    case setServerSwitcherProvided(Bool)
     case syncThemeColor(String)
     case saveBlobDownload(String, Data)
 
@@ -130,6 +129,9 @@ enum WorkspaceShellRequest {
         guard let type = payload["type"] as? String else { return nil }
         switch type {
         case "openServerSwitcher": self = .openServerSwitcher
+        case "setServerSwitcherProvided":
+            guard let provided = payload["provided"] as? Bool else { return nil }
+            self = .setServerSwitcherProvided(provided)
         case "openConnectionManager": self = .openConnectionManager
         case "hapticSelection": self = .hapticSelection
         case "syncThemeColor":

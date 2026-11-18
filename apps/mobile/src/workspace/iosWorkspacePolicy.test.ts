@@ -198,6 +198,7 @@ describe("iOS restricted message boundary", () => {
   });
   it.each([
     { type: "openServerSwitcher" },
+    { type: "setServerSwitcherProvided", provided: true },
     { type: "openConnectionManager" },
     { type: "hapticSelection" },
     { type: "syncThemeColor", color: "#123456" },
