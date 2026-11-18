@@ -2,14 +2,22 @@
 
 ## Unreleased
 
+## 0.2.2 — 2026-11-18
+
 - Keep floating header buttons below the status bar. Sidebar and panel
   controls follow the top safe-area inset on the new-thread page and every
   other route.
 - Show only the model name on the composer model pill. The connection name
   stays in the model picker, where it distinguishes models that share a name.
-- Match Cox Mobile's app icon and launch image to the web and desktop mark.
-  iOS, Android, and the splash are generated from `cox.svg` instead of the
-  Capacitor placeholder.
+- Keep the mobile web page at the same scale when the keyboard opens and
+  closes. The viewport scale is locked, and the composer field is at least
+  16px so the browser does not zoom the whole UI on focus.
+- Queue an image while a turn is still running. A screenshot pasted onto the
+  timeline joins the composer, the queued row shows it, and the image is sent
+  with that message when the queue starts.
+- Keep the mobile composer at full size after the keyboard closes. The
+  resting strip was dropping the attach button and shortening the placeholder.
+- Improve contrast for mobile drawer and settings text.
 
 ## 0.2.1 — 2026-11-18
 
@@ -19,14 +27,6 @@
   when choosing a default model, an OMO role model, or a conversation model
   from several sources. Reset the default to the first available model if
   its source or model is removed from the binding.
-- Keep the mobile web page at the same scale when the keyboard opens and
-  closes. The viewport scale is locked, and the composer field is at least
-  16px so the browser does not zoom the whole UI on focus.
-- Queue an image while a turn is still running. A screenshot pasted onto the
-  timeline joins the composer, the queued row shows it, and the image is sent
-  with that message when the queue starts.
-- Keep the mobile composer at full size after the keyboard closes. The
-  resting strip was dropping the attach button and shortening the placeholder.
 - Extend the mobile workspace to the physical bottom of the screen. The
   sidebar and chat backgrounds fill the home-indicator area, and only their
   content is inset by the safe area.
