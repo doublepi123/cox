@@ -103,11 +103,14 @@ export function App({ store }: AppProps) {
   };
 
   const connect = async (id: string) => {
+    const started = performance.now();
+    performance.mark("cox-mobile-connect:start");
     setBusyId(id);
     setError(null);
     setNotice(null);
     try {
       await openSavedProfile(id);
+      performance.measure("cox-mobile-connect", { start: started });
     } catch (caught) {
       setError(formatConnectionError(caught, t));
     } finally {

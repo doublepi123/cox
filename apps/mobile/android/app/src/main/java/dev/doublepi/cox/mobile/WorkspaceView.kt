@@ -33,6 +33,7 @@ internal interface WorkspaceHost {
     fun openExternal(url: String)
     fun onWorkspaceChromeChanged(profileName: String, backgroundColor: Int)
     fun onWebSwitcherChanged(profileName: String, mounted: Boolean)
+    fun onContentReady(profileName: String)
 }
 
 internal class WorkspaceView(private val host: WorkspaceHost, val options: WorkspaceOptions) {
@@ -102,6 +103,12 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
         currentBackgroundColor = parsed
         webView.setBackgroundColor(parsed)
         host.onWorkspaceChromeChanged(identity.profileName, parsed)
+    }
+
+    fun prepareBackdrop(color: Int) {
+        if (webView.progress == 100 && !webView.url.isNullOrEmpty()) return
+        currentBackgroundColor = color
+        webView.setBackgroundColor(color)
     }
 
     fun refreshChromeProbe() {
@@ -307,7 +314,18 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
             }
         }
 
-        override fun onPageCommitVisible(view: WebView, url: String) { inject(url) }
+        override fun onPageCommitVisible(view: WebView, url: String) {
+            inject(url)
+            host.onContentReady(identity.profileName)
+        }
+
+        override fun onReceivedError(
+            view: WebView,
+            request: WebResourceRequest,
+            error: android.webkit.WebResourceError,
+        ) {
+            if (request.isForMainFrame) host.onContentReady(identity.profileName)
+        }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
             remember(url)

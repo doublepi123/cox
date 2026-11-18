@@ -3,6 +3,7 @@ package dev.doublepi.cox.mobile
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -66,6 +67,23 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         override fun onWebSwitcherChanged(profileName: String, mounted: Boolean) {
             if (activeName != profileName || !mounted) return
         }
+        override fun onContentReady(profileName: String) {
+            if (activeName != profileName) return
+            revealOverlay()
+        }
+    }
+
+    private fun motionScale(): Float =
+        Settings.Global.getFloat(activity.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+
+    private fun revealOverlay() {
+        val root = overlay ?: return
+        if (root.alpha >= 1f) return
+        if (motionScale() == 0f) {
+            root.alpha = 1f
+            return
+        }
+        root.animate().alpha(1f).setDuration(180).start()
     }
 
     internal fun restoreLauncherChrome() {
@@ -181,8 +199,10 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         dismiss()
         activeWorkspace = workspace
         activeName = workspace.identity.profileName
-        val bg = workspace.currentBackgroundColor
-        val root = container(bg)
+        val bg = launcherColor ?: WorkspaceChrome.defaultBackgroundColor(activity)
+        workspace.prepareBackdrop(bg)
+        val painted = workspace.webView.progress == 100 && !workspace.webView.url.isNullOrEmpty()
+        val root = container(bg, hiddenUntilPaint = !painted)
         (workspace.webView.parent as? ViewGroup)?.removeView(workspace.webView)
         root.addView(workspace.webView, FrameLayout.LayoutParams(-1, -1))
         WorkspaceChrome.applySystemBars(activity, bg)
@@ -217,11 +237,12 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         WorkspaceChrome.applySystemBars(activity, bg)
     }
 
-    private fun container(backgroundColor: Int): FrameLayout {
+    private fun container(backgroundColor: Int, hiddenUntilPaint: Boolean = false): FrameLayout {
         val root = FrameLayout(activity).apply {
             setBackgroundColor(backgroundColor)
             fitsSystemWindows = false
             isClickable = true
+            if (hiddenUntilPaint && motionScale() != 0f) alpha = 0f
         }
         WorkspaceChrome.installChildWebViewInsetsShield(root)
         activity.getSharedPreferences("cox.workspace.serversPill", Context.MODE_PRIVATE)

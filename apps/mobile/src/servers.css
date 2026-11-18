@@ -115,6 +115,23 @@
 }
 .connect-button {
   grid-column: 1 / -1;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+.connect-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.connect-button[data-connecting="true"] {
+  opacity: 0.72;
+}
+@media (prefers-reduced-motion: reduce) {
+  .connect-button {
+    transition: none;
+  }
+  .connect-button:active:not(:disabled) {
+    transform: none;
+  }
 }
 .empty-state {
   display: grid;

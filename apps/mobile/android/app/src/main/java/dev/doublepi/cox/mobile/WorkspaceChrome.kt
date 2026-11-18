@@ -51,7 +51,7 @@ internal object WorkspaceChrome {
         val night =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
-        return if (night) Color.parseColor("#111215") else Color.parseColor("#F5F7F3")
+        return if (night) Color.parseColor("#070908") else Color.parseColor("#F5F7F3")
     }
 
     fun applySystemBars(activity: Activity, backgroundColor: Int) {

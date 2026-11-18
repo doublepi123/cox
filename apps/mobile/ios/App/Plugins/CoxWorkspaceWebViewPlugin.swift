@@ -155,9 +155,10 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
         else {
             controller = WorkspaceViewController()
             controller.onLauncher = { [weak self] event in self?.returnToLauncher(event) }
-            controller.modalPresentationStyle = .fullScreen
+            controller.modalPresentationStyle = .overFullScreen
+            controller.modalTransitionStyle = .crossDissolve
             host = controller
-            bridge?.viewController?.present(controller, animated: true)
+            bridge?.viewController?.present(controller, animated: !UIAccessibility.isReduceMotionEnabled)
         }
         session.presenter = controller
         session.isActive = true
@@ -177,7 +178,7 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
     private func returnToLauncher(_ event: String) {
         for session in sessions.values { session.isActive = false }
         active = nil
-        host?.dismiss(animated: true)
+        host?.dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
         host = nil
         notifyListeners(event, data: [:])
     }

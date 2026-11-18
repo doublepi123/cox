@@ -136,10 +136,12 @@ export function ServerList(props: ServerListProps) {
               <button
                 type="button"
                 className="button button-secondary connect-button"
+                data-connecting={props.busyId === profile.id ? "true" : undefined}
+                aria-busy={props.busyId === profile.id}
                 disabled={props.busyId !== null}
                 onClick={() => props.onConnect(profile.id)}
               >
-                {t("connect")}
+                {props.busyId === profile.id ? t("connectingServer") : t("connect")}
               </button>
               <button
                 type="button"

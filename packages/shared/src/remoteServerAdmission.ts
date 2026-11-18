@@ -169,23 +169,34 @@ export async function inspectRemoteServer(
       throw new RemoteAdmissionError("invalid_response", "Remote server returned invalid JSON.");
     }
   };
-  const descriptor = await readJson("/.well-known/t3/environment");
+  const descriptorRequest = readJson("/.well-known/t3/environment");
+  const sessionRequest = readJson("/api/auth/session").then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const descriptor = await descriptorRequest;
   if (
     !isRecord(descriptor) ||
     !nonEmptyString(descriptor.environmentId) ||
     !nonEmptyString(descriptor.label) ||
     !nonEmptyString(descriptor.serverVersion)
-  )
+  ) {
+    await sessionRequest;
     throw new RemoteAdmissionError(
       "invalid_response",
       "The server did not return a valid Cox environment descriptor.",
     );
+  }
   if (
     options.pinnedEnvironmentId !== undefined &&
     descriptor.environmentId !== options.pinnedEnvironmentId
-  )
+  ) {
+    await sessionRequest;
     throw new RemoteEnvironmentMismatchError(options.pinnedEnvironmentId, descriptor.environmentId);
-  const session = await readJson("/api/auth/session");
+  }
+  const sessionResult = await sessionRequest;
+  if (!sessionResult.ok) throw sessionResult.error;
+  const session = sessionResult.value;
   const auth = isRecord(session) && isRecord(session.auth) ? session.auth : undefined;
   const hostname = new URL(origin).hostname;
   const loopback =

@@ -26,7 +26,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         super.viewDidLoad()
         UserDefaults.standard.removeObject(forKey: "cox.workspace.serversPill.dockRight")
         UserDefaults.standard.removeObject(forKey: "cox.workspace.serversPill.yFraction")
-        view.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+        view.backgroundColor = Self.canvasColor(for: traitCollection)
         let isZh = Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") == true
         var configuration = UIButton.Configuration.plain()
         configuration.title = isZh ? "返回" : "Back"
@@ -60,6 +60,11 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         view.insertSubview(webView, belowSubview: fallback)
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.addGestureRecognizer(edgeBack)
+        webView.isOpaque = false
+        webView.backgroundColor = Self.canvasColor(for: traitCollection)
+        webView.scrollView.backgroundColor = webView.backgroundColor
+        let painted = webView.url != nil && !webView.isLoading
+        webView.alpha = painted ? 1 : 0
         let topSafe = webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         let topFallback = webView.topAnchor.constraint(equalTo: fallback.bottomAnchor, constant: 6)
         webTopToSafe = topSafe
@@ -84,6 +89,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     }
 
     func noteMainFrameSettled() {
+        revealWorkspaceContent()
         guard !pageFailed else { return }
         scheduleFallbackReveal()
     }
@@ -92,7 +98,25 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         revealItem?.cancel()
         pageFailed = true
         revealFallback = true
+        revealWorkspaceContent()
         updateFallback()
+    }
+
+    private func revealWorkspaceContent() {
+        guard let workspace, workspace.alpha < 1 else { return }
+        if UIAccessibility.isReduceMotionEnabled {
+            workspace.alpha = 1
+            return
+        }
+        UIView.animate(withDuration: 0.18, delay: 0, options: .curveEaseOut) {
+            workspace.alpha = 1
+        }
+    }
+
+    private static func canvasColor(for traits: UITraitCollection) -> UIColor {
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 7 / 255, green: 9 / 255, blue: 8 / 255, alpha: 1)
+            : UIColor(red: 245 / 255, green: 247 / 255, blue: 243 / 255, alpha: 1)
     }
 
     private func scheduleFallbackReveal() {

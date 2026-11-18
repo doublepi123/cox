@@ -1,4 +1,8 @@
+import { useEffect, useState } from "react";
+
 import { requestApplicationReconnect } from "../../connection/platform";
+
+const SHOW_AFTER_MS = 400;
 
 export function MobileConnectionBanner({
   reconnecting,
@@ -7,7 +11,17 @@ export function MobileConnectionBanner({
   readonly reconnecting: boolean;
   readonly syncing: boolean;
 }) {
-  if (!reconnecting && !syncing) return null;
+  const active = reconnecting || syncing;
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setVisible(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setVisible(true), SHOW_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+  if (!visible) return null;
   return (
     <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center px-2 sm:hidden">
       <div
