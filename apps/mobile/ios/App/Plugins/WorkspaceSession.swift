@@ -3,6 +3,27 @@ import Security
 import UIKit
 import WebKit
 
+enum WorkspaceViewportLock {
+    static let source = """
+    (function(){
+      var content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";
+      var apply = function() {
+        var head = document.head || document.documentElement;
+        if (!head) return;
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) {
+          meta = document.createElement("meta");
+          meta.setAttribute("name", "viewport");
+          head.insertBefore(meta, head.firstChild);
+        }
+        if (meta.getAttribute("content") !== content) meta.setAttribute("content", content);
+      };
+      apply();
+      document.addEventListener("DOMContentLoaded", apply);
+    })();
+    """
+}
+
 final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     let profile: WorkspaceProfile
     let webView: WKWebView
@@ -25,7 +46,19 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.isInspectable = false
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.bouncesZoom = false
         exports.profile = profile
+        installViewportLock()
+    }
+
+    func installViewportLock() {
+        webView.configuration.userContentController.addUserScript(WKUserScript(
+            source: WorkspaceViewportLock.source,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
     }
 
     func detach(gateway: Bool) {
@@ -37,6 +70,7 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "coxMobileShell")
         controller.removeAllUserScripts()
+        installViewportLock()
         webView.evaluateJavaScript(
             "delete window.__coxMobileShell__; window.dispatchEvent(new Event('cox:mobile-shell-change'));",
             completionHandler: nil

@@ -49,6 +49,7 @@ extension WorkspaceSession {
         controller.removeScriptMessageHandler(forName: "coxMobileShell")
         controller.add(WeakWorkspaceHandler(self), name: "coxMobileShell")
         controller.removeAllUserScripts()
+        installViewportLock()
         controller.addUserScript(WKUserScript(
             source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true
         ))

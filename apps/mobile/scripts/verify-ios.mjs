@@ -118,6 +118,8 @@ assert.match(
 assert.match(sources.get("WorkspaceViewController.swift"), /UIScreenEdgePanGestureRecognizer/);
 assert.match(sources.get("WorkspaceViewController.swift"), /openConnectionManager/);
 assert.match(sources.get("WorkspaceViewController.swift"), /webSwitcherMounted/);
+assert.match(sources.get("WorkspaceSession.swift"), /maximum-scale=1/);
+assert.match(sources.get("WorkspaceSession.swift"), /maximumZoomScale = 1/);
 assert.match(
   sources.get("CoxLauncherViewController.swift"),
   /registerPluginInstance\(CoxWorkspaceWebViewPlugin\(\)\)/,

@@ -35,6 +35,34 @@ internal fun isLightSurfaceColor(color: Int): Boolean {
     return luminance >= 145.0
 }
 
+internal const val WORKSPACE_VIEWPORT_LOCK_SCRIPT = """
+(function(){
+  var content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";
+  var apply = function() {
+    var head = document.head || document.documentElement;
+    if (!head) return;
+    var meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute("name", "viewport");
+      head.insertBefore(meta, head.firstChild);
+    }
+    if (meta.getAttribute("content") !== content) meta.setAttribute("content", content);
+  };
+  apply();
+  document.addEventListener("DOMContentLoaded", apply);
+})();
+"""
+
+internal fun lockWorkspaceViewport(settings: android.webkit.WebSettings) {
+    settings.useWideViewPort = true
+    settings.loadWithOverviewMode = false
+    settings.textZoom = 100
+    settings.setSupportZoom(false)
+    settings.builtInZoomControls = false
+    settings.displayZoomControls = false
+}
+
 internal enum class WorkspaceSystemBack { History, ConnectionManager }
 
 internal fun workspaceSystemBack(canGoBack: Boolean): WorkspaceSystemBack =

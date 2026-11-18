@@ -13,6 +13,7 @@ import android.webkit.WebViewClient
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.security.SecureRandom
@@ -62,6 +63,14 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
                 allowContentAccess = false
                 setSupportMultipleWindows(false)
                 javaScriptCanOpenWindowsAutomatically = false
+                lockWorkspaceViewport(this)
+            }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    WORKSPACE_VIEWPORT_LOCK_SCRIPT,
+                    setOf("*"),
+                )
             }
             profile.cookieManager.setAcceptThirdPartyCookies(webView, false)
             webView.webViewClient = Client()

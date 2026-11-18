@@ -10,6 +10,9 @@
   when choosing a default model, an OMO role model, or a conversation model
   from several sources. Reset the default to the first available model if
   its source or model is removed from the binding.
+- Keep the page scale steady when the Android or iOS keyboard opens and
+  closes. The workspace locks the viewport scale, and the phone composer
+  stays at 16px so the system does not zoom the whole UI.
 - Keep the mobile composer at full size after the keyboard closes. The
   resting strip was dropping the attach button and shortening the placeholder.
 - Extend the mobile workspace to the physical bottom of the screen. The
