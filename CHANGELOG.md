@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep floating header buttons below the status bar. Sidebar and panel
+  controls follow the top safe-area inset on the new-thread page and every
+  other route.
 - Show only the model name on the composer model pill. The connection name
   stays in the model picker, where it distinguishes models that share a name.
 - Match Cox Mobile's app icon and launch image to the web and desktop mark.

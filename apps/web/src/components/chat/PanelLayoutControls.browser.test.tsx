@@ -5,7 +5,7 @@ import "~/index.css";
 
 import { render } from "../../../test/render";
 import { PopoverCreateHandle } from "../ui/popover";
-import { PanelLayoutControls } from "./PanelLayoutControls";
+import { PanelLayoutControls, WorkspaceTitlebarControls } from "./PanelLayoutControls";
 
 const threadPanelPopoverHandle = PopoverCreateHandle();
 
@@ -32,6 +32,36 @@ function Controls() {
 }
 
 describe("panel layout controls", () => {
+  it("keeps floating header controls below the status bar", async () => {
+    document.documentElement.style.setProperty("--cox-safe-top", "59px");
+    try {
+      await using screen = await render(
+        <>
+          <div
+            data-sidebar-control
+            className="fixed top-[var(--workspace-fixed-controls-top)] h-[var(--workspace-topbar-height)]"
+          />
+          <WorkspaceTitlebarControls
+            showMaximizeControl={false}
+            rightPanelOpen={false}
+            animationsActive={false}
+            maximized={false}
+            onToggleMaximized={vi.fn()}
+          >
+            <button type="button">Panels</button>
+          </WorkspaceTitlebarControls>
+        </>,
+        { router: false },
+      );
+      for (const selector of ["[data-workspace-titlebar-controls]", "[data-sidebar-control]"]) {
+        const bar = screen.container.querySelector(selector);
+        expect(bar?.getBoundingClientRect().top).toBeGreaterThanOrEqual(59);
+      }
+    } finally {
+      document.documentElement.style.removeProperty("--cox-safe-top");
+    }
+  });
+
   it.each([320, 390, 1280])("keeps controls separate and reachable at %ipx", async (width) => {
     await page.viewport(width, 740);
     await using screen = await render(<Controls />, { router: false });
