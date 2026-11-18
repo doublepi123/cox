@@ -172,6 +172,35 @@ jobs:
             await rm(temporary, { recursive: true, force: true });
           }
           JS
+      - name: Wait until the published Cox tarball can be downloaded
+        if: matrix.flavor == 'bundled'
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import { setTimeout } from "node:timers/promises";
+          const version = process.env.COX_DESKTOP_BACKEND_VERSION ?? "";
+          if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(version)) {
+            throw new Error("Desktop packaging needs a stable Cox version before downloading its tarball.");
+          }
+          const url = "https://registry.npmjs.org/@doublepi123/cox/-/cox-" + version + ".tgz";
+          for (let attempt = 0; attempt < 24; attempt++) {
+            const response = await fetch(url, {
+              redirect: "error",
+              headers: { "Cache-Control": "no-cache" },
+              signal: AbortSignal.timeout(120_000),
+            });
+            await response.body?.cancel().catch(() => undefined);
+            if (response.ok) {
+              console.log("Cox " + version + " tarball is downloadable.");
+              break;
+            }
+            if (response.status !== 404 || attempt === 23) {
+              throw new Error("Cox update download failed: HTTP " + response.status);
+            }
+            console.warn("Waiting for the Cox tarball (attempt " + (attempt + 1) + "/24): HTTP " + response.status);
+            await setTimeout(30_000);
+          }
+          JS
       - name: Prepare Apple notarization key
         if: runner.os == 'macOS'
         shell: bash

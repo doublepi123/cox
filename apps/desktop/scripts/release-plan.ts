@@ -38,10 +38,28 @@ async function listGithubReleases(api: (path: string) => Promise<unknown>): Prom
   return releases;
 }
 
+export async function confirmPublishedTarball(
+  url: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  if (!/^https:\/\/registry\.npmjs\.org\/@doublepi123\/cox\/-\/cox-\d+\.\d+\.\d+\.tgz$/.test(url))
+    throw new Error("The Cox tarball must come from the official registry.");
+  const response = await fetcher(url, {
+    redirect: "error",
+    headers: { "Cache-Control": "no-cache" },
+    signal: AbortSignal.timeout(120_000),
+  });
+  await response.body?.cancel().catch(() => undefined);
+  if (!response.ok) throw new Error("Cox update download failed: HTTP " + response.status);
+}
+
 export async function waitForPublishedBackend(
-  fetchRelease: (
-    version: string,
-  ) => Promise<{ version: string; integrity: string; compatible: boolean }>,
+  fetchRelease: (version: string) => Promise<{
+    version: string;
+    integrity: string;
+    compatible: boolean;
+    url?: string;
+  }>,
   options: {
     readonly minimum?: string;
     readonly version: string;
@@ -49,6 +67,7 @@ export async function waitForPublishedBackend(
     readonly delayMs?: number;
     readonly sleep?: (ms: number) => Promise<void>;
     readonly log?: (message: string) => void;
+    readonly confirmTarball?: (url: string) => Promise<void>;
   },
 ): Promise<{ version: string; integrity: string }> {
   const requested = isBackendVersion(options.minimum) ? options.minimum : options.version;
@@ -64,6 +83,10 @@ export async function waitForPublishedBackend(
         throw new Error("The latest Cox requires a newer compatible desktop client.");
       if (options.minimum && compareBackendVersions(release.version, options.minimum) < 0)
         throw new Error("npm is still propagating the new Cox version.");
+      if (options.confirmTarball) {
+        if (!release.url) throw new Error("The Cox update does not identify a tarball.");
+        await options.confirmTarball(release.url);
+      }
       return { version: release.version, integrity: release.integrity };
     } catch (error) {
       failure = error;
@@ -238,9 +261,24 @@ async function main() {
     },
     latest: (nodeVersion, minimum, version = "latest") =>
       waitForPublishedBackend(
-        (requested) =>
-          fetchBackendRelease(nodeVersion, AbortSignal.timeout(30_000), fetch, requested),
-        minimum === undefined ? { version } : { minimum, version },
+        async (requested) => {
+          const release = await fetchBackendRelease(
+            nodeVersion,
+            AbortSignal.timeout(30_000),
+            fetch,
+            requested,
+          );
+          return {
+            version: release.version,
+            integrity: release.integrity,
+            compatible: release.compatible,
+            url: release.url,
+          };
+        },
+        {
+          ...(minimum === undefined ? { version } : { minimum, version }),
+          confirmTarball: confirmPublishedTarball,
+        },
       ),
   });
   for (const [key, value] of Object.entries(plan))

@@ -202,6 +202,36 @@ describe("npm packument wait for combination releases", () => {
     expect(slept).toEqual([15, 15]);
     expect(logs).toHaveLength(2);
   });
+  it("retries until the published tarball itself can be downloaded", async () => {
+    const slept: number[] = [];
+    const confirmTarball = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Cox update download failed: HTTP 404"))
+      .mockResolvedValueOnce(undefined);
+    await expect(
+      waitForPublishedBackend(
+        async () => ({
+          version: "0.1.105",
+          integrity: "verified-fixture",
+          compatible: true,
+          url: "https://registry.npmjs.org/@doublepi123/cox/-/cox-0.1.105.tgz",
+        }),
+        {
+          minimum: "0.1.105",
+          version: "0.1.105",
+          attempts: 3,
+          delayMs: 15,
+          sleep: async (ms) => {
+            slept.push(ms);
+          },
+          log: () => {},
+          confirmTarball,
+        },
+      ),
+    ).resolves.toEqual({ version: "0.1.105", integrity: "verified-fixture" });
+    expect(confirmTarball).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([15]);
+  });
   it("does not retry an incompatible Cox release", async () => {
     const slept: number[] = [];
     const fetchRelease = vi.fn(async () => ({
