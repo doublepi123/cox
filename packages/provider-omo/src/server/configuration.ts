@@ -62,6 +62,11 @@ export function omoEnvironment(
 }
 
 export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
+  return buildOmoTaskConfiguration(settings, stateDir).config;
+}
+
+function buildOmoTaskConfiguration(settings: OmoSettings, stateDir: string) {
+  const ignoredReasoning: Array<string> = [];
   const selected =
     settings.provider &&
     settings.model &&
@@ -78,6 +83,7 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
     return result;
   };
   const assign = (
+    kind: "agent" | "category",
     names: ReadonlyArray<string>,
     overrides: Readonly<Record<string, string>>,
     reasoning: Readonly<Record<string, string>>,
@@ -89,7 +95,7 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
             "OMO role names must start with a letter and use letters, numbers, underscores or hyphens; reserved names are not allowed.",
           );
         const model = resolve(overrides[name]);
-        const level = reasoning[name];
+        let level = reasoning[name];
         if (level && !isOmoReasoningLevel(level))
           throw new Error("Unsupported OMO thinking strength.");
         if (level && settings.modelServiceManaged) {
@@ -99,10 +105,14 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
           const levels = omoModelReasoningLevels({
             capabilities: typeof metadata === "object" ? (metadata.capabilities ?? null) : null,
           });
-          if (!levels.some((candidate) => candidate === level))
-            throw new Error(
-              `OMO thinking strength '${level}' is not supported by model '${model}'.`,
-            );
+          if (!levels.some((candidate) => candidate === level)) {
+            if (
+              model !== undefined &&
+              !(kind === "category" && name === "deep" && Object.hasOwn(reasoning, "deep-low"))
+            )
+              ignoredReasoning.push(`${kind} ${name} (${level} on ${model})`);
+            level = undefined;
+          }
         }
         return [
           name,
@@ -130,9 +140,9 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
         ? { "deep-low": settings.categoryReasoning.deep! }
         : {}),
   };
-  return {
-    agents: assign(agents, settings.agentModels, settings.agentReasoning),
-    categories: assign(categories, categoryModels, categoryReasoning),
+  const config = {
+    agents: assign("agent", agents, settings.agentModels, settings.agentReasoning),
+    categories: assign("category", categories, categoryModels, categoryReasoning),
     memory: {
       enabled: settings.automaticMemory,
       agent: "cox-global",
@@ -165,6 +175,7 @@ export function omoTaskConfiguration(settings: OmoSettings, stateDir: string) {
     },
     teams: {},
   };
+  return { config, ignoredReasoning };
 }
 
 export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(function* (
@@ -214,7 +225,17 @@ export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(func
     }
   }
   const stateDir = path.join(agentDir, "tasks");
-  const config = yield* Effect.try(() => omoTaskConfiguration(configured, stateDir));
+  const { config, ignoredReasoning } = yield* Effect.try(() =>
+    buildOmoTaskConfiguration(configured, stateDir),
+  );
+  const warning = [
+    ...(configured.modelServiceWarning ? [configured.modelServiceWarning] : []),
+    ...(ignoredReasoning.length > 0
+      ? [
+          `These OMO role thinking strengths are not supported by their models and were ignored: ${ignoredReasoning.join(", ")}. Choose a supported strength in settings.`,
+        ]
+      : []),
+  ].join(" ");
   env.COX_OMO_TASK_CONFIG = yield* encodeJson(config);
   env.COX_OMO_FIXED_ROLES = yield* encodeJson({
     agents: Object.entries(settings.agentModels)
@@ -236,5 +257,8 @@ export const prepareOmoConfiguration = Effect.fn("prepareOmoConfiguration")(func
     configured.customModels.map((model) => (typeof model === "string" ? model : model.slug)),
   );
   yield* fs.makeDirectory(agentDir, { recursive: true });
-  return { settings: configured, environment: env };
+  return {
+    settings: warning ? { ...configured, modelServiceWarning: warning } : configured,
+    environment: env,
+  };
 });

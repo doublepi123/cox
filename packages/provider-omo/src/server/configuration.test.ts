@@ -81,7 +81,7 @@ describe("OMO model configuration", () => {
         );
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     ));
-  it("rejects a role thinking strength outside its managed model's catalog choices", () => {
+  it("ignores a role thinking strength outside its managed model's catalog choices and warns", async () => {
     const config = settings({
       modelServiceManaged: true,
       provider: "cox",
@@ -106,9 +106,45 @@ describe("OMO model configuration", () => {
     expect(omoTaskConfiguration(config, "/tasks").agents.oracle).toMatchObject({
       reasoning: "high",
     });
-    expect(() =>
-      omoTaskConfiguration({ ...config, agentReasoning: { oracle: "max" } }, "/tasks"),
-    ).toThrow("not supported");
+    const unsupported = {
+      ...config,
+      modelServiceWarning: "Existing warning.",
+      agentModels: { explore: "cox/gone" },
+      agentReasoning: { oracle: "max", explore: "high" },
+      categoryReasoning: { "deep-low": "max" },
+    } as const;
+    const native = omoTaskConfiguration(unsupported, "/tasks");
+    expect(native.agents.oracle).toMatchObject({ models: ["cox/main"] });
+    expect(native.agents.oracle).not.toHaveProperty("reasoning");
+    expect(native.agents.explore).toEqual({ models: [], models_distribution: "round_robin" });
+    expect(native.categories.deep).not.toHaveProperty("reasoning");
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const base = yield* fs.makeTempDirectoryScoped({ prefix: "cox-omo-reasoning-" });
+        const binaryPath = path.join(base, "no-omo");
+        const prepared = yield* prepareOmoConfiguration(
+          { ...unsupported, binaryPath },
+          { PATH: "" },
+          base,
+          "instance",
+        );
+        expect(prepared.settings.modelServiceWarning).toBe(
+          "Existing warning. These OMO role thinking strengths are not supported by their models and were ignored: agent oracle (max on cox/main), category deep-low (max on cox/main). Choose a supported strength in settings.",
+        );
+        expect(
+          JSON.parse(prepared.environment.COX_OMO_TASK_CONFIG!).agents.oracle,
+        ).not.toHaveProperty("reasoning");
+        const supported = yield* prepareOmoConfiguration(
+          { ...config, binaryPath },
+          { PATH: "" },
+          base,
+          "instance",
+        );
+        expect(supported.settings).not.toHaveProperty("modelServiceWarning");
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    );
   });
   it("passes per-role thinking strengths to native agents, categories and custom roles", () => {
     const native = omoTaskConfiguration(

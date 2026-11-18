@@ -39,6 +39,10 @@ export default async function coxOmo(pi) {
   const runtime = await loadCoxOmoRuntimeAssets();
   const { entry, tasks } = runtime;
   pi.on("session_start", (_event, ctx) => runtime.assertNativeSession(ctx));
+  const config = JSON.parse(process.env.COX_OMO_TASK_CONFIG || "{}");
+  const fixed = JSON.parse(process.env.COX_OMO_FIXED_ROLES || "{}");
+  const managed = process.env.COX_OMO_MANAGED_MODELS === "1";
+  const allowed = new Set(JSON.parse(process.env.COX_OMO_ALLOWED_MODELS || "[]"));
   let selectionError;
   let selectionBaseline;
   pi.rpc.handle("cox.omo.prepare", async data => {
@@ -85,10 +89,6 @@ export default async function coxOmo(pi) {
     pi.on("session_before_switch", detach);
     pi.on("session_shutdown", detach);
   }
-  const config = JSON.parse(process.env.COX_OMO_TASK_CONFIG || "{}");
-  const fixed = JSON.parse(process.env.COX_OMO_FIXED_ROLES || "{}");
-  const managed = process.env.COX_OMO_MANAGED_MODELS === "1";
-  const allowed = new Set(JSON.parse(process.env.COX_OMO_ALLOWED_MODELS || "[]"));
   const registries = new WeakMap();
   const childContract = ${JSON.stringify(OMO_CHILD_COMPLETION_CONTRACT)};
   let nativeTaskRegistered = false;

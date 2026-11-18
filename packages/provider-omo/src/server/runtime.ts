@@ -179,6 +179,17 @@ export function omoStartupFailure(value: unknown): string | undefined {
   ].join(" ");
 }
 
+export function omoMemoryWarningEvent(value: unknown): PiRpcRecord | undefined {
+  const warning = record(record(value).memory).warning;
+  return typeof warning === "string" && warning.trim().length > 0
+    ? {
+        type: "extension_error",
+        extensionPath: "OMO automatic memory",
+        error: `Automatic memory is not working as configured in this session. ${warning.trim()}`,
+      }
+    : undefined;
+}
+
 export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeOmoRpcConnection")(
   function* (options: PiRpcSpawnOptions) {
     const scope = yield* Effect.scope;
@@ -482,6 +493,8 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
           operation: "startup",
           detail: failure,
         });
+      const memoryWarning = omoMemoryWarningEvent(initialized);
+      if (memoryWarning !== undefined) yield* Queue.offer(events, memoryWarning);
     }
     if (options.env.COX_OMO_MANAGED_MODELS === "1")
       yield* connection.request({ type: "set_auto_retry", enabled: false });

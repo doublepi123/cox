@@ -7,6 +7,7 @@ import {
   OmoTaskUpdates,
   omoPermissionRequest,
   omoStartupFailure,
+  omoMemoryWarningEvent,
   omoTaskIsQuiescent,
   OMO_WAIT_STATUS_KEY,
 } from "./runtime.ts";
@@ -212,6 +213,18 @@ describe("OMO startup health", () => {
     expect(message).toContain("mcp__cox__orchestrator_capabilities: missing-catalog");
     expect(message).toContain("mcp__cox__delegate_task: inactive");
     expect(message).not.toContain("mcp__cox__task_status");
+  });
+
+  it("turns a memory startup warning into a visible extension error", () => {
+    expect(
+      omoMemoryWarningEvent({ available: true, memory: { warning: " Patch missing. " } }),
+    ).toEqual({
+      type: "extension_error",
+      extensionPath: "OMO automatic memory",
+      error: "Automatic memory is not working as configured in this session. Patch missing.",
+    });
+    for (const value of [{ available: true }, { memory: {} }, { memory: { warning: " " } }, null])
+      expect(omoMemoryWarningEvent(value)).toBeUndefined();
   });
 });
 

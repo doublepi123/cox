@@ -2,6 +2,7 @@ import type { ServerProviderModel } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Stream from "effect/Stream";
@@ -15,6 +16,8 @@ import {
 import {
   configuredPiLaunchArgs,
   EMPTY_PI_MODEL_CAPABILITIES,
+  PiRpcError,
+  PiRpcTimeoutError,
   piModelCapabilities,
   parsePiDiscoveredCommands,
   withPiBuiltinSlashCommands,
@@ -30,6 +33,9 @@ const presentation = {
   supportedRuntimeModes: ["approval-required", "auto-accept-edits", "full-access"],
   reportsContextWindow: true,
 } as const;
+
+const isPiRpcError = Schema.is(PiRpcError);
+const isPiRpcTimeoutError = Schema.is(PiRpcTimeoutError);
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
@@ -54,6 +60,20 @@ function modelsFromSettings(
     settings.customModels,
     EMPTY_PI_MODEL_CAPABILITIES,
   );
+}
+
+export function omoProbeFailureMessage(error: unknown): string {
+  const timeout = (value: unknown) =>
+    isPiRpcTimeoutError(value)
+      ? `${value.operation} timed out after ${value.timeoutMs}ms`
+      : undefined;
+  const detail = (isPiRpcError(error) ? (error.detail ?? timeout(error.cause)) : timeout(error))
+    ?.trim()
+    .replace(/\.+$/, "")
+    .slice(0, 500);
+  return detail
+    ? `Cox could not start OMO Native: ${detail}.`
+    : "Cox could not start OMO Native. Check the installation and model configuration.";
 }
 
 export const initialOmoSnapshot = Effect.fn("initialOmoSnapshot")(function* (
@@ -174,12 +194,20 @@ export const checkOmoStatus = Effect.fn("checkOmoStatus")(function* (
     });
   }).pipe(
     Effect.scoped,
-    Effect.timeout("30 seconds"),
-    Effect.orElseSucceed(() =>
-      fallback(
-        "Cox could not start OMO Native. Check the installation and model configuration.",
-        installedVersion !== null,
-        installedVersion,
+    Effect.timeoutOrElse({
+      duration: "30 seconds",
+      orElse: () =>
+        Effect.succeed(
+          fallback(
+            "OMO Native did not finish starting within 30 seconds. Check the installation and model configuration.",
+            installedVersion !== null,
+            installedVersion,
+          ),
+        ),
+    }),
+    Effect.catch((error) =>
+      Effect.succeed(
+        fallback(omoProbeFailureMessage(error), installedVersion !== null, installedVersion),
       ),
     ),
   );
