@@ -30,6 +30,7 @@ export function LocalServiceUpdates() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const state = updates.state;
   if (!supported || !permitted) return null;
+  if (state?.supported === false) return null;
   if (!state)
     return updates.error ? (
       <SettingsSection title={t("Current service")}>
@@ -79,7 +80,7 @@ export function LocalServiceUpdates() {
             <Button size="sm" disabled={busy} onClick={() => setConfirmOpen(true)}>
               {t("Restart and update")}
             </Button>
-          ) : state.status === "available" || state.status === "error" ? (
+          ) : !state.checkOnly && (state.status === "available" || state.status === "error") ? (
             <Button size="sm" disabled={busy} onClick={() => void updates.download()}>
               {t(state.status === "error" ? "Retry" : "Download update")}
             </Button>
@@ -95,6 +96,12 @@ export function LocalServiceUpdates() {
           )
         }
       >
+        {state.checkOnly && state.status === "available" ? (
+          <p className="text-xs text-muted-foreground">
+            {t("Stop Cox, run the npm upgrade, then start it again.")}{" "}
+            <code className="break-words">npm install --global @doublepi123/cox@latest</code>
+          </p>
+        ) : null}
         {state.progress ? <DesktopUpdateProgress progress={state.progress} /> : null}
         {state.backup ? (
           <p className="text-xs text-muted-foreground">

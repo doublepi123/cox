@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import * as Schema from "effect/Schema";
 import { activateLocalServiceUpdate, type LocalServiceUpdatePlan } from "./operation.ts";
-import { stableVersion } from "./ownership.ts";
+import { isLocalServiceUpdateUnit, stableVersion } from "./ownership.ts";
 
 const Plan = Schema.Struct({
   schema: Schema.Literal(1),
@@ -12,7 +12,7 @@ const Plan = Schema.Struct({
   serviceUnit: Schema.String,
   node: Schema.String,
   entry: Schema.String,
-  packageRoot: Schema.String,
+  dropIn: Schema.String,
   baseDir: Schema.String,
   stateDir: Schema.String,
   databasePath: Schema.String,
@@ -29,7 +29,7 @@ const plan = Schema.decodeSync(Schema.fromJsonString(Plan))(
 if (
   !stableVersion(plan.fromVersion) ||
   !stableVersion(plan.targetVersion) ||
-  plan.serviceUnit !== "cox.service" ||
+  !isLocalServiceUpdateUnit(plan.serviceUnit) ||
   plan.operation !==
     `${plan.baseDir}/local-service-update/operations/${plan.operation.split("/").at(-1)}`
 )

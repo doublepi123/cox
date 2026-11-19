@@ -14,6 +14,7 @@ export const LocalServiceUpdateStatus = Schema.Literals([
 
 export const LocalServiceUpdateState = Schema.Struct({
   supported: Schema.Boolean,
+  checkOnly: Schema.optionalKey(Schema.Boolean),
   currentVersion: Schema.String,
   latestVersion: Schema.NullOr(Schema.String),
   status: LocalServiceUpdateStatus,

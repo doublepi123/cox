@@ -130,6 +130,39 @@ describe("local service update settings", () => {
     mocks.permitted = true;
   });
 
+  it("shows download progress before the download request finishes", async () => {
+    using _timers = fakeTimers();
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const available = { ...mocks.state, status: "available" as const, latestVersion: "0.2.0" };
+    let finishDownload: (result: Response) => void = () => {
+      throw new Error("Download request has not started.");
+    };
+    const download = new Promise<Response>((resolve) => {
+      finishDownload = resolve;
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response(available))
+      .mockReturnValueOnce(download)
+      .mockResolvedValue(response({ ...available, status: "downloading" }));
+    using _fetch = stubGlobal("fetch", fetchMock);
+    await using screen = await render(<LocalServiceUpdates />);
+    await screen.getByRole("button", { name: "Download update" }).click();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await expect
+      .element(
+        screen.getByText("Downloading and verifying Cox. Current tasks will not be interrupted."),
+      )
+      .toBeVisible();
+    await act(async () => finishDownload(response({ ...available, status: "ready" })));
+    await expect.element(screen.getByRole("button", { name: "Restart and update" })).toBeEnabled();
+  });
+
   it("polls after apply, clears a transient restart error and stops when healthy", async () => {
     using _timers = fakeTimers();
     mocks.useRealHook = true;

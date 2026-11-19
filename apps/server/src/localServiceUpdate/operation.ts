@@ -3,12 +3,16 @@ import { runLocalServiceCommand } from "./process.ts";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import { backup, DatabaseSync } from "node:sqlite";
-import { cp, lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import type { LocalServiceUpdateState } from "@t3tools/contracts";
-import { LOCAL_SERVICE_UPDATE_HELPER } from "./ownership.ts";
+import {
+  assertLocalServiceMainPid,
+  localServiceUpdateHelper,
+  updateEnvironment,
+} from "./ownership.ts";
 
 export interface LocalServiceUpdatePlan {
   readonly schema: 1;
@@ -18,7 +22,7 @@ export interface LocalServiceUpdatePlan {
   readonly serviceUnit: string;
   readonly node: string;
   readonly entry: string;
-  readonly packageRoot: string;
+  readonly dropIn: string;
   readonly baseDir: string;
   readonly stateDir: string;
   readonly databasePath: string;
@@ -134,15 +138,12 @@ export async function prepareLocalServiceUpdate(plan: LocalServiceUpdatePlan): P
       throw error;
     }
   }
-  const unitPath = join(plan.baseDir, "local-service-update", "unit");
-  const previousUnit = join(plan.operation, "previous-unit");
-  await writeFile(previousUnit, await readFile(unitPath, "utf8"), { mode: 0o600, flag: "wx" });
   await writeJson(join(plan.operation, "plan.json"), plan);
 }
 
 function run(command: string, args: readonly string[], timeout = 30_000): Promise<string> {
   return runLocalServiceCommand(command, args, {
-    env: { PATH: process.env.PATH, HOME: process.env.HOME },
+    env: updateEnvironment(process.env),
     timeout,
   });
 }
@@ -171,9 +172,12 @@ async function waitForVersion(plan: LocalServiceUpdatePlan, version: string): Pr
           };
           if (
             descriptor.serverVersion === version &&
-            descriptor.environmentId === plan.environmentId
-          )
+            descriptor.environmentId === plan.environmentId &&
+            typeof runtime.pid === "number"
+          ) {
+            await assertLocalServiceMainPid(plan.serviceUnit, runtime.pid);
             return;
+          }
         }
       }
     } catch {}
@@ -182,12 +186,39 @@ async function waitForVersion(plan: LocalServiceUpdatePlan, version: string): Pr
   throw new Error(`Cox ${version} did not become healthy after restart.`);
 }
 
-async function replaceUnit(plan: LocalServiceUpdatePlan, contents: string): Promise<void> {
-  const temporary = join(plan.operation, "unit.next");
-  await writeFile(temporary, contents, { mode: 0o600 });
-  await rename(temporary, join(plan.baseDir, "local-service-update", "unit"));
-  await run("systemctl", ["--user", "daemon-reload"]);
-  await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
+export function renderLocalServiceDropIn(args: readonly string[]): string {
+  const command = args.map((arg) =>
+    JSON.stringify(arg.replaceAll("%", "%%").replaceAll("$", () => "$$")),
+  );
+  return "[Service]\nExecStart=\nExecStart=" + command.join(" ") + "\n";
+}
+
+async function readDropIn(path: string): Promise<string | null> {
+  try {
+    if (!(await lstat(path)).isFile())
+      throw new Error("The Cox systemd override must be a regular file.");
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+      return null;
+    throw error;
+  }
+}
+
+async function writeDropIn(path: string, contents: string | null): Promise<void> {
+  if (contents === null) {
+    await rm(path, { force: true });
+    return;
+  }
+  const dir = dirname(path);
+  await mkdir(dir, { recursive: true });
+  const temporary = join(dir, ".cox-update-" + randomUUID());
+  await writeFile(temporary, contents, { mode: 0o600, flag: "wx" });
+  try {
+    await rename(temporary, path);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): Promise<void> {
@@ -210,6 +241,7 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
     receipt("activating", null),
   );
   await Effect.runPromise(Effect.sleep("1 second"));
+  let previous: string | null = null;
   let replacementStarted = false;
   try {
     if (!(await lstat(plan.entry)).isFile())
@@ -222,10 +254,24 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
       throw new Error("The staged Cox entrypoint is invalid.");
     if (!(await lstat(join(plan.operation, "backup", "statev2.sqlite"))).isFile())
       throw new Error("The Cox database backup is missing.");
-    if (!plan.nextUnit.includes("__COX_ENTRY__"))
-      throw new Error("The Cox update unit template is missing its entry placeholder.");
+    await assertLocalServiceMainPid(plan.serviceUnit, plan.pid);
+    previous = await readDropIn(plan.dropIn);
+    if (previous !== null) {
+      await writeFile(join(plan.operation, "previous-unit"), previous, { mode: 0o600, flag: "wx" });
+    }
+    await writeDropIn(plan.dropIn, plan.nextUnit);
     replacementStarted = true;
-    await replaceUnit(plan, plan.nextUnit.replaceAll("__COX_ENTRY__", plan.entry));
+    await run("systemctl", ["--user", "daemon-reload"]);
+    const dropIns = await run("systemctl", [
+      "--user",
+      "show",
+      "--property=DropInPaths",
+      "--value",
+      plan.serviceUnit,
+    ]);
+    if (!dropIns.trim().split(/\s+/).includes(plan.dropIn))
+      throw new Error("The systemd user manager did not load the Cox update override.");
+    await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
     await waitForVersion(plan, plan.targetVersion);
     await writeJson(receiptPath, receipt("healthy", null));
     await writeJson(
@@ -242,9 +288,20 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
         );
         return;
       }
-      await replaceUnit(plan, await readFile(join(plan.operation, "previous-unit"), "utf8"));
-      await run("systemctl", ["--user", "reset-failed", plan.serviceUnit]);
-      await waitForVersion(plan, plan.fromVersion);
+      await writeDropIn(plan.dropIn, previous);
+      await run("systemctl", ["--user", "daemon-reload"]);
+      const mainPid = await run("systemctl", [
+        "--user",
+        "show",
+        "--property=MainPID",
+        "--value",
+        plan.serviceUnit,
+      ]);
+      if (mainPid.trim() !== String(plan.pid)) {
+        await run("systemctl", ["--user", "reset-failed", plan.serviceUnit]);
+        await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
+        await waitForVersion(plan, plan.fromVersion);
+      }
       await writeJson(receiptPath, receipt("rolled-back", String(error)));
       await writeJson(
         join(plan.baseDir, "local-service-update", "receipt.json"),
@@ -265,7 +322,7 @@ export async function launchLocalServiceUpdate(plan: LocalServiceUpdatePlan): Pr
   const helper = fileURLToPath(new URL("localServiceUpdate/activation.mjs", import.meta.url));
   await run("systemd-run", [
     "--user",
-    "--unit=" + LOCAL_SERVICE_UPDATE_HELPER,
+    "--unit=" + localServiceUpdateHelper(plan.serviceUnit),
     "--collect",
     "--property=Type=exec",
     "--property=TimeoutStartSec=300",
