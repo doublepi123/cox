@@ -11,12 +11,11 @@ enum WorkspaceSafeAreaBootstrap {
         )
     }
 
-    static func script(top: CGFloat, right: CGFloat, left: CGFloat) -> String {
+    static func script(right: CGFloat, left: CGFloat) -> String {
         """
         (function(){
           var root = document.documentElement;
           if (!root) return;
-          root.style.setProperty('--cox-safe-top','\(css(top))');
           root.style.setProperty('--cox-safe-right','\(css(right))');
           root.style.setProperty('--cox-safe-left','\(css(left))');
         })();
@@ -35,6 +34,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     private weak var workspace: WKWebView?
     private var webTopToSafe: NSLayoutConstraint?
     private var webTopToFallback: NSLayoutConstraint?
+    private var webBottomToKeyboard: NSLayoutConstraint?
     private var publishedSafeArea = ""
     private var pageFailed = false
     private var revealFallback = false
@@ -52,6 +52,11 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        for name in [UIResponder.keyboardWillShowNotification, UIResponder.keyboardDidHideNotification] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(updateKeyboardLayout(_:)), name: name, object: nil
+            )
+        }
         UserDefaults.standard.removeObject(forKey: "cox.workspace.serversPill.dockRight")
         UserDefaults.standard.removeObject(forKey: "cox.workspace.serversPill.yFraction")
         view.backgroundColor = Self.canvasColor(for: traitCollection)
@@ -82,6 +87,8 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         edgeBack.view?.removeGestureRecognizer(edgeBack)
         webTopToSafe?.isActive = false
         webTopToFallback?.isActive = false
+        let keyboardVisible = webBottomToKeyboard?.isActive == true
+        webBottomToKeyboard?.isActive = false
         workspace?.removeFromSuperview()
         workspace = webView
         webView.removeFromSuperview()
@@ -95,15 +102,20 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         let painted = webView.url != nil && !webView.isLoading
         webView.alpha = painted ? 1 : 0
         if painted { webView.isOpaque = true }
-        let topSafe = webView.topAnchor.constraint(equalTo: view.topAnchor)
+        let topSafe = webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         let topFallback = webView.topAnchor.constraint(equalTo: fallback.bottomAnchor, constant: 6)
         webTopToSafe = topSafe
         webTopToFallback = topFallback
+        let bottomToSafe = webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        bottomToSafe.priority = .defaultHigh
+        let bottomToKeyboard = webView.bottomAnchor.constraint(lessThanOrEqualTo: view.keyboardLayoutGuide.topAnchor)
+        webBottomToKeyboard = bottomToKeyboard
         NSLayoutConstraint.activate([
-            webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            bottomToSafe,
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
+        bottomToKeyboard.isActive = keyboardVisible
         updateFallback()
         publishSafeArea()
     }
@@ -111,6 +123,12 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         publishSafeArea()
+    }
+
+    @objc private func updateKeyboardLayout(_ notification: Notification) {
+        guard let screen = view.window?.windowScene?.screen,
+              (notification.object as? UIScreen) === screen else { return }
+        webBottomToKeyboard?.isActive = notification.name == UIResponder.keyboardWillShowNotification
     }
 
     override func viewDidLayoutSubviews() {
@@ -123,13 +141,12 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         let host: UIView = view.window ?? view
         let hostInsets = host.safeAreaInsets
         let frame = workspace.convert(workspace.bounds, to: host)
-        let top = max(0, hostInsets.top - frame.minY)
         let left = max(0, hostInsets.left - frame.minX)
         let right = max(0, frame.maxX - (host.bounds.maxX - hostInsets.right))
-        let signature = String(format: "%.2f,%.2f,%.2f", top, right, left)
+        let signature = String(format: "%.2f,%.2f", right, left)
         if signature == publishedSafeArea { return }
         publishedSafeArea = signature
-        let script = WorkspaceSafeAreaBootstrap.script(top: top, right: right, left: left)
+        let script = WorkspaceSafeAreaBootstrap.script(right: right, left: left)
         WorkspaceSafeAreaBootstrap.source = script
         workspace.evaluateJavaScript(script) { _, error in
             if error != nil { self.publishedSafeArea = "" }
