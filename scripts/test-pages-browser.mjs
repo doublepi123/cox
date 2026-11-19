@@ -74,6 +74,36 @@ test("website works under a project subpath on desktop and phones without contac
       "https://github.com/doublepi123/cox/releases/tag/cox-desktop-latest",
     );
     assert.equal(await page.locator("#desktop .mobile-link").getAttribute("href"), "cocode/");
+    assert.equal(
+      await page.locator("#mobile .mobile-downloads a.button-primary").getAttribute("href"),
+      "https://github.com/doublepi123/cox/releases?q=%22Cox+Mobile%22",
+    );
+    assert.equal(
+      await page.locator("#mobile .mobile-downloads a.button-secondary").getAttribute("href"),
+      "cocode/",
+    );
+    assert.equal(
+      await page.locator("[data-mobile-demo]").getAttribute("data-mobile-demo"),
+      "launcher",
+    );
+    await page.locator("[data-mobile-tab='touch']").click();
+    assert.equal(
+      await page.locator("[data-mobile-demo]").getAttribute("data-mobile-demo"),
+      "touch",
+    );
+    assert.equal(await page.locator("[data-mobile-view='touch']").isVisible(), true);
+    assert.equal(await page.locator("[data-mobile-view='launcher']").isVisible(), false);
+    await page.locator("[data-mobile-tab='touch']").press("ArrowRight");
+    assert.equal(
+      await page.locator("[data-mobile-demo]").getAttribute("data-mobile-demo"),
+      "notify",
+    );
+    assert.equal(await page.locator("[data-mobile-view='notify']").isVisible(), true);
+    await page.locator("[data-mobile-tab='notify']").press("Home");
+    assert.equal(
+      await page.locator("[data-mobile-demo]").getAttribute("data-mobile-demo"),
+      "launcher",
+    );
     await page.getByRole("button", { name: "Claude", exact: true }).click();
     assert.equal(
       await page.getByRole("button", { name: "Claude", exact: true }).getAttribute("aria-pressed"),
@@ -95,14 +125,14 @@ test("website works under a project subpath on desktop and phones without contac
       "OMO 任务图 · mass ulw · 第 2 波",
     );
     assert.equal(await page.locator("[data-dag-progress]").textContent(), "2/5");
-    assert.equal(await page.locator("[data-agent-terminal]").getAttribute("data-agent-terminal"), "omo");
+    assert.equal(
+      await page.locator("[data-agent-terminal]").getAttribute("data-agent-terminal"),
+      "omo",
+    );
     assert.match(await page.locator("[data-agent-terminal]").textContent(), /omo workflow status/);
     await page.getByRole("button", { name: "OMO", exact: true }).press("End");
     assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "cursor");
-    assert.equal(
-      await page.evaluate(() => document.activeElement.dataset.provider),
-      "cursor",
-    );
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.provider), "cursor");
     assert.match(await page.locator("[data-agent-terminal]").textContent(), /pnpm lint/);
     await page.getByRole("button", { name: "Cursor", exact: true }).press("Home");
     assert.equal(await page.locator("[data-demo]").getAttribute("data-agent"), "omo");
@@ -170,10 +200,8 @@ test("website works under a project subpath on desktop and phones without contac
       await page.locator("#capabilities .card-gateway .card-tag").textContent(),
       "CLIProxyAPI",
     );
-    assert.match(
-      (await page.locator("#capabilities .card-gateway h3").textContent()).replaceAll("\u200b", ""),
-      /一个模型服务，连接多个智能体/,
-    );
+    const gatewayHeading = page.locator("#capabilities .card-gateway h3");
+    assert.equal(await gatewayHeading.textContent(), "跨模型连接选择模型");
     const themeToggle = page.locator("[data-theme-toggle]");
     await themeToggle.click();
     assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
@@ -192,6 +220,7 @@ test("website works under a project subpath on desktop and phones without contac
     await page.getByRole("button", { name: "Switch to English" }).click();
     assert.equal(await page.locator("html").getAttribute("lang"), "en");
     assert.match(await page.locator("h1").textContent(), /Your agents/);
+    assert.equal(await gatewayHeading.textContent(), "Choose models across connections");
     assert.match(await page.locator("[data-agent-message]").textContent(), /separate interface/);
     assert.equal(
       await guide.getAttribute("href"),

@@ -16,7 +16,7 @@ const messages = {
     "hero.description": "在 Android 手机上本地运行 Cox 和编码智能体。无需电脑，也不需要 root。",
     "hero.download": "下载 Android APK",
     "hero.cox": "了解 Cox 桌面版",
-    "hero.note": "Android 8.0+ · GitHub Releases 提供预发布 APK",
+    "hero.note": "Android 8.0+ · APK 在 GitHub 发布页下载",
     "demo.label": "CoCode 手机工作台示意",
     "demo.project": "当前项目",
     "demo.thread": "完善首页的移动端布局",
@@ -37,7 +37,7 @@ const messages = {
       "通过 Alpine Linux 与 PRoot 在 Android 上运行 Cox，无需 root。服务仅监听本机回环地址。",
     "feature2.title": "按需\u200b安装\u200b你的\u200b智能体",
     "feature2.description":
-      "安装 Codex、Claude Code、OpenCode、Grok 和 Pi；Cursor 使用 Cox 内置 SDK。追加安装不会替换已有智能体。",
+      "可按需安装下列智能体。Cursor 使用 Cox 内置 SDK。新增安装会保留已有的智能体。",
     "feature3.title": "模型服务，集中\u200b配置",
     "feature3.description":
       "从首页进入 Cox 模型中心，配置服务地址、API 密钥、协议与模型，并绑定到智能体。",
@@ -69,10 +69,12 @@ const messages = {
       "下载签名 APK，安装后按提示准备本地运行环境。首次安装需要联网；升级 APK 不会自动更新正在运行的 Cox。",
     "download.button": "前往 Releases 下载",
     "download.docs": "查看安装与使用说明",
-    "download.note":
-      "当前为预发布版本。发布验证范围见对应 Release；并非所有智能体的 Android 安装与推理路径均已逐一验证。",
-    "ecosystem.title": "手机上\u200b用 CoCode<br />电脑上\u200b用 Cox",
-    "ecosystem.cox": "面向 macOS、Windows 与浏览器的本地编码工作台",
+    "download.note": "查阅发布说明，确认该安装包是否为预发布版，以及已验证的功能。",
+    "ecosystem.title": "手机本地用 CoCode<br />远程多服有 Cox Mobile",
+    "ecosystem.description":
+      "CoCode 在 Android 手机上运行 Cox。Cox Mobile 支持从 iOS 17+ 或 Android 8+ 直连自己的服务器。 两款应用可在同一台 Android 手机上安装，各自保留登录状态和数据。",
+    "ecosystem.cox": "面向 macOS、Windows 与浏览器的本地编码驾驶舱",
+    "ecosystem.mobile": "iOS 17+ 与 Android 8+ 的远程客户端",
     "footer.label": "页脚链接",
     "footer.credit": "基于",
     "footer.built": "的运行时管线，以 MIT 许可发布。",
@@ -97,7 +99,7 @@ const messages = {
       "Run Cox and your coding agents locally on your Android phone. No computer. No root.",
     "hero.download": "Download Android APK",
     "hero.cox": "Explore Cox for desktop",
-    "hero.note": "Android 8.0+ · Prerelease APKs on GitHub Releases",
+    "hero.note": "Android 8.0+ · APK available on GitHub Releases",
     "demo.label": "CoCode mobile workspace illustration",
     "demo.project": "Current project",
     "demo.thread": "Polish the mobile homepage",
@@ -120,7 +122,7 @@ const messages = {
       "Run Cox on Android through Alpine Linux and PRoot, without root. The server listens only on loopback.",
     "feature2.title": "Install the agents you need",
     "feature2.description":
-      "Install Codex, Claude Code, OpenCode, Grok, and Pi; Cursor uses Cox’s bundled SDK. Adding an agent preserves the others.",
+      "Install the agents listed below as needed. Cursor uses the SDK bundled with Cox. New installations keep existing agents.",
     "feature3.title": "Model services, in one place",
     "feature3.description":
       "Open Cox model services from Home to configure service URLs, API keys, protocols, models, and agent bindings.",
@@ -152,10 +154,12 @@ const messages = {
       "Download the signed APK and follow the setup steps for the local runtime. Initial setup needs internet access. Updating the APK does not automatically update a running Cox server.",
     "download.button": "Download from Releases",
     "download.docs": "Read the setup guide",
-    "download.note":
-      "Currently in prerelease. See each Release for its validation scope; not every agent’s Android installation and inference path has been individually verified.",
-    "ecosystem.title": "CoCode on your phone<br />Cox on your computer",
-    "ecosystem.cox": "The local coding workspace for macOS, Windows, and the browser",
+    "download.note": "The release notes list prerelease status and tested features.",
+    "ecosystem.title": "CoCode on-device<br />Cox Mobile for remote hosts",
+    "ecosystem.description":
+      "CoCode runs Cox on Android. Cox Mobile connects to your own server from iOS 17+ or Android 8+. Both apps can stay installed on the same Android phone, with separate sessions and storage.",
+    "ecosystem.cox": "The local coding cockpit for macOS, Windows, and the browser",
+    "ecosystem.mobile": "Remote client for iOS 17+ and Android 8+",
     "footer.label": "Footer links",
     "footer.credit": "Built with runtime components from",
     "footer.built": "and released under the MIT license.",

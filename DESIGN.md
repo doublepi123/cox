@@ -19,13 +19,13 @@ Hard constraints inherited from `site/README.md` and the root `AGENTS.md`:
 
 ## 0. Research Log
 
-| Lane | Sources consulted | Decision |
-| --- | --- | --- |
-| Embedded references | Shortlisted linear.app, vercel, supabase. | Picked `redesign-skill.md` + `ambience-skill.md` + `interaction-skill.md` + `linear.app.md`. Linear's luminance-stepped dark surfaces, hairline borders and dense product-shot hero are adapted with Cox's botanical phosphor lime (`#b7ed81` dark / `#256f18` light) and CoCode's warm amber (`#efc56f` dark / `#8a4f00` light). Vercel was rejected (monochrome, no brand hue to carry); Supabase was rejected (its green is too close to Cox lime and would read as a clone). |
-| StyleGallery | https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md | Selected `page-grid`, `split-screen`, `tab-strip`, `dense-grid`, `stack`. Homepage composes page-grid + split-screen + tab-strip (dense-grid inside the bento); CoCode composes split-screen + stack. |
-| Ambience catalog | https://reactbits.dev/r/ShapeGrid-TS-TW.json | Lattice concept only. Re-implemented as a zero-dependency 2D canvas lattice for the hero (section 6). No React, no Tailwind, no copied source. |
-| Interaction catalog | https://reactbits.dev/r/SpotlightCard-TS-TW.json, https://beui.dev/r/tabs/raw | SpotlightCard became the pointer-tracked `--mx/--my` radial wash on bento cards; the beui tabs pattern became the ARIA tablist + panel used by the workflow inspector. Both re-implemented in vanilla JS/CSS. |
-| Skipped lanes | Lazyweb, Imagen drafts | Skipped: this is a redesign of an existing product website, so the baseline is the live before captures in `/tmp/tmp.oUaEAYE4nf/evidence-before/` (home and CoCode, desktop 1440 and iPhone 14, dark and light, top and end). |
+| Lane                | Sources consulted                                                             | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Embedded references | Shortlisted linear.app, vercel, supabase.                                     | Picked `redesign-skill.md` + `ambience-skill.md` + `interaction-skill.md` + `linear.app.md`. Linear's luminance-stepped dark surfaces, hairline borders and dense product-shot hero are adapted with Cox's botanical phosphor lime (`#b7ed81` dark / `#256f18` light) and CoCode's warm amber (`#efc56f` dark / `#8a4f00` light). Vercel was rejected (monochrome, no brand hue to carry); Supabase was rejected (its green is too close to Cox lime and would read as a clone). |
+| StyleGallery        | https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md      | Selected `page-grid`, `split-screen`, `tab-strip`, `dense-grid`, `stack`. Homepage composes page-grid + split-screen + tab-strip (dense-grid inside the bento); CoCode composes split-screen + stack.                                                                                                                                                                                                                                                                            |
+| Ambience catalog    | https://reactbits.dev/r/ShapeGrid-TS-TW.json                                  | Lattice concept only. Re-implemented as a zero-dependency 2D canvas lattice for the hero (section 6). No React, no Tailwind, no copied source.                                                                                                                                                                                                                                                                                                                                   |
+| Interaction catalog | https://reactbits.dev/r/SpotlightCard-TS-TW.json, https://beui.dev/r/tabs/raw | SpotlightCard became the pointer-tracked `--mx/--my` radial wash on bento cards; the beui tabs pattern became the ARIA tablist + panel used by the workflow inspector. Both re-implemented in vanilla JS/CSS.                                                                                                                                                                                                                                                                    |
+| Skipped lanes       | Lazyweb, Imagen drafts                                                        | Skipped: this is a redesign of an existing product website, so the baseline is the live before captures in `/tmp/tmp.oUaEAYE4nf/evidence-before/` (home and CoCode, desktop 1440 and iPhone 14, dark and light, top and end).                                                                                                                                                                                                                                                    |
 
 Baseline facts extracted from the current code (salvaged, not discarded):
 
@@ -61,54 +61,55 @@ Theme selection: `:root` defaults to the user's `prefers-color-scheme`; an expli
 Contrast ratios are measured against every background the token may sit on
 (canvas / surface / elevated / inset for dark; canvas / surface / inset for light). The lowest value is listed.
 
-| Token | Role | Dark | Light | Min contrast dark / light |
-| --- | --- | --- | --- | --- |
-| `--bg-canvas` | Page background | `#070908` rgb(7 9 8) | `#f5f7f3` rgb(245 247 243) | n/a |
-| `--bg-surface` | Cards, header on scroll, window body | `#0d110f` rgb(13 17 15) | `#ffffff` rgb(255 255 255) | n/a |
-| `--bg-elevated` | Cockpit window, popovers, toast | `#131916` rgb(19 25 22) | `#ffffff` rgb(255 255 255) | n/a |
-| `--bg-inset` | Command pill, code blocks, segmented track, sidebar | `#1a221d` rgb(26 34 29) | `#edf2ea` rgb(237 242 234) | n/a |
-| `--text-primary` | Headings, body | `#f3f5ef` rgb(243 245 239) | `#121712` rgb(18 23 18) | 14.81 / 15.98 |
-| `--text-secondary` | Lead, descriptions | `#b6beb3` rgb(182 190 179) | `#3e493f` rgb(62 73 63) | 8.53 / 8.29 |
-| `--text-muted` | Captions, metadata, timestamps | `#8f998e` rgb(143 153 142) | `#58635a` rgb(88 99 90) | 5.51 / 5.52 |
-| `--border-subtle` | Decorative hairlines inside surfaces | `rgb(238 243 235 / 8%)` | `rgb(18 23 18 / 8%)` | decorative, no requirement |
-| `--border-default` | Card and window edges | `rgb(238 243 235 / 14%)` | `rgb(18 23 18 / 14%)` | decorative; card meaning never relies on edge alone |
-| `--border-strong` | Control boundaries, inputs, focus-adjacent UI edges | `#66736a` rgb(102 115 106) | `#7f8b80` rgb(127 139 128) | 3.27 / 3.13 (>= 3:1 UI) |
-| `--accent` | Primary action fill, active tab marker, focus ring, links | `#b7ed81` rgb(183 237 129) | `#256f18` rgb(37 111 24) | 11.97 / 5.49 |
-| `--accent-hover` | Hover/pressed primary | `#c9f59d` rgb(201 245 157) | `#1c5a11` rgb(28 90 17) | 13.20 / 7.34 |
-| `--accent-ink` | Text/icons on `--accent` fill | `#102008` rgb(16 32 8) | `#ffffff` rgb(255 255 255) | 12.53 on accent / 6.24 on accent |
-| `--accent-wash` | Selected row, spotlight tint, badge fill | `rgb(183 237 129 / 12%)` | `rgb(37 111 24 / 10%)` | background only; text on it uses `--text-primary` or `--accent` |
-| `--cyan-signal` | Gateway / protocol / network nodes | `#7fd8e6` rgb(127 216 230) | `#0a6676` rgb(10 102 118) | 9.97 / 5.82 |
-| `--amber-signal` | Queue, pending, warnings, CoCode cross-link | `#efc56f` rgb(239 197 111) | `#8a4f00` rgb(138 79 0) | 9.99 / 5.78 |
-| `--status-add` | Diff additions, passed checks | `#9cdea9` rgb(156 222 169) | `#1d7135` rgb(29 113 53) | 10.41 / 5.34 |
-| `--status-del` | Diff deletions, failures | `#f2a094` rgb(242 160 148) | `#b42318` rgb(180 35 24) | 7.93 / 5.79 |
+| Token              | Role                                                      | Dark                       | Light                      | Min contrast dark / light                                       |
+| ------------------ | --------------------------------------------------------- | -------------------------- | -------------------------- | --------------------------------------------------------------- |
+| `--bg-canvas`      | Page background                                           | `#070908` rgb(7 9 8)       | `#f5f7f3` rgb(245 247 243) | n/a                                                             |
+| `--bg-surface`     | Cards, header on scroll, window body                      | `#0d110f` rgb(13 17 15)    | `#ffffff` rgb(255 255 255) | n/a                                                             |
+| `--bg-elevated`    | Cockpit window, popovers, toast                           | `#131916` rgb(19 25 22)    | `#ffffff` rgb(255 255 255) | n/a                                                             |
+| `--bg-inset`       | Command pill, code blocks, segmented track, sidebar       | `#1a221d` rgb(26 34 29)    | `#edf2ea` rgb(237 242 234) | n/a                                                             |
+| `--text-primary`   | Headings, body                                            | `#f3f5ef` rgb(243 245 239) | `#121712` rgb(18 23 18)    | 14.81 / 15.98                                                   |
+| `--text-secondary` | Lead, descriptions                                        | `#b6beb3` rgb(182 190 179) | `#3e493f` rgb(62 73 63)    | 8.53 / 8.29                                                     |
+| `--text-muted`     | Captions, metadata, timestamps                            | `#8f998e` rgb(143 153 142) | `#58635a` rgb(88 99 90)    | 5.51 / 5.52                                                     |
+| `--border-subtle`  | Decorative hairlines inside surfaces                      | `rgb(238 243 235 / 8%)`    | `rgb(18 23 18 / 8%)`       | decorative, no requirement                                      |
+| `--border-default` | Card and window edges                                     | `rgb(238 243 235 / 14%)`   | `rgb(18 23 18 / 14%)`      | decorative; card meaning never relies on edge alone             |
+| `--border-strong`  | Control boundaries, inputs, focus-adjacent UI edges       | `#66736a` rgb(102 115 106) | `#7f8b80` rgb(127 139 128) | 3.27 / 3.13 (>= 3:1 UI)                                         |
+| `--accent`         | Primary action fill, active tab marker, focus ring, links | `#b7ed81` rgb(183 237 129) | `#256f18` rgb(37 111 24)   | 11.97 / 5.49                                                    |
+| `--accent-hover`   | Hover/pressed primary                                     | `#c9f59d` rgb(201 245 157) | `#1c5a11` rgb(28 90 17)    | 13.20 / 7.34                                                    |
+| `--accent-ink`     | Text/icons on `--accent` fill                             | `#102008` rgb(16 32 8)     | `#ffffff` rgb(255 255 255) | 12.53 on accent / 6.24 on accent                                |
+| `--accent-wash`    | Selected row, spotlight tint, badge fill                  | `rgb(183 237 129 / 12%)`   | `rgb(37 111 24 / 10%)`     | background only; text on it uses `--text-primary` or `--accent` |
+| `--cyan-signal`    | Gateway / protocol / network nodes                        | `#7fd8e6` rgb(127 216 230) | `#0a6676` rgb(10 102 118)  | 9.97 / 5.82                                                     |
+| `--amber-signal`   | Queue, pending, warnings, CoCode cross-link               | `#efc56f` rgb(239 197 111) | `#8a4f00` rgb(138 79 0)    | 9.99 / 5.78                                                     |
+| `--status-add`     | Diff additions, passed checks                             | `#9cdea9` rgb(156 222 169) | `#1d7135` rgb(29 113 53)   | 10.41 / 5.34                                                    |
+| `--status-del`     | Diff deletions, failures                                  | `#f2a094` rgb(242 160 148) | `#b42318` rgb(180 35 24)   | 7.93 / 5.79                                                     |
 
 Supporting tokens (derived, still tokens):
 
-| Token | Dark | Light | Use |
-| --- | --- | --- | --- |
-| `--header-bg` | `rgb(7 9 8 / 78%)` | `rgb(245 247 243 / 82%)` | Sticky header after scroll |
-| `--shadow-tint` | `rgb(0 0 0 / 55%)` | `rgb(28 44 24 / 14%)` | Elevation shadow color (section 7) |
-| `--lattice-dot` | `rgb(183 237 129 / 16%)` | `rgb(37 111 24 / 14%)` | Hero canvas lattice |
-| `--lattice-glow` | `rgb(183 237 129 / 45%)` | `rgb(37 111 24 / 35%)` | Lattice hover/pulse cells |
-| `--selection-bg` / `--selection-ink` | `--accent` / `--accent-ink` | `--accent` / `--accent-ink` | `::selection` |
+| Token                                | Dark                        | Light                       | Use                                                                          |
+| ------------------------------------ | --------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
+| `--header-bg`                        | `rgb(7 9 8 / 96%)`          | `rgb(245 247 243 / 96%)`    | Sticky header after scroll; body text must not stay readable through the nav |
+| `--shadow-tint`                      | `rgb(0 0 0 / 55%)`          | `rgb(28 44 24 / 14%)`       | Elevation shadow color (section 7)                                           |
+| `--lattice-dot`                      | `rgb(183 237 129 / 16%)`    | `rgb(37 111 24 / 14%)`      | Hero canvas lattice                                                          |
+| `--lattice-glow`                     | `rgb(183 237 129 / 45%)`    | `rgb(37 111 24 / 35%)`      | Lattice hover/pulse cells                                                    |
+| `--selection-bg` / `--selection-ink` | `--accent` / `--accent-ink` | `--accent` / `--accent-ink` | `::selection`                                                                |
 
 ### 2.2 CoCode accent override (`/cocode/`)
 
 CoCode reuses every neutral, border and status token above unchanged and overrides only:
 
-| Token | Dark | Light | Min contrast dark / light |
-| --- | --- | --- | --- |
-| `--accent` | `#efc56f` | `#8a4f00` | 9.99 / 5.78 |
-| `--accent-hover` | `#f6d48f` | `#723f00` | > 9.99 / 7.62 |
-| `--accent-ink` | `#231a09` | `#ffffff` | 10.54 / 6.56 |
-| `--accent-wash` | `rgb(239 197 111 / 12%)` | `rgb(138 79 0 / 10%)` | background only |
-| `--cox-crosslink` | `#b7ed81` | `#256f18` | Same as Cox `--accent`, used only for "Cox" references |
+| Token             | Dark                     | Light                 | Min contrast dark / light                              |
+| ----------------- | ------------------------ | --------------------- | ------------------------------------------------------ |
+| `--accent`        | `#efc56f`                | `#8a4f00`             | 9.99 / 5.78                                            |
+| `--accent-hover`  | `#f6d48f`                | `#723f00`             | > 9.99 / 7.62                                          |
+| `--accent-ink`    | `#231a09`                | `#ffffff`             | 10.54 / 6.56                                           |
+| `--accent-wash`   | `rgb(239 197 111 / 12%)` | `rgb(138 79 0 / 10%)` | background only                                        |
+| `--cox-crosslink` | `#b7ed81`                | `#256f18`             | Same as Cox `--accent`, used only for "Cox" references |
 
 ### 2.3 Rules
 
 - One accent per viewport region. Signal colors (`--cyan-signal`, `--amber-signal`, `--status-*`) are semantic, never decorative.
 - Color is never the only carrier of meaning: diff counts keep `+`/`-`, statuses keep a text label or icon.
-- Gradient text is allowed only on the single hero accent line, from `--accent` to `--accent-hover`; both stops pass contrast on their own.
+- Accent display lines (`.title-accent`) use solid `--accent` ink rather than `background-clip: text` gradients so subpixel antialiasing and contrast stay uniform across dark, light and forced-colors modes.
+- Explicitly set `background: var(--bg-canvas); color: var(--text-primary);` on `body` as well as `:root` so page-snapshot contrast analyzers resolve the painted canvas accurately.
 - No hardcoded hex in component CSS. New colors are added here first, with both theme values and a measured ratio.
 
 ---
@@ -132,16 +133,16 @@ monospace voice, not from a downloaded face.
 
 Each heading step is at least 1.25x the next one at both ends of the clamp.
 
-| Token | Role | Size (min -> max) | Line height | Weight | Tracking (Latin) | Ratio to next |
-| --- | --- | --- | --- | --- | --- | --- |
-| `--type-display` | Hero headline | `clamp(48px, 6.4vw + 8px, 96px)` | 1.0 | 680 | -0.045em | 1.33 / 1.60 |
-| `--type-h1` | Section headline | `clamp(36px, 3.6vw + 10px, 60px)` | 1.08 | 650 | -0.035em | 1.29 / 1.50 |
-| `--type-h2` | Sub-section, bento lead card title | `clamp(28px, 2.2vw + 8px, 40px)` | 1.15 | 620 | -0.025em | 1.27 / 1.67 |
-| `--type-h3` | Card title, panel title | `clamp(22px, 0.6vw + 18px, 24px)` | 1.25 | 600 | -0.012em | 1.16 / 1.26 to Lead |
-| `--type-lead` | Hero lead, section intro | `clamp(17px, 0.4vw + 15px, 19px)` | 1.6 | 400 | 0 | 1.06 / 1.19 |
-| `--type-body` | Body copy | `16px` | 1.6 | 400 | 0 | 1.14 |
-| `--type-small` | Card descriptions, nav, button labels | `14px` | 1.5 | 450 | 0 | 1.17 |
-| `--type-caption` | Metadata, code, chips, window chrome | `12px` | 1.45 | 450 | 0.01em | floor |
+| Token            | Role                                  | Size (min -> max)                 | Line height | Weight | Tracking (Latin) | Ratio to next       |
+| ---------------- | ------------------------------------- | --------------------------------- | ----------- | ------ | ---------------- | ------------------- |
+| `--type-display` | Hero headline                         | `clamp(48px, 6.4vw + 8px, 96px)`  | 1.0         | 680    | -0.045em         | 1.33 / 1.60         |
+| `--type-h1`      | Section headline                      | `clamp(36px, 3.6vw + 10px, 60px)` | 1.08        | 650    | -0.035em         | 1.29 / 1.50         |
+| `--type-h2`      | Sub-section, bento lead card title    | `clamp(28px, 2.2vw + 8px, 40px)`  | 1.15        | 620    | -0.025em         | 1.27 / 1.67         |
+| `--type-h3`      | Card title, panel title               | `clamp(22px, 0.6vw + 18px, 24px)` | 1.25        | 600    | -0.012em         | 1.16 / 1.26 to Lead |
+| `--type-lead`    | Hero lead, section intro              | `clamp(17px, 0.4vw + 15px, 19px)` | 1.6         | 400    | 0                | 1.06 / 1.19         |
+| `--type-body`    | Body copy                             | `16px`                            | 1.6         | 400    | 0                | 1.14                |
+| `--type-small`   | Card descriptions, nav, button labels | `14px`                            | 1.5         | 450    | 0                | 1.17                |
+| `--type-caption` | Metadata, code, chips, window chrome  | `12px`                            | 1.45        | 450    | 0.01em           | floor               |
 
 Note on H3 -> Lead: H3 and Lead never sit adjacent as hierarchy peers (Lead follows H1/Display only),
 so the 1.25x rule is enforced across Display, H1, H2, H3 and between H3 and Body (22/16 = 1.375).
@@ -149,7 +150,7 @@ so the 1.25x rule is enforced across Display, H1, H2, H3 and between H3 and Body
 ### 3.2 Rules
 
 - **Minimum 12px** for all visible text, including window chrome, DAG node labels, chips and footer. Illustrations shrink by dropping panes (container queries), never by shrinking type.
-- **CJK**: `:lang(zh) { letter-spacing: 0; }` on every element that carries negative tracking. Chinese display headlines use weight 600 and line-height 1.12 to avoid ascender collisions.
+- **CJK**: Remove negative tracking on Chinese text. Preserve phrase breaks in headings and let prose use natural line breaks with strict punctuation rules. Chinese display headlines use weight 600 and line-height 1.12.
 - **Numerals**: `font-variant-numeric: tabular-nums` on metrics, diff counts, ports, timestamps, version numbers, DAG progress (`4/4`) and step numbers.
 - **Monospace** (`--font-mono`, `--type-caption` or `--type-small`) for commands, paths, branch names, ports, model ids, node ids. Never translated.
 - Measure: body text max `68ch`; lead max `60ch`; headlines `text-wrap: balance`, paragraphs `text-wrap: pretty`.
@@ -161,15 +162,15 @@ so the 1.25x rule is enforced across Display, H1, H2, H3 and between H3 and Body
 
 ### 4.1 Spacing scale (4px base)
 
-| Token | Value | Token | Value |
-| --- | --- | --- | --- |
-| `--space-1` | 4px | `--space-10` | 40px |
-| `--space-2` | 8px | `--space-12` | 48px |
-| `--space-3` | 12px | `--space-16` | 64px |
-| `--space-4` | 16px | `--space-20` | 80px |
-| `--space-5` | 20px | `--space-24` | 96px |
-| `--space-6` | 24px | `--space-28` | 112px |
-| `--space-8` | 32px | `--space-32` | 128px |
+| Token       | Value | Token        | Value |
+| ----------- | ----- | ------------ | ----- |
+| `--space-1` | 4px   | `--space-10` | 40px  |
+| `--space-2` | 8px   | `--space-12` | 48px  |
+| `--space-3` | 12px  | `--space-16` | 64px  |
+| `--space-4` | 16px  | `--space-20` | 80px  |
+| `--space-5` | 20px  | `--space-24` | 96px  |
+| `--space-6` | 24px  | `--space-28` | 112px |
+| `--space-8` | 32px  | `--space-32` | 128px |
 
 Section rhythm: `--section-gap: clamp(var(--space-20), 10vw, var(--space-32))` between top-level sections;
 `--space-12` between a section header and its content; `--space-4`/`--space-6` inside cards.
@@ -182,33 +183,37 @@ Section rhythm: `--section-gap: clamp(var(--space-20), 10vw, var(--space-32))` b
 
 ### 4.3 Breakpoints
 
-| Token | Width | Behavior |
-| --- | --- | --- |
-| `--bp-xs` | 320px | Floor. No horizontal overflow; command pill wraps; phone frame scales to fit. |
-| `--bp-sm` | 390px | Typical phone. Hero actions stack full-width below this. |
-| `--bp-md` | 640px | Bento becomes 2 columns; tab strip stops scrolling horizontally. |
-| `--bp-lg` | 900px | Split-screen sections go side by side; nav links show. |
-| `--bp-xl` | 1100px | Bento reaches its asymmetric 6-column arrangement; cockpit shows 3 panes when its container allows. |
-| `--bp-2xl` | 1440px | Max design width; extra space becomes margin, never wider content. |
+| Token      | Width  | Behavior                                                                                            |
+| ---------- | ------ | --------------------------------------------------------------------------------------------------- |
+| `--bp-xs`  | 320px  | Floor. No horizontal overflow; command pill wraps; phone frame scales to fit.                       |
+| `--bp-sm`  | 390px  | Typical phone. Hero actions stack full-width below this.                                            |
+| `--bp-md`  | 640px  | Bento becomes 2 columns; tab strip stops scrolling horizontally.                                    |
+| `--bp-lg`  | 900px  | Split-screen sections go side by side; nav links show.                                              |
+| `--bp-xl`  | 1100px | Bento reaches its asymmetric 6-column arrangement; cockpit shows 3 panes when its container allows. |
+| `--bp-2xl` | 1440px | Max design width; extra space becomes margin, never wider content.                                  |
 
 Media queries use `min-width` mobile-first. The cockpit window uses container queries
 (`container: cockpit / inline-size`) at 560px (2 panes) and 960px (3 panes), independent of viewport.
 
 ### 4.4 Layout lines (StyleGallery)
 
-Layout: Cox Homepage (#top) - narrative product showcase with interactive cockpit stage, asymmetric bento architecture, and tabbed workflow inspector -> page-grid + split-screen + tab-strip (https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md); scroll owner: document; anti-patterns: nested vertical scrollbars inside cards, horizontal overflow at 320px, equal-height 3-card generic row, coloured 4px left stripes
+Layout: Cox Homepage (#top) - narrative product showcase with interactive cockpit stage, asymmetric bento architecture, tabbed workflow inspector, and split-screen mobile preview plus responsive comparison table -> page-grid + split-screen + tab-strip (https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md); scroll owner: document; anti-patterns: nested vertical scrollbars inside cards, horizontal overflow at 320px, equal-height 3-card generic row, coloured 4px left stripes, bordered cards nested inside cards
 
-Layout: CoCode Subpage (/cocode/) - mobile-runtime showcase with device frame and 2-column capability matrix -> split-screen + stack (https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md); scroll owner: document; anti-patterns: clipped phone frame on 320px, root-relative asset paths, Unicode symbol glyph icons
+Layout: Cox Mobile Section (#mobile) - isolated server sessions, touch workspace, and background alerts alongside a three-option comparison table -> split-screen + stack (https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md); scroll owner: document; avoid horizontal table overflow, a clipped device frame at 320px, or implying the remote client runs agents on iOS.
+
+Layout: CoCode Subpage (/cocode/) - mobile-runtime showcase with device frame, 2-column capability matrix, and Cox Mobile coexistence guide -> split-screen + stack (https://raw.githubusercontent.com/changeroa/StyleGallery/main/CATALOG.md); scroll owner: document; anti-patterns: clipped phone frame on 320px, root-relative asset paths, Unicode symbol glyph icons
 
 ### 4.5 Homepage section map
 
 1. Header (sticky, transparent until scroll, then `--header-bg` + `--border-subtle` bottom hairline).
 2. Hero: page-grid, headline + lead + actions + command pill, then full-width cockpit stage over the canvas lattice.
-3. Signature Capabilities: asymmetric bento (dense-grid inside page-grid). Desktop arrangement on 6 columns: OMO Native DAG & Memory spans 4 cols x 2 rows; CLIProxyAPI Gateway 2 x 1; Queue & Steer 2 x 1; Git Worktrees & Checkpoints 6 x 1 (wide strip with a branch/checkpoint timeline). No two cards share the same footprint in a row.
+3. Signature Capabilities: asymmetric bento (dense-grid inside page-grid). Desktop arrangement on 6 columns: OMO Native DAG & Memory spans 4 cols x 2 rows; CLIProxyAPI Gateway 2 x 1; Queue & Steer 2 x 1; Git Worktrees & Checkpoints 6 x 1 (wide strip with a branch/checkpoint timeline); Loopback Security 4 x 1; Long-session Details 2 x 1. No two cards share the same footprint in a row except stacked secondary 2-col pairs.
 4. Workflow inspector: tab-strip (Agents / Queue and steer / Changes and checkpoints / Terminal and Git) on the left, live panel on the right (split-screen at >= 900px, stacked below). All views share one grid cell so switching never changes the panel height.
-5. Desktop + CoCode + Local-first topology: split-screen; left copy, right topology diagram (Browser / Desktop / CoCode -> `127.0.0.1` Cox server -> agents -> configured model services).
-6. Quick Start: three steps in a stack with copyable commands.
-7. Footer: license, attribution, language and theme switchers.
+5. Mobile & Background Notifications (`#mobile`): split-screen showcase with Cox Mobile releases for iOS 17+ (IPA) and Android 8+ (APK), a CoCode link, and three interactive preview modes for servers, touch controls, and alerts. A responsive table compares Cox Mobile, CoCode, and the mobile browser.
+6. Desktop (`#desktop`): split-screen; rolling desktop downloads, combined vs client-only installers, staged updates with rollback (plus Linux `systemd` browser-driven updates), HTTPS / Cloudflare Access remote servers, and CoCode cross-link.
+7. Local-first topology (`#local`): split-screen; left copy, right topology diagram (Browser / Desktop on `127.0.0.1` + remote Mobile / Desktop over HTTPS & password -> Cox server -> agents -> gateway -> configured model services, Git hosts & encrypted push endpoints).
+8. Quick Start (`#start`): three steps in a stack with copyable commands.
+9. Footer: license, attribution, language and theme switchers.
 
 ---
 
@@ -260,7 +265,7 @@ descriptive (existing convention: `.button`, `.button-primary`, `.segmented`, `.
 ### 5.6 Copyable Command Pill + Accessible Toast
 
 - Pill: `--bg-inset`, 1px `--border-strong`, radius `--radius-md`, mono `--type-small`, prompt `$` in `--text-muted` (`aria-hidden`), command in `--text-primary`, copy button (icon-only, 36px, `aria-label="Copy command"`).
-- At <= 390px the command wraps with `overflow-wrap: anywhere`; it never overflows horizontally.
+- At <= 390px commands wrap with `overflow-wrap: anywhere` on `code`. Chinese prose uses `word-break: keep-all` and `line-break: strict`, so lines break at punctuation and spaces; `overflow-wrap: anywhere` is only the emergency break when a clause is wider than its container. The page never overflows horizontally.
 - Copy feedback: icon swaps `#i-copy` -> `#i-check` for 1.6s with stable button size, and a toast region (`role="status"`, `aria-live="polite"`, one per page) announces "Copied" / "Copy failed - select the text manually". Toast: `--bg-elevated`, 1px `--border-default`, radius `--radius-md`, `--elevation-1`, bottom-center, enters with opacity + translateY(8px -> 0).
 - Clipboard failure keeps the command selectable and is reported, never swallowed.
 
@@ -270,17 +275,17 @@ descriptive (existing convention: `.button`, `.button-primary`, `.segmented`, `.
 - **Priorities**:
   1. Hero headline + 4-agent interactive cockpit (OMO, Codex, Claude, Cursor) & the npx launch command.
   2. Signature Capabilities Bento: OMO Native DAG & Memory; CLIProxyAPI Local Model Gateway; Real-time Queue & Steer; Git Worktrees & Checkpoints.
-  3. Desktop + CoCode + Local-first topology & Quick Start.
-- **Left out on purpose**: numbered 01-05 section kickers above every heading; fabricated testimonials and vanity user stats; glassmorphism clone blur walls; 4px coloured side-stripes.
+  3. Mobile Cockpit & Background Notifications (`@cox/mobile` for iOS 17+ & Android 8+ Lite, touch Web UI, VAPID Web Push & Bark/Telegram/Ntfy/JSON webhooks, CoCode coexistence), Desktop, Local-first topology & Quick Start.
+- **Left out on purpose**: numbered 01-05 section kickers above every heading; fabricated testimonials and vanity user stats; glassmorphism clone blur walls; 4px coloured side-stripes; bordered sub-cards nested inside cards.
 - **Required content**:
-  - Header: Cox mark (`assets/cox.svg`), nav (Capabilities, Workflow, Desktop, Local first, Quick start), language switch (zh/en), theme switch (System/Light/Dark), GitHub link.
-  - Hero: status line "MIT open source - runs on 127.0.0.1", headline (en "Your agents. One cockpit." / zh equivalent), lead naming Codex, Claude Code, Cursor, OMO Native, OpenCode and Pi, Download + GitHub actions, command pill, platform note "macOS / Windows desktop - npm for browser - bring your own agent account or API".
+  - Header: Cox mark (`assets/cox.svg`), nav (Capabilities, Workflow, Mobile, Desktop, Local first, Quick start), language switch (zh/en), theme switch (System/Light/Dark), GitHub link.
+  - Hero: local open-source status, bilingual headline, a short lead with representative agents, desktop and mobile actions, npm launch command, and platform note. Keep the agent switch label beside its segmented control.
   - Cockpit stage with agent switcher, live DAG strip, diff panel, `Illustrative` label.
-  - Bento copy grounded in README facts: OMO native task DAG with waves/critical path, shared instance memory under Cox state; CLIProxyAPI translator for OpenAI Responses / Chat Completions / Anthropic Messages / Gemini with keys kept in the local secret store; queue by default with Steer now and reorderable queue; worktrees, checkpoints and Move to project.
-  - Workflow tabs: Agents, Queue and steer, Changes and checkpoints, Terminal and Git.
-  - Desktop section: combined vs client-only installers, staged backend updates with rollback, HTTPS + password remote connection.
-  - CoCode cross-link card (amber `--amber-signal`) linking `./cocode/`.
-  - Local-first topology with the explicit statement that local control is not offline inference.
+  - Bento copy grounded in README facts: OMO task graphs with waves and critical paths and instance-scoped memory. Draw the three demo waves side by side from 640px with visible dependency edges. Stack them on narrow screens. Keep the protocol translator, queue and steer controls, worktrees, checkpoints, thread moves, scheduling, and background notifications.
+  - Workflow tabs: Agents (including OMO Native, Codex, Claude Code, Oh My Pi, Cursor, OpenCode), Queue and steer, Changes and checkpoints, Terminal and Git.
+  - Mobile section (`#mobile`): Cox Mobile IPA and APK releases, a CoCode Android link, three interactive preview modes, and a comparison table for Cox Mobile, CoCode, and the mobile browser. Show Bark, Telegram, Ntfy, and signed webhooks for Cox Mobile and describe encrypted Web Push in the browser/PWA copy. CoCode and Cox Mobile store their data independently.
+  - Desktop section (`#desktop`): combined vs client-only installers, staged backend updates with rollback (plus Linux `systemd` browser-driven updates), HTTPS + password + Cloudflare Access remote connection, CoCode cross-link card linking `./cocode/`.
+  - Local-first topology with loopback local clients, authenticated HTTPS remote clients, encrypted push/webhook dispatch, and the explicit statement that local control is not offline inference.
   - Quick Start: `npm install --global @doublepi123/cox@latest`, `cox`, configure provider in Settings.
   - Footer: MIT license, T3 Code attribution. The site draws its own OMO glyph and does not ship the separately licensed official OmO icon, so no OmO icon notice is needed; add one if that icon is ever used here.
 
@@ -290,7 +295,7 @@ descriptive (existing convention: `.button`, `.button-primary`, `.segmented`, `.
 - **Priorities**:
   1. Split-screen hero: headline "Your coding workspace in your pocket" + lead + actions on the left; device frame with the illustrative mobile cockpit on the right (stacks below copy under 900px).
   2. 2-column capability matrix (stack on mobile): runs Cox locally on the phone, no computer or root, uses configured agents, local `127.0.0.1` server, same threads/terminals/diffs, bilingual.
-  3. How it works (3 steps in a stack) + Download block with Android version requirement and prerelease note.
+  3. How it works (three steps in a stack) and a download block with the minimum Android version and a link to current release status.
 - **Left out on purpose**: Unicode symbol glyph icons (arrows, check marks, dots as text), app-store badges, fake ratings, a clipped phone frame at 320px, root-relative asset paths.
 - **Required content**: CoCode icon (`cocode/icon.png`), header with language + theme switch, "Cox on Android" status line, device frame (status bar, project card, transcript, task checklist using `#i-check` sprite, footer "Cox running on this device - 127.0.0.1" in mono), `Illustrative interface` caption, capability matrix, steps, download, MIT license + upstream NOTICE links (`./LICENSE`, `./NOTICE`).
 - **Device frame**: width `min(100%, 320px)` at mobile with `aspect-ratio: 9 / 19.5`, radius `--radius-device` (44px), frame gradient from neutral tokens; at 320px viewport it scales to `calc(100vw - 2 * var(--gutter))` and is never clipped.
@@ -301,16 +306,16 @@ descriptive (existing convention: `.button`, `.button-primary`, `.segmented`, `.
 
 ### 6.1 Timing tokens
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--dur-instant` | 90ms | Press feedback |
-| `--dur-fast` | 160ms | Hover color/fill, focus ring |
-| `--dur-base` | 240ms | Segmented indicator, tab panel crossfade, toast |
-| `--dur-slow` | 480ms | Section reveal |
-| `--dur-ambient` | 2400ms | DAG node pulse cycle |
-| `--ease-out` | `cubic-bezier(0.2, 0.7, 0.2, 1)` | Default (matches existing `--ease`) |
-| `--ease-in-out` | `cubic-bezier(0.65, 0, 0.35, 1)` | Indicator slides |
-| `--stagger` | 60ms | Reveal stagger between siblings, max 6 steps |
+| Token           | Value                            | Use                                             |
+| --------------- | -------------------------------- | ----------------------------------------------- |
+| `--dur-instant` | 90ms                             | Press feedback                                  |
+| `--dur-fast`    | 160ms                            | Hover color/fill, focus ring                    |
+| `--dur-base`    | 240ms                            | Segmented indicator, tab panel crossfade, toast |
+| `--dur-slow`    | 480ms                            | Section reveal                                  |
+| `--dur-ambient` | 2400ms                           | DAG node pulse cycle                            |
+| `--ease-out`    | `cubic-bezier(0.2, 0.7, 0.2, 1)` | Default (matches existing `--ease`)             |
+| `--ease-in-out` | `cubic-bezier(0.65, 0, 0.35, 1)` | Indicator slides                                |
+| `--stagger`     | 60ms                             | Reveal stagger between siblings, max 6 steps    |
 
 ### 6.2 Hero lattice (ShapeGrid-inspired, 2D canvas)
 
@@ -342,26 +347,26 @@ descriptive (existing convention: `.button`, `.button-primary`, `.segmented`, `.
 2. **1px translucent hairlines** (`--border-subtle`, `--border-default`) define edges; `--border-strong` only for interactive control boundaries.
 3. **Tinted y-offset elevation** only where a surface floats over content:
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--elevation-1` | `0 1px 2px var(--shadow-tint)` | Toast, popovers, selected segment |
-| `--elevation-2` | `0 8px 24px -12px var(--shadow-tint)` | Hovered bento card (applied via a pre-rendered pseudo-element whose opacity animates) |
-| `--elevation-hero` | `0 40px 80px -40px var(--shadow-tint), 0 0 0 1px var(--border-default)` | Cockpit window and CoCode device frame only |
+| Token              | Value                                                                   | Use                                                                                   |
+| ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `--elevation-1`    | `0 1px 2px var(--shadow-tint)`                                          | Toast, popovers, selected segment                                                     |
+| `--elevation-2`    | `0 8px 24px -12px var(--shadow-tint)`                                   | Hovered bento card (applied via a pre-rendered pseudo-element whose opacity animates) |
+| `--elevation-hero` | `0 40px 80px -40px var(--shadow-tint), 0 0 0 1px var(--border-default)` | Cockpit window and CoCode device frame only                                           |
 
 - A top-lit inner highlight on the cockpit window: `inset 0 1px 0 rgb(255 255 255 / 6%)` on dark, omitted on light.
-- No `backdrop-filter` except the sticky header (`blur(12px)` over `--header-bg`), which degrades to the opaque-ish background when unsupported.
+- No `backdrop-filter` except the sticky header (`blur(24px)` over `--header-bg` at 96% opacity), which degrades to that near-opaque background when unsupported. Scrolled body copy must not remain readable across the nav labels.
 
 ### 7.2 Concentric radii
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--radius-xs` | 6px | Chips, DAG node chips, kbd |
-| `--radius-sm` | 8px | Buttons, segments, inner media in compact cards |
-| `--radius-md` | 12px | Command pill, segmented track, toast, inner media in bento cards |
-| `--radius-lg` | 16px | Bento cards, tab panel |
-| `--radius-xl` | 20px | Cockpit window, topology frame |
-| `--radius-device` | 44px | CoCode device frame |
-| `--radius-pill` | 999px | Status badges, LIVE badge |
+| Token             | Value | Use                                                              |
+| ----------------- | ----- | ---------------------------------------------------------------- |
+| `--radius-xs`     | 6px   | Chips, DAG node chips, kbd                                       |
+| `--radius-sm`     | 8px   | Buttons, segments, inner media in compact cards                  |
+| `--radius-md`     | 12px  | Command pill, segmented track, toast, inner media in bento cards |
+| `--radius-lg`     | 16px  | Bento cards, tab panel                                           |
+| `--radius-xl`     | 20px  | Cockpit window, topology frame                                   |
+| `--radius-device` | 44px  | CoCode device frame                                              |
+| `--radius-pill`   | 999px | Status badges, LIVE badge                                        |
 
 Concentric rule: inner radius = outer radius - padding between them, snapped to the nearest token
 (segmented track 12px with 4px padding -> segment 8px; bento card 16px with 4px media inset -> 12px;
@@ -386,9 +391,9 @@ Target: WCAG 2.2 AA on both themes, both languages, from 320px to 1440px+.
 
 ### Accepted debt
 
-| ID | Item | Reason | Owner | Revisit by |
-| --- | --- | --- | --- | --- |
-| (none) | | | | |
+| ID    | Item                                                  | Reason                                                                                                                                                                                                                                         | Owner       | Revisit by                       |
+| ----- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------------------------- |
+| QA-01 | 320px detector stress on fixed demo and chrome labels | The detector appends a 300-character word to every text node, including status chips and header labels. Those labels come from the site and do not accept user content. Check the shipped Chinese and English strings at 320px in both themes. | Site owners | Before adding dynamic label text |
 
 ---
 
@@ -402,13 +407,13 @@ handheld sibling with the same visual language. Every surface is token-driven an
 
 Baseline evidence: `/tmp/tmp.oUaEAYE4nf/evidence-before/` (16 captures: home and CoCode x desktop 1440 / iPhone 14 x dark / light x top / end).
 
-| ID | Gap (observed in baseline) | Evidence | Fix | Proof of done |
-| --- | --- | --- | --- | --- |
-| G1 | Homepage never mentions OMO Native, its task DAG or shared memory, Cox's strongest differentiator. | `home-desktop-1440-dark-*-before.png`; no OMO copy in `site/index.html` | Bento lead card "OMO Native DAG & Memory" (4x2) with live DAG mini-visual; DAG strip in the cockpit window (5.3, 5.4). | After-capture shows the card and DAG strip in both languages; case-insensitive `grep -c omo` on `site/index.html` and `site/content.js` is > 0 (baseline 0). |
-| G2 | The local model gateway appears only as a one-line "own API gateway" mention; CLIProxyAPI protocol translation and locally held upstream keys are never explained. | Same captures; `site/content.js` keys `feature.providers.*` and quick-start step only, zero `CLIProxy` matches | Bento card "CLIProxyAPI Local Model Gateway" with protocol switchboard (OpenAI Responses / Chat / Anthropic / Gemini) in `--cyan-signal`. | After-capture shows the card; copy matches README claims (no offline-inference claim). |
-| G3 | Homepage is dark-only: the light captures are identical to the dark ones (`color-scheme: dark`, no light tokens). | `home-*-light-*-before.png` vs `home-*-dark-*-before.png` | Full Mineral Daylight token set (section 2), `prefers-color-scheme` default + persisted System/Light/Dark switch. | Light after-captures differ from dark; automated contrast check of token pairs passes AA in both themes. |
-| G4 | Unicode-symbol icon risk on CoCode. Source audit: the current arrows and checks are already SVG sprites (`#i-arrow-up-right`, `#i-check`), and the status dots are CSS pseudo-elements. The gap is that the CoCode sprite is maintained separately from the homepage sprite and no check guards the no-glyph rule. | `cocode-*-top-before.png`; `site/cocode/index.html` sprite block; `site/cocode/styles.css` `content: ""` dots | Keep and share one sprite vocabulary (same ids and stroke style as the homepage), draw status dots as token-colored shapes, and never introduce symbol glyphs in redesigned markup or `content.js` strings. | No code points in U+2190-U+27BF or U+2B00-U+2BFF in `site/cocode/index.html`, `site/cocode/main.js`, `site/index.html` or `site/content.js`; after-capture shows SVG icons only. |
-| G5 | Repetitive numbered kickers (`01`-`05` eyebrows, `A / 02` detail index, `workflow-number`, `step-number`) above every section add noise without meaning. | `site/index.html` lines with `<span>01</span>` ... `<span>05</span>`; home end captures | Remove section number kickers; keep step numbers only inside the Quick Start stack and workflow tabs where order is real. | `grep` finds no `<span>0N</span>` eyebrow pattern; after-captures show plain headings. |
-| G6 | Diagrams (workflow, local-first) are flat static illustrations; the cockpit lacks live state. | Home desktop end captures | Live DAG strip with pulse, agent switcher driving transcript/DAG, tabbed workflow inspector with live panels, topology diagram with animated (reduced-motion-safe) flow. | Interaction checks: switching agent/tab updates the illustration; reduced-motion run shows a static frame. |
-| G7 | Hero content is captured nearly invisible at load (reveal animation starts from `opacity: 0`), so the first screen reads as an empty dark page. | `home-desktop-1440-dark-top-before.png`, `home-iphone-14-dark-end-before.png` | Visible-by-default rule (6.4): hero never animates from zero opacity; reveal only for below-fold content after JS opt-in. | Top after-capture at 1440 and iPhone 14 shows full-contrast headline and actions. |
-| G8 | Two pages use divergent token vocabularies and scales (`--background`/`--muted` vs `--canvas`/`--ink-muted`; radii 4-16 vs none), and the homepage hardcodes sizes and radii. | `site/styles.css` `:root`, `site/cocode/styles.css` `:root` | Both stylesheets consume the shared token names in this document; CoCode overrides only the accent family (2.2). | `grep` of component rules finds no raw hex outside `:root`/theme blocks; the 12px minimum-text browser test passes. |
+| ID  | Gap (observed in baseline)                                                                                                                                                                                                                                                                                         | Evidence                                                                                                       | Fix                                                                                                                                                                                                         | Proof of done                                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | Homepage never mentions OMO Native, its task DAG or shared memory, Cox's strongest differentiator.                                                                                                                                                                                                                 | `home-desktop-1440-dark-*-before.png`; no OMO copy in `site/index.html`                                        | Bento lead card "OMO Native DAG & Memory" (4x2) with live DAG mini-visual; DAG strip in the cockpit window (5.3, 5.4).                                                                                      | After-capture shows the card and DAG strip in both languages; case-insensitive `grep -c omo` on `site/index.html` and `site/content.js` is > 0 (baseline 0).                     |
+| G2  | The local model gateway appears only as a one-line "own API gateway" mention; CLIProxyAPI protocol translation and locally held upstream keys are never explained.                                                                                                                                                 | Same captures; `site/content.js` keys `feature.providers.*` and quick-start step only, zero `CLIProxy` matches | Bento card "CLIProxyAPI Local Model Gateway" with protocol switchboard (OpenAI Responses / Chat / Anthropic / Gemini) in `--cyan-signal`.                                                                   | After-capture shows the card; copy matches README claims (no offline-inference claim).                                                                                           |
+| G3  | Homepage is dark-only: the light captures are identical to the dark ones (`color-scheme: dark`, no light tokens).                                                                                                                                                                                                  | `home-*-light-*-before.png` vs `home-*-dark-*-before.png`                                                      | Full Mineral Daylight token set (section 2), `prefers-color-scheme` default + persisted System/Light/Dark switch.                                                                                           | Light after-captures differ from dark; automated contrast check of token pairs passes AA in both themes.                                                                         |
+| G4  | Unicode-symbol icon risk on CoCode. Source audit: the current arrows and checks are already SVG sprites (`#i-arrow-up-right`, `#i-check`), and the status dots are CSS pseudo-elements. The gap is that the CoCode sprite is maintained separately from the homepage sprite and no check guards the no-glyph rule. | `cocode-*-top-before.png`; `site/cocode/index.html` sprite block; `site/cocode/styles.css` `content: ""` dots  | Keep and share one sprite vocabulary (same ids and stroke style as the homepage), draw status dots as token-colored shapes, and never introduce symbol glyphs in redesigned markup or `content.js` strings. | No code points in U+2190-U+27BF or U+2B00-U+2BFF in `site/cocode/index.html`, `site/cocode/main.js`, `site/index.html` or `site/content.js`; after-capture shows SVG icons only. |
+| G5  | Repetitive numbered kickers (`01`-`05` eyebrows, `A / 02` detail index, `workflow-number`, `step-number`) above every section add noise without meaning.                                                                                                                                                           | `site/index.html` lines with `<span>01</span>` ... `<span>05</span>`; home end captures                        | Remove section number kickers; keep step numbers only inside the Quick Start stack and workflow tabs where order is real.                                                                                   | `grep` finds no `<span>0N</span>` eyebrow pattern; after-captures show plain headings.                                                                                           |
+| G6  | Diagrams (workflow, local-first) are flat static illustrations; the cockpit lacks live state.                                                                                                                                                                                                                      | Home desktop end captures                                                                                      | Live DAG strip with pulse, agent switcher driving transcript/DAG, tabbed workflow inspector with live panels, topology diagram with animated (reduced-motion-safe) flow.                                    | Interaction checks: switching agent/tab updates the illustration; reduced-motion run shows a static frame.                                                                       |
+| G7  | Hero content is captured nearly invisible at load (reveal animation starts from `opacity: 0`), so the first screen reads as an empty dark page.                                                                                                                                                                    | `home-desktop-1440-dark-top-before.png`, `home-iphone-14-dark-end-before.png`                                  | Visible-by-default rule (6.4): hero never animates from zero opacity; reveal only for below-fold content after JS opt-in.                                                                                   | Top after-capture at 1440 and iPhone 14 shows full-contrast headline and actions.                                                                                                |
+| G8  | Two pages use divergent token vocabularies and scales (`--background`/`--muted` vs `--canvas`/`--ink-muted`; radii 4-16 vs none), and the homepage hardcodes sizes and radii.                                                                                                                                      | `site/styles.css` `:root`, `site/cocode/styles.css` `:root`                                                    | Both stylesheets consume the shared token names in this document; CoCode overrides only the accent family (2.2).                                                                                            | `grep` of component rules finds no raw hex outside `:root`/theme blocks; the 12px minimum-text browser test passes.                                                              |

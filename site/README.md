@@ -91,14 +91,15 @@ domain. The account homepage uses the custom domain `doublepi.dev`.
   elevation and motion tokens. Change a token there first, then apply it in `styles.css`;
   component CSS must not hardcode those values.
 - `index.html`: semantic layout, the inline SVG icon sprite, the hero canvas hook, the
-  capabilities bento, and readable Chinese content without JavaScript.
+  capabilities bento, the mobile & background-notifications showcase, and readable Chinese
+  content without JavaScript.
 - `styles.css`: tokens derived from `DESIGN.md` for both themes (dark by default, plus
   `[data-theme="light"]` and `prefers-color-scheme: light`), responsive layout, container
   queries for the illustrated workspace, system fonts, and reduced-motion support.
 - `content.js`: matching Chinese/English text, per-language links and language selection.
 - `main.js`: persisted language preference, the theme cycle and its storage key, the hero
-  canvas lattice, the agent illustration, keyboard-accessible workflow tabs, and clipboard
-  feedback.
+  canvas lattice, the agent illustration, keyboard-accessible workflow and mobile surface
+  switchers, and clipboard feedback.
 - `assets/cox.svg`: Cox's existing logo, shared visually with the application.
 - `assets/social.svg` / `social.png`: editable source and its 1200×630 social sharing card.
   Render `social.png` from `social.svg` in a headless browser at 1200×630 after editing it.
