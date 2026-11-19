@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.3 — 2026-11-19
+
+- Keep settings, usage, dialogs, and other full-screen sheets clear of the
+  status bar and the home indicator on mobile web and Cox Mobile. The phone
+  model-service list keeps up and down controls and leaves dragging for a
+  pointer.
+
 ## 0.2.2 — 2026-11-18
 
 - Keep floating header buttons below the status bar. Sidebar and panel
