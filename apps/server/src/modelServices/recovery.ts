@@ -37,7 +37,14 @@ export class ModelServiceRequestCancelled extends Data.TaggedError("ModelService
 }> {}
 
 export interface RecoveryProgress {
-  readonly phase: "retrying" | "hedging" | "recovered" | "failed" | "cancelled";
+  readonly phase:
+    | "waiting"
+    | "retrying"
+    | "hedging"
+    | "responded"
+    | "recovered"
+    | "failed"
+    | "cancelled";
   readonly attempt: number;
   readonly maxAttempts: number;
   readonly delayMs: number;
@@ -194,6 +201,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       if (!settled && announced) yield* report("cancelled");
     }),
   );
+  yield* report("waiting");
   const launch = Effect.fnUntraced(function* (hedge: boolean) {
     const attemptScope = yield* Scope.fork(scope);
     const id = ++attempts;
@@ -361,7 +369,7 @@ export const recoverModelServiceRequest = Effect.fn("recoverModelServiceRequest"
       closeReason = "response_finished";
       settled = true;
       yield* diagnostic({ event: "terminal", reason: "response_ready", attempt: event.id });
-      if (announced) yield* report("recovered");
+      if (announced) yield* report(attempts === 1 ? "responded" : "recovered");
       return event.value;
     }
     yield* close(event.id, "attempt_failed");

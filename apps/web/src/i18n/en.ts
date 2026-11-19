@@ -602,7 +602,9 @@ export const en = {
   "Maximum concurrent requests": "Maximum concurrent requests",
   "Model service backup running ({progress} attempts)":
     "Model service backup running ({progress} attempts)",
+  "Waiting for model service": "Waiting for model service",
   "Retrying model service ({progress} attempts)": "Retrying model service ({progress} attempts)",
+  "Model service responded": "Model service responded",
   "Model service recovered ({progress} attempts)": "Model service recovered ({progress} attempts)",
   "Model service recovery failed ({progress} attempts)":
     "Model service recovery failed ({progress} attempts)",
@@ -610,6 +612,8 @@ export const en = {
     "Model service recovery stopped ({progress} attempts)",
   "The model service is slow; a backup request is running.":
     "The model service is slow; a backup request is running.",
+  "Waiting for the model service to respond.": "Waiting for the model service to respond.",
+  "The model service responded.": "The model service responded.",
   "The model service recovered.": "The model service recovered.",
   "The model service recovery budget was exhausted.":
     "The model service recovery budget was exhausted.",
