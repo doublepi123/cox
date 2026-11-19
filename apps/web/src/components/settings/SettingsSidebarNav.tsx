@@ -439,7 +439,7 @@ export function SettingsSidebarNav({
           </SidebarGroup>
         </SidebarContent>
         {isMenuLayout ? (
-          <div className="shrink-0 border-t border-sidebar-border p-3">
+          <div data-settings-menu-footer className="shrink-0 border-t border-sidebar-border p-3">
             <Button
               fill
               size="xl"

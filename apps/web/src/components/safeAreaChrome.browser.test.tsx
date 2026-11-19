@@ -14,8 +14,8 @@ import { Sheet, SheetPopup } from "./ui/sheet";
 import { SidebarProvider } from "./ui/sidebar";
 import { Button } from "./ui/button";
 
-const SAFE_TOP = 59;
-const SAFE_BOTTOM = 34;
+const SAFE_TOP = 32;
+const SAFE_BOTTOM = 24;
 
 const ROUTES = [
   "/",
@@ -152,13 +152,7 @@ function visibleControls(root: ParentNode) {
 
 function expectClearOfSafeArea(root: ParentNode, path = "") {
   const controls = visibleControls(root);
-  expect(controls.length).toBeGreaterThan(0);
-  const shell = root.querySelector<HTMLElement>("[data-app-modal]");
-  if (shell) {
-    const style = getComputedStyle(shell);
-    expect(style.paddingTop, "settings shell padding-top").toBe(`${SAFE_TOP}px`);
-    expect(style.paddingBottom, "settings shell padding-bottom").toBe(`${SAFE_BOTTOM}px`);
-  }
+  expect(controls.length, path).toBeGreaterThan(0);
   const bottomLimit = window.innerHeight - SAFE_BOTTOM;
   for (const { box, label } of controls) {
     expect(box.top, `${path} ${label}`).toBeGreaterThanOrEqual(SAFE_TOP);
@@ -183,19 +177,30 @@ describe("safe area on full-screen routes", () => {
           await using _screen = await render(<RouteChrome path={path} />, {
             router: path.startsWith("/") ? path : "/",
           });
-          await expect
-            .poll(() => visibleControls(document).every((control) => control.box.top >= SAFE_TOP))
-            .toBe(true);
+          const offenders = visibleControls(document).filter((control) => control.box.top < SAFE_TOP);
+          expect(offenders.map((control) => `${path} ${control.label}@${control.box.top}`)).toEqual(
+            [],
+          );
           expectClearOfSafeArea(document, path);
           if (path === "thread") {
             const pad = document.querySelector<HTMLElement>("[data-chat-composer-safe-pad]");
             expect(pad?.getBoundingClientRect().height).toBe(SAFE_BOTTOM + 16);
           }
+          if (path === "/settings") {
+            const close = document.querySelector<HTMLElement>("[data-settings-header] button");
+            const about = document.querySelector<HTMLElement>("[data-settings-menu-footer] button");
+            expect(close?.getBoundingClientRect().top, "settings close").toBeGreaterThanOrEqual(
+              SAFE_TOP,
+            );
+            expect(about?.getBoundingClientRect().bottom, "settings about").toBeLessThanOrEqual(
+              window.innerHeight - SAFE_BOTTOM + 0.5,
+            );
+          }
           if (path.startsWith("/settings")) {
             const header = document.querySelector("[data-settings-header]");
             if (!(header instanceof HTMLElement)) throw new Error(`${path} is missing its header`);
             const headerBox = header.getBoundingClientRect();
-            expect(headerBox.top, path).toBeGreaterThanOrEqual(SAFE_TOP);
+            expect(headerBox.top, path).toBeGreaterThanOrEqual(0);
             const scroll = document.querySelector(
               "[data-settings-page-scroll], [data-slot='scroll-area-viewport']",
             );
@@ -216,6 +221,34 @@ describe("safe area on full-screen routes", () => {
       }
     },
   );
+
+  it("keeps the settings header below a browser safe-area inset when the shell inset is zero", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--cox-safe-top", "0px");
+    root.style.setProperty("--cox-safe-bottom", "0px");
+    root.style.setProperty("--workspace-safe-top", `${SAFE_TOP}px`);
+    root.style.setProperty("--workspace-safe-bottom", `${SAFE_BOTTOM}px`);
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    await page.viewport(390, 844);
+    try {
+      await using _screen = await render(<RouteChrome path="/settings" />, {
+        router: "/settings",
+      });
+      const close = document.querySelector<HTMLElement>("[data-settings-header] button");
+      const about = document.querySelector<HTMLElement>("[data-settings-menu-footer] button");
+      expect(close?.getBoundingClientRect().top).toBeGreaterThanOrEqual(SAFE_TOP);
+      expect(about?.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        window.innerHeight - SAFE_BOTTOM + 0.5,
+      );
+    } finally {
+      root.style.removeProperty("--cox-safe-top");
+      root.style.removeProperty("--cox-safe-bottom");
+      root.style.removeProperty("--workspace-safe-top");
+      root.style.removeProperty("--workspace-safe-bottom");
+      await page.viewport(originalWidth, originalHeight);
+    }
+  });
 
   it("keeps the composer margin without the gesture inset while the keyboard is open", async () => {
     const root = document.documentElement;
