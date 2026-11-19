@@ -1297,6 +1297,24 @@ html[data-software-keyboard] [data-chat-composer-safe-pad] {
   }
 }
 
+@media (max-width: 639px) {
+  [data-app-modal] header {
+    box-sizing: border-box !important;
+    height: calc(3rem + var(--workspace-safe-top)) !important;
+    min-height: calc(3rem + var(--workspace-safe-top)) !important;
+    padding-top: var(--workspace-safe-top) !important;
+    background-color: var(--background);
+  }
+
+  [data-settings-page-scroll] {
+    padding-bottom: var(--workspace-safe-bottom);
+  }
+
+  [data-settings-menu-footer] {
+    padding-bottom: max(0.75rem, var(--workspace-safe-bottom));
+  }
+}
+
 /* Grain texture for chrome surfaces that float above the body (see the
    --surface-grain note). Layered over the element's background-color, so it
    composes with bg-* utilities. */
