@@ -78,13 +78,23 @@
         </g>
       </symbol>
       <symbol id="i-wifi" viewBox="0 0 24 24">
-        <path d="M2.5 9.5a14 14 0 0 1 19 0M5.8 13a9.2 9.2 0 0 1 12.4 0M9.1 16.4a4.4 4.4 0 0 1 5.8 0" />
+        <path
+          d="M2.5 9.5a14 14 0 0 1 19 0M5.8 13a9.2 9.2 0 0 1 12.4 0M9.1 16.4a4.4 4.4 0 0 1 5.8 0"
+        />
         <circle fill="currentColor" stroke="none" cx="12" cy="19.5" r="1.4" />
       </symbol>
       <symbol id="i-battery" viewBox="0 0 24 24">
         <rect x="2.5" y="7" width="17" height="10" rx="2.6" />
         <path d="M22 10.5v3" />
-        <rect fill="currentColor" stroke="none" x="4.6" y="9.1" width="10.4" height="5.8" rx="1.2" />
+        <rect
+          fill="currentColor"
+          stroke="none"
+          x="4.6"
+          y="9.1"
+          width="10.4"
+          height="5.8"
+          rx="1.2"
+        />
       </symbol>
       <symbol id="i-phone" viewBox="0 0 24 24">
         <rect x="6" y="2.5" width="12" height="19" rx="3" />
@@ -115,10 +125,6 @@
       <symbol id="i-shield" viewBox="0 0 24 24">
         <path d="M12 3.5 19 6v5.5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6Z" />
         <path d="m9 12 2.2 2.2L15.5 10" />
-      </symbol>
-      <symbol id="i-agent-omo" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="7.5" />
-        <circle cx="12" cy="12" r="2.75" />
       </symbol>
       <symbol id="i-agent-codex" viewBox="0 0 24 24">
         <path d="m6.5 8.5 3.5 3.5-3.5 3.5M12.5 16h5" />
@@ -195,7 +201,9 @@
               <span class="status-dot" aria-hidden="true"></span
               ><span data-i18n="hero.status">Android 上的 Cox</span><code>127.0.0.1</code>
             </p>
-            <h1 id="hero-title" data-i18n="hero.title">把编码&#8203;工作台<br /><span>装进口袋</span></h1>
+            <h1 id="hero-title" data-i18n="hero.title">
+              把编码&#8203;工作台<br /><span>装进口袋</span>
+            </h1>
             <p class="hero-lead" data-i18n="hero.description">
               在 Android 手机上本地运行 Cox 和编码智能体。无需电脑，也不需要 root。
             </p>
@@ -211,13 +219,11 @@
                 ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg
               ></a>
             </div>
-            <p class="hero-note" data-i18n="hero.note">
-              Android 8.0+ · GitHub Releases 提供预发布 APK
-            </p>
+            <p class="hero-note" data-i18n="hero.note">Android 8.0+ · APK 在 GitHub 发布页下载</p>
           </div>
 
           <div class="phone-stage" aria-label="CoCode 手机工作台示意" data-i18n-aria="demo.label">
-            <div class="phone-device">
+            <div class="phone-device" aria-hidden="true">
               <div class="phone">
                 <div class="phone-top">
                   <span>9:41</span><span class="phone-island"></span
@@ -238,8 +244,7 @@
                 <div class="phone-content">
                   <div class="phone-project">
                     <span class="tiny-label" data-i18n="demo.project">当前项目</span
-                    ><strong>weekend-project</strong
-                    ><span class="project-branch">main</span>
+                    ><strong>weekend-project</strong><span class="project-branch">main</span>
                   </div>
                   <div class="phone-thread">
                     <span class="live-dot"></span
@@ -252,8 +257,8 @@
                     </p>
                     <div class="agent-line">
                       <span class="agent-mark"
-                        ><svg class="icon" aria-hidden="true"><use href="#i-agent-codex" /></svg
-                      ></span
+                        ><svg class="icon" aria-hidden="true">
+                          <use href="#i-agent-codex" /></svg></span
                       ><strong>Codex</strong
                       ><span class="agent-state" data-i18n="demo.running">工作中</span>
                     </div>
@@ -277,16 +282,15 @@
                   </div>
                 </div>
                 <div class="phone-runtime">
-                  <span class="live-dot"></span
-                  ><span data-i18n="demo.local">Cox 正在本机运行</span
+                  <span class="live-dot"></span><span data-i18n="demo.local">Cox 正在本机运行</span
                   ><span class="phone-runtime-host">127.0.0.1</span>
                 </div>
                 <div class="phone-home"></div>
               </div>
             </div>
             <p class="phone-pill">
-              <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
-              ><span>Loopback</span><code>127.0.0.1:3773</code>
+              <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg><span>Loopback</span
+              ><code>127.0.0.1:3773</code>
             </p>
             <p class="demo-caption" data-i18n="demo.caption">
               界面示意，实际使用 Cox 工作台与所配置的智能体。
@@ -307,15 +311,16 @@
             <article class="card card-runtime">
               <h3 data-i18n="feature1.title">一个&#8203;本地的&#8203;编码&#8203;运行环境</h3>
               <p data-i18n="feature1.description">
-                通过 Alpine Linux 与 PRoot 在 Android 上运行 Cox，无需 root。服务仅监听本机回环地址。
+                通过 Alpine Linux 与 PRoot 在 Android 上运行 Cox，无需
+                root。服务仅监听本机回环地址。
               </p>
               <div class="evidence stack-strip">
                 <span class="strip-node"
                   ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg>Android</span
                 ><svg class="icon strip-arrow" aria-hidden="true"><use href="#i-arrow-right" /></svg
                 ><span class="strip-node"
-                  ><svg class="icon" aria-hidden="true"><use href="#i-package" /></svg>Alpine Linux +
-                  PRoot</span
+                  ><svg class="icon" aria-hidden="true"><use href="#i-package" /></svg>Alpine Linux
+                  + PRoot</span
                 ><svg class="icon strip-arrow" aria-hidden="true"><use href="#i-arrow-right" /></svg
                 ><span class="strip-node is-server"
                   ><svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg
@@ -327,24 +332,29 @@
             <article class="card card-agents">
               <h3 data-i18n="feature2.title">按需&#8203;安装&#8203;你的&#8203;智能体</h3>
               <p data-i18n="feature2.description">
-                安装 Codex、Claude Code、OpenCode、Grok 和 Pi；Cursor 使用 Cox 内置
-                SDK。追加安装不会替换已有智能体。
+                可按需安装下列智能体。Cursor 使用 Cox 内置 SDK。新增安装会保留已有的智能体。
               </p>
               <ul class="evidence agent-list">
-                <li><svg class="icon" aria-hidden="true"><use href="#i-agent-omo" /></svg>OMO Native</li>
-                <li><svg class="icon" aria-hidden="true"><use href="#i-agent-codex" /></svg>Codex</li>
                 <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-agent-claude" /></svg>Claude Code
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-codex" /></svg>Codex
                 </li>
                 <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-agent-opencode" /></svg>OpenCode
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-claude" /></svg>Claude
+                  Code
                 </li>
-                <li><svg class="icon" aria-hidden="true"><use href="#i-agent-grok" /></svg>Grok</li>
-                <li><svg class="icon" aria-hidden="true"><use href="#i-agent-pi" /></svg>Pi</li>
                 <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-agent-cursor" /></svg>Cursor<code
-                    >SDK</code
-                  >
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-opencode" /></svg
+                  >OpenCode
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-grok" /></svg>Grok
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-pi" /></svg>Pi
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-agent-cursor" /></svg
+                  >Cursor<code>SDK</code>
                 </li>
               </ul>
             </article>
@@ -367,12 +377,16 @@
                 </ul>
                 <span class="binding-link"><span data-i18n="model.bind">绑定到智能体</span></span>
                 <ul class="binding-agents">
-                  <li><svg class="icon" aria-hidden="true"><use href="#i-agent-codex" /></svg>Codex</li>
+                  <li>
+                    <svg class="icon" aria-hidden="true"><use href="#i-agent-codex" /></svg>Codex
+                  </li>
                   <li>
                     <svg class="icon" aria-hidden="true"><use href="#i-agent-claude" /></svg>Claude
                     Code
                   </li>
-                  <li><svg class="icon" aria-hidden="true"><use href="#i-agent-pi" /></svg>Pi</li>
+                  <li>
+                    <svg class="icon" aria-hidden="true"><use href="#i-agent-pi" /></svg>Pi
+                  </li>
                 </ul>
               </div>
             </article>
@@ -406,7 +420,9 @@
       <section class="section local" id="local" aria-labelledby="local-title">
         <div class="wrap local-grid">
           <div class="local-copy">
-            <h2 id="local-title" data-i18n="local.title">电脑&#8203;不在&#8203;身边，工作&#8203;也能&#8203;继续</h2>
+            <h2 id="local-title" data-i18n="local.title">
+              电脑&#8203;不在&#8203;身边，工作&#8203;也能&#8203;继续
+            </h2>
             <p class="section-lead" data-i18n="local.description">
               CoCode 管理安装、启动和更新提示；Cox
               负责你熟悉的工作台、认证和模型配置。运行时错误会通过系统通知提醒。
@@ -415,7 +431,7 @@
               本地运行不等于离线推理：智能体仍会调用你配置的模型服务，账号、订阅或 API 额度需自备。
             </p>
           </div>
-          <div class="topology">
+          <div class="topology" aria-hidden="true">
             <div class="machine">
               <span class="machine-label"
                 ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg
@@ -443,8 +459,7 @@
                     ><span data-i18n="runtime.server">本地服务 · 127.0.0.1:3773</span>
                   </div>
                   <span class="runtime-loopback"
-                    ><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
-                    >Loopback</span
+                    ><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg>Loopback</span
                   >
                 </li>
                 <li class="runtime-agents">
@@ -464,7 +479,9 @@
         <div class="wrap">
           <div class="download-panel">
             <div class="download-copy">
-              <h2 id="download-title" data-i18n="download.title">下一次&#8203;灵感，不必&#8203;等到&#8203;电脑前</h2>
+              <h2 id="download-title" data-i18n="download.title">
+                下一次&#8203;灵感，不必&#8203;等到&#8203;电脑前
+              </h2>
               <p class="section-lead" data-i18n="download.description">
                 下载签名 APK，安装后按提示准备本地运行环境。首次安装需要联网；升级 APK
                 不会自动更新正在运行的 Cox。
@@ -483,8 +500,7 @@
                 ></a>
               </div>
               <p class="download-note" data-i18n="download.note">
-                当前为预发布版本。发布验证范围见对应 Release；并非所有智能体的 Android
-                安装与推理路径均已逐一验证。
+                查阅发布说明，确认该安装包是否为预发布版，以及已验证的功能。
               </p>
             </div>
           </div>
@@ -493,19 +509,39 @@
 
       <section class="section ecosystem" aria-labelledby="ecosystem-title">
         <div class="wrap ecosystem-inner">
-          <h2 id="ecosystem-title" data-i18n="ecosystem.title">手机上&#8203;用 CoCode<br />电脑上&#8203;用 Cox</h2>
-          <a class="cox-card" href="../#desktop"
-            ><span class="cox-mark"
-              ><svg class="cox-logo" viewBox="0 0 64 64" aria-hidden="true">
-                <path class="cox-logo-c" d="M39 17a19 19 0 1 0 0 30" />
-                <path class="cox-logo-chevron" d="m45 25 7 7-7 7" /></svg
-            ></span>
-            <div>
-              <strong>Cox</strong>
-              <p data-i18n="ecosystem.cox">面向 macOS、Windows 与浏览器的本地编码工作台</p>
-            </div>
-            <svg class="icon cox-arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
-          ></a>
+          <div class="ecosystem-copy">
+            <h2 id="ecosystem-title" data-i18n="ecosystem.title">
+              手机本地用 CoCode<br />远程多服有 Cox Mobile
+            </h2>
+            <p class="section-lead" data-i18n="ecosystem.description">
+              CoCode 在 Android 手机上运行 Cox。Cox Mobile 支持从 iOS 17+ 或 Android 8+
+              直连自己的服务器。 两款应用可在同一台 Android 手机上安装，各自保留登录状态和数据。
+            </p>
+          </div>
+          <div class="ecosystem-cards">
+            <a class="cox-card" href="../#desktop"
+              ><span class="cox-mark"
+                ><svg class="cox-logo" viewBox="0 0 64 64" aria-hidden="true">
+                  <path class="cox-logo-c" d="M39 17a19 19 0 1 0 0 30" />
+                  <path class="cox-logo-chevron" d="m45 25 7 7-7 7" /></svg
+              ></span>
+              <div>
+                <strong>Cox Desktop &amp; CLI</strong>
+                <p data-i18n="ecosystem.cox">面向 macOS、Windows 与浏览器的本地编码驾驶舱</p>
+              </div>
+              <svg class="icon cox-arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
+            ></a>
+            <a class="cox-card" href="../#mobile"
+              ><span class="cox-mark"
+                ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg
+              ></span>
+              <div>
+                <strong>Cox Mobile</strong>
+                <p data-i18n="ecosystem.mobile">iOS 17+ 与 Android 8+ 的远程客户端</p>
+              </div>
+              <svg class="icon cox-arrow" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
+            ></a>
+          </div>
         </div>
       </section>
     </main>
@@ -526,8 +562,8 @@
           <a href="https://github.com/doublepi123/co_code" data-i18n="footer.source">源码</a
           ><a href="https://github.com/doublepi123/co_code/releases" data-i18n="footer.releases"
             >版本发布</a
-          ><a href="../#desktop">Cox</a><a href="LICENSE">MIT License</a
-          ><a href="NOTICE">Notice</a>
+          ><a href="../#mobile">Cox Mobile</a><a href="../#desktop">Cox</a
+          ><a href="LICENSE">MIT License</a><a href="NOTICE">Notice</a>
         </nav>
         <p class="footer-note" data-i18n="footer.note">
           这是 CoCode 产品介绍页，不是远程桌面或托管的编码服务。

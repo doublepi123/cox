@@ -67,12 +67,19 @@ test("has complete bilingual content for every interface label", async () => {
   }
 });
 
-test("links desktop downloads to the rolling desktop release, not the server latest", async () => {
+test("links downloads to desktop and mobile releases for the right platform", async () => {
   const html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
   assert.match(
     html,
-    /class="desktop-downloads">\s*<a[^>]+href="https:\/\/github.com\/doublepi123\/cox\/releases\/tag\/cox-desktop-latest"/,
+    /class="desktop-downloads">\s*<a[^>]+href="https:\/\/github\.com\/doublepi123\/cox\/releases\/tag\/cox-desktop-latest"/,
   );
+  assert.match(
+    html,
+    /class="mobile-downloads">\s*<a[^>]+href="https:\/\/github\.com\/doublepi123\/cox\/releases\?q=%22Cox\+Mobile%22"/,
+  );
+  assert.ok(html.includes("dev.doublepi.cox.mobile"));
+  assert.ok(html.includes("io.cocode.app"));
+  assert.ok(html.includes("Oh My Pi"));
 });
 
 test("works at a project Pages subpath without root-relative assets or a hosted backend", async () => {
@@ -144,6 +151,7 @@ test("ships CoCode under the same domain with relative assets and preserved attr
   assert.ok(html.includes('property="og:url" content="https://doublepi.dev/cocode/"'));
   assert.ok(html.includes('property="og:image" content="https://doublepi.dev/cocode/icon.png"'));
   assert.ok(html.includes('href="../#desktop"'));
+  assert.ok(html.includes('href="../#mobile"'));
   assert.ok(html.includes('href="https://github.com/doublepi123/co_code/releases"'));
   assert.equal(/(?:href|src)="\/(?!\/)/.test(html), false);
   assert.equal(html.includes("cocode.doublepi.dev"), false);

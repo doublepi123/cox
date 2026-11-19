@@ -59,6 +59,8 @@ const themeToggle = document.querySelector("[data-theme-toggle]");
 const toast = document.querySelector("[data-toast]");
 const workflowTabs = [...document.querySelectorAll("[data-workflow]")];
 const workflowPanel = document.querySelector("[data-workflow-panel]");
+const mobileTabs = [...document.querySelectorAll("[data-mobile-tab]")];
+const mobileDemo = document.querySelector("[data-mobile-demo]");
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const finePointer = matchMedia("(pointer: fine)");
 const copiedTimeouts = new WeakMap();
@@ -143,10 +145,16 @@ function renderTerminal() {
       row.append(mark, ` ${label}`);
     } else {
       const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      icon.setAttribute("class", `icon ${kind === "ok" ? "t-ok" : kind === "retry" ? "t-mod" : "t-dim"}`);
+      icon.setAttribute(
+        "class",
+        `icon ${kind === "ok" ? "t-ok" : kind === "retry" ? "t-mod" : "t-dim"}`,
+      );
       icon.setAttribute("aria-hidden", "true");
       const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-      use.setAttribute("href", kind === "ok" ? "#i-check" : kind === "retry" ? "#i-restore" : "#i-queue");
+      use.setAttribute(
+        "href",
+        kind === "ok" ? "#i-check" : kind === "retry" ? "#i-restore" : "#i-queue",
+      );
       icon.append(use);
       const dim = document.createElement("span");
       dim.className = "t-dim";
@@ -181,6 +189,22 @@ function selectWorkflow(name, focus = false) {
   workflowPanel.setAttribute("aria-labelledby", tab.id);
   const status = text(`workflow.status${name[0].toUpperCase()}${name.slice(1)}`);
   if (status) document.querySelector("[data-workflow-status]").textContent = status;
+  if (focus) tab.focus();
+}
+
+function selectMobileTab(name, focus = false) {
+  if (!mobileDemo) return;
+  const tab = mobileTabs.find((button) => button.dataset.mobileTab === name);
+  if (!tab) return;
+  for (const button of mobileTabs) {
+    const selected = button === tab;
+    button.setAttribute("aria-pressed", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+  for (const view of document.querySelectorAll("[data-mobile-view]")) {
+    view.hidden = view.dataset.mobileView !== name;
+  }
+  mobileDemo.dataset.mobileDemo = name;
   if (focus) tab.focus();
 }
 
@@ -437,6 +461,27 @@ for (const button of workflowTabs) {
     }
     event.preventDefault();
     selectWorkflow(workflowTabs[next].dataset.workflow, true);
+  });
+}
+
+for (const button of mobileTabs) {
+  button.addEventListener("click", () => selectMobileTab(button.dataset.mobileTab));
+  button.addEventListener("keydown", (event) => {
+    const current = mobileTabs.indexOf(button);
+    let next;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      next = (current + 1) % mobileTabs.length;
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      next = (current - 1 + mobileTabs.length) % mobileTabs.length;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = mobileTabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    selectMobileTab(mobileTabs[next].dataset.mobileTab, true);
   });
 }
 

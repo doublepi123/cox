@@ -8,12 +8,12 @@
     <meta name="theme-color" content="#f5f7f3" media="(prefers-color-scheme: light)" />
     <meta
       name="description"
-      content="Cox 是编码智能体的本地驾驶舱：在浏览器或桌面端驾驶 Codex、Claude Code、Cursor、OMO Native、OpenCode 与 Pi，管理对话、终端、代码变更与检查点。"
+      content="Cox 将 OMO Native、Codex、Claude Code 等编码智能体放在同一个本地工作台。用浏览器、桌面端或手机管理对话、终端、代码变更和检查点。"
     />
     <meta property="og:title" content="Cox — Your agents. One local cockpit." />
     <meta
       property="og:description"
-      content="Cox is the local cockpit for coding agents. Drive Codex, Claude Code, Cursor, OMO Native, OpenCode, and Pi from your browser or desktop, with threads, terminals, diffs, and checkpoints on your machine."
+      content="Run OMO Native, Codex, Claude Code, and other coding agents from one local workspace. Manage conversations, terminals, diffs, and checkpoints from your browser, desktop, or phone."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://doublepi.dev/" />
@@ -185,14 +185,18 @@
       </symbol>
       <symbol id="i-users" viewBox="0 0 24 24">
         <circle cx="9" cy="8.5" r="3" />
-        <path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.8a3 3 0 0 1 0 5.4M17.5 14.2a5.5 5.5 0 0 1 3 4.8" />
+        <path
+          d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.8a3 3 0 0 1 0 5.4M17.5 14.2a5.5 5.5 0 0 1 3 4.8"
+        />
       </symbol>
       <symbol id="i-list" viewBox="0 0 24 24">
         <path d="m4 6.5 1.5 1.5L8 5.5M4 12.5l1.5 1.5L8 11.5M11 7h9M11 13h9M4.5 18h3.5M11 18h9" />
       </symbol>
       <symbol id="i-database" viewBox="0 0 24 24">
         <ellipse cx="12" cy="6" rx="7.5" ry="2.75" />
-        <path d="M4.5 6v12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75V6M4.5 12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75" />
+        <path
+          d="M4.5 6v12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75V6M4.5 12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75"
+        />
       </symbol>
       <symbol id="i-route" viewBox="0 0 24 24">
         <circle cx="6" cy="6" r="2.25" />
@@ -212,6 +216,32 @@
       <symbol id="i-agent-cursor" viewBox="0 0 24 24">
         <path d="m6 5 13 5.2-5.6 1.9-1.9 5.6Z" />
       </symbol>
+      <symbol id="i-agent-pi" viewBox="0 0 24 24">
+        <path d="M5 7.5h14M9.5 7.5V18M15 7.5v8a2.5 2.5 0 0 0 2.5 2.5" />
+      </symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24">
+        <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 5 2 6.5 2 6.5h-15s2-1.5 2-6.5Z" />
+        <path d="M10 19a2.2 2.2 0 0 0 4 0" />
+      </symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24">
+        <path
+          d="M2.5 9.5a14 14 0 0 1 19 0M5.8 13a9.2 9.2 0 0 1 12.4 0M9.1 16.4a4.4 4.4 0 0 1 5.8 0"
+        />
+        <circle fill="currentColor" stroke="none" cx="12" cy="19.5" r="1.4" />
+      </symbol>
+      <symbol id="i-battery" viewBox="0 0 24 24">
+        <rect x="2.5" y="7" width="17" height="10" rx="2.6" />
+        <path d="M22 10.5v3" />
+        <rect
+          fill="currentColor"
+          stroke="none"
+          x="4.6"
+          y="9.1"
+          width="10.4"
+          height="5.8"
+          rx="1.2"
+        />
+      </symbol>
     </svg>
 
     <a class="skip-link" href="#main" data-i18n="skip">跳到内容</a>
@@ -224,6 +254,7 @@
         <nav class="site-nav" aria-label="主导航" data-i18n-aria="nav.label">
           <a href="#capabilities" data-i18n="nav.capabilities">能力</a>
           <a href="#workflow" data-i18n="nav.workflow">工作流</a>
+          <a href="#mobile" data-i18n="nav.mobile">移动端</a>
           <a href="#desktop" data-i18n="nav.desktop">桌面版</a>
           <a href="#local" data-i18n="nav.local">本地优先</a>
           <a href="#start" data-i18n="nav.start">快速开始</a>
@@ -251,7 +282,10 @@
             ><svg class="icon icon-light" aria-hidden="true"><use href="#i-sun" /></svg
             ><svg class="icon icon-dark" aria-hidden="true"><use href="#i-moon" /></svg>
           </button>
-          <a class="header-button header-github" href="https://github.com/doublepi123/cox" aria-label="GitHub"
+          <a
+            class="header-button header-github"
+            href="https://github.com/doublepi123/cox"
+            aria-label="GitHub"
             ><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg
             ><span class="header-github-text">GitHub</span></a
           >
@@ -275,15 +309,18 @@
             </h1>
           </div>
           <div class="hero-side">
-            <p class="hero-lead" data-i18n="hero.description">在自己的电脑上运行 Cox，用一个界面驾驶 Codex、Claude Code、Cursor、OMO Native、OpenCode 与 Pi。对话、终端、差异与检查点都留在你的本地数据目录。</p>
+            <p class="hero-lead" data-i18n="hero.description">
+              在同一个工作台里切换 OMO Native、Codex、Claude Code
+              等智能体，随时查看任务和代码变更。对话、终端和检查点都留在运行 Cox 的机器上。
+            </p>
             <div class="hero-actions">
               <a class="button button-primary" href="#desktop"
                 ><span data-i18n="hero.cta">下载桌面版</span
                 ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg
               ></a>
-              <a class="button button-secondary" href="https://github.com/doublepi123/cox"
-                ><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg
-                ><span data-i18n="hero.source">在 GitHub 查看</span></a
+              <a class="button button-secondary" href="#mobile"
+                ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg
+                ><span data-i18n="hero.mobileCta">iOS 与 Android 客户端</span></a
               >
             </div>
             <div class="command">
@@ -300,12 +337,16 @@
                 ><svg class="icon icon-check" aria-hidden="true"><use href="#i-check" /></svg>
               </button>
             </div>
-            <p class="hero-note" data-i18n="hero.note">macOS / Windows 桌面版 · npm 运行浏览器版 · 自备智能体账号或 API</p>
+            <p class="hero-note" data-i18n="hero.note">
+              macOS 与 Windows 桌面端 · iOS 与 Android 移动端 · 通过 npm 启动本地服务
+            </p>
           </div>
 
           <div class="hero-stage">
             <div class="demo-controls">
-              <span class="demo-switch-label" id="demo-switch-label" data-i18n="demo.switch">切换示例智能体</span>
+              <span class="demo-switch-label" id="demo-switch-label" data-i18n="demo.switch"
+                >切换示例智能体</span
+              >
               <div class="segmented" role="group" aria-labelledby="demo-switch-label">
                 <button type="button" data-provider="omo" aria-pressed="true">
                   <svg class="icon" aria-hidden="true"><use href="#i-agent-omo" /></svg>OMO
@@ -415,18 +456,24 @@
                       ><span class="diff-stat app-stat"><b>+24</b><i>-6</i></span>
                     </div>
                     <div class="app-timeline">
-                      <p class="msg-user" data-i18n="demo.prompt">为设置页添加中英文切换，切换时保留用户草稿，并补上测试。</p>
+                      <p class="msg-user" data-i18n="demo.prompt">
+                        为设置页添加中英文切换，切换时保留用户草稿，并补上测试。
+                      </p>
                       <div class="msg-agent">
                         <div class="agent-head">
                           <span class="agent-avatar"
                             ><svg class="icon glyph-omo"><use href="#i-agent-omo" /></svg
                             ><svg class="icon glyph-codex"><use href="#i-agent-codex" /></svg
                             ><svg class="icon glyph-claude"><use href="#i-agent-claude" /></svg
-                            ><svg class="icon glyph-cursor"><use href="#i-agent-cursor" /></svg></span
+                            ><svg class="icon glyph-cursor">
+                              <use href="#i-agent-cursor" /></svg></span
                           ><strong data-agent-name>OMO</strong
                           ><span class="agent-time" data-i18n="demo.justnow">刚刚</span>
                         </div>
-                        <p class="agent-text" data-agent-message>我把任务拆成依赖图：先定接口契约，再分三路并行实现，最后统一验证。子任务、重试和 Todo 都会显示在 Cox 里。</p>
+                        <p class="agent-text" data-agent-message>
+                          我把任务拆成依赖图：先定接口契约，再分三路并行实现，最后统一验证。子任务、重试和
+                          Todo 都会显示在 Cox 里。
+                        </p>
                         <ul class="work-log">
                           <li>
                             <svg class="icon"><use href="#i-check" /></svg
@@ -470,7 +517,8 @@
                             ><svg class="icon glyph-omo"><use href="#i-agent-omo" /></svg
                             ><svg class="icon glyph-codex"><use href="#i-agent-codex" /></svg
                             ><svg class="icon glyph-claude"><use href="#i-agent-claude" /></svg
-                            ><svg class="icon glyph-cursor"><use href="#i-agent-cursor" /></svg></span
+                            ><svg class="icon glyph-cursor">
+                              <use href="#i-agent-cursor" /></svg></span
                           ><span data-agent-name>OMO</span
                           ><svg class="icon"><use href="#i-chevron-down" /></svg
                         ></span>
@@ -532,45 +580,71 @@
         <div class="wrap">
           <div class="section-heading">
             <h2 id="caps-title" data-i18n="caps.title">为同时驾驶​多个智能体​而建</h2>
-            <p class="section-lead" data-i18n="caps.description">不只是又一个聊天框。Cox 把任务图、模型网关、消息队列和检查点放进同一个本地界面。</p>
+            <p class="section-lead" data-i18n="caps.description">
+              Cox 把任务图、模型网关、消息队列和检查点放进同一个本地工作台。
+            </p>
           </div>
           <div class="bento" data-spotlight>
             <article class="card card-omo">
               <div class="card-head">
-                <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-agent-omo" /></svg></span
+                <span class="card-icon"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-agent-omo" /></svg></span
                 ><span class="card-tag">OMO Native</span>
               </div>
               <h3 class="card-title-lg" data-i18n="caps.omo.title">依赖图驱动的​多智能体工作流</h3>
-              <p data-i18n="caps.omo.description">mass ulw 工作流用实时依赖图展示波次、关键路径、重试与错误；停止后保留暂停的节点，由你明确恢复。</p>
+              <p data-i18n="caps.omo.description">
+                mass ulw
+                工作流用实时依赖图展示波次、关键路径、重试与错误；停止后保留暂停的节点，由你明确恢复。
+              </p>
               <div class="wave-board" aria-hidden="true">
                 <div class="wave">
                   <span class="wave-label">wave 1</span>
-                  <span class="wave-node is-done is-critical"><code>plan.contracts</code></span>
+                  <div class="wave-nodes">
+                    <span class="wave-node is-done is-critical"><code>plan.contracts</code></span>
+                  </div>
                 </div>
+                <svg class="wave-edges" viewBox="0 0 40 100" preserveAspectRatio="none">
+                  <path d="M0 50C20 50 20 14 40 14M0 50C20 50 20 86 40 86" />
+                  <path class="is-critical" d="M0 50H40" />
+                </svg>
                 <div class="wave">
                   <span class="wave-label">wave 2</span>
-                  <span class="wave-node is-done"><code>impl.gateway</code></span>
-                  <span class="wave-node is-running is-critical"><code>impl.cockpit</code></span>
-                  <span class="wave-node is-retry"
-                    ><code>impl.docs</code><span class="wave-meta" data-i18n="caps.omo.retry">重试</span></span
-                  >
+                  <div class="wave-nodes">
+                    <span class="wave-node is-done"><code>impl.gateway</code></span>
+                    <span class="wave-node is-running is-critical"><code>impl.cockpit</code></span>
+                    <span class="wave-node is-retry"
+                      ><code>impl.docs</code
+                      ><span class="wave-meta" data-i18n="caps.omo.retry">重试</span></span
+                    >
+                  </div>
                 </div>
+                <svg class="wave-edges" viewBox="0 0 40 100" preserveAspectRatio="none">
+                  <path d="M0 14C20 14 20 50 40 50M0 86C20 86 20 50 40 50" />
+                  <path class="is-critical" d="M0 50H40" />
+                </svg>
                 <div class="wave">
                   <span class="wave-label">wave 3</span>
-                  <span class="wave-node is-critical"><code>verify.e2e</code></span>
+                  <div class="wave-nodes">
+                    <span class="wave-node is-critical"><code>verify.e2e</code></span>
+                  </div>
                 </div>
                 <p class="wave-legend">
-                  <span class="legend-line"></span><span data-i18n="caps.omo.critical">关键路径</span>
+                  <span class="legend-line"></span
+                  ><span data-i18n="caps.omo.critical">关键路径</span>
                 </p>
               </div>
               <ul class="fact-list">
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg
-                  ><span data-i18n="caps.omo.roles">按角色分配模型：每个智能体与类别可绑定不同模型，留空则继承主模型</span>
+                  ><span data-i18n="caps.omo.roles"
+                    >按角色分配模型：每个智能体与类别可绑定不同模型，留空则继承主模型</span
+                  >
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg
-                  ><span data-i18n="caps.omo.subagents">原生子智能体出现在 Cox 的子智能体列表中，含角色、实际模型、任务与输出</span>
+                  ><span data-i18n="caps.omo.subagents"
+                    >原生子智能体出现在 Cox 的子智能体列表中，含角色、实际模型、任务与输出</span
+                  >
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-list" /></svg
@@ -578,23 +652,29 @@
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-database" /></svg
-                  ><span data-i18n="caps.omo.memory">按实例隔离的持久记忆，保存在 Cox 状态目录，不使用全局 ~/.omo</span>
+                  ><span data-i18n="caps.omo.memory"
+                    >按实例隔离的持久记忆，保存在 Cox 状态目录，不使用全局 ~/.omo</span
+                  >
                 </li>
               </ul>
             </article>
 
             <article class="card card-gateway">
               <div class="card-head">
-                <span class="card-icon is-cyan"><svg class="icon" aria-hidden="true"><use href="#i-route" /></svg></span
+                <span class="card-icon is-cyan"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-route" /></svg></span
                 ><span class="card-tag">CLIProxyAPI</span>
               </div>
-              <h3 data-i18n="caps.gateway.title">一个模型服务，连接多个智能体</h3>
-              <p data-i18n="caps.gateway.description">把 Codex、Claude Code、Pi、OMO Native 与 OpenCode 实例绑定到同一个服务。内置 MIT 许可的 CLIProxyAPI 转换器，在四种协议之间互转，支持流式输出与工具调用。</p>
+              <h3 data-i18n="caps.gateway.title">跨模型连接选择模型</h3>
+              <p data-i18n="caps.gateway.description">
+                OMO Native、Codex、Claude Code、Oh My Pi、Pi 和 OpenCode
+                可使用多个模型连接。每个新连接采用一种上游协议，Cox 按需转换下列协议。
+              </p>
               <div class="switchboard" aria-hidden="true">
                 <div class="sb-row">
-                  <span class="sb-chip">Codex</span><span class="sb-chip">Claude Code</span
-                  ><span class="sb-chip">Pi</span><span class="sb-chip">OMO</span
-                  ><span class="sb-chip">OpenCode</span>
+                  <span class="sb-chip">OMO</span><span class="sb-chip">Codex</span
+                  ><span class="sb-chip">Claude Code</span><span class="sb-chip">Oh My Pi</span
+                  ><span class="sb-chip">Pi</span><span class="sb-chip">OpenCode</span>
                 </div>
                 <span class="sb-link"></span>
                 <div class="sb-hub">
@@ -610,34 +690,39 @@
               <ul class="fact-list is-compact">
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-key" /></svg
-                  ><span data-i18n="caps.gateway.keys">上游密钥只存于本地密钥库</span>
+                  ><span data-i18n="caps.gateway.keys">上游密钥存于本地密钥库，轮换即时生效</span>
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-restore" /></svg
-                  ><span data-i18n="caps.gateway.recovery">可配置的请求恢复与重试预算</span>
+                  ><span data-i18n="caps.gateway.recovery">协议流边界校验与可配置重试预算</span>
                 </li>
               </ul>
             </article>
 
             <article class="card card-queue">
               <div class="card-head">
-                <span class="card-icon is-amber"><svg class="icon" aria-hidden="true"><use href="#i-queue" /></svg></span
+                <span class="card-icon is-amber"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-queue" /></svg></span
                 ><span class="card-tag">Queue / Steer</span>
               </div>
               <h3 data-i18n="caps.queue.title">排队，或立即引导</h3>
-              <p data-i18n="caps.queue.description">智能体工作时，后续消息默认排队。上下调整顺序，或从发送菜单选择立即引导。</p>
+              <p data-i18n="caps.queue.description">
+                智能体工作时，后续消息默认排队。上下调整顺序，或从发送菜单选择立即引导。
+              </p>
               <div class="mini-queue" aria-hidden="true">
                 <div class="mq-running">
                   <span class="working-indicator"><i></i><i></i><i></i></span
                   ><span data-i18n="caps.queue.running">正在编辑 Language.tsx</span>
                 </div>
                 <div class="mq-item">
-                  <span class="mq-index">1</span><span data-i18n="caps.queue.item1">先把核心逻辑做好</span
+                  <span class="mq-index">1</span
+                  ><span data-i18n="caps.queue.item1">先把核心逻辑做好</span
                   ><svg class="icon"><use href="#i-chevron-up" /></svg
                   ><svg class="icon"><use href="#i-chevron-down" /></svg>
                 </div>
                 <div class="mq-item">
-                  <span class="mq-index">2</span><span data-i18n="caps.queue.item2">再补上测试和文档</span
+                  <span class="mq-index">2</span
+                  ><span data-i18n="caps.queue.item2">再补上测试和文档</span
                   ><svg class="icon"><use href="#i-chevron-up" /></svg
                   ><svg class="icon"><use href="#i-chevron-down" /></svg>
                 </div>
@@ -651,37 +736,56 @@
             <article class="card card-git">
               <div class="card-git-copy">
                 <div class="card-head">
-                  <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-branch" /></svg></span
+                  <span class="card-icon"
+                    ><svg class="icon" aria-hidden="true"><use href="#i-branch" /></svg></span
                   ><span class="card-tag">Git / Checkpoints</span>
                 </div>
                 <h3 data-i18n="caps.git.title">检查点、工作树与​线程迁移</h3>
-                <p data-i18n="caps.git.description">每一轮都可以回到检查点；Git 工作树隔离并行任务；把线程移动到另一个项目时，保留原 ID 和完整历史。</p>
+                <p data-i18n="caps.git.description">
+                  每一轮都可以回到检查点；Git 工作树隔离并行任务；把线程移动到另一个项目时，保留原
+                  ID 和完整历史。
+                </p>
               </div>
               <div class="timeline" aria-hidden="true">
                 <div class="tl-track">
-                  <span class="tl-point is-done"><svg class="icon"><use href="#i-flag" /></svg><code>turn 1</code></span>
-                  <span class="tl-point is-done"><svg class="icon"><use href="#i-flag" /></svg><code>turn 2</code></span>
-                  <span class="tl-point is-current"><svg class="icon"><use href="#i-restore" /></svg><code>turn 3</code></span>
+                  <span class="tl-point is-done"
+                    ><svg class="icon"><use href="#i-flag" /></svg><code>turn 1</code></span
+                  >
+                  <span class="tl-point is-done"
+                    ><svg class="icon"><use href="#i-flag" /></svg><code>turn 2</code></span
+                  >
+                  <span class="tl-point is-current"
+                    ><svg class="icon"><use href="#i-restore" /></svg><code>turn 3</code></span
+                  >
                 </div>
                 <div class="tl-branch">
                   <svg class="icon"><use href="#i-branch" /></svg><code>worktree / feat-i18n</code>
                 </div>
                 <div class="tl-move">
-                  <span class="tl-chip"><svg class="icon"><use href="#i-folder" /></svg><code>atlas-app</code></span
+                  <span class="tl-chip"
+                    ><svg class="icon"><use href="#i-folder" /></svg><code>atlas-app</code></span
                   ><svg class="icon tl-arrow"><use href="#i-arrow-right" /></svg
-                  ><span class="tl-chip is-target"><svg class="icon"><use href="#i-folder" /></svg><code>docs-site</code></span
-                  ><span class="tl-note"><svg class="icon"><use href="#i-check" /></svg><span data-i18n="caps.git.kept">历史保留</span></span>
+                  ><span class="tl-chip is-target"
+                    ><svg class="icon"><use href="#i-folder" /></svg><code>docs-site</code></span
+                  ><span class="tl-note"
+                    ><svg class="icon"><use href="#i-check" /></svg
+                    ><span data-i18n="caps.git.kept">历史保留</span></span
+                  >
                 </div>
               </div>
             </article>
 
             <article class="card card-local">
               <div class="card-head">
-                <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg></span
+                <span class="card-icon"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg></span
                 ><code class="card-tag">127.0.0.1</code>
               </div>
               <h3 data-i18n="caps.local.title">默认只监听本机</h3>
-              <p data-i18n="caps.local.description">不需要 Cox 云端账号。远程访问必须设置密码，并通过 HTTPS 连接。</p>
+              <p data-i18n="caps.local.description">
+                不需要 Cox 云端账号。跨设备连接要求设置密码，并支持 HTTPS 与 Cloudflare Access
+                网关验证。
+              </p>
               <ul class="point-row">
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
@@ -689,7 +793,7 @@
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-key" /></svg
-                  ><span data-i18n="caps.local.point2">远程访问：密码 + HTTPS</span>
+                  ><span data-i18n="caps.local.point2">远程访问：密码 + HTTPS / CF Access</span>
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-cloud" /></svg
@@ -703,20 +807,24 @@
               <h3 data-i18n="caps.more.title">为长时间工作​准备的细节</h3>
               <ul class="more-list">
                 <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-languages" /></svg
-                  ><span data-i18n="caps.more.language">中英双语界面，切换不丢草稿</span>
+                  <svg class="icon" aria-hidden="true"><use href="#i-bell" /></svg
+                  ><span data-i18n="caps.more.notify">端到端加密 Web Push 与 Webhook 通知</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg
+                  ><span data-i18n="caps.more.schedule">单次与周期定时任务，联动 OMO 调度</span>
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-gauge" /></svg
                   ><span data-i18n="caps.more.usage">订阅用量与重置时间</span>
                 </li>
                 <li>
-                  <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg
-                  ><span data-i18n="caps.more.schedule">定时任务</span>
+                  <svg class="icon" aria-hidden="true"><use href="#i-languages" /></svg
+                  ><span data-i18n="caps.more.language">中英双语界面，切换不丢草稿</span>
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-keyboard" /></svg
-                  ><span data-i18n="caps.more.themes">主题与自定义快捷键</span>
+                  ><span data-i18n="caps.more.themes">深浅主题与自定义快捷键</span>
                 </li>
               </ul>
             </article>
@@ -728,7 +836,9 @@
         <div class="wrap">
           <div class="section-heading">
             <h2 id="workflow-title" data-i18n="workflow.title">从一个想法，到一处​可审阅的变更</h2>
-            <p class="section-lead" data-i18n="workflow.description">把任务交给智能体，也保留对过程的判断。选择智能体、排队引导、审阅差异、运行命令，都在同一个工作台里。</p>
+            <p class="section-lead" data-i18n="workflow.description">
+              把任务交给智能体，也保留对过程的判断。选择智能体、排队引导、审阅差异、运行命令，都在同一个工作台里。
+            </p>
           </div>
           <div class="workflow-showcase">
             <div
@@ -747,10 +857,13 @@
                 aria-controls="workflow-panel"
                 data-workflow="providers"
               >
-                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg></span
+                <span class="workflow-icon"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.providers.title">你的智能体，随需选择</strong
-                  ><span data-i18n="feature.providers.description">为不同项目选择合适的智能体。订阅账号与模型服务独立并存，模型由你配置。</span></span
+                  ><span data-i18n="feature.providers.description"
+                    >为不同项目选择合适的智能体。订阅账号与模型服务独立并存，模型由你配置。</span
+                  ></span
                 >
               </button>
               <button
@@ -763,10 +876,13 @@
                 tabindex="-1"
                 data-workflow="queue"
               >
-                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-queue" /></svg></span
+                <span class="workflow-icon"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-queue" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.queue.title">不必等待，随时引导</strong
-                  ><span data-i18n="feature.queue.description">智能体工作时，新消息先排队；需要时立即引导。调整顺序，让任务跟上思路。</span></span
+                  ><span data-i18n="feature.queue.description"
+                    >智能体工作时，新消息先排队；需要时立即引导。调整顺序，让任务跟上思路。</span
+                  ></span
                 >
               </button>
               <button
@@ -779,10 +895,13 @@
                 tabindex="-1"
                 data-workflow="review"
               >
-                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-diff" /></svg></span
+                <span class="workflow-icon"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-diff" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.review.title">每处变更，都看得清</strong
-                  ><span data-i18n="feature.review.description">对话旁查看代码差异，用检查点回到之前任意一轮，确认无误再继续。</span></span
+                  ><span data-i18n="feature.review.description"
+                    >对话旁查看代码差异，用检查点回到之前任意一轮，确认无误再继续。</span
+                  ></span
                 >
               </button>
               <button
@@ -795,10 +914,13 @@
                 tabindex="-1"
                 data-workflow="terminal"
               >
-                <span class="workflow-icon"><svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg></span
+                <span class="workflow-icon"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg></span
                 ><span class="workflow-tab-copy"
                   ><strong data-i18n="feature.terminal.title">终端与 Git，就在手边</strong
-                  ><span data-i18n="feature.terminal.description">运行命令、查看输出，用 Git 工作树隔离并行任务，不再来回切换窗口。</span></span
+                  ><span data-i18n="feature.terminal.description"
+                    >运行命令、查看输出，用 Git 工作树隔离并行任务，不再来回切换窗口。</span
+                  ></span
                 >
               </button>
             </div>
@@ -818,49 +940,72 @@
               <div class="workflow-views">
                 <div class="workflow-view" data-workflow-view="providers">
                   <div class="view-heading">
-                    <span data-i18n="feature.providers.viewTitle">智能体实例</span><code>5</code>
+                    <span data-i18n="feature.providers.viewTitle">智能体实例</span><code>6</code>
                   </div>
                   <div class="instance">
-                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-omo" /></svg></span
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-agent-omo" /></svg></span
                     ><span class="instance-name">OMO Native</span
-                    ><span class="instance-kind" data-i18n="feature.providers.kind3">绑定模型服务</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind3"
+                      >绑定模型服务</span
                     ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
                   </div>
                   <div class="instance">
-                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-codex" /></svg></span
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-agent-codex" /></svg></span
                     ><span class="instance-name">Codex</span
-                    ><span class="instance-kind" data-i18n="feature.providers.kind1">ChatGPT 订阅</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind1"
+                      >ChatGPT 订阅</span
                     ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
                   </div>
                   <div class="instance">
-                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-claude" /></svg></span
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-agent-claude" /></svg></span
                     ><span class="instance-name">Claude Code</span
-                    ><span class="instance-kind" data-i18n="feature.providers.kind2">Claude 订阅</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind2"
+                      >Claude 订阅</span
                     ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
                   </div>
                   <div class="instance">
-                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-cursor" /></svg></span
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-agent-pi" /></svg></span
+                    ><span class="instance-name">Oh My Pi</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind6"
+                      >原生 RPC · 受管 Bun</span
+                    ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
+                  </div>
+                  <div class="instance">
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-agent-cursor" /></svg></span
                     ><span class="instance-name">Cursor</span
-                    ><span class="instance-kind" data-i18n="feature.providers.kind4">Cursor 账号</span
+                    ><span class="instance-kind" data-i18n="feature.providers.kind4"
+                      >Cursor 账号</span
                     ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
                   </div>
                   <div class="instance">
-                    <span class="agent-avatar"><svg class="icon"><use href="#i-layers" /></svg></span
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-layers" /></svg></span
                     ><span class="instance-name">OpenCode</span
                     ><span class="instance-kind" data-i18n="feature.providers.kind5">本地配置</span
                     ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
                   </div>
                   <div class="view-footnote">
                     <svg class="icon"><use href="#i-plus" /></svg
-                    ><span data-i18n="feature.providers.add">添加实例或自定义模型</span>
+                    ><span data-i18n="feature.providers.add"
+                      >支持实例拖拽排序、删除与自定义模型</span
+                    >
                   </div>
                 </div>
                 <div class="workflow-view" data-workflow-view="queue" hidden>
                   <div class="queue-context">
-                    <span class="agent-avatar"><svg class="icon"><use href="#i-agent-codex" /></svg></span>
+                    <span class="agent-avatar"
+                      ><svg class="icon"><use href="#i-agent-codex" /></svg
+                    ></span>
                     <div>
                       <strong>Codex</strong
-                      ><span data-i18n="feature.queue.working">正在编辑 src/settings/Language.tsx</span>
+                      ><span data-i18n="feature.queue.working"
+                        >正在编辑 src/settings/Language.tsx</span
+                      >
                     </div>
                     <span class="working-indicator"><i></i><i></i><i></i></span>
                   </div>
@@ -887,7 +1032,8 @@
                 </div>
                 <div class="workflow-view" data-workflow-view="review" hidden>
                   <div class="review-meta">
-                    <span class="chip"><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
+                    <span class="chip"
+                      ><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
                     ><span class="diff-stat"><b>+24</b><i>-6</i></span>
                   </div>
                   <div class="diff-card">
@@ -930,19 +1076,34 @@
                 </div>
                 <div class="workflow-view" data-workflow-view="terminal" hidden>
                   <div class="review-meta">
-                    <span class="chip"><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
+                    <span class="chip"
+                      ><svg class="icon"><use href="#i-branch" /></svg>feat/i18n</span
                     ><span class="chip"
                       ><svg class="icon"><use href="#i-folder" /></svg
                       ><span data-i18n="feature.terminal.worktree">工作树</span></span
                     ><span class="panel-shell">zsh</span>
                   </div>
                   <div class="full-terminal">
-                    <div><span class="t-path">~/projects/atlas-app</span> <span class="t-branch">feat/i18n</span></div>
+                    <div>
+                      <span class="t-path">~/projects/atlas-app</span>
+                      <span class="t-branch">feat/i18n</span>
+                    </div>
                     <div><span class="t-prompt">$</span> pnpm test settings</div>
-                    <div><svg class="icon t-ok"><use href="#i-check" /></svg> keeps the draft <span class="t-dim">42ms</span></div>
-                    <div><svg class="icon t-ok"><use href="#i-check" /></svg> renders zh and en <span class="t-dim">18ms</span></div>
-                    <div><svg class="icon t-ok"><use href="#i-check" /></svg> saves the choice <span class="t-dim">11ms</span></div>
-                    <div><span class="t-pass">Tests</span> 12 passed <span class="t-dim">(12)</span></div>
+                    <div>
+                      <svg class="icon t-ok"><use href="#i-check" /></svg> keeps the draft
+                      <span class="t-dim">42ms</span>
+                    </div>
+                    <div>
+                      <svg class="icon t-ok"><use href="#i-check" /></svg> renders zh and en
+                      <span class="t-dim">18ms</span>
+                    </div>
+                    <div>
+                      <svg class="icon t-ok"><use href="#i-check" /></svg> saves the choice
+                      <span class="t-dim">11ms</span>
+                    </div>
+                    <div>
+                      <span class="t-pass">Tests</span> 12 passed <span class="t-dim">(12)</span>
+                    </div>
                     <div><span class="t-prompt">$</span> git status --short</div>
                     <div><span class="t-mod">M</span> src/settings/Language.tsx</div>
                     <div><span class="t-new">A</span> src/i18n/zh.ts</div>
@@ -955,12 +1116,331 @@
         </div>
       </section>
 
+      <section class="section mobile" id="mobile" aria-labelledby="mobile-title">
+        <div class="wrap">
+          <div class="mobile-grid">
+            <div class="mobile-copy">
+              <h2 id="mobile-title" data-i18n="mobile.title">离开桌前，驾驶舱​仍在掌心</h2>
+              <p class="section-lead" data-i18n="mobile.description">
+                用 Cox Mobile 或手机浏览器直连自己的服务器。想把 Cox 和智能体都装在 Android
+                手机上，可以用 CoCode。
+              </p>
+              <div class="mobile-downloads">
+                <a
+                  class="button button-primary"
+                  href="https://github.com/doublepi123/cox/releases?q=%22Cox+Mobile%22"
+                  ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg
+                  ><span data-i18n="mobile.download">下载 Cox Mobile</span
+                  ><svg class="icon" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
+                ></a>
+                <a class="button button-secondary" href="cocode/"
+                  ><span data-i18n="mobile.cocodeCta">探索 CoCode 安卓版</span
+                  ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg
+                ></a>
+              </div>
+              <p class="mobile-platforms" data-i18n="mobile.platforms">
+                iOS 17+（IPA）· Android 8+（APK）
+              </p>
+              <div class="mobile-highlights">
+                <article class="feature-row">
+                  <span class="card-icon"
+                    ><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg
+                  ></span>
+                  <div>
+                    <h3 data-i18n="mobile.feature1.title">多台服务器，各自保存登录状态</h3>
+                    <p data-i18n="mobile.feature1.description">
+                      Cox Mobile 为每台服务器隔离会话和存储。可用生物识别解锁保存的密码，也支持
+                      Cloudflare Access 登录。
+                    </p>
+                  </div>
+                </article>
+                <article class="feature-row">
+                  <span class="card-icon is-cyan"
+                    ><svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg
+                  ></span>
+                  <div>
+                    <h3 data-i18n="mobile.feature2.title">在窄屏上看变更、跑终端</h3>
+                    <p data-i18n="mobile.feature2.description">
+                      全宽查看代码变更和预览。在 Ghostty 中锁定 Ctrl 和 Alt，用双指缩放 OMO
+                      任务图。网络中断时，草稿仍会保留。
+                    </p>
+                  </div>
+                </article>
+                <article class="feature-row">
+                  <span class="card-icon is-amber"
+                    ><svg class="icon" aria-hidden="true"><use href="#i-bell" /></svg
+                  ></span>
+                  <div>
+                    <h3 data-i18n="mobile.feature3.title">智能体需要你时，手机会收到提醒</h3>
+                    <p data-i18n="mobile.feature3.description">
+                      在 Cox 的通知设置中接入 Bark、Telegram、Ntfy 或签名
+                      Webhook，接收提问、审批和任务结果。支持的浏览器也可接收加密 Web Push。
+                    </p>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="mobile-stage">
+              <div class="mobile-controls">
+                <span class="demo-switch-label" id="mobile-switch-label" data-i18n="mobile.switch"
+                  >切换移动端视图</span
+                >
+                <div class="segmented" role="group" aria-labelledby="mobile-switch-label">
+                  <button type="button" data-mobile-tab="launcher" aria-pressed="true">
+                    <svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg
+                    ><span data-i18n="mobile.tab.launcher">多服隔离</span>
+                  </button>
+                  <button type="button" data-mobile-tab="touch" aria-pressed="false" tabindex="-1">
+                    <svg class="icon" aria-hidden="true"><use href="#i-terminal" /></svg
+                    ><span data-i18n="mobile.tab.touch">触控工作台</span>
+                  </button>
+                  <button type="button" data-mobile-tab="notify" aria-pressed="false" tabindex="-1">
+                    <svg class="icon" aria-hidden="true"><use href="#i-bell" /></svg
+                    ><span data-i18n="mobile.tab.notify">后台通知</span>
+                  </button>
+                </div>
+              </div>
+
+              <figure class="mobile-figure">
+                <div class="mobile-device" aria-hidden="true" data-mobile-demo="launcher">
+                  <div class="mobile-screen">
+                    <div class="mobile-statusbar">
+                      <span>9:41</span>
+                      <span class="mobile-island"></span>
+                      <span class="mobile-signals">
+                        <svg class="icon"><use href="#i-wifi" /></svg>
+                        <svg class="icon icon-battery"><use href="#i-battery" /></svg>
+                      </span>
+                    </div>
+                    <div class="mobile-appbar">
+                      <span class="mobile-brand">
+                        <img src="assets/cox.svg" width="20" height="20" alt="" />
+                        <span>Cox Mobile</span>
+                      </span>
+                    </div>
+
+                    <div class="mobile-views">
+                      <div class="mobile-view" data-mobile-view="launcher">
+                        <div class="mv-note">
+                          <svg class="icon"><use href="#i-lock" /></svg>
+                          <span data-i18n="mobile.launcher.vault">已启用生物识别解锁</span>
+                        </div>
+                        <div class="mv-item is-active">
+                          <div class="mv-item-top">
+                            <strong>Workstation</strong>
+                            <span class="mv-chip is-live" data-i18n="mobile.launcher.connected"
+                              >当前连接</span
+                            >
+                          </div>
+                          <code>https://cox.example.com</code>
+                          <div class="mv-tags">
+                            <span>Face ID</span>
+                            <span>Cloudflare Access</span>
+                          </div>
+                        </div>
+                        <div class="mv-item">
+                          <div class="mv-item-top">
+                            <strong>Home Lab</strong>
+                            <span class="mv-chip" data-i18n="mobile.launcher.warm">后台待命</span>
+                          </div>
+                          <code>http://100.64.0.8:3773</code>
+                          <div class="mv-tags">
+                            <span data-i18n="mobile.launcher.tailscale">已允许 Tailscale HTTP</span>
+                            <span data-i18n="mobile.launcher.isolated">独立存储</span>
+                          </div>
+                        </div>
+                        <p class="mv-foot" data-i18n="mobile.launcher.note">
+                          移除服务器时会清除它的登录状态、本地存储和保存的密码。
+                        </p>
+                      </div>
+
+                      <div class="mobile-view" data-mobile-view="touch" hidden>
+                        <div class="mv-wave">
+                          <svg class="icon"><use href="#i-graph" /></svg>
+                          <span data-i18n="mobile.touch.dag">OMO 第 2 波 · 双指缩放图谱</span>
+                          <code>3/4</code>
+                        </div>
+                        <div class="diff-card mv-diff">
+                          <div class="diff-head">
+                            <svg class="icon"><use href="#i-diff" /></svg>
+                            <span class="diff-path">MobileWorkspaceBar.tsx</span>
+                            <span class="diff-stat"><b>+18</b><i>-2</i></span>
+                          </div>
+                          <div class="diff-line is-del">
+                            <span class="ln">24</span><span class="sign">-</span
+                            ><code>splitView={true}</code>
+                          </div>
+                          <div class="diff-line is-add">
+                            <span class="ln">24</span><span class="sign">+</span
+                            ><code>sheetMode="unified"</code>
+                          </div>
+                        </div>
+                        <div class="mv-term">
+                          <div class="mv-term-line">
+                            <span class="t-prompt">$</span> pnpm mobile:test
+                          </div>
+                          <div class="mv-term-line">
+                            <svg class="icon t-ok"><use href="#i-check" /></svg> 4 suites passed
+                            <span class="t-dim">310ms</span>
+                          </div>
+                          <div class="mv-keys">
+                            <kbd>ESC</kbd><kbd>TAB</kbd><kbd class="is-locked">CTRL</kbd
+                            ><kbd>ALT</kbd><kbd>PASTE</kbd><kbd>A+</kbd>
+                          </div>
+                        </div>
+                        <div class="mv-thumbbar">
+                          <span data-i18n="mobile.touch.nav1">对话</span>
+                          <span data-i18n="mobile.touch.nav2">新建</span>
+                          <span class="is-active" data-i18n="mobile.touch.nav3">变更</span>
+                          <span data-i18n="mobile.touch.nav4">终端</span>
+                          <span data-i18n="mobile.touch.nav5">服务器</span>
+                        </div>
+                      </div>
+
+                      <div class="mobile-view" data-mobile-view="notify" hidden>
+                        <div class="mv-item is-urgent">
+                          <div class="mv-item-top">
+                            <strong>Bark</strong>
+                            <span class="mv-time">now</span>
+                          </div>
+                          <p class="mv-push-title" data-i18n="mobile.notify.alert1Title">
+                            OMO 正在等待你的确认
+                          </p>
+                          <p class="mv-push-body" data-i18n="mobile.notify.alert1Body">
+                            请选择发布分支。点按打开对话。
+                          </p>
+                        </div>
+                        <div class="mv-item">
+                          <div class="mv-item-top">
+                            <strong>Telegram</strong>
+                            <span class="mv-time">2m</span>
+                          </div>
+                          <p class="mv-push-title" data-i18n="mobile.notify.alert2Title">
+                            atlas-app 可以审阅了
+                          </p>
+                          <p class="mv-push-body" data-i18n="mobile.notify.alert2Body">
+                            对话中的任务已完成。点按查看代码变更。
+                          </p>
+                        </div>
+                        <div class="mv-tags">
+                          <code>Bark</code><code>Telegram</code><code>Ntfy</code
+                          ><code>Webhook</code>
+                        </div>
+                        <p class="mv-foot" data-i18n="mobile.notify.filter">
+                          子智能体的内部步骤不会触发提醒。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="mobile-homebar"></div>
+                  </div>
+                </div>
+                <figcaption data-i18n="mobile.caption">
+                  移动端界面示意，不会发起网络连接或系统推送。
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <div class="mobile-matrix">
+            <h3 class="matrix-title" data-i18n="mobile.matrix.title">手机使用 Cox 的三种方式</h3>
+            <div class="mobile-table-wrap">
+              <table class="mobile-table">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="mobile.matrix.colOption">方式</th>
+                    <th scope="col" data-i18n="mobile.matrix.colPlatform">支持平台</th>
+                    <th scope="col" data-i18n="mobile.matrix.colWhere">运行位置</th>
+                    <th scope="col" data-i18n="mobile.matrix.colFit">适用场景</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">
+                      <strong>Cox Mobile</strong>
+                      <code>dev.doublepi.cox.mobile</code>
+                    </th>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colPlatform">支持平台</span>
+                      <span data-i18n="mobile.matrix.coxPlatform"
+                        >iOS 17+ 与 Android 8+（安卓安装包小于 20MB）</span
+                      >
+                    </td>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colWhere">运行位置</span>
+                      <span data-i18n="mobile.matrix.coxWhere">你的电脑、家庭服务器或云主机</span>
+                    </td>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colFit">适用场景</span>
+                      <span data-i18n="mobile.matrix.coxFit"
+                        >连接多台服务器，独立保存会话。配合 Bark、Telegram 或 Ntfy
+                        接收后台提醒。</span
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <strong>CoCode</strong>
+                      <code>io.cocode.app</code>
+                    </th>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colPlatform">支持平台</span>
+                      <span data-i18n="mobile.matrix.cocodePlatform"
+                        >Android 8.0+ 独立应用（可与 Cox Mobile 同机并存）</span
+                      >
+                    </td>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colWhere">运行位置</span>
+                      <span data-i18n="mobile.matrix.cocodeWhere"
+                        >手机本地的 Alpine Linux + PRoot，也可连接远程 Cox</span
+                      >
+                    </td>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colFit">适用场景</span>
+                      <span data-i18n="mobile.matrix.cocodeFit"
+                        >不需要电脑或 root 权限。与 Cox Mobile
+                        同时安装时，两款应用的数据各自独立。</span
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <strong data-i18n="mobile.matrix.pwaName">手机浏览器 / PWA</strong>
+                    </th>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colPlatform">支持平台</span>
+                      <span data-i18n="mobile.matrix.pwaPlatform"
+                        >现代 iOS / iPadOS 与 Android 浏览器</span
+                      >
+                    </td>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colWhere">运行位置</span>
+                      <span data-i18n="mobile.matrix.pwaWhere">你部署的 HTTPS Cox 服务器</span>
+                    </td>
+                    <td>
+                      <span class="cell-label" data-i18n="mobile.matrix.colFit">适用场景</span>
+                      <span data-i18n="mobile.matrix.pwaFit"
+                        >打开浏览器即可使用。iOS 16.4+ 将网页添加到主屏幕后可接收加密 Web
+                        Push。</span
+                      >
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="section desktop" id="desktop" aria-labelledby="desktop-title">
         <div class="wrap desktop-grid">
           <div class="desktop-copy">
-            <span class="card-tag">Cox Desktop</span>
             <h2 id="desktop-title" data-i18n="desktop.title">不开终端，也有你的​本地驾驶舱</h2>
-            <p class="section-lead" data-i18n="desktop.description">macOS 与 Windows 桌面客户端内置 Web 界面和独立 Node 运行时，本地后端只监听回环地址。组合安装包自带 Cox 后端；仅客户端安装包首次本地会话需联网安装最新稳定版 Cox。</p>
+            <p class="section-lead" data-i18n="desktop.description">
+              macOS 和 Windows 客户端自带运行环境。组合包已包含 Cox
+              后端。仅客户端版在首次本地连接时联网安装 Cox。
+            </p>
             <div class="desktop-downloads">
               <a
                 class="button button-primary"
@@ -969,40 +1449,64 @@
                 ><span data-i18n="desktop.download">下载桌面版</span
                 ><svg class="icon" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
               ></a>
-              <span class="desktop-platforms" data-i18n="desktop.platforms">macOS Apple Silicon / Intel · Windows x64</span>
+              <span class="desktop-platforms" data-i18n="desktop.platforms"
+                >macOS Apple Silicon / Intel · Windows x64</span
+              >
             </div>
-            <p class="desktop-note" data-i18n="desktop.note">智能体 CLI、账号认证和模型订阅仍需单独配置。发布签名与平台验收说明见 Release。</p>
+            <p class="desktop-note" data-i18n="desktop.note">
+              智能体及账号需单独配置。签名和系统兼容性说明见发布页。
+            </p>
             <div class="cocode-card">
-              <span class="cocode-icon"><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg></span>
+              <span class="cocode-icon"
+                ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg
+              ></span>
               <div>
                 <a class="mobile-link" href="cocode/"
-                  ><span data-i18n="desktop.mobile">在 Android 上使用 CoCode</span
+                  ><span data-i18n="desktop.mobile">在 Android 手机本地运行 CoCode</span
                   ><svg class="icon" aria-hidden="true"><use href="#i-arrow-up-right" /></svg
                 ></a>
-                <p data-i18n="desktop.mobileDescription">CoCode 在 Android 手机上本地运行 Cox 和编码智能体，无需电脑，也不需要 root。</p>
+                <p data-i18n="desktop.mobileDescription">
+                  无需电脑与 root，通过 Alpine Linux + PRoot 在手机上本地运行 Cox 与智能体；可与 Cox
+                  Mobile 远程版同机共存。
+                </p>
               </div>
             </div>
           </div>
           <div class="desktop-features">
             <article class="feature-row">
-              <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-monitor" /></svg></span>
+              <span class="card-icon"
+                ><svg class="icon" aria-hidden="true"><use href="#i-monitor" /></svg
+              ></span>
               <div>
                 <h3 data-i18n="desktop.feature1.title">组合包或仅客户端，按需选择</h3>
-                <p data-i18n="desktop.feature1.description">两种安装包都不需要全局安装 Node 或 Cox。桌面数据保存在 ~/.cox/desktop，与 CLI 数据分开。</p>
+                <p data-i18n="desktop.feature1.description">
+                  两种安装包都不需要全局安装 Node 或 Cox。桌面数据保存在 ~/.cox/desktop，与 CLI
+                  数据分开。
+                </p>
               </div>
             </article>
             <article class="feature-row">
-              <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-restore" /></svg></span>
+              <span class="card-icon"
+                ><svg class="icon" aria-hidden="true"><use href="#i-restore" /></svg
+              ></span>
               <div>
-                <h3 data-i18n="desktop.feature2.title">分阶段更新，失败可回滚</h3>
-                <p data-i18n="desktop.feature2.description">更新下载并校验后，在下次正常启动时激活。激活前备份数据，失败时恢复旧后端及对应的数据快照。</p>
+                <h3 data-i18n="desktop.feature2.title">后端更新支持备份和回滚</h3>
+                <p data-i18n="desktop.feature2.description">
+                  桌面端的本地后端仅监听回环地址。更新会校验安装包并备份数据，失败时恢复旧版本。Linux
+                  上由 systemd 管理的 Cox 服务也可单独启用此功能。
+                </p>
               </div>
             </article>
             <article class="feature-row">
-              <span class="card-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg></span>
+              <span class="card-icon"
+                ><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg
+              ></span>
               <div>
-                <h3 data-i18n="desktop.feature3.title">通过 HTTPS 连接远程服务器</h3>
-                <p data-i18n="desktop.feature3.description">连接你自己运营的 Cox 服务器需要 HTTPS 与密码。每个服务器使用独立的浏览器配置，远程页面无法管理本地后端或桌面更新。</p>
+                <h3 data-i18n="desktop.feature3.title">HTTPS 与 Cloudflare Access 远程连接</h3>
+                <p data-i18n="desktop.feature3.description">
+                  连接自建 Cox 服务器要求 HTTPS 与密码，兼容 Cloudflare Access
+                  身份验证。每个服务器拥有独立浏览器配置，可同时连接与单独断开。
+                </p>
               </div>
             </article>
           </div>
@@ -1013,38 +1517,78 @@
         <div class="wrap local-grid">
           <div class="local-copy">
             <h2 id="local-title" data-i18n="local.title">本地控制面，不是云端托管</h2>
-            <p class="section-lead" data-i18n="local.description">Cox 服务运行在你的电脑上，默认只监听 127.0.0.1。项目、对话、凭据与检查点留在本地数据目录，上游密钥由本地网关保管。</p>
-            <p class="local-caveat" data-i18n="local.caveat">本地优先不等于离线推理：智能体仍会调用你配置的模型服务，Git 集成也可能访问相应的代码托管平台。</p>
+            <p class="section-lead" data-i18n="local.description">
+              Cox 服务运行在你的电脑或自建主机上，默认只监听
+              127.0.0.1。项目、对话、凭据与检查点留在本地数据目录，上游密钥由本地网关保管，桌面与移动端均直连你的实例。
+            </p>
+            <p class="local-caveat" data-i18n="local.caveat">
+              本地运行的智能体仍会调用你配置的模型服务。Git 操作访问你的代码托管平台，后台提醒由你的
+              Cox 服务发出。
+            </p>
           </div>
           <div class="topology" aria-hidden="true">
             <div class="machine">
               <span class="machine-label"
                 ><svg class="icon"><use href="#i-monitor" /></svg
-                ><span data-i18n="local.machine">你的电脑</span></span
+                ><span data-i18n="local.machine">你的电脑或自建主机</span></span
               >
               <div class="topo-row">
-                <span class="topo-node"><svg class="icon"><use href="#i-globe" /></svg><span data-i18n="local.browser">浏览器</span></span>
-                <span class="topo-node"><svg class="icon"><use href="#i-monitor" /></svg><span data-i18n="local.desktop">Cox 桌面版</span></span>
+                <span class="topo-node"
+                  ><svg class="icon"><use href="#i-globe" /></svg
+                  ><span data-i18n="local.browser">浏览器</span></span
+                >
+                <span class="topo-node"
+                  ><svg class="icon"><use href="#i-monitor" /></svg
+                  ><span data-i18n="local.desktop">Cox 桌面版</span></span
+                >
+                <span class="topo-node"
+                  ><svg class="icon"><use href="#i-phone" /></svg
+                  ><span data-i18n="local.mobile">Cox Mobile / PWA</span></span
+                >
               </div>
-              <span class="topo-link"><code>127.0.0.1</code></span>
+              <span class="topo-link"><code>127.0.0.1 / HTTPS</code></span>
               <div class="topo-node topo-server">
-                <img src="assets/cox.svg" width="24" height="24" alt="" /><strong data-i18n="local.server">Cox 本地服务</strong>
+                <img src="assets/cox.svg" width="24" height="24" alt="" /><strong
+                  data-i18n="local.server"
+                  >Cox 本地服务</strong
+                >
               </div>
               <span class="topo-link"></span>
               <div class="topo-row">
-                <span class="topo-node"><svg class="icon"><use href="#i-users" /></svg><span data-i18n="local.agents">智能体</span></span>
-                <span class="topo-arrow"><svg class="icon"><use href="#i-arrow-right" /></svg></span>
-                <span class="topo-node topo-gateway"><svg class="icon"><use href="#i-route" /></svg><span data-i18n="local.gateway">模型网关</span></span>
+                <span class="topo-node"
+                  ><svg class="icon"><use href="#i-users" /></svg
+                  ><span data-i18n="local.agents">智能体</span></span
+                >
+                <span class="topo-arrow"
+                  ><svg class="icon"><use href="#i-arrow-right" /></svg
+                ></span>
+                <span class="topo-node topo-gateway"
+                  ><svg class="icon"><use href="#i-route" /></svg
+                  ><span data-i18n="local.gateway">模型网关</span></span
+                >
               </div>
               <div class="topo-data">
                 <code>~/.cox</code><code>~/projects</code
-                ><span class="topo-data-item"><svg class="icon"><use href="#i-flag" /></svg><span data-i18n="local.checkpoints">检查点</span></span>
+                ><span class="topo-data-item"
+                  ><svg class="icon"><use href="#i-flag" /></svg
+                  ><span data-i18n="local.checkpoints">检查点</span></span
+                >
               </div>
             </div>
             <span class="topo-link is-external"><code>HTTPS</code></span>
             <div class="topo-row is-external">
-              <span class="topo-node"><svg class="icon"><use href="#i-cloud" /></svg><span data-i18n="local.external">你配置的模型服务</span></span>
-              <span class="topo-node"><svg class="icon"><use href="#i-branch" /></svg><span data-i18n="local.repos">代码托管平台</span></span>
+              <span class="topo-node"
+                ><svg class="icon"><use href="#i-cloud" /></svg
+                ><span data-i18n="local.external">你配置的模型服务</span></span
+              >
+              <span class="topo-node"
+                ><svg class="icon"><use href="#i-branch" /></svg
+                ><span data-i18n="local.repos">代码托管平台</span></span
+              >
+              <span class="topo-node"
+                ><svg class="icon"><use href="#i-bell" /></svg
+                ><span data-i18n="local.push">加密推送 / Webhook</span></span
+              >
             </div>
           </div>
         </div>
@@ -1054,27 +1598,35 @@
         <div class="wrap start-grid">
           <div class="start-copy">
             <h2 id="start-title" data-i18n="start.title">一条命令，开始构建</h2>
-            <p class="section-lead" data-i18n="start.description">无需克隆仓库，也不用安装开发依赖。npm 包已包含构建好的界面与本地服务。</p>
+            <p class="section-lead" data-i18n="start.description">
+              npm 安装包已包含浏览器界面和本地服务，无需克隆仓库即可运行。
+            </p>
             <ol class="steps">
               <li>
                 <span class="step-number">1</span>
                 <div>
                   <h3 data-i18n="step1.title">运行 Cox</h3>
-                  <p data-i18n="step1.description">在终端运行启动命令。如果浏览器没有自动打开，按终端提示访问本地地址。</p>
+                  <p data-i18n="step1.description">
+                    在终端运行启动命令。如果浏览器没有自动打开，按终端提示访问本地地址。
+                  </p>
                 </div>
               </li>
               <li>
                 <span class="step-number">2</span>
                 <div>
                   <h3 data-i18n="step2.title">连接智能体</h3>
-                  <p data-i18n="step2.description">在设置中添加智能体。CLI 型智能体需在本机安装并完成登录；也可以绑定模型服务。</p>
+                  <p data-i18n="step2.description">
+                    在设置中添加智能体。CLI 型智能体需在本机安装并完成登录；也可以绑定模型服务。
+                  </p>
                 </div>
               </li>
               <li>
                 <span class="step-number">3</span>
                 <div>
                   <h3 data-i18n="step3.title">打开项目，开始构建</h3>
-                  <p data-i18n="step3.description">添加本地项目目录，新建对话并选择模型，然后说出你的第一个想法。</p>
+                  <p data-i18n="step3.description">
+                    添加本地项目目录，新建对话并选择模型，然后说出你的第一个想法。
+                  </p>
                 </div>
               </li>
             </ol>
@@ -1098,7 +1650,9 @@
               <div class="terminal-body">
                 <p class="t-comment" data-i18n="start.comment"># 直接运行最新版本</p>
                 <div class="t-command">
-                  <code><span class="t-prompt" aria-hidden="true">$ </span>npx @doublepi123/cox@latest</code
+                  <code
+                    ><span class="t-prompt" aria-hidden="true">$ </span>npx
+                    @doublepi123/cox@latest</code
                   ><button
                     class="copy-button"
                     type="button"
@@ -1112,7 +1666,9 @@
                 </div>
                 <p class="t-comment" data-i18n="start.global"># 或者全局安装</p>
                 <div class="t-command">
-                  <code><span class="t-prompt" aria-hidden="true">$ </span>npm install --global @doublepi123/cox@latest</code
+                  <code
+                    ><span class="t-prompt" aria-hidden="true">$ </span>npm install --global
+                    @doublepi123/cox@latest</code
                   ><button
                     class="copy-button"
                     type="button"
@@ -1129,11 +1685,17 @@
                 </div>
                 <p class="t-output">
                   <svg class="icon" aria-hidden="true"><use href="#i-check" /></svg
-                  ><span data-i18n="start.footer">Cox 会启动仅限本机访问的服务，并自动打开浏览器。</span>
+                  ><span data-i18n="start.footer"
+                    >Cox 会启动仅限本机访问的服务，并自动打开浏览器。</span
+                  >
                 </p>
               </div>
             </div>
-            <p class="disclaimer" data-i18n="start.disclaimer">Cox 不包含模型订阅或 API 额度，请使用你自己的账号与凭据。如果原生依赖没有适用于你平台的预编译版本，安装时可能需要 C/C++ 构建工具。</p>
+            <p class="disclaimer" data-i18n="start.disclaimer">
+              Cox 不包含模型订阅或 API
+              额度，请使用你自己的账号与凭据。如果原生依赖没有适用于你平台的预编译版本，安装时可能需要
+              C/C++ 构建工具。
+            </p>
           </div>
         </div>
       </section>
@@ -1150,7 +1712,10 @@
             <a class="button button-primary" href="#desktop"
               ><span data-i18n="closing.cta">下载 Cox 桌面版</span
               ><svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg></a
-            ><a class="button button-secondary" href="https://github.com/doublepi123/cox"
+            ><a class="button button-secondary" href="#mobile"
+              ><svg class="icon" aria-hidden="true"><use href="#i-phone" /></svg
+              ><span data-i18n="closing.mobileCta">获取移动端客户端</span></a
+            ><a class="button button-ghost" href="https://github.com/doublepi123/cox"
               ><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg
               ><span data-i18n="closing.source">在 GitHub 上探索</span></a
             >
@@ -1173,11 +1738,18 @@
         </div>
         <nav class="footer-links" aria-label="页脚链接" data-i18n-aria="footer.label">
           <a href="https://github.com/doublepi123/cox" data-i18n="footer.source">源码</a
-          ><a href="https://github.com/doublepi123/cox/releases" data-i18n="footer.releases">版本发布</a
-          ><a href="https://www.npmjs.com/package/@doublepi123/cox">npm</a
+          ><a href="https://github.com/doublepi123/cox/releases" data-i18n="footer.releases"
+            >版本发布</a
+          ><a
+            href="https://github.com/doublepi123/cox/releases?q=%22Cox+Mobile%22"
+            data-i18n="footer.mobile"
+            >Cox Mobile</a
+          ><a href="cocode/">CoCode</a><a href="#start" data-i18n="footer.npm">npm 安装</a
           ><a href="https://github.com/doublepi123/cox/blob/main/LICENSE">MIT License</a>
         </nav>
-        <p class="footer-note" data-i18n="footer.note">这是 Cox 的产品介绍页，不是托管的 Cox 工作空间。</p>
+        <p class="footer-note" data-i18n="footer.note">
+          这是 Cox 的产品介绍页，不是托管的 Cox 工作空间。
+        </p>
       </div>
     </footer>
     <div class="toast" role="status" aria-live="polite" data-toast></div>

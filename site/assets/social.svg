@@ -83,10 +83,10 @@
     <circle cx="98" cy="443" r="2.4" fill="#b6c1bb"/>
     <text x="108" y="456" fill="#d5ddd8">Git Worktrees</text>
 
-    <rect x="217.5" y="435.5" width="206" height="31" rx="8" fill="#fff" fill-opacity="0.04" stroke="#fff" stroke-opacity="0.16"/>
+    <rect x="217.5" y="435.5" width="248" height="31" rx="8" fill="#fff" fill-opacity="0.04" stroke="#fff" stroke-opacity="0.16"/>
     <rect x="232" y="444" width="16" height="11" rx="2" fill="none" stroke="#b6c1bb" stroke-width="1.6"/>
     <path d="M236 459h8" stroke="#b6c1bb" stroke-width="1.6" stroke-linecap="round"/>
-    <text x="256" y="456" fill="#d5ddd8">macOS · Windows · Web</text>
+    <text x="256" y="456" fill="#d5ddd8">Desktop · iOS · Android · Web</text>
   </g>
 
   <rect x="72.5" y="500.5" width="404" height="54" rx="14" fill="#0e1311" stroke="#fff" stroke-opacity="0.14"/>
@@ -106,7 +106,7 @@
   <text x="908" y="88" fill="#b6c1bb" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" text-anchor="middle">127.0.0.1:4773</text>
   <rect x="1062" y="74" width="52" height="20" rx="10" fill="#b7ed81" fill-opacity="0.12"/>
   <circle cx="1074" cy="84" r="3" fill="#b7ed81"/>
-  <text x="1083" y="88" fill="#b7ed81" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" font-weight="700">LIVE</text>
+  <text x="1083" y="88" fill="#b7ed81" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" font-weight="700">DEMO</text>
 
   <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600">
     <rect x="682.5" y="116.5" width="101" height="31" rx="8" fill="#b7ed81" fill-opacity="0.12" stroke="#b7ed81" stroke-opacity="0.5"/>
@@ -160,7 +160,7 @@
     <circle cx="975" cy="254" r="11" fill="#6ee7b7" fill-opacity="0.2"/>
     <path d="m969.5 254 4 4 7-8" fill="none" stroke="#6ee7b7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
     <text x="994" y="250" fill="#eef3f0" font-weight="700">verify</text>
-    <text x="994" y="267" fill="#6ee7b7" font-size="10.5">tests 128 passed</text>
+    <text x="994" y="267" fill="#6ee7b7" font-size="10.5">checks passed</text>
   </g>
 
   <path d="M682 336.5h432" stroke="#fff" stroke-opacity="0.08"/>
@@ -176,7 +176,7 @@
     <text x="698" y="374" fill="#b6c1bb">gateway/router.ts</text>
     <text x="1098" y="374" text-anchor="end"><tspan fill="#7ddc9b">+18</tspan><tspan fill="#ff958c"> -4</tspan></text>
     <text x="698" y="404" fill="#ffb4ad">-  const url = CLOUD_API</text>
-    <text x="698" y="431" fill="#a6ecbe">+  const url = "http://127.0.0.1:8317/v1"</text>
+    <text x="698" y="431" fill="#a6ecbe">+  const url = localGatewayUrl</text>
   </g>
 
   <rect x="682.5" y="456.5" width="231" height="31" rx="15.5" fill="#b7ed81" fill-opacity="0.1" stroke="#b7ed81" stroke-opacity="0.45"/>
@@ -191,7 +191,7 @@
   <path d="M660 504h476v44a18 18 0 0 1-18 18H678a18 18 0 0 1-18-18Z" fill="#0f1412"/>
   <path d="M661 504.5h474" stroke="#fff" stroke-opacity="0.08"/>
   <path d="M684 523h16M696 519l4 4-4 4M700 531h-16M688 527l-4 4 4 4" fill="none" stroke="#6ee7b7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="716" y="539" fill="#8d9a93" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5">gateway <tspan fill="#eef3f0">:8317</tspan></text>
+  <text x="716" y="539" fill="#8d9a93" font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5">local gateway</text>
   <g font-family="'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="11">
     <rect x="836.5" y="522.5" width="76" height="23" rx="6" fill="#6ee7b7" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.3"/>
     <text x="874.5" y="538" fill="#c9f7e3" text-anchor="middle">OpenAI</text>
