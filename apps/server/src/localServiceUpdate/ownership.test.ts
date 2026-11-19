@@ -286,6 +286,30 @@ describe("local service update boundaries", () => {
 });
 
 describe("local service update transaction", () => {
+  it("checks the registry again after a disconnected request fails in the background", async () => {
+    await using harness = await makeService(undefined, false);
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const first = Promise.withResolvers<Release.LocalServiceRelease>();
+    mocks.fetchRelease.mockImplementationOnce(() => {
+      started.resolve();
+      return first.promise;
+    });
+    const cancelled = harness.runtime.runPromise(harness.service.check, {
+      signal: controller.signal,
+    });
+    await started.promise;
+    controller.abort();
+    await expect(cancelled).rejects.toThrow();
+    first.reject(new TypeError("fetch failed"));
+    await first.promise.catch(() => undefined);
+
+    await expect(harness.runtime.runPromise(harness.service.check)).resolves.toMatchObject({
+      status: "available",
+      latestVersion: "99.0.0",
+    });
+  });
+
   it("consumes a rollback receipt so a fresh release can be downloaded", async () => {
     await using harness = await makeService(receipt("rolled-back", "health check failed"));
     expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({

@@ -142,7 +142,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
       }
       if (current.status === "restarting" || (current.status === "ready" && ready)) return current;
       current = { ...current, status: "checking", message: null, progress: null };
-      operation = (async () => {
+      const pending = (async () => {
         try {
           release = await fetchLocalServiceRelease(AbortSignal.timeout(30_000));
           current = {
@@ -154,12 +154,11 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
         } catch (error) {
           current = { ...current, status: "error", message: String(error), progress: null };
         }
-      })();
-      try {
-        yield* Effect.promise(async () => operation);
-      } finally {
-        operation = undefined;
-      }
+      })().finally(() => {
+        if (operation === pending) operation = undefined;
+      });
+      operation = pending;
+      yield* Effect.promise(() => pending);
       return yield* state;
     },
   ).pipe(Effect.withSpan("localServiceUpdate.check"));
@@ -190,7 +189,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
           remainingSeconds: null,
         },
       };
-      operation = (async () => {
+      const pending = (async () => {
         try {
           const candidates = path.join(directory, "candidates");
           const { mkdir, mkdtemp } = await import("node:fs/promises");
@@ -291,12 +290,11 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
         } catch (error) {
           current = { ...current, status: "error", message: String(error), progress: null };
         }
-      })();
-      try {
-        yield* Effect.promise(async () => operation);
-      } finally {
-        operation = undefined;
-      }
+      })().finally(() => {
+        if (operation === pending) operation = undefined;
+      });
+      operation = pending;
+      yield* Effect.promise(() => pending);
       return current;
     },
   ).pipe(Effect.withSpan("localServiceUpdate.download"));
@@ -321,15 +319,16 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
       }
       current = { ...current, status: "restarting", message: null, progress: null };
       ready = false;
-      operation = launchLocalServiceUpdate(plan).catch((error: unknown) => {
-        ready = true;
-        current = { ...current, status: "error", message: String(error), progress: null };
-      });
-      try {
-        yield* Effect.promise(async () => operation);
-      } finally {
-        operation = undefined;
-      }
+      const launched = launchLocalServiceUpdate(plan)
+        .catch((error: unknown) => {
+          ready = true;
+          current = { ...current, status: "error", message: String(error), progress: null };
+        })
+        .finally(() => {
+          if (operation === launched) operation = undefined;
+        });
+      operation = launched;
+      yield* Effect.promise(() => launched);
       return current;
     },
   ).pipe(Effect.withSpan("localServiceUpdate.apply"));
