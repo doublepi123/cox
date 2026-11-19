@@ -30,6 +30,24 @@ const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
 const encodeClientSettings = Schema.encodeSync(ClientSettingsSchema);
 
+it("defaults to project grouping and two-line rows while preserving saved sidebar choices", () => {
+  expect(decodeClientSettings({})).toMatchObject({
+    boringSidebarEnabled: true,
+    boringSidebarMultilineRows: true,
+  });
+  const optOut = { boringSidebarEnabled: false, boringSidebarMultilineRows: false };
+  expect(decodeClientSettings(encodeClientSettings(decodeClientSettings(optOut)))).toMatchObject(
+    optOut,
+  );
+});
+
+it("hides successful tool calls by default while preserving saved visibility", () => {
+  expect(decodeClientSettings({}).toolCallVisibility).toBe("hideSuccessful");
+  expect(decodeClientSettings({ toolCallVisibility: "showAll" }).toolCallVisibility).toBe(
+    "showAll",
+  );
+});
+
 describe("follow-up defaults", () => {
   it("queues follow-ups by default without changing explicit preferences", () => {
     expect(decodeClientSettings({}).followUpBehavior).toBe("queue");
