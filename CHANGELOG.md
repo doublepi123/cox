@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.4 — 2026-11-19
+
+- Keep the thread composer above the gesture bar. The page background still
+  paints through that inset, and the extra padding drops away while the
+  keyboard is open.
+- Mobile taps no longer flash the browser highlight.
+
 ## 0.2.3 — 2026-11-19
 
 - Keep settings, usage, dialogs, and other full-screen sheets clear of the
