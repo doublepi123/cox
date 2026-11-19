@@ -84,7 +84,7 @@ function DialogViewport({
       className={cn(
         "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
         bottomStickOnMobile &&
-          "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-[max(3rem,var(--workspace-safe-top))]",
+          "max-sm:grid-rows-[1fr_auto] max-sm:px-0 max-sm:pt-[max(3rem,var(--workspace-safe-top))]! max-sm:pb-safe!",
         media &&
           "z-[60] grid-rows-1 place-items-center px-4 pb-[max(1.5rem,var(--workspace-safe-bottom))] pt-[calc(max(var(--native-titlebar-height,0px),var(--workspace-safe-top))+1.5rem)] [-webkit-app-region:no-drag]",
         className,

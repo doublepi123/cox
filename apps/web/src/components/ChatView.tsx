@@ -3631,10 +3631,7 @@ export default function ChatView(props: ChatViewProps) {
                         </div>
                       ) : null}
                     </div>
-                    <div
-                      aria-hidden
-                      className="h-[calc(max(env(safe-area-inset-bottom,0px),var(--cox-safe-bottom,0px))+1rem)] bg-background sm:h-[calc(max(env(safe-area-inset-bottom,0px),var(--cox-safe-bottom,0px))+1.25rem)]"
-                    />
+                    <div aria-hidden data-chat-composer-safe-pad="" />
                   </div>
                 </div>
               </div>

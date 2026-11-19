@@ -5,6 +5,7 @@ import { createSoftwareKeyboardStore } from "./softwareKeyboard";
 function fixture(options: { native?: boolean; overlay?: boolean } = {}) {
   const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, scale: 1 });
   const properties = new Map<string, string>();
+  const attributes = new Map<string, string>();
   const keyboard = Object.assign(new EventTarget(), {
     boundingRect: { height: 0 },
     overlaysContent: options.overlay ?? false,
@@ -19,6 +20,8 @@ function fixture(options: { native?: boolean; overlay?: boolean } = {}) {
           setProperty: (name: string, value: string) => properties.set(name, value),
           removeProperty: (name: string) => properties.delete(name),
         },
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        removeAttribute: (name: string) => attributes.delete(name),
       },
     },
   };
@@ -31,7 +34,7 @@ function fixture(options: { native?: boolean; overlay?: boolean } = {}) {
     keyboard.boundingRect.height = height;
     keyboard.dispatchEvent(new Event("geometrychange"));
   };
-  return { store, viewport, keyboard, win, properties, resize, geometry };
+  return { store, viewport, keyboard, win, properties, attributes, resize, geometry };
 }
 
 describe("software keyboard detection", () => {
@@ -122,16 +125,18 @@ describe("software keyboard detection", () => {
   });
 
   it("detects keyboard open and close when resizes-content shrinks innerHeight with visualViewport", () => {
-    const { store, resize, win } = fixture();
+    const { store, resize, win, attributes } = fixture();
     const unsubscribe = store.subscribe(() => {});
 
     win.innerHeight = 527;
     resize(527);
     expect(store.getSnapshot()).toBe(true);
+    expect(attributes.has("data-software-keyboard")).toBe(true);
 
     win.innerHeight = 844;
     resize(844);
     expect(store.getSnapshot()).toBe(false);
+    expect(attributes.has("data-software-keyboard")).toBe(false);
     unsubscribe();
   });
 

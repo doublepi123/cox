@@ -1279,6 +1279,24 @@ html[data-cox-desktop]
   padding-right: var(--workspace-safe-right);
 }
 
+[data-chat-composer-safe-pad] {
+  height: calc(var(--workspace-safe-bottom) + 1rem);
+  background: var(--background);
+}
+@media (min-width: 640px) {
+  [data-chat-composer-safe-pad] {
+    height: calc(var(--workspace-safe-bottom) + 1.25rem);
+  }
+}
+html[data-software-keyboard] [data-chat-composer-safe-pad] {
+  height: 1rem;
+}
+@media (min-width: 640px) {
+  html[data-software-keyboard] [data-chat-composer-safe-pad] {
+    height: 1.25rem;
+  }
+}
+
 /* Grain texture for chrome surfaces that float above the body (see the
    --surface-grain note). Layered over the element's background-color, so it
    composes with bg-* utilities. */

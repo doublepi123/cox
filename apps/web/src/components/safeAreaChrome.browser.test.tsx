@@ -27,7 +27,20 @@ const ROUTES = [
   "dialog",
   "sheet",
   "right-panel",
+  "thread",
 ] as const;
+
+function ThreadComposer() {
+  return (
+    <div data-chat-composer-overlay="" className="pointer-events-none fixed inset-x-0 bottom-0">
+      <div className="pointer-events-auto flex gap-2 px-3">
+        <button type="button">Kimi K3.1 Pro</button>
+        <button type="button">排队</button>
+      </div>
+      <div data-chat-composer-safe-pad="" />
+    </div>
+  );
+}
 
 function RouteChrome({ path }: { path: (typeof ROUTES)[number] }) {
   if (path === "/" || path === "/new") {
@@ -67,7 +80,9 @@ function RouteChrome({ path }: { path: (typeof ROUTES)[number] }) {
     return (
       <Dialog open>
         <DialogPopup>
-          <Button type="button">Save changes</Button>
+          <div className="min-h-24 p-4">
+            <Button type="button">Save changes</Button>
+          </div>
         </DialogPopup>
       </Dialog>
     );
@@ -90,6 +105,7 @@ function RouteChrome({ path }: { path: (typeof ROUTES)[number] }) {
       </Sheet>
     );
   }
+  if (path === "thread") return <ThreadComposer />;
   return (
     <AppAtomRegistryProvider>
       <SidebarProvider>
@@ -101,23 +117,40 @@ function RouteChrome({ path }: { path: (typeof ROUTES)[number] }) {
   );
 }
 
+function paintedBox(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  let top = rect.top;
+  let bottom = rect.bottom;
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (!/(auto|scroll|hidden|clip)/.test(`${style.overflow} ${style.overflowY}`)) continue;
+    const bounds = node.getBoundingClientRect();
+    top = Math.max(top, bounds.top + (Number.parseFloat(style.paddingTop) || 0));
+    bottom = Math.min(bottom, bounds.bottom - (Number.parseFloat(style.paddingBottom) || 0));
+  }
+  return {
+    top: Math.max(top, 0),
+    bottom: Math.min(bottom, window.innerHeight),
+  };
+}
+
 function visibleControls(root: ParentNode) {
-  const viewportHeight = window.innerHeight;
   return [
     ...root.querySelectorAll<HTMLElement>(
       "button, a, input, textarea, select, [role='button'], [role='switch'], [role='combobox'], [role='treeitem']",
     ),
   ].flatMap((element) => {
-    const box = element.getBoundingClientRect();
-    if (box.width < 1 || box.height < 1) return [];
-    if (box.bottom <= 0 || box.top >= viewportHeight) return [];
+    const box = paintedBox(element);
+    if (box.bottom - box.top < 1) return [];
     const label =
-      element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 80) || element.tagName;
+      element.getAttribute("aria-label") ||
+      element.textContent?.trim().slice(0, 80) ||
+      element.tagName;
     return [{ element, box, label }];
   });
 }
 
-function expectClearOfSafeArea(root: ParentNode) {
+function expectClearOfSafeArea(root: ParentNode, path = "") {
   const controls = visibleControls(root);
   expect(controls.length).toBeGreaterThan(0);
   const shell = root.querySelector<HTMLElement>("[data-app-modal]");
@@ -126,8 +159,10 @@ function expectClearOfSafeArea(root: ParentNode) {
     expect(style.paddingTop, "settings shell padding-top").toBe(`${SAFE_TOP}px`);
     expect(style.paddingBottom, "settings shell padding-bottom").toBe(`${SAFE_BOTTOM}px`);
   }
+  const bottomLimit = window.innerHeight - SAFE_BOTTOM;
   for (const { box, label } of controls) {
-    expect(box.top, label).toBeGreaterThanOrEqual(SAFE_TOP);
+    expect(box.top, `${path} ${label}`).toBeGreaterThanOrEqual(SAFE_TOP);
+    expect(box.bottom, `${path} ${label}`).toBeLessThanOrEqual(bottomLimit + 0.5);
   }
 }
 
@@ -151,7 +186,11 @@ describe("safe area on full-screen routes", () => {
           await expect
             .poll(() => visibleControls(document).every((control) => control.box.top >= SAFE_TOP))
             .toBe(true);
-          expectClearOfSafeArea(document);
+          expectClearOfSafeArea(document, path);
+          if (path === "thread") {
+            const pad = document.querySelector<HTMLElement>("[data-chat-composer-safe-pad]");
+            expect(pad?.getBoundingClientRect().height).toBe(SAFE_BOTTOM + 16);
+          }
           if (path.startsWith("/settings")) {
             const header = document.querySelector("[data-settings-header]");
             if (!(header instanceof HTMLElement)) throw new Error(`${path} is missing its header`);
@@ -177,4 +216,24 @@ describe("safe area on full-screen routes", () => {
       }
     },
   );
+
+  it("keeps the composer margin without the gesture inset while the keyboard is open", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--cox-safe-bottom", `${SAFE_BOTTOM}px`);
+    root.setAttribute("data-software-keyboard", "");
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    await page.viewport(390, 844);
+    try {
+      await using _screen = await render(<ThreadComposer />, { router: "/" });
+      const pad = document.querySelector<HTMLElement>("[data-chat-composer-safe-pad]");
+      expect(pad?.getBoundingClientRect().height).toBe(16);
+      const model = document.querySelector("button");
+      expect(model?.getBoundingClientRect().bottom).toBeLessThanOrEqual(844 - 16 + 0.5);
+    } finally {
+      root.style.removeProperty("--cox-safe-bottom");
+      root.removeAttribute("data-software-keyboard");
+      await page.viewport(originalWidth, originalHeight);
+    }
+  });
 });

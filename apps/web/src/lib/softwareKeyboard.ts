@@ -6,11 +6,17 @@ type VirtualKeyboard = EventTarget & {
 type ViewportTarget = EventTarget & Pick<VisualViewport, "width" | "height" | "scale">;
 type ViewportStyle = Pick<CSSStyleDeclaration, "setProperty" | "removeProperty">;
 
+type KeyboardRoot = {
+  readonly style: ViewportStyle;
+  setAttribute?(name: string, value: string): void;
+  removeAttribute?(name: string): void;
+};
+
 type KeyboardWindow = Pick<Window, "innerHeight"> & {
   readonly visualViewport?: ViewportTarget | null;
   readonly navigator: Navigator & { readonly virtualKeyboard?: VirtualKeyboard };
   readonly document?: {
-    readonly documentElement: { readonly style: ViewportStyle };
+    readonly documentElement: KeyboardRoot;
   };
 };
 
@@ -52,7 +58,15 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
     return viewportOpen;
   };
 
+  const publishKeyboard = (open: boolean) => {
+    const root = win?.document?.documentElement;
+    if (!root?.setAttribute || !root.removeAttribute) return;
+    if (open) root.setAttribute("data-software-keyboard", "");
+    else root.removeAttribute("data-software-keyboard");
+  };
+
   const notify = () => {
+    publishKeyboard(getSnapshot());
     for (const listener of listeners) listener();
   };
 
@@ -108,6 +122,7 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
         syncViewportHeight();
       }
       keyboard?.addEventListener("geometrychange", onKeyboardGeometryChange);
+      publishKeyboard(getSnapshot());
     }
     listeners.add(listener);
     return () => {
@@ -117,6 +132,7 @@ export function createSoftwareKeyboardStore(win: KeyboardWindow | undefined) {
         viewport?.removeEventListener("scroll", syncViewportHeight);
         keyboard?.removeEventListener("geometrychange", onKeyboardGeometryChange);
         viewportStyle?.removeProperty(VISUAL_VIEWPORT_HEIGHT_PROPERTY);
+        publishKeyboard(false);
       }
     };
   };
