@@ -40,7 +40,6 @@ const protocolNames: Readonly<Record<string, ModelServiceProtocol>> = {
   "openai-response-api": "openai-responses",
   "/v1/responses": "openai-responses",
   "v1/responses": "openai-responses",
-  openai: "openai-chat",
   "openai-chat": "openai-chat",
   openai_chat: "openai-chat",
   chat: "openai-chat",
@@ -97,6 +96,37 @@ export function modelServiceHeaders(
   };
 }
 
+const OPENAI_ENDPOINT_PROTOCOLS: ReadonlySet<ModelServiceProtocol> = new Set([
+  "openai-chat",
+  "openai-responses",
+]);
+
+function modelEndpointProtocols(
+  declared: unknown,
+  defaults: ReadonlyArray<ModelServiceProtocol>,
+): ReadonlyArray<ModelServiceProtocol> | undefined {
+  if (!Array.isArray(declared)) return undefined;
+  const explicit: ModelServiceProtocol[] = [];
+  let genericOpenAi = false;
+  for (const name of declared) {
+    const normalized = typeof name === "string" ? name.trim().toLowerCase() : "";
+    if (!normalized) continue;
+    if (normalized === "openai") {
+      genericOpenAi = true;
+      continue;
+    }
+    const protocol = protocolNames[normalized];
+    if (protocol && !explicit.includes(protocol)) explicit.push(protocol);
+  }
+  if (!genericOpenAi) return explicit;
+  return [
+    ...explicit,
+    ...defaults.filter(
+      (protocol) => OPENAI_ENDPOINT_PROTOCOLS.has(protocol) && !explicit.includes(protocol),
+    ),
+  ];
+}
+
 export function parseModelServiceModel(
   value: unknown,
   defaults: ReadonlyArray<ModelServiceProtocol>,
@@ -132,37 +162,27 @@ export function parseModelServiceModel(
     ProviderDriverKind.make("codex"),
   );
   if (!model) return null;
-  const declared = raw.supported_endpoint_types ?? raw.supported_protocols ?? raw.protocols;
-  const declaredProtocols = Array.isArray(declared)
-    ? [
-        ...new Set(
-          declared.flatMap((name) => {
-            const normalized = typeof name === "string" ? name.trim().toLowerCase() : "";
-            return normalized && protocolNames[normalized] ? [protocolNames[normalized]!] : [];
-          }),
-        ),
-      ]
-    : undefined;
+  const declaredProtocols = modelEndpointProtocols(
+    raw.supported_endpoint_types ?? raw.supported_protocols ?? raw.protocols,
+    defaults,
+  );
   const multiProtocolService = new Set(defaults).size > 1;
-  const preferredOrder = preferredModelServiceProtocols(model.slug);
-  const familyPrimary = preferredOrder[0]!;
   const rawProtocols =
     declaredProtocols === undefined
       ? multiProtocolService
         ? [...defaults]
         : undefined
-      : multiProtocolService &&
-          declaredProtocols.length > 0 &&
-          defaults.includes(familyPrimary) &&
-          !declaredProtocols.includes(familyPrimary)
-        ? [...declaredProtocols, familyPrimary]
-        : declaredProtocols;
-  const protocols = multiProtocolService
-    ? [
-        ...preferredOrder.filter((protocol) => rawProtocols!.includes(protocol)),
-        ...rawProtocols!.filter((protocol) => !preferredOrder.includes(protocol)),
-      ]
-    : rawProtocols;
+      : declaredProtocols;
+  const preferredOrder = preferredModelServiceProtocols(model.slug);
+  const protocols =
+    rawProtocols === undefined
+      ? undefined
+      : multiProtocolService
+        ? [
+            ...preferredOrder.filter((protocol) => rawProtocols.includes(protocol)),
+            ...rawProtocols.filter((protocol) => !preferredOrder.includes(protocol)),
+          ]
+        : rawProtocols;
   const parameters = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : undefined;
   const tools =
     raw.supports_tools ??

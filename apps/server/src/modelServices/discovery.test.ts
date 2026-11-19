@@ -8,6 +8,13 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Context from "effect/Context";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
+  boundModelServiceModels,
+  isModelServiceTargetAvailable,
+  modelServiceAgentProtocol,
+  modelServiceTargets,
+  modelServiceUpstreamProtocol,
+} from "@t3tools/shared/modelServices";
+import {
   discoverModelService,
   fetchModelServiceModels,
   modelServiceEndpoint,
@@ -327,20 +334,138 @@ describe("model service discovery", () => {
         { id: "deepseek-flash", supported_endpoint_types: ["openai"] },
         threeProtocols,
       )?.protocols,
-    ).toEqual(["anthropic-messages", "openai-chat"]);
+    ).toEqual(["openai-chat", "openai-responses"]);
     expect(
       parseModelServiceModel(
         { id: "kimi-k3.1-pro", supported_endpoint_types: ["openai"] },
         threeProtocols,
       )?.protocols,
-    ).toEqual(["openai-chat"]);
+    ).toEqual(["openai-chat", "openai-responses"]);
     expect(
       parseModelServiceModel(
         { id: "gpt-6", supported_endpoint_types: ["OpenAI_Responses", "Anthropic_Messages"] },
         threeProtocols,
       )?.protocols,
     ).toEqual(["openai-responses", "anthropic-messages"]);
+    expect(
+      parseModelServiceModel(
+        { id: "gpt-6.2-sol", object: "model", supported_endpoint_types: ["openai"] },
+        ["openai-responses"],
+      )?.protocols,
+    ).toEqual(["openai-responses"]);
+    expect(
+      parseModelServiceModel({ id: "gpt-6.2-sol", supported_endpoint_types: ["openai"] }, [
+        "openai-chat",
+      ])?.protocols,
+    ).toEqual(["openai-chat"]);
+    expect(
+      parseModelServiceModel(
+        { id: "gpt-6.2-sol", supported_endpoint_types: ["chat-completions"] },
+        ["openai-responses"],
+      )?.protocols,
+    ).toEqual(["openai-chat"]);
+    expect(
+      parseModelServiceModel({ id: "gpt-6.2-sol", supported_endpoint_types: ["openai-chat"] }, [
+        "openai-responses",
+      ])?.protocols,
+    ).toEqual(["openai-chat"]);
+    expect(
+      parseModelServiceModel({ id: "gpt-6.2-sol", supported_endpoint_types: ["responses"] }, [
+        "openai-chat",
+      ])?.protocols,
+    ).toEqual(["openai-responses"]);
+    expect(
+      parseModelServiceModel(
+        { id: "gpt-6.2-sol", supported_endpoint_types: ["openai-responses"] },
+        ["openai-chat"],
+      )?.protocols,
+    ).toEqual(["openai-responses"]);
   });
+  it.effect(
+    "refreshes a generic openai marker onto the Responses connection used by OMO and Codex",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        const http = HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                request.url.startsWith("https://models.dev/")
+                  ? {}
+                  : {
+                      data: [
+                        {
+                          id: "gpt-6.2-sol",
+                          object: "model",
+                          supported_endpoint_types: ["openai"],
+                        },
+                        {
+                          id: "chat-only",
+                          supported_endpoint_types: ["chat-completions"],
+                        },
+                        {
+                          id: "responses-only",
+                          supported_endpoint_types: ["responses"],
+                        },
+                      ],
+                    },
+              ),
+            ),
+          ),
+        );
+        const result = yield* discoverModelService({ serviceId: id }).pipe(
+          Effect.provideService(HttpClient.HttpClient, http),
+        );
+        const saved = (yield* settings.getSettings).modelServices[id]!;
+        const model = (modelId: string) => saved.models.find((entry) => entry.id === modelId)!;
+        expect(result.models.find((entry) => entry.id === "gpt-6.2-sol")).toMatchObject({
+          protocols: ["openai-responses"],
+          available: true,
+        });
+        expect(model("gpt-6.2-sol").protocols).toEqual(["openai-responses"]);
+        expect(model("chat-only").protocols).toEqual(["openai-chat"]);
+        expect(model("responses-only").protocols).toEqual(["openai-responses"]);
+        const binding = { serviceId: id, modelIds: [] as string[] };
+        const available = modelServiceTargets({ [id]: saved }, binding)
+          .filter(isModelServiceTargetAvailable)
+          .map((target) => target.model.id);
+        expect(available).toEqual(boundModelServiceModels(saved, binding).map((entry) => entry.id));
+        expect(available).toEqual(["gpt-6.2-sol", "responses-only"]);
+        for (const driver of ["codex", "omo"] as const) {
+          expect(modelServiceUpstreamProtocol(saved, model("gpt-6.2-sol"))).toBe(
+            modelServiceAgentProtocol(driver, saved),
+          );
+          expect(modelServiceUpstreamProtocol(saved, model("gpt-6.2-sol"))).toBe(
+            "openai-responses",
+          );
+        }
+        expect(modelServiceUpstreamProtocol(saved, model("chat-only"))).toBeUndefined();
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [id]: decode({
+                name: "Responses",
+                baseUrl: "https://models.test/v1",
+                apiKey: "private-test-key",
+                protocol: "openai-responses",
+                models: [
+                  {
+                    id: "gpt-6.2-sol",
+                    protocols: ["openai-chat"],
+                    supportsTools: true,
+                    available: true,
+                    source: "discovered",
+                    capabilities: null,
+                  },
+                ],
+              }),
+            },
+          }),
+        ),
+      ),
+  );
   it("uses the protocol's standard version only for an unversioned origin", () => {
     expect(
       modelServiceEndpoint({ baseUrl: "https://models.test" }, "anthropic-messages", "models").href,
