@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.12 — 2026-11-19
+
+- Keep the thread composer above the iOS home indicator. The tool row clears
+  the screen corners, the page background still paints through that inset, and
+  the extra padding drops away while the keyboard is open.
+
 ## 0.2.11 — 2026-11-19
 
 - Preview the models returned by the selected gateway and import only the checked models. Existing catalog entries keep their configuration unless selected for update.
