@@ -551,23 +551,24 @@ function ModelServiceEditor({
     };
     previewRequest.current = request;
     setPreviewing(true);
-    try {
-      const result = await Promise.race([
-        discover({ environmentId, input: { serviceId: id, preview: true } }),
-        new Promise<"cancelled">((resolve) => {
-          cancel = () => resolve("cancelled");
-        }),
-      ]);
-      if (previewRequest.current !== request || result === "cancelled") return null;
-      if (result._tag !== "Success") return commandError(result);
-      setImportPreview(result.value);
-      return null;
-    } finally {
-      if (previewRequest.current === request) {
-        previewRequest.current = null;
-        setPreviewing(false);
-      }
-    }
+    return Promise.race([
+      discover({ environmentId, input: { serviceId: id, preview: true } }),
+      new Promise<"cancelled">((resolve) => {
+        cancel = () => resolve("cancelled");
+      }),
+    ])
+      .then((result) => {
+        if (previewRequest.current !== request || result === "cancelled") return null;
+        if (result._tag !== "Success") return commandError(result);
+        setImportPreview(result.value);
+        return null;
+      })
+      .finally(() => {
+        if (previewRequest.current === request) {
+          previewRequest.current = null;
+          setPreviewing(false);
+        }
+      });
   }
   function importModels(modelIds: readonly string[]) {
     const preview = importPreview;
