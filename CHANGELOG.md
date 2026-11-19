@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.11 — 2026-11-19
+
+- Preview the models returned by the selected gateway and import only the checked models. Existing catalog entries keep their configuration unless selected for update.
+- Keep search, selection, and import controls usable in short mobile viewports.
+
 ## 0.2.10 — 2026-11-19
 
 - Check the official Cox npm release from Settings → About.
