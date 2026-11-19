@@ -28,6 +28,9 @@ describe("path helpers", () => {
   it("names a new project's folder from any typed name", () => {
     expect(newProjectFolderName("Pinball Stats")).toBe("pinball-stats");
     expect(newProjectFolderName("  Café & Crème!  ")).toBe("cafe-creme");
+    expect(newProjectFolderName("Łódź sklep")).toBe("lodz-sklep");
+    expect(newProjectFolderName("Øl på Þingvellir ı")).toBe("ol-pa-thingvellir-i");
+    expect(newProjectFolderName("ŉ woord")).toBe("n-woord");
     expect(newProjectFolderName("../../etc")).toBe("etc");
     expect(newProjectFolderName("🎱🎱")).toBe("project");
     expect(newProjectFolderName(`${"a".repeat(63)} b`)).toBe("a".repeat(63));

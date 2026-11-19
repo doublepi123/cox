@@ -292,6 +292,7 @@ describe("sanitizeFeatureBranchName", () => {
     ["refine toolbar", "feature/refine-toolbar"],
     [" /?. / ", "feature/update"],
     ["fix///", "feature/fix"],
+    ["Napraw błąd w żółtym przycisku", "feature/napraw-blad-w-zoltym-przycisku"],
   ])("keeps the fallback for unprefixed input %s", (input, expected) => {
     expect(sanitizeFeatureBranchName(input)).toBe(expected);
   });
