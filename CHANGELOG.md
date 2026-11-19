@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.13 — 2026-11-19
+
+- Official npm installations managed by a systemd user service can update from Settings → About without an opt-in flag.
+- Cox checks for updates at startup and every hour. A small dot on the Settings gear opens About when an update is available.
+- Update checks can retry after a client disconnects.
+
 ## 0.2.12 — 2026-11-19
 
 - Keep the thread composer above the iOS home indicator. The tool row clears
