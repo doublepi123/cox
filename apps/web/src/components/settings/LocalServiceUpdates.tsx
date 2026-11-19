@@ -115,7 +115,7 @@ export function LocalServiceUpdates() {
             <AlertDialogTitle>{t("Restart and update Cox?")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.",
+                "Cox will briefly disconnect and interrupt active agent turns. If the new version does not become healthy, the previous service will be restored.",
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

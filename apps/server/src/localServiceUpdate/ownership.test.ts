@@ -376,42 +376,35 @@ describe("local service update transaction", () => {
     });
   });
 
-  it("retains ready feedback during active work and observes recovery after apply", async () => {
-    await using harness = await makeService();
-    await harness.runtime.runPromise(harness.service.state);
-    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
-      status: "ready",
-    });
-    await harness.runtime.runPromise(
-      Effect.gen(function* () {
+  it.each(["download", "restart"] as const)(
+    "updates when an agent turn starts before %s",
+    async (phase) => {
+      await using harness = await makeService();
+      const startTurn = Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`INSERT INTO orchestration_v2_projection_threads (thread_id, deleted_at) VALUES ('thread-1', NULL)`;
         yield* sql`INSERT INTO orchestration_v2_projection_runs (thread_id, status) VALUES ('thread-1', 'running')`;
-      }),
-    );
-    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
-      status: "ready",
-      message: expect.stringContaining("Wait for active agent turns"),
-    });
-    await harness.runtime.runPromise(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`DELETE FROM orchestration_v2_projection_runs`;
-      }),
-    );
-    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
-      status: "restarting",
-      message: null,
-    });
-    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
-      status: "restarting",
-      message: null,
-    });
-    await writeReceipt(harness.directory, receipt("healthy"));
-    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
-      status: "idle",
-    });
-  });
+      });
+      if (phase === "download") await harness.runtime.runPromise(startTurn);
+      expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+        status: "ready",
+        message: null,
+      });
+      if (phase === "restart") await harness.runtime.runPromise(startTurn);
+      expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+        status: "restarting",
+        message: null,
+      });
+      expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+        status: "restarting",
+        message: null,
+      });
+      await writeReceipt(harness.directory, receipt("healthy"));
+      expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+        status: "idle",
+      });
+    },
+  );
 
   it("returns a launch failure and allows a fresh apply retry", async () => {
     await using harness = await makeService();

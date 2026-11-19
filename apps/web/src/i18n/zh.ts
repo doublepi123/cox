@@ -207,8 +207,8 @@ export const zh = {
     "正在重启 Cox，就绪后页面会重新连接。",
   "A database and settings backup is kept before restart.": "重启前会保留数据库和设置备份。",
   "Restart and update Cox?": "重启并更新 Cox？",
-  "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.":
-    "Cox 会短暂断开连接，请先等待运行中的 Agent 任务结束。若新版本未通过健康检查，将自动恢复原服务。",
+  "Cox will briefly disconnect and interrupt active agent turns. If the new version does not become healthy, the previous service will be restored.":
+    "Cox 会短暂断开连接，并中断正在运行的 Agent 回合。若新版本未通过健康检查，将自动恢复原服务。",
   "Encrypted reasoning replay": "加密 reasoning 回放",
   "Preserve (default)": "保留（默认）",
   "Omit for incompatible services": "禁用回放（不兼容服务）",

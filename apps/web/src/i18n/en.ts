@@ -233,8 +233,8 @@ export const en = {
   "A database and settings backup is kept before restart.":
     "A database and settings backup is kept before restart.",
   "Restart and update Cox?": "Restart and update Cox?",
-  "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.":
-    "Cox will briefly disconnect. Active agent turns must finish first. If the new version does not become healthy, the previous service will be restored.",
+  "Cox will briefly disconnect and interrupt active agent turns. If the new version does not become healthy, the previous service will be restored.":
+    "Cox will briefly disconnect and interrupt active agent turns. If the new version does not become healthy, the previous service will be restored.",
   "Encrypted reasoning replay": "Encrypted reasoning replay",
   "Preserve (default)": "Preserve (default)",
   "Omit for incompatible services": "Omit for incompatible services",

@@ -6,7 +6,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as FileSystem from "effect/FileSystem";
-import * as SqlClient from "effect/sql/SqlClient";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import packageJson from "../../package.json" with { type: "json" };
@@ -63,18 +62,9 @@ const unavailable = (): LocalServiceUpdateState => ({
   backup: null,
 });
 
-const busyWork = (sql: SqlClient.SqlClient) => sql<{ readonly thread_id: string }>`
-  SELECT thread_id FROM orchestration_v2_projection_threads t
-  WHERE deleted_at IS NULL AND (
-    EXISTS (SELECT 1 FROM orchestration_v2_projection_runs r WHERE r.thread_id = t.thread_id AND r.status IN ('queued', 'preparing', 'starting', 'running', 'waiting'))
-    OR EXISTS (SELECT 1 FROM orchestration_v2_projection_runtime_requests request WHERE request.thread_id = t.thread_id AND request.status = 'pending')
-  ) LIMIT 1
-`;
-
 export const make = Effect.fn("localServiceUpdate.make")(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const path = yield* Path.Path;
-  const sql = yield* SqlClient.SqlClient;
   const environmentId = yield* (yield* ServerEnvironment.ServerEnvironment).getEnvironmentId;
   const supported = supportsNpmCoxUpdates(config);
   const ownership: LocalServiceUpdateOwnership | null = supported
@@ -245,13 +235,6 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
                 );
             }).pipe(Effect.mapError((cause) => new LocalServiceUpdateError(String(cause)))),
           );
-          const active = await run(
-            busyWork(sql).pipe(
-              Effect.mapError((cause) => new LocalServiceUpdateError(String(cause))),
-            ),
-          );
-          if (active.length > 0)
-            throw new Error("Wait for active agent turns to finish before updating Cox.");
           const suffix = await run(
             Effect.map(
               Effect.all([
@@ -315,18 +298,6 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
       if (current.status === "restarting" && plan) return current;
       if (!["ready", "error"].includes(current.status) || !ready || !plan || operation)
         return yield* Effect.fail(new LocalServiceUpdateError("The Cox update is not ready."));
-      const active = yield* busyWork(sql).pipe(
-        Effect.mapError((cause) => new LocalServiceUpdateError(String(cause))),
-      );
-      if (active.length > 0) {
-        current = {
-          ...current,
-          status: "ready",
-          message: "Wait for active agent turns to finish before updating Cox.",
-          progress: null,
-        };
-        return current;
-      }
       current = { ...current, status: "restarting", message: null, progress: null };
       ready = false;
       const launched = launchLocalServiceUpdate(plan)
