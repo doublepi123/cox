@@ -224,7 +224,6 @@ internal class WorkspacePreflight(
                     isClickable = true
                     addView(layout, FrameLayout.LayoutParams(-1, -1))
                 }
-                WorkspaceChrome.installChildWebViewInsetsShield(root)
                 WorkspaceChrome.applySystemBars(activity, headerColor)
                 if (activity is ComponentActivity) {
                     val callback = object : OnBackPressedCallback(true) {

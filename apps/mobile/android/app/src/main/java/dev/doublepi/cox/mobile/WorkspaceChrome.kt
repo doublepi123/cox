@@ -7,11 +7,9 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.widget.TextView
-import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import java.util.Locale
 
 internal fun parseHexColor(value: String): Int? {
     val trimmed = value.trim()
@@ -68,13 +66,7 @@ internal enum class WorkspaceSystemBack { History, ConnectionManager }
 internal fun workspaceSystemBack(canGoBack: Boolean): WorkspaceSystemBack =
     if (canGoBack) WorkspaceSystemBack.History else WorkspaceSystemBack.ConnectionManager
 
-internal fun safeAreaCssPixels(pixels: Int, density: Float): String {
-    if (pixels <= 0 || density <= 0f || !density.isFinite()) return "0px"
-    return String.format(Locale.US, "%.2fpx", pixels / density)
-}
-
 internal object WorkspaceChrome {
-    private var launcherSafeAreaScript: String? = null
     fun defaultBackgroundColor(context: Context): Int {
         val night =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -84,7 +76,6 @@ internal object WorkspaceChrome {
 
     fun applySystemBars(activity: Activity, backgroundColor: Int) {
         val window = activity.window
-        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.decorView.setBackgroundColor(backgroundColor)
         @Suppress("DEPRECATION")
         run {
@@ -98,109 +89,20 @@ internal object WorkspaceChrome {
         }
     }
 
-    fun installLauncherWebViewInsets(target: View) {
-        ViewCompat.setOnApplyWindowInsetsListener(target) { view, insets ->
-            publishLauncherSafeArea(view, insets)
-            WindowInsetsCompat.Builder(insets)
-                .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
-                .setVisible(WindowInsetsCompat.Type.ime(), false)
-                .build()
-        }
-        ViewCompat.requestApplyInsets(target)
-    }
-
-    private fun publishLauncherSafeArea(view: View, insets: WindowInsetsCompat) {
-        val webView = view as? android.webkit.WebView ?: return
-        val bars = insets.getInsets(
-            WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-        )
-        val density = view.resources.displayMetrics.density
-        val top = safeAreaCssPixels(bars.top, density)
-        val right = safeAreaCssPixels(bars.right, density)
-        val bottom = safeAreaCssPixels(bars.bottom, density)
-        val left = safeAreaCssPixels(bars.left, density)
-        val script =
-            """
-            (function(){
-              var root = document.documentElement;
-              if (!root) return;
-              root.style.setProperty('--cox-safe-top','$top');
-              root.style.setProperty('--cox-safe-right','$right');
-              root.style.setProperty('--cox-safe-bottom','$bottom');
-              root.style.setProperty('--cox-safe-left','$left');
-            })();
-            """.trimIndent()
-        launcherSafeAreaScript = script
-        webView.evaluateJavascript(script, null)
-    }
-
-    fun republishLauncherSafeArea(webView: android.webkit.WebView) {
-        launcherSafeAreaScript?.let { webView.evaluateJavascript(it, null) }
-    }
-
-    fun workspaceSafeAreaScript(insets: Insets, density: Float): String {
-        val top = safeAreaCssPixels(insets.top, density)
-        val right = safeAreaCssPixels(insets.right, density)
-        val bottom = safeAreaCssPixels(insets.bottom, density)
-        val left = safeAreaCssPixels(insets.left, density)
-        return """
-            (function(){
-              var root = document.documentElement;
-              if (!root) return;
-              root.style.setProperty('--cox-safe-top','$top');
-              root.style.setProperty('--cox-safe-right','$right');
-              root.style.setProperty('--cox-safe-bottom','$bottom');
-              root.style.setProperty('--cox-safe-left','$left');
-            })();
-            """.trimIndent()
-    }
-
-    fun installChildWebViewInsetsShield(
-        target: View,
-        onImeVisibilityChanged: ((Boolean) -> Unit)? = null,
-        edgeToEdge: Boolean = false,
-        onSafeArea: ((Insets) -> Unit)? = null,
-    ) {
-        var lastImeVisible: Boolean? = null
-        val reportIme = { visible: Boolean ->
-            if (lastImeVisible != visible) {
-                lastImeVisible = visible
-                onImeVisibilityChanged?.invoke(visible)
-            }
-        }
-        ViewCompat.setOnApplyWindowInsetsListener(target) { view, insets ->
-            val sysInsets = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+    fun installWindowInsets(activity: Activity) {
+        val window = activity.window
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val decor = window.decorView
+        ViewCompat.setOnApplyWindowInsetsListener(decor) { view, insets ->
+            val contentInsets = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.ime(),
             )
-            if (edgeToEdge) onSafeArea?.invoke(sysInsets)
-            else view.setPadding(sysInsets.left, sysInsets.top, sysInsets.right, sysInsets.bottom)
-            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
-            val decorHeight = view.rootView?.height ?: 0
-            val heightDelta = (decorHeight - view.height).coerceAtLeast(0)
-            val thresholdPx = (120f * view.resources.displayMetrics.density).toInt()
-            val imeVisible =
-                insets.isVisible(WindowInsetsCompat.Type.ime()) ||
-                    imeInsets.bottom > 0 ||
-                    (decorHeight > 0 && heightDelta > thresholdPx)
-            reportIme(imeVisible)
-            WindowInsetsCompat.Builder(insets)
-                .setInsets(
-                    WindowInsetsCompat.Type.systemBars() or
-                        WindowInsetsCompat.Type.displayCutout() or
-                        WindowInsetsCompat.Type.ime(),
-                    Insets.NONE,
-                )
-                .setVisible(WindowInsetsCompat.Type.ime(), false)
-                .build()
+            view.setPadding(contentInsets.left, contentInsets.top, contentInsets.right, contentInsets.bottom)
+            WindowInsetsCompat.CONSUMED
         }
-        if (onImeVisibilityChanged != null) {
-            target.viewTreeObserver.addOnGlobalLayoutListener {
-                val rootHeight = target.rootView?.height ?: return@addOnGlobalLayoutListener
-                if (rootHeight <= 0 || target.height <= 0) return@addOnGlobalLayoutListener
-                val thresholdPx = (120f * target.resources.displayMetrics.density).toInt()
-                reportIme((rootHeight - target.height) > thresholdPx)
-            }
-        }
+        ViewCompat.requestApplyInsets(decor)
     }
 
     fun styleCapsuleControl(control: TextView, lightSurface: Boolean) {

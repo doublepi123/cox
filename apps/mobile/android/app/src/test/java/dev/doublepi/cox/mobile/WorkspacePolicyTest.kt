@@ -121,12 +121,6 @@ class WorkspacePolicyTest {
     @Test fun systemBackAtTheWorkspaceRootReturnsToTheConnectionManager() {
         assertEquals(WorkspaceSystemBack.History, workspaceSystemBack(canGoBack = true))
         assertEquals(WorkspaceSystemBack.ConnectionManager, workspaceSystemBack(canGoBack = false))
-        assertEquals("0px", safeAreaCssPixels(0, 2.75f))
-        assertEquals("24.00px", safeAreaCssPixels(66, 2.75f))
-        assertEquals("0px", safeAreaCssPixels(48, 0f))
-        val script = WorkspaceChrome.workspaceSafeAreaScript(androidx.core.graphics.Insets.of(2, 4, 6, 8), 2f)
-        assertTrue(script.contains("--cox-safe-bottom','4.00px'"))
-        assertTrue(script.contains("--cox-safe-top','2.00px'"))
         assertTrue(WORKSPACE_VIEWPORT_LOCK_SCRIPT.contains("width=device-width"))
         assertTrue(WORKSPACE_VIEWPORT_LOCK_SCRIPT.contains("initial-scale=1"))
         assertTrue(WORKSPACE_VIEWPORT_LOCK_SCRIPT.contains("maximum-scale=1"))
