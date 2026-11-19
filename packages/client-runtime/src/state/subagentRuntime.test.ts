@@ -542,6 +542,12 @@ describe("resolveWorkflowOpening", () => {
     expect(isWorkflowScriptMessage({ role: "user", text: "Explain `export const meta`." })).toBe(
       false,
     );
+    expect(
+      isWorkflowScriptMessage({
+        role: "user",
+        text: `${"////".repeat(40)}\nexport const meta = {}\n`,
+      }),
+    ).toBe(true);
     expect(isWorkflowScriptMessage({ role: "assistant", text: SCRIPT })).toBe(false);
   });
 });
