@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.14 — 2026-11-19
+
+- Group sidebar threads by project and show folder rows on two lines by default.
+- Hide successful tool calls and enable next-prompt suggestions by default.
+  Saved preferences continue to take precedence.
+- Download Cox service updates during active turns and restart immediately
+  after confirmation. The confirmation explains that restarting interrupts
+  active turns.
+
 ## 0.2.13 — 2026-11-19
 
 - Official npm installations managed by a systemd user service can update from Settings → About without an opt-in flag.
