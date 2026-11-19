@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.2.5 — 2026-11-19
+## 0.2.6 — 2026-11-19
 
 - Keep the thread composer above the gesture bar. The page background still
   paints through that inset, and the extra padding drops away while the
