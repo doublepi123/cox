@@ -183,7 +183,7 @@ function FirstRunRecovery({
   const { t } = useTranslation();
   const settingsReadFailed = reason === "settings";
   return (
-    <main className="flex h-dvh min-h-0 items-center justify-center bg-background px-6 text-foreground">
+    <main className="flex h-dvh min-h-0 items-center justify-center bg-background ps-[max(1.5rem,var(--workspace-safe-left))] pe-[max(1.5rem,var(--workspace-safe-right))] pt-safe pb-safe text-foreground">
       <div className="flex max-w-sm flex-col items-center text-center">
         <h1 className="text-lg font-semibold">
           {settingsReadFailed ? t("Could not read settings") : t("Still connecting")}

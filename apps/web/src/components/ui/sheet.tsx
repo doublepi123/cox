@@ -50,8 +50,8 @@ function SheetViewport({
     <SheetPrimitive.Viewport
       className={cn(
         "fixed inset-0 z-(--z-sheet) grid",
-        side === "bottom" && "grid grid-rows-[1fr_auto] pt-12",
-        side === "top" && "grid grid-rows-[auto_1fr] pb-12",
+        side === "bottom" && "grid grid-rows-[1fr_auto] pt-[max(3rem,var(--workspace-safe-top))]",
+        side === "top" && "grid grid-rows-[auto_1fr] pb-[max(3rem,var(--workspace-safe-bottom))]",
         side === "left" && "flex justify-start",
         side === "right" && "flex justify-end",
         variant === "inset" && "sm:p-4",
@@ -95,19 +95,22 @@ function SheetPopup({
           className={cn(
             "relative flex max-h-full min-h-0 w-full min-w-0 flex-col bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 transition-[opacity,translate] duration-200 ease-in-out will-change-transform before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:opacity-0 data-starting-style:opacity-0 max-sm:before:hidden dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             side === "bottom" &&
-              "row-start-2 border-t data-ending-style:translate-y-8 data-starting-style:translate-y-8",
+              "row-start-2 border-t pb-safe pl-safe pr-safe data-ending-style:translate-y-8 data-starting-style:translate-y-8",
             side === "top" &&
-              "data-ending-style:-translate-y-8 data-starting-style:-translate-y-8 border-b",
+              "border-b pt-safe pl-safe pr-safe data-ending-style:-translate-y-8 data-starting-style:-translate-y-8",
             side === "left" &&
-              "data-ending-style:-translate-x-8 data-starting-style:-translate-x-8 w-[calc(100%-(--spacing(12)))] max-w-md border-e",
+              "w-[calc(100%-(--spacing(12)))] max-w-md border-e data-ending-style:-translate-x-8 data-starting-style:-translate-x-8",
             side === "right" &&
               "col-start-2 w-[calc(100%-(--spacing(12)))] max-w-md border-s data-ending-style:translate-x-8 data-starting-style:translate-x-8",
+            (side === "left" || side === "right") &&
+              variant !== "sidebar" &&
+              "max-sm:pt-safe max-sm:pb-safe",
             variant === "inset" &&
               "before:hidden sm:rounded-2xl sm:border sm:before:rounded-[calc(var(--radius-2xl)-1px)] sm:**:data-[slot=sheet-footer]:rounded-b-[calc(var(--radius-2xl)-1px)]",
             variant === "sidebar" &&
               "h-full max-h-full w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
             variant === "right-panel" &&
-              "w-[min(42vw,28rem)] min-w-80 max-w-[28rem] max-[768px]:w-full max-[768px]:max-w-none max-[768px]:min-w-0 max-[768px]:border-s-0 wco:mt-(--workspace-topbar-height) wco:h-[calc(100%-var(--workspace-topbar-height))] wco:max-h-[calc(100%-var(--workspace-topbar-height))]",
+              "w-[min(42vw,28rem)] min-w-80 max-w-[28rem] max-[768px]:w-full max-[768px]:max-w-none max-[768px]:min-w-0 max-[768px]:border-s-0 max-[768px]:pt-safe max-[768px]:pr-safe max-[768px]:pb-safe wco:mt-(--workspace-topbar-height) wco:h-[calc(100%-var(--workspace-topbar-height))] wco:max-h-[calc(100%-var(--workspace-topbar-height))]",
             instant &&
               "transition-none! will-change-auto! data-ending-style:translate-x-0! data-starting-style:translate-x-0! data-ending-style:translate-y-0! data-starting-style:translate-y-0! data-ending-style:opacity-100! data-starting-style:opacity-100!",
             className,
@@ -119,7 +122,14 @@ function SheetPopup({
         >
           {children}
           {showCloseButton && (
-            <div className="absolute end-2 top-2">
+            <div
+              className={cn(
+                "absolute end-2 top-2",
+                (side === "left" || side === "right") &&
+                  variant !== "sidebar" &&
+                  "max-sm:top-[max(0.5rem,var(--workspace-safe-top))] max-sm:end-[max(0.5rem,var(--workspace-safe-right))]",
+              )}
+            >
               <SheetPrimitive.Close
                 aria-label={t("Close")}
                 render={<Button size="icon" variant="ghost" />}

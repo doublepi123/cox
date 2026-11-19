@@ -600,7 +600,7 @@ export function SettingsPageContainer({
       >
         <WorkspacePageContainer
           width={width}
-          className={cn("gap-6 px-3 pt-4 sm:gap-8 sm:px-6 sm:pt-6", className)}
+          className={cn("gap-6 px-3 pt-4 pb-8 sm:gap-8 sm:px-6 sm:pt-6 sm:pb-10", className)}
         >
           <SettingsScopeSentence />
           {children}

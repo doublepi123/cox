@@ -24,6 +24,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { useTranslation } from "../../i18n";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
@@ -128,6 +129,7 @@ export function EnvironmentModelServices({
   readonly projectScoped?: boolean;
 }) {
   const { t } = useTranslation();
+  const compactPhone = useMediaQuery("max-sm");
   const settings = useEnvironmentSettings(environmentId);
   const canManage = useEnvironmentScope(environmentId, "providers:manage");
   const readOnly = !canManage || projectScoped;
@@ -181,7 +183,7 @@ export function EnvironmentModelServices({
       headerAction={
         !readOnly ? (
           <Button
-            size="sm"
+            size={compactPhone ? "touch" : "sm"}
             variant="outline"
             onClick={() => setEditing(ModelServiceId.make(`service_${randomUUID()}`))}
           >
@@ -263,22 +265,24 @@ export function EnvironmentModelServices({
                   </button>
                   {!readOnly ? (
                     <div className="flex shrink-0 items-center gap-0.5">
-                      <button
-                        type="button"
-                        draggable
-                        aria-label={t("Drag {name}", { name: service.name })}
-                        title={t("Drag {name}", { name: service.name })}
-                        className={cn(
-                          serviceReorderControlClass,
-                          "cursor-grab active:cursor-grabbing",
-                        )}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", id);
-                        }}
-                      >
-                        <GripVerticalIcon className="size-4" aria-hidden="true" />
-                      </button>
+                      {compactPhone ? null : (
+                        <button
+                          type="button"
+                          draggable
+                          aria-label={t("Drag {name}", { name: service.name })}
+                          title={t("Drag {name}", { name: service.name })}
+                          className={cn(
+                            serviceReorderControlClass,
+                            "cursor-grab active:cursor-grabbing",
+                          )}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", id);
+                          }}
+                        >
+                          <GripVerticalIcon className="size-4" aria-hidden="true" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={index === 0}
@@ -552,8 +556,8 @@ function ModelServiceEditor({
           void run(() => save(fetchOnSave));
         }}
       >
-        <div className="space-y-5 p-4 sm:p-5 lg:p-6">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-6 p-4 sm:space-y-5 sm:p-5 lg:p-6">
+          <div className="grid gap-5 sm:grid-cols-2 sm:gap-4">
             <label className="grid gap-2 text-sm font-medium">
               {t("Service name")}
               <Input

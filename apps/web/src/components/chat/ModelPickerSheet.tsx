@@ -75,7 +75,7 @@ export function ModelPickerSheetPopup(props: {
           }
           data-slot="sheet-popup"
           data-model-picker-sheet=""
-          className="group/sheet relative flex max-h-[85%] w-full max-w-xl flex-col overflow-hidden rounded-t-[1.375rem] border border-b-0 border-border/70 bg-popover pb-[env(safe-area-inset-bottom)] text-popover-foreground shadow-[0_-18px_48px_-20px_rgb(0_0_0/0.55)] outline-none [transform:translateY(var(--drawer-swipe-movement-y,0px))] transition-transform duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform data-swiping:select-none data-starting-style:[transform:translateY(100%)] data-ending-style:[transform:translateY(100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,1)*320ms)] motion-reduce:transition-none [@media(max-height:560px)]:max-h-[calc(100%-0.75rem)]"
+          className="group/sheet relative flex max-h-[min(85%,calc(100%-var(--workspace-safe-top)-0.75rem))] w-full max-w-xl flex-col overflow-hidden rounded-t-[1.375rem] border border-b-0 border-border/70 bg-popover pb-safe pl-safe pr-safe text-popover-foreground shadow-[0_-18px_48px_-20px_rgb(0_0_0/0.55)] outline-none [transform:translateY(var(--drawer-swipe-movement-y,0px))] transition-transform duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform data-swiping:select-none data-starting-style:[transform:translateY(100%)] data-ending-style:[transform:translateY(100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,1)*320ms)] motion-reduce:transition-none"
         >
           <div aria-hidden="true" className="flex shrink-0 justify-center pt-2 pb-1">
             <div className="h-1 w-10 rounded-full bg-foreground/20" />

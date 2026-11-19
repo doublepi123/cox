@@ -44,7 +44,8 @@ function AlertDialogViewport({
     <AlertDialogPrimitive.Viewport
       className={cn(
         "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
-        bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
+        bottomStickOnMobile &&
+          "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-[max(3rem,var(--workspace-safe-top))]",
         className,
       )}
       data-slot="alert-dialog-viewport"

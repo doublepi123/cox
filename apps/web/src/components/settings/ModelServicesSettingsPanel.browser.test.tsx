@@ -1189,13 +1189,10 @@ describe("model services settings", () => {
           .toBeDisabled();
 
         const action = screen.getByRole("button", { name: actionLabel, exact: true });
-        const drag = screen.getByRole("button", { name: "Drag Shared API", exact: true });
-        for (const control of [action, drag]) {
-          const box = control.element().getBoundingClientRect();
-          expect(box.width).toBeGreaterThanOrEqual(44);
-          expect(box.height).toBeGreaterThanOrEqual(44);
-        }
-        expect(drag.element().getAttribute("draggable")).toBe("true");
+        const box = action.element().getBoundingClientRect();
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+        expect(document.querySelector("[aria-label='Drag Shared API']")).toBeNull();
         expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
         await action.click();
 

@@ -121,9 +121,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-topbar-height: 52px;
   --workspace-controls-top: 0px;
   --workspace-safe-top: max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px));
+  --workspace-safe-right: max(env(safe-area-inset-right, 0px), var(--cox-safe-right, 0px));
+  --workspace-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--cox-safe-bottom, 0px));
+  --workspace-safe-left: max(env(safe-area-inset-left, 0px), var(--cox-safe-left, 0px));
   --workspace-fixed-controls-top: max(var(--workspace-safe-top), var(--workspace-controls-top));
-  --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
-  --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
+  --workspace-controls-left: calc(var(--workspace-safe-left) + 0.75rem);
+  --workspace-controls-right: calc(var(--workspace-safe-right) + 0.75rem);
   --workspace-native-controls-inset: 0px;
   --workspace-titlebar-control-size: 1.75rem;
   --workspace-titlebar-control-gap: 0.75rem;
@@ -135,8 +138,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* Horizontal gutter shared by the page header and the chat column, clear of
      the device's safe area. */
   --workspace-gutter: 0.75rem;
-  --workspace-gutter-start: calc(env(safe-area-inset-left) + var(--workspace-gutter));
-  --workspace-gutter-end: calc(env(safe-area-inset-right) + var(--workspace-gutter));
+  --workspace-gutter-start: calc(var(--workspace-safe-left) + var(--workspace-gutter));
+  --workspace-gutter-end: calc(var(--workspace-safe-right) + var(--workspace-gutter));
 
   @variant sm {
     --workspace-gutter: 1.25rem;
@@ -1261,19 +1264,19 @@ html[data-cox-desktop]
 }
 
 /* Safe-area inset utilities for surfaces that opt into edge-to-edge rendering.
-   Insets resolve to 0 when the browser already constrains the layout viewport
-   to the safe area. */
+   Each side is the larger of the browser inset and the shell's --cox-safe-* value,
+   and resolves to 0 when the viewport is already inside the safe area. */
 @utility pt-safe {
-  padding-top: max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px));
+  padding-top: var(--workspace-safe-top);
 }
 @utility pb-safe {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--cox-safe-bottom, 0px));
+  padding-bottom: var(--workspace-safe-bottom);
 }
 @utility pl-safe {
-  padding-left: max(env(safe-area-inset-left, 0px), var(--cox-safe-left, 0px));
+  padding-left: var(--workspace-safe-left);
 }
 @utility pr-safe {
-  padding-right: max(env(safe-area-inset-right, 0px), var(--cox-safe-right, 0px));
+  padding-right: var(--workspace-safe-right);
 }
 
 /* Grain texture for chrome surfaces that float above the body (see the
@@ -1973,7 +1976,7 @@ body {
 
 html,
 body {
-  min-height: calc(100svh + max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px)));
+  min-height: calc(100svh + var(--workspace-safe-top));
   background-color: var(--background);
   overscroll-behavior: none;
 }
@@ -1991,7 +1994,7 @@ body {
   overflow-x: clip;
   overflow-y: hidden;
   overscroll-behavior-y: none;
-  padding-top: max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px));
+  padding-top: var(--workspace-safe-top);
 }
 
 /* App-chrome grain. Baked into each surface's own background (behind

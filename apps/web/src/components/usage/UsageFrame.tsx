@@ -24,7 +24,7 @@ export function UsageFrame({ children }: { children: ReactNode }) {
   }, [standalone]);
   const { t } = useTranslation();
   return standalone ? (
-    <main className="flex h-dvh min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
+    <main className="flex h-dvh min-h-0 min-w-0 flex-1 flex-col bg-background pt-safe pr-safe pb-safe pl-safe text-foreground">
       {children}
     </main>
   ) : (

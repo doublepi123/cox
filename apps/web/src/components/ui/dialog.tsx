@@ -83,9 +83,10 @@ function DialogViewport({
     <DialogPrimitive.Viewport
       className={cn(
         "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
-        bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
+        bottomStickOnMobile &&
+          "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-[max(3rem,var(--workspace-safe-top))]",
         media &&
-          "z-[60] grid-rows-1 place-items-center px-4 pb-6 pt-[calc(var(--native-titlebar-height,0px)+1.5rem)] [-webkit-app-region:no-drag]",
+          "z-[60] grid-rows-1 place-items-center px-4 pb-[max(1.5rem,var(--workspace-safe-bottom))] pt-[calc(max(var(--native-titlebar-height,0px),var(--workspace-safe-top))+1.5rem)] [-webkit-app-region:no-drag]",
         className,
       )}
       data-slot="dialog-viewport"
