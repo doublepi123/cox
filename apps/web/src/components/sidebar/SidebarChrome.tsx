@@ -1,11 +1,17 @@
+import { useAtomValue } from "@effect/atom-react";
+import { AuthEnvironmentMaintainScope } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
 import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useLocalServiceUpdate } from "../../hooks/useLocalServiceUpdate";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
+import { primaryServerConfigAtom } from "../../state/server";
+import { useEnvironmentScope } from "../../state/session";
+import { localServiceUpdateSupported } from "../settings/localServiceUpdateSupport";
 import { CoxBrand } from "../CoxBrand";
 import {
   resolveEnvironmentIdentificationPillLabel,
@@ -117,10 +123,12 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
 function SidebarUtilityItem({
   icon,
   label,
+  description,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
+  description?: string | undefined;
   onClick: () => void;
 }) {
   return (
@@ -128,13 +136,17 @@ function SidebarUtilityItem({
       <Tooltip>
         <TooltipTrigger
           render={
-            <SidebarMenuButton aria-label={label} onClick={onClick} size="utility">
+            <SidebarMenuButton
+              aria-label={description ? `${label}. ${description}` : label}
+              onClick={onClick}
+              size="utility"
+            >
               {icon}
               <span className="md:hidden">{label}</span>
             </SidebarMenuButton>
           }
         />
-        <TooltipPopup side="top">{label}</TooltipPopup>
+        <TooltipPopup side="top">{description ?? label}</TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>
   );
@@ -148,6 +160,17 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
   const pullRequestsSupported = usePullRequestsSupported();
+  const environment = useAtomValue(primaryServerConfigAtom)?.environment;
+  const canMaintain = useEnvironmentScope(
+    environment?.environmentId ?? null,
+    AuthEnvironmentMaintainScope,
+  );
+  const canCheck = !isOnUtilityPage && localServiceUpdateSupported(environment) && canMaintain;
+  const { state: update, error: updateError } = useLocalServiceUpdate(canCheck, 60_000);
+  const updateVersion =
+    canCheck && !updateError && (update?.status === "available" || update?.status === "ready")
+      ? update.latestVersion
+      : null;
   const closeMobileSidebar = () => {
     if (isMobile) {
       setOpenMobile(false);
@@ -162,7 +185,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   };
   const handleSettingsClick = () => {
     closeMobileSidebar();
-    void navigate({ to: "/settings" });
+    void navigate({ to: updateVersion ? "/settings/about" : "/settings" });
   };
   const handleUsageClick = () => {
     if (isMobile) {
@@ -188,8 +211,24 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           <SidebarConnections />
           <MobileServerSwitcher />
           <SidebarUtilityItem
-            icon={<SettingsIcon />}
+            icon={
+              <span className="relative flex shrink-0">
+                <SettingsIcon className="size-4" />
+                {updateVersion ? (
+                  <span
+                    aria-hidden="true"
+                    data-cox-update-reminder=""
+                    className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary ring-1 ring-sidebar"
+                  />
+                ) : null}
+              </span>
+            }
             label={t("Settings")}
+            description={
+              updateVersion
+                ? t("Cox {version} is available.", { version: updateVersion })
+                : undefined
+            }
             onClick={handleSettingsClick}
           />
           {pullRequestsSupported ? (

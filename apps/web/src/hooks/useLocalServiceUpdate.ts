@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServiceUpdateState } from "@t3tools/contracts";
 import { translateCurrent } from "../i18n";
 
-export function useLocalServiceUpdate(enabled: boolean) {
+export function useLocalServiceUpdate(enabled: boolean, statusRefreshMs?: number) {
   const [state, setState] = useState<LocalServiceUpdateState | null>(null);
   const [pending, setPending] = useState<"" | "check" | "download" | "apply" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +43,9 @@ export function useLocalServiceUpdate(enabled: boolean) {
 
   const polling =
     pending === "download" || state?.status === "downloading" || state?.status === "restarting";
+  const refreshMs = polling ? 1_000 : statusRefreshMs;
   useEffect(() => {
-    if (!enabled || !polling) return;
+    if (!enabled || refreshMs === undefined) return;
     const controller = new AbortController();
     let loading = false;
     const load = () => {
@@ -59,12 +60,12 @@ export function useLocalServiceUpdate(enabled: boolean) {
           loading = false;
         });
     };
-    const timer = setInterval(load, 1_000);
+    const timer = setInterval(load, refreshMs);
     return () => {
       controller.abort();
       clearInterval(timer);
     };
-  }, [enabled, request, polling]);
+  }, [enabled, request, refreshMs]);
 
   const execute = async (action: "" | "check" | "download" | "apply") => {
     if (inFlight.current) return;

@@ -4,7 +4,6 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { runLocalServiceCommand } from "./process.ts";
 import { isBackendVersion } from "./release.ts";
 
-export const LOCAL_SERVICE_UPDATE_ENV = "COX_LOCAL_SERVICE_UPDATE";
 const DEFAULT_UNIT = "cox.service";
 const HELPER_PREFIX = "cox-local-service-update-";
 
@@ -99,13 +98,7 @@ export function localServiceDropIn(configHome: string, serviceUnit: string): str
 }
 
 export async function detectLocalServiceUpdateOwnership(): Promise<LocalServiceUpdateOwnership | null> {
-  if (
-    process.platform !== "linux" ||
-    process.env[LOCAL_SERVICE_UPDATE_ENV] !== "1" ||
-    !process.env.INVOCATION_ID ||
-    !process.env.HOME
-  )
-    return null;
+  if (process.platform !== "linux" || !process.env.INVOCATION_ID || !process.env.HOME) return null;
   const serviceUnit = process.env.COX_LOCAL_SERVICE_UPDATE_UNIT ?? DEFAULT_UNIT;
   if (!isLocalServiceUpdateUnit(serviceUnit)) return null;
   const configHome = process.env.XDG_CONFIG_HOME || join(process.env.HOME, ".config");

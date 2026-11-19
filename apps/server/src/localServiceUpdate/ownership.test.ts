@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -286,6 +287,29 @@ describe("local service update boundaries", () => {
 });
 
 describe("local service update transaction", () => {
+  it("quietly checks at startup and retries after one hour", async () => {
+    await using harness = await makeService(undefined, false);
+    mocks.fetchRelease.mockClear();
+    mocks.fetchRelease.mockRejectedValueOnce(new Error("Registry offline"));
+    const { service } = harness;
+    await harness.runtime.runPromise(
+      Effect.gen(function* () {
+        yield* service.checkPeriodically.pipe(Effect.forkScoped);
+        yield* TestClock.adjust("59 minutes");
+        expect(yield* service.state).toMatchObject({ status: "idle", message: null });
+        expect(mocks.fetchRelease).toHaveBeenCalledTimes(1);
+        yield* TestClock.adjust("1 minute");
+        expect(yield* service.state).toMatchObject({
+          status: "available",
+          latestVersion: "99.0.0",
+        });
+        expect(mocks.fetchRelease).toHaveBeenCalledTimes(2);
+        expect(mocks.installRelease).not.toHaveBeenCalled();
+        expect(mocks.launchUpdate).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    );
+  });
+
   it("checks the registry again after a disconnected request fails in the background", async () => {
     await using harness = await makeService(undefined, false);
     const controller = new AbortController();

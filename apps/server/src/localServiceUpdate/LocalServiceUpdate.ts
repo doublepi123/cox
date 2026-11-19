@@ -8,6 +8,7 @@ import * as Path from "effect/Path";
 import * as FileSystem from "effect/FileSystem";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Schema from "effect/Schema";
+import * as Schedule from "effect/Schedule";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerConfig from "../config.ts";
@@ -133,35 +134,44 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
     return current;
   }).pipe(Effect.withSpan("localServiceUpdate.state"));
 
-  const check: Effect.Effect<LocalServiceUpdateState, LocalServiceUpdateError> = Effect.gen(
-    function* () {
-      if (!supported) return yield* state;
-      if (operation) {
-        yield* Effect.promise(async () => operation);
-        return yield* state;
-      }
-      if (current.status === "restarting" || (current.status === "ready" && ready)) return current;
-      current = { ...current, status: "checking", message: null, progress: null };
-      const pending = (async () => {
-        try {
-          release = await fetchLocalServiceRelease(AbortSignal.timeout(30_000));
-          current = {
-            ...current,
-            latestVersion: release.version,
-            status:
-              compareVersions(release.version, packageJson.version) > 0 ? "available" : "idle",
-          };
-        } catch (error) {
-          current = { ...current, status: "error", message: String(error), progress: null };
-        }
-      })().finally(() => {
-        if (operation === pending) operation = undefined;
-      });
-      operation = pending;
-      yield* Effect.promise(() => pending);
+  const checkRelease = Effect.fn("localServiceUpdate.check")(function* (automatic: boolean) {
+    if (!supported) return yield* state;
+    if (operation) {
+      yield* Effect.promise(async () => operation);
       return yield* state;
-    },
-  ).pipe(Effect.withSpan("localServiceUpdate.check"));
+    }
+    if (automatic) {
+      yield* state;
+      if (operation || (current.status !== "idle" && current.status !== "available"))
+        return current;
+    }
+    if (current.status === "restarting" || (current.status === "ready" && ready)) return current;
+    const previous = current;
+    current = { ...current, status: "checking", message: null, progress: null };
+    const pending = (async () => {
+      try {
+        release = await fetchLocalServiceRelease(AbortSignal.timeout(30_000));
+        current = {
+          ...current,
+          latestVersion: release.version,
+          status: compareVersions(release.version, packageJson.version) > 0 ? "available" : "idle",
+        };
+      } catch (error) {
+        current = automatic
+          ? previous
+          : { ...current, status: "error", message: String(error), progress: null };
+      }
+    })().finally(() => {
+      if (operation === pending) operation = undefined;
+    });
+    operation = pending;
+    yield* Effect.promise(() => pending);
+    return yield* state;
+  });
+  const check = checkRelease(false);
+  const checkPeriodically = supported
+    ? checkRelease(true).pipe(Effect.repeat(Schedule.spaced("1 hour")), Effect.asVoid)
+    : Effect.void;
 
   const download: Effect.Effect<LocalServiceUpdateState, LocalServiceUpdateError> = Effect.gen(
     function* () {
@@ -333,7 +343,14 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
     },
   ).pipe(Effect.withSpan("localServiceUpdate.apply"));
 
-  return LocalServiceUpdate.of({ state, check, download, apply });
+  return { ...LocalServiceUpdate.of({ state, check, download, apply }), checkPeriodically };
 });
 
-export const layer = Layer.effect(LocalServiceUpdate, make());
+export const layer = Layer.effect(
+  LocalServiceUpdate,
+  Effect.gen(function* () {
+    const updates = yield* make();
+    yield* updates.checkPeriodically.pipe(Effect.forkScoped);
+    return updates;
+  }),
+);
