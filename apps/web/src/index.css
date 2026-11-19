@@ -120,10 +120,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-saturation: 1.14;
   --workspace-topbar-height: 52px;
   --workspace-controls-top: 0px;
-  --workspace-safe-top: max(env(safe-area-inset-top, 0px), var(--cox-safe-top, 0px));
-  --workspace-safe-right: max(env(safe-area-inset-right, 0px), var(--cox-safe-right, 0px));
-  --workspace-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--cox-safe-bottom, 0px));
-  --workspace-safe-left: max(env(safe-area-inset-left, 0px), var(--cox-safe-left, 0px));
+  --workspace-safe-env-top: 0px;
+  --workspace-safe-env-right: 0px;
+  --workspace-safe-env-bottom: 0px;
+  --workspace-safe-env-left: 0px;
+  --workspace-safe-top: max(var(--workspace-safe-env-top), var(--cox-safe-top, 0px));
+  --workspace-safe-right: max(var(--workspace-safe-env-right), var(--cox-safe-right, 0px));
+  --workspace-safe-bottom: max(var(--workspace-safe-env-bottom), var(--cox-safe-bottom, 0px));
+  --workspace-safe-left: max(var(--workspace-safe-env-left), var(--cox-safe-left, 0px));
   --workspace-fixed-controls-top: max(var(--workspace-safe-top), var(--workspace-controls-top));
   --workspace-controls-left: calc(var(--workspace-safe-left) + 0.75rem);
   --workspace-controls-right: calc(var(--workspace-safe-right) + 0.75rem);
@@ -1280,20 +1284,24 @@ html[data-cox-desktop]
 }
 
 [data-chat-composer-safe-pad] {
-  height: calc(var(--workspace-safe-bottom) + 1rem);
+  height: calc(1rem + var(--workspace-safe-bottom, 0px));
+  min-height: calc(1rem + env(safe-area-inset-bottom, 0px));
   background: var(--background);
 }
 @media (min-width: 640px) {
   [data-chat-composer-safe-pad] {
-    height: calc(var(--workspace-safe-bottom) + 1.25rem);
+    height: calc(1.25rem + var(--workspace-safe-bottom, 0px));
+    min-height: calc(1.25rem + env(safe-area-inset-bottom, 0px));
   }
 }
 html[data-software-keyboard] [data-chat-composer-safe-pad] {
   height: 1rem;
+  min-height: 0;
 }
 @media (min-width: 640px) {
   html[data-software-keyboard] [data-chat-composer-safe-pad] {
     height: 1.25rem;
+    min-height: 0;
   }
 }
 

@@ -183,8 +183,13 @@ describe("safe area on full-screen routes", () => {
           );
           expectClearOfSafeArea(document, path);
           if (path === "thread") {
-            const pad = document.querySelector<HTMLElement>("[data-chat-composer-safe-pad]");
-            expect(pad?.getBoundingClientRect().height).toBe(SAFE_BOTTOM + 16);
+            const buttons = [...document.querySelectorAll<HTMLElement>("button")];
+            expect(buttons.length).toBeGreaterThan(0);
+            for (const button of buttons) {
+              expect(button.getBoundingClientRect().bottom, button.textContent ?? "").toBeLessThanOrEqual(
+                window.innerHeight - SAFE_BOTTOM + 0.5,
+              );
+            }
           }
           if (path === "/settings") {
             const close = document.querySelector<HTMLElement>("[data-settings-header] button");
@@ -246,6 +251,49 @@ describe("safe area on full-screen routes", () => {
       root.style.removeProperty("--cox-safe-bottom");
       root.style.removeProperty("--workspace-safe-top");
       root.style.removeProperty("--workspace-safe-bottom");
+      await page.viewport(originalWidth, originalHeight);
+    }
+  });
+
+  it("keeps composer controls above a browser safe-area inset when the shell inset is zero", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--cox-safe-bottom", "0px");
+    root.style.setProperty("--workspace-safe-env-bottom", `${SAFE_BOTTOM}px`);
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    await page.viewport(390, 844);
+    try {
+      await using _screen = await render(<ThreadComposer />, { router: "/" });
+      const buttons = [...document.querySelectorAll<HTMLElement>("button")];
+      expect(buttons.length).toBeGreaterThan(0);
+      for (const button of buttons) {
+        expect(button.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+          window.innerHeight - SAFE_BOTTOM + 0.5,
+        );
+      }
+    } finally {
+      root.style.removeProperty("--cox-safe-bottom");
+      root.style.removeProperty("--workspace-safe-env-bottom");
+      await page.viewport(originalWidth, originalHeight);
+    }
+  });
+
+  it("does not lift the composer when the phone has no safe area", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--cox-safe-bottom", "0px");
+    root.style.setProperty("--workspace-safe-env-bottom", "0px");
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    await page.viewport(390, 844);
+    try {
+      await using _screen = await render(<ThreadComposer />, { router: "/" });
+      const pad = document.querySelector<HTMLElement>("[data-chat-composer-safe-pad]");
+      const button = document.querySelector("button");
+      expect(pad?.getBoundingClientRect().height).toBe(16);
+      expect(button?.getBoundingClientRect().bottom).toBeGreaterThan(window.innerHeight - 17);
+    } finally {
+      root.style.removeProperty("--cox-safe-bottom");
+      root.style.removeProperty("--workspace-safe-env-bottom");
       await page.viewport(originalWidth, originalHeight);
     }
   });
