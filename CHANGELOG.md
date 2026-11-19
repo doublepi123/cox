@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.7 — 2026-11-19
+
+- Show initial model-service waiting, including shared cooldown, instead of generic thinking.
+- Distinguish initial responses from actual retry recovery in the timeline.
+
 ## 0.2.6 — 2026-11-19
 
 - Keep the thread composer above the gesture bar. The page background still
