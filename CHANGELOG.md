@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.10 — 2026-11-19
+
+- Check the official Cox npm release from Settings → About.
+- For an opted-in systemd user service, download and verify the release, then confirm a restart. Cox preserves startup arguments, backs up local state, and restores the previous startup command if the new version fails to become healthy.
+
 ## 0.2.9 — 2026-11-19
 
 - Treat a generic upstream `openai` endpoint marker as the connection's OpenAI
