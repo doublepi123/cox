@@ -11,14 +11,13 @@ enum WorkspaceSafeAreaBootstrap {
         )
     }
 
-    static func script(top: CGFloat, right: CGFloat, bottom: CGFloat, left: CGFloat) -> String {
+    static func script(top: CGFloat, right: CGFloat, left: CGFloat) -> String {
         """
         (function(){
           var root = document.documentElement;
           if (!root) return;
           root.style.setProperty('--cox-safe-top','\(css(top))');
           root.style.setProperty('--cox-safe-right','\(css(right))');
-          root.style.setProperty('--cox-safe-bottom','\(css(bottom))');
           root.style.setProperty('--cox-safe-left','\(css(left))');
         })();
         """
@@ -101,7 +100,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         webTopToSafe = topSafe
         webTopToFallback = topFallback
         NSLayoutConstraint.activate([
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
@@ -127,15 +126,10 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         let top = max(0, hostInsets.top - frame.minY)
         let left = max(0, hostInsets.left - frame.minX)
         let right = max(0, frame.maxX - (host.bounds.maxX - hostInsets.right))
-        var bottom = max(0, frame.maxY - (host.bounds.maxY - hostInsets.bottom))
-        let keyboardReach = view.bounds.maxY - view.keyboardLayoutGuide.layoutFrame.minY
-        if keyboardReach > hostInsets.bottom + 1 {
-            bottom = min(bottom, hostInsets.bottom)
-        }
-        let signature = String(format: "%.2f,%.2f,%.2f,%.2f", top, right, bottom, left)
+        let signature = String(format: "%.2f,%.2f,%.2f", top, right, left)
         if signature == publishedSafeArea { return }
         publishedSafeArea = signature
-        let script = WorkspaceSafeAreaBootstrap.script(top: top, right: right, bottom: bottom, left: left)
+        let script = WorkspaceSafeAreaBootstrap.script(top: top, right: right, left: left)
         WorkspaceSafeAreaBootstrap.source = script
         workspace.evaluateJavaScript(script) { _, error in
             if error != nil { self.publishedSafeArea = "" }
