@@ -1,8 +1,11 @@
 # Upstream port status
 
-Latest follow-up: [November 17 review](docs/upstream-ports-2026-11-17.md), comparing
-204 commits `4860a73069..b46edac5c199` and adapting 14 for Cox at `bb75e77907`.
+Latest follow-up: [November 19 review](docs/upstream-ports-2026-11-19.md), comparing
+179 commits `b46edac5c199..455a60aa3ceb` and adapting 11 for Cox at `3cf2610`.
 No version bump.
+
+Previously: [November 17 review](docs/upstream-ports-2026-11-17.md), comparing
+204 commits `4860a73069..b46edac5c199` and adapting 14 for Cox at `bb75e77907`.
 
 Previously: [November 15 follow-up](UPSTREAM_PORTING_20261115.md), comparing
 485 commits through `52451a7909` and adapting 41 selected commits (41 behavior

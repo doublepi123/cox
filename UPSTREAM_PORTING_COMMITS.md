@@ -308,3 +308,9 @@ upstream checkout, live state or permission default was changed.
 Cox baseline `bb75e77907`; upstream `4860a73069..b46edac5c199` (204 commits).
 Adapted: 14. The commit-by-commit record is [docs/upstream-ports-2026-11-17.md](docs/upstream-ports-2026-11-17.md).
 MCP retry authorization (`1adc05b844`) was already covered. No version bump.
+
+## November 19 follow-up
+
+Cox baseline `3cf2610`; upstream `b46edac5c199..455a60aa3ceb` (179 commits).
+Adapted: 11. The commit-by-commit record is [docs/upstream-ports-2026-11-19.md](docs/upstream-ports-2026-11-19.md).
+No version bump.
