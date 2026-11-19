@@ -221,6 +221,8 @@ export const en = {
   "Update the local Cox service from its official npm release.":
     "Update the local Cox service from its official npm release.",
   "Cox is up to date.": "Cox is up to date.",
+  "Stop Cox, run the npm upgrade, then start it again.":
+    "Stop Cox, run the npm upgrade, then start it again.",
   "Download update": "Download update",
   "Downloading and verifying Cox. Current tasks will not be interrupted.":
     "Downloading and verifying Cox. Current tasks will not be interrupted.",

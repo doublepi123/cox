@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -18,11 +18,12 @@ import * as DatabaseMigrationHead from "../persistence/databaseMigrationHead.ts"
 import { make as makeLocalServiceUpdate } from "./LocalServiceUpdate.ts";
 import {
   compareVersions,
-  detectLocalServiceUpdateOwnership,
-  LOCAL_SERVICE_UPDATE_ENV,
+  isNpmCoxInstallation,
+  isLocalServiceUpdateUnit,
   updateEnvironment,
 } from "./ownership.ts";
 import * as Operation from "./operation.ts";
+import * as Ownership from "./ownership.ts";
 import * as Preflight from "./preflight.ts";
 import * as Release from "./release.ts";
 import { parseLocalServiceRelease } from "./release.ts";
@@ -34,6 +35,8 @@ import {
 } from "./operation.ts";
 
 const mocks = vi.hoisted(() => ({
+  detectOwnership: vi.fn<typeof Ownership.detectLocalServiceUpdateOwnership>(),
+  supportsNpm: vi.fn<typeof Ownership.supportsNpmCoxUpdates>(),
   fetchRelease: vi.fn<typeof Release.fetchLocalServiceRelease>(),
   installRelease: vi.fn<typeof Release.installLocalServiceRelease>(),
   launchUpdate: vi.fn<typeof Operation.launchLocalServiceUpdate>(),
@@ -41,6 +44,11 @@ const mocks = vi.hoisted(() => ({
   databaseMigrationHead: vi.fn<typeof DatabaseMigrationHead.databaseMigrationHead>(),
 }));
 
+vi.mock("./ownership.ts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  detectLocalServiceUpdateOwnership: mocks.detectOwnership,
+  supportsNpmCoxUpdates: mocks.supportsNpm,
+}));
 vi.mock("./release.ts", async (importOriginal) => ({
   ...(await importOriginal()),
   fetchLocalServiceRelease: mocks.fetchRelease,
@@ -108,18 +116,28 @@ async function makeActivationPlan(entryContents: string | null, withDatabaseBack
     serviceUnit: "cox.service",
     node: "/opt/node/bin/node",
     entry,
-    packageRoot: "/srv/cox",
+    dropIn: join(baseDir, "local-service-update", "unit"),
     baseDir,
     stateDir: join(directory, "userdata"),
     databasePath: join(directory, "userdata", "statev2.sqlite"),
     runtimeStatePath: join(directory, "userdata", "server-runtime.json"),
     environmentId: "environment-1",
     operation,
-    nextUnit: "__COX_ENTRY__\n",
+    nextUnit: "[Service]\nExecStart=\nExecStart=/tmp/cox\n",
   } satisfies LocalServiceUpdatePlan;
 }
 
-async function makeService(initialReceipt?: LocalServiceUpdateReceipt) {
+async function makeNpmPackage(directory: string) {
+  const dist = join(directory, "dist");
+  const staticDir = join(dist, "client");
+  const entry = join(dist, "bin.mjs");
+  await mkdir(staticDir, { recursive: true });
+  await writeFile(entry, "");
+  await writeFile(join(directory, "package.json"), '{"name":"@doublepi123/cox"}');
+  return { entry, staticDir };
+}
+
+async function makeService(initialReceipt?: LocalServiceUpdateReceipt, managed = true) {
   const directory = await mkdtemp(join(tmpdir(), "cox-local-service-update-service-"));
   directories.push(directory);
   await mkdir(join(directory, "local-service-update"), { recursive: true });
@@ -142,12 +160,19 @@ async function makeService(initialReceipt?: LocalServiceUpdateReceipt) {
   mocks.launchUpdate.mockResolvedValue();
   mocks.inspectCandidateMigration.mockResolvedValue(1);
   mocks.databaseMigrationHead.mockReturnValue(1);
-  const originalEntry = process.argv[1];
-  const originalUpdateEnvironment = process.env[LOCAL_SERVICE_UPDATE_ENV];
-  const originalInvocationId = process.env.INVOCATION_ID;
-  process.argv[1] = "/srv/cox/dist/bin.mjs";
-  process.env[LOCAL_SERVICE_UPDATE_ENV] = "1";
-  process.env.INVOCATION_ID = "test-invocation";
+  mocks.supportsNpm.mockReturnValue(true);
+  mocks.detectOwnership.mockResolvedValue(
+    managed
+      ? {
+          serviceUnit: "sample-cox.service",
+          node: process.execPath,
+          npm: "/opt/node/lib/npm/bin/npm-cli.js",
+          dropIn: join(directory, "90-cox-update.conf"),
+          argsBeforeEntry: [],
+          argsAfterEntry: ["--no-browser"],
+        }
+      : null,
+  );
   const dependencies = Layer.mergeAll(
     ServerConfig.layerTest(process.cwd(), directory).pipe(Layer.provide(NodeServices.layer)),
     NodeServices.layer,
@@ -160,14 +185,7 @@ async function makeService(initialReceipt?: LocalServiceUpdateReceipt) {
   const config = await runtime.runPromise(ServerConfig.ServerConfig);
   const database = new DatabaseSync(config.dbPath);
   database.close();
-  const service = await runtime.runPromise(
-    makeLocalServiceUpdate().pipe(
-      Effect.provideService(ServerConfig.ServerConfig, {
-        ...config,
-        staticDir: "/srv/cox/dist/client",
-      }),
-    ),
-  );
+  const service = await runtime.runPromise(makeLocalServiceUpdate());
   await runtime.runPromise(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -182,40 +200,48 @@ async function makeService(initialReceipt?: LocalServiceUpdateReceipt) {
     service,
     async [Symbol.asyncDispose]() {
       await runtime.dispose();
-      if (originalEntry === undefined) process.argv.splice(1, 1);
-      else process.argv[1] = originalEntry;
-      if (originalUpdateEnvironment === undefined) delete process.env[LOCAL_SERVICE_UPDATE_ENV];
-      else process.env[LOCAL_SERVICE_UPDATE_ENV] = originalUpdateEnvironment;
-      if (originalInvocationId === undefined) delete process.env.INVOCATION_ID;
-      else process.env.INVOCATION_ID = originalInvocationId;
     },
   };
 }
 
-function ownership(overrides: Record<string, unknown> = {}) {
-  return detectLocalServiceUpdateOwnership({
-    enabled: true,
-    environment: "1",
-    platform: "linux",
-    execPath: "/opt/node/bin/node",
-    entryPath: "/srv/cox/dist/bin.mjs",
-    staticDir: "/srv/cox/dist/client",
-    invocationId: "test-invocation",
-    realpath: (path) => path,
-    ...overrides,
-  } as Parameters<typeof detectLocalServiceUpdateOwnership>[0]);
-}
-
 describe("local service update boundaries", () => {
-  it("requires explicit ownership and the production systemd/npm process shape", () => {
-    expect(ownership()?.packageRoot).toBe("/srv/cox");
-    expect(ownership({ environment: undefined })).toBeNull();
-    expect(ownership({ invocationId: undefined })).toBeNull();
-    expect(ownership({ enabled: false })).toBeNull();
-    expect(ownership({ platform: "darwin" })).toBeNull();
-    expect(ownership({ entryPath: "/home/user/code/cox/apps/server/src/bin.ts" })).toBeNull();
-    expect(ownership({ staticDir: "/tmp/other-client" })).toBeNull();
-    expect(ownership({ staticDir: "/tmp/other-client" })).toBeNull();
+  it("recognizes the npm bin symlink without enabling development or desktop updates", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cox-npm-install-"));
+    directories.push(directory);
+    const { entry, staticDir } = await makeNpmPackage(directory);
+    const entryPath = join(directory, "cox");
+    await symlink(entry, entryPath);
+    const input = { enabled: true, desktop: false, entryPath, staticDir };
+    expect(isNpmCoxInstallation(input)).toBe(true);
+    expect(isNpmCoxInstallation({ ...input, enabled: false })).toBe(false);
+    expect(isNpmCoxInstallation({ ...input, desktop: true })).toBe(false);
+    await writeFile(join(directory, "package.json"), '{"name":"cox"}');
+    expect(isNpmCoxInstallation(input)).toBe(false);
+  });
+
+  it("lets a terminal npm install check for a release without preparing or applying it", async () => {
+    await using harness = await makeService(undefined, false);
+    expect(await harness.runtime.runPromise(harness.service.check)).toMatchObject({
+      checkOnly: true,
+      status: "available",
+      latestVersion: "99.0.0",
+    });
+    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+      checkOnly: true,
+      status: "available",
+      backup: null,
+    });
+    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+      checkOnly: true,
+      status: "available",
+      backup: null,
+    });
+  });
+
+  it("restricts the restart target to a named service outside the updater namespace", () => {
+    expect(isLocalServiceUpdateUnit("team-cox@1.service")).toBe(true);
+    expect(isLocalServiceUpdateUnit("../cox.service")).toBe(false);
+    expect(isLocalServiceUpdateUnit("cox-local-service-update-cox.service")).toBe(false);
   });
 
   it("orders only exact stable releases and filters inherited service overrides", () => {
@@ -423,7 +449,7 @@ describe("local service update transaction", () => {
       serviceUnit: "cox.service",
       node: "/opt/node/bin/node",
       entry: join(directory, "candidate", "dist", "bin.mjs"),
-      packageRoot: "/srv/cox",
+      dropIn: join(baseDir, "local-service-update", "unit"),
       baseDir,
       stateDir,
       databasePath,
@@ -441,7 +467,7 @@ describe("local service update transaction", () => {
     expect(await readFile(join(plan.operation, "backup", "settings.json"), "utf8")).toContain(
       "dark",
     );
-    expect(await readFile(join(plan.operation, "previous-unit"), "utf8")).toBe("original unit\n");
+    expect(await readFile(plan.dropIn, "utf8")).toBe("original unit\n");
     expect(JSON.parse(await readFile(join(plan.operation, "plan.json"), "utf8"))).toMatchObject({
       targetVersion: "0.2.0",
       serviceUnit: "cox.service",

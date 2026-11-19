@@ -99,18 +99,31 @@ dependencies may need a local C/C++ build toolchain when prebuilt binaries are u
 If `cox` is not found after a global install, check that npm's global executable directory
 is on your `PATH`, or use the `npx` command above.
 
-For a Linux deployment managed by the `cox.service` systemd user unit, the server can opt into
-browser-driven updates from both local and connected desktop clients with
-browser-driven updates with `Environment=COX_LOCAL_SERVICE_UPDATE=1` and an update unit template at
-`~/.cox/local-service-update/unit`. Copy the actual `ExecStart` line and replace its `dist/bin.mjs`
-path with `__COX_ENTRY__`; keep every other startup flag and environment setting unchanged.
-**Settings → About** then offers an authenticated
-check, official npm download and SHA-512 verification, a consistent SQLite/settings backup, and a
-confirmed service restart. A transient user-level helper performs the handoff and restores the
-previous unit if the target version does not become healthy. Cox refuses this path for development
-checkouts, desktop-managed backends, non-systemd processes, active agent turns, and releases whose
-database migration frontier differs from the current database. Those releases require the manual
-stopped-server backup and upgrade procedure above.
+**Settings → About** can check the latest official release for an npm installation. For a process
+started in a terminal, the page shows the manual upgrade command when an update is available.
+
+To enable browser updates on Linux, run Cox directly as the main process of a systemd **user**
+service. Add this to the service (or use `systemctl --user edit cox.service`):
+
+```ini
+[Service]
+Environment=COX_LOCAL_SERVICE_UPDATE=1
+```
+
+For a unit named differently, also set `Environment=COX_LOCAL_SERVICE_UPDATE_UNIT=my-cox.service`.
+Reload the unit configuration and restart the service once to pick up the settings. Cox verifies
+that it is the named unit's main process before enabling updates. Use a direct `ExecStart` such as
+`/absolute/path/to/cox --no-browser`; a wrapper that stays running as the main process will only
+be able to check for updates.
+
+The page can then download and verify the official npm artifact, back up the database and settings,
+and ask for confirmation before restarting. Cox stages the new package in its data directory and
+updates the unit through `90-cox-update.conf`, retaining its working directory, environment, and
+Cox arguments. A transient user service checks that the new server is healthy and restores the
+previous startup command if it fails. When managing the npm installation manually again, remove
+that Cox-created override so the unit starts from its original command. Finish active agent turns
+before restarting. Releases that change the database schema still require the manual stopped-server
+backup and upgrade procedure above.
 
 ## Scope
 

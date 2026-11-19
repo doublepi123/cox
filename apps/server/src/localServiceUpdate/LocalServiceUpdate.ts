@@ -16,7 +16,7 @@ import { inspectCandidateMigration } from "./preflight.ts";
 import {
   compareVersions,
   detectLocalServiceUpdateOwnership,
-  LOCAL_SERVICE_UPDATE_ENV,
+  supportsNpmCoxUpdates,
   updateEnvironment,
   type LocalServiceUpdateOwnership,
 } from "./ownership.ts";
@@ -28,6 +28,7 @@ import {
 import {
   launchLocalServiceUpdate,
   localServiceReceiptState,
+  renderLocalServiceDropIn,
   prepareLocalServiceUpdate,
   readLocalServiceReceipt,
   type LocalServiceUpdatePlan,
@@ -74,19 +75,18 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
   const path = yield* Path.Path;
   const sql = yield* SqlClient.SqlClient;
   const environmentId = yield* (yield* ServerEnvironment.ServerEnvironment).getEnvironmentId;
-  const ownership: LocalServiceUpdateOwnership | null = detectLocalServiceUpdateOwnership({
-    enabled: config.devUrl === undefined,
-    ...(process.env[LOCAL_SERVICE_UPDATE_ENV]
-      ? { environment: process.env[LOCAL_SERVICE_UPDATE_ENV] }
-      : {}),
-    platform: process.platform,
-    execPath: process.execPath,
-    ...(process.argv[1] ? { entryPath: process.argv[1] } : {}),
-    ...(config.staticDir ? { staticDir: config.staticDir } : {}),
-    ...(process.env.INVOCATION_ID ? { invocationId: process.env.INVOCATION_ID } : {}),
-    realpath: (path) => path,
-  });
-  let current = unavailable();
+  const supported = supportsNpmCoxUpdates(config);
+  const ownership: LocalServiceUpdateOwnership | null = supported
+    ? yield* Effect.tryPromise(detectLocalServiceUpdateOwnership).pipe(
+        Effect.orElseSucceed(() => null),
+      )
+    : null;
+  let current = !supported
+    ? unavailable()
+    : {
+        ...localServiceReceiptState(packageJson.version, null),
+        ...(!ownership && { checkOnly: true }),
+      };
   let ready = false;
   let operation: Promise<void> | undefined;
   let release: LocalServiceRelease | undefined;
@@ -99,7 +99,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
   const run = Effect.runPromiseWith(yield* Effect.context<FileSystem.FileSystem | Crypto.Crypto>());
 
   const state: Effect.Effect<LocalServiceUpdateState> = Effect.gen(function* () {
-    if (!ownership) return unavailable();
+    if (!ownership) return current;
     if (operation) return current;
     if (current.status === "downloading" || (current.status === "ready" && ready && plan))
       return current;
@@ -135,12 +135,12 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
 
   const check: Effect.Effect<LocalServiceUpdateState, LocalServiceUpdateError> = Effect.gen(
     function* () {
-      if (!ownership) return yield* state;
+      if (!supported) return yield* state;
       if (operation) {
         yield* Effect.promise(async () => operation);
         return yield* state;
       }
-      if (["ready", "restarting"].includes(current.status) && ready) return current;
+      if (current.status === "restarting" || (current.status === "ready" && ready)) return current;
       current = { ...current, status: "checking", message: null, progress: null };
       operation = (async () => {
         try {
@@ -171,7 +171,8 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
         yield* Effect.promise(async () => operation);
         return yield* state;
       }
-      if (current.status === "ready" && ready && plan) return current;
+      if (current.status === "restarting" || (current.status === "ready" && ready && plan))
+        return current;
       if (!release || current.status !== "available") {
         yield* check;
         if (current.status !== "available" || !release) return current;
@@ -191,10 +192,10 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
       };
       operation = (async () => {
         try {
-          const target = path.join(directory, "candidates", selected.version);
-          const { mkdir, rm } = await import("node:fs/promises");
-          await rm(target, { recursive: true, force: true });
-          await mkdir(target, { recursive: true, mode: 0o700 });
+          const candidates = path.join(directory, "candidates");
+          const { mkdir, mkdtemp } = await import("node:fs/promises");
+          await mkdir(candidates, { recursive: true, mode: 0o700 });
+          const target = await mkdtemp(path.join(candidates, selected.version + "-"));
           const entry = await installLocalServiceRelease({
             release: selected,
             directory: target,
@@ -205,18 +206,11 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
               current = { ...current, progress };
             },
           });
-          const inspected = await run(
+          await run(
             Effect.gen(function* () {
               const actual = yield* Effect.sync(() => databaseMigrationHead(config.dbPath));
               if (actual === undefined)
                 return yield* Effect.fail("The live database migration history is unreadable.");
-              const unit = yield* FileSystem.FileSystem.pipe(
-                Effect.flatMap((fs) => fs.readFileString(path.join(directory, "unit"))),
-              );
-              if (!unit.includes("__COX_ENTRY__"))
-                return yield* Effect.fail(
-                  "The local Cox update unit must use the __COX_ENTRY__ placeholder.",
-                );
               const manifest = yield* decodePackageManifest(
                 yield* FileSystem.FileSystem.pipe(
                   Effect.flatMap((fs) =>
@@ -240,7 +234,6 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
                 return yield* Effect.fail(
                   "The update would change the database schema. Use a manual backup and upgrade.",
                 );
-              return { unit };
             }).pipe(Effect.mapError((cause) => new LocalServiceUpdateError(String(cause)))),
           );
           const active = await run(
@@ -267,18 +260,23 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
             serviceUnit: ownership.serviceUnit,
             node: ownership.node,
             entry,
-            packageRoot: ownership.packageRoot,
+            dropIn: ownership.dropIn,
             baseDir: config.baseDir,
             stateDir: config.stateDir,
             databasePath: config.dbPath,
             runtimeStatePath: config.serverRuntimeStatePath,
             environmentId,
             operation: path.join(directory, "operations", suffix),
-            nextUnit: inspected.unit,
+            nextUnit: renderLocalServiceDropIn([
+              ownership.node,
+              ...ownership.argsBeforeEntry,
+              entry,
+              ...ownership.argsAfterEntry,
+            ]),
           };
+          await prepareLocalServiceUpdate(preparedPlan);
           plan = preparedPlan;
           ready = true;
-          await prepareLocalServiceUpdate(preparedPlan);
           const backupDirectory = path.join(preparedPlan.operation, "backup");
           current = {
             ...current,

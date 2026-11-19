@@ -196,6 +196,8 @@ export const zh = {
   "Update the local Cox service from its official npm release.":
     "从官方 npm 发布包更新当前连接的 Cox 服务。",
   "Cox is up to date.": "Cox 已是最新版本。",
+  "Stop Cox, run the npm upgrade, then start it again.":
+    "先停止 Cox，运行 npm 升级命令，再重新启动。",
   "Download update": "下载更新",
   "Downloading and verifying Cox. Current tasks will not be interrupted.":
     "正在下载并校验 Cox，不会中断当前任务。",

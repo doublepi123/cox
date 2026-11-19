@@ -17,7 +17,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { detectLocalServiceUpdateOwnership } from "../localServiceUpdate/ownership.ts";
+import { supportsNpmCoxUpdates } from "../localServiceUpdate/ownership.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
 
@@ -188,18 +188,7 @@ export const make = Effect.gen(function* () {
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
   const machine = yield* detectServerEnvironmentMachineKind();
-  const localServiceUpdate = detectLocalServiceUpdateOwnership({
-    enabled: serverConfig.devUrl === undefined,
-    ...(process.env.COX_LOCAL_SERVICE_UPDATE
-      ? { environment: process.env.COX_LOCAL_SERVICE_UPDATE }
-      : {}),
-    platform: process.platform,
-    execPath: process.execPath,
-    ...(process.argv[1] ? { entryPath: process.argv[1] } : {}),
-    ...(serverConfig.staticDir ? { staticDir: serverConfig.staticDir } : {}),
-    ...(process.env.INVOCATION_ID ? { invocationId: process.env.INVOCATION_ID } : {}),
-    realpath: (path) => path,
-  });
+  const localServiceUpdate = supportsNpmCoxUpdates(serverConfig);
   const databaseMigration = databaseMigrationHead(serverConfig.dbPath);
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,

@@ -4,15 +4,16 @@ import { translateCurrent } from "../i18n";
 
 export function useLocalServiceUpdate(enabled: boolean) {
   const [state, setState] = useState<LocalServiceUpdateState | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<"" | "check" | "download" | "apply" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
-  const request = useCallback(async (action = "") => {
+  const request = useCallback(async (action = "", signal?: AbortSignal) => {
     const response = await fetch(`/api/local-service-update${action ? `/${action}` : ""}`, {
       method: action ? "POST" : "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
+      ...(signal ? { signal } : {}),
     });
     const body = (await response.json()) as LocalServiceUpdateState & { message?: string };
     if (!response.ok)
@@ -20,8 +21,10 @@ export function useLocalServiceUpdate(enabled: boolean) {
         body.message ??
           translateCurrent("Update request failed ({status}).", { status: response.status }),
       );
-    setError(null);
-    setState(body);
+    if (!signal?.aborted) {
+      setError(null);
+      setState(body);
+    }
     return body;
   }, []);
 
@@ -38,16 +41,19 @@ export function useLocalServiceUpdate(enabled: boolean) {
     };
   }, [enabled, request]);
 
+  const polling =
+    pending === "download" || state?.status === "downloading" || state?.status === "restarting";
   useEffect(() => {
-    if (!enabled || (state?.status !== "downloading" && state?.status !== "restarting")) return;
-    let active = true;
+    if (!enabled || !polling) return;
+    const controller = new AbortController();
     let loading = false;
     const load = () => {
       if (loading) return;
       loading = true;
-      void request()
+      void request("", controller.signal)
         .catch((cause) => {
-          if (active) setError(cause instanceof Error ? cause.message : String(cause));
+          if (!controller.signal.aborted)
+            setError(cause instanceof Error ? cause.message : String(cause));
         })
         .finally(() => {
           loading = false;
@@ -55,15 +61,15 @@ export function useLocalServiceUpdate(enabled: boolean) {
     };
     const timer = setInterval(load, 1_000);
     return () => {
-      active = false;
+      controller.abort();
       clearInterval(timer);
     };
-  }, [enabled, request, state?.status]);
+  }, [enabled, request, polling]);
 
   const execute = async (action: "" | "check" | "download" | "apply") => {
     if (inFlight.current) return;
     inFlight.current = true;
-    setBusy(true);
+    setPending(action);
     setError(null);
     try {
       await request(action);
@@ -71,12 +77,12 @@ export function useLocalServiceUpdate(enabled: boolean) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
     inFlight.current = false;
-    setBusy(false);
+    setPending(null);
   };
 
   return {
     state,
-    busy,
+    busy: pending !== null,
     error,
     reload: () => execute(""),
     check: () => execute("check"),
