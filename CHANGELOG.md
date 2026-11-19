@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.8 — 2026-11-19
+
+- Keep the settings and usage sheet headers below the status bar. The title
+  and close button sit in the header's safe-area padding, and the settings
+  footer stays above the gesture inset.
+
 ## 0.2.7 — 2026-11-19
 
 - Show initial model-service waiting, including shared cooldown, instead of generic thinking.
