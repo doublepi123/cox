@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.9 — 2026-11-19
+
 - Treat a generic upstream `openai` endpoint marker as the connection's OpenAI
   protocol. Responses connections no longer save those models as Chat-only, so
   refresh makes them available to OMO and Codex again. Explicit Chat or
