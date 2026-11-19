@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type PointerEvent, type ReactNode } from "react";
 
 interface SheetProps {
   readonly title: string;
@@ -23,6 +23,28 @@ export function Sheet(props: SheetProps) {
     };
   }, []);
 
+  const drag = useRef<{ pointerId: number; y: number } | null>(null);
+  const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    drag.current = { pointerId: event.pointerId, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onPointerUp = (event: PointerEvent<HTMLElement>) => {
+    const start = drag.current;
+    drag.current = null;
+    const dialog = dialogRef.current;
+    if (!start || start.pointerId !== event.pointerId || !dialog) return;
+    dialog.style.transform = "";
+    if (event.clientY - start.y > 72) props.onClose();
+  };
+  const onPointerMove = (event: PointerEvent<HTMLElement>) => {
+    const start = drag.current;
+    const dialog = dialogRef.current;
+    if (!start || start.pointerId !== event.pointerId || !dialog) return;
+    const delta = Math.max(0, event.clientY - start.y);
+    dialog.style.transform = `translateY(${delta}px)`;
+  };
+
   return (
     <dialog
       ref={dialogRef}
@@ -35,7 +57,13 @@ export function Sheet(props: SheetProps) {
       }}
     >
       <div className="sheet-panel">
-        <header className="sheet-header">
+        <header
+          className="sheet-header"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
           <div className="sheet-heading">
             <h2 id={titleId}>{props.title}</h2>
             {props.description ? <p id={descriptionId}>{props.description}</p> : null}

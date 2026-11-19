@@ -245,8 +245,9 @@ describe("launcher to workspace integration", () => {
     expect(native.calls.openWorkspace).toHaveLength(1);
 
     await serverRow("Workstation")
-      .getByRole("button", { name: t("forget") })
+      .getByRole("button", { name: t("serverActions") })
       .click();
+    await page.getByRole("menuitem", { name: t("forget") }).click();
     await page.getByRole("button", { name: t("forgetServer") }).click();
     await expect.element(serverRow("Workstation")).not.toBeInTheDocument();
 

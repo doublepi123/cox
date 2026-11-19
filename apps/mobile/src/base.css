@@ -21,8 +21,13 @@ input,
 dialog {
   -webkit-tap-highlight-color: transparent;
 }
-button {
+button,
+a {
   touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+button {
+  user-select: none;
 }
 ::selection {
   background: var(--accent-wash);
@@ -44,12 +49,21 @@ button {
   width: min(100%, var(--content-max));
   margin-inline: auto;
   padding-inline: max(var(--space-4), var(--safe-left)) max(var(--space-4), var(--safe-right));
-  padding-block: max(var(--space-6), var(--safe-top)) max(var(--space-8), var(--safe-bottom));
+  padding-block: 0 max(var(--space-8), var(--safe-bottom));
 }
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
   display: grid;
   gap: var(--space-4);
-  margin-bottom: var(--space-8);
+  margin-inline: calc(-1 * max(var(--space-4), var(--safe-left)))
+    calc(-1 * max(var(--space-4), var(--safe-right)));
+  margin-bottom: var(--space-6);
+  padding: max(var(--space-5), var(--safe-top)) max(var(--space-4), var(--safe-right)) var(--space-4)
+    max(var(--space-4), var(--safe-left));
+  background: color-mix(in srgb, var(--bg-canvas) 88%, transparent);
+  backdrop-filter: blur(18px);
 }
 .brand {
   min-width: 0;
@@ -138,7 +152,7 @@ h3 {
     transform var(--dur-fast) var(--ease-out);
 }
 .button:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 .button:disabled {
   opacity: 0.64;

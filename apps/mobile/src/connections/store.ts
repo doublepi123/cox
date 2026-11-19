@@ -343,6 +343,14 @@ export class ConnectionStore {
     );
   }
 
+  restore(profile: SavedServerProfile, index: number): void {
+    if (this.snapshot.profiles.some((candidate) => candidate.id === profile.id)) return;
+    const profiles = [...this.snapshot.profiles];
+    const destination = Math.max(0, Math.min(Math.trunc(index), profiles.length));
+    profiles.splice(destination, 0, profile);
+    this.commit(profiles);
+  }
+
   move(id: string, targetIndex: number): void {
     const fromIndex = this.snapshot.profiles.findIndex((profile) => profile.id === id);
     if (fromIndex < 0) throw new ConnectionStoreError("unknown_server", "Unknown remote server.");

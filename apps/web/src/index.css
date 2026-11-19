@@ -1978,6 +1978,13 @@ body {
   font-family: var(--font-sans);
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 [data-preview-url-input] {
