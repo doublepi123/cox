@@ -1,10 +1,11 @@
 package dev.doublepi.cox.mobile
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import android.view.ViewGroup
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -26,7 +27,7 @@ internal data class WorkspaceOptions(
 )
 
 internal interface WorkspaceHost {
-    val activity: Activity
+    val activity: MainActivity
     val downloads: WorkspaceDownloads
     fun launchEvent(event: String)
     fun remember(identity: WorkspaceIdentity, path: String)
@@ -47,7 +48,6 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
     var webSwitcherMounted: Boolean = false
         private set
     private var token: String? = null
-    private var safeAreaScript: String? = null
     private var destroyed = false
 
     init {
@@ -74,6 +74,20 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
             }
             profile.cookieManager.setAcceptThirdPartyCookies(webView, false)
             webView.webViewClient = Client()
+            webView.webChromeClient = object : WebChromeClient() {
+                override fun onShowFileChooser(
+                    view: WebView,
+                    callback: ValueCallback<Array<Uri>>,
+                    params: FileChooserParams,
+                ): Boolean {
+                    if (destroyed || !view.isAttachedToWindow || token == null) {
+                        callback.onReceiveValue(null)
+                    } else {
+                        host.activity.showFileChooser(view, callback, params)
+                    }
+                    return true
+                }
+            }
             WebViewCompat.addWebMessageListener(webView, "coxMobileShell", setOf(identity.origin)) {
                     _, message, sourceOrigin, mainFrame, _ ->
                 if (!destroyed && webView.parent != null && message.type == WebMessageCompat.TYPE_STRING)
@@ -101,6 +115,7 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        host.activity.cancelFileChooser(webView)
         token = null
         navigation.invalidate()
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -113,16 +128,6 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
         currentBackgroundColor = parsed
         webView.setBackgroundColor(parsed)
         host.onWorkspaceChromeChanged(identity.profileName, parsed)
-    }
-
-    fun applySafeArea(script: String) {
-        safeAreaScript = script
-        if (!destroyed) webView.evaluateJavascript(script, null)
-    }
-
-    fun republishSafeArea() {
-        val script = safeAreaScript ?: return
-        if (!destroyed) webView.evaluateJavascript(script, null)
     }
 
     fun prepareBackdrop(color: Int) {
@@ -310,6 +315,7 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            host.activity.cancelFileChooser(view)
             token = null
             if (webSwitcherMounted) {
                 webSwitcherMounted = false
@@ -336,7 +342,6 @@ internal class WorkspaceView(private val host: WorkspaceHost, val options: Works
 
         override fun onPageCommitVisible(view: WebView, url: String) {
             inject(url)
-            republishSafeArea()
             host.onContentReady(identity.profileName)
         }
 

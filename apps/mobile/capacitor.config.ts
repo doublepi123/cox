@@ -4,6 +4,7 @@ const config: CapacitorConfig = {
   appId: "dev.doublepi.cox.mobile",
   appName: "Cox Mobile",
   webDir: "dist",
+  plugins: { SystemBars: { insetsHandling: "disable" } },
   ios: { limitsNavigationsToAppBoundDomains: false },
 };
 

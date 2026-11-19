@@ -39,7 +39,7 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         )
     }
     private val host = object : WorkspaceHost {
-        override val activity get() = this@CoxWorkspaceWebViewPlugin.activity
+        override val activity get() = this@CoxWorkspaceWebViewPlugin.activity as MainActivity
         override val downloads get() = this@CoxWorkspaceWebViewPlugin.downloads
         override fun launchEvent(event: String) {
             dismiss()
@@ -202,7 +202,7 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
         val bg = launcherColor ?: WorkspaceChrome.defaultBackgroundColor(activity)
         workspace.prepareBackdrop(bg)
         val painted = workspace.webView.progress == 100 && !workspace.webView.url.isNullOrEmpty()
-        val root = container(bg, hiddenUntilPaint = !painted, edgeToEdge = true)
+        val root = container(bg, hiddenUntilPaint = !painted)
         (workspace.webView.parent as? ViewGroup)?.removeView(workspace.webView)
         root.addView(workspace.webView, FrameLayout.LayoutParams(-1, -1))
         WorkspaceChrome.applySystemBars(activity, bg)
@@ -240,7 +240,6 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     private fun container(
         backgroundColor: Int,
         hiddenUntilPaint: Boolean = false,
-        edgeToEdge: Boolean = false,
     ): FrameLayout {
         val root = FrameLayout(activity).apply {
             setBackgroundColor(backgroundColor)
@@ -248,15 +247,6 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
             isClickable = true
             if (hiddenUntilPaint && motionScale() != 0f) alpha = 0f
         }
-        WorkspaceChrome.installChildWebViewInsetsShield(
-            root,
-            edgeToEdge = edgeToEdge,
-            onSafeArea = if (!edgeToEdge) null else { bars ->
-                activeWorkspace?.applySafeArea(
-                    WorkspaceChrome.workspaceSafeAreaScript(bars, root.resources.displayMetrics.density),
-                )
-            },
-        )
         activity.getSharedPreferences("cox.workspace.serversPill", Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -281,6 +271,7 @@ class CoxWorkspaceWebViewPlugin : Plugin() {
     private fun dismiss() {
         workspaceBack?.remove()
         workspaceBack = null
+        activeWorkspace?.let { host.activity.cancelFileChooser(it.webView) }
         activeWorkspace = null
         val hadOverlay = overlay != null
         overlay?.let { root ->
