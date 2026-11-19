@@ -23,6 +23,7 @@ import {
   preferredModelServiceProtocols,
 } from "@t3tools/shared/modelServices";
 import { enrichModelFromModelsDev, fetchModelsDevCatalog } from "./modelsDev.ts";
+import { modelServiceFingerprint } from "./validation.ts";
 const isModelServiceError = Schema.is(ModelServiceError);
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -298,7 +299,11 @@ export const fetchModelServiceModels = Effect.fn("fetchModelServiceModels")(
 );
 
 export const discoverModelService = Effect.fn("discoverModelService")(
-  function* (input: { readonly serviceId: ModelServiceId; readonly metadataOnly?: boolean }) {
+  function* (input: {
+    readonly serviceId: ModelServiceId;
+    readonly metadataOnly?: boolean;
+    readonly preview?: boolean;
+  }) {
     const settings = yield* Settings.ServerSettingsService;
     const service = (yield* settings.getSettings).modelServices[input.serviceId];
     if (!service?.enabled)
@@ -308,9 +313,12 @@ export const discoverModelService = Effect.fn("discoverModelService")(
       : yield* fetchModelServiceModels(service);
     const models = new Map(discovered.map((model) => [model.id, model]));
     for (const model of service.models) {
-      if (model.source === "manual") models.set(model.id, model);
-      else if (!models.has(model.id)) models.set(model.id, { ...model, available: false });
-      else
+      const advertised = models.has(model.id);
+      if (model.source === "manual") {
+        if (!input.preview || advertised) models.set(model.id, model);
+      } else if (!advertised) {
+        if (!input.preview) models.set(model.id, { ...model, available: false });
+      } else
         models.set(model.id, {
           ...models.get(model.id)!,
           ...(model.ignored !== undefined ? { ignored: model.ignored } : {}),
@@ -321,9 +329,11 @@ export const discoverModelService = Effect.fn("discoverModelService")(
             : {}),
         });
     }
-    const catalog = yield* input.metadataOnly
-      ? fetchModelsDevCatalog
-      : fetchModelsDevCatalog.pipe(Effect.orElseSucceed(() => null));
+    const catalog = input.preview
+      ? null
+      : yield* input.metadataOnly
+          ? fetchModelsDevCatalog
+          : fetchModelsDevCatalog.pipe(Effect.orElseSucceed(() => null));
     const current = (yield* settings.getSettings).modelServices[input.serviceId];
     if (!Equal.equals(current, service))
       return yield* new ModelServiceError({
@@ -334,10 +344,19 @@ export const discoverModelService = Effect.fn("discoverModelService")(
         catalog ? enrichModelFromModelsDev(model, catalog, service.baseUrl) : model,
       ),
       discoveredAt: DateTime.formatIso(yield* DateTime.now),
+      revision: service.revision,
+      fingerprint: yield* modelServiceFingerprint(service),
     };
-    yield* settings.updateSettings({
-      modelServices: { [input.serviceId]: { ...service, ...result } },
-    });
+    if (!input.preview)
+      yield* settings.updateSettings({
+        modelServices: {
+          [input.serviceId]: {
+            ...service,
+            models: result.models,
+            discoveredAt: result.discoveredAt,
+          },
+        },
+      });
     return result;
   },
   Effect.mapError((error) =>

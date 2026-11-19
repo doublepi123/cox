@@ -153,6 +153,17 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
             revision: entry.revision + 1,
           };
       }
+      const modelImport = input.patch.modelServiceImport;
+      if (modelImport) {
+        const current = services[modelImport.serviceId];
+        if (current)
+          services[modelImport.serviceId] = {
+            ...current,
+            models: modelImport.models,
+            discoveredAt: modelImport.discoveredAt,
+            revision: current.revision + 1,
+          };
+      }
       state.settings = {
         ...state.settings,
         modelServices: services,
@@ -165,28 +176,53 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
     });
   state.discover
     .mockReset()
-    .mockImplementation(async ({ input }: { input: { serviceId: ModelServiceId } }) => {
-      const service = state.settings.modelServices[input.serviceId]!;
-      state.settings = {
-        ...state.settings,
-        modelServices: {
-          ...state.settings.modelServices,
-          [input.serviceId]: {
-            ...service,
-            models: [
-              {
-                id: "New/Model",
-                name: "Discovered model",
-                capabilities: null,
-                source: "discovered",
-              },
-            ],
+    .mockImplementation(
+      async ({ input }: { input: { serviceId: ModelServiceId; preview?: boolean } }) => {
+        const service = state.settings.modelServices[input.serviceId]!;
+        const discoveredAt = "2026-11-09T00:00:00Z";
+        const discovered = [
+          {
+            id: "New/Model",
+            name: "Discovered model",
+            capabilities: null,
+            source: "discovered" as const,
           },
-        },
-      };
-      notify();
-      return { _tag: "Success", value: undefined };
-    });
+          {
+            id: "Other/Model",
+            name: "Other discovered model",
+            capabilities: null,
+            source: "discovered" as const,
+          },
+        ];
+        if (input.preview)
+          return {
+            _tag: "Success",
+            value: {
+              models: discovered,
+              discoveredAt,
+              revision: service.revision,
+              fingerprint: "preview-fingerprint",
+            },
+          };
+        state.settings = {
+          ...state.settings,
+          modelServices: {
+            ...state.settings.modelServices,
+            [input.serviceId]: { ...service, models: discovered.slice(0, 1), discoveredAt },
+          },
+        };
+        notify();
+        return {
+          _tag: "Success",
+          value: {
+            models: discovered.slice(0, 1),
+            discoveredAt,
+            revision: service.revision,
+            fingerprint: "preview-fingerprint",
+          },
+        };
+      },
+    );
 }
 
 async function openModelActions(
@@ -362,20 +398,14 @@ describe("model services settings", () => {
     });
     state.discover.mockImplementationOnce(async () => {
       const service = state.settings.modelServices[id]!;
-      state.settings = {
-        ...state.settings,
-        modelServices: {
-          ...state.settings.modelServices,
-          [id]: {
-            ...service,
-            revision: service.revision + 1,
-            discoveredAt: "2026-11-09T00:00:00Z",
-            models: [...configured.models, ...staleModels, manualModel],
-          },
+      return {
+        _tag: "Success",
+        value: {
+          revision: service.revision,
+          discoveredAt: "2026-11-09T00:00:00Z",
+          models: configured.models,
         },
       };
-      notify();
-      return { _tag: "Success", value: undefined };
     });
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
     await expect
@@ -383,6 +413,8 @@ describe("model services settings", () => {
       .not.toBeInTheDocument();
     await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
     expect(state.save).not.toHaveBeenCalled();
+    await page.getByRole("checkbox", { name: "Import model Exact model", exact: true }).click();
+    await page.getByRole("button", { name: "Import selected models (1)", exact: true }).click();
     const cleanup = screen.getByRole("button", { name: "Delete unlisted models (2)", exact: true });
     await expect.element(cleanup).toBeVisible();
     await cleanup.click();
@@ -393,12 +425,12 @@ describe("model services settings", () => {
     expect(list.element().textContent).not.toContain("Vendor/Manual");
     expect(list.element().textContent).not.toContain("Vendor/Exact");
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    expect(state.save).not.toHaveBeenCalled();
+    expect(state.save).toHaveBeenCalledOnce();
     await cleanup.click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
     await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
-    expect(state.save).toHaveBeenCalledOnce();
-    const patch = state.save.mock.calls[0]![0].input.patch.modelServices[id];
+    expect(state.save).toHaveBeenCalledTimes(2);
+    const patch = state.save.mock.calls[1]![0].input.patch.modelServices[id];
     expect(patch).toEqual({
       ...configured,
       revision: 1,
@@ -1123,7 +1155,11 @@ describe("model services settings", () => {
       .toBeVisible();
     await screen.getByRole("button", { name: "Save and fetch models", exact: true }).click();
     expect(state.save).toHaveBeenCalledTimes(2);
-    expect(state.discover).toHaveBeenCalledOnce();
+    expect(state.discover).toHaveBeenCalledWith({
+      environmentId,
+      input: { serviceId: id, preview: true },
+    });
+    expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
   });
 
   it("shows the selected service clearly and switches editors from the service picker", async () => {
@@ -1494,11 +1530,21 @@ describe("model services settings", () => {
       apiKey: "replacement-test-key",
       protocol: "openai-chat",
     });
+    const serviceId = ModelServiceId.make(entries[0]![0]);
     expect(state.discover).toHaveBeenCalledWith({
       environmentId,
-      input: { serviceId: entries[0]![0] },
+      input: { serviceId, preview: true },
     });
+    expect(state.settings.modelServices[serviceId]?.models).toEqual([]);
+    await page
+      .getByRole("checkbox", { name: "Import model Discovered model", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Import selected models (1)", exact: true }).click();
     await expect.element(screen.getByText("Discovered model", { exact: true })).toBeVisible();
+    expect(state.settings.modelServices[serviceId]?.models.map((model) => model.id)).toEqual([
+      "New/Model",
+    ]);
+    expect(state.settings.modelServices[serviceId]?.models[0]?.ignored).toBeUndefined();
     await expect.element(screen.getByLabelText("API key", { exact: true })).toHaveValue("");
     expect(
       (
@@ -1508,6 +1554,54 @@ describe("model services settings", () => {
       ).value,
     ).not.toContain("private-header-value");
     expect(screen.container.textContent).not.toContain("replacement-test-key");
+  });
+
+  it("keeps unchecked existing model metadata when importing a new model", async () => {
+    const originalPrice = { inputCostPerMillionTokens: 1, outputCostPerMillionTokens: 3 };
+    setup({
+      [id]: {
+        ...configured,
+        models: [{ ...configured.models[0]!, modelsDevPrice: originalPrice }],
+      },
+    });
+    state.discover.mockImplementationOnce(async () => {
+      const service = state.settings.modelServices[id]!;
+      return {
+        _tag: "Success",
+        value: {
+          revision: service.revision,
+          fingerprint: "changed-upstream-preview",
+          discoveredAt: "2026-11-09T00:00:00Z",
+          models: [
+            {
+              ...configured.models[0]!,
+              name: "Upstream renamed model",
+              modelsDevPrice: { inputCostPerMillionTokens: 99, outputCostPerMillionTokens: 100 },
+            },
+            {
+              id: "New/Model",
+              name: "Discovered model",
+              capabilities: null,
+              source: "discovered",
+            },
+          ],
+        },
+      };
+    });
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Import models", exact: true });
+    await expect.element(dialog).toBeVisible();
+    await expect
+      .element(dialog.getByRole("checkbox", { name: "Import model Upstream renamed model" }))
+      .not.toBeChecked();
+    await dialog
+      .getByRole("checkbox", { name: "Import model Discovered model", exact: true })
+      .click();
+    await dialog.getByRole("button", { name: "Import selected models (1)", exact: true }).click();
+    const models = state.settings.modelServices[id]?.models;
+    expect(models?.map((model) => model.id)).toEqual(["Vendor/Exact", "New/Model"]);
+    expect(models?.[0]).toEqual({ ...configured.models[0], modelsDevPrice: originalPrice });
   });
 
   it("adds model metadata without guessing unknown capabilities or losing a stored secret", async () => {
@@ -1714,7 +1808,74 @@ describe("model services settings", () => {
     await expect.element(screen.getByText("Exact model", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
     expect(state.discover).toHaveBeenCalledTimes(2);
+    expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
+    await page
+      .getByRole("checkbox", { name: "Import model Discovered model", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Import selected models (1)", exact: true }).click();
     await expect.element(screen.getByText("Discovered model", { exact: true })).toBeVisible();
+    expect(state.settings.modelServices[id]?.models.map((model) => model.id)).toEqual([
+      "Vendor/Exact",
+      "New/Model",
+    ]);
+  });
+
+  it("discards a pending preview when the fetch is cancelled", async () => {
+    setup({ [id]: configured });
+    type PreviewResult = {
+      _tag: "Success";
+      value: {
+        revision: number;
+        discoveredAt: string;
+        models: Array<{ id: string; capabilities: null; source: "discovered" }>;
+      };
+    };
+    let resolvePreview: ((result: PreviewResult) => void) | undefined;
+    const pending = new Promise<PreviewResult>((resolve) => {
+      resolvePreview = resolve;
+    });
+    state.discover.mockImplementationOnce(() => pending);
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
+    await expect
+      .element(screen.getByRole("status"))
+      .toHaveTextContent("Fetching models from Shared API…");
+    await screen.getByRole("button", { name: "Cancel fetch", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Refresh models", exact: true }))
+      .toBeEnabled();
+    await act(async () => {
+      resolvePreview?.({
+        _tag: "Success",
+        value: {
+          revision: 0,
+          discoveredAt: "2026-11-09T00:00:00Z",
+          models: [{ id: "New/Model", capabilities: null, source: "discovered" }],
+        },
+      });
+    });
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+    expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("marks previously discovered models unavailable when the gateway returns none", async () => {
+    setup({
+      [id]: {
+        ...configured,
+        models: [{ ...configured.models[0]!, source: "discovered", available: true }, manualModel],
+      },
+    });
+    state.discover.mockImplementationOnce(async () => ({
+      _tag: "Success",
+      value: { revision: 0, discoveredAt: "2026-11-09T00:00:00Z", models: [] },
+    }));
+    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+    await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
+    await page.getByRole("button", { name: "Mark models unavailable (1)", exact: true }).click();
+    expect(state.save).toHaveBeenCalledOnce();
+    expect(state.settings.modelServices[id]?.models[0]?.available).toBe(false);
+    expect(state.settings.modelServices[id]?.models[1]).toEqual(manualModel);
   });
 
   it("requires unbinding before removal and enforces read-only provider access", async () => {

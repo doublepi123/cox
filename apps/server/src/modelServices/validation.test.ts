@@ -7,8 +7,13 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
-import { validateModelServiceBindings } from "./validation.ts";
+import {
+  modelServiceFingerprint,
+  resolveModelServiceImport,
+  validateModelServiceBindings,
+} from "./validation.ts";
 
 const serviceId = ModelServiceId.make("omo-service");
 const instanceId = ProviderInstanceId.make("omo-test");
@@ -122,6 +127,45 @@ describe("OMO model service validation", () => {
       }),
     ).toContain("Role names");
   });
+  it("rejects a stale import fingerprint without requiring a revision change", () => {
+    const current = {
+      ...settings(),
+      modelServices: { [serviceId]: { ...service, name: "Edited in settings" } },
+    };
+    expect(current.modelServices[serviceId]?.revision).toBe(service.revision);
+    const error = Effect.runSync(
+      Effect.flip(
+        resolveModelServiceImport(current, {
+          modelServiceImport: {
+            serviceId,
+            fingerprint: Effect.runSync(modelServiceFingerprint(service)),
+            models: [{ id: "new", capabilities: null }],
+            discoveredAt: "2026-11-09T00:00:00Z",
+          },
+        }),
+      ),
+    );
+    expect(error.detail).toContain("model service changed");
+  });
+
+  it("applies a matching import against the current service configuration", () => {
+    const resolved = Effect.runSync(
+      resolveModelServiceImport(settings(), {
+        modelServiceImport: {
+          serviceId,
+          fingerprint: Effect.runSync(modelServiceFingerprint(service)),
+          models: [{ id: "new", capabilities: null }],
+          discoveredAt: "2026-11-09T00:00:00Z",
+        },
+      }),
+    );
+    expect(resolved.modelServices?.[serviceId]).toMatchObject({
+      name: "Models",
+      models: [{ id: "new", capabilities: null }],
+      discoveredAt: "2026-11-09T00:00:00Z",
+    });
+  });
+
   it("preserves unavailable explicit main models for OMO and other providers", () => {
     const current = settings();
     const instance = current.providerInstances[instanceId]!;

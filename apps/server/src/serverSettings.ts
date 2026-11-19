@@ -71,6 +71,7 @@ import {
 import {
   validateModelServiceBindings,
   ensureModelServiceRevisions,
+  resolveModelServiceImport,
 } from "./modelServices/validation.ts";
 import { migrateSingleModelServices, splitModelService } from "./modelServices/migration.ts";
 
@@ -269,9 +270,14 @@ const applyModelServiceSettingsPatch = Effect.fn("applyModelServiceSettingsPatch
   settingsPath: string,
   materialize: (settings: ServerSettings) => Effect.Effect<ServerSettings, ServerSettingsError>,
 ) {
-  yield* ensureModelServiceWritesAllowed(current, patch, settingsPath);
-  const next = applyServerSettingsPatch(current, patch);
-  const split = patch.splitModelService;
+  const resolvedPatch = yield* resolveModelServiceImport(current, patch).pipe(
+    Effect.mapError(
+      (cause) => new ServerSettingsError({ settingsPath, operation: "normalize", cause }),
+    ),
+  );
+  yield* ensureModelServiceWritesAllowed(current, resolvedPatch, settingsPath);
+  const next = applyServerSettingsPatch(current, resolvedPatch);
+  const split = resolvedPatch.splitModelService;
   if (!split) return next;
   const service = (yield* materialize(current)).modelServices[split.serviceId];
   const withCredentials =

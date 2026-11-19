@@ -145,6 +145,55 @@ describe("model service discovery", () => {
       ),
     ),
   );
+  it.effect("previews advertised models without changing the saved catalog", () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      const before = (yield* settings.getSettings).modelServices[id];
+      let metadataRequests = 0;
+      const http = HttpClient.make((request) => {
+        if (request.url === "https://models.dev/api.json") metadataRequests++;
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json(
+              request.url === "https://models.dev/api.json"
+                ? {}
+                : { data: [{ id: "override" }, { id: "new" }] },
+            ),
+          ),
+        );
+      });
+      const result = yield* discoverModelService({ serviceId: id, preview: true }).pipe(
+        Effect.provideService(HttpClient.HttpClient, http),
+      );
+      expect(result.revision).toBe(7);
+      expect(result.models.map((model) => model.id)).toEqual(["override", "new"]);
+      expect(result.models[0]).toMatchObject({ ignored: true, available: true });
+      expect(metadataRequests).toBe(0);
+      expect((yield* settings.getSettings).modelServices[id]).toEqual(before);
+    }).pipe(
+      Effect.provide(
+        ServerSettingsService.layerTest({
+          modelServices: {
+            [id]: config({
+              revision: 7,
+              models: [
+                {
+                  id: "override",
+                  ignored: true,
+                  source: "discovered",
+                  capabilities: null,
+                },
+                { id: "missing", source: "discovered", capabilities: null },
+                { id: "manual", source: "manual", capabilities: null },
+              ],
+            }),
+          },
+        }),
+      ),
+    ),
+  );
+
   it.effect.each([
     { metadataOnly: false, cleared: false },
     { metadataOnly: true, cleared: false },

@@ -5,6 +5,7 @@ import {
   ModelServiceRecovery,
   ModelServiceBaseUrl,
   ModelServiceConfig,
+  ModelServiceDiscoveryInput,
   ModelServiceId,
 } from "./modelService.ts";
 import { ProviderInstanceConfig } from "./providerInstance.ts";
@@ -21,6 +22,11 @@ const decodeUrl = Schema.decodeSync(ModelServiceBaseUrl);
 const decodeId = Schema.decodeSync(ModelServiceId);
 
 describe("model service contracts", () => {
+  it("rejects combined preview and metadata-only discovery", () => {
+    const decode = Schema.decodeUnknownSync(ModelServiceDiscoveryInput);
+    expect(() => decode({ serviceId: "shared", preview: true, metadataOnly: true })).toThrow();
+  });
+
   it("round-trips a single API protocol and rejects conflicting legacy settings", () => {
     const input = {
       name: "Single API",

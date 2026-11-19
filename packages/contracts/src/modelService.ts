@@ -116,12 +116,23 @@ export type ModelServiceConfig = typeof ModelServiceConfig.Type;
 export const ModelServiceDiscoveryInput = Schema.Struct({
   serviceId: ModelServiceId,
   metadataOnly: Schema.optionalKey(Schema.Boolean),
-});
+  preview: Schema.optionalKey(Schema.Boolean),
+}).check(Schema.makeFilter((input) => !(input.preview === true && input.metadataOnly === true)));
 export const ModelServiceDiscoveryResult = Schema.Struct({
   models: Schema.Array(ModelServiceModel),
   discoveredAt: Schema.String,
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  fingerprint: TrimmedNonEmptyString,
 });
 export type ModelServiceDiscoveryResult = typeof ModelServiceDiscoveryResult.Type;
+
+export const ModelServiceImportInput = Schema.Struct({
+  serviceId: ModelServiceId,
+  fingerprint: TrimmedNonEmptyString,
+  models: Schema.Array(ModelServiceModel),
+  discoveredAt: Schema.String,
+});
+export type ModelServiceImportInput = typeof ModelServiceImportInput.Type;
 
 export const ModelServiceTestInput = Schema.Struct({
   serviceId: ModelServiceId,

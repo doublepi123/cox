@@ -6,6 +6,7 @@ import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
+  DIALOG_REDUCED_MOTION_CLASS,
 } from "~/components/ui/dialog-styles";
 import {
   ControlledOpenContext,
@@ -59,9 +60,11 @@ function AlertDialogPopup({
   bottomStickOnMobile = true,
   portalContainer,
   layer = "default",
+  reducedMotion = "default",
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   bottomStickOnMobile?: boolean;
+  reducedMotion?: "default" | "opacity";
   portalContainer?: AlertDialogPrimitive.Portal.Props["container"];
   layer?: "default" | "application";
 }) {
@@ -76,6 +79,7 @@ function AlertDialogPopup({
           className={cn(
             DIALOG_POPUP_CLASS,
             "row-start-2 max-h-full max-w-lg text-popover-foreground",
+            reducedMotion === "opacity" && DIALOG_REDUCED_MOTION_CLASS,
             bottomStickOnMobile && DIALOG_MOBILE_SHEET_CLASS,
             className,
           )}
@@ -88,11 +92,16 @@ function AlertDialogPopup({
   );
 }
 
-function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+function AlertDialogHeader({
+  className,
+  shrink = true,
+  ...props
+}: React.ComponentProps<"div"> & { shrink?: boolean }) {
   return (
     <div
       className={cn(
         "flex min-h-0 flex-col gap-2 p-6 text-center max-sm:pb-4 sm:text-left",
+        !shrink && "shrink-0",
         className,
       )}
       data-slot="alert-dialog-header"
@@ -104,14 +113,17 @@ function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">)
 function AlertDialogFooter({
   className,
   variant = "default",
+  shrink = true,
   ...props
 }: React.ComponentProps<"div"> & {
   variant?: "default" | "bare";
+  shrink?: boolean;
 }) {
   return (
     <div
       className={cn(
         "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
+        !shrink && "shrink-0",
         variant === "default" && "border-t bg-muted/72 py-4",
         variant === "bare" && "pb-6",
         className,
@@ -136,12 +148,18 @@ function AlertDialogDescription({
   className,
   visuallyHidden = false,
   preserveLines = false,
+  scrollable = true,
   ...props
-}: AlertDialogPrimitive.Description.Props & { visuallyHidden?: boolean; preserveLines?: boolean }) {
+}: AlertDialogPrimitive.Description.Props & {
+  visuallyHidden?: boolean;
+  preserveLines?: boolean;
+  scrollable?: boolean;
+}) {
   return (
     <AlertDialogPrimitive.Description
       className={cn(
-        "wrap-anywhere max-h-[min(24rem,60dvh)] min-h-0 overflow-y-auto overscroll-contain text-muted-foreground text-sm select-text",
+        "wrap-anywhere min-h-0 text-muted-foreground text-sm select-text",
+        scrollable && "max-h-[min(24rem,60dvh)] overflow-y-auto overscroll-contain",
         visuallyHidden && "sr-only",
         preserveLines && "whitespace-pre-line",
         className,

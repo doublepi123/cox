@@ -21,7 +21,7 @@ import {
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
 import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
-import { ModelServiceId, ModelServiceConfig } from "./modelService.ts";
+import { ModelServiceId, ModelServiceConfig, ModelServiceImportInput } from "./modelService.ts";
 import { ModelTokenPrice } from "./modelTokenPrice.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
@@ -1711,6 +1711,7 @@ export const ServerSettingsPatch = Schema.Struct({
   modelServices: Schema.optionalKey(
     Schema.Record(ModelServiceId, Schema.NullOr(ModelServiceConfig)),
   ),
+  modelServiceImport: Schema.optionalKey(ModelServiceImportInput),
   splitModelService: Schema.optionalKey(
     Schema.Struct({
       serviceId: ModelServiceId,
@@ -1749,6 +1750,7 @@ export function requiredScopesForServerSettingsPatch(
       key === "providerInstanceOrder" ||
       key === "deletedDefaultProviderInstances" ||
       key === "modelServices" ||
+      key === "modelServiceImport" ||
       key === "splitModelService" ||
       key === "modelServiceOrder" ||
       key === "usageLimitSources" ||

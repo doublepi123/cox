@@ -524,8 +524,8 @@ export const en = {
     "No models.dev price is currently available for this model.",
   "Input modalities": "Input modalities",
   "Output modalities": "Output modalities",
-  "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.":
-    "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.",
+  "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.":
+    "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.",
   "Could not fetch model metadata from models.dev. Try again later.":
     "Could not fetch model metadata from models.dev. Try again later.",
   "Model services": "Model services",
@@ -625,12 +625,33 @@ export const en = {
   "Save service": "Save service",
   "Refresh models": "Refresh models",
   "Save changes before refreshing models": "Save changes before refreshing models",
-  "The connection changed. Saving will also refresh the model catalog.":
-    "The connection changed. Saving will also refresh the model catalog.",
+  "The connection changed. Saving will also fetch models for review before importing.":
+    "The connection changed. Saving will also fetch models for review before importing.",
   "Only settings are saved. The model catalog is unchanged.":
     "Only settings are saved. The model catalog is unchanged.",
   "Working…": "Working…",
   "Save and fetch models": "Save and fetch models",
+  "Import models": "Import models",
+  "Select models from {service} to add or update.":
+    "Select models from {service} to add or update.",
+  "Only checked models are imported.": "Only checked models are imported.",
+  "Unlisted models are kept unavailable.": "Unlisted models are kept unavailable.",
+  "Search models": "Search models",
+  "Search by name or model ID": "Search by name or model ID",
+  "{selected} of {total} models selected": "{selected} of {total} models selected",
+  "Models available for import": "Models available for import",
+  "Import model {model}": "Import model {model}",
+  "Already imported": "Already imported",
+  "No models match your search.": "No models match your search.",
+  "The service returned no models.": "The service returned no models.",
+  "The model service changed. Close this dialog and fetch the models again.":
+    "The model service changed. Close this dialog and fetch the models again.",
+  "Import selected models ({count})": "Import selected models ({count})",
+  "Mark models unavailable ({count})": "Mark models unavailable ({count})",
+  "Saving model selection…": "Saving model selection…",
+  "Cancel fetch": "Cancel fetch",
+  "Fetching models from {service}…": "Fetching models from {service}…",
+  "Select matching": "Select matching",
   "Add model": "Add model",
   "Delete model {model}": "Delete model {model}",
   "Delete model": "Delete model",
