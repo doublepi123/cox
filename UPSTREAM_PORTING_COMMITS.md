@@ -318,5 +318,5 @@ No version bump.
 ## November 20 follow-up
 
 Cox baseline `c641ee23d350`; upstream `455a60aa3ceb..4d5bf2d5579f` (246 commits).
-Adapted: 19. The commit-by-commit record is [docs/upstream-ports-2026-11-20.md](docs/upstream-ports-2026-11-20.md).
+Adapted: 42, including a second pass the same day. The commit-by-commit record is [docs/upstream-ports-2026-11-20.md](docs/upstream-ports-2026-11-20.md).
 `apps/mobile` was not changed. No version bump.

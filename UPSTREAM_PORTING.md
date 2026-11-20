@@ -1,7 +1,7 @@
 # Upstream port status
 
 Latest follow-up: [November 20 review](docs/upstream-ports-2026-11-20.md), comparing
-246 commits `455a60aa3ceb..4d5bf2d5579f` and adapting 19 for Cox at `c641ee23d350`.
+246 commits `455a60aa3ceb..4d5bf2d5579f` and adapting 42 for Cox at `c641ee23d350`.
 No version bump.
 
 Previously: [November 19 review](docs/upstream-ports-2026-11-19.md), comparing
