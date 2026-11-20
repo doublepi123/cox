@@ -52,6 +52,7 @@ function createSession() {
     clearStorageData: vi.fn(async () => {}),
     clearCache: vi.fn(async () => {}),
     clearAuthCache: vi.fn(async () => {}),
+    fetch: (input: unknown, init?: unknown) => fixture.shellFetch(input, init),
   };
 }
 
@@ -67,6 +68,9 @@ function fromPartition(partition: string) {
 class TestWindow extends EventEmitter {
   static getFocusedWindow() {
     return fixture.focused;
+  }
+  static getAllWindows() {
+    return fixture.windows.filter((target) => !target.destroyed);
   }
   static fromWebContents(contents: TestContents) {
     return fixture.windows.find((target) => target.webContents === contents);
@@ -151,6 +155,12 @@ const fixture = {
   loadURL: vi.fn(async (_url: string) => {}),
   launchBackend: vi.fn(async (_start: (directory: string) => Promise<string>) => localOrigin),
   backendExit: undefined as ((message: string) => void) | undefined,
+  backendConstructed: 0,
+  backendStop: vi.fn(async () => {}),
+  shellFetch: vi.fn(async (_input?: unknown, _init?: unknown) => ({
+    ok: false,
+    json: async () => ({}),
+  })),
   inspect: vi.fn(async (_origin: string) => inspection),
   locale: "en-US",
   transactionId: "",
@@ -235,12 +245,15 @@ vi.mock("electron", () => ({
 vi.mock("./backend.ts", () => ({
   BackendProcess: class {
     constructor(options: { onUnexpectedExit: (message: string) => void }) {
+      fixture.backendConstructed += 1;
       fixture.backendExit = options.onUnexpectedExit;
     }
     async start() {
       return localOrigin;
     }
-    async stop() {}
+    async stop() {
+      await fixture.backendStop();
+    }
   },
   validateBackendInstallation: vi.fn(),
 }));
@@ -364,6 +377,9 @@ beforeEach(() => {
   fixture.events.removeAllListeners();
   fixture.launchBackend.mockReset().mockResolvedValue(localOrigin);
   fixture.backendExit = undefined;
+  fixture.backendConstructed = 0;
+  fixture.backendStop.mockReset().mockResolvedValue(undefined);
+  fixture.shellFetch.mockReset().mockResolvedValue({ ok: false, json: async () => ({}) });
   fixture.inspect.mockReset().mockResolvedValue(inspection);
   fixture.loadURL.mockReset().mockResolvedValue(undefined);
   fixture.messageBox.mockReset().mockResolvedValue({ response: 1 });
@@ -1526,5 +1542,140 @@ describe("desktop connection manager windows", () => {
     expect(page).toContain('value="Office &lt;&quot;West&quot;&gt; &amp; Co"');
     expect(page).toContain(`value="${inspection.origin}/?first=1&amp;second=2"`);
     expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  function launchOwnedBackend() {
+    fixture.launchBackend.mockImplementation(
+      async (start: (directory: string) => Promise<string>) => start(resolve("/fixture/backend")),
+    );
+  }
+
+  it("closes one connection window without stopping the other instance", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    launchOwnedBackend();
+    await start();
+    const local = primary();
+    await invoke("cox:connections-show", local);
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    const remoteUrl = remote.webContents.getURL();
+    remote.close();
+    expect(remote.destroyed).toBe(true);
+    expect(remote.webContents.session.clearStorageData).not.toHaveBeenCalled();
+    expect(local.destroyed).toBe(false);
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    expect(fixture.backendStop).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
+    fixture.events.emit("activate");
+    expect(local.visible).toBe(true);
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    expect(
+      fixture.windows.filter(
+        (value) => !value.destroyed && value.webContents.getURL() === remoteUrl,
+      ),
+    ).toHaveLength(0);
+    expect(fixture.launchBackend).toHaveBeenCalledOnce();
+  });
+
+  it("disconnects a closed local instance and does not restore or reconnect it", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    launchOwnedBackend();
+    await start();
+    const local = primary();
+    await invoke("cox:connections-show", local);
+    await invoke("cox:connections-connect", manager(), {
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    local.close();
+    await vi.waitFor(() => expect(local.destroyed).toBe(true));
+    expect(fixture.backendStop).toHaveBeenCalledOnce();
+    expect(fixture.backendConstructed).toBe(1);
+    expect(remote.destroyed).toBe(false);
+    expect(remote.webContents.getURL()).toBe(inspection.origin);
+    expect(JSON.parse(fixture.files.get(connectionsFile)!).active).toBeNull();
+    expect(fixture.quit).not.toHaveBeenCalled();
+    fixture.events.emit("activate");
+    expect(fixture.launchBackend).toHaveBeenCalledOnce();
+    expect(
+      fixture.windows.filter(
+        (value) => !value.destroyed && value.webContents.getURL() === localOrigin,
+      ),
+    ).toHaveLength(0);
+    expect(remote.destroyed).toBe(false);
+  });
+
+  it("starts a new local backend when a closed instance is opened again", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    launchOwnedBackend();
+    await start();
+    const local = primary();
+    local.close();
+    await vi.waitFor(() => expect(local.destroyed).toBe(true));
+    expect(fixture.backendStop).toHaveBeenCalledOnce();
+    fixture.events.emit("activate");
+    await vi.waitFor(() => expect(manager().visible).toBe(true));
+    expect(fixture.launchBackend).toHaveBeenCalledOnce();
+    await invoke("cox:connections-local", manager());
+    expect(fixture.backendConstructed).toBe(2);
+    expect(fixture.launchBackend).toHaveBeenCalledTimes(2);
+    expect(primary()).not.toBe(local);
+    expect(primary().webContents.getURL()).toBe(localOrigin);
+    expect(JSON.parse(fixture.files.get(connectionsFile)!).active).toEqual({ kind: "local" });
+  });
+
+  it("leaves a window open when closing it would interrupt work and the user cancels", async () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    launchOwnedBackend();
+    await start();
+    const local = primary();
+    fixture.shellFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ threads: [{ status: "running", pendingBackgroundTasks: [] }] }),
+    });
+    fixture.messageBox.mockResolvedValueOnce({ response: 0 });
+    local.close();
+    await vi.waitFor(() => expect(fixture.messageBox).toHaveBeenCalled());
+    expect(local.destroyed).toBe(false);
+    expect(local.visible).toBe(true);
+    expect(local.webContents.getURL()).toBe(localOrigin);
+    expect(fixture.backendStop).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
+    fixture.messageBox.mockResolvedValueOnce({ response: 1 });
+    local.close();
+    await vi.waitFor(() => expect(local.destroyed).toBe(true));
+    expect(fixture.backendStop).toHaveBeenCalledOnce();
+    expect(fixture.quit).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(manager().visible).toBe(true));
+    expect(
+      fixture.windows.filter(
+        (value) => !value.destroyed && value.webContents.getURL() === localOrigin,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("keeps the app on macOS after the last instance window closes without restoring it", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    launchOwnedBackend();
+    await start();
+    const local = primary();
+    local.close();
+    await vi.waitFor(() => expect(local.destroyed).toBe(true));
+    expect(fixture.backendStop).toHaveBeenCalledOnce();
+    expect(fixture.quit).not.toHaveBeenCalled();
+    expect(fixture.windows.filter((value) => !value.destroyed)).toHaveLength(0);
+    fixture.events.emit("activate");
+    await vi.waitFor(() => expect(manager().visible).toBe(true));
+    expect(fixture.launchBackend).toHaveBeenCalledOnce();
+    expect(fixture.backendConstructed).toBe(1);
   });
 });

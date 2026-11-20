@@ -78,6 +78,9 @@ const chinese = {
   "Quit Cox": "退出 Cox",
   "Quitting stops the local backend and interrupts running agent turns and terminals.":
     "退出会停止本地后端，并中断正在运行的 Agent 任务和终端。",
+  "Close window": "关闭窗口",
+  "Closing this window stops its connection and interrupts running agent tasks and terminals.":
+    "关闭此窗口会断开它的连接，并中断正在运行的 Agent 任务和终端。",
   Cancel: "取消",
   "Could not open this link in your default browser.": "无法在默认浏览器中打开此链接。",
   "Cox permission": "Cox 权限",

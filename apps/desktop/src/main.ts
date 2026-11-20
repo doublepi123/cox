@@ -44,6 +44,16 @@ import {
 } from "./config.ts";
 import { desktopConnectionError, desktopText } from "./native-text.ts";
 import { createDesktopMenuTemplate } from "./native-menu.ts";
+import {
+  InstanceOwnership,
+  LOCAL_BACKEND_PROCESS_ID,
+  LOCAL_CONNECTION_KEY,
+  LOCAL_INSTANCE_ID,
+  remoteClientProcessId,
+  remoteConnectionKey,
+  snapshotHasInterruptibleWork,
+  type OwnedInstance,
+} from "./instance-lifecycle.ts";
 
 function systemLocale() {
   return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
@@ -503,11 +513,10 @@ function createDesktopWindow(
 }
 
 function showWindow() {
-  if (connectionMode === "manager") {
+  if (connectionMode === "manager" || !window || window.isDestroyed()) {
     void openConnectionManager?.();
     return;
   }
-  if (!window || window.isDestroyed()) return;
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -952,10 +961,180 @@ async function start() {
       throw new Error("The client update is not ready.");
     await applySoftwareUpdates();
   });
+  const ownership = new InstanceOwnership();
+  const windowInstances = new Map<BrowserWindow, string>();
+  const pendingInstanceCloses = new Map<string, Promise<void>>();
+
+  function livingWindows() {
+    return BrowserWindow.getAllWindows().filter((candidate) => !candidate.isDestroyed());
+  }
+
+  function otherDisplayedInstance(except?: BrowserWindow) {
+    for (const [candidate, id] of windowInstances)
+      if (candidate !== except && !candidate.isDestroyed() && ownership.isOpen(id)) return true;
+    return false;
+  }
+
+  function adoptInstance(
+    target: BrowserWindow,
+    instance: OwnedInstance,
+    processId: string,
+    exclusive: boolean,
+  ) {
+    if (target.isDestroyed()) return;
+    if (!ownership.isOpen(instance.id)) {
+      ownership.open(instance);
+      ownership.lease(instance.id, processId, exclusive);
+    }
+    for (const [candidate, id] of windowInstances)
+      if (id === instance.id && candidate !== target) windowInstances.delete(candidate);
+    windowInstances.set(target, instance.id);
+  }
+
+  function detachInstanceWindow(target: BrowserWindow) {
+    windowInstances.delete(target);
+  }
+
+  async function stopLocalBackend() {
+    const current = backend;
+    backend = undefined;
+    localOrigin = undefined;
+    await current?.stop();
+  }
+
+  function endInstance(instanceId: string): Promise<void> {
+    const result = ownership.close(instanceId);
+    if (!result) return Promise.resolve();
+    if (result.instance.kind === "local") {
+      if (connectionMode === "local") {
+        connectionMode = "manager";
+        origin = undefined;
+        desktopReady = false;
+        supportsSettingsWindow = false;
+        startingBackend = false;
+      }
+      if (connectionStore.snapshot().active?.kind === "local") connectionStore.setActive(null);
+    } else {
+      const active = connectionStore.snapshot().active;
+      if (active?.kind === "remote" && active.profileId === result.instance.id)
+        connectionStore.setActive(null);
+      const closesPrimaryRemote = activeRemoteProfile?.id === result.instance.id;
+      if (closesPrimaryRemote) activeRemoteProfile = undefined;
+      if (closesPrimaryRemote && connectionMode === "remote") {
+        connectionMode = "manager";
+        origin = undefined;
+        desktopReady = false;
+        supportsSettingsWindow = false;
+      }
+    }
+    if (result.released.some((item) => item.id === LOCAL_BACKEND_PROCESS_ID))
+      return stopLocalBackend();
+    return Promise.resolve();
+  }
+
+  function releaseInstanceWindow(target: BrowserWindow) {
+    const instanceId = windowInstances.get(target);
+    windowInstances.delete(target);
+    if (!instanceId) return Promise.resolve();
+    return endInstance(instanceId);
+  }
+
+  async function localWorkWouldBeInterrupted() {
+    if (!localOrigin) return false;
+    try {
+      const partition = session.fromPartition("persist:cox-desktop") as Electron.Session & {
+        fetch?: typeof fetch;
+      };
+      const fetchShell = partition.fetch ? partition.fetch.bind(partition) : net.fetch;
+      const response = await fetchShell(
+        localOrigin + "/api/orchestration/shell?omitIdleSubagents=1",
+      );
+      if (!response.ok) return false;
+      return snapshotHasInterruptibleWork(await response.json());
+    } catch {
+      return false;
+    }
+  }
+
+  function releaseHeadlessLocal(): Promise<void> {
+    if (otherDisplayedInstance() || !ownership.isOpen(LOCAL_INSTANCE_ID)) return Promise.resolve();
+    return endInstance(LOCAL_INSTANCE_ID);
+  }
+
+  function closeInstanceNow(target: BrowserWindow, instanceId: string): Promise<void> {
+    if (target.isDestroyed() || windowInstances.get(target) !== instanceId)
+      return Promise.resolve();
+    windowInstances.delete(target);
+    const stopping = endInstance(instanceId);
+    if (!target.isDestroyed()) target.destroy();
+    return stopping
+      .catch((error: unknown) => {
+        dialog.showErrorBox(text("Cox could not stop its backend"), String(error));
+      })
+      .then(() => releaseHeadlessLocal())
+      .then(() => {
+        if (otherDisplayedInstance() || process.platform === "darwin") return;
+        if (connectionsWindow && !connectionsWindow.isDestroyed()) return;
+        void openConnectionManager?.();
+      });
+  }
+
+  async function confirmInstanceClose(target: BrowserWindow, instanceId: string) {
+    if (await localWorkWouldBeInterrupted()) {
+      if (target.isDestroyed() || approvedQuit || windowInstances.get(target) !== instanceId)
+        return;
+      const answer = await dialog.showMessageBox(target, {
+        type: "warning",
+        title: text("Close window"),
+        message: text(
+          "Closing this window stops its connection and interrupts running agent tasks and terminals.",
+        ),
+        buttons: [text("Cancel"), text("Close window")],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (answer.response !== 1 || target.isDestroyed() || approvedQuit) return;
+      if (windowInstances.get(target) !== instanceId) return;
+    }
+    await closeInstanceNow(target, instanceId);
+  }
+
+  function requestInstanceClose(target: BrowserWindow) {
+    const instanceId = windowInstances.get(target);
+    if (!instanceId || !ownership.isOpen(instanceId) || pendingInstanceCloses.has(instanceId))
+      return;
+    const stopsLocal =
+      instanceId === LOCAL_INSTANCE_ID ||
+      (!otherDisplayedInstance(target) && ownership.isOpen(LOCAL_INSTANCE_ID));
+    const pending = stopsLocal
+      ? confirmInstanceClose(target, instanceId)
+      : closeInstanceNow(target, instanceId);
+    if (!stopsLocal) return;
+    pendingInstanceCloses.set(instanceId, pending);
+    void pending.finally(() => {
+      if (pendingInstanceCloses.get(instanceId) === pending)
+        pendingInstanceCloses.delete(instanceId);
+    });
+  }
+
+  function ensureMainWindow(partition: string) {
+    if (window && !window.isDestroyed()) {
+      if (mainPartition !== partition) replaceMainWindow(partition);
+      return;
+    }
+    window = createDesktopWindow("main", width, height, false, partition);
+    mainPartition = partition;
+    configureMainWindow();
+  }
+
   function configureMainWindow() {
     const target = window;
     if (!target) return;
-    target.once("closed", () => closeOwnerPages(target));
+    target.once("closed", () => {
+      void releaseInstanceWindow(target);
+      closeOwnerPages(target);
+    });
     target.on("enter-full-screen", () => syncWindowControls(target));
     target.on("leave-full-screen", () => syncWindowControls(target));
     target.webContents.on("did-finish-load", () => syncWindowControls(target));
@@ -970,7 +1149,15 @@ async function start() {
     target.on("close", (event) => {
       if (approvedQuit) return;
       event.preventDefault();
-      if (process.platform === "darwin") target.hide();
+      if (windowInstances.has(target)) {
+        requestInstanceClose(target);
+        return;
+      }
+      if (
+        process.platform === "darwin" ||
+        livingWindows().some((candidate) => candidate !== target)
+      )
+        target.hide();
       else app.quit();
     });
     target.on("resize", () => {
@@ -1615,7 +1802,14 @@ async function start() {
     const generation = ++connectionGeneration;
     try {
       activeRemoteProfile = undefined;
-      if (mainPartition !== "persist:cox-desktop") replaceMainWindow("persist:cox-desktop");
+      ensureMainWindow("persist:cox-desktop");
+      if (window)
+        adoptInstance(
+          window,
+          { id: LOCAL_INSTANCE_ID, kind: "local", connectionKey: LOCAL_CONNECTION_KEY },
+          LOCAL_BACKEND_PROCESS_ID,
+          false,
+        );
       connectionMode = "local";
       showWindow();
       if (localOrigin) {
@@ -1636,12 +1830,16 @@ async function start() {
             startBackend,
             () => backend?.stop() ?? Promise.resolve(),
           );
-          localOrigin = startedOrigin;
-          if (generation !== connectionGeneration || connectionMode !== "local") {
+          if (
+            generation !== connectionGeneration ||
+            connectionMode !== "local" ||
+            !ownership.isOpen(LOCAL_INSTANCE_ID)
+          ) {
             await backend?.stop();
             localOrigin = undefined;
             return;
           }
+          localOrigin = startedOrigin;
           origin = startedOrigin;
           localPageUrl = undefined;
           startingBackend = false;
@@ -1695,6 +1893,17 @@ async function start() {
       true,
     );
     remoteWindows.set(target, profile);
+    adoptInstance(
+      target,
+      { id: profile.id, kind: "remote", connectionKey: remoteConnectionKey(profile.id) },
+      remoteClientProcessId(profile.id),
+      true,
+    );
+    target.on("close", (event) => {
+      if (approvedQuit || !windowInstances.has(target)) return;
+      event.preventDefault();
+      requestInstanceClose(target);
+    });
     const targetId = target.webContents.id;
     target.setTitle(`Cox · ${profile.name}`);
     target.webContents.setWindowOpenHandler(({ url }) => {
@@ -1728,6 +1937,7 @@ async function start() {
     target.webContents.on("did-finish-load", () => syncWindowControls(target));
     target.webContents.on("zoom-changed", () => setImmediate(() => syncWindowControls(target)));
     target.once("closed", () => {
+      void releaseInstanceWindow(target);
       closeOwnerPages(target);
       readyWindows.delete(targetId);
       remoteWindows.delete(target);
@@ -1852,12 +2062,20 @@ async function start() {
       connectionGeneration++;
       if (window) closeOwnerPages(window);
       activeRemoteProfile = profile;
-      if (mainPartition !== partition) replaceMainWindow(partition);
+      if (window && windowInstances.get(window) === LOCAL_INSTANCE_ID) detachInstanceWindow(window);
+      ensureMainWindow(partition);
       connectionMode = "remote";
       showWindow();
       origin = profile.origin;
       startingBackend = false;
       localPageUrl = undefined;
+      if (window && !window.isDestroyed())
+        adoptInstance(
+          window,
+          { id: profile.id, kind: "remote", connectionKey: remoteConnectionKey(profile.id) },
+          remoteClientProcessId(profile.id),
+          true,
+        );
       await window?.loadURL(profile.origin);
       connectionStore.setActive({ kind: "remote", profileId: profile.id });
       if (connectionsWindow && !connectionsWindow.isDestroyed()) connectionsWindow.close();

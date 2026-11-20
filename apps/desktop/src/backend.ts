@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { backendOriginFromOutput } from "./config.ts";
 import { backendInstallerEnvironment } from "./backend-install.ts";
+import { killOwnedProcessTree, stopOwnedProcess } from "./process-tree.ts";
 
 export interface BackendOptions {
   readonly nodePath: string;
@@ -157,55 +158,71 @@ export class BackendProcess {
 
   private async stopChild(): Promise<void> {
     const child = this.child;
-    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
-    if (child.connected) child.send("shutdown", () => {});
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const stopped = await Promise.race([
-      this.exited.then(() => true),
-      new Promise<false>((resolve) => {
-        timeout = setTimeout(() => resolve(false), this.options.stopTimeoutMs ?? 12_000);
-      }),
-    ]);
-    clearTimeout(timeout);
-    if (stopped || child.exitCode !== null || child.signalCode !== null) return;
-    if (process.platform === "win32") {
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          join(this.options.environment.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"),
-          ["/PID", String(child.pid), "/T", "/F"],
-          { windowsHide: true, timeout: 5_000 },
-          (error) => {
-            if (error && child.exitCode === null && child.signalCode === null) reject(error);
-            else resolve();
-          },
-        );
-      });
-    } else {
-      try {
-        process.kill(-child.pid, "SIGKILL");
-      } catch (error) {
-        const code = error instanceof Error && "code" in error ? error.code : undefined;
-        if (process.platform === "darwin" && code === "EPERM") {
-          let reaped = false;
-          for (let attempt = 0; attempt < 40; attempt++) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 25));
-            try {
-              process.kill(-child.pid, 0);
-            } catch (probeError) {
-              const probeCode =
-                probeError instanceof Error && "code" in probeError ? probeError.code : undefined;
-              if (probeCode === "ESRCH") {
-                reaped = true;
-                break;
-              }
-              if (probeCode !== "EPERM") throw probeError;
-            }
-          }
-          if (!reaped) throw error;
-        } else if (code !== "ESRCH") throw error;
-      }
-    }
+    const pid = child?.pid;
+    if (!pid || child.exitCode !== null || child.signalCode !== null) return;
+    await stopOwnedProcess({
+      pid,
+      exited: () => child.exitCode !== null || child.signalCode !== null,
+      notify: () => {
+        if (child.connected) child.send("shutdown", () => {});
+      },
+      waitForExit: (timeoutMs) => {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        return Promise.race([
+          this.exited.then(() => true),
+          new Promise<false>((resolve) => {
+            timeout = setTimeout(() => resolve(false), timeoutMs);
+          }),
+        ]).finally(() => clearTimeout(timeout));
+      },
+      timeoutMs: this.options.stopTimeoutMs ?? 12_000,
+      force: () => this.forceChild(child, pid),
+    });
     await this.exited;
+  }
+
+  private async forceChild(child: ChildProcess, pid: number): Promise<void> {
+    if (process.platform === "win32") {
+      await killOwnedProcessTree({
+        pid,
+        platform: "win32",
+        ...(this.options.environment.SystemRoot
+          ? { systemRoot: this.options.environment.SystemRoot }
+          : {}),
+        execFile: (file, args) =>
+          new Promise((resolve, reject) => {
+            execFile(file, [...args], { windowsHide: true, timeout: 5_000 }, (error) => {
+              if (error && child.exitCode === null && child.signalCode === null) reject(error);
+              else resolve();
+            });
+          }),
+        killGroup: () => {},
+      });
+      return;
+    }
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? error.code : undefined;
+      if (process.platform === "darwin" && code === "EPERM") {
+        let reaped = false;
+        for (let attempt = 0; attempt < 40; attempt++) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 25));
+          try {
+            process.kill(-pid, 0);
+          } catch (probeError) {
+            const probeCode =
+              probeError instanceof Error && "code" in probeError ? probeError.code : undefined;
+            if (probeCode === "ESRCH") {
+              reaped = true;
+              break;
+            }
+            if (probeCode !== "EPERM") throw probeError;
+          }
+        }
+        if (!reaped) throw error;
+      } else if (code !== "ESRCH") throw error;
+    }
   }
 }
 
