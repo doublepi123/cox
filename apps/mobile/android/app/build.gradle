@@ -5,7 +5,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 def coxVersionCode = (project.findProperty("coxMobileVersionCode") ?: "1").toInteger()
-def coxVersionName = (project.findProperty("coxMobileVersionName") ?: "0.1.8").toString()
+def coxVersionName = (project.findProperty("coxMobileVersionName") ?: "0.1.12").toString()
 
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'

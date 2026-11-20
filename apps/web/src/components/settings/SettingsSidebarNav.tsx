@@ -89,7 +89,7 @@ function scrollResultIntoView(row: HTMLElement | null) {
 
 function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   const Icon = SETTINGS_SECTION_ICONS[to];
-  return <Icon className="size-4 shrink-0 text-(--sidebar-icon-color)" />;
+  return <Icon className="size-4 h-5 shrink-0 text-(--sidebar-icon-color)" />;
 }
 
 export function SettingsSidebarNav({
@@ -439,7 +439,7 @@ export function SettingsSidebarNav({
           </SidebarGroup>
         </SidebarContent>
         {isMenuLayout ? (
-          <div className="shrink-0 border-t border-sidebar-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div data-settings-menu-footer className="shrink-0 border-t border-sidebar-border p-3">
             <Button
               fill
               size="xl"

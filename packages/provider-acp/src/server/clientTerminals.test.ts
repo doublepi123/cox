@@ -142,6 +142,30 @@ describe("AcpClientTerminals", () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 
+  it.live("does not give a Devin terminal another thread's MCP credentials", () =>
+    Effect.gen(function* () {
+      const terminals = yield* makeAcpClientTerminals({
+        defaultCwd: process.cwd(),
+        shellCommands: true,
+        environment: {
+          PATH: process.env.PATH,
+          T3_ACP_MCP_AUTHORIZATION: "parent-secret",
+          T3CODE_THREAD_ID: "parent-thread",
+        },
+        environmentForSession: () => ({ T3_ACP_MCP_NODE: "session-node" }),
+      });
+      yield* Effect.addFinalizer(() => terminals.disposeAll);
+      const terminal = yield* terminals.create({
+        sessionId: "devin",
+        command:
+          'printf "%s|%s|%s\\n" "$T3_ACP_MCP_AUTHORIZATION" "$T3CODE_THREAD_ID" "$T3_ACP_MCP_NODE"',
+      });
+      yield* terminals.waitForExit({ sessionId: "devin", ...terminal });
+      const output = yield* terminals.output({ sessionId: "devin", ...terminal });
+      expect(output.output.trim()).toBe("||session-node");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
   it.live.each([
     { text: "a".repeat(64) + "TAIL", limit: 16 },
     { text: "€".repeat(16) + "TAIL", limit: 6 },

@@ -54,11 +54,13 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
     }
 
     func installViewportLock() {
-        webView.configuration.userContentController.addUserScript(WKUserScript(
+        let controller = webView.configuration.userContentController
+        controller.addUserScript(WKUserScript(
             source: WorkspaceViewportLock.source,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        WorkspaceSafeAreaBootstrap.install(on: controller)
     }
 
     func detach(gateway: Bool) {

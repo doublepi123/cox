@@ -60,7 +60,7 @@ export function SettingsFrame({ children }: { children: ReactNode }) {
   if (window.coxDesktop?.windowKind !== "settings")
     return <AppRouteModal label={t("Settings")}>{children}</AppRouteModal>;
   return (
-    <main className="flex h-dvh min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
+    <main className="flex h-dvh min-h-0 min-w-0 flex-1 flex-col bg-background pt-safe pr-safe pb-safe pl-safe text-foreground">
       <header
         data-workspace-titlebar
         className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center border-b ps-[var(--workspace-controls-left)] pe-[var(--workspace-controls-right)]"
@@ -165,7 +165,7 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
   return children;
 }
 
-function SettingsContentLayout() {
+export function SettingsContentLayout() {
   const { t } = useTranslation();
   const contentArea = workspaceAreaProps("settings", 1, "Settings content");
   const location = useLocation();
@@ -200,8 +200,9 @@ function SettingsContentLayout() {
         {isPhoneLayout ? null : <SettingsSidebarNav pathname={location.pathname} />}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header
+            data-settings-header
             className={cn(
-              "flex h-12 shrink-0 items-center gap-2 border-b pe-2 sm:gap-3 sm:ps-5",
+              "sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-background pe-2 sm:gap-3 sm:ps-5",
               isPhoneLayout && phoneSectionLabel ? "ps-2" : "ps-4",
             )}
           >

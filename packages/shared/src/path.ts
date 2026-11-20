@@ -63,10 +63,48 @@ export function normalizeProjectPathForComparison(value: string): string {
 // Windows refuses these as file names, with or without an extension.
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 
-export function newProjectFolderName(name: string): string {
-  const slug = name
+// Latin letters NFKD leaves whole (ł, ø, ß) or splits with a spacing mark (Ŀ, ŉ).
+const LATIN_FOLDS: Record<string, string> = {
+  Ŀ: "L",
+  ŀ: "l",
+  ŉ: "n",
+  Đ: "D",
+  đ: "d",
+  Ð: "D",
+  ð: "d",
+  ß: "ss",
+  ẞ: "SS",
+  Ł: "L",
+  ł: "l",
+  Ø: "O",
+  ø: "o",
+  Æ: "AE",
+  æ: "ae",
+  Œ: "OE",
+  œ: "oe",
+  Þ: "TH",
+  þ: "th",
+  Ħ: "H",
+  ħ: "h",
+  ı: "i",
+  ĸ: "q",
+  Ŋ: "N",
+  ŋ: "n",
+  Ŧ: "T",
+  ŧ: "t",
+};
+const LATIN_FOLD_PATTERN = new RegExp(`[${Object.keys(LATIN_FOLDS).join("")}]`, "g");
+
+/** Folds accented Latin letters to ASCII ("tìm" -> "tim"); other scripts pass through. */
+export function foldLatinDiacritics(text: string): string {
+  return text
+    .replace(LATIN_FOLD_PATTERN, (letter) => LATIN_FOLDS[letter] ?? letter)
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+export function newProjectFolderName(name: string): string {
+  const slug = foldLatinDiacritics(name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+/, "")

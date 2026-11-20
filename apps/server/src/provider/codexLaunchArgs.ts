@@ -5,7 +5,10 @@ const T3CODE_CODEX_LAUNCH_ARGS_ENV = "T3CODE_CODEX_LAUNCH_ARGS";
 export const resolveCodexLaunchArgs = (
   launchArgs?: string,
   environment: NodeJS.ProcessEnv = process.env,
-) => environment[T3CODE_CODEX_LAUNCH_ARGS_ENV]?.trim() || launchArgs?.trim() || "";
+) => {
+  const override = environment[T3CODE_CODEX_LAUNCH_ARGS_ENV];
+  return override?.trim() ? override : launchArgs?.trim() || "";
+};
 
 const codexLaunchArgv = (launchArgs?: string): ReadonlyArray<string> => tokenizeCliArgs(launchArgs);
 
@@ -19,8 +22,9 @@ export const codexExecLaunchArgs = (launchArgs?: string) => {
   const execArgs: Array<string> = [];
 
   for (let index = 0; index < args.length; index++) {
-    const arg = args[index];
-    if (arg === undefined) continue;
+    const rawArg = args[index];
+    if (rawArg === undefined) continue;
+    const arg = rawArg.replace(/^(-[cp])(?=[^=])/u, "$1=");
 
     if (arg === "--strict-config" || arg.startsWith("--config=") || arg.startsWith("-c=")) {
       execArgs.push(arg);

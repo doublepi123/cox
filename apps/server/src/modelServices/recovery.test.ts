@@ -240,6 +240,54 @@ it.effect.each(["cancel", "budget"] as const)("releases the repaired attempt on 
   }),
 );
 
+it.effect("reports waiting as soon as the initial model request starts", () =>
+  Effect.gen(function* () {
+    const h = harness();
+    const attemptStarted = yield* Deferred.make<void>();
+    const fiber = yield* h
+      .run(() => Deferred.succeed(attemptStarted, undefined).pipe(Effect.andThen(Effect.never)))
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(attemptStarted);
+    expect(h.phases).toEqual([
+      {
+        phase: "waiting",
+        attempt: 0,
+        maxAttempts: DEFAULT_MODEL_SERVICE_RECOVERY.maxAttempts,
+        delayMs: 0,
+      },
+    ]);
+    yield* Fiber.interrupt(fiber);
+  }),
+);
+
+it.effect("reports waiting while an initial attempt is delayed by a shared cooldown", () =>
+  Effect.gen(function* () {
+    const h = harness();
+    h.load.cooldownUntil = (yield* Clock.currentTimeMillis) + 5000;
+    const fiber = yield* h.run(() => Effect.never).pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 millis");
+    expect(h.started).toEqual([]);
+    expect(h.phases).toEqual([
+      {
+        phase: "waiting",
+        attempt: 0,
+        maxAttempts: DEFAULT_MODEL_SERVICE_RECOVERY.maxAttempts,
+        delayMs: 0,
+      },
+    ]);
+    yield* Fiber.interrupt(fiber);
+    expect(h.load.inFlight).toBe(0);
+  }),
+);
+
+it.effect("distinguishes an initial response from a recovery", () =>
+  Effect.gen(function* () {
+    const h = harness();
+    expect(yield* h.run((id) => Effect.succeed(id))).toBe(1);
+    expect(h.phases.map((event) => event.phase)).toEqual(["waiting", "responded"]);
+  }),
+);
+
 it.effect("retries transient errors and releases every attempt", () =>
   Effect.gen(function* () {
     const h = harness();
@@ -266,7 +314,7 @@ it.effect("starts one backup after the threshold and cancels the stalled primary
     yield* TestClock.adjust("3 seconds");
     expect(yield* Fiber.join(fiber)).toBe(2);
     expect(h.closed).toEqual([1, 2]);
-    expect(h.phases.map((event) => event.phase)).toEqual(["hedging", "recovered"]);
+    expect(h.phases.map((event) => event.phase)).toEqual(["waiting", "hedging", "recovered"]);
   }),
 );
 

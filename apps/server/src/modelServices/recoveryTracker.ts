@@ -43,19 +43,23 @@ export function makeRecoveryTracker() {
     entry.started ??= now;
     const { input } = entry;
     const message =
-      progress.phase === "hedging"
-        ? "The model service is slow; a backup request is running."
-        : progress.phase === "recovered"
-          ? "The model service recovered."
-          : progress.phase === "failed"
-            ? progress.reason === "recovery_budget_exhausted"
-              ? "The model service recovery budget was exhausted."
-              : progress.reason === "recovery_attempts_exhausted"
-                ? "The model service recovery attempt limit was reached."
-                : "The model service request failed; recovery has stopped."
-            : progress.phase === "cancelled"
-              ? "Model service recovery was stopped."
-              : "The model service is temporarily unavailable; retrying.";
+      progress.phase === "waiting"
+        ? "Waiting for the model service to respond."
+        : progress.phase === "hedging"
+          ? "The model service is slow; a backup request is running."
+          : progress.phase === "responded"
+            ? "The model service responded."
+            : progress.phase === "recovered"
+              ? "The model service recovered."
+              : progress.phase === "failed"
+                ? progress.reason === "recovery_budget_exhausted"
+                  ? "The model service recovery budget was exhausted."
+                  : progress.reason === "recovery_attempts_exhausted"
+                    ? "The model service recovery attempt limit was reached."
+                    : "The model service request failed; recovery has stopped."
+                : progress.phase === "cancelled"
+                  ? "Model service recovery was stopped."
+                  : "The model service is temporarily unavailable; retrying.";
     yield* entry.emit({
       type: "turn_item.updated",
       driver: input.providerThread.driver,
@@ -79,7 +83,7 @@ export function makeRecoveryTracker() {
           retryDelayMs: progress.delayMs,
         },
         status:
-          progress.phase === "recovered"
+          progress.phase === "responded" || progress.phase === "recovered"
             ? "completed"
             : progress.phase === "failed"
               ? "failed"

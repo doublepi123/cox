@@ -4,7 +4,8 @@ function foldThreadSearchCase(text: string): string {
 
   let folded = "";
   for (const character of text) {
-    const loweredCharacter = character.toLowerCase().replace(/ς/g, "σ");
+    // Lowercasing İ adds a combining dot. Drop that expansion to preserve source offsets.
+    const loweredCharacter = character.toLowerCase().replace(/ς/g, "σ").replace("i\u0307", "i");
     folded += loweredCharacter.length === character.length ? loweredCharacter : character;
   }
   return folded;

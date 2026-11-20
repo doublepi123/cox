@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -286,6 +287,53 @@ describe("local service update boundaries", () => {
 });
 
 describe("local service update transaction", () => {
+  it("quietly checks at startup and retries after one hour", async () => {
+    await using harness = await makeService(undefined, false);
+    mocks.fetchRelease.mockClear();
+    mocks.fetchRelease.mockRejectedValueOnce(new Error("Registry offline"));
+    const { service } = harness;
+    await harness.runtime.runPromise(
+      Effect.gen(function* () {
+        yield* service.checkPeriodically.pipe(Effect.forkScoped);
+        yield* TestClock.adjust("59 minutes");
+        expect(yield* service.state).toMatchObject({ status: "idle", message: null });
+        expect(mocks.fetchRelease).toHaveBeenCalledTimes(1);
+        yield* TestClock.adjust("1 minute");
+        expect(yield* service.state).toMatchObject({
+          status: "available",
+          latestVersion: "99.0.0",
+        });
+        expect(mocks.fetchRelease).toHaveBeenCalledTimes(2);
+        expect(mocks.installRelease).not.toHaveBeenCalled();
+        expect(mocks.launchUpdate).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    );
+  });
+
+  it("checks the registry again after a disconnected request fails in the background", async () => {
+    await using harness = await makeService(undefined, false);
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const first = Promise.withResolvers<Release.LocalServiceRelease>();
+    mocks.fetchRelease.mockImplementationOnce(() => {
+      started.resolve();
+      return first.promise;
+    });
+    const cancelled = harness.runtime.runPromise(harness.service.check, {
+      signal: controller.signal,
+    });
+    await started.promise;
+    controller.abort();
+    await expect(cancelled).rejects.toThrow();
+    first.reject(new TypeError("fetch failed"));
+    await first.promise.catch(() => undefined);
+
+    await expect(harness.runtime.runPromise(harness.service.check)).resolves.toMatchObject({
+      status: "available",
+      latestVersion: "99.0.0",
+    });
+  });
+
   it("consumes a rollback receipt so a fresh release can be downloaded", async () => {
     await using harness = await makeService(receipt("rolled-back", "health check failed"));
     expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
@@ -328,42 +376,35 @@ describe("local service update transaction", () => {
     });
   });
 
-  it("retains ready feedback during active work and observes recovery after apply", async () => {
-    await using harness = await makeService();
-    await harness.runtime.runPromise(harness.service.state);
-    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
-      status: "ready",
-    });
-    await harness.runtime.runPromise(
-      Effect.gen(function* () {
+  it.each(["download", "restart"] as const)(
+    "updates when an agent turn starts before %s",
+    async (phase) => {
+      await using harness = await makeService();
+      const startTurn = Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`INSERT INTO orchestration_v2_projection_threads (thread_id, deleted_at) VALUES ('thread-1', NULL)`;
         yield* sql`INSERT INTO orchestration_v2_projection_runs (thread_id, status) VALUES ('thread-1', 'running')`;
-      }),
-    );
-    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
-      status: "ready",
-      message: expect.stringContaining("Wait for active agent turns"),
-    });
-    await harness.runtime.runPromise(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`DELETE FROM orchestration_v2_projection_runs`;
-      }),
-    );
-    expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
-      status: "restarting",
-      message: null,
-    });
-    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
-      status: "restarting",
-      message: null,
-    });
-    await writeReceipt(harness.directory, receipt("healthy"));
-    expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
-      status: "idle",
-    });
-  });
+      });
+      if (phase === "download") await harness.runtime.runPromise(startTurn);
+      expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+        status: "ready",
+        message: null,
+      });
+      if (phase === "restart") await harness.runtime.runPromise(startTurn);
+      expect(await harness.runtime.runPromise(harness.service.apply)).toMatchObject({
+        status: "restarting",
+        message: null,
+      });
+      expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+        status: "restarting",
+        message: null,
+      });
+      await writeReceipt(harness.directory, receipt("healthy"));
+      expect(await harness.runtime.runPromise(harness.service.state)).toMatchObject({
+        status: "idle",
+      });
+    },
+  );
 
   it("returns a launch failure and allows a fresh apply retry", async () => {
     await using harness = await makeService();

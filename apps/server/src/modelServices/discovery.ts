@@ -23,6 +23,7 @@ import {
   preferredModelServiceProtocols,
 } from "@t3tools/shared/modelServices";
 import { enrichModelFromModelsDev, fetchModelsDevCatalog } from "./modelsDev.ts";
+import { modelServiceFingerprint } from "./validation.ts";
 const isModelServiceError = Schema.is(ModelServiceError);
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -40,7 +41,6 @@ const protocolNames: Readonly<Record<string, ModelServiceProtocol>> = {
   "openai-response-api": "openai-responses",
   "/v1/responses": "openai-responses",
   "v1/responses": "openai-responses",
-  openai: "openai-chat",
   "openai-chat": "openai-chat",
   openai_chat: "openai-chat",
   chat: "openai-chat",
@@ -97,6 +97,37 @@ export function modelServiceHeaders(
   };
 }
 
+const OPENAI_ENDPOINT_PROTOCOLS: ReadonlySet<ModelServiceProtocol> = new Set([
+  "openai-chat",
+  "openai-responses",
+]);
+
+function modelEndpointProtocols(
+  declared: unknown,
+  defaults: ReadonlyArray<ModelServiceProtocol>,
+): ReadonlyArray<ModelServiceProtocol> | undefined {
+  if (!Array.isArray(declared)) return undefined;
+  const explicit: ModelServiceProtocol[] = [];
+  let genericOpenAi = false;
+  for (const name of declared) {
+    const normalized = typeof name === "string" ? name.trim().toLowerCase() : "";
+    if (!normalized) continue;
+    if (normalized === "openai") {
+      genericOpenAi = true;
+      continue;
+    }
+    const protocol = protocolNames[normalized];
+    if (protocol && !explicit.includes(protocol)) explicit.push(protocol);
+  }
+  if (!genericOpenAi) return explicit;
+  return [
+    ...explicit,
+    ...defaults.filter(
+      (protocol) => OPENAI_ENDPOINT_PROTOCOLS.has(protocol) && !explicit.includes(protocol),
+    ),
+  ];
+}
+
 export function parseModelServiceModel(
   value: unknown,
   defaults: ReadonlyArray<ModelServiceProtocol>,
@@ -132,37 +163,27 @@ export function parseModelServiceModel(
     ProviderDriverKind.make("codex"),
   );
   if (!model) return null;
-  const declared = raw.supported_endpoint_types ?? raw.supported_protocols ?? raw.protocols;
-  const declaredProtocols = Array.isArray(declared)
-    ? [
-        ...new Set(
-          declared.flatMap((name) => {
-            const normalized = typeof name === "string" ? name.trim().toLowerCase() : "";
-            return normalized && protocolNames[normalized] ? [protocolNames[normalized]!] : [];
-          }),
-        ),
-      ]
-    : undefined;
+  const declaredProtocols = modelEndpointProtocols(
+    raw.supported_endpoint_types ?? raw.supported_protocols ?? raw.protocols,
+    defaults,
+  );
   const multiProtocolService = new Set(defaults).size > 1;
-  const preferredOrder = preferredModelServiceProtocols(model.slug);
-  const familyPrimary = preferredOrder[0]!;
   const rawProtocols =
     declaredProtocols === undefined
       ? multiProtocolService
         ? [...defaults]
         : undefined
-      : multiProtocolService &&
-          declaredProtocols.length > 0 &&
-          defaults.includes(familyPrimary) &&
-          !declaredProtocols.includes(familyPrimary)
-        ? [...declaredProtocols, familyPrimary]
-        : declaredProtocols;
-  const protocols = multiProtocolService
-    ? [
-        ...preferredOrder.filter((protocol) => rawProtocols!.includes(protocol)),
-        ...rawProtocols!.filter((protocol) => !preferredOrder.includes(protocol)),
-      ]
-    : rawProtocols;
+      : declaredProtocols;
+  const preferredOrder = preferredModelServiceProtocols(model.slug);
+  const protocols =
+    rawProtocols === undefined
+      ? undefined
+      : multiProtocolService
+        ? [
+            ...preferredOrder.filter((protocol) => rawProtocols.includes(protocol)),
+            ...rawProtocols.filter((protocol) => !preferredOrder.includes(protocol)),
+          ]
+        : rawProtocols;
   const parameters = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : undefined;
   const tools =
     raw.supports_tools ??
@@ -278,7 +299,11 @@ export const fetchModelServiceModels = Effect.fn("fetchModelServiceModels")(
 );
 
 export const discoverModelService = Effect.fn("discoverModelService")(
-  function* (input: { readonly serviceId: ModelServiceId; readonly metadataOnly?: boolean }) {
+  function* (input: {
+    readonly serviceId: ModelServiceId;
+    readonly metadataOnly?: boolean;
+    readonly preview?: boolean;
+  }) {
     const settings = yield* Settings.ServerSettingsService;
     const service = (yield* settings.getSettings).modelServices[input.serviceId];
     if (!service?.enabled)
@@ -288,9 +313,12 @@ export const discoverModelService = Effect.fn("discoverModelService")(
       : yield* fetchModelServiceModels(service);
     const models = new Map(discovered.map((model) => [model.id, model]));
     for (const model of service.models) {
-      if (model.source === "manual") models.set(model.id, model);
-      else if (!models.has(model.id)) models.set(model.id, { ...model, available: false });
-      else
+      const advertised = models.has(model.id);
+      if (model.source === "manual") {
+        if (!input.preview || advertised) models.set(model.id, model);
+      } else if (!advertised) {
+        if (!input.preview) models.set(model.id, { ...model, available: false });
+      } else
         models.set(model.id, {
           ...models.get(model.id)!,
           ...(model.ignored !== undefined ? { ignored: model.ignored } : {}),
@@ -301,9 +329,11 @@ export const discoverModelService = Effect.fn("discoverModelService")(
             : {}),
         });
     }
-    const catalog = yield* input.metadataOnly
-      ? fetchModelsDevCatalog
-      : fetchModelsDevCatalog.pipe(Effect.orElseSucceed(() => null));
+    const catalog = input.preview
+      ? null
+      : yield* input.metadataOnly
+          ? fetchModelsDevCatalog
+          : fetchModelsDevCatalog.pipe(Effect.orElseSucceed(() => null));
     const current = (yield* settings.getSettings).modelServices[input.serviceId];
     if (!Equal.equals(current, service))
       return yield* new ModelServiceError({
@@ -314,10 +344,19 @@ export const discoverModelService = Effect.fn("discoverModelService")(
         catalog ? enrichModelFromModelsDev(model, catalog, service.baseUrl) : model,
       ),
       discoveredAt: DateTime.formatIso(yield* DateTime.now),
+      revision: service.revision,
+      fingerprint: yield* modelServiceFingerprint(service),
     };
-    yield* settings.updateSettings({
-      modelServices: { [input.serviceId]: { ...service, ...result } },
-    });
+    if (!input.preview)
+      yield* settings.updateSettings({
+        modelServices: {
+          [input.serviceId]: {
+            ...service,
+            models: result.models,
+            discoveredAt: result.discoveredAt,
+          },
+        },
+      });
     return result;
   },
   Effect.mapError((error) =>

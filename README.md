@@ -102,16 +102,9 @@ is on your `PATH`, or use the `npx` command above.
 **Settings → About** can check the latest official release for an npm installation. For a process
 started in a terminal, the page shows the manual upgrade command when an update is available.
 
-To enable browser updates on Linux, run Cox directly as the main process of a systemd **user**
-service. Add this to the service (or use `systemctl --user edit cox.service`):
-
-```ini
-[Service]
-Environment=COX_LOCAL_SERVICE_UPDATE=1
-```
-
-For a unit named differently, also set `Environment=COX_LOCAL_SERVICE_UPDATE_UNIT=my-cox.service`.
-Reload the unit configuration and restart the service once to pick up the settings. Cox verifies
+Browser updates are available when Cox runs directly as the main process of the Linux systemd
+**user** service `cox.service`. For a different unit name, set
+`Environment=COX_LOCAL_SERVICE_UPDATE_UNIT=my-cox.service` in that unit and restart it. Cox verifies
 that it is the named unit's main process before enabling updates. Use a direct `ExecStart` such as
 `/absolute/path/to/cox --no-browser`; a wrapper that stays running as the main process will only
 be able to check for updates.

@@ -8,6 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
+import { foldLatinDiacritics } from "./path.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "cox";
 const TEMP_WORKTREE_HEX_TOKEN = "[0-9a-f]{8}";
@@ -18,7 +19,7 @@ const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(
 );
 
 export function sanitizeBranchFragment(raw: string): string {
-  const normalized = raw
+  const normalized = foldLatinDiacritics(raw)
     .trim()
     .toLowerCase()
     .replace(/['"`]/g, "")

@@ -1,5 +1,6 @@
 import {
   ModelServiceConfig,
+  type ModelServiceDiscoveryResult,
   DEFAULT_MODEL_SERVICE_RECOVERY,
   ModelServiceId,
   type EnvironmentId,
@@ -24,6 +25,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { useTranslation } from "../../i18n";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
@@ -64,6 +66,7 @@ import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ModelServiceRecoverySettings } from "./ModelServiceRecoverySettings";
+import { ModelImportDialog } from "./ModelImportDialog";
 import {
   modelRemovalBlockingAgents,
   modelsRemovalBlockingAgents,
@@ -128,6 +131,7 @@ export function EnvironmentModelServices({
   readonly projectScoped?: boolean;
 }) {
   const { t } = useTranslation();
+  const compactPhone = useMediaQuery("max-sm");
   const settings = useEnvironmentSettings(environmentId);
   const canManage = useEnvironmentScope(environmentId, "providers:manage");
   const readOnly = !canManage || projectScoped;
@@ -181,7 +185,7 @@ export function EnvironmentModelServices({
       headerAction={
         !readOnly ? (
           <Button
-            size="sm"
+            size={compactPhone ? "touch" : "sm"}
             variant="outline"
             onClick={() => setEditing(ModelServiceId.make(`service_${randomUUID()}`))}
           >
@@ -263,22 +267,24 @@ export function EnvironmentModelServices({
                   </button>
                   {!readOnly ? (
                     <div className="flex shrink-0 items-center gap-0.5">
-                      <button
-                        type="button"
-                        draggable
-                        aria-label={t("Drag {name}", { name: service.name })}
-                        title={t("Drag {name}", { name: service.name })}
-                        className={cn(
-                          serviceReorderControlClass,
-                          "cursor-grab active:cursor-grabbing",
-                        )}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", id);
-                        }}
-                      >
-                        <GripVerticalIcon className="size-4" aria-hidden="true" />
-                      </button>
+                      {compactPhone ? null : (
+                        <button
+                          type="button"
+                          draggable
+                          aria-label={t("Drag {name}", { name: service.name })}
+                          title={t("Drag {name}", { name: service.name })}
+                          className={cn(
+                            serviceReorderControlClass,
+                            "cursor-grab active:cursor-grabbing",
+                          )}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", id);
+                          }}
+                        >
+                          <GripVerticalIcon className="size-4" aria-hidden="true" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={index === 0}
@@ -374,6 +380,15 @@ function ModelServiceEditor({
   const busy = saving || tests.running;
   const running = useRef(false);
   const [modelEditor, setModelEditor] = useState<null | "new" | ModelServiceModel>(null);
+  const [importPreview, setImportPreview] = useState<ModelServiceDiscoveryResult | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const previewRequest = useRef<{ readonly cancel: () => void } | null>(null);
+  useEffect(
+    () => () => {
+      previewRequest.current?.cancel();
+    },
+    [],
+  );
   const [removingModel, setRemovingModel] = useState<ModelServiceModel | null>(null);
   const [removingUnlisted, setRemovingUnlisted] = useState<{
     readonly modelIds: readonly string[];
@@ -459,6 +474,16 @@ function ModelServiceEditor({
       JSON.stringify(recovery) !== JSON.stringify(service.recovery)),
   );
   const fetchOnSave = !service || connectionChanged;
+  const importChanged = Boolean(importPreview && service?.revision !== importPreview.revision);
+  const importAdvertisedIds = new Set(importPreview?.models.map((model) => model.id) ?? []);
+  const importUnlistedCount = importPreview
+    ? models.filter(
+        (model) =>
+          model.source !== "manual" &&
+          model.available !== false &&
+          !importAdvertisedIds.has(model.id),
+      ).length
+    : 0;
   async function run(action: () => Promise<string | null>) {
     if (running.current || tests.running) return;
     running.current = true;
@@ -519,6 +544,71 @@ function ModelServiceEditor({
       return null;
     }
   }
+  async function previewModels() {
+    let cancel = () => {};
+    const request = {
+      cancel: () => cancel(),
+    };
+    previewRequest.current = request;
+    setPreviewing(true);
+    return Promise.race([
+      discover({ environmentId, input: { serviceId: id, preview: true } }),
+      new Promise<"cancelled">((resolve) => {
+        cancel = () => resolve("cancelled");
+      }),
+    ])
+      .then((result) => {
+        if (previewRequest.current !== request || result === "cancelled") return null;
+        if (result._tag !== "Success") return commandError(result);
+        setImportPreview(result.value);
+        return null;
+      })
+      .finally(() => {
+        if (previewRequest.current === request) {
+          previewRequest.current = null;
+          setPreviewing(false);
+        }
+      });
+  }
+  function importModels(modelIds: readonly string[]) {
+    const preview = importPreview;
+    if (readOnly || !service || !preview || importChanged) return;
+    const selected = new Set(modelIds);
+    const advertised = importAdvertisedIds;
+    const imported = new Map(
+      preview.models.filter((model) => selected.has(model.id)).map((model) => [model.id, model]),
+    );
+    const nextModels = models.map((model) => {
+      const replacement = imported.get(model.id);
+      if (replacement) return replacement;
+      return model.source !== "manual" && !advertised.has(model.id)
+        ? { ...model, available: false }
+        : model;
+    });
+    const currentIds = new Set(models.map((model) => model.id));
+    for (const model of imported.values()) {
+      if (!currentIds.has(model.id)) nextModels.push(model);
+    }
+    void run(async () => {
+      const problem = commandError(
+        await update({
+          environmentId,
+          input: {
+            patch: {
+              modelServiceImport: {
+                serviceId: id,
+                fingerprint: preview.fingerprint,
+                models: nextModels,
+                discoveredAt: preview.discoveredAt,
+              },
+            },
+          },
+        }),
+      );
+      if (!problem) setImportPreview(null);
+      return problem;
+    });
+  }
   async function save(fetchModels: boolean) {
     const config = configuration();
     if (!config) return "Check the service name, API URL, protocol and request headers.";
@@ -539,9 +629,7 @@ function ModelServiceEditor({
         2,
       ),
     );
-    return fetchModels
-      ? commandError(await discover({ environmentId, input: { serviceId: id } }))
-      : null;
+    return fetchModels ? previewModels() : null;
   }
   return (
     <div className="mx-3 overflow-hidden rounded-xl border border-border/60 bg-card/40 shadow-xs/5 sm:mx-4">
@@ -552,8 +640,8 @@ function ModelServiceEditor({
           void run(() => save(fetchOnSave));
         }}
       >
-        <div className="space-y-5 p-4 sm:p-5 lg:p-6">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-6 p-4 sm:space-y-5 sm:p-5 lg:p-6">
+          <div className="grid gap-5 sm:grid-cols-2 sm:gap-4">
             <label className="grid gap-2 text-sm font-medium">
               {t("Service name")}
               <Input
@@ -711,19 +799,24 @@ function ModelServiceEditor({
               <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
                 {t(
                   fetchOnSave
-                    ? "The connection changed. Saving will also refresh the model catalog."
+                    ? "The connection changed. Saving will also fetch models for review before importing."
                     : "Only settings are saved. The model catalog is unchanged.",
                 )}
               </p>
               <Button type="submit" disabled={busy}>
-                <RefreshCwIcon className={busy && fetchOnSave ? "animate-spin" : undefined} />
+                <RefreshCwIcon />
                 {t(busy ? "Working…" : fetchOnSave ? "Save and fetch models" : "Save changes")}
               </Button>
             </div>
           </div>
         ) : null}
       </form>
-      {error && !removingModel && !removingUnlisted && !clearingModels && !modelEditor ? (
+      {error &&
+      !importPreview &&
+      !removingModel &&
+      !removingUnlisted &&
+      !clearingModels &&
+      !modelEditor ? (
         <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
           {error}
         </p>
@@ -806,26 +899,45 @@ function ModelServiceEditor({
           </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
+      {importPreview && service ? (
+        <ModelImportDialog
+          key={`${importPreview.revision}:${importPreview.discoveredAt}`}
+          preview={importPreview}
+          existingModels={models}
+          serviceName={service.name}
+          unlistedCount={importUnlistedCount}
+          busy={busy}
+          error={error}
+          revisionChanged={importChanged}
+          onCancel={() => {
+            setImportPreview(null);
+            setError(null);
+          }}
+          onImport={importModels}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 bg-muted/10 px-4 py-4 sm:px-5 lg:px-6">
         <h3 className="text-sm font-medium">
           {t("Models")} ({models.length})
         </h3>
         {service && !readOnly ? (
           <div className="flex flex-wrap gap-2 max-sm:[&_button]:min-h-11">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || !enabled || changed}
-              title={changed ? t("Save changes before refreshing models") : undefined}
-              onClick={() =>
-                void run(async () =>
-                  commandError(await discover({ environmentId, input: { serviceId: id } })),
-                )
-              }
-            >
-              <RefreshCwIcon />
-              {t("Refresh models")}
-            </Button>
+            {previewing ? (
+              <Button size="sm" variant="outline" onClick={() => previewRequest.current?.cancel()}>
+                {t("Cancel fetch")}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !enabled || changed}
+                title={changed ? t("Save changes before refreshing models") : undefined}
+                onClick={() => void run(previewModels)}
+              >
+                <RefreshCwIcon />
+                {t("Refresh models")}
+              </Button>
+            )}
             {tests.running ? (
               <Button size="sm" variant="outline" onClick={tester.cancel}>
                 {t("Stop remaining tests")}
@@ -938,6 +1050,11 @@ function ModelServiceEditor({
         ) : null}
       </div>
       <div className="space-y-4 bg-muted/10 px-4 pb-4 sm:px-5 sm:pb-5 lg:px-6 lg:pb-6">
+        {previewing && service ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {t("Fetching models from {service}…", { service: service.name })}
+          </p>
+        ) : null}
         {service && !readOnly && unlistedCount > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
             <div className="min-w-0 flex-1 space-y-1">
@@ -1000,7 +1117,7 @@ function ModelServiceEditor({
         )}
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t(
-            "Model refresh also syncs models.dev prices when the model can be matched by ID. Manual prices take priority.",
+            "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.",
           )}
         </p>
         {modelEditor === "new" && service && !readOnly ? (

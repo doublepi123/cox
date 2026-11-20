@@ -41,6 +41,10 @@ export function App({ store }: AppProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [undo, setUndo] = useState<{
+    readonly profile: SavedServerProfile;
+    readonly index: number;
+  } | null>(null);
   const t = translator(locale);
 
   useEffect(() => {
@@ -49,6 +53,15 @@ export function App({ store }: AppProps) {
   }, [locale]);
 
   useEffect(() => applyThemePreference(theme), [theme]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+      setUndo(null);
+    }, 4500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     let active = true;
@@ -128,13 +141,15 @@ export function App({ store }: AppProps) {
   };
 
   const forget = async (profile: SavedServerProfile) => {
+    const index = store.getSnapshot().profiles.findIndex((entry) => entry.id === profile.id);
     setBusyId(profile.id);
     try {
       await forgetWorkspaceProfile(profile);
       await store.forget(profile.id);
       setSheet(null);
       setError(null);
-      setNotice(null);
+      setUndo({ profile, index: Math.max(0, index) });
+      setNotice(t("forgotServer"));
     } catch (caught) {
       setError(formatConnectionError(caught, t));
     } finally {
@@ -165,15 +180,29 @@ export function App({ store }: AppProps) {
           </p>
         ) : null}
         {notice ? (
-          <p className="success-message page-message" role="status">
-            {notice}
-          </p>
+          <div className="toast" role="status">
+            <span>{notice}</span>
+            {undo ? (
+              <button
+                type="button"
+                className="button button-ghost"
+                onClick={() => {
+                  store.restore(undo.profile, undo.index);
+                  setUndo(null);
+                  setNotice(null);
+                }}
+              >
+                {t("undo")}
+              </button>
+            ) : null}
+          </div>
         ) : null}
         <section className="servers-section" aria-labelledby="servers-title">
           <div className="section-heading">
             <h2 id="servers-title">{t("savedServers")}</h2>
             <span className="server-count">{profiles.length}</span>
           </div>
+          {profiles.length > 1 ? <p className="reorder-hint">{t("holdToReorder")}</p> : null}
           <ServerList
             profiles={profiles}
             busyId={busyId}

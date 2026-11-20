@@ -1,6 +1,33 @@
 import UIKit
 import WebKit
 
+enum WorkspaceSafeAreaBootstrap {
+    static var source = ""
+
+    static func install(on controller: WKUserContentController) {
+        guard !source.isEmpty else { return }
+        controller.addUserScript(
+            WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        )
+    }
+
+    static func script(top: CGFloat, right: CGFloat, left: CGFloat) -> String {
+        """
+        (function(){
+          var root = document.documentElement;
+          if (!root) return;
+          root.style.setProperty('--cox-safe-top','\(css(top))');
+          root.style.setProperty('--cox-safe-right','\(css(right))');
+          root.style.setProperty('--cox-safe-left','\(css(left))');
+        })();
+        """
+    }
+
+    private static func css(_ value: CGFloat) -> String {
+        String(format: "%.2fpx", value)
+    }
+}
+
 final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelegate {
     var onLauncher: ((String) -> Void)?
     private let fallback = UIButton(type: .system)
@@ -73,7 +100,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         webTopToSafe = topSafe
         webTopToFallback = topFallback
         NSLayoutConstraint.activate([
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
@@ -93,25 +120,20 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
 
     private func publishSafeArea() {
         guard let workspace, workspace.bounds.height > 0 else { return }
-        let frame = workspace.convert(workspace.bounds, to: view)
-        let top = max(0, view.safeAreaInsets.top - frame.minY)
-        let left = max(0, view.safeAreaInsets.left - frame.minX)
-        let bottom = max(0, frame.maxY - (view.bounds.maxY - view.safeAreaInsets.bottom))
-        let right = max(0, frame.maxX - (view.bounds.maxX - view.safeAreaInsets.right))
-        let signature = "\(top),\(right),\(bottom),\(left)"
+        let host: UIView = view.window ?? view
+        let hostInsets = host.safeAreaInsets
+        let frame = workspace.convert(workspace.bounds, to: host)
+        let top = max(0, hostInsets.top - frame.minY)
+        let left = max(0, hostInsets.left - frame.minX)
+        let right = max(0, frame.maxX - (host.bounds.maxX - hostInsets.right))
+        let signature = String(format: "%.2f,%.2f,%.2f", top, right, left)
         if signature == publishedSafeArea { return }
         publishedSafeArea = signature
-        let script = """
-        (function(){
-          var root = document.documentElement;
-          if (!root) return;
-          root.style.setProperty('--cox-safe-top','\(top)px');
-          root.style.setProperty('--cox-safe-right','\(right)px');
-          root.style.setProperty('--cox-safe-bottom','\(bottom)px');
-          root.style.setProperty('--cox-safe-left','\(left)px');
-        })();
-        """
-        workspace.evaluateJavaScript(script, completionHandler: nil)
+        let script = WorkspaceSafeAreaBootstrap.script(top: top, right: right, left: left)
+        WorkspaceSafeAreaBootstrap.source = script
+        workspace.evaluateJavaScript(script) { _, error in
+            if error != nil { self.publishedSafeArea = "" }
+        }
     }
 
     func noteMainFrameStarted() {

@@ -1825,19 +1825,15 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
-  it.effect("persists prompt suggestion opt-in through the server patch wire schema", () =>
+  it.effect("enables prompt suggestions by default and persists explicit changes", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;
-      assert.isFalse((yield* service.getSettings).promptSuggestionsEnabled);
-      const patch = yield* decodeServerSettingsPatch({
-        promptSuggestionsEnabled: true,
-      });
-      assert.deepEqual(patch, { promptSuggestionsEnabled: true });
-      assert.isTrue((yield* service.updateSettings(patch)).promptSuggestionsEnabled);
-      assert.isFalse(
-        (yield* service.updateSettings({ promptSuggestionsEnabled: false }))
-          .promptSuggestionsEnabled,
-      );
+      assert.isTrue((yield* service.getSettings).promptSuggestionsEnabled);
+      const optOut = yield* decodeServerSettingsPatch({ promptSuggestionsEnabled: false });
+      assert.isFalse((yield* service.updateSettings(optOut)).promptSuggestionsEnabled);
+      const optIn = yield* decodeServerSettingsPatch({ promptSuggestionsEnabled: true });
+      assert.deepEqual(optIn, { promptSuggestionsEnabled: true });
+      assert.isTrue((yield* service.updateSettings(optIn)).promptSuggestionsEnabled);
     }).pipe(Effect.provide(layerServerSettings())),
   );
 

@@ -1,5 +1,9 @@
+import * as Crypto from "effect/Crypto";
+import * as Hex from "effect/encoding/Hex";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   ModelServiceError,
+  type ModelServiceConfig,
   type ServerSettings,
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
@@ -104,4 +108,50 @@ export function ensureModelServiceRevisions(
     }
   }
   return Effect.void;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object" && value !== null)
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+      .join(",")}}`;
+  return JSON.stringify(value) ?? "undefined";
+}
+
+export const modelServiceFingerprint = Effect.fn("modelServiceFingerprint")(function* (
+  service: ModelServiceConfig,
+) {
+  const crypto = yield* Crypto.Crypto;
+  return yield* crypto
+    .digest("SHA-256", new TextEncoder().encode(canonicalJson(service)))
+    .pipe(Effect.map(Hex.encode), Effect.orDie);
+}, Effect.provide(NodeCrypto.layer));
+
+export function resolveModelServiceImport(
+  settings: ServerSettings,
+  patch: ServerSettingsPatch,
+): Effect.Effect<ServerSettingsPatch, ModelServiceError> {
+  return Effect.gen(function* () {
+    const input = patch.modelServiceImport;
+    if (!input) return patch;
+    const service = settings.modelServices[input.serviceId];
+    const fingerprint = service ? yield* modelServiceFingerprint(service) : undefined;
+    if (!service || fingerprint !== input.fingerprint)
+      return yield* new ModelServiceError({
+        detail: "The model service changed. Close this dialog and fetch the models again.",
+      });
+    return {
+      ...patch,
+      modelServices: {
+        ...patch.modelServices,
+        [input.serviceId]: {
+          ...service,
+          models: input.models,
+          discoveredAt: input.discoveredAt,
+        },
+      },
+    };
+  });
 }

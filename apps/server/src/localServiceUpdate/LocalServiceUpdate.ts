@@ -6,8 +6,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as FileSystem from "effect/FileSystem";
-import * as SqlClient from "effect/sql/SqlClient";
 import * as Schema from "effect/Schema";
+import * as Schedule from "effect/Schedule";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerConfig from "../config.ts";
@@ -62,18 +62,9 @@ const unavailable = (): LocalServiceUpdateState => ({
   backup: null,
 });
 
-const busyWork = (sql: SqlClient.SqlClient) => sql<{ readonly thread_id: string }>`
-  SELECT thread_id FROM orchestration_v2_projection_threads t
-  WHERE deleted_at IS NULL AND (
-    EXISTS (SELECT 1 FROM orchestration_v2_projection_runs r WHERE r.thread_id = t.thread_id AND r.status IN ('queued', 'preparing', 'starting', 'running', 'waiting'))
-    OR EXISTS (SELECT 1 FROM orchestration_v2_projection_runtime_requests request WHERE request.thread_id = t.thread_id AND request.status = 'pending')
-  ) LIMIT 1
-`;
-
 export const make = Effect.fn("localServiceUpdate.make")(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const path = yield* Path.Path;
-  const sql = yield* SqlClient.SqlClient;
   const environmentId = yield* (yield* ServerEnvironment.ServerEnvironment).getEnvironmentId;
   const supported = supportsNpmCoxUpdates(config);
   const ownership: LocalServiceUpdateOwnership | null = supported
@@ -133,36 +124,44 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
     return current;
   }).pipe(Effect.withSpan("localServiceUpdate.state"));
 
-  const check: Effect.Effect<LocalServiceUpdateState, LocalServiceUpdateError> = Effect.gen(
-    function* () {
-      if (!supported) return yield* state;
-      if (operation) {
-        yield* Effect.promise(async () => operation);
-        return yield* state;
-      }
-      if (current.status === "restarting" || (current.status === "ready" && ready)) return current;
-      current = { ...current, status: "checking", message: null, progress: null };
-      operation = (async () => {
-        try {
-          release = await fetchLocalServiceRelease(AbortSignal.timeout(30_000));
-          current = {
-            ...current,
-            latestVersion: release.version,
-            status:
-              compareVersions(release.version, packageJson.version) > 0 ? "available" : "idle",
-          };
-        } catch (error) {
-          current = { ...current, status: "error", message: String(error), progress: null };
-        }
-      })();
-      try {
-        yield* Effect.promise(async () => operation);
-      } finally {
-        operation = undefined;
-      }
+  const checkRelease = Effect.fn("localServiceUpdate.check")(function* (automatic: boolean) {
+    if (!supported) return yield* state;
+    if (operation) {
+      yield* Effect.promise(async () => operation);
       return yield* state;
-    },
-  ).pipe(Effect.withSpan("localServiceUpdate.check"));
+    }
+    if (automatic) {
+      yield* state;
+      if (operation || (current.status !== "idle" && current.status !== "available"))
+        return current;
+    }
+    if (current.status === "restarting" || (current.status === "ready" && ready)) return current;
+    const previous = current;
+    current = { ...current, status: "checking", message: null, progress: null };
+    const pending = (async () => {
+      try {
+        release = await fetchLocalServiceRelease(AbortSignal.timeout(30_000));
+        current = {
+          ...current,
+          latestVersion: release.version,
+          status: compareVersions(release.version, packageJson.version) > 0 ? "available" : "idle",
+        };
+      } catch (error) {
+        current = automatic
+          ? previous
+          : { ...current, status: "error", message: String(error), progress: null };
+      }
+    })().finally(() => {
+      if (operation === pending) operation = undefined;
+    });
+    operation = pending;
+    yield* Effect.promise(() => pending);
+    return yield* state;
+  });
+  const check = checkRelease(false);
+  const checkPeriodically = supported
+    ? checkRelease(true).pipe(Effect.repeat(Schedule.spaced("1 hour")), Effect.asVoid)
+    : Effect.void;
 
   const download: Effect.Effect<LocalServiceUpdateState, LocalServiceUpdateError> = Effect.gen(
     function* () {
@@ -190,7 +189,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
           remainingSeconds: null,
         },
       };
-      operation = (async () => {
+      const pending = (async () => {
         try {
           const candidates = path.join(directory, "candidates");
           const { mkdir, mkdtemp } = await import("node:fs/promises");
@@ -236,13 +235,6 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
                 );
             }).pipe(Effect.mapError((cause) => new LocalServiceUpdateError(String(cause)))),
           );
-          const active = await run(
-            busyWork(sql).pipe(
-              Effect.mapError((cause) => new LocalServiceUpdateError(String(cause))),
-            ),
-          );
-          if (active.length > 0)
-            throw new Error("Wait for active agent turns to finish before updating Cox.");
           const suffix = await run(
             Effect.map(
               Effect.all([
@@ -291,12 +283,11 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
         } catch (error) {
           current = { ...current, status: "error", message: String(error), progress: null };
         }
-      })();
-      try {
-        yield* Effect.promise(async () => operation);
-      } finally {
-        operation = undefined;
-      }
+      })().finally(() => {
+        if (operation === pending) operation = undefined;
+      });
+      operation = pending;
+      yield* Effect.promise(() => pending);
       return current;
     },
   ).pipe(Effect.withSpan("localServiceUpdate.download"));
@@ -307,34 +298,30 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
       if (current.status === "restarting" && plan) return current;
       if (!["ready", "error"].includes(current.status) || !ready || !plan || operation)
         return yield* Effect.fail(new LocalServiceUpdateError("The Cox update is not ready."));
-      const active = yield* busyWork(sql).pipe(
-        Effect.mapError((cause) => new LocalServiceUpdateError(String(cause))),
-      );
-      if (active.length > 0) {
-        current = {
-          ...current,
-          status: "ready",
-          message: "Wait for active agent turns to finish before updating Cox.",
-          progress: null,
-        };
-        return current;
-      }
       current = { ...current, status: "restarting", message: null, progress: null };
       ready = false;
-      operation = launchLocalServiceUpdate(plan).catch((error: unknown) => {
-        ready = true;
-        current = { ...current, status: "error", message: String(error), progress: null };
-      });
-      try {
-        yield* Effect.promise(async () => operation);
-      } finally {
-        operation = undefined;
-      }
+      const launched = launchLocalServiceUpdate(plan)
+        .catch((error: unknown) => {
+          ready = true;
+          current = { ...current, status: "error", message: String(error), progress: null };
+        })
+        .finally(() => {
+          if (operation === launched) operation = undefined;
+        });
+      operation = launched;
+      yield* Effect.promise(() => launched);
       return current;
     },
   ).pipe(Effect.withSpan("localServiceUpdate.apply"));
 
-  return LocalServiceUpdate.of({ state, check, download, apply });
+  return { ...LocalServiceUpdate.of({ state, check, download, apply }), checkPeriodically };
 });
 
-export const layer = Layer.effect(LocalServiceUpdate, make());
+export const layer = Layer.effect(
+  LocalServiceUpdate,
+  Effect.gen(function* () {
+    const updates = yield* make();
+    yield* updates.checkPeriodically.pipe(Effect.forkScoped);
+    return updates;
+  }),
+);

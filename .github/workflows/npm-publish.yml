@@ -125,8 +125,23 @@ jobs:
           if [[ "${RELEASE_TAG#v}" == *-* ]]; then
             dist_tag=next
           fi
-          if ! npm publish "release/npm/doublepi123-cox-${RELEASE_TAG#v}.tgz" \
-            --access public --provenance --tag "$dist_tag"; then
+          tarball="release/npm/doublepi123-cox-${RELEASE_TAG#v}.tgz"
+          version="${RELEASE_TAG#v}"
+          published=0
+          for attempt in 1 2 3; do
+            if npm publish "$tarball" --access public --provenance --tag "$dist_tag"; then
+              published=1
+              break
+            fi
+            if npm view "@doublepi123/cox@${version}" version >/dev/null 2>&1; then
+              echo "npm already has ${version} after a provenance log conflict."
+              published=1
+              break
+            fi
+            echo "npm publish attempt ${attempt} failed; retrying."
+            sleep $((attempt * 20))
+          done
+          if [[ "$published" != 1 ]]; then
             echo "::error::If npm reports E403/2FA, token mode requires package write access and Bypass 2FA; OIDC mode requires a trusted publisher for doublepi123/cox, workflow npm-publish.yml, with direct publish allowed."
             exit 1
           fi

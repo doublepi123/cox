@@ -381,11 +381,15 @@ export function providerErrorPresentation(
   if (item.failure.code?.startsWith("cox_model_service_")) {
     const key =
       item.status === "running"
-        ? item.failure.code === "cox_model_service_hedging"
-          ? "Model service backup running ({progress} attempts)"
-          : "Retrying model service ({progress} attempts)"
+        ? item.failure.code === "cox_model_service_waiting"
+          ? "Waiting for model service"
+          : item.failure.code === "cox_model_service_hedging"
+            ? "Model service backup running ({progress} attempts)"
+            : "Retrying model service ({progress} attempts)"
         : item.status === "completed"
-          ? "Model service recovered ({progress} attempts)"
+          ? item.failure.code === "cox_model_service_responded"
+            ? "Model service responded"
+            : "Model service recovered ({progress} attempts)"
           : item.status === "failed"
             ? "Model service recovery failed ({progress} attempts)"
             : "Model service recovery stopped ({progress} attempts)";
