@@ -175,6 +175,32 @@ describe("acpRegistrySnapshotReadiness", () => {
       nativeSessions: { canList: true, canLoad: true, canResume: true },
       models: [{ slug: "live-model", isDefault: true }],
     });
+    const modelsAfterLoad = (
+      configOptions: Parameters<typeof applyAcpRegistryLiveConfiguration>[1]["configOptions"],
+    ) =>
+      applyAcpRegistryLiveConfiguration(
+        provider,
+        { models: [], currentModelId: null, configOptions },
+        [],
+      ).models;
+    expect(modelsAfterLoad([])).toEqual(provider.models);
+    expect(
+      modelsAfterLoad([
+        {
+          id: "effort",
+          label: "Effort",
+          type: "select",
+          options: [{ id: "high", label: "High" }],
+          currentValue: "high",
+        },
+      ]),
+    ).toMatchObject([
+      {
+        slug: "probe-model",
+        isDefault: true,
+        capabilities: { optionDescriptors: [{ id: "effort", currentValue: "high" }] },
+      },
+    ]);
   });
 
   it("projects discovery without claiming authentication when no login methods are advertised", () => {
