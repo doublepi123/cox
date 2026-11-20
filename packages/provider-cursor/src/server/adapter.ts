@@ -369,6 +369,9 @@ function cursorToolFailed(toolCall: ToolCall): boolean {
   if (toolCall.result?.status === "error") {
     return true;
   }
+  if (toolCall.type === "shell" && toolCall.result?.status === "success") {
+    return toolCall.result.value.exitCode !== 0;
+  }
   return toolCall.type === "mcp" && toolCall.result?.status === "success"
     ? toolCall.result.value.isError
     : false;
@@ -950,6 +953,7 @@ interface ActiveCursorTurn {
   readonly reasoning: ActiveCursorTextStream;
   interrupted: boolean;
   finalized: boolean;
+  readonly prompt: string | undefined;
   /** The agent's latest turn ended and no new work has started since. */
   turnEnded: boolean;
 }
@@ -1006,6 +1010,10 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           readonly orchestration: boolean;
         } | null>(null);
         const warnedUnsupportedSandbox = yield* Ref.make(false);
+        const interruptedPrompt = yield* Ref.make<{
+          readonly agent: string;
+          readonly text: string;
+        } | null>(null);
         const activeTurn = yield* Ref.make<ActiveCursorTurn | null>(null);
         const planIds = yield* Ref.make(new Map<string, OrchestrationV2PlanArtifact["id"]>());
 
@@ -2193,6 +2201,12 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   threadDisposition,
                 },
           );
+          if (input.status === "interrupted" && input.context.prompt !== undefined) {
+            yield* Ref.set(interruptedPrompt, {
+              agent: input.context.run.agentId,
+              text: input.context.prompt,
+            });
+          }
           yield* Ref.update(activeTurn, (current) =>
             current?.providerTurnId === input.context.providerTurnId ? null : current,
           );
@@ -2285,10 +2299,11 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           mcpServers: Record<string, McpServerConfig> | undefined,
           delivered: { readonly orchestration: boolean },
+          interrupted: string | undefined,
         ) {
           const rawText = turnInput.message.text;
           if (rawText.trim() === "/compress" && turnInput.message.attachments.length === 0) {
-            return "/compress";
+            return { message: "/compress", prompt: undefined };
           }
           if (hasCursorSkillMention(rawText) && cursorSkillNames === undefined) {
             const skills = yield* discoverCursorSkills(
@@ -2304,7 +2319,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 .map((skill) => skill.name),
             );
           }
-          const userText = t3OrchestrationPrompt({
+          const newText = t3OrchestrationPrompt({
             prompt: yield* providerMessageTextWithAttachmentPaths({
               text:
                 cursorSkillNames === undefined
@@ -2317,6 +2332,10 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             hasT3Mcp: mcpServers !== undefined,
             orchestrationDelivered: delivered.orchestration,
           });
+          const userText =
+            interrupted === undefined
+              ? newText
+              : `Your previous turn was interrupted and is missing from your history. Some of its work may already be done. Its request was:\n\n${interrupted}\n\nThe new message, which may continue or change that request:\n\n${newText}`;
           const images = yield* Effect.forEach(
             turnInput.message.attachments.filter(isProviderNativeImageAttachment),
             (attachment: ChatAttachment) =>
@@ -2353,12 +2372,16 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             });
           }
           const text = `${userText}\n\n${buildRuntimeInstructions({ harness: "Cursor", model: turnInput.modelSelection.model })}`;
-          return images.length === 0
-            ? text
-            : ({
-                text,
-                images,
-              } satisfies SDKUserMessage);
+          return {
+            message:
+              images.length === 0
+                ? text
+                : ({
+                    text,
+                    images,
+                  } satisfies SDKUserMessage),
+            prompt: userText,
+          };
         });
 
         const startTurn = Effect.fn("CursorAdapterV2.startTurn")(
@@ -2387,7 +2410,13 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               known?.agent === agent.nativeThreadId
                 ? known
                 : { orchestration: turnInput.runOrdinal > 1 };
-            const message = yield* resolveUserMessage(turnInput, mcpServers, delivered);
+            const interrupted = yield* Ref.get(interruptedPrompt);
+            const { message, prompt } = yield* resolveUserMessage(
+              turnInput,
+              mcpServers,
+              delivered,
+              interrupted?.agent === agent.nativeThreadId ? interrupted.text : undefined,
+            );
             const pendingUpdates: Array<InteractionUpdate> = [];
             let context: ActiveCursorTurn | null = null;
             // MCP send overrides replace the ambient servers loaded when the agent opens.
@@ -2415,11 +2444,14 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 },
               })
               .pipe(Effect.mapError(classifyCursorModelRejection(turnInput.modelSelection)));
-            const compacted = message === "/compress";
+            const compacted = prompt === undefined;
             yield* Ref.set(told, {
               agent: agent.nativeThreadId,
               orchestration: !compacted && (delivered.orchestration || mcpServers !== undefined),
             });
+            if (!compacted) {
+              yield* Ref.set(interruptedPrompt, null);
+            }
             const startedAt = yield* DateTime.now;
             const completed = yield* Deferred.make<void, never>();
             const providerTurnId = idAllocator.derive.providerTurn({
@@ -2447,6 +2479,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               interrupted: false,
               finalized: false,
               turnEnded: false,
+              prompt,
             };
             yield* Ref.set(activeTurn, context);
             yield* emitProviderEvent({
@@ -2521,7 +2554,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                                       : "provider_error",
                                   })
                                 : makeProviderFailure({
-                                    cause: transportFailure,
+                                    message: transportFailure,
                                     class: "transport_error",
                                   }),
                           }

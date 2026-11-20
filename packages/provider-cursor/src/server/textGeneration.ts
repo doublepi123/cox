@@ -142,12 +142,11 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
           }),
         );
 
-      const request = Effect.gen(function* () {
-        // Empty cwd and setting sources isolate the run from user projects even if sandboxing fails.
+      const runPrompt = Effect.fn("CursorTextGeneration.runPrompt")(function* (
+        sandboxEnabled: boolean,
+      ) {
         const agent = yield* Effect.acquireRelease(
-          createCursorAgent(true).pipe(
-            Effect.catchIf(cursorSandboxUnsupported, () => createCursorAgent(false)),
-          ),
+          createCursorAgent(sandboxEnabled),
           (agent) =>
             Effect.tryPromise(() => agent[Symbol.asyncDispose]()).pipe(
               Effect.timeout("5 seconds"),
@@ -170,7 +169,10 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
             : Effect.void,
         );
         return yield* Effect.tryPromise(() => run.wait());
-      }).pipe(Effect.scoped);
+      }, Effect.scoped);
+      const request = runPrompt(true).pipe(
+        Effect.catchIf(cursorSandboxUnsupported, () => runPrompt(false)),
+      );
       const promptResult = yield* request.pipe(
         Effect.timeoutOption(CURSOR_TIMEOUT_MS),
         Effect.flatMap(
