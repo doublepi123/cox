@@ -314,3 +314,9 @@ MCP retry authorization (`1adc05b844`) was already covered. No version bump.
 Cox baseline `3cf2610`; upstream `b46edac5c199..455a60aa3ceb` (179 commits).
 Adapted: 11. The commit-by-commit record is [docs/upstream-ports-2026-11-19.md](docs/upstream-ports-2026-11-19.md).
 No version bump.
+
+## November 20 follow-up
+
+Cox baseline `c641ee23d350`; upstream `455a60aa3ceb..4d5bf2d5579f` (246 commits).
+Adapted: 19. The commit-by-commit record is [docs/upstream-ports-2026-11-20.md](docs/upstream-ports-2026-11-20.md).
+`apps/mobile` was not changed. No version bump.
