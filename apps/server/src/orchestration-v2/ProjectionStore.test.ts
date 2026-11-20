@@ -458,6 +458,61 @@ it.effect("user-only record ordering uses the partial user-message index", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("loads only user monitor notifications for delegated progress", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = yield* addRolledBackRecoveryCandidate("monitor-notifications");
+    const now = yield* DateTime.now;
+    for (const [id, role, isMonitor] of [
+      ["prompt", "user", false],
+      ["monitor", "user", true],
+      ["reply", "assistant", true],
+    ] as const) {
+      yield* store.apply({
+        id: EventId.make(`event:monitor-notifications:${id}`),
+        type: "message.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: MessageId.make(id),
+          threadId,
+          runId: null,
+          nodeId: null,
+          createdBy: "agent",
+          creationSource: "server",
+          role,
+          text: id,
+          attachments: [],
+          streaming: false,
+          createdAt: now,
+          updatedAt: now,
+          ...(isMonitor
+            ? {
+                notification: {
+                  source: { kind: "monitor" as const },
+                  outcome: "updated" as const,
+                  summary: "Monitor update",
+                },
+              }
+            : {}),
+        },
+      });
+    }
+
+    const filter = { messageRoles: ["user"], monitorNotificationsOnly: true } as const;
+    const { messages } = yield* store.getThreadRecords(threadId, ["messages"], filter);
+    assert.deepEqual(
+      messages.map((message) => [message.id, message.text]),
+      [["monitor", "monitor"]],
+    );
+    const all = yield* store.getThreadRecords(threadId, ["messages"]);
+    assert.sameMembers(
+      all.messages.map((message) => message.id),
+      ["prompt", "monitor", "reply"],
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("SQL queue readiness skips held runs without bypassing active work", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
