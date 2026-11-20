@@ -113,6 +113,44 @@ describe("FileBrowserPanel", () => {
     });
   }
 
+  it("keeps search results current when a large folder listing arrives", async () => {
+    const initial: readonly ProjectEntry[] = [
+      ...entries,
+      { path: "src/target-existing.ts", kind: "file" },
+    ];
+    directory.entries = initial;
+    using _listing = { [Symbol.dispose]: () => (directory.entries = entries) };
+    const panel = () => (
+      <FileBrowserPanel
+        environmentId={EnvironmentId.make("env-files")}
+        cwd="/repo-large-folder-search"
+        projectName="repo"
+        selectedPath={null}
+        selectedPathRevealId={0}
+        onOpenFile={() => {}}
+        workspaceMutationId={null}
+      />
+    );
+    await using screen = await render(panel());
+    const search = page.getByRole("searchbox", { name: "Search repo files" });
+    await userEvent.fill(search, "target-");
+    await vi.waitFor(() => expect(findTreeRow("src/target-existing.ts")).not.toBeNull());
+
+    directory.entries = [
+      ...initial,
+      { path: "src/target-new.ts", kind: "file" },
+      ...Array.from({ length: 1_000 }, (_, index): ProjectEntry => ({
+        path: `src/generated-${index}.ts`,
+        kind: "file",
+      })),
+    ];
+    await screen.rerender(panel());
+
+    await vi.waitFor(() => expect(findTreeRow("src/target-new.ts")).not.toBeNull());
+    expect(findTreeRow("src/target-existing.ts")).not.toBeNull();
+    await expect.element(search).toHaveValue("target-");
+  });
+
   it("restores an expanded folder after remount", async () => {
     const panel = (
       <FileBrowserPanel

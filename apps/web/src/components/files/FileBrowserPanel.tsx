@@ -36,7 +36,7 @@ import {
   setAllDirectoriesExpanded,
   writeExpandedDirectories,
 } from "./fileTreeExpansion";
-import { buildFileTreePathUpdates } from "./fileTreePathReconciliation";
+import { buildFileTreePathUpdates, shouldRebuildFileTree } from "./fileTreePathReconciliation";
 import { loadFileAncestors } from "./loadFileAncestors";
 import { useDirectoryEntries } from "./useDirectoryEntries";
 import { useProjectPathSearch } from "~/state/queries";
@@ -433,7 +433,14 @@ export default function FileBrowserPanel({
     }
     const updates = buildFileTreePathUpdates(previousTreePaths, treePaths);
     if (updates.length === 0) return;
-    model.batch(updates);
+    if (shouldRebuildFileTree(previousTreePaths, treePaths, updates)) {
+      const activeSearch = model.isSearchOpen() ? model.getSearchValue() : null;
+      if (activeSearch !== null) model.closeSearch();
+      model.resetPaths(treePaths, { initialExpandedPaths: [...expandedPathsRef.current] });
+      if (activeSearch !== null) model.setSearch(activeSearch);
+    } else {
+      model.batch(updates);
+    }
     if (followedRevealRef.current !== null) {
       model.scrollToPath(followedRevealRef.current, { focus: false, offset: "center" });
     }
