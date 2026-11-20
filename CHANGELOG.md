@@ -22,6 +22,11 @@
 - Not published. The packaged macOS smoke closed the window and then expected
   the next launch to start the saved local connection.
 
+## 0.2.21 — 2026-11-20
+
+- Keep explicit clears of ACP compaction summaries and errors when applying
+  later tool updates.
+
 ## 0.2.20 — 2026-11-20
 
 - Bring over selected fixes for thread navigation, queued edits, file previews,
