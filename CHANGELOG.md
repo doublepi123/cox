@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Desktop windows are titled by instance, with the instance name before Cox,
+  and the page title can no longer rename them all back to Cox. On Windows each
+  instance gets its own taskbar group and pin.
+
 ## Desktop 0.2.31 — 2026-11-20
 
 - Closing a desktop connection window disconnects that instance and stops

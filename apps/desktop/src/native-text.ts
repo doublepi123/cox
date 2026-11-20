@@ -18,6 +18,7 @@ const chinese = {
   Settings: "设置",
   Usage: "用量",
   Connections: "连接管理",
+  Local: "本地",
   "Connect to remote server": "连接远程服务器",
   "Enter an HTTPS server origin without credentials, a path, query, or fragment.":
     "请输入不含凭据、路径、查询或片段的 HTTPS 服务器地址。",

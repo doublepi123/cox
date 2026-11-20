@@ -11,7 +11,18 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, screen, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  net,
+  screen,
+  session,
+  shell,
+} from "electron";
 import type { Event, IpcMainEvent } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";
@@ -54,6 +65,16 @@ import {
   snapshotHasInterruptibleWork,
   type OwnedInstance,
 } from "./instance-lifecycle.ts";
+import {
+  accentBitmap,
+  instanceAccent,
+  instanceIdFromArgv,
+  instanceLabel,
+  instanceRoleTitle,
+  instanceWindowTitle,
+  windowsInstanceAppId,
+  windowsRelaunchCommand,
+} from "./instance-title.ts";
 
 function systemLocale() {
   return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
@@ -87,6 +108,7 @@ let connectionsWindow: BrowserWindow | undefined;
 let connectionsPageUrl: string | undefined;
 let connectionsOwner: BrowserWindow | undefined;
 let openConnectionManager: (() => Promise<void>) | undefined;
+let openRequestedInstance: ((id: string) => void) | undefined;
 const remoteWindows = new Map<BrowserWindow, RemoteConnectionProfile>();
 const readyWindows = new Set<number>();
 let backend: BackendProcess | undefined;
@@ -989,6 +1011,84 @@ async function start() {
     for (const [candidate, id] of windowInstances)
       if (id === instance.id && candidate !== target) windowInstances.delete(candidate);
     windowInstances.set(target, instance.id);
+    presentInstanceWindow(target, instance.id, "main");
+  }
+
+  function labelForInstance(instanceId: string): string {
+    const localLabel = text("Local");
+    if (instanceId === LOCAL_INSTANCE_ID) return localLabel;
+    const profile =
+      connectionStore.profile(instanceId) ??
+      [...remoteWindows.values()].find((candidate) => candidate.id === instanceId);
+    return instanceLabel({
+      kind: "remote",
+      localLabel,
+      name: profile?.name,
+      origin: profile?.origin,
+    });
+  }
+
+  const presentedWindows = new WeakSet<BrowserWindow>();
+  function presentInstanceWindow(
+    target: BrowserWindow,
+    instanceId: string,
+    role: "main" | "settings" | "usage",
+  ) {
+    if (target.isDestroyed()) return;
+    const name = labelForInstance(instanceId);
+    const apply = (documentTitle?: string) => {
+      if (target.isDestroyed()) return;
+      target.setTitle(
+        role === "main"
+          ? instanceWindowTitle(name, documentTitle)
+          : instanceRoleTitle(name, text(role === "usage" ? "Usage" : "Settings")),
+      );
+      target.excludedFromShownWindowsMenu = false;
+    };
+    apply();
+    if (!presentedWindows.has(target)) {
+      presentedWindows.add(target);
+      target.webContents.on("page-title-updated", (event, title) => {
+        event.preventDefault();
+        apply(typeof title === "string" ? title : undefined);
+      });
+    }
+    if (process.platform !== "win32") return;
+    target.setAppDetails({
+      appId: windowsInstanceAppId(instanceId),
+      relaunchCommand: windowsRelaunchCommand({
+        execPath: process.execPath,
+        ...(app.isPackaged ? {} : { appPath: root }),
+        instanceId,
+      }),
+      relaunchDisplayName: name,
+    });
+    target.setOverlayIcon(
+      nativeImage.createFromBitmap(accentBitmap(instanceAccent(instanceId)), {
+        width: 16,
+        height: 16,
+      }),
+      name,
+    );
+  }
+
+  function focusInstance(id: string) {
+    if (!/^[A-Za-z0-9._-]{1,80}$/.test(id)) return;
+    const open = [...windowInstances.entries()].find(
+      ([candidate, instanceId]) => instanceId === id && !candidate.isDestroyed(),
+    )?.[0];
+    if (open) {
+      if (open.isMinimized()) open.restore();
+      open.show();
+      open.focus();
+      return;
+    }
+    if (switchingConnections) return;
+    if (id === LOCAL_INSTANCE_ID) {
+      void startLocal();
+      return;
+    }
+    if (connectionStore.profile(id)) void connectRemote({ id, openInNewWindow: true });
   }
 
   function detachInstanceWindow(target: BrowserWindow) {
@@ -1312,6 +1412,8 @@ async function start() {
     );
     const targetId = target.webContents.id;
     pageWindows.set(target, { kind, owner, access });
+    const ownerInstance = windowInstances.get(owner);
+    if (ownerInstance) presentInstanceWindow(target, ownerInstance, kind);
     if (kind === "settings" && owner === window) settingsWindow = target;
     if (bounds.x !== undefined && bounds.y !== undefined) target.setPosition(bounds.x, bounds.y);
     target.webContents.setWindowOpenHandler(({ url }) => {
@@ -1781,6 +1883,7 @@ async function start() {
     closeOwnerPages(window);
     settingsWindow = undefined;
     localPageUrl = undefined;
+    window.excludedFromShownWindowsMenu = true;
     window.hide();
     await window.loadURL("about:blank");
     await showConnections(error, undefined, true, draft);
@@ -1901,7 +2004,6 @@ async function start() {
       requestInstanceClose(target);
     });
     const targetId = target.webContents.id;
-    target.setTitle(`Cox · ${profile.name}`);
     target.webContents.setWindowOpenHandler(({ url }) => {
       void openExternal(url);
       return { action: "deny" };
@@ -2226,10 +2328,13 @@ async function start() {
       `Cox could not read the saved connection settings. The original file was preserved.\n${String(error)}`,
     );
   }
+  openRequestedInstance = focusInstance;
   const active = connectionStore.snapshot().active;
   if (active?.kind === "remote") await connectRemote({ id: active.profileId });
   else if (active?.kind === "local") await startLocal();
   else await showConnectionManager(connectionRecoveryError);
+  const requested = instanceIdFromArgv(process.argv);
+  if (requested) focusInstance(requested);
 }
 
 if (
@@ -2240,7 +2345,13 @@ if (
 ) {
   app.quit();
 } else {
-  app.on("second-instance", showWindow);
+  app.on("second-instance", (_event, argv: unknown) => {
+    const id = instanceIdFromArgv(
+      Array.isArray(argv) ? argv.filter((item) => typeof item === "string") : [],
+    );
+    if (id && openRequestedInstance) openRequestedInstance(id);
+    else showWindow();
+  });
   app.on("activate", showWindow);
   app.on("before-quit", (event) => {
     if (approvedQuit) {

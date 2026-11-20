@@ -37,6 +37,9 @@ class TestContents extends EventEmitter {
   getURL() {
     return this.mainFrame.url;
   }
+  getTitle() {
+    return "";
+  }
   isCrashed() {
     return false;
   }
@@ -78,6 +81,9 @@ class TestWindow extends EventEmitter {
   readonly webContents: TestContents;
   readonly setMenuBarVisibility = vi.fn();
   readonly setTitle = vi.fn();
+  readonly setAppDetails = vi.fn();
+  readonly setOverlayIcon = vi.fn();
+  excludedFromShownWindowsMenu = false;
   readonly setWindowButtonPosition = vi.fn();
   readonly setPosition = vi.fn();
   readonly options: BrowserWindowConstructorOptions;
@@ -241,6 +247,7 @@ vi.mock("electron", () => ({
   screen: {},
   session: { fromPartition },
   shell: { openExternal: vi.fn(), openPath: vi.fn() },
+  nativeImage: { createFromBitmap: vi.fn(() => ({ kind: "bitmap" })) },
 }));
 vi.mock("./backend.ts", () => ({
   BackendProcess: class {
@@ -1677,5 +1684,70 @@ describe("desktop connection manager windows", () => {
     await vi.waitFor(() => expect(manager().visible).toBe(true));
     expect(fixture.launchBackend).toHaveBeenCalledOnce();
     expect(fixture.backendConstructed).toBe(1);
+  });
+
+  it("names each instance window and keeps the renderer from renaming it to Cox", async () => {
+    fixture.locale = "zh-CN";
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    const local = primary();
+    expect(local.setTitle).toHaveBeenCalledWith("本地 — Cox");
+    const event = { preventDefault: vi.fn() };
+    local.webContents.emit("page-title-updated", event, "Cox");
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(local.setTitle).toHaveBeenLastCalledWith("本地 — Cox");
+    local.webContents.emit("page-title-updated", { preventDefault: vi.fn() }, "账单 · Cox");
+    expect(local.setTitle).toHaveBeenLastCalledWith("本地 — 账单");
+    await invoke("cox:connections-show", local);
+    await invoke("cox:connections-connect", manager(), {
+      name: "Office",
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    expect(remote.setTitle).toHaveBeenCalledWith("Office — Cox");
+    remote.webContents.emit("page-title-updated", { preventDefault: vi.fn() }, "Cox");
+    expect(remote.setTitle).toHaveBeenLastCalledWith("Office — Cox");
+    await invoke("cox:settings-open", remote, "/settings/general");
+    expect(pages("settings")[0]?.setTitle).toHaveBeenCalledWith("Office — 设置");
+    expect(local.setTitle).not.toHaveBeenCalledWith("Cox");
+    expect(remote.webContents.getTitle()).toBe("");
+  });
+
+  it("groups Windows taskbar windows by instance and relaunches the requested one", async () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    await start();
+    const local = primary();
+    expect(local.setAppDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "dev.cox.desktop.instance.local",
+        relaunchDisplayName: "Local",
+        relaunchCommand: expect.stringContaining("--cox-instance=local"),
+      }),
+    );
+    expect(local.setOverlayIcon).toHaveBeenCalled();
+    await invoke("cox:connections-show", local);
+    await invoke("cox:connections-connect", manager(), {
+      name: "Office",
+      origin: inspection.origin,
+      openInNewWindow: true,
+    });
+    const remote = satellites()[0]!;
+    const remoteId = JSON.parse(fixture.files.get(connectionsFile)!).profiles[0].id as string;
+    expect(remote.setAppDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "dev.cox.desktop.instance." + remoteId,
+        relaunchDisplayName: "Office",
+      }),
+    );
+    expect(local.setAppDetails.mock.calls[0]?.[0].appId).not.toBe(
+      remote.setAppDetails.mock.calls[0]?.[0].appId,
+    );
+    remote.hide();
+    fixture.events.emit("second-instance", {}, ["Cox.exe", "--cox-instance=" + remoteId]);
+    expect(remote.visible).toBe(true);
+    expect(fixture.focused).toBe(remote);
+    expect(local.webContents.getURL()).toBe(localOrigin);
   });
 });
