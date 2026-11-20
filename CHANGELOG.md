@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.17 — 2026-11-20
+
+- Allow systemd user service updates when the home directory is a symlink. Before restarting, verify the effective startup command and report any drop-in files that override it.
+
 ## 0.2.16 — 2026-11-20
 
 - Show model names in OMO task graphs instead of internal gateway identifiers.
