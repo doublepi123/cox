@@ -2834,6 +2834,7 @@ export const make = Effect.gen(function* () {
       const reuseExistingWorktree = Effect.fn("reuseExistingWorktree")(function* (
         worktreePath: string,
         checkedOutBranch: string,
+        runSetupAfterRefresh = true,
       ) {
         if (checkedOutBranch !== localPullRequestBranch) {
           // Bare-name matches may be unrelated local branches; preserve their work and tracking config.
@@ -2853,7 +2854,11 @@ export const make = Effect.gen(function* () {
             Effect.orElseSucceed(() => null),
           );
 
-        yield* ensureExistingWorktreeUpstream(worktreePath);
+        yield* configurePullRequestHeadUpstream(
+          worktreePath,
+          pullRequestWithRemoteInfo,
+          checkedOutBranch,
+        );
 
         // The pull request's own ref, because it is the only thing that certainly names its
         // head. The branch's upstream does not: configuring it is best-effort, so a branch cut
@@ -2903,7 +2908,7 @@ export const make = Effect.gen(function* () {
         );
 
         // Setup can disrupt other threads using this worktree; rerun only when the checkout moved.
-        if (refreshed.moved) {
+        if (refreshed.moved && runSetupAfterRefresh) {
           yield* maybeRunSetupScript(worktreePath);
         }
 
@@ -2971,11 +2976,13 @@ export const make = Effect.gen(function* () {
         });
       }
 
-      yield* materializePullRequestHeadBranch(
-        input.cwd,
-        pullRequestWithRemoteInfo,
-        localPullRequestBranch,
-      );
+      if (existingBranchBeforeFetch === null) {
+        yield* materializePullRequestHeadBranch(
+          input.cwd,
+          pullRequestWithRemoteInfo,
+          localPullRequestBranch,
+        );
+      }
 
       const existingBranchAfterFetch = yield* findLocalHeadBranch(input.cwd);
       const existingBranchAfterFetchPath = existingBranchAfterFetch?.worktreePath
@@ -2999,6 +3006,7 @@ export const make = Effect.gen(function* () {
         });
       }
 
+      const isOnPullRequestHead = yield* Ref.make(true);
       const worktree = yield* gitCore.createWorktree(
         {
           cwd: input.cwd,
@@ -3006,6 +3014,18 @@ export const make = Effect.gen(function* () {
           path: null,
         },
         {
+          ...(existingBranchBeforeFetch === null
+            ? {}
+            : {
+                progress: {
+                  onWorktreeClaimed: (cwd: string) =>
+                    reuseExistingWorktree(cwd, localPullRequestBranch, false).pipe(
+                      Effect.flatMap((result) =>
+                        Ref.set(isOnPullRequestHead, result.isOnPullRequestHead),
+                      ),
+                    ),
+                },
+              }),
           worktreesDirectory: yield* readWorktreesDirectory,
           submodules: yield* projectSettingsFor(input).pipe(
             Effect.map(({ settings }) => settings.worktreeSubmodules),
@@ -3013,14 +3033,16 @@ export const make = Effect.gen(function* () {
           ),
         },
       );
-      yield* ensureExistingWorktreeUpstream(worktree.worktree.path);
+      if (existingBranchBeforeFetch === null) {
+        yield* ensureExistingWorktreeUpstream(worktree.worktree.path);
+      }
       yield* maybeRunSetupScript(worktree.worktree.path);
 
       return {
         pullRequest,
         branch: worktree.worktree.refName,
         worktreePath: worktree.worktree.path,
-        isOnPullRequestHead: true,
+        isOnPullRequestHead: yield* Ref.get(isOnPullRequestHead),
       };
     }).pipe(Effect.ensuring(invalidateStatus(input.cwd)));
   }, asUserAction);

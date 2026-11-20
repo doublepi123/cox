@@ -4774,6 +4774,48 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
     }),
   );
 
+  it.effect("keeps unpublished commits when opening a PR worktree on an existing branch", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      const branch = "feature/pr-existing";
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "-b", branch]);
+      yield* runGit(repoDir, ["commit", "--allow-empty", "-m", "Published PR commit"]);
+      yield* runGit(repoDir, ["push", "-u", "origin", branch]);
+      yield* runGit(repoDir, ["push", "origin", "HEAD:refs/pull/88/head"]);
+      yield* runGit(repoDir, ["commit", "--allow-empty", "-m", "Unpublished local commit"]);
+      const localHead = (yield* runGit(repoDir, ["rev-parse", "HEAD"])).stdout.trim();
+      yield* runGit(repoDir, ["checkout", "main"]);
+      const { manager } = yield* makeManager({
+        providerScenario: {
+          pullRequest: {
+            number: 88,
+            title: "Existing branch PR",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/88",
+            baseRefName: "main",
+            headRefName: branch,
+            state: "open",
+          },
+        },
+      });
+
+      const result = yield* preparePullRequestThread(manager, {
+        cwd: repoDir,
+        reference: "88",
+        mode: "worktree",
+      });
+
+      if (result.worktreePath === null) throw new Error("Expected a PR worktree");
+      expect((yield* runGit(result.worktreePath, ["rev-parse", "HEAD"])).stdout.trim()).toBe(
+        localHead,
+      );
+      expect(result.isOnPullRequestHead).toBe(false);
+    }),
+  );
+
   it.effect("refreshes a reused PR worktree onto the updated pull request head", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
