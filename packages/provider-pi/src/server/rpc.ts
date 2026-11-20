@@ -116,14 +116,17 @@ const MAX_PI_RECORD_CHARS =
 function makeJsonlFramer() {
   let buffer = "";
   let dropping = false;
-  return (chunk: string): ReadonlyArray<string> => {
+  return (chunk: string) => {
     const lines: string[] = [];
+    const droppedLengths: number[] = [];
     let start = 0;
     while (start < chunk.length) {
       const newline = chunk.indexOf("\n", start);
       const end = newline < 0 ? chunk.length : newline;
       if (!dropping) {
-        if (buffer.length + end - start > MAX_PI_RECORD_CHARS) {
+        const observedLength = buffer.length + end - start;
+        if (observedLength > MAX_PI_RECORD_CHARS) {
+          droppedLengths.push(observedLength);
           buffer = "";
           dropping = true;
         } else {
@@ -138,7 +141,7 @@ function makeJsonlFramer() {
       dropping = false;
       start = newline + 1;
     }
-    return lines;
+    return { lines, droppedLengths };
   };
 }
 
@@ -314,7 +317,13 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
       Stream.decodeText(),
       Stream.runForEach((chunk) =>
         Effect.gen(function* () {
-          const lines = frame(chunk);
+          const { lines, droppedLengths } = frame(chunk);
+          for (const recordLength of droppedLengths) {
+            yield* Effect.logWarning("Dropping oversized pi stdout record.", {
+              recordLength,
+              maxRecordLength: MAX_PI_RECORD_CHARS,
+            });
+          }
           for (const line of lines) {
             const record = parsePiRecord(line);
             if (record === undefined) {
@@ -332,7 +341,7 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
         }),
       ),
     );
-    for (const line of frame("\n")) {
+    for (const line of frame("\n").lines) {
       const trailing = parsePiRecord(line);
       if (trailing !== undefined) {
         const decoded =

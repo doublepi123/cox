@@ -28,6 +28,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
@@ -6555,8 +6556,26 @@ describe("PiAdapterV2", () => {
 });
 
 describe("PiRpc framing", () => {
-  it.effect("reassembles records across chunk boundaries and strips CR", () =>
-    Effect.gen(function* () {
+  it.effect("reassembles split records and reports a discarded oversized record", () => {
+    const discarded: Array<{ readonly recordLength: unknown; readonly maxRecordLength: unknown }> =
+      [];
+    const capture = Logger.make<unknown, void>(({ logLevel, message }) => {
+      if (logLevel !== "Warn" || !Array.isArray(message)) return;
+      const [text, details] = message;
+      if (
+        text !== "Dropping oversized pi stdout record." ||
+        !details ||
+        typeof details !== "object"
+      )
+        return;
+      if ("recordLength" in details && "maxRecordLength" in details) {
+        discarded.push({
+          recordLength: details.recordLength,
+          maxRecordLength: details.maxRecordLength,
+        });
+      }
+    });
+    return Effect.gen(function* () {
       const stdout = yield* Queue.unbounded<Uint8Array>();
       const spawner = ChildProcessSpawner.make(() =>
         Effect.succeed(
@@ -6599,8 +6618,20 @@ describe("PiRpc framing", () => {
       const third = yield* Queue.take(connection.events);
       assert.equal(third["type"], "queue_update");
       assert.equal((yield* Queue.take(connection.events))["type"], "after_oversized");
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  );
+      assert.lengthOf(discarded, 1);
+      const diagnostic = discarded[0];
+      assert.isTrue(
+        typeof diagnostic?.recordLength === "number" &&
+          typeof diagnostic.maxRecordLength === "number" &&
+          diagnostic.recordLength > diagnostic.maxRecordLength,
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.merge(NodeServices.layer, Logger.layer([capture], { mergeWithExisting: false })),
+      ),
+    );
+  });
 });
 
 describe("PiRpc early process exit", () => {
