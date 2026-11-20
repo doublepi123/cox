@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Agent, createAgentPlatform, Cursor, SqliteLocalAgentStore } from "./sdk.ts";
+import { loadCursorSdk, loadCursorSqlite } from "./sdk.ts";
 
 // The SDK leaves a shell-error promise unhandled, which would exit the server.
 const CURSOR_SHELL_SPAWN_MARKERS = [
@@ -128,9 +128,8 @@ const readCliTransport = Effect.gen(function* () {
 export class CursorSdk extends Context.Service<
   CursorSdk,
   {
-    readonly Agent: typeof Agent;
-    readonly createAgentPlatform: typeof createAgentPlatform;
-    readonly SqliteLocalAgentStore: typeof SqliteLocalAgentStore;
+    readonly load: typeof loadCursorSdk;
+    readonly loadSqlite: typeof loadCursorSqlite;
   }
 >()("@t3tools/provider-cursor/server/CursorSdk") {}
 
@@ -141,15 +140,15 @@ export const layer = Layer.effect(
     const useHttp1 = yield* readCliTransport;
     yield* Effect.acquireRelease(
       Effect.sync(() => {
-        if (useHttp1) Cursor.configure({ local: { useHttp1ForAgent: true } });
+        if (useHttp1) loadCursorSdk().Cursor.configure({ local: { useHttp1ForAgent: true } });
         process.on("unhandledRejection", onUnhandledRejection);
       }),
       () =>
         Effect.sync(() => {
           process.off("unhandledRejection", onUnhandledRejection);
-          if (useHttp1) Cursor.configure({ local: { useHttp1ForAgent: null } });
+          if (useHttp1) loadCursorSdk().Cursor.configure({ local: { useHttp1ForAgent: null } });
         }),
     );
-    return CursorSdk.of({ Agent, createAgentPlatform, SqliteLocalAgentStore });
+    return CursorSdk.of({ load: loadCursorSdk, loadSqlite: loadCursorSqlite });
   }),
 );

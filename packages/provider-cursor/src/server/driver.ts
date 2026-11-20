@@ -14,6 +14,7 @@ import { readCursorUsageLimits } from "./usageLimits.ts";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeCursorTextGeneration } from "./textGeneration.ts";
+import { cursorRememberedSdkModels } from "./status.ts";
 import { makeCursorAdapterV2, type CursorAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { buildInitialCursorProviderSnapshot, checkCursorProviderStatus } from "./status.ts";
@@ -209,6 +210,8 @@ export const CursorDriver: ProviderDriver<
       auth.requireApiKey,
       auth.withAccess,
       () => catalogModels,
+      cursorRememberedSdkModels,
+      sdkRunner,
     );
 
     const checkProvider = auth.readApiKey.pipe(

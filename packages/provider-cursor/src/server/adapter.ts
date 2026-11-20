@@ -71,7 +71,7 @@ import {
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
 import * as CursorAgentSdk from "./CursorAgentSdk.ts";
-import { ConfigurationError } from "./sdk.ts";
+import { isCursorSdkError } from "./sdk.ts";
 export { cursorSdkModelSelection } from "./sdkModel.ts";
 
 const CURSOR_DRIVER_KIND = CursorAgentSdk.CURSOR_PROVIDER;
@@ -341,7 +341,7 @@ class CursorModelUnavailableError extends Schema.TaggedError<CursorModelUnavaila
 // Uncoded SDK model rejections are identifiable only by message prefix.
 const classifyCursorModelRejection =
   (modelSelection: ModelSelection) => (error: CursorAgentSdk.CursorAgentSdkRunnerError) =>
-    error.cause instanceof ConfigurationError &&
+    isCursorSdkError(error.cause, "ConfigurationError") &&
     error.cause.message.startsWith("Cannot use this model:")
       ? new CursorModelUnavailableError({ model: modelSelection.model, cause: error.cause })
       : error;
@@ -2623,7 +2623,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             yield* Ref.set(interruptedPrompt, {
               agent: input.context.run.agentId,
               text: input.context.prompt,
-              runtimeInstructions: input.context.compacted ? undefined : input.context.runtimeInstructions,
+              runtimeInstructions: input.context.compacted
+                ? undefined
+                : input.context.runtimeInstructions,
             });
           }
           yield* Ref.update(activeTurn, (current) =>
@@ -2668,7 +2670,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           if (
             existing !== null &&
             openInput.operation === "resume" &&
-            existing.nativeThreadId === openInput.agentId
+            existing.nativeThreadId === openInput.agentId &&
+            existing.session.isAlive?.() !== false
           ) {
             return existing;
           }
@@ -2755,7 +2758,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             }),
             hasT3Mcp: mcpServers !== undefined,
             orchestrationDelivered: delivered.orchestration,
-            ...(hasBackgroundWait ? { providerInstructions: CURSOR_BACKGROUND_WAIT_INSTRUCTIONS } : {}),
+            ...(hasBackgroundWait
+              ? { providerInstructions: CURSOR_BACKGROUND_WAIT_INSTRUCTIONS }
+              : {}),
             providerInstructionsDelivered: delivered.backgroundWait,
           });
           const userText =
@@ -2846,7 +2851,11 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             const delivered =
               known?.agent === agent.nativeThreadId
                 ? known
-                : { orchestration: turnInput.runOrdinal > 1, backgroundWait: false, runtime: undefined };
+                : {
+                    orchestration: turnInput.runOrdinal > 1,
+                    backgroundWait: false,
+                    runtime: undefined,
+                  };
             const hasBackgroundWait = mcpSession?.capabilities?.has("background-wait") === true;
             const interrupted = yield* Ref.get(interruptedPrompt);
             const { message, prompt, runtimeInstructions } = yield* resolveUserMessage(

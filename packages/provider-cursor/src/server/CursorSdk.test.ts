@@ -12,10 +12,8 @@ import * as CursorSdk from "./CursorSdk.ts";
 
 const configure = vi.hoisted(() => vi.fn());
 vi.mock("./sdk.ts", () => ({
-  Agent: {},
-  createAgentPlatform: {},
-  Cursor: { configure },
-  SqliteLocalAgentStore: {},
+  loadCursorSdk: () => ({ Cursor: { configure } }),
+  loadCursorSqlite: vi.fn(),
 }));
 
 // Shaped like the SDK's minified class: the constructor is not named after the error.

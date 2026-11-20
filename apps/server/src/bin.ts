@@ -36,6 +36,12 @@ if (
   } else if (command === "acp-mcp-bridge" || command === "acp-mcp-call") {
     const { runAcpMcpCliFastPath } = await import("./mcp/AcpMcpStdioBridge.ts");
     await runAcpMcpCliFastPath(command, process.argv.slice(3));
+  } else if (command === "__cursor-sdk-worker") {
+    const [NodeServices, { runCursorSdkWorker }] = await Promise.all([
+      import("@effect/platform-node/NodeServices"),
+      import("@t3tools/provider-cursor/server/worker"),
+    ]);
+    await runCursorSdkWorker(NodeServices.layer);
   } else {
     enableCliCompileCache();
     const { runCli } = await import("./binCli.ts");

@@ -7,7 +7,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
-import { AuthenticationError, Cursor, CursorSdkError } from "./sdk.ts";
+import { isCursorSdkError, loadCursorSdk } from "./sdk.ts";
 
 export interface CursorSdkCatalogSnapshot {
   readonly user: SDKUser | undefined;
@@ -28,11 +28,15 @@ export class CursorSdkCatalogError extends Schema.TaggedError<CursorSdkCatalogEr
   }
 
   get planRequired(): boolean {
-    return this.cause instanceof CursorSdkError && this.cause.code === "plan_required";
+    return isCursorSdkError(this.cause, "CursorSdkError") && this.cause.code === "plan_required";
   }
 
   get accountBlocked(): boolean {
-    return this.cause instanceof CursorSdkError && this.cause.status === 403 && !this.planRequired;
+    return (
+      isCursorSdkError(this.cause, "CursorSdkError") &&
+      this.cause.status === 403 &&
+      !this.planRequired
+    );
   }
 }
 
@@ -47,8 +51,8 @@ export class CursorSdkCatalog extends Context.Service<
 
 function isAuthenticationFailure(cause: unknown): boolean {
   return (
-    cause instanceof AuthenticationError ||
-    (cause instanceof CursorSdkError && cause.status === 401)
+    isCursorSdkError(cause, "AuthenticationError") ||
+    (isCursorSdkError(cause, "CursorSdkError") && cause.status === 401)
   );
 }
 
@@ -70,8 +74,8 @@ const sdkRequest = <A>(tryRequest: () => Promise<A>) =>
   });
 
 const liveProbes: CursorSdkCatalogProbes = {
-  readUser: (apiKey) => sdkRequest(() => Cursor.me({ apiKey })),
-  readModels: (apiKey) => sdkRequest(() => Cursor.models.list({ apiKey })),
+  readUser: (apiKey) => sdkRequest(() => loadCursorSdk().Cursor.me({ apiKey })),
+  readModels: (apiKey) => sdkRequest(() => loadCursorSdk().Cursor.models.list({ apiKey })),
 };
 
 export const makeCursorSdkCatalog = Effect.fn("CursorSdkCatalog.make")(function* (
