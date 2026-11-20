@@ -286,6 +286,7 @@ function SidebarControl() {
         // the toggle stays available everywhere else.
         return;
       }
+      if (event.ctrlKey && isTerminalFocused()) return;
       if (
         resolveShortcutCommand(event, keybindings, { context: { usagePageOpen } }) !==
         "sidebar.toggle"
