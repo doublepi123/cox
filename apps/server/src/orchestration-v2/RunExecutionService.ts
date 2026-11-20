@@ -405,6 +405,7 @@ export function routeProviderEvent(
       ];
     }
     case "provider_thread.updated": {
+      if (event.sessionScoped === true) return [false, state];
       const belongs =
         state.ownedProviderThreadIds.has(event.providerThread.id) ||
         (event.providerThread.appThreadId !== null && ownsThread(event.providerThread.appThreadId));

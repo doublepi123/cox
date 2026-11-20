@@ -143,6 +143,7 @@ patchedDependencies:
   "@pierre/diffs@1.6.1": patches/@pierre%2Fdiffs@1.6.1.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
   "@muse-code/sdk@1.4.6": patches/@muse-code__sdk@1.4.6.patch
+  "@cursor/sdk@1.4.2": patches/@cursor__sdk@1.4.2.patch
 peerDependencyRules:
   allowAny:
     - typescript

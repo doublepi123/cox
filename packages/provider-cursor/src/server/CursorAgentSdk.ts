@@ -2,6 +2,7 @@ import type {
   AgentMessage,
   AgentOptions,
   InteractionUpdate,
+  RunRecord,
   RunResult,
   SDKUserMessage,
   SendOptions,
@@ -94,7 +95,26 @@ export interface CursorAgentSdkSendInput<Error> {
   readonly onDelta?: (update: InteractionUpdate) => Effect.Effect<void, Error>;
   /** Runs `agent.summarize()` instead, which takes no message or options. */
   readonly summarize?: boolean;
+  readonly onBackgroundShell?: (event: CursorBackgroundShellEvent) => Effect.Effect<void>;
 }
+
+interface CursorBackgroundShellRef {
+  /** The shell id Cursor gave the agent. */
+  readonly id: string;
+  readonly pid: number | undefined;
+  readonly command: string;
+}
+
+export type CursorBackgroundShellEvent =
+  | (CursorBackgroundShellRef & { readonly type: "started"; readonly stop: () => void })
+  | (CursorBackgroundShellRef & {
+      readonly type: "ended";
+      /** Killed by the agent or by `stop`, rather than exiting by itself. */
+      readonly stopped: boolean;
+      readonly exitCode: number | undefined;
+      /** The file Cursor logs the shell's output to. */
+      readonly outputPath: string | undefined;
+    });
 
 export interface CursorAgentSdkRun {
   readonly runId: string;
@@ -126,6 +146,7 @@ export interface CursorAgentSdkSession {
     CursorContextUsage | undefined,
     CursorAgentSdkRunnerError
   >;
+  readonly rewindAfterRun?: (runId: string) => Effect.Effect<void, CursorAgentSdkRunnerError>;
   readonly close: Effect.Effect<void, CursorAgentSdkRunnerError>;
 }
 
@@ -171,6 +192,15 @@ export interface CursorAgentSdkLoggedSendOptions {
 }
 
 export type CursorAgentSdkProtocolLogEvent =
+  | {
+      readonly direction: "outgoing";
+      readonly stage: "decoded";
+      readonly payload: {
+        readonly type: "agent.rewind";
+        readonly agentId: string;
+        readonly afterRunId: string;
+      };
+    }
   | {
       readonly direction: "outgoing";
       readonly stage: "decoded";
@@ -382,6 +412,58 @@ function makeCursorAgentSdkProtocolLogger(input: {
       .pipe(Effect.ignore);
 }
 
+
+interface CursorBackgroundShell {
+  readonly conversationId?: unknown;
+  readonly command?: unknown;
+  readonly shell: {
+    readonly id?: unknown;
+    readonly pid?: unknown;
+    readonly abort: () => void;
+    readonly onComplete: (
+      listener: (completion: {
+        readonly code?: unknown;
+        readonly aborted?: unknown;
+        readonly outputPath?: unknown;
+      }) => void,
+    ) => void;
+  };
+}
+
+// The SDK kills an agent's background shells when its run ends and reports their exit to no one.
+// The @cursor/sdk patch offers each new one to this hook; true keeps it past the run.
+const BACKGROUND_SHELL_HOOK = Symbol.for("@cursor/sdk.backgroundShell");
+const backgroundShellListeners = new Map<string, (event: CursorBackgroundShellEvent) => void>();
+
+function listenForBackgroundShells(
+  agentId: string,
+  listener: (event: CursorBackgroundShellEvent) => void,
+) {
+  const hooks = globalThis as Record<symbol, unknown>;
+  hooks[BACKGROUND_SHELL_HOOK] ??= ({ conversationId, command, shell }: CursorBackgroundShell) => {
+    const notify =
+      typeof conversationId === "string" ? backgroundShellListeners.get(conversationId) : undefined;
+    if (notify === undefined) return false;
+    const ref = {
+      id: String(shell.id),
+      pid: typeof shell.pid === "number" ? shell.pid : undefined,
+      command: typeof command === "string" ? command : "",
+    };
+    notify({ ...ref, type: "started", stop: () => shell.abort() });
+    shell.onComplete((completion) =>
+      notify({
+        ...ref,
+        type: "ended",
+        stopped: completion.aborted === true,
+        exitCode: typeof completion.code === "number" ? completion.code : undefined,
+        outputPath: typeof completion.outputPath === "string" ? completion.outputPath : undefined,
+      }),
+    );
+    return true;
+  };
+  backgroundShellListeners.set(agentId, listener);
+}
+
 export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(function* (
   protocolLoggerFor: (input: CursorAgentSdkOpenInput) => CursorAgentSdkProtocolLogger | undefined,
 ) {
@@ -446,6 +528,7 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
             : Agent.resume(input.agentId!, input.options),
         catch: (cause) => runnerError(cause, `agent.${input.operation}`),
       });
+      let shellListener: ((event: CursorBackgroundShellEvent) => void) | undefined;
 
       yield* log({
         direction: "incoming",
@@ -480,6 +563,17 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
               options: loggedCursorSendOptions(sendInput.options),
             },
           });
+
+          const onBackgroundShell = sendInput.onBackgroundShell;
+          if (onBackgroundShell !== undefined) {
+            let delivered = Promise.resolve();
+            shellListener = (event) => {
+              delivered = delivered
+                .then(() => Effect.runPromiseWith(context)(onBackgroundShell(event)))
+                .catch(() => undefined);
+            };
+            listenForBackgroundShells(agent.agentId, shellListener);
+          }
 
           let callbacksReady = false;
           const pendingUpdates: Array<InteractionUpdate> = [];
@@ -694,6 +788,67 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
             return usage === undefined || usage.maxTokens === 0 ? undefined : usage;
           }),
         ),
+        rewindAfterRun: (runId) =>
+          log({
+            direction: "outgoing",
+            stage: "decoded",
+            payload: { type: "agent.rewind", agentId: agent.agentId, afterRunId: runId },
+          }).pipe(
+            Effect.andThen(
+              Effect.tryPromise({
+                try: async () => {
+                  const { store, checkpointStore } = await createAgentPlatform({
+                    ...(cwd === undefined ? {} : { workspaceRef: cwd }),
+                    ...(input.options.local?.store === undefined
+                      ? {}
+                      : { localStore: input.options.local.store }),
+                  });
+                  const runs: Array<RunRecord> = [];
+                  let cursor: string | undefined;
+                  do {
+                    const page = await store.listRuns(
+                      agent.agentId,
+                      cursor === undefined ? {} : { cursor },
+                    );
+                    runs.push(...page.items);
+                    cursor = page.nextCursor;
+                  } while (cursor !== undefined);
+                  const kept = runs.find((candidate) => candidate.runId === runId);
+                  if (kept === undefined) {
+                    throw new Error(`Cursor agent ${agent.agentId} has no run ${runId}.`);
+                  }
+                  const unwound = runs
+                    .filter((candidate) => candidate.turnNumber > kept.turnNumber)
+                    .toSorted((a, b) => a.turnNumber - b.turnNumber)[0];
+                  if (unwound === undefined) return;
+                  const anchor = unwound.startCheckpointRef?.blobId;
+                  if (anchor === undefined) {
+                    throw new Error(`Cursor run ${unwound.runId} has no starting checkpoint.`);
+                  }
+                  const blobStore = await checkpointStore.getBlobStore(agent.agentId);
+                  const getBlob =
+                    typeof blobStore === "object" && blobStore !== null
+                      ? Reflect.get(blobStore, "getBlob")
+                      : undefined;
+                  if (typeof getBlob !== "function") {
+                    throw new Error("Cursor's checkpoint store cannot read blobs.");
+                  }
+                  const bytes: unknown = await getBlob.call(
+                    blobStore,
+                    undefined,
+                    Buffer.from(anchor, "hex"),
+                  );
+                  if (!(bytes instanceof Uint8Array)) {
+                    throw new Error(`Cursor checkpoint ${anchor} is missing.`);
+                  }
+                  // Checkpoints are content-addressed, so re-saving the anchor's bytes moves the
+                  // agent's head back to that exact root, like cursor-agent's latestRootBlobId reset.
+                  await checkpointStore.saveCheckpoint(agent.agentId, { toBinary: () => bytes });
+                },
+                catch: (cause) => runnerError(cause, "agent.rewind"),
+              }),
+            ),
+          ),
         close: log({
           direction: "outgoing",
           stage: "decoded",
@@ -704,7 +859,13 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
         }).pipe(
           Effect.andThen(
             Effect.try({
-              try: () => agent.close(),
+              try: () => {
+                // A resumed session may already listen for this agent.
+                if (backgroundShellListeners.get(agent.agentId) === shellListener) {
+                  backgroundShellListeners.delete(agent.agentId);
+                }
+                agent.close();
+              },
               catch: (cause) => runnerError(cause, "agent.close"),
             }),
           ),

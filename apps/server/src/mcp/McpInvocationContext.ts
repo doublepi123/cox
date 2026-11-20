@@ -14,8 +14,14 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 
-const ALL_MCP_CAPABILITIES = ["preview", "orchestration", "worktree", "pull-requests"] as const;
+const ALL_MCP_CAPABILITIES = ["preview", "orchestration", "worktree", "pull-requests", "background-wait"] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
+
+export const hiddenWithoutBackgroundWait = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return scope === undefined || (scope.thread !== undefined && scope.capabilities.has("background-wait"));
+};
 
 export interface McpThreadCaller {
   readonly threadId: ThreadId;

@@ -69,6 +69,20 @@ describe("local agent instructions", () => {
     );
   });
 
+  it("delivers provider instructions to a conversation that already knows Cox", () => {
+    const providerRun = (providerInstructionsDelivered: boolean) =>
+      t3OrchestrationPrompt({
+        prompt: "Continue.",
+        hasT3Mcp: true,
+        orchestrationDelivered: true,
+        providerInstructions: "Mark awaited shells.",
+        providerInstructionsDelivered,
+      });
+    assert.include(providerRun(false), "Mark awaited shells.");
+    assert.notInclude(providerRun(false), T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim());
+    assert.equal(providerRun(true), "Continue.");
+  });
+
   it("refreshes ACP context when local tool availability or interaction mode changes", () => {
     const state = { interactionMode: "default", hasT3Mcp: true } as const;
     const first = t3AcpPromptWithInstructions({ prompt: "Inspect the project.", state });

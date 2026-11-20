@@ -100,12 +100,19 @@ export function t3OrchestrationPrompt(input: {
   readonly prompt: string;
   readonly hasT3Mcp: boolean;
   readonly orchestrationDelivered: boolean;
+  readonly providerInstructions?: string;
+  readonly providerInstructionsDelivered?: boolean;
 }): string {
   if (!input.hasT3Mcp) return input.prompt;
-  if (!input.orchestrationDelivered) {
-    return prependT3OrchestrationInstructions(input.prompt, T3_CODE_ORCHESTRATION_INSTRUCTIONS);
-  }
-  return input.prompt;
+  const instructions = [
+    ...(!input.orchestrationDelivered ? [T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()] : []),
+    ...(input.providerInstructions !== undefined && !input.providerInstructionsDelivered
+      ? [input.providerInstructions]
+      : []),
+  ];
+  return instructions.length === 0
+    ? input.prompt
+    : prependT3OrchestrationInstructions(input.prompt, instructions.join("\n\n"));
 }
 
 export function t3OrchestrationSystemPrompt(hasT3Mcp: boolean): string | undefined {

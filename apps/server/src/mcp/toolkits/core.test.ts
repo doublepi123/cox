@@ -1152,3 +1152,45 @@ it.effect(
     );
   },
 );
+
+it.effect(
+  "cox_background_wait marks work from a turn a capable provider started before Cox started its run",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const result = yield* server
+        .callTool({ name: "cox_background_wait", arguments: { taskIds: ["checks"] } })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, {
+            ...scope,
+            capabilities: new Set<McpInvocationContext.McpCapability>([
+              "orchestration",
+              "background-wait",
+            ]),
+          }),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+      expect(result.structuredContent).toEqual({ matched: ["checks"], unmatched: [] });
+    }).pipe(
+      Effect.provide(
+        layerOrchestratorToolkit.pipe(
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(
+            Layer.mock(ThreadManagement.ThreadManagementService)({
+              getThreadShell: (id) =>
+                Effect.succeed(McpToolAccessTestkit.liveThreadShell(id, { activeRunId: null })),
+              awaitBackgroundTasks: ({ taskIds }) =>
+                Effect.succeed({ matched: taskIds, unmatched: [] }),
+            }),
+          ),
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+          Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
+          Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+          Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
+          Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
+        ),
+      ),
+    ),
+);

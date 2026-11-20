@@ -301,6 +301,8 @@ function sessionScopedArtifactThreadId(
   const threadBusy = (id: ProviderThreadId | null) =>
     id !== null && [...busyTurns].some((key) => key.startsWith(busyTurnPrefix(id)));
   switch (event.type) {
+    case "provider_thread.updated":
+      return event.sessionScoped === true ? (event.providerThread.appThreadId ?? undefined) : undefined;
     case "plan.updated":
       return event.driver === "omo" && event.plan.kind === "todo_list" && event.plan.runId === null
         ? event.plan.threadId
@@ -509,6 +511,14 @@ export const layerWithOptions = (
                   import("../mcp/McpInvocationContext.ts").McpCapability
                 >(["orchestration", "worktree", "pull-requests"]);
                 if (browserToolsAvailable) capabilities.add("preview");
+                const backgroundWait = yield* registry.get(providerInstanceId).pipe(
+                  Effect.flatMap((adapter) => adapter.getCapabilities()),
+                  Effect.map((capabilities) => capabilities.tools.supportsBackgroundWait === true),
+                  Effect.option,
+                );
+                if (Option.getOrElse(backgroundWait, () => false)) {
+                  capabilities.add("background-wait");
+                }
                 const subagent = yield* projectionStore.getThread(threadId).pipe(
                   Effect.map((thread) => thread.lineage.relationshipToParent === "subagent"),
                   Effect.orElseSucceed(() => false),
@@ -533,6 +543,8 @@ export const layerWithOptions = (
                     resolved.thread.threadId === threadId &&
                     resolved.thread.providerInstanceId === providerInstanceId &&
                     resolved.capabilities.has("preview") === browserToolsAvailable &&
+                    (Option.isNone(backgroundWait) ||
+                      resolved.capabilities.has("background-wait") === backgroundWait.value) &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
                   ) {
