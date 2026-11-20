@@ -3317,12 +3317,19 @@ describe("parseAgentSessionTranscript", () => {
     expect(thread?.title).toBe(prompt);
   });
 
-  it("skips sessions without a visible user message", () => {
+  it("skips Claude sessions answered only by a synthetic error", () => {
     const thread = AgentSessionScanner.parseAgentSessionTranscript({
-      contents: JSON.stringify({
-        type: "assistant",
-        message: { role: "assistant", content: "Done" },
-      }),
+      contents: [
+        JSON.stringify({ type: "user", message: { role: "user", content: "plugin" } }),
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "<synthetic>",
+            content: "Invalid API key",
+          },
+        }),
+      ].join("\\n"),
       source: "claudeAgent",
       providerInstanceId: ProviderInstanceId.make("claudeAgent"),
       fallbackSessionId: "claude-session",

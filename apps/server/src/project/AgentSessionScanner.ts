@@ -463,6 +463,8 @@ function parseAgentSessionRecords(
       : (claudeFields.title ?? null);
   let model = claudeFields.model ?? null;
   let derivedTitle: string | undefined;
+  let hasClaudeSyntheticReply = false;
+  let hasClaudeModelReply = false;
   let hasCodexSessionId = false;
   const messages: Array<AgentSessionThreadMessage & { readonly codexResponseUser: boolean }> = [];
   let firstUserMessage:
@@ -572,6 +574,10 @@ function parseAgentSessionRecords(
       if (record.type !== "user" && record.type !== "assistant") continue;
       const text = extractText(record.message?.content);
       if (text.length === 0) continue;
+      if (record.type === "assistant") {
+        if (record.message?.model?.trim() === "<synthetic>") hasClaudeSyntheticReply = true;
+        else hasClaudeModelReply = true;
+      }
       retainMessage({
         role: record.type,
         text,
@@ -642,7 +648,12 @@ function parseAgentSessionRecords(
   const visibleMessages = messages.map(
     ({ codexResponseUser: _codexResponseUser, ...message }) => message,
   );
-  if (providerSessionId.trim().length === 0 || firstUserMessage === undefined) return null;
+  if (
+    providerSessionId.trim().length === 0 ||
+    firstUserMessage === undefined ||
+    (input.source === "claudeAgent" && hasClaudeSyntheticReply && !hasClaudeModelReply)
+  )
+    return null;
   const firstUserMessageRetained = messages.includes(firstUserMessage);
   const { codexResponseUser: _codexResponseUser, ...visibleFirstUserMessage } = firstUserMessage;
   const retainedMessages = firstUserMessageRetained
