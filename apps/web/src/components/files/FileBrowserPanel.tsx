@@ -30,7 +30,12 @@ import { PIERRE_TREE_UNSAFE_CSS, pierreTreeStyle } from "~/pierre-tree-theme";
 
 import { joinHostPath } from "./filePath";
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
-import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "./fileTreeExpansion";
+import {
+  areAllDirectoriesExpanded,
+  readExpandedDirectories,
+  setAllDirectoriesExpanded,
+  writeExpandedDirectories,
+} from "./fileTreeExpansion";
 import { buildFileTreePathUpdates } from "./fileTreePathReconciliation";
 import { loadFileAncestors } from "./loadFileAncestors";
 import { useDirectoryEntries } from "./useDirectoryEntries";
@@ -326,30 +331,48 @@ export default function FileBrowserPanel({
     search.close();
   };
   const expandedPathsRef = useRef(new Set<string>());
+  const expansionRoot = `${environmentId}:${cwd}`;
+  const [pendingExpandedPaths] = useState(() => new Set(readExpandedDirectories(expansionRoot)));
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the Pierre tree model to load directories as they are expanded
   useEffect(() => {
     const currentPaths = new Set(directoryPaths);
-    for (const path of expandedPathsRef.current) {
-      if (!currentPaths.has(path)) expandedPathsRef.current.delete(path);
+    const expandedPaths = expandedPathsRef.current;
+    for (const path of expandedPaths) {
+      if (!currentPaths.has(path)) expandedPaths.delete(path);
     }
+    let restoring = false;
     const loadExpanded = () => {
-      if (model.isSearchOpen()) return;
+      if (restoring || model.isSearchOpen()) return;
+      let changed = false;
       for (const path of directoryPaths) {
         const item = model.getItem(path);
-        if (item?.isDirectory() && "isExpanded" in item && item.isExpanded()) {
-          if (!expandedPathsRef.current.has(path)) {
-            expandedPathsRef.current.add(path);
+        if (!item?.isDirectory() || !("isExpanded" in item)) continue;
+        if ("expand" in item && pendingExpandedPaths.delete(path) && !item.isExpanded()) {
+          restoring = true;
+          try {
+            item.expand();
+          } finally {
+            restoring = false;
+          }
+        }
+        if (item.isExpanded()) {
+          if (!expandedPaths.has(path)) {
+            expandedPaths.add(path);
+            changed = true;
             void load(path.replace(/\/$/, ""));
           }
-        } else {
-          if (item?.isDirectory() && expandedPathsRef.current.has(path)) setExpandAll(false);
-          expandedPathsRef.current.delete(path);
+        } else if (expandedPaths.delete(path)) {
+          changed = true;
+          setExpandAll(false);
         }
+      }
+      if (changed) {
+        writeExpandedDirectories(expansionRoot, [...expandedPaths, ...pendingExpandedPaths]);
       }
     };
     loadExpanded();
     return model.subscribe(loadExpanded);
-  }, [directoryPaths, load, model]);
+  }, [directoryPaths, expansionRoot, load, model, pendingExpandedPaths]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes ignored-file status into the imperative Pierre tree model
   useEffect(() => {
     model.setGitStatus(

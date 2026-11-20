@@ -45,6 +45,30 @@ function findTreeRow(path: string): HTMLElement | null {
 }
 
 describe("FileBrowserPanel", () => {
+  it("restores an expanded folder after remount", async () => {
+    const panel = (
+      <FileBrowserPanel
+        environmentId={EnvironmentId.make("env-files")}
+        cwd="/repo-tree-remount"
+        projectName="repo"
+        selectedPath={null}
+        selectedPathRevealId={0}
+        onOpenFile={() => {}}
+        workspaceMutationId={null}
+      />
+    );
+    await using first = await render(panel);
+    await vi.waitFor(() =>
+      expect(findTreeRow("src/")?.getAttribute("aria-expanded")).toBe("false"),
+    );
+    findTreeRow("src/")?.click();
+    await vi.waitFor(() => expect(findTreeRow("src/")?.getAttribute("aria-expanded")).toBe("true"));
+    await first.unmount();
+
+    await using _second = await render(panel);
+    await vi.waitFor(() => expect(findTreeRow("src/")?.getAttribute("aria-expanded")).toBe("true"));
+  });
+
   it("copies with the pointer and returns to the row after keyboard dismissal", async () => {
     await using _screen = await render(
       <FileBrowserPanel

@@ -1,3 +1,32 @@
+import * as Schema from "effect/Schema";
+
+import { readLocalStorageValue, writeLocalStorageValue } from "~/hooks/useLocalStorage";
+
+const expansionStorageKey = "cox:file-tree-expansion:v1";
+const expansionStorageSchema = Schema.Array(
+  Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }),
+);
+
+export function readExpandedDirectories(root: string): readonly string[] {
+  return (
+    readLocalStorageValue(expansionStorageKey, [], expansionStorageSchema).find(
+      (entry) => entry.root === root,
+    )?.paths ?? []
+  );
+}
+
+export function writeExpandedDirectories(root: string, paths: readonly string[]): void {
+  writeLocalStorageValue(
+    expansionStorageKey,
+    (previous) => {
+      const others = previous.filter((entry) => entry.root !== root);
+      return (paths.length > 0 ? [{ root, paths }, ...others] : others).slice(0, 20);
+    },
+    [],
+    expansionStorageSchema,
+  );
+}
+
 export interface FileTreeExpansionModel {
   getItem(path: string): unknown;
 }
