@@ -33,7 +33,32 @@ afterEach(() => {
   }
 });
 
-effectIt.layer(NodeServices.layer)("asynchronous rotating file sink", (it) => {
+effectIt.layer(NodeServices.layer)("rotating file sinks", (it) => {
+  it.effect.each(["synchronous", "asynchronous"] as const)(
+    "%s startup prunes only canonical rotation suffixes",
+    (mode) =>
+      Effect.gen(function* () {
+        const directory = makeTempDirectory();
+        const filePath = NodePath.join(directory, "debug.log");
+        const retained = ["2026-11-20", "04", "4.0", "notes"];
+        for (const suffix of [...retained, "4", "50"]) {
+          NodeFS.writeFileSync(`${filePath}.${suffix}`, suffix);
+        }
+        const options = { filePath, maxBytes: 100, maxFiles: 3 };
+
+        if (mode === "synchronous") new RotatingFileSink(options).write("current");
+        else yield* (yield* makeAsyncRotatingFileSink(options)).write("current");
+
+        expect(NodeFS.readdirSync(directory).sort()).toEqual(
+          ["debug.log", ...retained.map((suffix) => `debug.log.${suffix}`)].sort(),
+        );
+        expect(NodeFS.readFileSync(filePath, "utf8")).toBe("current");
+        for (const suffix of retained) {
+          expect(NodeFS.readFileSync(`${filePath}.${suffix}`, "utf8")).toBe(suffix);
+        }
+      }),
+  );
+
   it.effect("serializes concurrent appends across rotation and resumes an existing file", () =>
     Effect.gen(function* () {
       const directory = makeTempDirectory();
