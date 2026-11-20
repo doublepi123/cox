@@ -1106,6 +1106,32 @@ describe("GitCafePullRequestProvider", () => {
     }).pipe(Effect.provide(server.layer));
   });
 
+  it.effect("reads a GitCafe-merged pull request preview as merged", () => {
+    const mergedAt = "2026-09-12T13:00:00Z";
+    const server = fakeGitCafe({
+      "GET /repos/owner/repo/pulls/7": { ...pull, state: "merged", mergedAt },
+    });
+    return Effect.gen(function* () {
+      const provider = yield* GitCafePullRequestProvider.make;
+      const preview = yield* provider.getChangeRequestPreview!(target);
+      assert.strictEqual(preview.state, "merged");
+    }).pipe(Effect.provide(server.layer));
+  });
+
+  it.effect.each([
+    ["open", null, "open"],
+    ["closed", timestamp, "closed"],
+  ] as const)("preserves the %s pull request preview state", ([state, closedAt, expectedState]) => {
+    const server = fakeGitCafe({
+      "GET /repos/owner/repo/pulls/7": { ...pull, state, closedAt },
+    });
+    return Effect.gen(function* () {
+      const provider = yield* GitCafePullRequestProvider.make;
+      const preview = yield* provider.getChangeRequestPreview!(target);
+      assert.strictEqual(preview.state, expectedState);
+    }).pipe(Effect.provide(server.layer));
+  });
+
   it.effect.each([
     ["their own pull request", actor],
     [

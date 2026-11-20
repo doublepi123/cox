@@ -179,6 +179,8 @@ const decodeActionReply = Schema.decodeUnknownOption(
   ),
 );
 
+const Preview = Json.GitCafePullDetail;
+
 type PullRef = ProviderRepositoryRef & { readonly number: number };
 
 /** GitHub's merge counts as soon as GitCafe records it, ahead of the sync that reports it. */
@@ -909,8 +911,9 @@ export const make = Effect.gen(function* () {
       },
     ),
     getChangeRequestPreview: (input) =>
-      readPull("getChangeRequestPreview", input).pipe(
-        Effect.map((pull) => Json.toChangeRequest(pull, input)),
+      pullPath("getChangeRequestPreview", input).pipe(
+        Effect.flatMap((path) => read("getChangeRequestPreview", input, { path }, Preview)),
+        Effect.map((pull) => ({ ...Json.toChangeRequest(pull, input), ...settledMerge(pull) })),
       ),
     getChangeRequestSummary: Effect.fn("GitCafePullRequestProvider.getChangeRequestSummary")(
       function* (input) {
