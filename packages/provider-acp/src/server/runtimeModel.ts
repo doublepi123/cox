@@ -955,6 +955,11 @@ export function mergeToolCallState(
   const command = next.command ?? previous?.command;
   const detail = next.detail ?? previous?.detail;
   const data = mergeToolActivityData(previous?.data, next.data) ?? next.data;
+  if (next.toolCallId.startsWith("acp-compaction:")) {
+    for (const key of ["rawOutput", "compactionError"]) {
+      if ((key in next.data ? next.data[key] : previous?.data[key]) === null) data[key] = null;
+    }
+  }
   return {
     toolCallId: next.toolCallId,
     ...(kind ? { kind } : {}),
