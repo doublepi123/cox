@@ -6,6 +6,7 @@ import { COMPOSER_MENTION_DRAG_TYPE } from "~/components/chat/composerMentionDra
 import { dismissContextMenu } from "~/contextMenuFallback";
 import { render } from "../../../test/render";
 import FileBrowserPanel from "./FileBrowserPanel";
+import { writeExpandedDirectories } from "./fileTreeExpansion";
 
 const entries: readonly ProjectEntry[] = [
   { path: "src", kind: "directory" },
@@ -45,6 +46,73 @@ function findTreeRow(path: string): HTMLElement | null {
 }
 
 describe("FileBrowserPanel", () => {
+  for (const userScrolled of [false, true]) {
+    it(`keeps ${userScrolled ? "the user's scroll position" : "the revealed row in view"} after a restored folder listing arrives`, async () => {
+      const cwd = userScrolled ? "/repo-reveal-user-scroll" : "/repo-reveal-follow";
+      const workspaceKey = `env-files:${cwd}`;
+      const rootEntries = Array.from({ length: 12 }, (_, index): ProjectEntry => ({
+        path: `d${String(index).padStart(2, "0")}`,
+        kind: "directory",
+      }));
+      const panel = () => (
+        <FileBrowserPanel
+          environmentId={EnvironmentId.make("env-files")}
+          cwd={cwd}
+          projectName="repo"
+          selectedPath="d09"
+          selectedPathRevealId={1}
+          onOpenFile={() => {}}
+          workspaceMutationId={null}
+        />
+      );
+      using _fixture = {
+        [Symbol.dispose]() {
+          directory.entries = entries;
+          directory.ready = true;
+          writeExpandedDirectories(workspaceKey, []);
+        },
+      };
+      writeExpandedDirectories(workspaceKey, ["d01/"]);
+      directory.ready = false;
+      directory.entries = [];
+      const container = document.createElement("div");
+      container.style.cssText = "display:flex;flex-direction:column;height:300px;width:300px";
+      await using screen = await render(panel(), { container });
+      directory.ready = true;
+      directory.entries = rootEntries;
+      await screen.rerender(panel());
+      const scroller = await vi.waitFor(() => {
+        const scroller = findTreeRow("d09/")?.getRootNode();
+        if (!(scroller instanceof ShadowRoot)) throw new Error("Revealed row is missing");
+        const scrollElement = scroller.querySelector("[data-file-tree-virtualized-scroll]");
+        if (!(scrollElement instanceof HTMLElement)) throw new Error("Tree scroller is missing");
+        return scrollElement;
+      });
+      const revealedRowIsVisible = () => {
+        const row = findTreeRow("d09/")?.getBoundingClientRect();
+        const viewport = scroller.getBoundingClientRect();
+        return row !== undefined && row.top >= viewport.top && row.bottom <= viewport.bottom;
+      };
+      await vi.waitFor(() => expect(revealedRowIsVisible()).toBe(true));
+      if (userScrolled) {
+        scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, composed: true }));
+        scroller.scrollTop = 0;
+      }
+
+      directory.entries = [
+        ...rootEntries,
+        ...Array.from({ length: 60 }, (_, index): ProjectEntry => ({
+          path: `d01/f${index}.ts`,
+          kind: "file",
+        })),
+      ];
+      await screen.rerender(panel());
+      await vi.waitFor(() => expect(scroller.scrollHeight).toBeGreaterThan(60 * 24));
+      if (userScrolled) expect(scroller.scrollTop).toBe(0);
+      else await vi.waitFor(() => expect(revealedRowIsVisible()).toBe(true));
+    });
+  }
+
   it("restores an expanded folder after remount", async () => {
     const panel = (
       <FileBrowserPanel

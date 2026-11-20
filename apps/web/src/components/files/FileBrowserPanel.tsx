@@ -180,6 +180,7 @@ export default function FileBrowserPanel({
   const syncingSelectionRef = useRef(false);
   const treeSelectionPathRef = useRef<string | null>(null);
   const handledRevealRef = useRef<{ path: string; revealId: number } | null>(null);
+  const followedRevealRef = useRef<string | null>(null);
 
   // Shadow-DOM row rects are unreliable; capture the composed contextmenu event's viewport position.
   const contextMenuPointerRef = useRef<{ x: number; y: number; at: number } | null>(null);
@@ -393,7 +394,11 @@ export default function FileBrowserPanel({
       controller.abort();
     };
   }, [load, selectedPath]);
+  const stopFollowingReveal = () => {
+    followedRevealRef.current = null;
+  };
   const handleSearchValueChange = (value: string) => {
+    stopFollowingReveal();
     setQuery(value);
     if (value.trim().length === 0) {
       search.close();
@@ -427,7 +432,11 @@ export default function FileBrowserPanel({
       return;
     }
     const updates = buildFileTreePathUpdates(previousTreePaths, treePaths);
-    if (updates.length > 0) model.batch(updates);
+    if (updates.length === 0) return;
+    model.batch(updates);
+    if (followedRevealRef.current !== null) {
+      model.scrollToPath(followedRevealRef.current, { focus: false, offset: "center" });
+    }
   }, [ready, entryKinds, model, treePaths]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- expands every directory in the Pierre tree model while expand-all is on and no search is active
@@ -440,11 +449,13 @@ export default function FileBrowserPanel({
   useEffect(() => {
     if (!selectedPath) {
       handledRevealRef.current = null;
+      followedRevealRef.current = null;
       return;
     }
     const selectedKind = entryKinds.get(selectedPath);
     if (selectedKind === undefined) {
       handledRevealRef.current = null;
+      followedRevealRef.current = null;
       return;
     }
     const revealRequest = { path: selectedPath, revealId: selectedPathRevealId };
@@ -467,6 +478,7 @@ export default function FileBrowserPanel({
     if (selectedInTree && treeSelectionPathRef.current === selectedPath) {
       treeSelectionPathRef.current = null;
       handledRevealRef.current = revealRequest;
+      followedRevealRef.current = null;
       return;
     }
     treeSelectionPathRef.current = null;
@@ -494,6 +506,7 @@ export default function FileBrowserPanel({
       focus: true,
       offset: "center",
     });
+    followedRevealRef.current = selectedTreePath;
     queueMicrotask(() => {
       syncingSelectionRef.current = false;
     });
@@ -510,6 +523,10 @@ export default function FileBrowserPanel({
       // Capture dragstart before the tree selects the row so selection sees the drag flag.
       onDragStartCapture={(event) => dragMention.handleDragStart(event.nativeEvent)}
       onDragEnd={() => dragMention.handleDragEnd((path) => model.getItem(path)?.deselect())}
+      onWheel={stopFollowingReveal}
+      onPointerDown={stopFollowingReveal}
+      onTouchStart={stopFollowingReveal}
+      onKeyDown={stopFollowingReveal}
     >
       <div
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"
