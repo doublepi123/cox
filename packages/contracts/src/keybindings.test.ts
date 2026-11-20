@@ -37,6 +37,30 @@ it.effect("drops resolved rules with commands this build does not know", () =>
   }),
 );
 
+it.effect("round-trips resolved Space shortcuts", () =>
+  Effect.gen(function* () {
+    const codec = Schema.fromJsonString(ResolvedKeybindingsConfig);
+    const rules = [
+      {
+        command: "terminal.toggle" as const,
+        shortcut: { ...shortcut, key: " ", metaKey: true, modKey: false },
+      },
+    ];
+    const encoded = yield* Schema.encodeEffect(codec)(rules);
+    const parsed = yield* decode(codec, encoded);
+    assert.deepEqual(parsed, rules);
+  }),
+);
+
+it.effect("rejects empty resolved shortcut keys", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decode(ResolvedKeybindingsConfig, [
+      { command: "terminal.toggle", shortcut: { ...shortcut, key: "" } },
+    ]);
+    assert.deepEqual(parsed, []);
+  }),
+);
+
 it.effect("drops malformed resolved rule entries", () =>
   Effect.gen(function* () {
     const parsed = yield* decode(ResolvedKeybindingsConfig, [
