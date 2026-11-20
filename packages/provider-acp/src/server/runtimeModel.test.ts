@@ -1072,9 +1072,9 @@ describe("AcpRuntimeModel", () => {
 
     expect(finish()).toBe("Draft summary");
     expect([finish(null), finish([]), finish([{ type: "text", text: "" }])]).toEqual([
-      undefined,
-      undefined,
-      undefined,
+      null,
+      null,
+      null,
     ]);
 
     const fail = (
@@ -1101,10 +1101,10 @@ describe("AcpRuntimeModel", () => {
       state.data.compactionError,
     ];
     expect(fields(failed)).toEqual(["Draft summary", "Budget exhausted"]);
-    expect(fields(summaryCleared)).toEqual([undefined, "Budget exhausted"]);
-    expect(fields(errorCleared)).toEqual([undefined, undefined]);
+    expect(fields(summaryCleared)).toEqual([null, "Budget exhausted"]);
+    expect(fields(errorCleared)).toEqual([null, null]);
     expect(fields(fail(draft, { summary: null, error: "Budget exhausted" }))).toEqual([
-      undefined,
+      null,
       "Budget exhausted",
     ]);
   });

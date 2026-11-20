@@ -2027,8 +2027,9 @@ export const layerWithOptions = (
         let stoppedByProvider = false;
         let lastSessionStatus = entry.runtime.providerSession.status;
         return entry.runtime.events.pipe(
-          // Several adapters never end their event stream, and a parked pump retains the whole session.
-          Stream.interruptWhen(Deferred.await(sessionClosed)),
+          // Stop after the current event once the session scope closes. interruptWhen
+          // turns a finished queue into a failure and skips the close.
+          Stream.haltWhen(Deferred.await(sessionClosed)),
           Stream.runForEach((event) => {
             if (shutdownSignal.received) return Effect.void;
             // Live output bypasses persistence and subscribers so floods cannot delay domain events.
