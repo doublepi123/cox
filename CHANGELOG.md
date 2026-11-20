@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.2.18 — 2026-11-20
+## 0.2.19 — 2026-11-20
 
 - Update the Cursor agent SDK to 1.4.2. A turn that passes its own MCP servers
   keeps the servers from Cursor's config, a saved Max Mode setting stays on,
@@ -16,6 +16,11 @@
 - After a Cursor turn is interrupted, the next message includes the request
   that left Cursor's history. Commit messages and titles retry without the
   sandbox when Cursor rejects sandboxing at send time.
+
+## 0.2.18 — 2026-11-20
+
+- Not published. Typecheck failed before the npm package was built. The Cursor
+  changes shipped in 0.2.19.
 
 ## 0.2.17 — 2026-11-20
 
