@@ -34,14 +34,13 @@ export function ownedAgentSlice(stateDir: string): string {
 const GiB = 1024 ** 3;
 
 /**
- * Agents together leave about 6 GB free before they are throttled and 4 GB
- * before the kernel kills one, so the server, sshd, and tailscaled keep
- * working. Small machines still give agents at least half of RAM before
- * throttling and three quarters before a kill.
+ * Agents leave about 6 GB free before throttling and 4 GB before an OOM kill (at
+ * least half and three quarters of RAM go to agents) so the server and sshd keep
+ * working. Without swap, MemoryHigh stalls every agent and never reaches the kill.
  */
-function agentSliceMemoryLimits(totalBytes: number) {
+function agentSliceMemoryLimits(totalBytes: number, hasSwap: boolean) {
   return {
-    high: Math.max(totalBytes - 6 * GiB, Math.floor(totalBytes / 2)),
+    high: hasSwap ? Math.max(totalBytes - 6 * GiB, Math.floor(totalBytes / 2)) : "infinity",
     max: Math.max(totalBytes - 4 * GiB, Math.floor(totalBytes * 0.75)),
   };
 }
@@ -198,7 +197,12 @@ export const make = Effect.gen(function* () {
           });
         }
       });
-      const limits = agentSliceMemoryLimits(NodeOS.totalmem());
+      // An unreadable meminfo keeps the throttle, as before swap was checked.
+      const hasSwap = yield* fileSystem.readFileString("/proc/meminfo").pipe(
+        Effect.map((text) => /^SwapTotal:\s*0 kB$/m.exec(text) === null),
+        Effect.orElseSucceed(() => true),
+      );
+      const limits = agentSliceMemoryLimits(NodeOS.totalmem(), hasSwap);
       yield* setProperties(AGENT_SLICE, [`MemoryHigh=${limits.high}`, `MemoryMax=${limits.max}`]);
       yield* setProperties(AGENTS_PARENT_SLICE, AGENTS_PARENT_PROPERTIES);
       yield* Effect.logInfo("Agent scopes are on", {
