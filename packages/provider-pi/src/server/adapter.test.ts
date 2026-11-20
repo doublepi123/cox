@@ -5156,6 +5156,8 @@ describe("PiAdapterV2", () => {
         return assert.fail("expected a user input request");
       }
       const questions = decodeUserInputQuestions(event.turnItem.questions);
+      assert.equal(questions[0]?.question, "Pick a tag");
+      assert.notEqual(questions[0]?.header, "Pick a tag");
       assert.deepEqual(
         questions[0]?.options.map((option) => [option.label, option.value]),
         [
