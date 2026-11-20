@@ -264,6 +264,19 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(layerEnvironmentAuth({ authPassword: Redacted.make(password) }))),
   );
 
+  it.effect("accepts a bearer token when the primary cookie is empty", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const issued = yield* auth.issueSession({ scopes: ["orchestration:read"] });
+      const input = request(
+        { authorization: `Bearer ${issued.token}` },
+        { [sessions.cookieName]: "" },
+      );
+      expect((yield* auth.authenticateHttpRequest(input)).scopes).toEqual(["orchestration:read"]);
+    }).pipe(Effect.provide(layerEnvironmentAuth())),
+  );
+
   it.effect("preserves scoped bearer clients and ignores stale legacy cookies", () =>
     Effect.gen(function* () {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;

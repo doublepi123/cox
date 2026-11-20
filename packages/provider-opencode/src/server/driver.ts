@@ -61,7 +61,6 @@ import {
   makeCachedProviderMaintenanceResolution,
   makeManualOnlyProviderMaintenanceCapabilities,
   makePackageManagedProviderMaintenanceResolver,
-  normalizeCommandPath,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import {
@@ -73,12 +72,12 @@ const decodeOpenCodeSettings = Schema.decodeSync(OpenCodeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("opencode");
 
-function isOpenCodeNativeCommandPath(commandPath: string): boolean {
-  const normalized = normalizeCommandPath(commandPath);
-  return (
-    normalized.endsWith("/.opencode/bin/opencode") ||
-    normalized.endsWith("/.opencode/bin/opencode.exe")
-  );
+function openCodeNativeHome(commandPath: string): string | undefined {
+  const slashed = commandPath.replaceAll("\\", "/");
+  const suffix = /\/\.opencode\/bin\/opencode(?:\.exe)?$/i.exec(slashed);
+  if (!suffix) return undefined;
+  const home = slashed.slice(0, suffix.index);
+  return home === "" || /^[a-z]:$/i.test(home) ? home + "/" : home;
 }
 
 /** Update only within the installed package generation; 2.x converts the shared database in place. */
@@ -87,8 +86,15 @@ export const openCodeUpdateFor = (generation: ProbedOpenCode["generation"]) =>
     provider: DRIVER_KIND,
     npmPackageName: generation === "v2" ? "@opencode/cli" : "opencode-ai",
     nativeUpdate: {
-      args: ["upgrade"],
-      isCommandPath: isOpenCodeNativeCommandPath,
+      args: ["upgrade", "--method", "curl"],
+      isCommandPath: (commandPath) => openCodeNativeHome(commandPath) !== undefined,
+      requiresCommandPath: true,
+      env: (context) => ({
+        ...context.env,
+        HOME:
+          openCodeNativeHome(context.realCommandPath) ??
+          openCodeNativeHome(context.resolvedCommandPath),
+      }),
     },
     mise: { tool: "opencode", upgrade: generation === "v2" },
   });
@@ -411,6 +417,16 @@ export const OpenCodeDriver: ProviderDriver<
       ),
     );
 
+    const checkUsageLimits = readOpenCodeGoUsageLimits({
+      enabled: effectiveConfig.enabled,
+      serverUrl: effectiveConfig.serverUrl,
+      environment: processEnv,
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, pathService),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provideService(Crypto.Crypto, crypto),
+    );
     const checkProvider = Effect.all(
       {
         provider: checkOpenCodeProviderStatus(
@@ -425,11 +441,7 @@ export const OpenCodeDriver: ProviderDriver<
           Effect.annotateLogs({ providerInstanceId: instanceId }),
           Effect.annotateSpans({ providerInstanceId: instanceId }),
         ),
-        usageLimits: readOpenCodeGoUsageLimits({
-          enabled: effectiveConfig.enabled,
-          serverUrl: effectiveConfig.serverUrl,
-          environment: processEnv,
-        }),
+        usageLimits: checkUsageLimits,
       },
       { concurrency: "unbounded" },
     ).pipe(
@@ -524,6 +536,7 @@ export const OpenCodeDriver: ProviderDriver<
       initialSnapshot: (settings) =>
         makePendingOpenCodeProvider(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
+      checkUsageLimits,
       enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
         resolveMaintenance().pipe(
           Effect.flatMap((maintenanceCapabilities) =>

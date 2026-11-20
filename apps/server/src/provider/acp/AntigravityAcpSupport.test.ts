@@ -555,7 +555,27 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
   );
 
   it.effect.each([
-    { bytes: new Uint8Array([0xff, 0xfe, 0x61]), message: "is not a UTF-8 text file" },
+    { bytes: new Uint8Array([0xff, 0xfe, 0x61, 0x00, 0xac, 0x20]) },
+    { bytes: new Uint8Array([0xfe, 0xff, 0x00, 0x61, 0x20, 0xac]) },
+  ])("embeds valid BOM-marked UTF-16 text", ({ bytes }) =>
+    Effect.gen(function* () {
+      const fixture = yield* makeAttachmentFixture();
+      yield* fixture.write(textAttachment, bytes);
+      const blocks = yield* buildAntigravityPrompt({
+        input: undefined,
+        attachments: [textAttachment],
+        attachmentsDir: fixture.attachmentsDir,
+        promptCapabilities: { image: true, audio: true, embeddedContext: true },
+      });
+
+      expect(blocks).toMatchObject([{ type: "resource", resource: { text: "a\u20ac" } }]);
+    }),
+  );
+
+  it.effect.each([
+    { bytes: new Uint8Array([0xff, 0xfe, 0x61]), message: "is not a UTF-16LE text file" },
+    { bytes: new Uint8Array([0xff, 0x61]), message: "is not a UTF-8 text file" },
+    { bytes: new Uint8Array([0xff, 0xfe, 0x00, 0x00]), message: "contains binary data" },
     { bytes: new Uint8Array([0x61, 0, 0x62]), message: "contains binary data" },
   ])("rejects binary data disguised as code: $message", ({ bytes, message }) =>
     Effect.gen(function* () {

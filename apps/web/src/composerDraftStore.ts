@@ -42,6 +42,7 @@ import { DeepMutable } from "effect/Types";
 import {
   createModelSelection,
   draftModelPickMatchesThread,
+  normalizeCustomModelSlug,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
@@ -53,7 +54,11 @@ import type {
 import { waitForDraftHeroTransition } from "./components/chat/draftHeroTransition";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { readThreadPreviewState } from "./previewStateStore";
-import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
+import {
+  readInstanceCustomModels,
+  resolveAppModelSelection,
+  resolveAppModelSelectionForInstance,
+} from "./modelSelection";
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -672,6 +677,7 @@ interface ComposerDraftStoreState {
     attachments: PersistedComposerImageAttachment[],
   ) => Promise<void>;
   clearComposerContent: (threadRef: ComposerThreadTarget) => void;
+  recoverQuestionAttachments: (source: DraftId, target: ScopedThreadRef) => void;
   /** Clears text and attachments, preserving terminal/element contexts, preview annotations, and review comments. */
   clearComposerPromptAndImages: (threadRef: ComposerThreadTarget) => void;
   /** Keeps attachments over destination limits, other environments' uploads, terminal/element contexts, annotations, and review comments in source. */
@@ -1008,7 +1014,11 @@ function normalizeModelSelection(
   const driverKindHint =
     normalizeProviderDriverKind(candidate?.provider ?? legacy?.provider) ??
     ProviderDriverKind.make("codex");
-  const model = normalizeModelSlug(rawModel, driverKindHint);
+  // Instance-scoped picks are already resolved slugs; a custom slug can match a static alias.
+  const model =
+    candidate?.instanceId === undefined
+      ? normalizeModelSlug(rawModel, driverKindHint)
+      : normalizeCustomModelSlug(rawModel);
   if (!model) {
     return null;
   }
@@ -1145,7 +1155,6 @@ export function deriveEffectiveComposerModelState(input: {
     ? input.draft?.modelSelectionByProvider?.[input.selectedInstanceId]
     : undefined;
   const legacySelection =
-    input.selectedProvider === "antigravity" &&
     input.selectedInstanceId &&
     input.selectedInstanceId !== defaultInstanceIdForDriver(input.selectedProvider)
       ? undefined
@@ -1202,6 +1211,7 @@ function withFallbackInstanceOptions(input: {
   readonly selectedProvider: ProviderDriverKind;
   readonly selectedInstanceId?: ProviderInstanceId | null | undefined;
   readonly requestedInstanceId?: ProviderInstanceId | null | undefined;
+  readonly settings: UnifiedSettings;
 }): ProviderOptionSelectionsByProvider | null {
   const { modelOptions, selectedInstanceId, requestedInstanceId } = input;
   if (
@@ -1214,16 +1224,26 @@ function withFallbackInstanceOptions(input: {
     return modelOptions;
   }
   const requestedOptions = modelOptions[requestedInstanceId];
-  const requestedDriver = input.providers.find(
+  const requestedProvider = input.providers.find(
     (provider) => provider.instanceId === requestedInstanceId,
-  )?.driver;
-  // The model of the selection the options came from, which can differ from the shown model's source.
+  );
   const requestedModel = input.optionSelections?.[requestedInstanceId]?.model;
-  if (
-    !requestedOptions ||
-    requestedDriver !== input.selectedProvider ||
-    requestedModel !== input.selectedModel
-  ) {
+  // Static aliases are shared across instances; exact custom slugs and catalog aliases are not.
+  const modelIdentity = (instanceId: ProviderInstanceId, model: string | undefined) => {
+    const isCustom =
+      input.providers
+        .find((provider) => provider.instanceId === instanceId)
+        ?.models.some((entry) => entry.slug === model && entry.isCustom) ||
+      readInstanceCustomModels(input.settings, instanceId, input.selectedProvider).some(
+        (entry) => entry.slug === model,
+      );
+    return isCustom ? model : normalizeModelSlug(model, input.selectedProvider);
+  };
+  const sameModel =
+    requestedModel === input.selectedModel ||
+    modelIdentity(requestedInstanceId, requestedModel) ===
+      modelIdentity(selectedInstanceId, input.selectedModel);
+  if (!requestedOptions || requestedProvider?.driver !== input.selectedProvider || !sameModel) {
     return modelOptions;
   }
   return { ...modelOptions, [selectedInstanceId]: requestedOptions };
@@ -1739,6 +1759,21 @@ function normalizePersistedDraftThreads(
   }
   return { draftThreadsByThreadKey, logicalProjectDraftThreadKeyByLogicalProjectKey };
 }
+const decodePersistedModelSelection = Schema.decodeUnknownOption(ModelSelection);
+
+function normalizePersistedModelSelectionByProvider(
+  value: object,
+): Partial<Record<ProviderInstanceId, ModelSelection>> {
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([instanceId, selection]) =>
+      Option.match(decodePersistedModelSelection(selection), {
+        onNone: () => [],
+        onSome: (decoded) => [[instanceId, decoded] as const],
+      }),
+    ),
+  );
+}
+
 function normalizePersistedDraftsByThreadId(
   rawDraftMap: unknown,
   draftThreadsByThreadKey: PersistedComposerDraftStoreState["draftThreadsByThreadKey"],
@@ -1863,9 +1898,9 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.modelSelectionByProvider &&
       typeof draftCandidate.modelSelectionByProvider === "object"
     ) {
-      modelSelectionByProvider = draftCandidate.modelSelectionByProvider as Partial<
-        Record<ProviderInstanceId, ModelSelection>
-      >;
+      modelSelectionByProvider = normalizePersistedModelSelectionByProvider(
+        draftCandidate.modelSelectionByProvider,
+      );
       activeProvider = normalizeProviderInstanceId(draftCandidate.activeProvider);
       modelSelectionExplicit = draftCandidate.modelSelectionExplicit === true ? true : undefined;
     } else {
@@ -2151,10 +2186,9 @@ function normalizeCurrentPersistedComposerDraftStoreState(
     normalizedPersistedState.stickyModelSelectionByProvider &&
     typeof normalizedPersistedState.stickyModelSelectionByProvider === "object"
   ) {
-    stickyModelSelectionByProvider =
-      normalizedPersistedState.stickyModelSelectionByProvider as Partial<
-        Record<ProviderInstanceId, ModelSelection>
-      >;
+    stickyModelSelectionByProvider = normalizePersistedModelSelectionByProvider(
+      normalizedPersistedState.stickyModelSelectionByProvider,
+    );
     stickyActiveProvider = normalizeProviderInstanceId(
       normalizedPersistedState.stickyActiveProvider,
     );
@@ -2983,7 +3017,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           }
           const instanceKey = options?.instanceId ?? defaultInstanceIdForDriver(normalizedProvider);
           const fallbackModel =
-            normalizeModelSlug(options?.model, normalizedProvider) ??
+            normalizeCustomModelSlug(options?.model) ??
             DEFAULT_MODEL_BY_PROVIDER[normalizedProvider] ??
             DEFAULT_MODEL;
           const providerOpts =
@@ -3012,8 +3046,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 nextStickyMap[instanceKey] ??
                 base.modelSelectionByProvider[instanceKey] ??
                 createModelSelection(instanceKey, fallbackModel);
-              const rememberedModel =
-                normalizeModelSlug(options?.model, normalizedProvider) ?? stickyBase.model;
+              const rememberedModel = normalizeCustomModelSlug(options?.model) ?? stickyBase.model;
               if (providerOpts) {
                 nextStickyMap[instanceKey] = createModelSelection(
                   instanceKey,
@@ -3941,6 +3974,47 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           });
           await Promise.resolve();
           verifyPersistedAttachments(threadKey, attachments, set);
+        },
+        recoverQuestionAttachments: (source, target) => {
+          const targetKey = resolveComposerDraftKey(get(), target);
+          if (!targetKey || targetKey === source) return;
+          set((state) => {
+            const draft = state.draftsByThreadKey[source];
+            if (!draft || (draft.images.length === 0 && draft.files.length === 0)) return state;
+            const destination = state.draftsByThreadKey[targetKey] ?? createEmptyThreadDraft();
+            const existingIds = new Set(
+              [...destination.images, ...destination.files].map(({ id }) => id),
+            );
+            const transferred = (id: string) => !existingIds.has(id);
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [source]: {
+                  ...draft,
+                  images: [],
+                  files: [],
+                  persistedAttachments: [],
+                  nonPersistedImageIds: [],
+                },
+                [targetKey]: {
+                  ...destination,
+                  images: [
+                    ...destination.images,
+                    ...draft.images.filter(({ id }) => transferred(id)),
+                  ],
+                  files: [...destination.files, ...draft.files.filter(({ id }) => transferred(id))],
+                  persistedAttachments: [
+                    ...destination.persistedAttachments,
+                    ...draft.persistedAttachments.filter(({ id }) => transferred(id)),
+                  ],
+                  nonPersistedImageIds: [
+                    ...destination.nonPersistedImageIds,
+                    ...draft.nonPersistedImageIds.filter(transferred),
+                  ],
+                },
+              },
+            };
+          });
         },
         clearComposerContent: (threadRef) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";

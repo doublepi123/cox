@@ -265,6 +265,99 @@ describe("CLIProxyAPI built-in management API", () => {
   );
 
   it.effect.each([
+    {
+      name: "spend budget",
+      budget: {
+        spend: {
+          enabled: true,
+          used: { amount_minor: 4_631, currency: "USD", exponent: 2 },
+          limit: { amount_minor: 50_000, currency: "USD", exponent: 2 },
+        },
+      },
+    },
+    {
+      name: "extra usage",
+      budget: {
+        extra_usage: {
+          is_enabled: true,
+          used_credits: 4_631,
+          monthly_limit: 50_000,
+          utilization: 9,
+        },
+      },
+    },
+  ])("preserves Claude monthly spend from $name beside rate limits", ({ budget }) =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [{ ...accounts[0]!, provider: "claude", id: "claude.json" }],
+        upstream: () => ({
+          status: 200,
+          body: {
+            five_hour: { utilization: 10, resets_at: null },
+            seven_day: { utilization: 50, resets_at: "2099-01-01T00:00:00Z" },
+            ...budget,
+          },
+        }),
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result[0]?.usageLimits.windows).toMatchObject([
+        { id: "five_hour", usedPercent: 10 },
+        { id: "seven_day", usedPercent: 50 },
+        { id: "monthly_spend", usedPercent: 9.261999999999999 },
+      ]);
+    }),
+  );
+
+  it.effect("keeps Claude rate limits when only extra usage utilization is available", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [{ ...accounts[0]!, provider: "claude", id: "claude.json" }],
+        upstream: () => ({
+          status: 200,
+          body: {
+            five_hour: { utilization: 10, resets_at: null },
+            spend: {},
+            extra_usage: {
+              is_enabled: true,
+              used_credits: null,
+              monthly_limit: null,
+              utilization: 9,
+            },
+          },
+        }),
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result[0]?.usageLimits.windows).toMatchObject([
+        { id: "five_hour", usedPercent: 10 },
+        { id: "monthly_spend", usedPercent: 9 },
+      ]);
+    }),
+  );
+
+  it.effect("keeps Claude rate limits when monthly spend is missing", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [{ ...accounts[0]!, provider: "claude", id: "claude.json" }],
+        upstream: () => ({
+          status: 200,
+          body: {
+            five_hour: { utilization: 10, resets_at: null },
+            seven_day: { utilization: 50, resets_at: null },
+          },
+        }),
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result[0]?.usageLimits.windows.map((window) => window.id)).toEqual([
+        "five_hour",
+        "seven_day",
+      ]);
+    }),
+  );
+
+  it.effect.each([
     "https://tools.test/cliproxy",
     "https://tools.test/cliproxy/",
     "https://tools.test/cliproxy/management.html",

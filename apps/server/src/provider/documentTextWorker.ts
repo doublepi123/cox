@@ -14,6 +14,18 @@ const CELL_END = Symbol("cell-end");
 type TextPart = string | typeof CELL_START | typeof CELL_END | { fallback: string };
 
 const TRUNCATED = "\n\n[Extracted text truncated at document extraction limits.]";
+const HIDDEN_XML_NODES = new Set([
+  "script",
+  "style",
+  "binary-data",
+  "rPh",
+  "delText",
+  "moveFrom",
+  "instrText",
+  "delInstrText",
+  "tracked-changes",
+  "pPr",
+]);
 
 class Truncation extends Error {}
 
@@ -22,6 +34,8 @@ interface XmlNode {
   attrs: Record<string, string>;
   children: Array<XmlNode | string>;
   spaceCount?: number;
+  hasText?: boolean;
+  hasTextChoice?: boolean;
 }
 
 function xml(source: string, odfSpaces = false, htmlEntities = false): XmlNode {
@@ -47,10 +61,22 @@ function xml(source: string, odfSpaces = false, htmlEntities = false): XmlNode {
     stack.push(node);
   });
   parser.on("closetag", () => {
-    stack.pop();
+    const node = stack.pop()!;
+    const parent = stack.at(-1)!;
+    // Markup-compatibility fallbacks repeat their mc:Choice content, e.g. Word text boxes.
+    // Keep one when no Choice carries text, such as a chart with a VML caption.
+    if (node.name === "Fallback" && parent.hasTextChoice) {
+      parent.children.pop();
+      return;
+    }
+    if (!node.hasText) return;
+    parent.hasText = true;
+    if (node.name === "Choice") parent.hasTextChoice = true;
   });
   const text = (value: string) => {
-    stack.at(-1)!.children.push(value);
+    const node = stack.at(-1)!;
+    node.children.push(value);
+    if (value.trim() !== "") node.hasText = true;
   };
   parser.on("text", text);
   parser.on("cdata", text);
@@ -67,7 +93,7 @@ function* all(node: XmlNode, name: string | readonly string[]): Generator<XmlNod
   }
 }
 function* text(node: XmlNode): Generator<string, void> {
-  if (["script", "style", "binary-data", "rPh"].includes(node.name)) return;
+  if (HIDDEN_XML_NODES.has(node.name)) return;
   if (["tab", "cell"].includes(node.name)) yield "\t";
   else if (["br", "line-break", "cr"].includes(node.name)) yield "\n";
   else if (node.spaceCount !== undefined) {
@@ -79,8 +105,25 @@ function* text(node: XmlNode): Generator<string, void> {
       else yield* text(child);
     }
 }
+// SpreadsheetML `t` and `v` values are ST_Xstring: `_xHHHH_` is one UTF-16 code unit, and an
+// escaped lead underscore (`_x005F_xHHHH_`) keeps the literal `_xHHHH_`. Decoded in one pass.
+function* xstringText(node: XmlNode): Generator<string, void> {
+  if (HIDDEN_XML_NODES.has(node.name)) return;
+  if (node.name !== "t" && node.name !== "v") {
+    for (const child of children(node)) yield* xstringText(child);
+    return;
+  }
+  yield node.children
+    .filter((child) => typeof child === "string")
+    .join("")
+    .replaceAll(
+      /_x005[Ff]_(x[\dA-Fa-f]{4}_)|_x([\dA-Fa-f]{4})_/g,
+      (_, literal?: string, hex?: string) =>
+        literal ? `_${literal}` : String.fromCharCode(Number.parseInt(hex!, 16)),
+    );
+}
 function* paragraphs(node: XmlNode): Generator<TextPart, void> {
-  if (["script", "style", "binary-data"].includes(node.name)) return;
+  if (HIDDEN_XML_NODES.has(node.name)) return;
   for (const child of node.children) {
     if (typeof child === "string") yield child;
     else if (["br", "line-break", "cr"].includes(child.name)) yield "\n";
@@ -137,11 +180,7 @@ function odfValue(cell: XmlNode): string {
 function hasCellText(cell: XmlNode): boolean {
   if (odfValue(cell).trim()) return true;
   // Space markers can have enormous repeat counts; emptiness never requires expanding them.
-  if (
-    ["script", "style", "binary-data", "rPh"].includes(cell.name) ||
-    cell.spaceCount !== undefined
-  )
-    return false;
+  if (HIDDEN_XML_NODES.has(cell.name) || cell.spaceCount !== undefined) return false;
   return cell.children.some((child) =>
     typeof child === "string" ? !!child.trim() : hasCellText(child),
   );
@@ -510,10 +549,12 @@ async function* document(path: string, extension: string): AsyncGenerator<TextPa
             const raw = value?.children.find((child) => typeof child === "string") ?? "";
             if (cell.attrs.t === "s") {
               const shared = strings[Number(raw)];
-              if (shared) yield* inCell(text(shared));
-            } else if (cell.attrs.t === "inlineStr") yield* inCell(text(cell));
+              if (shared) yield* inCell(xstringText(shared));
+            } else if (cell.attrs.t === "inlineStr") yield* inCell(xstringText(cell));
+            else if (cell.attrs.t === "b" && (raw.trim() === "0" || raw.trim() === "1"))
+              yield* inCell([raw.trim() === "1" ? "true" : "false"]);
             else {
-              if (value && hasCellText(value)) yield* inCell(text(value));
+              if (value && hasCellText(value)) yield* inCell(xstringText(value));
               else for (const formula of all(cell, "f")) yield* inCell(text(formula));
               const formatId = formats[Number(cell.attrs.s ?? 0)]?.attrs.numFmtId;
               const format = formatId ? customFormats.get(formatId) : undefined;

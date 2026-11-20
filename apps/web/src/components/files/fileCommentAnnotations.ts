@@ -35,6 +35,13 @@ export function formatFileCommentRange(startLine: number, endLine: number): stri
   return startLine === endLine ? `L${startLine}` : `L${startLine} to L${endLine}`;
 }
 
+export function promptFileCommentEntries(
+  entries: ReadonlyArray<FileCommentAnnotationEntry>,
+  promptCommentIds: ReadonlySet<string>,
+): FileCommentAnnotationEntry[] {
+  return entries.filter((entry) => entry.kind === "draft" || promptCommentIds.has(entry.id));
+}
+
 export function remapFileCommentAnnotations(
   annotations: ReadonlyArray<FileCommentLineAnnotation>,
 ): FileCommentLineAnnotation[] {

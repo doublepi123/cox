@@ -65,6 +65,11 @@ import { ScopedSwitch } from "./ScopedSwitch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 
 import {
+  autoSettleDaysField,
+  cancelAutoSettleDaysField,
+  commitAutoSettleDaysField,
+  editAutoSettleDaysField,
+  failAutoSettleDaysField,
   getChangedBrowserSettingLabels,
   getChangedTypographySettingLabels,
   hasChangedBackgroundActivitySettings,
@@ -72,6 +77,7 @@ import {
   projectGroupingModeFromToggle,
   readLastEnabledProjectGroupingMode,
   rememberEnabledProjectGroupingMode,
+  syncAutoSettleDaysField,
 } from "./SettingsPanels.logic";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
@@ -206,7 +212,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       : []),
     ...(settings.diffLayout !== DEFAULT_UNIFIED_SETTINGS.diffLayout ? [t("Diff layout")] : []),
     ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
-      ? [t("Proactive panels")]
+      ? [t("Open pull requests and changes panels proactively")]
       : []),
     ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
       ? [t("Show skills in slash menu")]
@@ -400,15 +406,23 @@ function AutoSettleDaysInput({
   onCommit,
 }: {
   value: number;
-  onCommit: (days: number) => void;
+  onCommit: (days: number, options: { onFailed: () => void }) => void;
 }) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState(String(value));
-  const [draftSource, setDraftSource] = useState(value);
-  if (draftSource !== value) {
-    setDraftSource(value);
-    setDraft(String(value));
-  }
+  const [stored, setField] = useState(() => autoSettleDaysField(value));
+  const field = syncAutoSettleDaysField(stored, value);
+  if (field !== stored) setField(field);
+
+  const commit = () => {
+    const next = commitAutoSettleDaysField(field);
+    setField(next.field);
+    if (next.submit === null) return;
+    const { revision } = next.field;
+    onCommit(next.submit, {
+      onFailed: () => setField((current) => failAutoSettleDaysField(current, revision)),
+    });
+  };
+
   return (
     <div className="min-w-0 w-full sm:w-24">
       <Input
@@ -416,19 +430,19 @@ function AutoSettleDaysInput({
         type="number"
         min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
         max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          const parsed = Number(event.target.value);
-          if (
-            Number.isInteger(parsed) &&
-            parsed >= MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS &&
-            parsed <= MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS
-          ) {
-            onCommit(parsed);
+        value={field.draft}
+        onChange={(event) => setField(editAutoSettleDaysField(field, event.target.value))}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Enter") commit();
+          if (event.key === "Escape" && field.dirty) {
+            // An unhandled Escape closes the settings page, and the blur that follows would save.
+            event.preventDefault();
+            event.stopPropagation();
+            setField(cancelAutoSettleDaysField(field));
           }
         }}
-        onBlur={() => setDraft(String(value))}
         aria-label={t("Days of inactivity before auto-settle")}
       />
     </div>
@@ -1097,7 +1111,7 @@ export function DiffsSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ proactivePanelsEnabled: Boolean(checked) })
               }
-              aria-label={t("Proactive panels")}
+              aria-label={t("Open pull requests and changes panels proactively")}
             />
           }
         />
@@ -1302,7 +1316,7 @@ export function ThreadsSettingsPanel() {
           serverScoped
           {...searchableSetting("auto-resume-limited-threads")}
           description={t(
-            "Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.",
+            "Automatically resume threads when their usage limits reset. You can cancel auto-resume in each thread.",
           )}
           settingKeys={["autoResumeLimitedThreads"]}
           control={
@@ -1320,7 +1334,7 @@ export function ThreadsSettingsPanel() {
           serverScoped
           {...searchableSetting("snooze-limited-threads")}
           description={t(
-            "Snooze usage-limit stops until reset. Pair with resume to continue on wake.",
+            "Snooze threads until their usage limits reset. Enable auto-resume to continue the agent after the reset.",
           )}
           settingKeys={["snoozeLimitedThreads"]}
           control={
@@ -1411,7 +1425,9 @@ export function ThreadsSettingsPanel() {
               control={
                 <AutoSettleDaysInput
                   value={settings.sidebarAutoSettleAfterDays}
-                  onCommit={(days) => updateSettings({ sidebarAutoSettleAfterDays: days })}
+                  onCommit={(days, options) =>
+                    updateSettings({ sidebarAutoSettleAfterDays: days }, options)
+                  }
                 />
               }
             />

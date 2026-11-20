@@ -389,28 +389,59 @@ describe("GitHubSourceControlProvider repository resolution", () => {
 describe("GitHubSourceControlProvider change request lookups by head", () => {
   const remotes = remotesOutput(["origin", "git@github.com:acme/web.git"]);
 
-  it.effect("matches an owner:branch selector on the head owner", () => {
-    const { layer } = harness({
+  it.effect("filters an owner:branch selector by owner through REST", () => {
+    const paths: string[] = [];
+    const restNode = (number: number, mergedAt: string | null) => ({
+      number,
+      title: `PR ${number}`,
+      html_url: `https://github.com/acme/web/pull/${number}`,
+      state: mergedAt === null ? "open" : "closed",
+      merged_at: mergedAt,
+      closed_at: mergedAt,
+      updated_at: "2026-01-02T00:00:00Z",
+      base: { ref: "main", repo: { full_name: "acme/web" } },
+      head: {
+        ref: "main",
+        sha: "f".repeat(40),
+        repo: { name: "web", full_name: "me/web", owner: { login: "me", type: "User" } },
+      },
+    });
+    const { layer, graphqlCalls } = harness({
       remotes,
-      graphql: (lookup) => ({
-        pullRequests: {
-          nodes:
-            lookup.head === "main"
-              ? [node(9, "main", "someone"), node(8, "main", "me"), node(7, "main", "me")]
-              : [],
-        },
-      }),
+      api: {
+        rest: (input) =>
+          Effect.sync(() => {
+            paths.push(input.path);
+            return restResponse([restNode(8, null), restNode(7, "2026-01-01T00:00:00Z")]);
+          }),
+      },
     });
     return Effect.gen(function* () {
       const gh = yield* GitHubSourceControlProvider.make;
-      const open = yield* gh
-        .listChangeRequests({ cwd: "/repo", headSelector: "me:main", state: "open", limit: 1 })
-        .pipe(Effect.forkChild);
-      yield* TestClock.adjust("50 millis");
+      const probe = (ownerHeadSelector?: string) =>
+        gh.headBranchProbe?.({
+          headSelectors: ["me:main", "main"],
+          state: "all",
+          ownerHeadSelector,
+        }).headSelectors;
+      assert.deepStrictEqual([probe(), probe("me:main")], [["main"], ["me:main"]]);
+      const read = (state: "open" | "merged") =>
+        gh.listChangeRequests({ cwd: "/repo", headSelector: "me:main", state, limit: 1 });
+      const [open] = yield* read("open");
+      const [merged] = yield* read("merged");
       assert.deepStrictEqual(
-        (yield* Fiber.join(open)).map((pr) => pr.number),
-        [8],
+        [open, merged].map((pr) => [pr?.number, pr?.state, pr?.headRepositoryOwnerLogin]),
+        [
+          [8, "open", "me"],
+          [7, "merged", "me"],
+        ],
       );
+      assert.deepStrictEqual(
+        paths.map((path) => new URL(path, "https://api.test/").searchParams.get("state")),
+        ["open", "closed"],
+      );
+      assert.include(paths[0], "repos/acme/web/pulls?head=me%3Amain");
+      assert.lengthOf(graphqlCalls, 0);
     }).pipe(Effect.provide(layer));
   });
 
@@ -551,6 +582,41 @@ describe("GitHubSourceControlProvider writes", () => {
         sshUrl: "git@github.com:acme/new.git",
       });
       assert.deepStrictEqual(requests, ["GET user", "POST orgs/acme/repos"]);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect.each([
+    { host: "GitHub.Enterprise.test", expectedHost: "github.enterprise.test" },
+    { expectedHost: "github.com" },
+  ])("reads clone URLs from $expectedHost", ({ host, expectedHost }) => {
+    const { layer } = harness({
+      remotes: remotesOutput(["origin", "https://github.com/acme/web.git"]),
+      api: {
+        rest: (input) =>
+          Effect.succeed(
+            input.path === "repos/fork/web" &&
+              ["github.enterprise.test", "github.com"].includes(input.host)
+              ? restResponse({
+                  full_name: "fork/web",
+                  html_url: `https://${input.host}/fork/web`,
+                  ssh_url: `git@${input.host}:fork/web.git`,
+                })
+              : restResponse({ message: "Not found" }, 404),
+          ),
+      },
+    });
+    return Effect.gen(function* () {
+      const provider = yield* GitHubSourceControlProvider.make;
+      const urls = yield* provider.getRepositoryCloneUrls({
+        cwd: "/repo",
+        repository: "fork/web",
+        ...(host ? { host } : {}),
+      });
+      assert.deepStrictEqual(urls, {
+        nameWithOwner: "fork/web",
+        url: `https://${expectedHost}/fork/web`,
+        sshUrl: `git@${expectedHost}:fork/web.git`,
+      });
     }).pipe(Effect.provide(layer));
   });
 

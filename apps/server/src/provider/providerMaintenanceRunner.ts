@@ -41,7 +41,7 @@ import type { ProviderMaintenanceCapabilities } from "@t3tools/provider-core/ser
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
 
-const UPDATE_TIMEOUT_MS = 5 * 60_000;
+const UPDATE_TIMEOUT_MS = 30 * 60_000;
 const UPDATE_OUTPUT_MAX_BYTES = 10_000;
 // Sample installer output because every progress update resends the provider list to all clients.
 const UPDATE_PROGRESS_INTERVAL = Duration.seconds(1);
@@ -98,13 +98,16 @@ const runProviderMaintenanceCommandWithSpawner = Effect.fn("ProviderMaintenanceR
   }) {
     const collectCommandResult = Effect.fn("ProviderMaintenanceRunner.collectCommandResult")(
       function* () {
+        const env = input.env ? { env: input.env, extendEnv: true } : {};
         // Windows batch shims require shell dispatch through resolveSpawnCommand.
-        const resolved = yield* resolveSpawnCommand(input.command, input.args);
+        const resolved = yield* resolveSpawnCommand(input.command, input.args, env);
         const child = yield* input.spawner
           .spawn(
             ChildProcess.make(resolved.command, resolved.args, {
               shell: resolved.shell,
-              ...(input.env ? { env: input.env, extendEnv: true } : {}),
+              // Nothing answers an update command, so one that reads stdin must see EOF, not wait.
+              stdin: "ignore",
+              ...env,
             }),
           )
           .pipe(
@@ -259,7 +262,7 @@ function lastOutputLine(result: ProviderMaintenanceCommandResult): string | null
 
 function failureMessage(result: ProviderMaintenanceCommandResult): string {
   if (result.timedOut) {
-    return "Update timed out.";
+    return "Update timed out after 30 minutes.";
   }
   const summary =
     result.exitCode !== null && result.exitCode !== 0
@@ -396,11 +399,14 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
       });
     }
 
+    const startedAtRef = yield* Ref.make<string | null>(null);
+    const settled = yield* Ref.make(false);
     const setUpdateState = (state: ServerProviderUpdateState | null) =>
       providerRegistry.setProviderMaintenanceActionState({
         instanceId,
         action: "update",
         state,
+        targetVersion,
       });
     const setQueuedState = setUpdateState(
       makeUpdateState({
@@ -413,9 +419,13 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
 
     const runProviderUpdate = Effect.fn("ProviderMaintenanceRunner.runProviderUpdate")(
       function* () {
+        // Uninterruptible, so a dropped request cannot leave settled set without the state.
         const finish = (state: ServerProviderUpdateState) =>
-          setUpdateState(state).pipe(Effect.map((providers) => ({ providers })));
-        const startedAtRef = yield* Ref.make<string | null>(null);
+          Ref.set(settled, true).pipe(
+            Effect.andThen(setUpdateState(state)),
+            Effect.map((providers) => ({ providers })),
+            Effect.uninterruptible,
+          );
 
         const runCommandAndVerify = Effect.fn("ProviderMaintenanceRunner.runCommandAndVerify")(
           function* () {
@@ -628,6 +638,21 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
         run: runProviderUpdate(),
       })
       .pipe(
+        // A dropped request interrupts the update; a "running" state would spin until restart.
+        Effect.onInterrupt(() =>
+          Effect.gen(function* () {
+            // A finished state stays, even if the request drops while it is being written.
+            if (yield* Ref.get(settled)) return;
+            yield* setUpdateState(
+              makeUpdateState({
+                status: "failed",
+                startedAt: yield* Ref.get(startedAtRef),
+                finishedAt: yield* nowIso,
+                message: "Update stopped before it finished.",
+              }),
+            );
+          }).pipe(Effect.ignore),
+        ),
         Effect.mapError((error) =>
           isServerProviderUpdateError(error)
             ? new ServerProviderUpdateError({

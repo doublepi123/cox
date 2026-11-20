@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./databaseMigrationLog": {
+      "types": "./src/databaseMigrationLog.ts",
+      "import": "./src/databaseMigrationLog.ts"
+    },
     "./remoteServerAdmission": {
       "types": "./src/remoteServerAdmission.ts",
       "import": "./src/remoteServerAdmission.ts"
@@ -505,11 +509,13 @@
     "@noble/hashes": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "effect": "catalog:",
+    "get-east-asian-width": "^1.6.0",
     "jose": "catalog:",
     "mdast-util-directive": "catalog:",
     "mdast-util-to-hast": "^13.2.1",
     "micromark-extension-directive": "catalog:",
     "micromark-util-character": "catalog:",
+    "micromark-util-decode-string": "catalog:",
     "property-information": "^7.2.0",
     "rehype-raw": "catalog:",
     "rehype-sanitize": "catalog:",

@@ -74,26 +74,29 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
       }),
     );
 
-    it.effect("strips inherited Claude host session variables from spawned environment", () =>
-      Effect.gen(function* () {
-        const host = {
-          CLAUDECODE: "1",
-          CLAUDE_CODE_SESSION_ID: "host-session",
-          CLAUDE_CODE_HOST_SESSION_ID: "host-session",
-          CLAUDE_CODE_CHILD_SESSION: "1",
-          CLAUDE_CODE_SESSION_ATTENDED: "1",
-          CLAUDE_CODE_MESSAGING_SOCKET: "/tmp/claude.sock",
-          CLAUDE_CODE_MESSAGING_TOKEN: "secret",
-          CLAUDE_CODE_EXECPATH: "/usr/local/bin/claude",
-          CLAUDE_CODE_DESKTOP_APP_VERSION: "1.0.0",
-          CLAUDE_EFFORT: "max",
-          CLAUDE_PID: "1234",
-          CLAUDE_AGENT_SDK_VERSION: "0.2.0",
-          KEEP: "1",
-        };
-        const env = yield* makeClaudeEnvironment({ homePath: "" }, host);
-        expect(env).toEqual({ KEEP: "1" });
-      }),
+    it.effect(
+      "strips inherited Claude session variables and Electron run-as-Node from spawned environment",
+      () =>
+        Effect.gen(function* () {
+          const host = {
+            CLAUDECODE: "1",
+            CLAUDE_CODE_SESSION_ID: "host-session",
+            CLAUDE_CODE_HOST_SESSION_ID: "host-session",
+            CLAUDE_CODE_CHILD_SESSION: "1",
+            CLAUDE_CODE_SESSION_ATTENDED: "1",
+            CLAUDE_CODE_MESSAGING_SOCKET: "/tmp/claude.sock",
+            CLAUDE_CODE_MESSAGING_TOKEN: "secret",
+            CLAUDE_CODE_EXECPATH: "/usr/local/bin/claude",
+            CLAUDE_CODE_DESKTOP_APP_VERSION: "1.0.0",
+            CLAUDE_EFFORT: "max",
+            CLAUDE_PID: "1234",
+            CLAUDE_AGENT_SDK_VERSION: "0.2.0",
+            ELECTRON_RUN_AS_NODE: "1",
+            KEEP: "1",
+          };
+          const env = yield* makeClaudeEnvironment({ homePath: "" }, host);
+          expect(env).toEqual({ KEEP: "1" });
+        }),
     );
   });
 });

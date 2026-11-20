@@ -172,6 +172,15 @@ export interface ProviderListCursor {
   readonly resumeAfter?: string | undefined;
 }
 
+export interface ProviderAcrossListCursor extends Omit<ProviderListCursor, "seenAt"> {
+  readonly seenAt?: ReadonlyArray<ProviderRepositoryNumber> | undefined;
+}
+
+export interface ProviderRepositoryNumber {
+  readonly repository: string;
+  readonly number: number;
+}
+
 export interface ProviderBatchedChangeRequest extends ProviderChangeRequest {
   readonly repository: string;
 }
@@ -314,6 +323,8 @@ export interface PullRequestProviderApi {
    * definition's `publicHost` can be read from a project with no checkout of its repository.
    */
   readonly readsPublicHostWithoutCheckout?: boolean;
+  /** Concurrent summary reads share requests, so callers may keep many in flight. */
+  readonly batchesReads?: boolean;
   /**
    * Absent means every host detected as this kind is read. A host it refuses is listed as one that
    * cannot be browsed here, and nothing is sent for it.
@@ -349,7 +360,7 @@ export interface PullRequestProviderApi {
     readonly viewer: string;
     readonly limit: number;
     readonly query?: string | undefined;
-    readonly cursor?: ProviderListCursor | undefined;
+    readonly cursor?: ProviderAcrossListCursor | undefined;
     readonly filters?: PullRequestListFilters | undefined;
   }) => Effect.Effect<ProviderBatchedChangeRequestPage, PullRequestProviderError>;
 

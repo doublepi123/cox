@@ -76,6 +76,7 @@ const removedEnvironmentKeys = new Set([
   "BROWSER",
   "PYTHONUNBUFFERED",
   "ELECTRON_RUN_AS_NODE",
+  "CHROME_CRASHPAD_PIPE_NAME",
 ]);
 
 export interface AntigravityProfile {
@@ -452,9 +453,7 @@ export function buildAntigravityAcpSpawnInput(input: {
     args:
       input.installation.harnessPath === null
         ? ["acp"]
-        : input.profile.platform === "linux"
-          ? ["--uid="]
-          : [],
+        : [...(input.profile.platform === "linux" ? ["--uid="] : []), "--alsologtostderr"],
     cwd: input.cwd,
     env: {
       ...antigravityEnvironment(
@@ -574,6 +573,10 @@ export function makeAntigravityStdoutTransform(
     });
 }
 
+// glog records from the managed harness after which its ACP process can no longer run a turn.
+const ANTIGRAVITY_HARNESS_FAILURE_LOG =
+  /^[IWEF]\d{4} \d{2}:\d{2}:\d{2}\.\d+ +\d+ (?:local_connection\.py:\d+\] harness stderr: Agent run failed:|server\.py:\d+\] (?:Failed to rebuild agent for session |Agent connection lost for session ))/;
+
 export function makeAntigravityStderrHandler(
   input: {
     readonly onAuthorizationUrl?: (
@@ -582,18 +585,25 @@ export function makeAntigravityStderrHandler(
   } = {},
 ) {
   let pending = "";
-  const handleLine = (line: string) => {
+  // Untraced: with native logs on stderr this runs for every harness log line.
+  const handleLine = Effect.fnUntraced(function* (line: string) {
     const message = line.endsWith("\r") ? line.slice(0, -1) : line;
-    if (message.length > maxBrowserHelperLineLength) {
-      return Effect.void;
+    if (message.length > maxBrowserHelperLineLength) return;
+    if (ANTIGRAVITY_HARNESS_FAILURE_LOG.test(message)) {
+      return yield* new AcpErrors.AcpTransportError({
+        method: "session/prompt",
+        detail:
+          "Antigravity's local agent connection failed. Send a follow-up to resume with a fresh process.",
+        cause: undefined,
+      });
     }
     const url = message.startsWith(ANTIGRAVITY_AUTH_STDOUT_PREFIX)
       ? Effect.succeed(message.slice(ANTIGRAVITY_AUTH_STDOUT_PREFIX.length))
       : message.startsWith(ANTIGRAVITY_AUTH_BROWSER_MARKER)
         ? decodeBrowserHelperUrl(message.slice(ANTIGRAVITY_AUTH_BROWSER_MARKER.length))
         : undefined;
-    if (url === undefined) return Effect.void;
-    return url.pipe(
+    if (url === undefined) return;
+    yield* url.pipe(
       Effect.flatMap(parseAntigravityAuthorizationUrl),
       Effect.matchEffect({
         onFailure: () => Effect.void,
@@ -603,7 +613,7 @@ export function makeAntigravityStderrHandler(
             : Effect.fail(authSupportError(ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE)),
       }),
     );
-  };
+  });
 
   return Effect.fn("antigravityAuthSupport.handleStderr")(function* (text: string) {
     const lines = `${pending}${text}`.split("\n");

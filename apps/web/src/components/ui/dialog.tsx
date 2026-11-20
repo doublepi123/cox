@@ -81,12 +81,13 @@ function DialogViewport({
 }: DialogPrimitive.Viewport.Props & { media?: boolean; bottomStickOnMobile?: boolean }) {
   return (
     <DialogPrimitive.Viewport
+      // Electron drag regions ignore z-index, so without no-drag a click over a header drag strip never reaches the page.
       className={cn(
-        "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
+        "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4 [-webkit-app-region:no-drag]",
         bottomStickOnMobile &&
           "max-sm:grid-rows-[1fr_auto] max-sm:px-0 max-sm:pt-[max(3rem,var(--workspace-safe-top))]! max-sm:pb-safe!",
         media &&
-          "z-[60] grid-rows-1 place-items-center px-4 pb-[max(1.5rem,var(--workspace-safe-bottom))] pt-[calc(max(var(--native-titlebar-height,0px),var(--workspace-safe-top))+1.5rem)] [-webkit-app-region:no-drag]",
+          "z-[60] grid-rows-1 place-items-center px-4 pb-[max(1.5rem,var(--workspace-safe-bottom))] pt-[calc(max(var(--native-titlebar-height,0px),var(--workspace-safe-top))+1.5rem)]",
         className,
       )}
       data-slot="dialog-viewport"
@@ -212,7 +213,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       className={cn(
-        "wrap-anywhere font-semibold text-xl leading-none",
+        "wrap-anywhere font-semibold text-xl leading-snug",
         visuallyHidden && "sr-only",
         withIcon && "flex items-center",
         className,

@@ -1,4 +1,9 @@
 import { expect, it } from "vite-plus/test";
+
+it("matches straight and curly apostrophes without changing source offsets", () => {
+  expect(findThreadSearchOccurrences("don't don’t", "don’t")).toEqual([0, 6]);
+  expect(findThreadSearchOccurrences("İ don‘t", "don't")).toEqual([2]);
+});
 import { findThreadSearchOccurrences } from "./threadSearch.ts";
 
 it("finds non-overlapping occurrences without invalidating Unicode offsets", () => {

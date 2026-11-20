@@ -1,7 +1,10 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { formatInlineContextReference } from "./lib/composerContextReferences";
-import { threadContextReference } from "./lib/composerContextRecords";
+import {
+  previewAnnotationContextRecord,
+  threadContextReference,
+} from "./lib/composerContextRecords";
 import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 
 import {
@@ -24,6 +27,28 @@ describe("projectPendingUserInputAnswer", () => {
     const answer = `Compare ${formatInlineContextReference(threadContextReference(record))}`;
     expect(projectPendingUserInputAnswer(answer, [record])).toBe(
       "Compare [Reference work](t3-thread://v2/env-answer/reference-thread)",
+    );
+  });
+
+  it("includes the payload of the referenced preview annotation in the answer", () => {
+    const annotation = previewAnnotationContextRecord({
+      id: "annotation-1",
+      pageUrl: "https://example.com/",
+      pageTitle: "Home",
+      comment: "Add three feature cards",
+      elements: [],
+      regions: [],
+      strokes: [],
+      styleChanges: [],
+      screenshot: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const answer = `See ${formatInlineContextReference(annotation)}`;
+    expect(projectPendingUserInputAnswer(answer, [], [annotation])).toContain(
+      "comment: Add three feature cards",
+    );
+    expect(projectPendingUserInputAnswer("No annotation here", [], [annotation])).toBe(
+      "No annotation here",
     );
   });
 

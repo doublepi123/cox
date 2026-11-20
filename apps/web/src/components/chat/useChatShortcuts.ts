@@ -1,6 +1,7 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { useEffect, useEffectEvent } from "react";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
+import { composerKeyShortcutContexts } from "../../composer-logic";
 import { resolveChatShortcutCommand, type ShortcutMatchContext } from "../../keybindings";
 import { isTerminalCloseConfirmPending } from "../../lib/terminalCloseConfirm";
 import {
@@ -21,6 +22,13 @@ type ChatShortcutHandler = (context: {
 }) => boolean | void;
 
 export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcutHandler>>;
+
+/** Window-level commands the main chat still runs while focus is in its side chat pane. */
+const SIDE_CHAT_PANE_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
+  "rightPanel.toggle",
+  "rightPanel.close",
+  "rightPanel.toggleMaximized",
+]);
 
 interface ChatShortcutsInput {
   readonly enabled: boolean;
@@ -64,12 +72,18 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.stopPropagation();
       return;
     }
-    if (!input.enabled || isCommandPaletteOpen() || isInSideChatPane(event.target)) return;
+    if (!input.enabled || isCommandPaletteOpen()) return;
+    const inSideChatPane = isInSideChatPane(event.target);
     const terminalFocusOwner = getTerminalFocusOwner();
     if (event.defaultPrevented && terminalFocusOwner === null) return;
-    const shortcutContext = input.getShortcutContext(event.target);
+    const shortcutContext = {
+      ...input.getShortcutContext(event.target),
+      rightPanelOpen: input.composerRef.current?.isRightPanelOpen?.() ?? false,
+    };
+    composerKeyShortcutContexts.set(event, shortcutContext);
 
     if (
+      !inSideChatPane &&
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
       shouldTypeToFocusComposer(event) &&
@@ -83,7 +97,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const command = resolveChatShortcutCommand(event, keybindings, input.scriptKeybindings, {
       context: shortcutContext,
     });
-    if (!command) return;
+    if (!command || (inSideChatPane && !SIDE_CHAT_PANE_COMMANDS.has(command))) return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??
@@ -110,8 +124,13 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
   });
   const handleComposerShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || isCommandPaletteOpen()) return;
+    const context = {
+      ...input.getShortcutContext(event.target),
+      rightPanelOpen: input.composerRef.current?.isRightPanelOpen?.() ?? false,
+    };
+    composerKeyShortcutContexts.set(event, context);
     const command = resolveChatShortcutCommand(event, input.keybindings, input.scriptKeybindings, {
-      context: input.getShortcutContext(event.target),
+      context,
     });
     const run = command
       ? composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command]

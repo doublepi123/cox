@@ -34,10 +34,9 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
   buildTemporaryWorktreeBranchName,
-  flattenTemporaryWorktreeBranchName,
+  formatGeneratedBranchName,
   isTemporaryWorktreeBranch,
   isValidGitBranchName,
-  WORKTREE_BRANCH_PREFIX,
 } from "@t3tools/shared/git";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
@@ -163,6 +162,20 @@ export class ThreadLaunchBaseRefError extends Schema.TaggedError<ThreadLaunchBas
   }
 }
 
+export class ThreadLaunchBranchConflictError extends Schema.TaggedError<ThreadLaunchBranchConflictError>()(
+  "ThreadLaunchBranchConflictError",
+  {
+    projectId: ProjectId,
+    projectTitle: Schema.String,
+    branch: Schema.String,
+    conflictingBranch: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Branch "${this.branch}" cannot be created in project "${this.projectTitle}": branch "${this.conflictingBranch}" exists.`;
+  }
+}
+
 export class ThreadLaunchService extends Context.Service<
   ThreadLaunchService,
   {
@@ -174,8 +187,11 @@ export class ThreadLaunchService extends Context.Service<
     >;
     /** Check before creation for early errors; launch otherwise accepts and reports base failures inside the thread. */
     readonly checkWorktreeBase: (
-      input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy">,
-    ) => Effect.Effect<void, ThreadLaunchBaseRefError>;
+      input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy"> & {
+        readonly commandId?: CommandId;
+      },
+    ) => Effect.Effect<void, ThreadLaunchBaseRefError | ThreadLaunchBranchConflictError>;
+    readonly isNonGitProject: (projectId: ProjectId) => Effect.Effect<boolean>;
     readonly retryPreparation: (
       input: ThreadLaunchPreparationInput,
     ) => Effect.Effect<
@@ -212,6 +228,11 @@ const make = Effect.gen(function* () {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
+  // A project-folder launch that names no branch records the folder's checkout, as the composer does.
+  const launchBranch = (strategy: ThreadLaunchWorkspaceStrategy, workspaceRoot: string) =>
+    strategy.type === "root" && strategy.branch === undefined
+      ? git.currentBranch(workspaceRoot).pipe(Effect.orElseSucceed(() => null))
+      : Effect.succeed(strategy.branch ?? null);
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
@@ -261,20 +282,32 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     const strategy = input.workspaceStrategy;
     // `:/text` is a commit search, which cannot be asked for a commit type.
-    if (strategy.type !== "worktree" || strategy.baseRef.startsWith(":")) return;
-    const { baseRef } = strategy;
+    if (strategy.type !== "worktree") return;
+    if (input.commandId !== undefined) {
+      const receipt = yield* receipts
+        .getByCommandId(input.commandId)
+        .pipe(Effect.orElseSucceed(Option.none));
+      if (Option.isSome(receipt) && receipt.value.status === "accepted") return;
+    }
+    const { baseRef, branch } = strategy;
+    const project = Option.getOrUndefined(
+      yield* projects.getById(input.projectId).pipe(Effect.orElseSucceed(Option.none)),
+    );
+    if (project === undefined) return;
     const unresolved = yield* Effect.gen(function* () {
-      const project = Option.getOrUndefined(yield* projects.getById(input.projectId));
-      if (project === undefined) return undefined;
+      if (baseRef.startsWith(":")) return undefined;
       const cwd = project.workspaceRoot;
       // `git worktree add` reads `-` as the previous checkout.
       if (yield* git.hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef }))
         return undefined;
-      if (
-        strategy.startFromOrigin === true &&
-        (yield* git.resolveWorktreeBaseRemote({ cwd, refName: baseRef })) !== null
-      )
-        return undefined;
+      if (strategy.startFromOrigin === true) {
+        const remote = yield* git.resolveWorktreeBaseRemote({ cwd, refName: baseRef });
+        if (
+          remote !== null &&
+          (yield* git.fetchWorktreeBaseCommit({ cwd, refName: baseRef, remote })) !== null
+        )
+          return undefined;
+      }
       // git worktree add accepts remote-tracking branches; let Git decide when any matching ref exists.
       if (yield* git.hasRefNamed({ cwd, refName: baseRef })) return undefined;
       return (yield* git.hasCommit({ cwd, refName: "HEAD" })) ? project : undefined;
@@ -286,6 +319,31 @@ const make = Effect.gen(function* () {
         workspaceRoot: unresolved.workspaceRoot,
         baseRef,
       });
+    if (branch === undefined || isTemporaryWorktreeBranch(branch)) return;
+    const conflictingBranch = (yield* git
+      .listLocalBranchNames(project.workspaceRoot)
+      .pipe(Effect.orElseSucceed(() => []))).find(
+      (existing) => existing.startsWith(`${branch}/`) || branch.startsWith(`${existing}/`),
+    );
+    if (conflictingBranch !== undefined) {
+      return yield* new ThreadLaunchBranchConflictError({
+        projectId: project.id,
+        projectTitle: project.title,
+        branch,
+        conflictingBranch,
+      });
+    }
+  });
+
+  const isNonGitProject: ThreadLaunchService["Service"]["isNonGitProject"] = Effect.fn(
+    "ThreadLaunchService.isNonGitProject",
+  )(function* (projectId) {
+    const project = yield* projects.getById(projectId).pipe(Effect.orElseSucceed(Option.none));
+    if (Option.isNone(project)) return false;
+    return yield* git.isRepository(project.value.workspaceRoot).pipe(
+      Effect.map((isRepository) => !isRepository),
+      Effect.orElseSucceed(() => false),
+    );
   });
 
   const prepareInBackground = Effect.fn("ThreadLaunchService.prepareInBackground")(function* (
@@ -368,6 +426,7 @@ const make = Effect.gen(function* () {
 
       const requestedBranch = input.workspaceStrategy.branch;
       let branch: string | null;
+      let generatedFallback = false;
       if (input.workspaceStrategy.type === "worktree" && requestedBranch === undefined) {
         const recommended =
           initialMessage === undefined
@@ -393,9 +452,21 @@ const make = Effect.gen(function* () {
         } else {
           const uuid = yield* randomUuidV4;
           branch = buildTemporaryWorktreeBranchName(() => uuid.replaceAll("-", ""));
+          generatedFallback = true;
+          const settings = resolveProjectSettings(
+            yield* serverSettings.getSettings,
+            input.projectId,
+          ).settings;
+          if (settings.branchNamingMode === "static") {
+            branch = formatGeneratedBranchName(branch.slice(-8), {
+              mode: "static",
+              prefix: settings.branchNamePrefix,
+              instructions: "",
+            });
+          }
         }
       } else {
-        branch = requestedBranch ?? null;
+        branch = yield* launchBranch(input.workspaceStrategy, project.workspaceRoot);
       }
       let worktreePath =
         input.workspaceStrategy.type === "existing_worktree"
@@ -440,17 +511,19 @@ const make = Effect.gen(function* () {
           }
         }
         if (shouldFetch) yield* setupTracker.stageStatus(threadId, "fetch", "done");
-        if (
-          branch !== null &&
-          isTemporaryWorktreeBranch(branch) &&
-          (yield* git
-            .hasCommit({
-              cwd: project.workspaceRoot,
-              refName: `refs/heads/${WORKTREE_BRANCH_PREFIX}`,
-            })
-            .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId))))
-        ) {
-          branch = flattenTemporaryWorktreeBranchName(branch);
+        if (branch !== null && (generatedFallback || isTemporaryWorktreeBranch(branch))) {
+          const parts = branch.split("/");
+          for (let depth = 1; depth < parts.length; depth++) {
+            const prefix = parts.slice(0, depth).join("/");
+            if (
+              yield* git
+                .hasCommit({ cwd: project.workspaceRoot, refName: `refs/heads/${prefix}` })
+                .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)))
+            ) {
+              branch = parts.join("-");
+              break;
+            }
+          }
         }
         yield* setupTracker.stageStatus(threadId, "checkout", "running");
         const worktree = yield* git
@@ -873,7 +946,7 @@ const make = Effect.gen(function* () {
                 },
               )
             : input.workspaceStrategy;
-        const initialBranch = workspaceStrategy.branch ?? null;
+        const initialBranch = yield* launchBranch(workspaceStrategy, project.workspaceRoot);
         const initialWorktreePath =
           workspaceStrategy.type === "existing_worktree" ? workspaceStrategy.worktreePath : null;
         const claimDispatch =
@@ -1120,7 +1193,13 @@ const make = Effect.gen(function* () {
     );
   });
 
-  return ThreadLaunchService.of({ launch, checkWorktreeBase, retryPreparation, prepareRun });
+  return ThreadLaunchService.of({
+    launch,
+    checkWorktreeBase,
+    isNonGitProject,
+    retryPreparation,
+    prepareRun,
+  });
 });
 
 export const layer = Layer.effect(ThreadLaunchService, make);

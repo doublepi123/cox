@@ -109,7 +109,7 @@ describe("pinned sidebar thread actions", () => {
     async (variant) => {
       const f = fixture(variant);
       await using screen = await render(f.element());
-      const row = screen.getByRole("treeitem", { name: /Pinned thread/ });
+      const row = screen.getByRole("button", { name: /Pinned thread/ });
       await userEvent.hover(row);
       const remove = screen.getByRole("button", { name: "Delete thread", exact: true });
       const unpin = screen.getByRole("button", { name: "Unpin thread", exact: true });
@@ -139,7 +139,7 @@ describe("pinned sidebar thread actions", () => {
     await using screen = await render(
       f.element({ onDelete: undefined, settlementSupported: false }),
     );
-    await userEvent.hover(screen.getByRole("treeitem", { name: /Pinned thread/ }));
+    await userEvent.hover(screen.getByRole("button", { name: /Pinned thread/ }));
     await expect
       .element(screen.getByRole("button", { name: "Unpin thread", exact: true }))
       .toBeVisible();
@@ -158,7 +158,7 @@ describe("pinned sidebar thread actions", () => {
     try {
       const f = fixture("card");
       await using screen = await render(f.element());
-      await userEvent.hover(screen.getByRole("treeitem", { name: /Pinned thread/ }));
+      await userEvent.hover(screen.getByRole("button", { name: /Pinned thread/ }));
       const remove = screen
         .getByRole("button", { name: "Delete thread", exact: true })
         .element()

@@ -347,13 +347,19 @@ describe("AddProviderInstanceDialog environment routing", () => {
     setup();
     settingsHooks.read.mockReturnValue({
       providerInstances: {},
-      modelServices: { [sharedServiceId]: { ...sharedModelService, models: [] } },
+      modelServices: { [sharedServiceId]: sharedModelService },
     });
-    await using _screen = await render(dialog());
+    await using screen = await render(dialog());
     await chooseDriver("Codex");
     await click("Configure manually");
     await click("Next");
     await chooseSharedModelService();
+    expect(button("Add instance").disabled).toBe(false);
+    settingsHooks.read.mockReturnValue({
+      providerInstances: {},
+      modelServices: { [sharedServiceId]: { ...sharedModelService, models: [] } },
+    });
+    await screen.rerender(dialog());
     expect(button("Add instance").disabled).toBe(true);
     expect(settingsHooks.mutate).not.toHaveBeenCalled();
   });

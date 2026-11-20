@@ -61,6 +61,7 @@ it("separates cached execution duration from live member and phase timers", asyn
         providerInstanceId={ProviderInstanceId.make("claude-test")}
         provider={undefined}
         providers={undefined}
+        providerEntries={[]}
         driver={undefined}
         onOpenThread={() => {}}
         stopping={false}

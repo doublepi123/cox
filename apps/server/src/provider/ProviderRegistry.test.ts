@@ -4,6 +4,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as CodexInstallation from "./CodexInstallation.ts";
 import * as CodexManagedTokenBroker from "./CodexManagedTokenBroker.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { describe, it, assert, expect } from "@effect/vitest";
@@ -34,6 +35,8 @@ import {
   ServerSettingsError,
   ServerProvider,
   type ServerProviderSlashCommand,
+  type ServerProviderUpdateState,
+  type ServerProviderVersionAdvisoryStatus,
   type ServerSettings as ContractServerSettings,
 } from "@t3tools/contracts";
 import { HttpClient, HttpClientResponse } from "effect/http";
@@ -332,6 +335,86 @@ const awaitPersistedProvider = (
     Stream.runDrain,
     Effect.forkScoped,
   );
+
+const codexUpdateSnapshot = (advisory: ServerProviderVersionAdvisoryStatus) =>
+  ({
+    instanceId: ProviderInstanceId.make("codex"),
+    driver: ProviderDriverKind.make("codex"),
+    status: "ready",
+    enabled: true,
+    installed: true,
+    auth: { status: "authenticated" },
+    checkedAt: "2026-06-10T00:00:00.000Z",
+    version: "1.0.0",
+    models: [],
+    slashCommands: [],
+    skills: [],
+    versionAdvisory: {
+      status: advisory,
+      currentVersion: "1.0.0",
+      latestVersion: advisory === "unknown" ? null : advisory === "current" ? "1.0.0" : "2.0.0",
+      updateCommand: null,
+      canUpdate: true,
+      checkedAt: "2026-06-10T00:00:00.000Z",
+      message: null,
+    },
+  }) as const satisfies ServerProvider;
+
+const makeUpdateState = (status: ServerProviderUpdateState["status"]) =>
+  ({
+    status,
+    startedAt: "2026-06-10T00:00:00.000Z",
+    finishedAt: status === "queued" || status === "running" ? null : "2026-06-10T00:01:00.000Z",
+    message: `update ${status}`,
+    output: null,
+  }) satisfies ServerProviderUpdateState;
+
+// One Codex instance whose probe returns whatever `snapshot` currently holds.
+const buildRegistryOverSnapshot = Effect.fn("buildRegistryOverSnapshot")(function* (
+  snapshot: Ref.Ref<ServerProvider>,
+) {
+  const driver = ProviderDriverKind.make("codex");
+  const instance = {
+    instanceId: ProviderInstanceId.make("codex"),
+    driverKind: driver,
+    continuationIdentity: { driverKind: driver, continuationKey: "codex:instance:codex" },
+    displayName: undefined,
+    enabled: true,
+    snapshot: {
+      resolveMaintenance: () =>
+        Effect.succeed(
+          makeManualOnlyProviderMaintenanceCapabilities({ provider: driver, packageName: null }),
+        ),
+      getSnapshot: Ref.get(snapshot),
+      refresh: Ref.get(snapshot),
+      streamChanges: Stream.empty,
+      applyUsageLimits: () => Effect.void,
+    },
+    orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+    textGeneration: {} as ProviderInstance["textGeneration"],
+  } satisfies ProviderInstance;
+  const layerInstanceRegistry = Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
+    getInstance: (instanceId) =>
+      Effect.succeed(instanceId === instance.instanceId ? instance : undefined),
+    listInstances: Effect.succeed([instance]),
+    listUnavailable: Effect.succeed([]),
+    streamChanges: Stream.empty,
+    subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
+  });
+  const scope = yield* Scope.make();
+  yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+  return yield* Layer.build(
+    ProviderRegistry.layer.pipe(
+      Layer.provide(layerUnusedMutator),
+      Layer.provideMerge(layerInstanceRegistry),
+      Layer.provideMerge(
+        ServerConfig.layerTest(process.cwd(), { prefix: "t3-provider-registry-update-state-" }),
+      ),
+      Layer.provideMerge(layerBackgroundPolicyAlwaysRun),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    ),
+  ).pipe(Scope.provide(scope));
+});
 
 const layerTestNodeServices = Layer.mergeAll(
   ProviderLatestVersions.layer,
@@ -1797,6 +1880,97 @@ it.layer(
         }),
     );
 
+    it.effect("scans scanCwd and keys the workspace snapshot by cwd", () =>
+      Effect.gen(function* () {
+        const driver = ProviderDriverKind.make("codex");
+        const instanceId = ProviderInstanceId.make("codex");
+        const provider = {
+          instanceId,
+          driver,
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-06-10T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const scannedDirectories = yield* Ref.make<ReadonlyArray<string>>([]);
+        const instance: ProviderInstance = {
+          instanceId,
+          driverKind: driver,
+          continuationIdentity: { driverKind: driver, continuationKey: "codex:instance:codex" },
+          displayName: undefined,
+          enabled: true,
+          snapshot: {
+            resolveMaintenance: () =>
+              Effect.succeed(
+                makeManualOnlyProviderMaintenanceCapabilities({
+                  provider: driver,
+                  packageName: null,
+                }),
+              ),
+            getSnapshot: Effect.succeed(provider),
+            refresh: Effect.succeed(provider),
+            streamChanges: Stream.empty,
+            applyUsageLimits: () => Effect.void,
+          },
+          snapshotForCwd: (directory) =>
+            Ref.update(scannedDirectories, (directories) => [...directories, directory]).pipe(
+              Effect.as({
+                ...provider,
+                skills: [{ name: "finalize", path: `${directory}/finalize`, enabled: true }],
+              }),
+            ),
+          orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+          textGeneration: {} as ProviderInstance["textGeneration"],
+        };
+        const layerInstanceRegistry = Layer.succeed(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          {
+            getInstance: (requestedId) =>
+              Effect.succeed(requestedId === instanceId ? instance : undefined),
+            listInstances: Effect.succeed([instance]),
+            listUnavailable: Effect.succeed([]),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
+          },
+        );
+        const scope = yield* Scope.make();
+        yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+        const runtimeServices = yield* Layer.build(
+          ProviderRegistry.layer.pipe(
+            Layer.provide(layerUnusedMutator),
+            Layer.provideMerge(layerInstanceRegistry),
+            Layer.provideMerge(
+              ServerConfig.layerTest(process.cwd(), {
+                prefix: "t3-provider-registry-scan-cwd-",
+              }),
+            ),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          ),
+        ).pipe(Scope.provide(scope));
+
+        yield* Effect.gen(function* () {
+          const registry = yield* ProviderRegistry.ProviderRegistry;
+          const providers = yield* registry.refreshWorkspaceSnapshot({
+            instanceId,
+            cwd: "/worktree",
+            scanCwd: "/project",
+          });
+          assert.deepStrictEqual(yield* Ref.get(scannedDirectories), ["/project"]);
+          assert.deepStrictEqual(
+            providers[0]?.workspaceSnapshots
+              ?.find((snapshot) => snapshot.cwd === "/worktree")
+              ?.skills?.map((skill) => skill.path),
+            ["/project/finalize"],
+          );
+        }).pipe(Effect.provide(runtimeServices));
+      }),
+    );
+
     it.effect("publishes workspace skills while machine health is in error", () =>
       Effect.gen(function* () {
         const driver = ProviderDriverKind.make("codex");
@@ -2234,18 +2408,17 @@ it.layer(
         const fs = yield* FileSystem.FileSystem;
         const fileSystem = FileSystem.FileSystem.of({
           ...fs,
-          writeFileString: (target, contents, options) =>
-            fs
-              .writeFileString(target, contents, options)
-              .pipe(
-                Effect.andThen(
-                  contents.includes(pending.message)
-                    ? Deferred.succeed(writeStarted, undefined).pipe(
-                        Effect.andThen(Deferred.await(releaseWrite)),
-                      )
-                    : Effect.void,
-                ),
+          rename: (source, target) =>
+            fs.readFileString(source).pipe(
+              Effect.flatMap((contents) =>
+                contents.includes(pending.message)
+                  ? Deferred.succeed(writeStarted, undefined).pipe(
+                      Effect.andThen(Deferred.await(releaseWrite)),
+                    )
+                  : Effect.void,
               ),
+              Effect.andThen(fs.rename(source, target)),
+            ),
         });
         const scope = yield* Scope.make();
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
@@ -2771,6 +2944,67 @@ it.layer(
       }),
     );
 
+    describe("update results across refreshes", () => {
+      const instanceId = ProviderInstanceId.make("codex");
+
+      it.effect.each([
+        { status: "unchanged", advisory: "current", retired: true },
+        { status: "failed", advisory: "current", retired: true },
+        { status: "unchanged", advisory: "behind_latest", retired: false },
+        { status: "failed", advisory: "behind_latest", retired: false },
+        // The probe publishes `unknown` until the latest-version check lands.
+        { status: "unchanged", advisory: "unknown", retired: false },
+        { status: "queued", advisory: "current", retired: false },
+        { status: "running", advisory: "current", retired: false },
+        { status: "succeeded", advisory: "current", retired: false },
+        { status: "failed", advisory: "unknown", retired: false },
+      ] as const)(
+        "a $status update result is retired: $retired when a refresh reports the provider $advisory",
+        ({ status, advisory, retired }) =>
+          Effect.gen(function* () {
+            const snapshot = yield* Ref.make<ServerProvider>(codexUpdateSnapshot("behind_latest"));
+            const runtimeServices = yield* buildRegistryOverSnapshot(snapshot);
+
+            yield* Effect.gen(function* () {
+              const registry = yield* ProviderRegistry.ProviderRegistry;
+              const state = makeUpdateState(status);
+              yield* registry.setProviderMaintenanceActionState({
+                instanceId,
+                action: "update",
+                state,
+              });
+              yield* Ref.set(snapshot, codexUpdateSnapshot(advisory));
+
+              const [refreshed] = yield* registry.refresh(ProviderDriverKind.make("codex"));
+
+              expect(refreshed?.updateState).toEqual(retired ? undefined : state);
+            }).pipe(Effect.provide(runtimeServices));
+          }),
+      );
+
+      it.effect.each(["failed", "unchanged"] as const)(
+        "keeps a %s recommended-version install after a current refresh",
+        (status) =>
+          Effect.gen(function* () {
+            const snapshot = yield* Ref.make<ServerProvider>(codexUpdateSnapshot("current"));
+            const runtimeServices = yield* buildRegistryOverSnapshot(snapshot);
+            yield* Effect.gen(function* () {
+              const registry = yield* ProviderRegistry.ProviderRegistry;
+              const state = makeUpdateState(status);
+              const input = {
+                instanceId,
+                action: "update" as const,
+                state,
+                targetVersion: "0.9.0",
+              };
+              yield* registry.setProviderMaintenanceActionState(input);
+              const [refreshed] = yield* registry.refresh(ProviderDriverKind.make("codex"));
+              expect(refreshed?.updateState).toEqual(state);
+            }).pipe(Effect.provide(runtimeServices));
+          }),
+      );
+    });
+
     it.effect("re-probes when settings change the codex binaryPath", () =>
       Effect.gen(function* () {
         const firstMissing = `t3code_codex_first_`;
@@ -3239,6 +3473,64 @@ it.layer(
           }),
         ),
       ),
+    );
+
+    it.effect.each([
+      {
+        name: "its own home path",
+        homePath: "/srv/claude-personal",
+        environment: { ANTHROPIC_BASE_URL: "" },
+        configDir: "/srv/claude-personal",
+      },
+      {
+        name: "an inherited CLAUDE_CONFIG_DIR",
+        homePath: "",
+        environment: { ANTHROPIC_BASE_URL: "", CLAUDE_CONFIG_DIR: "/srv/claude-work" },
+        configDir: "/srv/claude-work",
+      },
+      {
+        name: "the default config dir",
+        homePath: "",
+        environment: { ANTHROPIC_BASE_URL: "" },
+        configDir: undefined,
+      },
+    ])(
+      "tells a logged-out instance on $name where to sign in",
+      ({ homePath, environment, configDir }) =>
+        Effect.gen(function* () {
+          const status = yield* checkClaudeProviderStatus(
+            { ...defaultClaudeSettings, homePath },
+            claudeCapabilities({
+              tokenSource: "none",
+              apiKeySource: "none",
+              apiProvider: "firstParty",
+            }),
+            environment,
+          );
+          assert.strictEqual(status.auth.status, "unauthenticated");
+          if (configDir === undefined) {
+            assert.strictEqual(
+              status.message,
+              "Claude Code is not authenticated. Run `claude auth login` and try again.",
+            );
+          } else {
+            // A home path is resolved to a native path; an inherited value is kept literal.
+            const expected = homePath ? (yield* Path.Path).resolve(configDir) : configDir;
+            assert.include(
+              status.message ?? "",
+              `CLAUDE_CONFIG_DIR set to ${JSON.stringify(expected)}`,
+              "a bare `claude auth login` signs in ~/.claude, not this instance's config dir",
+            );
+          }
+        }).pipe(
+          Effect.provide(
+            layerMockSpawner((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
     );
 
     it.effect("tells a logged-out CLI which models need a Claude Code update", () =>

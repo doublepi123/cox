@@ -133,6 +133,38 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
+    it.effect("uses submodule ignore rules and keeps outer rules for ordinary nested clones", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ git: true });
+        const origin = yield* makeTempDir({ git: true });
+        yield* writeTextFile(cwd, ".gitignore", "vendor/\n");
+        yield* git(cwd, ["clone", "--local", "--", origin, "vendor/pkg"]);
+        yield* writeTextFile(cwd, "vendor/pkg/index.js");
+        yield* git(cwd, ["init", "sub"]);
+        yield* writeTextFile(cwd, "sub/.gitignore", "dist/\n");
+        yield* writeTextFile(cwd, "sub/dist/out.js");
+        const gitlink = yield* git(cwd, ["hash-object", ".gitignore"]);
+        yield* git(cwd, ["update-index", "--add", "--cacheinfo", `160000,${gitlink},sub`]);
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const sub = yield* workspaceEntries.list({ cwd, directoryPath: "sub" });
+        const dist = yield* workspaceEntries.list({ cwd, directoryPath: "sub/dist" });
+        const clone = yield* workspaceEntries.list({ cwd, directoryPath: "vendor/pkg" });
+        expect([
+          sub.entries.toSorted((a, b) => a.path.localeCompare(b.path)),
+          dist.entries,
+          clone.entries,
+        ]).toEqual([
+          [
+            { path: "sub/.gitignore", kind: "file" },
+            { path: "sub/dist", kind: "directory", ignored: true },
+          ],
+          [{ path: "sub/dist/out.js", kind: "file", ignored: true }],
+          [{ path: "vendor/pkg/index.js", kind: "file", ignored: true }],
+        ]);
+      }),
+    );
+
     it.effect("lists symlinks as what they point to, hiding ones that cannot be opened", () =>
       Effect.gen(function* () {
         const platform = yield* HostProcess.Platform;
@@ -416,6 +448,23 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
   });
 
   describe("search", () => {
+    it.effect("keeps Git-ignored paths explicitly restored by a .ignore rule", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ git: true });
+        yield* writeTextFile(cwd, ".gitignore", "notes/\n");
+        yield* writeTextFile(cwd, ".ignore", "!notes/\nnotes/**/*\n!notes/**/\n!notes/**/*.md\n");
+        yield* writeTextFile(cwd, "notes/daily/standup.md", "visible in file search");
+        yield* writeTextFile(cwd, "notes/daily/standup.txt", "remains hidden");
+        const result = yield* searchWorkspaceEntries({
+          cwd,
+          query: "standup",
+          limit: 50,
+          kind: "file",
+        });
+        expect(result.entries).toEqual([{ kind: "file", path: "notes/daily/standup.md" }]);
+      }),
+    );
+
     it.effect("applies the file filter before limiting search results", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-file-limit-" });
@@ -445,6 +494,11 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         yield* writeTextFile(cwd, "ignored.txt", "ignore me");
         yield* writeTextFile(cwd, ".convex/local-storage/data.json", "{}");
         yield* writeTextFile(cwd, "convex/UOoS-l/convex_local_storage/modules/data.json", "{}");
+        yield* writeTextFile(cwd, ".git/info/exclude", "info-excluded.txt\n");
+        yield* writeTextFile(cwd, "info-excluded.txt", "ignore me");
+        yield* writeTextFile(cwd, ".git/configured-excludes", "configured-excluded.txt\n");
+        yield* git(cwd, ["config", "core.excludesFile", ".git/configured-excludes"]);
+        yield* writeTextFile(cwd, "configured-excluded.txt", "ignore me");
 
         const result = yield* searchWorkspaceEntries({ cwd, query: "", limit: 100 });
         const paths = result.entries.map((entry) => entry.path);
@@ -452,6 +506,8 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         expect(paths).toContain("src");
         expect(paths).toContain("src/keep.ts");
         expect(paths).not.toContain("ignored.txt");
+        expect(paths).not.toContain("info-excluded.txt");
+        expect(paths).not.toContain("configured-excluded.txt");
         expect(paths.some((entryPath) => entryPath.startsWith(".convex/"))).toBe(false);
         expect(paths.some((entryPath) => entryPath.startsWith("convex/"))).toBe(false);
       }),
@@ -474,6 +530,46 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         expect(paths).toContain("src");
         expect(paths).toContain("src/keep.ts");
         expect(paths.some((entryPath) => entryPath.startsWith(".convex/"))).toBe(false);
+      }),
+    );
+
+    it.effect("finds a path inside a gitignored nested git worktree only by its exact path", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-worktree-", git: true });
+        const env = {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Test",
+          GIT_AUTHOR_EMAIL: "test@example.com",
+          GIT_COMMITTER_NAME: "Test",
+          GIT_COMMITTER_EMAIL: "test@example.com",
+        };
+        yield* writeTextFile(cwd, ".gitignore", ".worktrees/\n");
+        yield* git(cwd, ["add", ".gitignore"]);
+        yield* git(cwd, ["commit", "-m", "init"], env);
+        yield* git(cwd, ["worktree", "add", "-b", "x", ".worktrees/x"]);
+        yield* writeTextFile(cwd, ".worktrees/x/src/foo.py", "print(1)");
+        const expected = [".worktrees/x/src/foo.py"];
+        // Windows file names cannot contain a newline.
+        if ((yield* HostProcess.Platform) !== "win32") {
+          yield* git(cwd, ["worktree", "add", "--detach", ".worktrees/line\nname"]);
+          yield* writeTextFile(cwd, ".worktrees/line\nname/src/foo.py", "print(2)");
+          expected.unshift(".worktrees/line\nname/src/foo.py");
+        }
+
+        const exact = yield* searchWorkspaceEntries({
+          cwd,
+          query: "src/foo.py",
+          limit: 25,
+          kind: "file",
+        });
+        expect(exact.entries.toSorted((a, b) => (a.path < b.path ? -1 : 1))).toEqual(
+          expected.map((path) => ({ path, kind: "file" })),
+        );
+
+        const partial = yield* searchWorkspaceEntries({ cwd, query: "src/fo", limit: 25 });
+        for (const path of expected) {
+          expect(partial.entries.map((entry) => entry.path)).not.toContain(path);
+        }
       }),
     );
   });
@@ -514,6 +610,8 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         yield* writeTextFile(cwd, ".gitignore", "ignored.txt\n");
         yield* writeTextFile(cwd, "src/keep.ts", "square\nSquare\n");
         yield* writeTextFile(cwd, "ignored.txt", "Square\n");
+        yield* writeTextFile(cwd, ".git/info/exclude", "info-excluded.txt\n");
+        yield* writeTextFile(cwd, "info-excluded.txt", "Square\n");
 
         const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
         const result = yield* workspaceEntries.searchContents({
@@ -527,6 +625,54 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
 
         expect(result.matches).toHaveLength(1);
         expect(result.matches[0]).toMatchObject({ path: "src/keep.ts", lineNumber: 2 });
+      }),
+    );
+
+    it.effect("finds file names containing literal braces", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "cox-workspace-braces-" });
+        yield* writeTextFile(cwd, "route{draft}.ts", "draft\n");
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const result = yield* workspaceEntries.search({
+          cwd,
+          query: "route{draft}.ts",
+          kind: "file",
+          limit: 10,
+        });
+        expect(result.entries).toContainEqual({ path: "route{draft}.ts", kind: "file" });
+      }),
+    );
+
+    it.effect.skipIf(process.platform === "win32")("preserves POSIX filename backslashes", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "cox-workspace-backslash-" });
+        const file = "literal\\backslash.ts";
+        yield* writeTextFile(cwd, file, "needle\n");
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const result = yield* workspaceEntries.searchContents({
+          cwd,
+          query: "needle",
+          limit: 10,
+          caseSensitive: true,
+          wholeWord: false,
+          useRegex: false,
+        });
+        expect(result.matches.map((match) => match.path)).toEqual([file]);
+      }),
+    );
+
+    it.effect("finds a match beyond the indexed line preview", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "cox-workspace-long-line-" });
+        yield* writeTextFile(cwd, "long.txt", "x".repeat(700) + " needle\n");
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const query = { cwd, query: "needle", limit: 10, caseSensitive: true, useRegex: false };
+        const result = yield* workspaceEntries.searchContents({ ...query, wholeWord: false });
+        expect(result.matches).toMatchObject([
+          { path: "long.txt", lineNumber: 1, matchRanges: [] },
+        ]);
+        const wholeWords = yield* workspaceEntries.searchContents({ ...query, wholeWord: true });
+        expect(wholeWords.matches).toEqual([]);
       }),
     );
 

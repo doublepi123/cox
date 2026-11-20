@@ -18,6 +18,7 @@ import {
   composerFileNeedsReattach,
 } from "../../composerDraftStore";
 import { type ComposerPromptEditorHandle } from "../ComposerPromptEditorTiptap";
+import type { ComposerAttachmentInsertion } from "../composerAttachmentInsertion";
 import { type PendingUserInput } from "../../session-logic";
 import {
   changeQuestionAttachmentPreparation,
@@ -81,6 +82,7 @@ export function useComposerAttachmentIntake(input: {
   readonly insertAttachmentReferences: (
     references: ReadonlyArray<ComposerContextReference>,
     selection?: { start: number; end: number },
+    pendingInsertion?: ComposerAttachmentInsertion,
   ) => boolean;
 }) {
   const {
@@ -254,6 +256,10 @@ export function useComposerAttachmentIntake(input: {
     const compressed: { id: string; file: File }[] = [];
     // Keyed by image so a failure whose tile was removed (even mid-compression) is not reported.
     const compressionErrors = new Map<string, string>();
+    const pendingInsertion =
+      imageAttachmentsGetChips && !questionAttachmentTarget
+        ? composerEditorRef.current?.captureAttachmentInsertion?.()
+        : undefined;
     for (const { id, file } of preparingImages) {
       // Removed from the strip while an earlier image was compressing.
       if (!isPreparingComposerImage(attachmentTargetKey, id)) continue;
@@ -275,6 +281,7 @@ export function useComposerAttachmentIntake(input: {
       inheritComposerImageThumbnail(file, result.file);
       compressed.push({ id, file: result.file });
     }
+    pendingInsertion?.dispose();
     const questionDiscarded =
       questionAttachmentTarget !== null &&
       !useQuestionAttachmentPreparation.getState().counts[questionAttachmentTarget];
@@ -312,7 +319,11 @@ export function useComposerAttachmentIntake(input: {
     }
     if (storedImages.length > 0 && imageAttachmentsGetChips) {
       insertedAny =
-        insertAttachmentReferences(storedImages.map(imageContextReference)) || insertedAny;
+        insertAttachmentReferences(
+          storedImages.map(imageContextReference),
+          undefined,
+          pendingInsertion,
+        ) || insertedAny;
     }
     // Only failures are reported here. Success must not pass `null`: by
     // now other work (a failed send, an overlapping paste) may have set a

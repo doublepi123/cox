@@ -102,7 +102,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
           {t(
             forceNewWorktree
               ? "Each model starts in its own worktree."
-              : resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode),
+              : (activeWorktreePath ?? resolveLockedWorkspaceLabel(null, effectiveEnvMode)),
           )}
         </TooltipPopup>
       </Tooltip>

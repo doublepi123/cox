@@ -17,7 +17,7 @@ export type PullRequestComposerTrigger = {
   | { readonly kind: "reference"; readonly sigil: PullRequestReferenceSigil }
 );
 
-const TOKEN = /^(?:@([A-Za-z0-9_][A-Za-z0-9_.-]*)?|([#!])([\p{L}\p{N}_-]*))$/u;
+const TOKEN = /^(?:@([\p{L}\p{N}_][\p{L}\p{M}\p{N}_.-]*)?|([#!])([\p{L}\p{N}_-]*))$/u;
 
 export type PullRequestCompletionSupport = Pick<
   PullRequestCapabilities,

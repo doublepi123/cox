@@ -1,3 +1,7 @@
+import {
+  DATABASE_MIGRATIONS_FINISHED_MESSAGE,
+  DATABASE_MIGRATIONS_STARTED_MESSAGE,
+} from "@t3tools/shared/databaseMigrationLog";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -66,10 +70,19 @@ export class BackendProcess {
     });
     return new Promise((resolve, reject) => {
       const validation = new AbortController();
-      const timeout = setTimeout(
-        () => fail(new Error("The local backend did not become ready within 90 seconds.")),
-        this.options.startupTimeoutMs ?? 90_000,
-      );
+      const startupTimeoutMs = this.options.startupTimeoutMs ?? 180_000;
+      const scheduleTimeout = () =>
+        setTimeout(
+          () =>
+            fail(
+              new Error(
+                `The local backend did not become ready within ${startupTimeoutMs / 1_000} seconds.`,
+              ),
+            ),
+          startupTimeoutMs,
+        );
+      let timeout = scheduleTimeout();
+      let migrating = false;
       let output = "";
       let validating = false;
       let settled = false;
@@ -90,7 +103,26 @@ export class BackendProcess {
         const message = chunk.toString();
         this.options.onLog(message);
         if (settled || validating) return;
-        output = (output + message).slice(-65_536);
+        const boundary = output.length;
+        output += message;
+        const started = output.lastIndexOf(DATABASE_MIGRATIONS_STARTED_MESSAGE);
+        const finished = output.lastIndexOf(DATABASE_MIGRATIONS_FINISHED_MESSAGE);
+        if (
+          started >= 0 &&
+          started > finished &&
+          started + DATABASE_MIGRATIONS_STARTED_MESSAGE.length > boundary
+        ) {
+          migrating = true;
+          clearTimeout(timeout);
+        } else if (
+          migrating &&
+          finished >= 0 &&
+          finished + DATABASE_MIGRATIONS_FINISHED_MESSAGE.length > boundary
+        ) {
+          migrating = false;
+          timeout = scheduleTimeout();
+        }
+        output = output.slice(-65_536);
         const origin = backendOriginFromOutput(output);
         if (!origin) return;
         validating = true;

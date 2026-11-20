@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as AcpSchema from "effect-acp/compat";
+import * as AcpErrors from "effect-acp/errors";
 import type { AcpToolCallState } from "@t3tools/provider-acp/server/runtimeModel";
 import type {
   AcpAdapterV2ExtensionContext,
@@ -20,9 +21,31 @@ export const copilotClientCapabilitiesMeta = {
       "subagent.failed",
       "assistant.message_delta",
       "assistant.reasoning_delta",
+      "assistant.turn_start",
+      "assistant.idle",
     ],
   },
 };
+
+const isAcpRequestError = Schema.is(AcpErrors.AcpRequestError);
+
+/** Copilot keeps failing every prompt with these until its process is replaced. */
+const COPILOT_LOST_SESSION_MARKERS = [
+  "session event delivery failed: session not found: ",
+  "session lock unavailable during is_session_generation_current: acquisition timed out",
+];
+
+export function isCopilotLostSessionError(error: unknown): boolean {
+  if (!isAcpRequestError(error) || error.method !== "session/prompt" || error.code !== -32603) {
+    return false;
+  }
+  // Older Copilot reports the cause in data.details; its native ACP layer (1.0.105) in the message.
+  return [error.errorMessage, record(error.data)?.details].some(
+    (text) =>
+      typeof text === "string" &&
+      COPILOT_LOST_SESSION_MARKERS.some((marker) => text.includes(marker)),
+  );
+}
 
 const CopilotSessionEvent = Schema.Struct({
   sessionId: Schema.String,
@@ -102,6 +125,14 @@ export function makeCopilotSubagentRouting() {
             childSessionId: childSessionId(data.toolCallId),
             status: event.type === "subagent.failed" ? "failed" : "completed",
             result: typeof data.error === "string" ? data.error : null,
+          });
+        }
+        case "assistant.turn_start":
+        case "assistant.idle": {
+          if (event.agentId !== undefined || data.aborted === true) return Effect.void;
+          return context.reportForegroundWork({
+            sessionId: event.sessionId,
+            state: event.type === "assistant.idle" ? "idle" : "running",
           });
         }
         default:

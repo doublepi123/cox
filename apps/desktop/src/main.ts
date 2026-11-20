@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -75,6 +76,7 @@ import {
   windowsInstanceAppId,
   windowsRelaunchCommand,
 } from "./instance-title.ts";
+import { clearStaleGpuCaches } from "./gpu-cache.ts";
 
 function systemLocale() {
   return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
@@ -90,6 +92,13 @@ const home = app.isPackaged
   : join(root, ".cox", "desktop-dev");
 mkdirSync(join(home, "browser"), { recursive: true, mode: 0o700 });
 app.setPath("userData", join(home, "browser"));
+if (process.versions.electron) {
+  try {
+    clearStaleGpuCaches(join(home, "browser"), process.versions.electron);
+  } catch (error) {
+    process.stderr.write(`Could not clear stale GPU caches: ${String(error)}\n`);
+  }
+}
 app.setAppLogsPath(join(home, "logs"));
 app.setName("Cox");
 
@@ -469,6 +478,42 @@ function createDesktopWindow(
       ],
     },
   });
+  target.webContents.on("context-menu", (_event, { linkURL }) => {
+    const link = URL.parse(linkURL);
+    if (link?.protocol !== "mailto:" || link.pathname === "") return;
+    let address: string;
+    try {
+      address = decodeURIComponent(link.pathname);
+    } catch {
+      return;
+    }
+    Menu.buildFromTemplate([
+      { label: text("Copy Email Address"), click: () => clipboard.writeText(address) },
+    ]).popup({ window: target });
+  });
+  let rendererReload: ReturnType<typeof setTimeout> | undefined;
+  let rendererAttempts: number[] = [];
+  target.webContents.on("render-process-gone", (_event, { reason }) => {
+    if (
+      approvedQuit ||
+      target.isDestroyed() ||
+      rendererReload !== undefined ||
+      reason === "clean-exit" ||
+      reason === "killed"
+    )
+      return;
+    const now = performance.now();
+    rendererAttempts = rendererAttempts.filter((attempt) => now - attempt < 60_000);
+    const retryDelay =
+      rendererAttempts.length < 3 ? 1_000 : Math.max(1_000, rendererAttempts[0]! + 60_000 - now);
+    rendererReload = setTimeout(() => {
+      rendererReload = undefined;
+      if (approvedQuit || target.isDestroyed()) return;
+      rendererAttempts.push(performance.now());
+      target.webContents.reload();
+    }, retryDelay);
+  });
+  target.once("closed", () => clearTimeout(rendererReload));
   if (!configuredSessions.has(partition)) {
     configuredSessions.add(partition);
     const permissions = new Set<string>(
@@ -827,6 +872,7 @@ async function start() {
   };
   log.write(`\nCox desktop ${app.getVersion()} starting\n`);
   const boundsPath = join(home, "window.json");
+  let saveBounds = true;
   let width = 1360;
   let height = 900;
   try {
@@ -842,7 +888,9 @@ async function start() {
       width = Math.max(400, Math.min(3840, bounds.width));
       height = Math.max(360, Math.min(2160, bounds.height));
     }
-  } catch {}
+  } catch (error) {
+    saveBounds = error instanceof Error && "code" in error && error.code === "ENOENT";
+  }
   window = createDesktopWindow("main", width, height, false);
   const senderWindow = (event: Pick<IpcMainEvent, "sender" | "senderFrame">) => {
     const target = [window, ...pageWindows.keys(), ...remoteWindows.keys()].find(
@@ -1294,7 +1342,7 @@ async function start() {
       else app.quit();
     });
     target.on("resize", () => {
-      if (target.isMaximized() || target.isMinimized()) return;
+      if (!saveBounds || target.isMaximized() || target.isMinimized()) return;
       const [currentWidth, currentHeight] = target.getSize();
       try {
         writeFileSync(boundsPath, JSON.stringify({ width: currentWidth, height: currentHeight }), {
@@ -1400,6 +1448,7 @@ async function start() {
       return;
     }
     const boundsFile = join(home, kind + "-window.json");
+    let saveBounds = true;
     let bounds = {
       width: 1040,
       height: 780,
@@ -1436,7 +1485,9 @@ async function start() {
           bounds.y = Math.max(area.y, Math.min(area.y + area.height - bounds.height, saved.y));
         }
       }
-    } catch {}
+    } catch (error) {
+      saveBounds = error instanceof Error && "code" in error && error.code === "ENOENT";
+    }
     const profile = remoteWindows.get(owner);
     const partition = profile ? remotePartition(profile.id) : mainPartition;
     const target = createDesktopWindow(
@@ -1486,7 +1537,8 @@ async function start() {
     target.webContents.on("did-finish-load", () => syncWindowControls(target));
     target.webContents.on("zoom-changed", () => setImmediate(() => syncWindowControls(target)));
     const remember = () => {
-      if (target.isMaximized() || target.isMinimized() || target.isFullScreen()) return;
+      if (!saveBounds || target.isMaximized() || target.isMinimized() || target.isFullScreen())
+        return;
       try {
         writeFileSync(boundsFile, JSON.stringify(target.getBounds()), { mode: 0o600 });
       } catch {}
@@ -1656,14 +1708,22 @@ async function start() {
     );
   let loginPath: string | undefined;
   if (process.platform === "darwin") {
+    const readLoginPath = (timeout: number) =>
+      execFileSync(process.env.SHELL || "/bin/zsh", ["-ilc", 'printf "\\0%s\\0" "$PATH"'], {
+        encoding: "utf8",
+        timeout,
+        maxBuffer: 1024 * 1024,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).split("\0")[1];
     try {
-      const result = execFileSync(
-        process.env.SHELL || "/bin/zsh",
-        ["-ilc", 'printf "\\0%s\\0" "$PATH"'],
-        { encoding: "utf8", timeout: 5_000, maxBuffer: 1024 * 1024 },
-      );
-      loginPath = result.split("\0")[1];
-    } catch {}
+      loginPath = readLoginPath(5_000);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ETIMEDOUT") {
+        try {
+          loginPath = readLoginPath(20_000);
+        } catch {}
+      }
+    }
   }
   const preloadPath = app.isPackaged
     ? join(process.resourcesPath, "backend-parent.mjs")

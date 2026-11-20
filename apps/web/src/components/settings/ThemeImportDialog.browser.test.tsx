@@ -14,6 +14,48 @@ import {
 import type { OpenVsxThemeExtension } from "../../openVsxThemes";
 import { ThemeImportDialog } from "./ThemeImportDialog";
 
+it.each(["paste", "batch"])("imports a VS Code JSONC theme via %s", async (source) => {
+  const previous = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+  localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+  invalidateCustomThemes();
+  using _themes = {
+    [Symbol.dispose]() {
+      if (previous === null) localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+      else localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, previous);
+      invalidateCustomThemes();
+    },
+  };
+  await using _screen = await render(
+    <ThemeImportDialog
+      open
+      onOpenChange={() => {}}
+      onImported={() => true}
+      onImportedMany={() => {}}
+    />,
+  );
+  const jsonc = `{
+    // An editor theme may contain comments and trailing commas.
+    "name": "JSONC Night",
+    "type": "dark",
+    "colors": { "editor.background": "#002b36", },
+  }`;
+  if (source === "paste") {
+    await page.getByRole("textbox", { name: "Theme JSON" }).fill(jsonc);
+    await page.getByRole("button", { name: "Add theme", exact: true }).click();
+  } else {
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await userEvent.upload(input, [
+      new File([jsonc], "night.json", { type: "application/json" }),
+      themeFile("Dawn"),
+    ]);
+  }
+  await vi.waitFor(() => {
+    expect(getCustomThemes().map((theme) => theme.label)).toEqual(
+      source === "paste" ? ["JSONC Night"] : ["JSONC Night", "Dawn"],
+    );
+  });
+});
+
 const searchOpenVsxThemes = vi.hoisted(() => vi.fn());
 
 vi.mock("../../openVsxThemes", () => ({

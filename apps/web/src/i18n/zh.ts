@@ -3907,6 +3907,7 @@ export const zh = {
     "优先打开关联的拉取请求。否则，在改动达到 3 个文件或 50 行时打开更改面板。",
   "Open links in": "链接打开方式",
   "Open pull requests in Cox": "在 Cox 中打开拉取请求",
+  "Open pull requests and changes panels proactively": "自动打开拉取请求和变更面板",
   "Open source licenses": "开源许可证",
   "Optional marker shown in the picker.": "显示在选择器中的可选标记。",
   Other: "其他",

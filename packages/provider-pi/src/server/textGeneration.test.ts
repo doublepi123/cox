@@ -101,6 +101,32 @@ it.effect("runs Pi offline, since the process is stopped as soon as it answers",
   }),
 );
 
+it.effect("applies the selected thinking level after setting the model and before the prompt", () =>
+  Effect.gen(function* () {
+    const pi = yield* makeFakePi(JSON.stringify({ subject: "Update README", body: "" }));
+    const textGeneration = yield* makePiTextGeneration(
+      { enabled: true, binaryPath: "pi", launchArgs: "", customModels: [] },
+      {},
+    ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, pi.spawner));
+    yield* textGeneration.generateCommitMessage({
+      cwd: process.cwd(),
+      branch: "main",
+      stagedSummary: "M README.md",
+      stagedPatch: "diff --git a/README.md b/README.md",
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("pi"),
+        model: "demo/demo-model",
+        options: [{ id: "thinking", value: "high" }],
+      },
+    });
+    assert.deepEqual(
+      pi.received.slice(0, 4).map((request) => request["type"]),
+      ["get_available_models", "set_model", "set_thinking_level", "prompt"],
+    );
+    assert.equal(pi.received[2]?.["level"], "high");
+  }),
+);
+
 it.effect("names the model and the disabled extensions when Pi cannot load it", () =>
   Effect.gen(function* () {
     const pi = yield* makeFakePi("", "Model not found: demo/demo-model");

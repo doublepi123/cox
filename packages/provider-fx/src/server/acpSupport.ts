@@ -225,6 +225,7 @@ export const makeFxAcpRuntime = Effect.fn("makeFxAcpRuntime")(function* (
   const context = yield* Layer.build(
     AcpSessionRuntime.layer({
       ...runtimeOptions,
+      sessionMeta: { fx: { profileMcpServers: true } },
       spawn: {
         command: fxSettings.binaryPath || "fx",
         args: ["acp"],

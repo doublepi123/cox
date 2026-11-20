@@ -955,14 +955,25 @@ it.effect("bounds runtime provider-thread reads by ownership and preserves recov
         ${ProviderThreadId.make("provider-thread:ownership:item")}, 1, 'assistant_message', 'waiting', '', '{}')
     `;
     const statements: Array<ReturnType<Statement.Statement<unknown>["compile"]>> = [];
+    const nodeStatements: typeof statements = [];
     const observe: Statement.Transformer = (statement) => {
       const compiled = statement.compile();
       if (compiled[0].includes("SELECT provider_thread.payload_json")) statements.push(compiled);
+      if (compiled[0].includes("SELECT node.payload_json")) nodeStatements.push(compiled);
       return Effect.succeed(statement);
     };
     const projection = yield* projections
       .getRuntimeRecoveryProjection(threadId)
       .pipe(Effect.provideService(Statement.CurrentTransformer, observe));
+    assert.equal(nodeStatements.length, 1);
+    const nodePlan = yield* sql.unsafe<{ detail: string }>(
+      `EXPLAIN QUERY PLAN ${nodeStatements[0]![0]}`,
+      nodeStatements[0]![1],
+    );
+    assert.isTrue(
+      nodePlan.some((row) => /^SEARCH node USING INDEX .*nodes_live_idx/.test(row.detail)),
+      JSON.stringify(nodePlan),
+    );
     assert.deepEqual(
       projection.providerThreads.map((row) => row.id),
       cases

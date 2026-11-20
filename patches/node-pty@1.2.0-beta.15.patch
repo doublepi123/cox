@@ -17,6 +17,15 @@ diff --git a/lib/windowsConoutConnection.js b/lib/windowsConoutConnection.js
 diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
 --- a/lib/windowsPtyAgent.js
 +++ b/lib/windowsPtyAgent.js
+@@ -20,7 +20,7 @@ var conptyNative;
+  * shutting down the socket. The timer will be reset if a new data event comes in after the timer
+  * has started.
+  */
+-var FLUSH_DATA_INTERVAL = 1000;
++var FLUSH_DATA_INTERVAL = 100;
+ var CONNECTION_TIMEOUT = 5000;
+ var defaultWindowsPtyAgentOptions = {
+     connectionTimeout: CONNECTION_TIMEOUT,
 @@ -218,13 +218,31 @@
              return Promise.resolve([]);
          }
@@ -53,3 +62,20 @@ diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
 -                resolve([_this._innerPid]);
 +                finish([_this._innerPid]);
              }, 5000);
+@@ -259,7 +277,15 @@ var WindowsPtyAgent = /** @class */ (function () {
+         if (this._closeTimeout) {
+             clearTimeout(this._closeTimeout);
+         }
+-        this._closeTimeout = setTimeout(function () { return _this._cleanUpProcess(); }, FLUSH_DATA_INTERVAL);
++        this._flushDataSeq = (this._flushDataSeq || 0) + 1;
++        this._closeTimeout = setTimeout(function () {
++            var seq = _this._flushDataSeq;
++            setImmediate(function () {
++                if (_this._flushDataSeq === seq) {
++                    _this._cleanUpProcess();
++                }
++            });
++        }, FLUSH_DATA_INTERVAL);
+     };
+     WindowsPtyAgent.prototype._cleanUpProcess = function () {
+         if (this._useConptyDll) {

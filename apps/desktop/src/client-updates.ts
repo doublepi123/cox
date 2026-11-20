@@ -473,42 +473,37 @@ export class ClientUpdates {
     }
     this.controller = new AbortController();
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(30_000)]);
-    this.publish({ status: "checking", message: null, progress: null });
+    const waiting = !manual && this.state.status === "available";
+    if (!waiting) this.publish({ status: "checking", message: null, progress: null });
     this.operation = (async () => {
       try {
-        const feed = await fetchClientUpdateFeed(clientUpdateFeedUrl, signal, this.options.fetcher);
-        signal.throwIfAborted();
-        const artifact = feed.artifacts.find(
-          (candidate) =>
-            candidate.platform === this.options.platform &&
-            candidate.architecture === this.options.architecture &&
-            candidate.flavor === this.options.flavor,
-        );
-        if (!artifact)
-          throw new Error("No desktop update is available for this platform and package flavor.");
+        const { feed, artifact, installMode } = await this.readRelease(signal);
         this.feed = feed;
         this.artifact = artifact;
         const newer = compareBackendVersions(feed.version, this.options.desktopVersion) > 0;
         const ignored =
           !manual && (!this.state.automaticChecks || this.state.ignoredVersion === feed.version);
         const failed = !manual && feed.version === this.failedMacVersion;
+        if (
+          waiting &&
+          newer &&
+          !ignored &&
+          !failed &&
+          this.state.status === "available" &&
+          this.state.latestVersion === feed.version &&
+          this.state.installMode === installMode
+        )
+          return;
         this.publish({
           latestVersion: feed.version,
           status: failed ? "error" : newer && !ignored ? "available" : "idle",
-          installMode:
-            artifact.installMode === "automatic" &&
-            this.options.automaticUpdates === true &&
-            ((this.options.platform === "win32" && !!this.options.publisherName) ||
-              (this.options.platform === "darwin" &&
-                artifact.macUpdateProtocol === 1 &&
-                !!this.options.macUpdater))
-              ? "automatic"
-              : "manual",
+          installMode,
           message: failed
             ? "The macOS client update failed. The previous application and data were restored."
             : null,
         });
       } catch (error) {
+        if (waiting && this.state.status === "available") return;
         this.publish({ status: "error", message: String(error), progress: null });
       }
     })();
@@ -519,6 +514,29 @@ export class ClientUpdates {
       this.controller = undefined;
     }
     return this.getState();
+  }
+
+  private async readRelease(signal: AbortSignal) {
+    const feed = await fetchClientUpdateFeed(clientUpdateFeedUrl, signal, this.options.fetcher);
+    signal.throwIfAborted();
+    const artifact = feed.artifacts.find(
+      (candidate) =>
+        candidate.platform === this.options.platform &&
+        candidate.architecture === this.options.architecture &&
+        candidate.flavor === this.options.flavor,
+    );
+    if (!artifact)
+      throw new Error("No desktop update is available for this platform and package flavor.");
+    const installMode: DesktopClientUpdateState["installMode"] =
+      artifact.installMode === "automatic" &&
+      this.options.automaticUpdates === true &&
+      ((this.options.platform === "win32" && !!this.options.publisherName) ||
+        (this.options.platform === "darwin" &&
+          artifact.macUpdateProtocol === 1 &&
+          !!this.options.macUpdater))
+        ? "automatic"
+        : "manual";
+    return { feed, artifact, installMode };
   }
 
   private async verify(path: string, artifact: ClientUpdateArtifact, signal: AbortSignal) {
@@ -606,6 +624,7 @@ export class ClientUpdates {
 
   async download(): Promise<DesktopClientUpdateState> {
     await this.initialized;
+    await this.preferenceOperation;
     if (this.operation) {
       await this.operation;
       return this.getState();
@@ -629,21 +648,37 @@ export class ClientUpdates {
     }
     this.controller = new AbortController();
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(15 * 60_000)]);
-    this.publish({
-      status: "downloading",
-      message: null,
-      progress: {
-        phase: "downloading",
-        transferredBytes: 0,
-        totalBytes: artifact.size,
-        bytesPerSecond: null,
-        remainingSeconds: null,
-      },
-    });
     this.operation = (async () => {
       let path: string | undefined;
       try {
-        if (this.state.installMode === "automatic" && this.options.platform === "win32") {
+        const { feed, artifact, installMode } = await this.readRelease(
+          AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+        );
+        this.feed = feed;
+        this.artifact = artifact;
+        if (compareBackendVersions(feed.version, this.options.desktopVersion) <= 0) {
+          this.publish({
+            latestVersion: feed.version,
+            status: "idle",
+            message: null,
+            progress: null,
+          });
+          return;
+        }
+        this.publish({
+          latestVersion: feed.version,
+          installMode,
+          status: "downloading",
+          message: null,
+          progress: {
+            phase: "downloading",
+            transferredBytes: 0,
+            totalBytes: artifact.size,
+            bytesPerSecond: null,
+            remainingSeconds: null,
+          },
+        });
+        if (installMode === "automatic" && this.options.platform === "win32") {
           this.automatic ??= await (this.options.createAutomaticUpdater ?? signedWindowsUpdater)(
             this.directory,
             this.options.publisherName!,
@@ -653,7 +688,7 @@ export class ClientUpdates {
           );
         } else path = await this.downloadManual(artifact, signal);
         await this.verify(path, artifact, signal);
-        if (this.state.installMode === "automatic" && this.options.platform === "darwin") {
+        if (installMode === "automatic" && this.options.platform === "darwin") {
           this.publish({
             progress: {
               phase: "validating",

@@ -44,8 +44,6 @@ const QUICK_CONNECTION_PROBE_TIMEOUT = "3 seconds";
 const SHORT_RESUME_PROBE_TIMEOUT = "3 seconds";
 const LONG_RESUME_PROBE_TIMEOUT = "1500 millis";
 const LIVENESS_CHECK_EVERY = "1 second";
-const OFFLINE_RETRY_DELAY_MS = 1_000;
-const OFFLINE_RETRY_LIMIT = 6;
 const FRAME_CHECK_EVERY = "100 millis";
 // A probe still unanswered this long checks the host with a fresh request. If
 // the host answers while the socket stays silent, the socket is dead.
@@ -124,22 +122,6 @@ function retryDelayMs(failureCount: number, random: number): number {
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
-function isLoopbackTarget(target: ConnectionTarget): boolean {
-  let hostname: string;
-  try {
-    hostname = new URL(target.httpBaseUrl).hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  } catch {
-    return false;
-  }
-  if (hostname === "localhost" || hostname === "::1") return true;
-  const octets = hostname.split(".");
-  return (
-    octets.length === 4 &&
-    octets[0] === "127" &&
-    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
-  );
-}
-
 function annotateTarget(target: ConnectionTarget) {
   return Effect.annotateCurrentSpan({
     "environment.id": target.environmentId,
@@ -157,24 +139,6 @@ function availableState(intent: SupervisorIntent, generation: number): Superviso
     attempt: 0,
     generation,
     lastFailure: null,
-    retryAt: null,
-  };
-}
-
-function offlineState(
-  intent: SupervisorIntent,
-  generation: number,
-  attempt: number,
-  lastFailure: ConnectionAttemptError | null,
-): SupervisorConnectionState {
-  return {
-    desired: true,
-    network: intent.network,
-    phase: "offline",
-    stage: null,
-    attempt,
-    generation,
-    lastFailure,
     retryAt: null,
   };
 }
@@ -255,7 +219,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   | ConnectionWakeups.ConnectionWakeups
 > {
   const target = entry.target;
-  const loopback = isLoopbackTarget(target);
   const setupTimeoutDetail = `${target.label} did not respond during connection setup.`;
   yield* annotateTarget(target);
 
@@ -281,9 +244,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const state = yield* SubscriptionRef.make<SupervisorConnectionState>(
     !initialIntent.desired
       ? availableState(initialIntent, 0)
-      : initialIntent.network === "offline" && !loopback
-        ? offlineState(initialIntent, 0, 0, null)
-        : connectingState(initialIntent, 0, 1, null),
+      : connectingState(initialIntent, 0, 1, null),
   );
   const session = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(Option.none());
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(Option.none());
@@ -418,10 +379,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         case "RetryRequested":
           return false;
         case "NetworkChanged":
-          if (next.network === "offline") {
-            if (loopback) break;
-            return false;
-          }
           if (
             next.network === "online" &&
             (yield* SubscriptionRef.get(state)).stage !== "synchronizing" &&
@@ -642,7 +599,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     generation: number,
     lastFailure: ConnectionAttemptError | null,
     pendingRetry: Option.Option<PendingRetryTrace>,
-    ignoreOffline: boolean,
   ) {
     yield* SubscriptionRef.set(prepared, Option.none());
     const synchronizedRoutes = yield* Ref.make(0);
@@ -730,7 +686,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     const active = establishment.exit.value;
     const currentIntent = yield* Ref.get(intent);
-    if (!currentIntent.desired || (currentIntent.network === "offline" && !ignoreOffline)) {
+    if (!currentIntent.desired) {
       return {
         _tag: "Interrupted",
         established: false,
@@ -871,8 +827,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       failureCount = 0;
       pendingRetry = Option.none();
     };
-    let replacing = false;
-    let offlineFailures = 0;
 
     for (;;) {
       if (yield* Ref.getAndSet(resetRetryState, false)) {
@@ -881,9 +835,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         pendingRetry = Option.none();
       }
       const currentIntent = yield* Ref.get(intent);
-      if (currentIntent.network !== "offline") {
-        offlineFailures = 0;
-      }
       if (!currentIntent.desired) {
         resetRetryLadder();
         latestFailure = null;
@@ -892,30 +843,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         yield* waitForSignal;
         continue;
       }
-      const offlineRemote = currentIntent.network === "offline" && !replacing && !loopback;
-      if (offlineRemote && offlineFailures >= OFFLINE_RETRY_LIMIT) {
-        yield* clearLease;
-        yield* setState(offlineState(currentIntent, generation, failureCount + 1, latestFailure));
-        const applicationActivated = yield* waitForSignal;
-        if (applicationActivated) {
-          resetRetryLadder();
-          offlineFailures = 0;
-        }
-        continue;
-      }
 
       const attempt = failureCount + 1;
       const nextGeneration = generation + 1;
       const outcome: AttemptOutcome = yield* Effect.scoped(
-        runAttempt(
-          attempt,
-          nextGeneration,
-          latestFailure,
-          pendingRetry,
-          replacing || loopback || offlineRemote,
-        ),
+        runAttempt(attempt, nextGeneration, latestFailure, pendingRetry),
       );
-      replacing = false;
       const failedProbe = yield* Ref.getAndSet(probeUnanswered, false);
       if (outcome.established) {
         generation = nextGeneration;
@@ -927,12 +860,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         if (outcome.stable) {
           resetRetryLadder();
         }
-        offlineFailures = 0;
       }
       if (outcome._tag === "Interrupted") {
         if (outcome.resetRetry) {
           resetRetryLadder();
-          replacing = true;
         }
         continue;
       }
@@ -968,16 +899,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       const firstLoss = outcome.established && failureCount === 0;
-      const failedWhileOffline = offlineRemote && !outcome.established;
-      if (failedWhileOffline) {
-        offlineFailures += 1;
-      }
       failureCount += 1;
-      const delayMs = failedWhileOffline
-        ? OFFLINE_RETRY_DELAY_MS
-        : firstLoss
-          ? Math.round(SESSION_LOSS_RETRY_DELAY_MS * (0.5 + (yield* Random.next) / 2))
-          : retryDelayMs(failureCount - 1, yield* Random.next);
+      const delayMs = firstLoss
+        ? Math.round(SESSION_LOSS_RETRY_DELAY_MS * (0.5 + (yield* Random.next) / 2))
+        : retryDelayMs(failureCount - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
         failureCount,

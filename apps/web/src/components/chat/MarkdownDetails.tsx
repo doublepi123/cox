@@ -14,8 +14,9 @@ import { AnswerImageContext } from "./answerImageContext";
 
 export function MarkdownDetails({
   children,
+  dir,
   open = false,
-}: Pick<ComponentProps<"details">, "children" | "open">) {
+}: Pick<ComponentProps<"details">, "children" | "dir" | "open">) {
   const [isOpen, setIsOpen] = useState(open);
   const searching = use(MarkdownFindContext);
   const expanded = use(AnswerImageContext) || isOpen;
@@ -35,7 +36,7 @@ export function MarkdownDetails({
   const content = childNodes.filter((_, index) => index !== summaryIndex);
 
   return (
-    <div className="my-2 border-y border-border/60">
+    <div className="my-2 border-y border-border/60" dir={dir}>
       <Collapsible
         open={expanded}
         onOpenChange={setIsOpen}

@@ -3,6 +3,7 @@ import {
   EnvironmentId,
   ChatAttachmentId,
   MessageId,
+  ProviderInstanceId,
   RunId,
   ThreadId,
   type ScopedThreadRef,
@@ -15,19 +16,24 @@ import { toastManager } from "../ui/toast";
 import { act, render } from "../../../test/render";
 import { useComposerDraftStore, useComposerThreadDraft } from "../../composerDraftStore";
 import { deriveComposerSendState } from "../ChatView.logic";
+import { makeThreadFixture } from "../../test-fixtures";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { AppAtomRegistryProvider, appAtomRegistry } from "../../rpc/atomRegistry";
 import { useQueuedRunEdit } from "./useQueuedRunEdit";
+import { useLocalDispatchState } from "./useLocalDispatchState";
 
 interface RunStatus {
   readonly id: RunId;
   readonly status: string;
+  readonly activeAttemptId?: string;
 }
 
 const mocks = await vi.hoisted(async () => {
   const { Atom } = await import("effect/reactivity");
   return {
     editQueuedRun: vi.fn<(value: unknown) => Promise<{ readonly _tag: "Success" | "Failure" }>>(),
+    promoteQueuedRun: vi.fn<(value: unknown) => Promise<{ readonly _tag: "Success" }>>(),
+    promoteCommand: {},
     // The projection's runs per thread, written by each test to stand in for the server.
     threadRuns: Atom.family((_key: string) =>
       Atom.make<ReadonlyArray<RunStatus> | null>(null).pipe(Atom.keepAlive),
@@ -36,7 +42,8 @@ const mocks = await vi.hoisted(async () => {
 });
 
 vi.mock("../../state/use-atom-command", () => ({
-  useAtomCommand: () => mocks.editQueuedRun,
+  useAtomCommand: (command: unknown) =>
+    command === mocks.promoteCommand ? mocks.promoteQueuedRun : mocks.editQueuedRun,
 }));
 
 vi.mock("../../hooks/useSettings", () => ({
@@ -52,13 +59,35 @@ vi.mock("../../state/threads", async () => {
     threadEnvironment: {
       snapshotAtom: () => Atom.make(null),
       editQueuedRun: {},
+      promoteQueuedRun: mocks.promoteCommand,
     },
     environmentThreadDetails: {
       statusAtom: () => Atom.make("ready"),
       quietThreadAtom: (ref: ScopedThreadRef) =>
         Atom.make((get) => {
           const runs = get(mocks.threadRuns(key(ref)));
-          return runs === null ? null : { projection: { runs } };
+          return runs === null
+            ? null
+            : {
+                projection: {
+                  thread: { id: ref.threadId, activeProviderThreadId: null },
+                  runs,
+                  messages: [],
+                  providerThreads: [],
+                  providerSessions: [
+                    {
+                      id: "session",
+                      status: "running",
+                      capabilities: { turns: { supportsActiveSteering: true } },
+                    },
+                  ],
+                  providerTurns: runs.flatMap((run) =>
+                    run.activeAttemptId
+                      ? [{ runAttemptId: run.activeAttemptId, status: "running" }]
+                      : [],
+                  ),
+                },
+              };
         }),
     },
     environmentThreadShells: {
@@ -86,6 +115,7 @@ function Harness(props: {
   readonly threadRef: ScopedThreadRef;
   readonly runStatus: string;
   readonly hookRef: RefObject<HookResult | null>;
+  readonly localSendBusy?: boolean;
 }) {
   const result = useQueuedRunEdit({
     environmentId: ENV,
@@ -113,7 +143,7 @@ function Harness(props: {
       canInterrupt={false}
       showPlanFollowUpPrompt={false}
       promptHasText={draft.prompt.trim().length > 0}
-      isSendBusy={result.isSaving}
+      isSendBusy={result.isSaving || (props.localSendBusy ?? false)}
       sendDisabledReason={null}
       isEnvironmentUnavailable={false}
       isPreparingWorktree={false}
@@ -137,6 +167,7 @@ function view(threadRef: ScopedThreadRef, runStatus: string, hook: { current: Ho
 
 function setup() {
   mocks.editQueuedRun.mockReset();
+  mocks.promoteQueuedRun.mockReset();
   useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
   setRuns(THREAD_A, "queued");
   setRuns(THREAD_B, "queued");
@@ -177,6 +208,70 @@ const promptOf = (ref: ScopedThreadRef) =>
   useComposerDraftStore.getState().getComposerDraft(ref)?.prompt ?? "";
 
 describe("useQueuedRunEdit", () => {
+  it("enables a queued edit when a send behind compaction is acknowledged", async () => {
+    const { hook } = setup();
+    const oldMessage = MessageId.make("before-send");
+    const queuedMessage = MessageId.make("queued-send");
+    const thread = makeThreadFixture({ id: THREAD_A.threadId, environmentId: ENV });
+    mocks.editQueuedRun.mockResolvedValue({ _tag: "Success" });
+
+    function ConnectingEdit(props: {
+      readonly status: "starting" | "queued";
+      readonly latestMessageId: MessageId;
+    }) {
+      const dispatch = useLocalDispatchState({
+        activeThread: {
+          ...thread,
+          runtime: {
+            providerName: "codex",
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            status: props.status,
+            activeRunId: null,
+            lastError: null,
+            updatedAt: thread.updatedAt,
+          },
+        },
+        activeLatestRun: thread.latestRun,
+        latestUserMessageId: props.latestMessageId,
+        phase: "connecting",
+        activePendingApproval: null,
+        activePendingUserInput: null,
+        threadError: null,
+      });
+
+      return (
+        <AppAtomRegistryProvider>
+          <button type="button" onClick={() => dispatch.beginLocalDispatch()}>
+            Compact and send
+          </button>
+          <Harness
+            threadRef={THREAD_A}
+            runStatus="queued"
+            hookRef={hook}
+            localSendBusy={dispatch.isSendBusy}
+          />
+        </AppAtomRegistryProvider>
+      );
+    }
+
+    await using screen = await render(
+      <ConnectingEdit status="starting" latestMessageId={oldMessage} />,
+    );
+    await beginChangedEdit(hook);
+    await screen.getByRole("button", { name: "Compact and send" }).click();
+    const updating = screen.getByRole("button", { name: "Updating queued message" });
+    await expect.element(updating).toBeDisabled();
+    await screen.rerender(<ConnectingEdit status="queued" latestMessageId={oldMessage} />);
+    await expect.element(updating).toBeDisabled();
+    await screen.rerender(<ConnectingEdit status="queued" latestMessageId={queuedMessage} />);
+    const update = screen.getByRole("button", { name: "Update queued message" });
+    await expect.element(update).toBeEnabled();
+    await update.click();
+    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
+    expect(mocks.editQueuedRun).toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.objectContaining({ runId: RUN, text: "changed" }) }),
+    );
+  });
   it.each(["", "Ultrathink:\n"])(
     "opens attachment-only edits without the placeholder and preserves effort on save (%j)",
     async (prefix) => {
@@ -228,6 +323,45 @@ describe("useQueuedRunEdit", () => {
             edit: expect.objectContaining({ attachments }),
           }),
         }),
+      );
+    },
+  );
+
+  it.each([
+    { dispatchMode: "steer", submissionIntent: "alternate", steers: true },
+    { dispatchMode: "steer", submissionIntent: "foreground", steers: false },
+    { dispatchMode: "queue", submissionIntent: "alternate", steers: false },
+  ] as const)(
+    "a saved edit sent as $submissionIntent/$dispatchMode steers: $steers",
+    async (submission) => {
+      const { hook } = setup();
+      mocks.editQueuedRun.mockResolvedValue({ _tag: "Success" });
+      mocks.promoteQueuedRun.mockResolvedValue({ _tag: "Success" });
+      const activeRun = RunId.make("run-active");
+      appAtomRegistry.set(mocks.threadRuns(runsKey(THREAD_A)), [
+        { id: activeRun, status: "running", activeAttemptId: "attempt-1" },
+        { id: RUN, status: "queued" },
+      ]);
+      await using _screen = await render(view(THREAD_A, "queued", hook));
+      await beginChangedEdit(hook);
+      await act(() =>
+        requireHook(hook).saveEdit(
+          savedContent("changed"),
+          () => {},
+          submission.submissionIntent === "alternate" && submission.dispatchMode === "steer",
+        ),
+      );
+      expect(mocks.editQueuedRun).toHaveBeenCalledOnce();
+      if (!submission.steers) {
+        expect(mocks.promoteQueuedRun).not.toHaveBeenCalled();
+        return;
+      }
+      expect(mocks.promoteQueuedRun).toHaveBeenCalledExactlyOnceWith({
+        environmentId: ENV,
+        input: { threadId: THREAD_A.threadId, queuedRunId: RUN, targetRunId: activeRun },
+      });
+      expect(mocks.editQueuedRun.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.promoteQueuedRun.mock.invocationCallOrder[0]!,
       );
     },
   );

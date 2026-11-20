@@ -41,7 +41,6 @@ const MAX_MODELS = 256;
 const MAX_ID_LENGTH = 128;
 const MAX_NAME_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1_024;
-const MAX_COMMANDS = 128;
 const MAX_COMMAND_LINE_LENGTH = 2_048;
 const PROBE_TIMEOUT_SECONDS = 60;
 const PROBE_TIMEOUT = `${PROBE_TIMEOUT_SECONDS} seconds`;
@@ -168,6 +167,7 @@ export interface AcpRegistryLiveConfiguration {
   readonly models: ReadonlyArray<AcpRegistryProbeModel>;
   readonly currentModelId: string | null;
   readonly configOptions: AcpRegistryProbeResult["configOptions"];
+  readonly modelOptionIds?: NonNullable<AcpRegistryProbeResult["modelOptionIds"]>;
 }
 
 export function normalizeAcpRegistryLiveConfiguration(
@@ -195,12 +195,22 @@ export function normalizeAcpRegistryLiveConfiguration(
       ? null
       : (boundedOpaqueValue(currentModelId, MAX_ID_LENGTH) ?? null);
   const models = normalizeModels(candidates, boundedCurrentModelId);
+  const descriptors = acpProviderOptionDescriptors({ configOptions, modeState });
+  const modelScopedIds = new Set(
+    configOptions
+      .filter((option) => option.category === "thought_level" || option.category === "model_config")
+      .map((option) => option.id),
+  );
+  const modelOptionIds = descriptors
+    .filter((descriptor) => modelScopedIds.has(descriptor.id))
+    .map((descriptor) => descriptor.id);
   return {
     models,
     currentModelId: models.some((model) => model.id === boundedCurrentModelId)
       ? boundedCurrentModelId
       : null,
-    configOptions: acpProviderOptionDescriptors({ configOptions, modeState }),
+    configOptions: descriptors,
+    ...(modelOptionIds.length > 0 ? { modelOptionIds } : {}),
   };
 }
 
@@ -215,7 +225,6 @@ export function normalizeAcpRegistryCommands(
   const seen = new Set<string>();
   const slashCommands: Array<ServerProviderSlashCommand> = [];
   const skills: Array<ServerProviderSkill> = [];
-  let accepted = 0;
   for (const command of commands) {
     const name = boundedOpaqueValue(command.name, MAX_ID_LENGTH);
     if (name === undefined) continue;
@@ -241,8 +250,6 @@ export function normalizeAcpRegistryCommands(
         ...(hint ? { input: { hint } } : {}),
       });
     }
-    accepted += 1;
-    if (accepted === MAX_COMMANDS) break;
   }
   return { slashCommands, skills };
 }

@@ -1,18 +1,35 @@
-import { AcpRegistryOperationError, ProviderInstanceId } from "@t3tools/contracts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import {
+  AcpRegistryOperationError,
+  ProviderInstanceId,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import { AcpRegistrySettings } from "../settings.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
+import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import {
+  AcpRegistryDriver,
   applyAcpRegistryAvailableCommands,
   applyAcpRegistryLiveConfiguration,
   buildCheckedAcpRegistrySnapshot,
   checkAcpRegistryProviderReadiness,
   checkAcpRegistryProviderStatus,
 } from "./driver.ts";
+import { normalizeAcpRegistryLiveConfiguration } from "./probe.ts";
 
 const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
 const identity = {
@@ -29,6 +46,168 @@ const noSessionManagement = {
   canDelete: false,
   canConfigureProviders: false,
 } as const;
+
+const driverLayer = TestProviderHost.layer({ runBackgroundWork: false }).pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      NodeServices.layer,
+      NodeCrypto.layer,
+      AcpRegistryRuntimeCoordinator.layer,
+      IdAllocator.layer,
+      McpProviderSessions.layer,
+      Layer.succeed(
+        ProviderEventLoggers.ProviderEventLoggers,
+        ProviderEventLoggers.NoOpProviderEventLoggers,
+      ),
+    ),
+  ),
+);
+
+it.layer(driverLayer, { excludeTestServices: true })("AcpRegistryDriver", (it) => {
+  it.effect("keeps each model's session choices alongside shared mode through refresh", () =>
+    Effect.gen(function* () {
+      const coordinator = yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
+      const modelState = {
+        currentModelId: "model-a",
+        availableModels: [
+          { modelId: "model-a", name: "Model A" },
+          { modelId: "model-b", name: "Model B" },
+        ],
+      };
+      const mode = {
+        id: "mode",
+        name: "Mode",
+        category: "mode",
+        type: "select",
+        currentValue: "ask",
+        options: [{ value: "ask", name: "Ask" }],
+      } as const satisfies EffectAcpSchema.SessionConfigOption;
+      const effort = {
+        id: "effort",
+        name: "Effort",
+        category: "thought_level",
+        type: "select",
+        currentValue: "low",
+        options: [
+          { value: "low", name: "Low" },
+          { value: "high", name: "High" },
+        ],
+      } as const satisfies EffectAcpSchema.SessionConfigOption;
+      const agent = String.raw`
+        import { createInterface } from "node:readline";
+        const { models, configOptions } = JSON.parse(process.argv[1]);
+        const sessionId = "model-options-probe";
+        const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
+        for await (const line of createInterface({ input: process.stdin })) {
+          const { id, method } = JSON.parse(line);
+          if (method === "initialize") {
+            send({ id, result: { protocolVersion: 1, authMethods: [] } });
+          } else if (method === "session/new") {
+            send({ id, result: { sessionId, models, configOptions } });
+            send({ method: "session/update", params: {
+              sessionId, update: { sessionUpdate: "available_commands_update", availableCommands: [] },
+            } });
+          } else if (id !== undefined) {
+            send({ id, error: { code: -32601, message: "Method not found" } });
+          }
+        }
+      `;
+      const instance = yield* AcpRegistryDriver.create({
+        instanceId: identity.instanceId,
+        displayName: identity.displayName,
+        enabled: true,
+        environment: [],
+        config: decodeSettings({ agentId: "test-agent" }),
+      }).pipe(
+        Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, {
+          ...catalogWithInspection({
+            status: "ready",
+            agentId: "test-agent",
+            version: "1.0.0",
+            distribution: "npx",
+          }),
+          resolve: () =>
+            Effect.succeed({
+              distribution: "npx" as const,
+              spawn: {
+                command: process.execPath,
+                args: [
+                  "--input-type=module",
+                  "-e",
+                  agent,
+                  JSON.stringify({ models: modelState, configOptions: [mode, effort] }),
+                ],
+              },
+            }),
+        }),
+      );
+      const selectChoicesByModel = (snapshot: ServerProvider) =>
+        Object.fromEntries(
+          snapshot.models.map((model) => [
+            model.slug,
+            Object.fromEntries(
+              (model.capabilities?.optionDescriptors ?? []).flatMap((option) =>
+                option.type === "select"
+                  ? [[option.id, option.options.map((choice) => choice.id)]]
+                  : [],
+              ),
+            ),
+          ]),
+        );
+      const watchDefaultModel = (slug: string) =>
+        instance.snapshot.streamChanges.pipe(
+          Stream.filter((snapshot) =>
+            snapshot.models.some((model) => model.slug === slug && model.isDefault),
+          ),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+          Effect.timeout("5 seconds"),
+          Effect.forkScoped({ startImmediately: true }),
+        );
+
+      const initial = yield* watchDefaultModel("model-a");
+      yield* instance.snapshot.refresh;
+      const before = yield* Fiber.join(initial);
+      const live = yield* watchDefaultModel("model-b");
+      yield* coordinator.publishLiveConfiguration(
+        identity.instanceId,
+        normalizeAcpRegistryLiveConfiguration(
+          [
+            mode,
+            {
+              ...effort,
+              currentValue: "balanced",
+              options: [{ value: "balanced", name: "Balanced" }],
+            },
+          ],
+          undefined,
+          { ...modelState, currentModelId: "model-b" },
+        ),
+      );
+      const after = yield* Fiber.join(live);
+      const refreshed = yield* instance.snapshot.refresh;
+
+      expect({
+        before: selectChoicesByModel(before),
+        after: selectChoicesByModel(after),
+        refreshed: selectChoicesByModel(refreshed),
+      }).toEqual({
+        before: {
+          "model-a": { mode: ["ask"], effort: ["low", "high"] },
+          "model-b": { mode: ["ask"] },
+        },
+        after: {
+          "model-a": { mode: ["ask"], effort: ["low", "high"] },
+          "model-b": { mode: ["ask"], effort: ["balanced"] },
+        },
+        refreshed: {
+          "model-a": { mode: ["ask"], effort: ["low", "high"] },
+          "model-b": { mode: ["ask"], effort: ["balanced"] },
+        },
+      });
+    }),
+  );
+});
 
 function catalogWithInspection(
   inspection: AcpRegistrySupport.AcpRegistryInspection,

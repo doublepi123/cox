@@ -100,10 +100,14 @@ function readResult(value: unknown, budget: ResultReadBudget, depth = 0): Result
     value.is_error === true ||
     value._tag === "OrchestratorMcpFailure" ||
     value.error != null;
+  const commandOutputMarker = "\nCommand output:\n";
+  const terminal = typeof value.output === "string" ? value.output : "";
+  const marker = terminal.indexOf(commandOutputMarker);
   const content =
     value.structuredContent ??
     value.content ??
-    (Predicate.isObject(value.output) ? value.output.OkayOutput : undefined);
+    (Predicate.isObject(value.output) ? value.output.OkayOutput : undefined) ??
+    (marker === -1 ? undefined : terminal.slice(marker + commandOutputMarker.length));
   if (content !== undefined) {
     const nested = readResult(content, budget, depth + 1);
     return { ...nested, failed: failed || nested.failed };

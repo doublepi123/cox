@@ -48,13 +48,22 @@ const CodexUsage = Schema.Struct({
     }),
   ),
 });
+// The usage endpoint can report a window without a utilization, as the CLI's own schema allows.
 const ClaudeWindow = Schema.Struct({
-  utilization: Schema.Number,
+  utilization: Schema.NullOr(Schema.Number),
   resets_at: Schema.NullOr(Schema.String),
+});
+const ClaudeExtraUsage = Schema.Struct({
+  is_enabled: Schema.Boolean,
+  used_credits: Schema.NullOr(Schema.Number),
+  monthly_limit: Schema.NullOr(Schema.Number),
+  utilization: Schema.optional(Schema.NullOr(Schema.Number)),
 });
 const ClaudeUsage = Schema.Struct({
   five_hour: Schema.optional(Schema.NullOr(ClaudeWindow)),
   seven_day: Schema.optional(Schema.NullOr(ClaudeWindow)),
+  spend: Schema.optional(Schema.Unknown),
+  extra_usage: Schema.optional(Schema.NullOr(ClaudeExtraUsage)),
   limits: Schema.optional(
     Schema.Array(
       Schema.Struct({
@@ -289,6 +298,15 @@ export const makeCliproxyApi = Effect.gen(function* () {
               rate_limits: {
                 five_hour: usage.five_hour ?? null,
                 seven_day: usage.seven_day ?? null,
+                ...(usage.spend ? { spend: usage.spend } : {}),
+                ...(usage.extra_usage
+                  ? {
+                      extra_usage: {
+                        ...usage.extra_usage,
+                        utilization: usage.extra_usage.utilization ?? null,
+                      },
+                    }
+                  : {}),
                 model_scoped,
               },
             },

@@ -36,9 +36,19 @@ server.listen(0, '127.0.0.1', () => {
   };
   if (!['late-state', 'late-wrong-owner', 'missing-state'].includes(mode)) publish();
   if (mode === 'timeout') { console.log('FIXTURE_WAITING'); return; }
+  const announce = () => {
   process.stdout.write('Local UR');
   process.stdout.write('L: ' + origin + '\\n');
   if (['late-state', 'late-wrong-owner'].includes(mode)) setTimeout(publish, 100);
+  };
+  if (mode === 'migrating') {
+    process.stdout.write('Running database migra');
+    process.stdout.write('tions\\n');
+    setTimeout(() => {
+      console.log('Migrations ran successfully');
+      announce();
+    }, 400);
+  } else announce();
 });
 `;
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -131,9 +141,25 @@ describe("desktop backend supervisor", () => {
     const startup = backend.start();
     const failure = expect(startup).rejects.toThrow("did not become ready");
     await waiting.promise;
-    await vi.advanceTimersByTimeAsync(90_000);
+    await vi.advanceTimersByTimeAsync(180_000);
     await failure;
     vi.useRealTimers();
+  });
+
+  it("waits past the startup timeout during an announced database migration", async () => {
+    const { backend, onLog } = await createBackend("migrating");
+    const waiting = Promise.withResolvers<void>();
+    let output = "";
+    onLog.mockImplementation((message: string) => {
+      output += message;
+      if (output.includes("Running database migrations")) waiting.resolve();
+    });
+    vi.useFakeTimers();
+    const startup = backend.start();
+    const ready = expect(startup).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await waiting.promise;
+    await vi.advanceTimersByTimeAsync(180_000);
+    await ready;
   });
 
   it("bounds startup waiting and cleans up the started process", async () => {
@@ -144,9 +170,9 @@ describe("desktop backend supervisor", () => {
     });
     vi.useFakeTimers();
     const startup = backend.start();
-    const failure = expect(startup).rejects.toThrow("did not become ready");
+    const failure = expect(startup).rejects.toThrow("did not become ready within 180 seconds");
     await waiting.promise;
-    await vi.advanceTimersByTimeAsync(90_000);
+    await vi.advanceTimersByTimeAsync(180_000);
     await failure;
     vi.useRealTimers();
   });

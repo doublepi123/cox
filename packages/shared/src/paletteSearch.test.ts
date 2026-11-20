@@ -689,6 +689,16 @@ describe("findSearchTokenRanges", () => {
 });
 
 describe("scoreMessageMatch", () => {
+  it.each([
+    ["model mode mode", "mode", { quality: 1, offset: 6 }],
+    ["xmode model models", "mode", { quality: 0.8, offset: 6 }],
+    ["xmode ymode", "mode", { quality: 0.3, offset: 1 }],
+    ["İ cafeteria Café CAFÉ", "cafe", { quality: 1, offset: 12 }],
+    ["7cafe52bb8 cafe cafe", "cafe", { quality: 1, offset: 11 }],
+  ] as const)("keeps the first highest-scoring hit for %s", (text, query, match) => {
+    expect(scoreMessageMatch(text, query)).toEqual(match);
+  });
+
   it("needs short words at a word start and ranks other words found inside words lower", () => {
     const text = `Saved the drafts. ${"More notes. ".repeat(40)}Then enableFTS and Enable FTS.`;
     const fts = scoreMessageMatch(text, "fts");

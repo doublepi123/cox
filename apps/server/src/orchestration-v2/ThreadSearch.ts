@@ -33,7 +33,11 @@ import {
   type ThreadSearchSubject,
 } from "@t3tools/shared/paletteSearch";
 import { threadSearchPullRequests } from "@t3tools/shared/threadPullRequests";
-import { indexedMessageCondition, nonPlaceholderMessageCondition } from "./messageSearchIndex.ts";
+import {
+  indexedMessageCondition,
+  indexedMessageText,
+  nonPlaceholderMessageCondition,
+} from "./messageSearchIndex.ts";
 import { loadOlderSettledThreadsPage } from "./ShellStream.ts";
 
 // When the user last wrote in the thread aliased `threads`, as the clients
@@ -276,7 +280,7 @@ export const messageHitsQuery = (
       AND messages.message_id NOT LIKE 'async-answer:%'
       AND NOT EXISTS (
         -- The text read once, not once per check.
-        SELECT 1 FROM (SELECT json_extract(messages.payload_json, '$.text') AS text) AS message,
+        SELECT 1 FROM (SELECT ${indexedMessageText(sql, "messages.payload_json")} AS text) AS message,
           json_each(${substrings}) AS substring
         WHERE instr(lower(message.text), json_extract(substring.value, '$.token')) = 0
           AND NOT (
@@ -288,7 +292,7 @@ export const messageHitsQuery = (
         SELECT 1 FROM json_each(${shortSpellings}) AS token
         WHERE NOT EXISTS (
           SELECT 1 FROM json_each(token.value) AS spelling
-          WHERE instr(json_extract(messages.payload_json, '$.text'), spelling.value) > 0
+          WHERE instr(${indexedMessageText(sql, "messages.payload_json")}, spelling.value) > 0
         )
       )
     -- The index's own rowid, so FTS5 returns hits newest first and stops at

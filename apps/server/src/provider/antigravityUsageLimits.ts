@@ -15,10 +15,8 @@ import {
   makeUsageLimits,
 } from "@t3tools/provider-core/server/usageLimits";
 
-const ENDPOINTS = [
-  "https://daily-cloudcode-pa.googleapis.com",
-  "https://cloudcode-pa.googleapis.com",
-];
+const DAILY_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
+const PROD_ENDPOINT = "https://cloudcode-pa.googleapis.com";
 const SUMMARY_WINDOW_MINS = new Map([
   ["5h", 5 * 60],
   ["weekly", 7 * 24 * 60],
@@ -124,14 +122,16 @@ function summaryWindows(summary: typeof Summary.Type, requestedAt: number) {
   for (const group of groups ?? []) {
     for (const bucket of group.buckets ?? []) {
       if (bucket.disabled) continue;
-      // Argon is metered apart from the default Gemini buckets; keep its group name.
+      // Argon and Carbon are metered separately from the default Gemini buckets.
       const family = bucket.bucketId.startsWith("gemini-argon-")
         ? group.displayName?.trim() || "Gemini Argon"
-        : bucket.bucketId.startsWith("gemini-")
-          ? "Gemini"
-          : bucket.bucketId.startsWith("3p-")
-            ? "Claude & GPT (shared)"
-            : group.displayName?.trim() || bucket.bucketId;
+        : bucket.bucketId.startsWith("gemini-carbon-")
+          ? group.displayName?.trim() || "Gemini Carbon"
+          : bucket.bucketId.startsWith("gemini-")
+            ? "Gemini"
+            : bucket.bucketId.startsWith("3p-")
+              ? "Claude & GPT (shared)"
+              : group.displayName?.trim() || bucket.bucketId;
       const weekly = bucket.window === "weekly";
       const session = bucket.window === "5h";
       const windowDurationMins = SUMMARY_WINDOW_MINS.get(bucket.window ?? "");
@@ -269,7 +269,10 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
       accessToken = cached.accessToken;
       account = cached.account;
     }
-    // Merge endpoints because quota groups differ; keep each bucket's most-used reading.
+    const endpoints =
+      input.authMethod === "oauth-business"
+        ? [PROD_ENDPOINT, DAILY_ENDPOINT]
+        : [DAILY_ENDPOINT, PROD_ENDPOINT];
     const fetchWindows = Effect.fn("AntigravityUsageProbe.fetchWindows")(function* <E>(
       operation: string,
       parse: (
@@ -278,7 +281,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
       ) => Effect.Effect<ServerProviderUsageWindow[], E>,
     ) {
       const responses = yield* Effect.forEach(
-        ENDPOINTS,
+        endpoints,
         (endpoint) =>
           Effect.gen(function* () {
             // Capture each request after auth, so refresh latency does not widen the tolerance.
@@ -302,8 +305,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
       );
       const windows = new Map<string, ServerProviderUsageWindow>();
       for (const window of responses.flat()) {
-        const previous = windows.get(window.id);
-        if (!previous || window.usedPercent > previous.usedPercent) windows.set(window.id, window);
+        if (!windows.has(window.id)) windows.set(window.id, window);
       }
       return [...windows.values()];
     });

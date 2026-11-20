@@ -117,6 +117,20 @@ export function isCommandMissingCause(error: unknown): boolean {
 
 const MAX_PROBE_OUTPUT_BYTES = 8 * 1024 * 1024;
 
+// A timed-out probe interrupts the child with SIGTERM and then waits for it to exit,
+// so a CLI that ignores SIGTERM would hold the caller's timeout open without this.
+const PROBE_FORCE_KILL_AFTER = "1 second";
+
+function withProbeForceKill(command: ChildProcess.Command): ChildProcess.Command {
+  if (!ChildProcess.isStandardCommand(command) || command.options.forceKillAfter !== undefined) {
+    return command;
+  }
+  return ChildProcess.make(command.command, command.args, {
+    ...command.options,
+    forceKillAfter: PROBE_FORCE_KILL_AFTER,
+  });
+}
+
 export const spawnAndCollect = Effect.fn("snapshotProbe.spawnAndCollect")(function* (
   binaryPath: string,
   command: ChildProcess.Command,
@@ -124,7 +138,7 @@ export const spawnAndCollect = Effect.fn("snapshotProbe.spawnAndCollect")(functi
 ) {
   const maxStdoutBytes = options?.maxStdoutBytes ?? MAX_PROBE_OUTPUT_BYTES;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const child = yield* spawner.spawn(command);
+  const child = yield* spawner.spawn(withProbeForceKill(command));
   const [stdout, stderr, exitCode] = yield* Effect.all(
     [
       collectUint8StreamText({ stream: child.stdout, maxBytes: maxStdoutBytes }),

@@ -26,6 +26,7 @@ import {
 } from "../../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { claudeUsageReader } from "./claudeUsage.ts";
+import { withClaudeNativeRelease } from "./ClaudeMaintenance.ts";
 import { makeClaudeScopedLimitNames } from "../claudeUsageLimits.ts";
 import * as ClaudeResetCredits from "../claudeResetCredits.ts";
 import * as ResetCreditCoordinator from "../resetCreditCoordinator.ts";
@@ -98,6 +99,7 @@ const UPDATE = makePackageManagedProviderMaintenanceResolver({
   nativeUpdate: {
     args: ["update"],
     isCommandPath: isClaudeNativeCommandPath,
+    requiresCommandPath: true,
   },
 });
 
@@ -208,6 +210,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
               })
             : capabilities,
         ),
+        Effect.flatMap(withClaudeNativeRelease),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),

@@ -221,6 +221,7 @@ describe("gitHubViewerPermissions", () => {
         status: "action-required",
         description: "GitHub could not determine whether workflows are awaiting approval.",
         url: null,
+        placeholder: true,
       });
       for (const fingerprint of ["broad", "restricted", "broad"]) {
         const scoped = yield* provider
@@ -481,6 +482,7 @@ it.effect("keeps an unsafe workflow approval scope visible as unknown", () =>
         status: "action-required",
         description: "GitHub could not determine whether workflows are awaiting approval.",
         url: null,
+        placeholder: true,
       },
     ]);
   }).pipe(
@@ -670,6 +672,7 @@ describe("getChangeRequest commits", () => {
               authors: [],
             },
           ],
+          truncated: false,
         }),
       listReviewThreadComments: () => Effect.succeed({ ...baseThreadComments, commits }),
     });
@@ -750,7 +753,12 @@ describe("getChangeRequestActivity", () => {
     Layer.mock(GitHubPullRequestApi.GitHubPullRequestApi)({
       revalidateChecks: (_input, read) => read,
       getPullRequestActivity: () =>
-        Effect.succeed({ author: null, comments: [dismissedReview(body)], commits: [] }),
+        Effect.succeed({
+          author: null,
+          comments: [dismissedReview(body)],
+          commits: [],
+          truncated: false,
+        }),
       listReviewThreadComments: () => Effect.succeed(threadComments),
     });
   const readActivity = Effect.gen(function* () {
@@ -776,7 +784,8 @@ describe("getChangeRequestActivity", () => {
 
   const failingThreadRead = (error: GitHubPullRequestApi.GitHubPullRequestApiError) =>
     Layer.mock(GitHubPullRequestApi.GitHubPullRequestApi)({
-      getPullRequestActivity: () => Effect.succeed({ author: null, comments: [], commits: [] }),
+      getPullRequestActivity: () =>
+        Effect.succeed({ author: null, comments: [], commits: [], truncated: false }),
       listReviewThreadComments: () => Effect.fail(error),
     });
   const retryAt = 1_900_000_000_000;

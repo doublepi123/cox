@@ -1035,6 +1035,9 @@ it.effect.each([
     }),
 );
 
+const expectedResumePrompt =
+  "Continue where you left off. Your last turn was cut short, so a command or other action it started may have finished or may still be running. Before repeating a state-changing action, confirm it did not take effect and is no longer running. If you cannot confirm both, say so and do not retry unless the user explicitly asks you to.";
+
 it.effect("continues a cut run past queued follow-ups, which stay held", () =>
   Effect.gen(function* () {
     const live = makeProjection();
@@ -1053,7 +1056,7 @@ it.effect("continues a cut run past queued follow-ups, which stay held", () =>
       ...cut,
       runs: [...cut.runs, queuedFollowUp],
     } as unknown as OrchestrationV2ThreadProjection);
-    assert.deepEqual(texts, ["Continue where you left off."]);
+    assert.deepEqual(texts, [expectedResumePrompt]);
   }),
 );
 
@@ -1083,7 +1086,7 @@ it.effect("continues a resumed queued run that ran after an earlier continuation
       ...cut,
       runs: [...cut.runs, finishedContinuation],
     } as unknown as OrchestrationV2ThreadProjection);
-    assert.deepEqual(texts, ["Continue where you left off."]);
+    assert.deepEqual(texts, [expectedResumePrompt]);
   }),
 );
 

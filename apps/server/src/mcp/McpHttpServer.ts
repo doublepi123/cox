@@ -202,7 +202,10 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     }
     const limited = withModeLimit(invocation, request);
     if (limited === undefined) return invalidModeLimit;
-    return limited;
+    const origin =
+      limited.client?.webOrigin ??
+      Option.getOrUndefined(Option.map(HttpServerRequest.toURL(request), (url) => url.origin));
+    return { ...limited, origin };
   });
   return Effect.fnUntraced(function* (httpEffect) {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -230,8 +233,12 @@ const MAX_SNAPSHOT_IDENTIFIER_CHARS = 2_048;
 
 const encodeJsonText = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const utf8Length = (text: string) => Buffer.byteLength(text, "utf8");
-const cutText = (text: string, max: number) =>
-  text.length > max ? `${text.slice(0, max)}…` : text;
+const cutText = (text: string, max: number) => {
+  if (text.length <= max) return text;
+  const last = text.charCodeAt(max - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  return `${text.slice(0, end)}…`;
+};
 
 const cutEntryStrings = <A>(entry: A): A =>
   typeof entry === "object" && entry !== null
@@ -1121,7 +1128,7 @@ export const layerMcpTransport = McpServer.layerHttp({
   name: "Cox",
   version: packageJson.version,
   path: MCP_HTTP_PATH,
-  protocols: [McpProtocol.v2025_06_18],
+  protocols: [McpProtocol.v2025_06_18, McpProtocol.v2026_07_28],
   allowSessionTermination: true,
 }).pipe(Layer.provide(layerMcpAuthMiddleware));
 

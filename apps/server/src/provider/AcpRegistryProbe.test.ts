@@ -3,10 +3,17 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderInstanceId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
 import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
+import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as EffectAcpErrors from "effect-acp/errors";
 
@@ -16,10 +23,14 @@ import {
   acpRegistryProbeResult,
   listAcpRegistrySessions,
   logoutAcpRegistry,
+  makeAcpRegistryAdapterV2,
   normalizeAcpRegistryAuthMethods,
   normalizeAcpRegistryCommands,
+  type AcpRegistryAvailableCommands,
 } from "@t3tools/provider-acp-registry/testing";
+import * as AcpRegistryRuntimeCoordinator from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
+import { probeAcpRegistryConfiguration } from "../../../../packages/provider-acp-registry/src/server/probe.ts";
 
 const instanceId = ProviderInstanceId.make("acpRegistry_codex");
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -27,7 +38,7 @@ const mockAgentPath = NodePath.join(__dirname, "../../scripts/acp-mock-agent.ts"
 const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
 
 describe("ACP Registry probe", () => {
-  it("returns advertised auth methods and de-duplicated models", () => {
+  it("returns advertised auth methods, de-duplicated models, and model option IDs", () => {
     const result = acpRegistryProbeResult(instanceId, {
       sessionId: "probe-session",
       initializeResult: {
@@ -62,6 +73,29 @@ describe("ACP Registry probe", () => {
               { value: "gpt-5.4", name: "Duplicate" },
             ],
           },
+          {
+            id: "effort",
+            name: "Effort",
+            category: "thought_level",
+            type: "select",
+            currentValue: "high",
+            options: [{ value: "high", name: "High" }],
+          },
+          {
+            id: "model-tool-use",
+            name: "Tool use",
+            category: "model_config",
+            type: "boolean",
+            currentValue: true,
+          },
+          {
+            id: "mode",
+            name: "Mode",
+            category: "mode",
+            type: "select",
+            currentValue: "ask",
+            options: [{ value: "ask", name: "Ask" }],
+          },
         ],
       },
       modelConfigId: "model",
@@ -84,7 +118,25 @@ describe("ACP Registry probe", () => {
       ],
       models: [{ id: "gpt-5.4", name: "GPT-5.4", description: null }],
       currentModelId: "gpt-5.4",
-      configOptions: [],
+      configOptions: [
+        {
+          id: "effort",
+          label: "Effort",
+          type: "select",
+          role: "reasoning",
+          currentValue: "high",
+          options: [{ id: "high", label: "High" }],
+        },
+        { id: "model-tool-use", label: "Tool use", type: "boolean", currentValue: true },
+        {
+          id: "mode",
+          label: "Mode",
+          type: "select",
+          currentValue: "ask",
+          options: [{ id: "ask", label: "Ask" }],
+        },
+      ],
+      modelOptionIds: ["effort", "model-tool-use"],
       sessionManagement: {
         canList: true,
         canLoad: true,
@@ -224,6 +276,7 @@ describe("ACP Registry probe", () => {
         id: "reasoning",
         label: "Reasoning",
         type: "select",
+        role: "reasoning",
         currentValue: "high",
         options: [
           { id: "medium", label: "Medium" },
@@ -270,7 +323,7 @@ describe("ACP Registry probe", () => {
     },
   );
 
-  it("bounds and de-duplicates advertised commands", () => {
+  it("normalizes and de-duplicates advertised commands", () => {
     const commands = normalizeAcpRegistryCommands([
       {
         name: "create_plan",
@@ -278,7 +331,7 @@ describe("ACP Registry probe", () => {
         input: { type: "text", hint: " topic " },
       },
       { name: "CREATE_PLAN", description: "duplicate" },
-      ...Array.from({ length: 140 }, (_, index) => ({
+      ...Array.from({ length: 127 }, (_, index) => ({
         name: `command_${index}`,
         description: "",
       })),
@@ -295,6 +348,119 @@ describe("ACP Registry probe", () => {
     ).toHaveLength(1);
     expect(commands.skills).toEqual([]);
   });
+
+  it.live.each(["configuration probe", "live session update"] as const)(
+    "keeps late slash commands and skills from a %s",
+    (source) => {
+      const slashCommands = Array.from({ length: 139 }, (_, index) => ({
+        name: `command_${index}`,
+      }));
+      const advertised = [
+        ...slashCommands.map(({ name }) => ({ name, description: "" })),
+        { name: "COMMAND_0", description: "Duplicate" },
+        { name: " invalid ", description: "Invalid command name" },
+        { name: "$", description: "Invalid skill name" },
+        { name: "$late-skill", description: "Late skill" },
+      ];
+      const agent = String.raw`
+        import { createInterface } from "node:readline";
+        const availableCommands = JSON.parse(process.argv[1]);
+        const sessionId = "inventory-session";
+        const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
+        for await (const line of createInterface({ input: process.stdin })) {
+          const { id, method } = JSON.parse(line);
+          if (method === "initialize") {
+            send({ id, result: { protocolVersion: 1, authMethods: [] } });
+          } else if (method === "session/new") {
+            send({ id, result: { sessionId } });
+            send({ method: "session/update", params: {
+              sessionId, update: { sessionUpdate: "available_commands_update", availableCommands },
+            } });
+          } else if (id !== undefined) {
+            send({ id, error: { code: -32601, message: "Method not found" } });
+          }
+        }
+      `;
+      const catalog = Layer.mock(AcpRegistrySupport.AcpRegistryCatalog)({
+        resolve: () =>
+          Effect.succeed({
+            distribution: "local",
+            spawn: {
+              command: process.execPath,
+              args: ["--input-type=module", "-e", agent, JSON.stringify(advertised)],
+              env: {},
+            },
+          }),
+      });
+      const input = {
+        instanceId,
+        settings: decodeSettings({ agentId: "inventory-fixture" }),
+        cwd: process.cwd(),
+        environment: {},
+      };
+
+      const commands =
+        source === "configuration probe"
+          ? probeAcpRegistryConfiguration(input)
+          : Effect.gen(function* () {
+              const coordinator =
+                yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
+              const published = yield* Deferred.make<AcpRegistryAvailableCommands>();
+              yield* coordinator
+                .watchAvailableCommands(instanceId, (update) =>
+                  Deferred.succeed(published, update).pipe(Effect.asVoid),
+                )
+                .pipe(Effect.forkScoped);
+              const adapter = yield* makeAcpRegistryAdapterV2({
+                ...input,
+                selfInvocation: yield* resolveSelfInvocation(),
+              });
+              const threadId = ThreadId.make("inventory-thread");
+              const modelSelection = { instanceId, model: "default" };
+              const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                cwd: input.cwd,
+              });
+              const runtime = yield* adapter.openSession({
+                threadId,
+                modelSelection,
+                runtimePolicy,
+                providerSessionId: ProviderSessionId.make("inventory-provider-session"),
+              });
+              yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+              return yield* Deferred.await(published).pipe(Effect.timeout("5 seconds"));
+            });
+
+      return Effect.gen(function* () {
+        const result = yield* commands;
+        expect({ slashCommands: result.slashCommands, skills: result.skills }).toEqual({
+          slashCommands,
+          skills: [
+            {
+              name: "late-skill",
+              description: "Late skill",
+              path: "acp://skill/late-skill",
+              scope: "agent",
+              enabled: true,
+            },
+          ],
+        });
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            catalog,
+            NodeServices.layer,
+            AcpRegistryRuntimeCoordinator.layer,
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer)),
+          ),
+        ),
+        Effect.scoped,
+      );
+    },
+  );
 
   it("routes dollar-prefixed ACP commands to the provider skill menu", () => {
     expect(

@@ -27,14 +27,24 @@ export const threadNotFound = Effect.fn("OrchestratorMcpService.threadNotFound")
   threadId: ThreadId,
   message: string,
 ) {
-  const prefixed = ThreadId.make(`mcp:${threadId}`);
-  const shell = yield* threads.getThreadShell(prefixed).pipe(Effect.orElseSucceed(() => null));
+  const delegatedPrefix = "thread:delegated-task:";
+  const suffix = threadId.slice(delegatedPrefix.length);
+  const encoded = suffix.isWellFormed() ? encodeURIComponent(suffix) : suffix;
+  const suggested = threadId.startsWith(delegatedPrefix)
+    ? encoded === suffix
+      ? undefined
+      : ThreadId.make(`${delegatedPrefix}${encoded}`)
+    : ThreadId.make(`mcp:${threadId}`);
+  const shell =
+    suggested === undefined
+      ? null
+      : yield* threads.getThreadShell(suggested).pipe(Effect.orElseSucceed(() => null));
   return yield* new OrchestratorMcpFailure({
     code: "thread_not_found",
     message:
       shell === null || shell.deletedAt !== null
         ? message
-        : `${message} Did you mean \`${prefixed}\`?`,
+        : `${message} Did you mean \`${suggested}\`?`,
   });
 });
 

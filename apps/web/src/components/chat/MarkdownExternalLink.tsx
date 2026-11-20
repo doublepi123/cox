@@ -8,7 +8,8 @@ import { cn } from "../../lib/utils";
 import { sourceControlIcon } from "../../sourceControlPresentation";
 import { AnswerImageContext } from "./answerImageContext";
 
-const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
+// Inline-level and selectable: triple-click selection stops at block-level and select-none boxes.
+const MARKDOWN_LINK_FAVICON_CLASS_NAME = "inline-block size-[14px] [vertical-align:-0.125em]";
 
 const failedFaviconHosts = new Set<string>();
 
@@ -25,10 +26,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
   const brandIcon = sourceControlHostIcon(host);
   const faviconUrl = brandIcon ? null : faviconUrlForOrigin(`https://${host}`);
   return (
-    <span
-      className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
-      aria-hidden
-    >
+    <span className="ms-[0.25em] me-[0.2em]" aria-hidden>
       {brandIcon ? (
         brandIcon
       ) : answerImage ||

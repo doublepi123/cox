@@ -214,10 +214,11 @@ function ColumnRow(props: {
   const content = (
     <>
       <span className="min-w-0 flex-1 truncate">{props.label}</span>
-      {props.isDefault ? (
+      {props.selected ? (
+        <CheckIcon aria-hidden="true" className="size-3.5" />
+      ) : props.isDefault ? (
         <span className="text-muted-foreground/70 text-xs">{t("Default")}</span>
       ) : null}
-      <CheckIcon aria-hidden="true" className={cn("size-3.5", !props.selected && "invisible")} />
     </>
   );
   if (!props.description) return <button {...rowProps}>{content}</button>;

@@ -206,9 +206,15 @@ it.layer(
   it.effect.each([
     { install: "native", stdout: '"1.2.0"', exitCode: 0, latest: "1.2.0" },
     { install: "manual", stdout: '["1.2.0"]', exitCode: 0, latest: "1.2.0" },
-    { install: "npm", stdout: '"1.2.0"', exitCode: 0, latest: "1.2.0" },
+    {
+      install: "npm",
+      stdout: '{"@example/package-tool":{"latest":"1.2.0"}}',
+      exitCode: 1,
+      latest: "1.2.0",
+    },
+    { install: "npm", stdout: "{}", exitCode: 0, latest: "1.0.0" },
     { install: "native", stdout: "", exitCode: 1, latest: null },
-    { install: "npm", stdout: '"1.2.0"', exitCode: 1, latest: null },
+    { install: "npm", stdout: '{"error":{"code":"ENOTFOUND"}}', exitCode: 1, latest: null },
     { install: "native", stdout: "not json", exitCode: 0, latest: null },
     { install: "manual", stdout: '["1.2.0", "1.3.0"]', exitCode: 0, latest: null },
     { install: "manual", stdout: '""', exitCode: 0, latest: null },
@@ -232,7 +238,7 @@ it.layer(
         let probes = 0;
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           fixture.install === "native" ? nativePackageToolUpdate : packageToolUpdate,
-          { binaryPath, env: { PATH: "" } },
+          { binaryPath, env: { PATH: fixture.install === "npm" ? npmBinDir : "" } },
         ).pipe(
           Effect.provideService(HostProcess.Environment, { PATH: npmBinDir }),
           Effect.provideService(
@@ -241,14 +247,37 @@ it.layer(
               (command, args) => {
                 probes++;
                 expect(command).toBe(NodePath.join(npmBinDir, "npm"));
-                expect(args).toEqual([
-                  "view",
-                  "--global",
-                  ...(fixture.install === "npm" ? ["--prefix", tempDir] : []),
-                  "--json",
-                  `${capabilities.packageName}@latest`,
-                  "version",
-                ]);
+                if (fixture.install === "npm") {
+                  if (args[0] === "ls") {
+                    expect(args).toEqual([
+                      "ls",
+                      "-g",
+                      "--prefix",
+                      tempDir,
+                      "--depth",
+                      "0",
+                      "--json",
+                      capabilities.packageName,
+                    ]);
+                    return '{"dependencies":{"@example/package-tool":{"version":"1.0.0"}}}';
+                  }
+                  expect(args).toEqual([
+                    "outdated",
+                    "-g",
+                    "--prefix",
+                    tempDir,
+                    "--json",
+                    capabilities.packageName,
+                  ]);
+                } else {
+                  expect(args).toEqual([
+                    "view",
+                    "--global",
+                    "--json",
+                    `${capabilities.packageName}@latest`,
+                    "version",
+                  ]);
+                }
                 return fixture.stdout;
               },
               () => fixture.exitCode,
@@ -267,12 +296,13 @@ it.layer(
             capabilities,
           );
           expect(snapshot.versionAdvisory?.latestVersion).toBe(fixture.latest);
-          expect(probes).toBe(1);
+          const probesPerLookup = fixture.stdout === "{}" ? 2 : 1;
+          expect(probes).toBe(probesPerLookup);
           expect(yield* resolveLatestProviderVersion(capabilities)).toBe(fixture.latest);
-          expect(probes).toBe(1);
+          expect(probes).toBe(probesPerLookup);
           yield* invalidateLatestProviderVersion(capabilities);
           expect(yield* resolveLatestProviderVersion(capabilities)).toBe(fixture.latest);
-          expect(probes).toBe(2);
+          expect(probes).toBe(2 * probesPerLookup);
         });
         yield* program.pipe(
           Effect.provideServiceEffect(
@@ -394,7 +424,7 @@ it.layer(
   );
 
   it.effect.skipIf(!symlinksSupported)(
-    "pins npm updates to the global prefix that owns the package",
+    "pins npm updates to the global prefix that owns the package and the provider's PATH",
     () =>
       Effect.gen(function* () {
         const tempDir = yield* makeTempDir("t3-npm-capabilities");
@@ -404,12 +434,14 @@ it.layer(
           "@example",
           "package-tool",
         ]);
+        // A version manager's Node, which only the provider's settings put on PATH.
+        const providerEnv = { PATH: NodePath.join(tempDir, "bin") };
 
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           packageToolUpdate,
           {
             binaryPath: link,
-            env: { PATH: "" },
+            env: providerEnv,
           },
         ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
 
@@ -428,6 +460,7 @@ it.layer(
               "@example/package-tool@latest",
             ],
             lockKey: `npm-global:${normalizeCommandPath(tempDir)}`,
+            env: providerEnv,
           },
         });
       }),
@@ -558,6 +591,47 @@ it.layer(
       Effect.provideService(HostProcess.Platform, input.platform ?? "win32"),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn),
     );
+  it.effect.each([
+    { executable: "C:\\ProgramData\\chocolatey\\bin\\claude.exe", env: {} },
+    {
+      executable: "D:\\tools\\choco\\lib\\claude-code\\tools\\claude.exe",
+      env: { CHOCOLATEYINSTALL: "D:\\tools\\choco\\" },
+    },
+  ])(
+    "uses the Chocolatey release for $executable without an automatic update",
+    ({ executable, env }) =>
+      Effect.gen(function* () {
+        const capabilities = yield* resolvePackageManagedProviderMaintenance(claudeUpdate, {
+          binaryPath: "claude",
+          resolvedCommandPath: executable,
+          realCommandPath: executable,
+          env,
+          platform: "win32",
+        }).pipe(
+          Effect.provideService(HostProcess.Platform, "win32"),
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            stdoutSpawner((command, args) => {
+              expect(command).toBe("choco");
+              expect(args).toEqual(["search", "claude-code", "--exact", "--limit-output"]);
+              return "other|9.9.9\r\nClaude-Code|2.1.3\r\n";
+            }),
+          ),
+        );
+        expect(capabilities.update).toBeNull();
+        const latestVersion = yield* capabilities.lookupLatestVersion ?? Effect.succeed(null);
+        expect(latestVersion).toBe("2.1.3");
+        expect(
+          createProviderVersionAdvisory({
+            driver: claudeUpdate.provider,
+            currentVersion: "2.1.0",
+            latestVersion,
+            maintenanceCapabilities: capabilities,
+          }),
+        ).toMatchObject({ canUpdate: false, updateCommand: "choco upgrade claude-code" });
+      }),
+  );
+
   const userWinGetLink = "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\claude.exe";
   const userWinGetPackage =
     "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe\\claude.exe";
@@ -764,7 +838,8 @@ it.layer(
 
   it.effect.each([
     {
-      case: "the eligible release",
+      case: "the eligible release with an inherited PATH",
+      inheritPath: true,
       outdated: { "@example/package-tool": { current: "1.0.0", latest: "1.1.0" } },
       exitCode: 1,
       npmOutput: '"1.2.0"',
@@ -819,9 +894,11 @@ it.layer(
         let npmProbes = 0;
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           packageToolUpdate,
-          { binaryPath: link, env: { PATH: "" } },
+          { binaryPath: link, env: fixture.inheritPath ? {} : { PATH: pnpmBinDir } },
         ).pipe(
-          Effect.provideService(HostProcess.Environment, { PATH: pnpmBinDir }),
+          Effect.provideService(HostProcess.Environment, {
+            PATH: fixture.inheritPath ? pnpmBinDir : "",
+          }),
           Effect.provideService(
             ChildProcessSpawner.ChildProcessSpawner,
             stdoutSpawner(
@@ -961,6 +1038,53 @@ it.layer(
         expect(capabilities.update).toBeNull();
       });
     },
+  );
+
+  it.effect.skipIf(windowsHost || !symlinksSupported)(
+    "targets the configured mise backend for the install that owns the shim",
+    () =>
+      Effect.gen(function* () {
+        const tempDir = yield* makeTempDir("t3-mise-backend");
+        const mise = NodePath.join(tempDir, "bin", "mise");
+        const shim = NodePath.join(tempDir, "shims", "package-tool");
+        const installPath = NodePath.join(tempDir, "mise", "installs", "npm-package-tool", "1.0.0");
+        const binary = NodePath.join(installPath, "bin", "package-tool");
+        writeExecutable(mise);
+        writeExecutable(binary);
+        NodeFS.mkdirSync(NodePath.dirname(shim), { recursive: true });
+        NodeFS.symlinkSync(mise, shim);
+        const installed = [
+          { install_path: installPath, requested_version: "latest", active: true },
+        ];
+        const probes: ReadonlyArray<string>[] = [];
+        const resolver = makePackageManagedProviderMaintenanceResolver({
+          provider: driver("packageTool"),
+          npmPackageName: "package-tool",
+          nativeUpdate: null,
+          mise: { tool: "package-tool", upgrade: true },
+        });
+        const result = yield* resolveProviderMaintenanceCapabilitiesEffect(resolver, {
+          binaryPath: shim,
+          env: { PATH: NodePath.dirname(mise) },
+        }).pipe(
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            stdoutSpawner((executable, argv) => {
+              expect(executable).toBe(mise);
+              probes.push(argv);
+              if (argv[0] === "which") return binary;
+              if (argv.length === 4) return JSON.stringify(installed);
+              return JSON.stringify({ "npm:package-tool": installed });
+            }),
+          ),
+        );
+        expect(result.update?.args).toEqual(["upgrade", "npm:package-tool"]);
+        expect(probes).toEqual([
+          ["which", "package-tool"],
+          ["ls", "--json", "--installed", "package-tool"],
+          ["ls", "--json", "--installed"],
+        ]);
+      }),
   );
 
   it.effect.skipIf(!symlinksSupported || windowsHost)(

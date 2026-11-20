@@ -20,6 +20,7 @@ import * as NodeURL from "node:url";
 
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
+import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 import * as HtmlRender from "./HtmlRender.ts";
 import { HtmlRenderBrowserError } from "./headlessChrome.ts";
 import * as PreviewBrowser from "../preview/PreviewBrowser.ts";
@@ -31,6 +32,7 @@ const layerHtmlRender = (
   installed: Effect.Effect<Option.Option<string>> = Effect.succeed(
     Option.fromUndefinedOr(executable),
   ),
+  baseDir: string | { readonly prefix: string } = { prefix: "t3-html-render-" },
 ) =>
   HtmlRender.layer.pipe(
     Layer.provide(
@@ -46,7 +48,7 @@ const layerHtmlRender = (
       ),
     ),
     Layer.provideMerge(McpProviderSessions.layer),
-    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-html-render-" })),
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
     Layer.provideMerge(NodeServices.layer),
   );
 const layerTest = layerHtmlRender();
@@ -451,6 +453,7 @@ process.on("SIGTERM", () => {});
 const quit = () => { fs.writeFileSync(${JSON.stringify(exitRecord)}, "asked to close"); process.exit(0); };
 const reply = (message) => fs.writeSync(4, JSON.stringify(message) + "\\0");
 const results = {
+  "Target.createBrowserContext": { browserContextId: "context" },
   "Target.createTarget": { targetId: "page" },
   "Target.attachToTarget": { sessionId: "session" },
   "Runtime.evaluate": { result: { value: 100 } },
@@ -479,6 +482,40 @@ fs.createReadStream(null, { fd: 3 }).on("end", quit).on("data", (chunk) => {
         }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
       );
     },
+  );
+
+  it.live.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+    "names the configured data directory in browser setup advice",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "cox-html-browser-",
+        });
+        const baseDir = path.join(directory, "custom Cox data");
+        const executable = path.join(directory, "chrome-headless-shell");
+        yield* fileSystem.writeFileString(
+          executable,
+          `#!${process.execPath}
+const { writeSync } = require("node:fs");
+if (!process.argv.includes("--no-sandbox")) writeSync(2, ${JSON.stringify(PreviewBrowserHost.NO_SANDBOX_SIGNATURE)});
+process.exit(1);
+`,
+          { mode: 0o755 },
+        );
+
+        const error = yield* HtmlRender.HtmlRender.use((render) =>
+          render.preview({ html: "<p>x</p>" }).pipe(Effect.flip),
+        ).pipe(
+          Effect.provide(layerHtmlRender(executable, undefined, baseDir)),
+          Effect.provideService(HostProcess.Environment, {}),
+          Effect.provideService(HostProcess.UserId, 1000),
+        );
+
+        expect(error).toBeInstanceOf(PreviewBrowserHost.PreviewBrowserSandboxError);
+        expect(error.message).toContain(`browser setup --base-dir '${baseDir}'`);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   it.live("matches preview media queries and text colors to the requested appearance", (ctx) =>

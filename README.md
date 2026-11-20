@@ -167,6 +167,15 @@ Styled inline Markdown markers in the composer are editable: move into formatted
 edit its delimiters, then move outside to restore the formatted view. PR description task
 checkboxes save when the connected account and local connection both permit editing.
 
+Enable **Settings → Labs → Legacy → Context window indicator (legacy)** to show context usage
+in the composer once the provider reports it. The indicator is off by default.
+
+Use **Settings → Scheduled tasks** to run a prompt at an interval, at a fixed local time, once
+at a specified time, or on a webhook. Agents can create or update a task with `schedule_task`,
+list tasks with `list_scheduled_tasks`, and remove one with `delete_scheduled_task`. Pass a
+`scheduledTaskId` to update an existing task, or set `enabled: false` to pause it. Webhook
+URLs are loopback only.
+
 In **Settings → Threads → New projects**, enable **Clone into host folders** to default new
 clones to `<base directory>/<host>/<owner>/<repository>`, like ghq. It is off by default and
 does not move existing checkouts. Unsafe or local URLs keep the ordinary repository-folder

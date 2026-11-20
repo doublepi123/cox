@@ -8,6 +8,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProjectId,
+  retainedTerminalHistory,
   TerminalProviderInstanceNotFoundError,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -1143,7 +1144,8 @@ it.layer(
       const { manager, ptyAdapter } = yield* createManager();
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0]!;
-      const before = "café\t界🙂\u0007\u009c\u0085";
+      // Mojibake like "â€\u009d" (for ”) carries C1 code points that libghostty prints as text.
+      const before = "café\t界🙂\u0007\u009c\u0085 â€\u009d Ð\u0090 \u009e\u009f\u009b6n";
       const after = "e\u0301\r\n";
 
       process.emitData(before);
@@ -1165,10 +1167,10 @@ it.layer(
 
       process.emitData("prompt ");
       process.emitData("\u001b[?2026$p\u001b[?2026;2$y\u001b[>q\u001b[?u\u001b[?31u");
+      process.emitData("\u001b[=c\u001b[=0c\u001bZ");
       process.emitData("\u001bP$q m\u001b\\\u001bP1$r0m\u001b\\");
       process.emitData("\u001bP+q544e\u001b\\\u001bP1+r544e=1b\u001b\\");
-      process.emitData("\u0090$q m\u009c\u00901$r0m\u009c");
-      process.emitData("\u0090+q544e\u009c\u00901+r544e=1b\u009c");
+      process.emitData("\u001bP$qm\u0007hidden\u001b\\\u001bP+q544e\u0007hidden\u001b\\");
       process.emitData('\u001b[!p\u001b["p\u001b[4 q\u001b[u');
       process.emitData("done\n");
 
@@ -1181,17 +1183,56 @@ it.layer(
     }),
   );
 
+  // Ghostty executes 0x00-0x0F inside a CSI and ignores DEL and 0x10-0x1F; none change the query.
+  it.effect.each([
+    { name: "NUL in DA", data: "A\u001b[0\u0000cB", history: "AB" },
+    { name: "DEL in DA", data: "A\u001b[0\u007fcB", history: "AB" },
+    { name: "NUL in DECRQM", data: "A\u001b[?2026\u0000$pB", history: "AB" },
+    { name: "CR in DSR", data: "AB\u001b[5\rnC", history: "AB\rC" },
+    { name: "DLE in DSR", data: "AB\u001b[5\u0010nC", history: "ABC" },
+    // Ghostty reads non-ASCII there as UTF-8 bytes: it drops é and runs 0x80-0x9F as C1 controls.
+    { name: "é in DA", data: "A\u001b[0écB", history: "AB" },
+    { name: "DECID byte in a CSI", data: "A\u001b[嚠B", history: "A\ufffdB" },
+    {
+      name: "C1 DCS then C1 CSI in DSR",
+      data: "A\u001b[\u0090\u009b6nB",
+      history: "A\u001bP\u009cB",
+    },
+    { name: "ESC in DSR", data: "A\u001b[5\u001b[6nB", history: "AB" },
+  ])(
+    "strips a query with an embedded control but keeps what the terminal ran ($name)",
+    ({ data, history }) =>
+      Effect.gen(function* () {
+        const { manager, ptyAdapter } = yield* createManager();
+        yield* manager.open(openInput());
+        ptyAdapter.processes[0]!.emitData(data);
+        yield* manager.close({ threadId: "thread-1" });
+
+        const reopened = yield* manager.open(openInput());
+        const restored = reopened.history.replaceAll("\u0000", "");
+        expect(restored.split("\u001b[?1049h")[0]).toBe(history);
+      }),
+  );
+
+  // Ghostty aborts a CSI at a non-ASCII code point and prints it and what follows.
+  it.effect("keeps a CSI interrupted by non-ASCII text in history", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      yield* manager.open(openInput());
+      ptyAdapter.processes[0]!.emitData("A\u001b[界nB");
+      yield* manager.close({ threadId: "thread-1" });
+
+      const reopened = yield* manager.open(openInput());
+      expect(reopened.history.split("\u001b[?1049h")[0]).toBe("A\u001b[界nB");
+    }),
+  );
+
   it.effect.each([
     { name: "OSC", sequence: "\u001b]0;unfinished" },
     { name: "DCS", sequence: "\u001bPunfinished" },
     { name: "PM", sequence: "\u001b^unfinished" },
     { name: "APC", sequence: "\u001b_unfinished" },
     { name: "CSI", sequence: "\u001b[5" },
-    { name: "C1 OSC", sequence: "\u009d0;unfinished" },
-    { name: "C1 DCS", sequence: "\u0090unfinished" },
-    { name: "C1 PM", sequence: "\u009eunfinished" },
-    { name: "C1 APC", sequence: "\u009funfinished" },
-    { name: "C1 CSI", sequence: "\u009b5" },
   ])("keeps output after a cancelled $name sequence in history", ({ sequence }) =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
@@ -1210,6 +1251,55 @@ it.layer(
     }),
   );
 
+  it.effect.each([
+    {
+      name: "a new escape in the same chunk",
+      chunks: ["\u001b]0;unfinished\u001b[32m"],
+      expected: "\u001b]0;unfinished\u001b[32m",
+    },
+    {
+      name: "a new escape split at ESC",
+      chunks: ["\u001b]0;unfinished\u001b", "[32m"],
+      expected: "\u001b]0;unfinished\u001b[32m",
+    },
+    {
+      name: "consecutive escapes before a query",
+      chunks: ["\u001b]0;unfinished\u001b\u001b[?2026$p\u001b[32m"],
+      expected: "\u001b]0;unfinished\u001b\u001b[32m",
+    },
+    {
+      name: "an ESC-backslash terminator split across chunks",
+      chunks: ["\u001b]0;complete\u001b", "\\"],
+      expected: "\u001b]0;complete\u001b\\",
+    },
+  ])("replays output in a later attachment after OSC ends with $name", ({ chunks, expected }) =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const input = openInput();
+      yield* manager.open(input);
+      const process = ptyAdapter.processes[0];
+      assert.isDefined(process);
+      const outputSeen = yield* Deferred.make<void>();
+      const unsubscribe = yield* manager.subscribe((event) =>
+        event.type === "output" && event.data === "after\n"
+          ? Deferred.succeed(outputSeen, undefined).pipe(Effect.asVoid)
+          : Effect.void,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+      process.emitData("before ");
+      for (const chunk of chunks) process.emitData(chunk);
+      process.emitData("after\n");
+      yield* Deferred.await(outputSeen);
+
+      const events = yield* manager
+        .attachOutputStream(input, "reattached")
+        .pipe(Stream.take(1), Stream.runCollect);
+      expect(events).toMatchObject([
+        { type: "snapshot", snapshot: { history: `before ${expected}after\n` } },
+      ]);
+    }),
+  );
+
   it.effect("handles CSI and DCS query sequences split across output chunks", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
@@ -1224,15 +1314,30 @@ it.layer(
       process.emitData("\u001bP$q ");
       process.emitData("m\u001b");
       process.emitData("\\after ");
-      process.emitData("\u009b?3");
+      process.emitData("\u001b[?3");
       process.emitData("1uafter ");
-      process.emitData("\u0090+q544e");
-      process.emitData("\u009cafter\n");
+      process.emitData("\u001bP+q544e");
+      process.emitData("\u001b\\after\n");
 
       yield* manager.close({ threadId: "thread-1" });
 
       const reopened = yield* manager.open(openInput());
       assert.equal(reopened.history, "before after after after after\n");
+    }),
+  );
+
+  it.effect("keeps a decoded U+009C inside a stripped OSC query out of history", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0]!;
+      // libghostty receives UTF-8 (c2 9c), which is OSC payload; only ESC \ ends this string.
+      process.emitData("A\u001b]11;?\u009cHIDDEN\u001b\\B\n");
+      // A DCS string does end at U+009C there, so the text after it stays visible.
+      process.emitData("C\u001bP$qm\u009cSHOWN\u001b\\D\n");
+      yield* manager.close({ threadId: "thread-1" });
+
+      expect((yield* manager.open(openInput())).history).toMatch(/^AB\nCSHOWN\u001b\\D\n/);
     }),
   );
 
@@ -1250,10 +1355,10 @@ it.layer(
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
       const sequences = [
         { prefix: `\u001b]52;c;${"YWJj".repeat(16_384)}\u001b`, terminator: "\\" },
-        { prefix: `\u0090q${"?".repeat(65_536)}`, terminator: "\u009c" },
+        { prefix: `\u001bPq${"?".repeat(65_536)}`, terminator: "\u001b\\" },
       ];
-      const stripped = "\u001b]11;?\u0007\u0090$q m\u009c";
-      const preserved = "\u001b[31m\u009d52;c;YWJj\u009c";
+      const stripped = "\u001b]11;?\u0007\u001bP$q m\u001b\\";
+      const preserved = "\u001b[31m\u001b]52;c;YWJj\u0007";
       const expected =
         sequences.map(({ prefix, terminator }) => prefix + terminator + preserved).join("") +
         "done\n";
@@ -1588,6 +1693,32 @@ it.layer(
     }),
   );
 
+  it.effect("starts a $SHELL whose path contains a space", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        env: { SHELL: "/Users/Jane Doe/.local/bin/fish" },
+      }).pipe(Effect.provide(layerWithHostPlatform("darwin")));
+
+      yield* manager.open(openInput());
+
+      expect(ptyAdapter.spawnInputs.map((input) => input.shell)).toEqual([
+        "/Users/Jane Doe/.local/bin/fish",
+      ]);
+    }),
+  );
+
+  it.effect("starts a quoted $SHELL whose path contains a space and a dash", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        env: { SHELL: '"/opt/my -shell/fish" -l' },
+      }).pipe(Effect.provide(layerWithHostPlatform("darwin")));
+
+      yield* manager.open(openInput());
+
+      expect(ptyAdapter.spawnInputs.map((input) => input.shell)).toEqual(["/opt/my -shell/fish"]);
+    }),
+  );
+
   it.effect(
     "writes completion syntax for the fallback shell instead of the configured fish shell",
     () =>
@@ -1731,8 +1862,14 @@ it.layer(
         "pwsh.exe",
         "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       ]);
-      expect(ptyAdapter.spawnInputs[1]?.args).toEqual(["-NoLogo"]);
-      expect(ptyAdapter.spawnInputs[2]?.args).toEqual(["-NoLogo"]);
+      const powerShellArgs = [
+        "-NoLogo",
+        "-NoExit",
+        "-Command",
+        "[Console]::OutputEncoding = $OutputEncoding = [System.Text.UTF8Encoding]::new()",
+      ];
+      expect(ptyAdapter.spawnInputs[1]?.args).toEqual(powerShellArgs);
+      expect(ptyAdapter.spawnInputs[2]?.args).toEqual(powerShellArgs);
     }),
   );
 
@@ -2252,6 +2389,57 @@ it.layer(
 
       yield* Deferred.await(restored);
       expect(process.resizeCalls.at(-1)).toEqual({ cols: 130, rows: 15 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("sends bounded attach streams only the history the client retains", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const maxHistoryBytes = 9;
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0]!;
+      const published = yield* Deferred.make<void>();
+      const unsubscribe = yield* manager.subscribe((event) =>
+        event.type === "output" && event.data === "yz\n"
+          ? Deferred.succeed(published, undefined).pipe(Effect.asVoid)
+          : Effect.void,
+      );
+      process.emitData("aaaa\nx名😀");
+      process.emitData("yz\n");
+      yield* Deferred.await(published);
+      unsubscribe();
+
+      const full = yield* Stream.toPull(manager.attachOutputStream(openInput(), "full"));
+      const bounded = yield* Stream.toPull(
+        manager.attachOutputStream({ ...openInput(), maxHistoryBytes }, "bounded"),
+      );
+      const expectRetained = Effect.fnUntraced(function* () {
+        const [fullEvents, boundedEvents] = [yield* full, yield* bounded];
+        const fullSnapshot = fullEvents.at(-1);
+        if (fullSnapshot?.type !== "snapshot") throw new Error("Expected a full snapshot");
+        expect(boundedEvents.at(-1)).toEqual({
+          ...fullSnapshot,
+          snapshot: {
+            ...fullSnapshot.snapshot,
+            history: retainedTerminalHistory(fullSnapshot.snapshot.history, maxHistoryBytes),
+          },
+        });
+        return fullSnapshot.snapshot.history;
+      });
+
+      expect(yield* expectRetained()).toBe("aaaa\nx名😀yz\n");
+      // The cap starts inside 名, so the tail begins at the next code point.
+      expect(retainedTerminalHistory("aaaa\nx名😀yz\n", maxHistoryBytes)).toBe("😀yz\n");
+      process.emitData("after\n");
+      expect(yield* full).toEqual(yield* bounded);
+
+      yield* publishPastOutputBudget(manager, process);
+      expect(yield* expectRetained()).toMatch(/last\n$/);
+
+      process.emitExit({ exitCode: 0, signal: 0 });
+      expect(yield* full).toEqual(yield* bounded);
+      yield* manager.attachStream({ ...openInput(), restartIfNotRunning: true }, () => Effect.void);
+      yield* expectRetained();
     }).pipe(Effect.scoped),
   );
 

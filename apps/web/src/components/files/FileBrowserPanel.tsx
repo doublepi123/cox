@@ -1,3 +1,4 @@
+import { isMacPlatform } from "~/lib/utils";
 import { useTranslation } from "../../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import type {
@@ -350,11 +351,8 @@ export default function FileBrowserPanel({
         if (!item?.isDirectory() || !("isExpanded" in item)) continue;
         if ("expand" in item && pendingExpandedPaths.delete(path) && !item.isExpanded()) {
           restoring = true;
-          try {
-            item.expand();
-          } finally {
-            restoring = false;
-          }
+          item.expand();
+          restoring = false;
         }
         if (item.isExpanded()) {
           if (!expandedPaths.has(path)) {
@@ -533,7 +531,18 @@ export default function FileBrowserPanel({
       onWheel={stopFollowingReveal}
       onPointerDown={stopFollowingReveal}
       onTouchStart={stopFollowingReveal}
-      onKeyDown={stopFollowingReveal}
+      onKeyDown={(event) => {
+        stopFollowingReveal();
+        const modifier = isMacPlatform(navigator.platform) ? event.metaKey : event.ctrlKey;
+        if (!modifier || event.altKey || event.shiftKey || event.key.toLowerCase() !== "f") return;
+        const searchInput = event.currentTarget.querySelector<HTMLInputElement>(
+          'input[name="project-files-search"]',
+        );
+        if (!searchInput) return;
+        event.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }}
     >
       <div
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"

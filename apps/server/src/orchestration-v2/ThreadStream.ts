@@ -31,6 +31,7 @@ export function threadReplayEncodedBytes(items: ReadonlyArray<unknown>): number 
   for (const item of items) {
     const encoded = JSON.stringify(item);
     total += Buffer.byteLength(encoded ?? "", "utf8");
+    if (total > THREAD_RESUME_MAX_REPLAY_ENCODED_BYTES) break;
   }
   return total;
 }

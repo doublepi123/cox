@@ -52,6 +52,8 @@ function applyAcpRegistryPrepareResult(
   };
 }
 
+const ACP_REGISTRY_QUERY_LIMIT = 120;
+
 /**
  * Registry search and agent preparation. Owned by the dialog, which needs the
  * loading and preparing state for its layout and navigation, and rendered by
@@ -91,7 +93,11 @@ export function useAcpRegistrySearch(environmentId: EnvironmentId, enabled: bool
     prepareError,
     type: (text: string) => {
       setPrepareError(null);
-      setInput({ text, submitted: submittedQuery, typedAt: Date.now() });
+      setInput({
+        text: text.slice(0, ACP_REGISTRY_QUERY_LIMIT),
+        submitted: submittedQuery,
+        typedAt: Date.now(),
+      });
     },
     submit: () => {
       const trimmed = input.text.trim();
@@ -173,6 +179,7 @@ export function AcpRegistrySearchStep({
               aria-label={t("Search ACP Registry")}
               disabled={preparingId !== null}
               onChange={(event) => registry.type(event.currentTarget.value)}
+              maxLength={ACP_REGISTRY_QUERY_LIMIT}
               placeholder={t("Search agents…")}
               size="sm"
               type="search"

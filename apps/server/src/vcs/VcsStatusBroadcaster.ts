@@ -1,5 +1,6 @@
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -215,6 +216,7 @@ export class VcsStatusBroadcaster extends Context.Service<
     readonly refreshLocalStatus: (
       cwd: string,
     ) => Effect.Effect<VcsStatusLocalResult, GitManagerServiceError>;
+    readonly refreshAfterCheckout: (cwd: string) => Effect.Effect<void>;
     readonly refreshStatus: (
       cwd: string,
       options?: { readonly localOnly?: boolean },
@@ -407,7 +409,30 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.refreshLocalStatus",
   )(function* (rawCwd) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
-    return yield* refreshLocalStatusCore(cwd);
+    const local = yield* refreshLocalStatusCore(cwd);
+    const cached = yield* getCachedStatus(cwd);
+    // Divergence is local Git data; a slow forge lookup must not delay turn-end updates.
+    if (cached?.remote?.value?.hasUpstream) {
+      const divergence = yield* workflow.upstreamDivergence(cwd);
+      const latest = yield* getCachedStatus(cwd);
+      if (divergence && latest?.remote?.value && latest.remote.branch === divergence.refName) {
+        const value = {
+          ...latest.remote.value,
+          aheadCount: divergence.aheadCount,
+          behindCount: divergence.behindCount,
+        };
+        yield* updateCachedRemoteStatus(
+          cwd,
+          {
+            branch: divergence.refName,
+            value,
+            fingerprint: fingerprintStatusPart(value),
+          },
+          { publish: true },
+        );
+      }
+    }
+    return local;
   });
 
   const readRemoteStatus = Effect.fn("VcsStatusBroadcaster.readRemoteStatus")(function* (
@@ -417,7 +442,18 @@ export const make = Effect.gen(function* () {
     const branch = yield* workflow.currentBranch(cwd);
     // GitManager's remote TTL cache is keyed by cwd, not the checked-out branch.
     yield* workflow.invalidateRemoteStatus(cwd);
-    const value = yield* workflow.remoteStatus({ cwd }, options);
+    const previousRemote = (yield* getCachedStatus(cwd))?.remote;
+    const remote = yield* workflow.remoteStatus({ cwd }, options);
+    const latest = yield* getCachedStatus(cwd);
+    // An overlapping turn refresh and fetch can both move divergence during the forge lookup.
+    const refreshed =
+      remote?.hasUpstream && latest?.remote !== previousRemote && latest?.remote?.branch === branch
+        ? yield* workflow.upstreamDivergence(cwd)
+        : null;
+    const value =
+      remote && refreshed?.refName === branch
+        ? { ...remote, aheadCount: refreshed.aheadCount, behindCount: refreshed.behindCount }
+        : remote;
     const currentBranch = yield* workflow.currentBranch(cwd);
     const cached = yield* getCachedStatus(cwd);
     if (branch !== currentBranch || cached?.local?.value.refName !== currentBranch) {
@@ -547,8 +583,7 @@ export const make = Effect.gen(function* () {
         yield* workflow.invalidateStatus(cwd);
         const remoteRead = yield* readRemoteStatus(cwd, { refreshUpstream });
         // Fetch can move the base used for local Changes totals.
-        const local = yield* workflow.localStatus({ cwd });
-        yield* updateCachedLocalStatus(cwd, local, { publish: true });
+        yield* refreshLocalStatusCore(cwd);
         // Without a fetch, the cached behind count cannot justify an automatic pull.
         const pulled = refreshUpstream ? yield* maybeAutoPull(cwd, remoteRead, [rawCwd]) : null;
         if (pulled !== null) return mergeGitStatusParts(pulled.local, pulled.remote);
@@ -777,11 +812,73 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  type SharedRefresh = Deferred.Deferred<VcsStatusResult, GitManagerServiceError>;
+  const queuedRefreshesRef = yield* Ref.make(new Map<string, SharedRefresh | null>());
+
+  const runQueuedRefreshes = Effect.fn("VcsStatusBroadcaster.runQueuedRefreshes")(function* (
+    rawCwd: string,
+    first: SharedRefresh,
+  ) {
+    let next: SharedRefresh | null = first;
+    while (next !== null) {
+      yield* Deferred.into(refreshStatus(rawCwd), next);
+      next = yield* Ref.modify(queuedRefreshesRef, (queued) => {
+        const followUp = queued.get(rawCwd) ?? null;
+        const nextQueued = new Map(queued);
+        if (followUp === null) {
+          nextQueued.delete(rawCwd);
+        } else {
+          nextQueued.set(rawCwd, null);
+        }
+        return [followUp, nextQueued] as const;
+      });
+    }
+  });
+
+  const shareQueuedRefreshStatus: VcsStatusBroadcaster["Service"]["refreshStatus"] = Effect.fn(
+    "VcsStatusBroadcaster.shareQueuedRefreshStatus",
+  )(function* (rawCwd, options) {
+    if (options?.localOnly) return yield* refreshStatus(rawCwd, options);
+    const requested = yield* Deferred.make<VcsStatusResult, GitManagerServiceError>();
+    const shared = yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const followUp = yield* Ref.modify(
+          queuedRefreshesRef,
+          (queued): readonly [SharedRefresh | undefined, Map<string, SharedRefresh | null>] => {
+            if (!queued.has(rawCwd)) return [undefined, new Map(queued).set(rawCwd, null)];
+            const followUp = queued.get(rawCwd) ?? requested;
+            return [followUp, new Map(queued).set(rawCwd, followUp)];
+          },
+        );
+        if (followUp !== undefined) return followUp;
+        yield* runQueuedRefreshes(rawCwd, requested).pipe(
+          Effect.interruptible,
+          Effect.forkIn(broadcasterScope),
+        );
+        return requested;
+      }),
+    );
+    return yield* Deferred.await(shared);
+  });
+
   return VcsStatusBroadcaster.of({
     streamBranchChanges: Stream.fromPubSub(branchChangesPubSub),
     getStatus,
     refreshLocalStatus,
-    refreshStatus,
+    refreshAfterCheckout: Effect.fn("VcsStatusBroadcaster.refreshAfterCheckout")(
+      function* (rawCwd) {
+        const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
+        const localDone = yield* Deferred.make<void>();
+        yield* refreshLocalStatusCore(cwd).pipe(
+          Effect.ensuring(Deferred.succeed(localDone, undefined)),
+          Effect.andThen(shareQueuedRefreshStatus(rawCwd)),
+          Effect.ignoreCause({ log: true }),
+          Effect.forkIn(broadcasterScope),
+        );
+        yield* Deferred.await(localDone);
+      },
+    ),
+    refreshStatus: shareQueuedRefreshStatus,
     refreshPullRequestStatus,
     streamStatus,
   });

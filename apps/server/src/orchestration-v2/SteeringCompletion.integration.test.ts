@@ -1054,6 +1054,11 @@ it.effect("starts a steer that missed the turn on the saved next-turn selection"
         assert.deepEqual(steered, []);
         assert.equal(started.length, 2);
         assert.equal(started[1]?.message.messageId, MessageId.make("message:steer"));
+        const item = projection.turnItems.find(
+          (candidate) => candidate.type === "user_message" && candidate.text === "late steer",
+        );
+        assert.equal(item?.runId, started[1]?.runId);
+        assert.equal(Math.floor((item?.ordinal ?? 0) / 1_000_000), started[1]?.runOrdinal);
         assert.deepEqual(started[1]?.modelSelection, composerSelection);
         assert.deepEqual(projection.thread.modelSelection, composerSelection);
       }).pipe(Effect.provide(layer));

@@ -1,10 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import { splitFilePathPosition } from "@t3tools/shared/fileLinks";
 
-import {
-  shouldOpenMarkdownFileLinkInBrowserByDefault,
-  type MarkdownFileLinkMeta,
-} from "../../markdown-links";
+import type { MarkdownFileLinkMeta } from "../../markdown-links";
 
 export function canUseMarkdownFileShellActions(environmentId: EnvironmentId | null): boolean {
   return environmentId !== null;
@@ -44,14 +41,9 @@ export function markdownFileCopyMenuItems({
 }
 
 export function shouldUseMarkdownFileBrowserPrimaryAction(input: {
-  iconPath: string;
   canOpenInEditor: boolean;
   canOpenInBrowser: boolean;
   canOpenInPanel: boolean;
 }): boolean {
-  return (
-    input.canOpenInBrowser &&
-    (shouldOpenMarkdownFileLinkInBrowserByDefault(input.iconPath) ||
-      (!input.canOpenInEditor && !input.canOpenInPanel))
-  );
+  return input.canOpenInBrowser && !input.canOpenInEditor && !input.canOpenInPanel;
 }

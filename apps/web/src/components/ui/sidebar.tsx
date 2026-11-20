@@ -19,6 +19,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useResizeDrag } from "~/hooks/useResizeDrag";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
+import { useClientSettings } from "~/hooks/useSettings";
 import {
   getLocalStorageItem,
   setLocalStorageItem,
@@ -291,6 +292,10 @@ function Sidebar({
   const { t } = useTranslation();
   const { isMobile, state, openMobile, setOpenMobile, setMobileSheetElement } = useSidebar();
   const coarsePointer = useMediaQuery({ pointer: "coarse" });
+  const panelAnimationDurationMs = useClientSettings(
+    (settings) => settings.panelAnimationDurationMs,
+  );
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const offcanvasCollapsed = !isMobile && collapsible === "offcanvas" && state === "collapsed";
   useHistoryBackDismiss(isMobile && coarsePointer && collapsible !== "none" && openMobile, () =>
     setOpenMobile(false),
@@ -322,6 +327,9 @@ function Sidebar({
         <Sheet onOpenChange={setOpenMobile} open={openMobile}>
           <SheetPopup
             ref={setMobileSheetElement}
+            {...(panelAnimationDurationMs === 0 || prefersReducedMotion
+              ? { transitionDurationMs: 0 }
+              : {})}
             className={className}
             variant="sidebar"
             data-mobile="true"

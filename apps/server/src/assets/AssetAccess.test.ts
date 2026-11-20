@@ -26,6 +26,7 @@ import { vi } from "vite-plus/test";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import { makeFakeWslHost } from "../testUtils/fakeWsl.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
@@ -566,6 +567,35 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+    "resolves a Windows drive media path under WSL to where wslpath mounts it",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { mountRoot, underWsl } = yield* makeFakeWslHost;
+        const workspaceRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-media-wsl-root-" });
+        const filePath = path.join(mountRoot, "c", "Users", "me", "Pictures", "shot.png");
+        yield* fs.makeDirectory(path.dirname(filePath), { recursive: true });
+        yield* fs.writeFile(filePath, screenshotPng);
+        const canonicalFile = yield* fs.realPath(filePath);
+        const drivePath = "C:\\Users\\me\\Pictures\\shot.png";
+
+        for (const resource of [
+          { _tag: "media-file", threadId: ThreadId.make("thread-1"), path: drivePath },
+          { _tag: "draft-workspace-file", cwd: workspaceRoot, path: drivePath },
+        ] as const) {
+          const result = yield* underWsl(issueAssetUrl({ resource, workspaceRoot }));
+          expect(result.imageDimensions).toEqual({ width: 390, height: 844 });
+          const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+          const separator = suffix.indexOf("/");
+          expect(
+            yield* resolveAsset(suffix.slice(0, separator), suffix.slice(separator + 1)),
+          ).toMatchObject({ kind: "file", path: canonicalFile, mimeType: "image/png" });
+        }
+      }).pipe(Effect.provide(layerTest)),
+  );
+
   // Resolving `file://attacker.test/share/cat.jpg` from an agent's markdown sent the
   // Windows user's NTLM credentials to attacker.test.
   it.effect("never resolves a network media path outside the thread's project", () =>
@@ -968,6 +998,51 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect.skipIf(!symlinksSupported)(
+    "validates canonical sibling assets for previews in dot-prefixed folders",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped();
+        const reportsDirectory = path.join(root, ".reports");
+        yield* fs.makeDirectory(path.join(reportsDirectory, ".cache"), { recursive: true });
+        yield* fs.makeDirectory(path.join(root, ".secret"));
+        const page = path.join(reportsDirectory, "report.html");
+        yield* fs.writeFileString(page, "<!doctype html>");
+        const dependencies = [
+          { name: "linked.css", target: path.join(root, ".secret", "key.css"), allowed: false },
+          {
+            name: "inner.css",
+            target: path.join(reportsDirectory, ".cache", "hidden.css"),
+            allowed: false,
+          },
+          { name: "shared.css", target: path.join(root, "shared.css"), allowed: true },
+        ];
+        for (const { name, target } of dependencies) {
+          yield* fs.writeFileString(target, "fixture");
+          yield* fs.symlink(target, path.join(reportsDirectory, name));
+        }
+        const result = yield* issueAssetUrl({
+          resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: page },
+          workspaceRoot: root,
+        });
+        const suffix = result.relativeUrl.slice(ASSET_ROUTE_PREFIX.length + 1);
+        const token = suffix.slice(0, suffix.indexOf("/"));
+        for (const { name, target, allowed } of dependencies) {
+          const resolved = yield* resolveAsset(token, name);
+          if (allowed) {
+            expect(resolved).toEqual({
+              kind: "file",
+              path: yield* fs.realPath(target),
+            });
+          } else {
+            expect(resolved).toBeNull();
+          }
+        }
+      }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("issues workspace URLs that resolve the entry file and sibling assets", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -1023,6 +1098,33 @@ describe("AssetAccess", () => {
       expect(yield* resolveAsset(token, "../secret.txt")).toBeNull();
       expect(yield* resolveAsset(token, ".env")).toBeNull();
       expect(yield* resolveAsset(`${token}tampered`, "report.html")).toBeNull();
+
+      const reportsDirectory = path.join(root, ".reports");
+      yield* fileSystem.makeDirectory(path.join(reportsDirectory, ".cache"), { recursive: true });
+      const dotHtmlPath = path.join(reportsDirectory, "report.html");
+      const dotCssPath = path.join(reportsDirectory, "report.css");
+      yield* fileSystem.writeFileString(dotHtmlPath, "<h1>Quarterly report</h1>");
+      yield* fileSystem.writeFileString(dotCssPath, "body { color: red; }");
+      yield* fileSystem.writeFileString(path.join(reportsDirectory, ".cache", "hidden.css"), "");
+      const dotUrl = yield* issueAssetUrl({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread-1"),
+          path: dotHtmlPath,
+        },
+        workspaceRoot: root,
+      });
+      const dotSuffix = dotUrl.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const dotToken = dotSuffix.slice(0, dotSuffix.indexOf("/"));
+      expect(yield* resolveAsset(dotToken, "report.html")).toEqual({
+        kind: "file",
+        path: yield* fileSystem.realPath(dotHtmlPath),
+      });
+      expect(yield* resolveAsset(dotToken, "report.css")).toEqual({
+        kind: "file",
+        path: yield* fileSystem.realPath(dotCssPath),
+      });
+      expect(yield* resolveAsset(dotToken, ".cache/hidden.css")).toBeNull();
       for (const extension of [
         "odt",
         "ods",

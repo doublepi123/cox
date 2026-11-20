@@ -22,6 +22,7 @@ export interface TurnItemPositionStoreV2Shape {
     readonly turnItemId: TurnItemId;
     readonly runId: RunId | null;
     readonly runOrdinal?: number;
+    readonly moveToRun?: boolean;
   }) => Effect.Effect<number, TurnItemPositionStoreError>;
   readonly normalize: (
     item: OrchestrationV2TurnItem,
@@ -42,17 +43,18 @@ export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlCli
     const allocate: TurnItemPositionStoreV2Shape["allocate"] =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(
-        function* ({ threadId, turnItemId, runId, runOrdinal: suppliedRunOrdinal }) {
+        function* ({ threadId, turnItemId, runId, runOrdinal: suppliedRunOrdinal, moveToRun }) {
           const existing = yield* sql<{ readonly ordinal: number }>`
           SELECT ordinal
           FROM orchestration_v2_turn_item_positions
           WHERE thread_id = ${threadId} AND turn_item_id = ${turnItemId}
           LIMIT 1
         `;
-          if (existing[0] !== undefined) return existing[0].ordinal;
+          const current = existing[0]?.ordinal;
+          if (current !== undefined && !moveToRun) return current;
 
           const runRows =
-            runId === null
+            runId === null || suppliedRunOrdinal !== undefined
               ? []
               : yield* sql<{ readonly ordinal: number }>`
                 SELECT ordinal
@@ -63,6 +65,12 @@ export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlCli
           const runOrdinal = suppliedRunOrdinal ?? runRows[0]?.ordinal ?? null;
           const lowerBound = runOrdinal === null ? 0 : runOrdinal * 1_000_000;
           const upperBound = runOrdinal === null ? 999_999 : lowerBound + 999_999;
+          if (
+            current !== undefined &&
+            (runOrdinal === null || (current >= lowerBound && current <= upperBound))
+          ) {
+            return current;
+          }
           yield* sql`
           INSERT INTO orchestration_v2_turn_item_positions (thread_id, turn_item_id, ordinal)
           SELECT
@@ -73,7 +81,7 @@ export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlCli
           WHERE thread_id = ${threadId}
             AND ordinal >= ${lowerBound}
             AND ordinal <= ${upperBound}
-          ON CONFLICT(thread_id, turn_item_id) DO NOTHING
+          ON CONFLICT(thread_id, turn_item_id) DO UPDATE SET ordinal = excluded.ordinal
         `;
           const rows = yield* sql<{ readonly ordinal: number }>`
           SELECT ordinal
@@ -109,6 +117,7 @@ export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlCli
           threadId: item.threadId,
           turnItemId: item.id,
           runId: item.runId,
+          moveToRun: item.type === "user_message" && item.status !== "pending",
           ...(runOrdinal === undefined ? {} : { runOrdinal }),
         }).pipe(Effect.map((ordinal) => (item.ordinal === ordinal ? item : { ...item, ordinal })));
       }),

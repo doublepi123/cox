@@ -3,10 +3,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import type { VcsStatusLocalResult } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as FileSystem from "effect/FileSystem";
+import * as Logger from "effect/Logger";
+import * as Path from "effect/Path";
+import * as Stream from "effect/Stream";
 
+import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../config.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
 import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -55,4 +63,128 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
       ),
     ),
   );
+
+  it.effect("polls a removed worktree as a non-repository without invoking Git or warning", () => {
+    const processCalls: VcsProcess.VcsProcessInput[] = [];
+    const startPoll = Deferred.makeUnsafe<void>();
+    const snapshot = Deferred.makeUnsafe<VcsStatusLocalResult>();
+    const pollResult = Deferred.makeUnsafe<VcsStatusLocalResult | "poll warning">();
+    const logger = Logger.make(({ logLevel, message }) => {
+      if (logLevel === "Warn" && [message].flat()[0] === "VCS remote status refresh failed") {
+        Deferred.doneUnsafe(pollResult, Effect.succeed("poll warning"));
+      }
+    });
+    const processLayer = Layer.effect(
+      VcsProcess.VcsProcess,
+      Effect.gen(function* () {
+        const process = yield* VcsProcess.VcsProcess;
+        return VcsProcess.VcsProcess.of({
+          run: (input) => {
+            processCalls.push(input);
+            return process.run(input);
+          },
+        });
+      }),
+    ).pipe(Layer.provide(VcsProcess.layer));
+    const broadcasterLayer = VcsStatusBroadcaster.layer.pipe(
+      Layer.provide(
+        GitWorkflowService.layer.pipe(
+          Layer.provide(VcsDriverRegistry.layer),
+          Layer.provide(GitVcsDriver.layer),
+          Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "cox-removed-wt-" })),
+          Layer.provide(
+            Layer.mock(GitManager.GitManager)({
+              localStatus: () =>
+                Effect.succeed({
+                  isRepo: true,
+                  hasPrimaryRemote: false,
+                  isDefaultRef: false,
+                  refName: "linked",
+                  hasWorkingTreeChanges: false,
+                  workingTree: { files: [], insertions: 0, deletions: 0 },
+                }),
+              invalidateLocalStatus: () => Effect.void,
+              invalidateRemoteStatus: () => Effect.void,
+            }),
+          ),
+        ),
+      ),
+      Layer.provide(Layer.mock(BackgroundPolicy.BackgroundPolicy)({})),
+      Layer.provide(
+        Layer.succeed(
+          VcsStatusBroadcaster.VcsAutomaticFetchInterval,
+          Deferred.await(startPoll).pipe(Effect.as(Duration.seconds(30))),
+        ),
+      ),
+      Layer.provideMerge(processLayer),
+    );
+
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parent = yield* fs.makeTempDirectoryScoped({ prefix: "cox-removed-wt-" });
+      const repo = yield* fs.realPath(parent);
+      const cwd = path.join(repo, "linked");
+      const vcsProcess = yield* VcsProcess.VcsProcess;
+      const git = (args: readonly string[], stdin?: string) =>
+        vcsProcess.run({
+          operation: "test.setupWorktree",
+          command: "git",
+          cwd: repo,
+          args,
+          ...(stdin === undefined ? {} : { stdin }),
+        });
+      yield* git(["init", "--template=", "-b", "main"]);
+      const tree = (yield* git(["mktree"], "")).stdout.trim();
+      const commit = (yield* git([
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit-tree",
+        tree,
+        "-m",
+        "init",
+      ])).stdout.trim();
+      yield* git(["update-ref", "refs/heads/main", commit]);
+      yield* git(["worktree", "add", "-b", "linked", cwd]);
+
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      yield* broadcaster.streamStatus({ cwd }).pipe(
+        Stream.runForEach((event) => {
+          switch (event._tag) {
+            case "snapshot":
+              return Deferred.succeed(snapshot, event.local);
+            case "localUpdated":
+              return Deferred.succeed(pollResult, event.local);
+            case "remoteUpdated":
+              return Effect.void;
+          }
+        }),
+        Effect.forkScoped,
+      );
+      assert.include(yield* Deferred.await(snapshot), { isRepo: true, refName: "linked" });
+      assert.include(
+        processCalls.filter((input) => input.cwd === cwd).map((input) => input.operation),
+        "GitVcsDriver.detectRepository",
+      );
+
+      yield* git(["worktree", "remove", cwd]);
+      const postRemoval = processCalls.length;
+      yield* Deferred.succeed(startPoll, undefined);
+
+      assert.include(yield* Deferred.await(pollResult), {
+        isRepo: false,
+        refName: null,
+        hasWorkingTreeChanges: false,
+      });
+      assert.deepStrictEqual(
+        processCalls
+          .slice(postRemoval)
+          .filter((input) => input.cwd === cwd)
+          .map((input) => input.operation),
+        [],
+      );
+    }).pipe(Effect.provide(Layer.merge(broadcasterLayer, Logger.layer([logger]))), Effect.scoped);
+  });
 });

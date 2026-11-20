@@ -565,9 +565,10 @@ function headBranchProbe(
   provider: SourceControlProvider.SourceControlProvider["Service"],
   headSelectors: ReadonlyArray<string>,
   state: "open" | "all",
+  ownerHeadSelector?: string,
 ) {
   return (
-    provider.headBranchProbe?.({ headSelectors, state }) ?? {
+    provider.headBranchProbe?.({ headSelectors, state, ownerHeadSelector }) ?? {
       headSelectors,
       limit: state === "open" ? 1 : 20,
     }
@@ -629,6 +630,11 @@ function toResolvedPullRequest(pr: {
     headBranch: pr.headRefName,
     state: pr.state ?? "open",
   };
+}
+
+function pullRequestHostOptions(url: string): { readonly host?: string } {
+  const host = URL.parse(url)?.host;
+  return host ? { host } : {};
 }
 
 function shouldPreferSshRemote(url: string | null): boolean {
@@ -928,6 +934,7 @@ export const make = Effect.gen(function* () {
       const cloneUrls = yield* (yield* sourceControlProvider(cwd)).getRepositoryCloneUrls({
         cwd,
         repository: repositoryNameWithOwner,
+        ...pullRequestHostOptions(pullRequest.url),
       });
       const originRemoteUrl = yield* gitCore.readConfigValue(cwd, "remote.origin.url");
       const remoteUrl = shouldPreferSshRemote(originRemoteUrl) ? cloneUrls.sshUrl : cloneUrls.url;
@@ -1041,6 +1048,7 @@ export const make = Effect.gen(function* () {
       const cloneUrls = yield* (yield* sourceControlProvider(cwd)).getRepositoryCloneUrls({
         cwd,
         repository: repositoryNameWithOwner,
+        ...pullRequestHostOptions(pullRequest.url),
       });
       const originRemoteUrl = yield* gitCore.readConfigValue(cwd, "remote.origin.url");
       const remoteUrl = shouldPreferSshRemote(originRemoteUrl) ? cloneUrls.sshUrl : cloneUrls.url;
@@ -1235,7 +1243,7 @@ export const make = Effect.gen(function* () {
         ) {
           return { latest: null, headContext };
         }
-        const latest = yield* findLatestPrForHeadContext(cwd, headContext);
+        const latest = yield* findLatestPrForHeadContext(cwd, headContext, details.defaultBranch);
         if (latest !== null) yield* noteLookupState(latest);
         return { latest, headContext };
       });
@@ -1574,7 +1582,9 @@ export const make = Effect.gen(function* () {
         : null;
     const remoteAliasHeadSelector =
       remoteName && headBranch.length > 0 ? `${remoteName}:${headBranch}` : null;
-    const shouldProbeRemoteOwnedSelectors = isCrossRepository || isForeignRemote;
+    const isPullRequestWorktree = /^t3code[/-]pr-\d+[/-]/u.test(details.branch);
+    const shouldProbeRemoteOwnedSelectors =
+      isCrossRepository || isForeignRemote || isPullRequestWorktree;
 
     const headSelectors: string[] = [];
     if (isCrossRepository && shouldProbeRemoteOwnedSelectors) {
@@ -1764,7 +1774,8 @@ export const make = Effect.gen(function* () {
     if (
       headContext.headBranch === details.branch ||
       !upstreamHeadIsDefault ||
-      headContext.isCrossRepository
+      /^t3code[/-]pr-\d+[/-]/u.test(details.branch) ||
+      (headContext.isCrossRepository && headContext.remoteName !== "origin")
     ) {
       return { headContext, lookup: true };
     }
@@ -1831,9 +1842,10 @@ export const make = Effect.gen(function* () {
       | "headRepositoryOwnerLogin"
       | "isCrossRepository"
     >,
+    ownerHeadSelector?: string,
   ) {
     const provider = yield* sourceControlProvider(cwd);
-    const probe = headBranchProbe(provider, headContext.headSelectors, "open");
+    const probe = headBranchProbe(provider, headContext.headSelectors, "open", ownerHeadSelector);
     for (const headSelector of probe.headSelectors) {
       const pullRequests = yield* provider.listChangeRequests({
         cwd,
@@ -1861,11 +1873,20 @@ export const make = Effect.gen(function* () {
   const findLatestPrForHeadContext = Effect.fn("findLatestPrForHeadContext")(function* (
     cwd: string,
     headContext: BranchHeadContext,
+    defaultBranch: string | null,
   ) {
     const parsedByNumber = new Map<number, PullRequestInfo>();
 
     const provider = yield* sourceControlProvider(cwd);
-    const probe = headBranchProbe(provider, headContext.headSelectors, "all");
+    const probe = headBranchProbe(
+      provider,
+      headContext.headSelectors,
+      "all",
+      headContext.headBranch === defaultBranch && headContext.headRepositoryOwnerLogin
+        ? `${headContext.headRepositoryOwnerLogin}:${defaultBranch}`
+        : undefined,
+    );
+    let pageWasFull = false;
     for (const headSelector of probe.headSelectors) {
       const pullRequests = yield* provider.listChangeRequests({
         cwd,
@@ -1873,6 +1894,7 @@ export const make = Effect.gen(function* () {
         state: "all",
         limit: probe.limit,
       });
+      pageWasFull ||= pullRequests.length >= probe.limit;
 
       for (const pr of pullRequests.map(toPullRequestInfo)) {
         if (!matchesBranchHeadContext(pr, headContext)) {
@@ -1887,6 +1909,17 @@ export const make = Effect.gen(function* () {
     const latestOpenPr = parsed.find((pr) => pr.state === "open");
     if (latestOpenPr) {
       return latestOpenPr;
+    }
+    // Forks reusing the head name can fill the page before the branch's own open PR.
+    if (pageWasFull) {
+      const openPr = yield* findOpenPr(
+        cwd,
+        headContext,
+        headContext.headRepositoryOwnerLogin
+          ? `${headContext.headRepositoryOwnerLogin}:${headContext.headBranch}`
+          : undefined,
+      );
+      if (openPr) return openPr;
     }
     return parsed[0] ?? null;
   });
@@ -2366,6 +2399,16 @@ export const make = Effect.gen(function* () {
         cwd,
         baseRefName: baseBranch,
         headSelector: headContext.preferredHeadSelector,
+        ...(provider.kind === "gitlab" &&
+        headContext.isCrossRepository &&
+        headContext.headRepositoryNameWithOwner
+          ? {
+              source: {
+                repository: headContext.headRepositoryNameWithOwner,
+                refName: headContext.headBranch,
+              },
+            }
+          : {}),
         title: generated.title,
         bodyFile,
       })

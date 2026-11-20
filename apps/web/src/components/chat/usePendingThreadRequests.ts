@@ -24,6 +24,7 @@ import { useRef, useState, type RefObject, type SetStateAction } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type DraftId, useComposerDraftStore } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
+import { previewAnnotationContextRecord } from "../../lib/composerContextRecords";
 import { getUploadedAttachments, useAttachmentUploadStore } from "../../lib/attachmentUploadQueue";
 import {
   buildPendingUserInputAnswers,
@@ -50,6 +51,8 @@ import { readEnvironmentScope } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
+import { toastManager } from "../ui/toast";
+
 import type { ChatComposerHandle } from "./ChatComposer";
 
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
@@ -306,6 +309,10 @@ export function usePendingThreadRequests(input: {
     if (userInputResponsesInFlight.current.has(responseKey)) return;
     const attachmentsByQuestionId = new Map<string, UserInputAttachments[string]>();
     const providerAnswers = { ...answers };
+    const previewAnnotations = (
+      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.previewAnnotations ??
+      []
+    ).map((annotation) => previewAnnotationContextRecord(annotation));
     for (const question of pendingInput.questions) {
       const target = questionAttachmentDraftId(
         environmentId,
@@ -318,6 +325,7 @@ export function usePendingThreadRequests(input: {
       providerAnswers[question.id] = projectPendingUserInputAnswer(
         answers[question.id],
         draft?.threadContexts ?? [],
+        previewAnnotations,
       );
       const attachments = draft ? [...draft.images, ...draft.files] : [];
       if (attachments.length === 0) continue;
@@ -403,6 +411,12 @@ export function usePendingThreadRequests(input: {
     const nextPrompt = carryDisplacedCustomAnswerIntoPrompt(currentPrompt, displacedAnswer);
     if (nextPrompt !== currentPrompt) {
       setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+      toastManager.add({
+        type: "info",
+        title: "Your typed text was set aside",
+        description: "It will be back in the composer once the question is answered.",
+        data: { threadRef: activeThreadId ? { environmentId, threadId: activeThreadId } : null },
+      });
       if (activeThreadId) {
         const store = useComposerDraftStore.getState();
         const questionTarget = questionAttachmentDraftId(

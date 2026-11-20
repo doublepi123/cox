@@ -19,7 +19,7 @@ it("focuses the touch panel without opening the search keyboard", async () => {
       <input placeholder="Search files" />
     </RightPanelSheet>,
   );
-  await expect.element(page.getByRole("dialog")).toHaveFocus();
+  await expect.element(page.getByRole("dialog", { name: "Workspace panel" })).toHaveFocus();
   await expect.element(page.getByPlaceholder("Search files")).not.toHaveFocus();
   await page.getByPlaceholder("Search files").click();
   await expect.element(page.getByPlaceholder("Search files")).toHaveFocus();

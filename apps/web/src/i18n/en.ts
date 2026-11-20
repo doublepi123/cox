@@ -4070,6 +4070,8 @@ export const en = {
     "Open linked pull requests first. Otherwise, open Changes for edits to at least 3 files or 50 lines.",
   "Open links in": "Open links in",
   "Open pull requests in Cox": "Open pull requests in Cox",
+  "Open pull requests and changes panels proactively":
+    "Open pull requests and changes panels proactively",
   "Open source licenses": "Open source licenses",
   "Optional marker shown in the picker.": "Optional marker shown in the picker.",
   Other: "Other",

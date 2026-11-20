@@ -46,7 +46,7 @@ describe("CommandPalette open intents", () => {
     await expect.element(input).toHaveValue("acme");
   });
 
-  it("opens a searched project's latest listed thread, not a newer subagent", async () => {
+  it("opens a searched project's latest listed thread when newer threads are parked or hidden", async () => {
     const environmentId = EnvironmentId.make("local");
     const projectId = ProjectId.make("acme");
     const parentId = ThreadId.make("parent");
@@ -70,6 +70,20 @@ describe("CommandPalette open intents", () => {
           environmentId,
           projectId,
           latestUserMessageAt: "2026-03-02T00:00:00.000Z",
+        }),
+        makeThreadFixture({
+          id: ThreadId.make("settled"),
+          environmentId,
+          projectId,
+          latestUserMessageAt: "2026-03-05T00:00:00.000Z",
+          settledOverride: "settled",
+        }),
+        makeThreadFixture({
+          id: ThreadId.make("snoozed"),
+          environmentId,
+          projectId,
+          latestUserMessageAt: "2026-03-06T00:00:00.000Z",
+          snoozedUntil: "2099-01-01T00:00:00.000Z",
         }),
         makeThreadFixture({
           id: ThreadId.make("subagent"),

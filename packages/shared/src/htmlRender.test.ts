@@ -128,6 +128,11 @@ describe("readHtmlRenderImageRequest", () => {
       src: "https://example.com/a.png",
       name: "Image",
     });
+    const boundaryImage = readHtmlRenderImageRequest(
+      image({ src: "https://example.com/a.png", name: "a".repeat(199) + "😀" }),
+    );
+    expect(boundaryImage?.name.isWellFormed()).toBe(true);
+    expect(boundaryImage?.name).toBe("a".repeat(199));
     expect(readHtmlRenderImageRequest(image({ src: "javascript:alert(1)" }))).toBeUndefined();
     expect(readHtmlRenderImageRequest(image({ src: "data:text/html,<p>" }))).toBeUndefined();
     expect(readHtmlRenderImageRequest(image({ src: "blob:null/1" }))).toBeUndefined();
@@ -144,6 +149,16 @@ describe("htmlRenderFromToolItem", () => {
       ["t3-code-thread_1_html_render", JSON.stringify(result)],
       ["html_render", result],
       ["execute", JSON.stringify(result)],
+      [
+        "t3-code.html_render",
+        {
+          output:
+            "Command exited with code 0.\n\nCommand output:\n" +
+            JSON.stringify({ content: [], structuredContent: result, isError: false }) +
+            "\r\n",
+          exit_code: 0,
+        },
+      ],
       [
         "t3-code.html_render",
         {

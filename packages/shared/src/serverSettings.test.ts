@@ -459,6 +459,15 @@ describe("serverSettings helpers", () => {
       otlpMetricsUrl: "http://localhost:4318/v1/metrics",
       otlpLogsUrl: "http://localhost:4318/v1/logs",
     });
+    // The server still loads a file holding the retired token streaming mode.
+    expect(
+      parsePersistedServerObservabilitySettings(
+        JSON.stringify({
+          responseStreamingMode: "token",
+          observability: { otlpTracesUrl: "http://localhost:4318/v1/traces" },
+        }),
+      ).otlpTracesUrl,
+    ).toBe("http://localhost:4318/v1/traces");
   });
 
   it("falls back cleanly when persisted settings are invalid", () => {
@@ -546,6 +555,23 @@ describe("serverSettings helpers", () => {
       settings.textGenerationModelSelection,
     );
     expect(settings.sourceControlWriterModelSelection).toBe(sourceControlWriterModelSelection);
+  });
+
+  it("falls back from a removed instance whose id matches an inherited object key", () => {
+    for (const id of ["constructor", "toString", "valueOf"]) {
+      const sourceControlWriterModelSelection = createModelSelection(
+        ProviderInstanceId.make(id),
+        "gpt-5.4-mini",
+      );
+      const settings = { ...FOLDED_SERVER_SETTINGS, sourceControlWriterModelSelection };
+
+      expect(isModelSelectionProviderEnabled(settings, sourceControlWriterModelSelection)).toBe(
+        false,
+      );
+      expect(resolveSourceControlWriterModelSelection(settings, undefined, null)).toBe(
+        settings.textGenerationModelSelection,
+      );
+    }
   });
 
   it("falls back from a writer provider that cannot generate application text", () => {

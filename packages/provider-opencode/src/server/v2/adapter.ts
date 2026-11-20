@@ -63,7 +63,7 @@ import * as OpenCode2Client from "./OpenCode2Client.ts";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
 import { loadOpenCode2Agents } from "../openCode2Agents.ts";
-import { readableProviderErrorMessage } from "../providerErrorMessage.ts";
+import { parseClaudeUsageLimit, readableProviderErrorMessage } from "../providerErrorMessage.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { t3OrchestrationSystemPrompt } from "@t3tools/provider-core/server/orchestrationInstructions";
@@ -226,6 +226,8 @@ interface ActiveTurn {
   readonly input: TurnOwner;
   providerTurn: OrchestrationV2ProviderTurn;
   readonly texts: Map<string, OpenBlock>;
+  /** The last assistant text this turn completed. */
+  answer: string | undefined;
   readonly tools: Map<string, { readonly name: string; input: Record<string, unknown> }>;
   readonly startedAt: Map<string, DateTime.Utc>;
   readonly ordinals: Map<string, number>;
@@ -273,7 +275,10 @@ interface SubagentCall {
   agent: string | undefined;
   model: string | null;
   background: boolean;
-  joined: SubagentCall | undefined;
+  /** The child's turn this call prompted or steered; unset until that turn starts. */
+  run: number | undefined;
+  /** That turn's last text once it ended, which OpenCode sends as the run's report. */
+  answer: string | undefined;
   child: ThreadState | undefined;
   status: OrchestrationV2Subagent["status"];
   result: string | null;
@@ -571,8 +576,28 @@ const isWakeTurn = (turn: OrchestrationV2ProviderTurn) =>
 
 // OpenCode types an empty balance as provider.quota too, but it answers
 // that with HTTP 402 and it never resets. Usage windows and budgets are 429.
-const isUsageLimit = (error: { readonly type: string; readonly status?: number | undefined }) =>
-  (error.type === "provider.quota" && error.status !== 402) || error.type === "provider.rate-limit";
+const openCodeExecutionFailure = (
+  error: {
+    readonly type: string;
+    readonly message: string;
+    readonly status?: number | undefined;
+    readonly response?: { readonly body: string } | undefined;
+  },
+  retryable?: boolean,
+) => {
+  const claudeLimit = parseClaudeUsageLimit(error.message);
+  const usageLimit =
+    (error.type === "provider.quota" && error.status !== 402) ||
+    error.type === "provider.rate-limit" ||
+    claudeLimit !== undefined;
+  return makeProviderFailure({
+    message: readableProviderErrorMessage(error.message, error.status, error.response?.body),
+    code: error.type,
+    class: usageLimit ? "usage_limit" : "provider_error",
+    resetAt: claudeLimit?.resetAt ?? null,
+    retryable: retryable ?? null,
+  });
+};
 
 const INTERRUPT_TIMEOUT = "10 seconds";
 const INSTRUCTIONS_KEY = "t3-code";
@@ -583,6 +608,7 @@ const RECONNECT_WAIT = "30 seconds";
 const LOST_BACKGROUND =
   "Cox lost its connection to OpenCode while this subagent ran, so its result is not shown.";
 const INVENTORY_TIMEOUT = "5 seconds";
+const MCP_TOOL_RELOAD_SETTLE = "250 millis";
 const ACTIVE_CHECK_TIMEOUT = "5 seconds";
 // Other failures may still have admitted the prompt.
 const CLEAR_PROMPT_REJECTIONS: ReadonlySet<string> = new Set([
@@ -649,10 +675,18 @@ const boundaryAfter = (
 
 const isProviderAdapterError = Schema.is(ProviderAdapter.ProviderAdapterV2Error);
 
-const modelRef = (selection: ProviderAdapter.ProviderAdapterV2TurnInput["modelSelection"]) => {
+// A saved or inherited variant the catalog model does not list makes OpenCode reject the turn.
+const modelRef = (
+  selection: ProviderAdapter.ProviderAdapterV2TurnInput["modelSelection"],
+  listedVariants: ReadonlySet<string> | undefined,
+) => {
   const parsed = OpenCodeRuntime.parseOpenCodeModelSlug(selection.model);
   if (parsed === null) return undefined;
-  const variant = getModelSelectionStringOptionValue(selection, "variant");
+  const selected = getModelSelectionStringOptionValue(selection, "variant");
+  const variant =
+    selected === undefined || listedVariants === undefined || listedVariants.has(selected)
+      ? selected
+      : undefined;
   return Model.Ref.make({
     providerID: Provider.ID.make(parsed.providerID),
     id: Model.ID.make(parsed.modelID),
@@ -771,9 +805,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
     const sessionScope = yield* Effect.scope;
     // Project config changes model limits; key by directory because this runtime serves all instance threads.
     const contextWindows = new Map<string, Map<string, number>>();
+    const modelVariants = new Map<string, Map<string, ReadonlySet<string>>>();
     const directoryOf = (cwd: string | null | undefined) => cwd ?? host.paths.cwd;
     const windowOf = (cwd: string | null | undefined, model: string) =>
       contextWindows.get(directoryOf(cwd))?.get(model);
+    const listedModelRef = (selection: ModelSelection, cwd: string | null | undefined) =>
+      modelRef(selection, modelVariants.get(directoryOf(cwd))?.get(selection.model));
     const now = yield* DateTime.now;
     let session: OrchestrationV2ProviderSession = {
       id: input.providerSessionId,
@@ -1064,6 +1101,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       if (completed) turn.texts.delete(nativeId);
       else turn.texts.set(nativeId, entry);
       if (entry.text.length === 0) return;
+      if (completed && kind === "text") turn.answer = entry.text;
       const status = completed ? "completed" : "running";
       const completedAt = completed ? updatedAt : null;
       const nodeKind = kind === "text" ? "assistant_message" : "reasoning";
@@ -1281,6 +1319,16 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           ...(summary === undefined || summary.length === 0 ? {} : { summary }),
         },
       });
+      // The pre-compaction step would otherwise settle the turn as its newest usage.
+      if (status === "completed") turn.lastStep = undefined;
+      if (status === "completed" && state.providerThread.contextUsage !== null) {
+        state.providerThread = {
+          ...state.providerThread,
+          contextUsage: null,
+          updatedAt,
+        };
+        yield* emitProviderThread(state);
+      }
       if (status !== "running") turn.compaction = undefined;
     });
 
@@ -1325,12 +1373,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           maxAttempts: null,
           retryDelayMs: Math.max(0, Math.trunc(delayMs)),
         },
-        failure: makeProviderFailure({
-          message: readableProviderErrorMessage(error.message, error.status, error.response?.body),
-          code: error.type,
-          class: isUsageLimit(error) ? "usage_limit" : "provider_error",
-          retryable: true,
-        }),
+        failure: openCodeExecutionFailure(error, true),
         startedAt: turn.retry?.startedAt ?? (yield* DateTime.now),
       };
       yield* emitRetry(state, turn, "running");
@@ -1358,6 +1401,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       input: owner,
       providerTurn,
       texts: new Map(),
+      answer: undefined,
       tools: new Map(),
       startedAt: new Map(),
       ordinals: new Map(),
@@ -1605,13 +1649,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
         updatedAt: now,
       };
       const previous = threads.get(childId);
-      // Repeated subagent calls steer the same run; OpenCode reports it once for every joined call.
-      if (previous?.active !== undefined) {
-        call.joined = [...call.state.calls.values()].findLast(
-          (candidate) =>
-            candidate !== call && candidate.child === previous && candidate.joined === undefined,
-        );
-      }
+      // A call to a running child steers that run; OpenCode reports it once for all its calls.
+      if (previous?.active !== undefined) call.run = previous.subagent?.turns;
       const subagent = {
         call,
         appThread,
@@ -1675,6 +1714,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       const subagent = child.subagent;
       if (subagent === undefined || child.active !== undefined) return;
       subagent.turns += 1;
+      for (const call of callsAttachedTo(child)) call.run ??= subagent.turns;
       const startedAt = yield* DateTime.now;
       const nativeTurnId = `${child.sessionId}:turn:${subagent.turns}`;
       const rootNodeId = idAllocator.derive.nodeFromProviderItem({
@@ -1864,6 +1904,9 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       // Subagent turns are runless; their calls own settlement.
       if (state.subagent !== undefined) {
         const call = state.subagent.call;
+        for (const attached of callsAttachedTo(state)) {
+          if (attached.run === state.subagent.turns) attached.answer = turn.answer;
+        }
         if (!call.background && terminal.status !== "completed") {
           yield* settleCall(call, terminal.status);
         }
@@ -2251,7 +2294,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
         agent: undefined,
         model: null,
         background: false,
-        joined: undefined,
+        run: undefined,
+        answer: undefined,
         child: undefined,
         status: "running",
         result: null,
@@ -2395,17 +2439,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           });
         case "session.execution.interrupted":
           return yield* endExecution(state, turn, { status: "interrupted" });
-        case "session.execution.failed": {
-          const { type, message, status, response } = event.data.error;
+        case "session.execution.failed":
           return yield* endExecution(state, turn, {
             status: "failed",
-            failure: makeProviderFailure({
-              message: readableProviderErrorMessage(message, status, response?.body),
-              code: type,
-              class: isUsageLimit(event.data.error) ? "usage_limit" : "provider_error",
-            }),
+            failure: openCodeExecutionFailure(event.data.error),
           });
-        }
         default:
           return;
       }
@@ -2543,11 +2581,28 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       const childId = stringField(payload.metadata, "childID");
       if (stringField(payload.metadata, "source") !== "subagent" || childId === undefined) return;
       strays.delete(childId);
-      const call = [...state.calls.values()].find(
+      const open = [...state.calls.values()].filter(
         (candidate) => candidate.child?.sessionId === childId,
       );
-      const calls = [...state.calls.values()].filter(
-        (candidate) => candidate === call || (call !== undefined && candidate.joined === call),
+      const output = subagentOutput(payload.text);
+      const started = open
+        .flatMap((candidate) =>
+          candidate.run === undefined ? [] : [{ call: candidate, run: candidate.run }],
+        )
+        .sort((a, b) => a.run - b.run);
+      // The report names only the child, and reports arrive in order. So it belongs to the oldest
+      // open run, unless that run ended with a different text: then its own report is lost.
+      const next = started.find(
+        (candidate) => candidate.call.answer === undefined || candidate.call.answer === output,
+      );
+      const written = next?.call.answer === output ? next.run : undefined;
+      const call = written === undefined ? open[0] : next?.call;
+      const calls =
+        call?.run === undefined
+          ? open.slice(0, 1)
+          : open.filter((candidate) => candidate.run === call.run);
+      const lost = started.flatMap((candidate) =>
+        written !== undefined && candidate.run < written ? [candidate.call] : [],
       );
       const outcome = reportOutcome(stringField(payload.metadata, "state"));
       state.reports.set(inboxId, {
@@ -2568,7 +2623,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           : outcome === "cancelled"
             ? "cancelled"
             : "completed";
-      for (const each of calls) yield* settleCall(each, status, subagentOutput(payload.text));
+      for (const each of lost) yield* settleCall(each, "completed", each.answer);
+      for (const each of calls) yield* settleCall(each, status, output);
     });
 
     const holderOf = (sessionId: string) => {
@@ -3175,15 +3231,16 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       Effect.suspend(() => {
         const windows = contextWindows.get(directory) ?? new Map<string, number>();
         contextWindows.set(directory, windows);
+        const variants = modelVariants.get(directory) ?? new Map<string, ReadonlySet<string>>();
+        modelVariants.set(directory, variants);
         return client.model.list({ location: { directory } }).pipe(
           Effect.timeout("5 seconds"),
           Effect.tap((models) =>
             Effect.sync(() => {
               for (const model of models.data) {
-                windows.set(
-                  `${model.providerID}/${model.id}`,
-                  model.limit.input ?? model.limit.context,
-                );
+                const slug = `${model.providerID}/${model.id}`;
+                windows.set(slug, model.limit.input ?? model.limit.context);
+                variants.set(slug, new Set(model.variants.map((variant) => variant.id)));
               }
             }),
           ),
@@ -3529,6 +3586,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       // Re-adding an unchanged config keeps its existing connection.
       let mcpAvailable = false;
       if (wanted !== undefined) {
+        const fresh = state.mcp === undefined;
         mcpAvailable = yield* client.mcp
           .add({
             server: name,
@@ -3550,6 +3608,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
             ),
           );
         if (mcpAvailable) state.mcp = wanted;
+        // Before 2.2.6, OpenCode loads a new server's tools 100 ms after it connects, and a prompt sent sooner lacks them.
+        if (mcpAvailable && fresh && compareSemverVersions(connection.version, "2.2.6") < 0) {
+          yield* Effect.sleep(MCP_TOOL_RELOAD_SETTLE);
+        }
       }
       const instructions = [
         buildRuntimeInstructions({ harness: "OpenCode", model: turnInput.modelSelection.model }),
@@ -3879,7 +3941,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
             });
           }
           yield* readModelsOnce(threadInput.runtimePolicy.cwd);
-          const model = modelRef(threadInput.modelSelection);
+          const model = listedModelRef(threadInput.modelSelection, threadInput.runtimePolicy.cwd);
           if (model === undefined) {
             return yield* new ProviderAdapter.ProviderAdapterProtocolError({
               driver: OPENCODE_PROVIDER,
@@ -4055,7 +4117,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
                   }),
                 });
               }
-              const model = modelRef(turnInput.modelSelection);
+              const model = listedModelRef(turnInput.modelSelection, turnInput.runtimePolicy.cwd);
               if (model === undefined) {
                 yield* begin;
                 return yield* finishTurn(state, {

@@ -1,9 +1,13 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- The guard runs in Node's unhandled-rejection callback, outside an Effect runtime. stderr must match Node's default unhandled-rejection print.
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-import { Agent, createAgentPlatform, SqliteLocalAgentStore } from "./sdk.ts";
+import { Agent, createAgentPlatform, Cursor, SqliteLocalAgentStore } from "./sdk.ts";
 
 // The SDK leaves a shell-error promise unhandled, which would exit the server.
 const CURSOR_SHELL_SPAWN_MARKERS = [
@@ -85,6 +89,41 @@ function onUnhandledRejection(reason: unknown): void {
   process.exit(1);
 }
 
+const decodeCliConfig = Schema.decodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      network: Schema.optionalKey(
+        Schema.Struct({ useHttp1ForAgent: Schema.optionalKey(Schema.Boolean) }),
+      ),
+    }),
+  ),
+);
+
+const readCliTransport = Effect.gen(function* () {
+  const { CURSOR_CONFIG_DIR, XDG_CONFIG_HOME } = yield* HostProcess.Environment;
+  const home = yield* HostProcess.HomeDirectory;
+  const directory = CURSOR_CONFIG_DIR?.trim()
+    ? CURSOR_CONFIG_DIR
+    : XDG_CONFIG_HOME?.trim()
+      ? join(XDG_CONFIG_HOME, "cursor")
+      : join(home, ".cursor");
+  const path = join(directory, "cli-config.json");
+  return yield* Effect.tryPromise(() => readFile(path, "utf8")).pipe(
+    Effect.flatMap(decodeCliConfig),
+    Effect.map((config) => config.network?.useHttp1ForAgent === true),
+    Effect.catch((error) =>
+      error._tag === "UnknownError" &&
+      error.cause instanceof Error &&
+      "code" in error.cause &&
+      error.cause.code === "ENOENT"
+        ? Effect.succeed(false)
+        : Effect.logWarning("Could not read the Cursor CLI transport setting", { path }).pipe(
+            Effect.as(false),
+          ),
+    ),
+  );
+});
+
 /** Keeps the shell spawn guard armed while in-process agents run. */
 export class CursorSdk extends Context.Service<
   CursorSdk,
@@ -98,13 +137,19 @@ export class CursorSdk extends Context.Service<
 /** Provide once per process: a second guard would defer to the first and swallow real rejections. */
 export const layer = Layer.effect(
   CursorSdk,
-  Effect.acquireRelease(
-    Effect.sync(() => {
-      process.on("unhandledRejection", onUnhandledRejection);
-    }),
-    () =>
+  Effect.gen(function* () {
+    const useHttp1 = yield* readCliTransport;
+    yield* Effect.acquireRelease(
       Effect.sync(() => {
-        process.off("unhandledRejection", onUnhandledRejection);
+        if (useHttp1) Cursor.configure({ local: { useHttp1ForAgent: true } });
+        process.on("unhandledRejection", onUnhandledRejection);
       }),
-  ).pipe(Effect.as(CursorSdk.of({ Agent, createAgentPlatform, SqliteLocalAgentStore }))),
+      () =>
+        Effect.sync(() => {
+          process.off("unhandledRejection", onUnhandledRejection);
+          if (useHttp1) Cursor.configure({ local: { useHttp1ForAgent: null } });
+        }),
+    );
+    return CursorSdk.of({ Agent, createAgentPlatform, SqliteLocalAgentStore });
+  }),
 );

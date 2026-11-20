@@ -152,6 +152,28 @@ describe("normalizeReviewGuide", () => {
     expect(result.stops).toHaveLength(1);
   });
 
+  it("merges excerpts that a later excerpt bridges into one", () => {
+    const result = normalizeReviewGuide(
+      guide({
+        stops: [
+          stop({
+            excerpts: [
+              excerpt("src/a.ts", 40, 41),
+              { ...excerpt("src/a.ts", 50, 51), caption: "Second" },
+              excerpt("src/a.ts", 41, 50),
+              excerpt("src/a.ts", 10, 14),
+            ],
+          }),
+        ],
+      }),
+      change,
+    );
+    expect(result.stops[0]?.excerpts).toEqual([
+      { ...excerpt("src/a.ts", 40, 51), caption: "Second" },
+      excerpt("src/a.ts", 10, 14),
+    ]);
+  });
+
   it("drops notes outside the stop's remaining excerpts", () => {
     const result = normalizeReviewGuide(
       guide({

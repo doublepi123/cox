@@ -281,6 +281,8 @@ function iso(value: DateTime.DateTime): string {
 }
 
 const RUN_OUTCOME_WAIT_MS = 24 * 60 * 60 * 1_000;
+const HELD_OCCURRENCE_ERROR =
+  "A previous occurrence is held in the thread queue. Resume or remove it to run this task again.";
 const ONCE_RUN_AT_PAST_TOLERANCE_MS = 60_000;
 const RUN_FAILURE_ERRORS = {
   failed: "The run failed.",
@@ -770,9 +772,10 @@ export const layer = Layer.effect(
       ),
     );
 
-    const hasOutstandingRun = (id: ScheduledTaskId) =>
-      sql`
-        SELECT 1
+    const outstandingRun = (id: ScheduledTaskId) =>
+      sql<{ held: 0 | 1 }>`
+        SELECT CASE WHEN run.status = 'queued'
+          AND json_extract(run.payload_json, '$.queueHeld') = 1 THEN 1 ELSE 0 END AS held
         FROM orchestration_v2_projection_runs AS run
         CROSS JOIN orchestration_v2_projection_messages AS message
           INDEXED BY orchestration_v2_projection_messages_run_idx
@@ -780,10 +783,13 @@ export const layer = Layer.effect(
         WHERE run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
           AND message.role = 'user'
           AND json_extract(message.payload_json, '$.scheduledTaskId') = ${id}
+        ORDER BY held DESC
         LIMIT 1
       `.pipe(
         NodeSqliteClient.readOnly,
-        Effect.map((rows) => rows.length > 0),
+        Effect.map(([row]) =>
+          row === undefined ? null : row.held === 1 ? ("held" as const) : ("busy" as const),
+        ),
         Effect.mapError((cause) =>
           taskError("Could not check the schedule task's active run.", { taskId: id, cause }),
         ),
@@ -792,12 +798,19 @@ export const layer = Layer.effect(
     const skipOutstandingRun = Effect.fn("ScheduledTaskService.skipOutstandingRun")(function* (
       task: ScheduledTask,
       now: DateTime.DateTime,
+      held: boolean,
     ) {
       const next = nextRunAt(task, now);
       const updated = yield* sql<{ task_id: string }>`
         UPDATE scheduled_tasks
         SET next_run_at = ${next}, updated_at = ${iso(now)}
           ${task.schedule.type === "once" ? sql`, enabled = 0` : sql``}
+          ${
+            held && task.schedule.type !== "once" && task.lastRunStatus === "succeeded"
+              ? sql`, last_run_status = CASE WHEN last_run_status = 'succeeded' THEN 'failed' ELSE last_run_status END,
+                last_run_error = CASE WHEN last_run_status = 'succeeded' THEN ${HELD_OCCURRENCE_ERROR} ELSE last_run_error END`
+              : sql``
+          }
         WHERE task_id = ${task.id} AND created_at = ${task.createdAt}
           AND next_run_at IS ${task.nextRunAt}
           AND updated_at = ${task.updatedAt}
@@ -856,7 +869,9 @@ export const layer = Layer.effect(
       const updated = yield* sql`
         UPDATE scheduled_tasks
         SET last_run_status = 'failed', last_run_error = ${error}
-        WHERE task_id = ${taskId} AND last_run_at = ${startedAtIso} AND last_run_status = 'succeeded'
+        WHERE task_id = ${taskId} AND last_run_at = ${startedAtIso}
+          AND (last_run_status = 'succeeded'
+            OR (last_run_status = 'failed' AND last_run_error = ${HELD_OCCURRENCE_ERROR}))
         RETURNING task_id
       `;
       if (updated.length > 0) yield* notifyChanged;
@@ -944,8 +959,9 @@ export const layer = Layer.effect(
                   current.updatedAt !== active.updatedAt
                 )
                   return "stale" as const;
-                if (current.lastRunStatus === "running" || (yield* hasOutstandingRun(active.id)))
-                  return "busy" as const;
+                if (current.lastRunStatus === "running") return "busy" as const;
+                const outstanding = yield* outstandingRun(active.id);
+                if (outstanding !== null) return outstanding;
                 yield* markRunning({
                   id: active.id,
                   startedAtIso,
@@ -964,8 +980,9 @@ export const layer = Layer.effect(
                     }),
               ),
             );
-          if (claim === "busy") {
-            if (trigger === "scheduled") return yield* skipOutstandingRun(active, startedAt);
+          if (claim === "busy" || claim === "held") {
+            if (trigger === "scheduled")
+              return yield* skipOutstandingRun(active, startedAt, claim === "held");
             return yield* taskError("Schedule task already has a queued or active run.", {
               taskId: active.id,
             });
@@ -1305,7 +1322,10 @@ export const layer = Layer.effect(
 
     const list: ScheduledTaskService["Service"]["list"] = () =>
       listRows().pipe(
-        Effect.map((tasks) => ({ tasks })),
+        Effect.map((tasks) => ({
+          tasks,
+          timeZone: DateTime.zoneToString(DateTime.zoneMakeLocal()),
+        })),
         Effect.mapError((cause) => taskError("Could not list schedule tasks.", { cause })),
       );
 
@@ -1467,9 +1487,11 @@ export const layer = Layer.effect(
               return { token, secret, secretChanged };
             })
           : { token: null, secret: null, secretChanged: true };
+      // A folder that is not a Git repository, Scratch included, cannot hold a worktree.
       const workspaceStrategy: ScheduledTask["workspaceStrategy"] =
         input.workspaceStrategy.type === "worktree" &&
-        (yield* managedFolders.isScratchProject(input.projectId))
+        ((yield* managedFolders.isScratchProject(input.projectId)) ||
+          (yield* threadLaunch.isNonGitProject(input.projectId)))
           ? { type: "root" }
           : input.workspaceStrategy;
       const scheduleUnchanged =

@@ -3,7 +3,11 @@ import {
   type OrchestrationV2Run,
   OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2TurnItem,
+  OrchestrationV2TurnItemJson,
   OrchestrationV2StoredEvent,
+  OrchestrationV2SubagentJson,
+  type OrchestrationV2Subagent,
   ProviderThreadId,
   RunAttemptId,
   RunId,
@@ -162,6 +166,14 @@ export interface EventSinkV2Shape {
     },
     EventSinkV2Error
   >;
+  readonly writeIfSubagentUnchanged: (input: {
+    readonly expected: OrchestrationV2Subagent;
+    readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
+  }) => Effect.Effect<{ readonly committed: boolean }, EventSinkV2Error>;
+  readonly writeIfTurnItemUnchanged: (input: {
+    readonly expected: OrchestrationV2TurnItem;
+    readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
+  }) => Effect.Effect<{ readonly committed: boolean }, EventSinkV2Error>;
   readonly commitCommand: (input: {
     readonly commandId: CommandId;
     readonly threadId: ThreadId;
@@ -609,23 +621,14 @@ const layerBase: Layer.Layer<
       );
     });
 
-    const writeIfProviderThreadUnchangedEffect = Effect.fn(
-      "orchestrationV2.EventSink.writeIfProviderThreadUnchanged",
-    )(function* (input: Parameters<EventSinkV2Shape["writeIfProviderThreadUnchanged"]>[0]) {
-      yield* Effect.annotateCurrentSpan({
-        "orchestration_v2.event_count": input.events.length,
-        "orchestration_v2.provider_thread_id": input.expected.id,
-      });
-      const expectedJson = yield* ProjectionStore.encodeProviderThreadPayload(input.expected);
-
-      return yield* commitThenPublish(
+    const writeIfPayloadUnchanged = (
+      select: Effect.Effect<ReadonlyArray<{ readonly payload_json: string }>, SqlError.SqlError>,
+      expectedJson: string,
+      events: ReadonlyArray<OrchestrationV2DomainEvent>,
+    ) =>
+      commitThenPublish(
         Effect.gen(function* () {
-          const rows = yield* sql<{ readonly payload_json: string }>`
-            SELECT payload_json
-            FROM orchestration_v2_projection_provider_threads
-            WHERE provider_thread_id = ${input.expected.id}
-            LIMIT 1
-          `;
+          const rows = yield* select;
           if (rows[0]?.payload_json !== expectedJson) {
             return {
               committed: false as const,
@@ -633,7 +636,7 @@ const layerBase: Layer.Layer<
             };
           }
 
-          const normalized = yield* normalizeEvents(input.events);
+          const normalized = yield* normalizeEvents(events);
           const storedEvents = yield* eventStore.append({ events: normalized });
           const outcomes = yield* applyStoredEvents(storedEvents);
           return { committed: true as const, storedEvents, outcomes };
@@ -643,7 +646,28 @@ const layerBase: Layer.Layer<
             ? publishStoredEvents(result.storedEvents, result.outcomes)
             : Effect.void,
       );
+
+    const writeIfProviderThreadUnchangedEffect = Effect.fn(
+      "orchestrationV2.EventSink.writeIfProviderThreadUnchanged",
+    )(function* (input: Parameters<EventSinkV2Shape["writeIfProviderThreadUnchanged"]>[0]) {
+      yield* Effect.annotateCurrentSpan({
+        "orchestration_v2.event_count": input.events.length,
+        "orchestration_v2.provider_thread_id": input.expected.id,
+      });
+      return yield* writeIfPayloadUnchanged(
+        sql<{ readonly payload_json: string }>`
+          SELECT payload_json
+          FROM orchestration_v2_projection_provider_threads
+          WHERE provider_thread_id = ${input.expected.id}
+          LIMIT 1
+        `,
+        yield* ProjectionStore.encodeProviderThreadPayload(input.expected),
+        input.events,
+      );
     });
+
+    const encodeSubagent = Schema.encodeEffect(Schema.fromJsonString(OrchestrationV2SubagentJson));
+    const encodeTurnItem = Schema.encodeEffect(Schema.fromJsonString(OrchestrationV2TurnItemJson));
 
     const existingCommandResult =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
@@ -1043,6 +1067,24 @@ const layerBase: Layer.Layer<
             (cause) => new EventSinkWriteError({ eventCount: input.events.length, cause }),
           ),
         ),
+      writeIfSubagentUnchanged: (input) =>
+        encodeSubagent(input.expected).pipe(
+          Effect.flatMap((expectedJson) =>
+            writeIfPayloadUnchanged(
+              sql<{ readonly payload_json: string }>`
+                SELECT payload_json
+                FROM orchestration_v2_projection_subagents
+                WHERE subagent_id = ${input.expected.id}
+                LIMIT 1
+              `,
+              expectedJson,
+              input.events,
+            ),
+          ),
+          Effect.mapError(
+            (cause) => new EventSinkWriteError({ eventCount: input.events.length, cause }),
+          ),
+        ),
       commitCommand: (input) =>
         commitCommandEffect(input).pipe(
           Effect.mapError(
@@ -1052,6 +1094,22 @@ const layerBase: Layer.Layer<
                 eventCount: input.events.length,
                 cause,
               }),
+          ),
+        ),
+      writeIfTurnItemUnchanged: (input) =>
+        encodeTurnItem(input.expected).pipe(
+          Effect.flatMap((expectedJson) =>
+            writeIfPayloadUnchanged(
+              sql<{ readonly payload_json: string }>`
+              SELECT payload_json FROM orchestration_v2_projection_turn_items
+              WHERE thread_id = ${input.expected.threadId} AND turn_item_id = ${input.expected.id} LIMIT 1
+            `,
+              expectedJson,
+              input.events,
+            ),
+          ),
+          Effect.mapError(
+            (cause) => new EventSinkWriteError({ eventCount: input.events.length, cause }),
           ),
         ),
       commitRejectedCommand: (input) =>

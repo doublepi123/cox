@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "../../hooks/useLiveRefresh";
 import { translateCurrent } from "../../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ChevronDownIcon } from "lucide-react";
@@ -402,6 +403,16 @@ export function SourceControlSettingsPanel() {
           environmentId,
           input: {},
         }),
+  );
+  useLiveRefresh(
+    () => {
+      if (!discovery.isPending) discovery.refresh();
+    },
+    {
+      enabled: environmentId !== null,
+      key: `source-control-discovery:${environmentId}`,
+      intervalMs: null,
+    },
   );
   const result = discovery.data ?? EMPTY_DISCOVERY_RESULT;
   const hasVersionControlSystems = result.versionControlSystems.length > 0;

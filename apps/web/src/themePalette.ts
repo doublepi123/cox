@@ -379,7 +379,9 @@ const LEGACY_THEME_ID_ALIASES: Readonly<Record<string, string>> = {
 };
 
 function normalizeThemeId(themeId: string): string {
-  return LEGACY_THEME_ID_ALIASES[themeId] ?? themeId;
+  return Object.hasOwn(LEGACY_THEME_ID_ALIASES, themeId)
+    ? (LEGACY_THEME_ID_ALIASES[themeId] ?? themeId)
+    : themeId;
 }
 
 export function canonicalThemePreference(theme: string): string {
@@ -1220,13 +1222,19 @@ export function getThemePreferenceMode(theme: ThemePreference): ThemeAppearance 
 }
 
 export function themeIdFromName(name: string): string {
-  const normalized = name
-    .trim()
-    .toLowerCase()
+  const label = name.trim().toLowerCase();
+  const normalized = label
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-  return normalized || "custom-theme";
+  if (normalized || !label) return normalized || "custom-theme";
+
+  let hash = 2_166_136_261;
+  for (let index = 0; index < label.length; index += 1) {
+    hash ^= label.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `theme-${(hash >>> 0).toString(36)}`;
 }
 
 export class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibraryStorageError>()(

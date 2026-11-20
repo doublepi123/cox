@@ -5,6 +5,7 @@ import {
   sessionGrantsScope,
   type SessionGrantInput,
 } from "@t3tools/contracts";
+import { scoreQueryMatch } from "@t3tools/shared/searchRanking";
 import { Atom } from "effect/reactivity";
 
 import type {
@@ -74,15 +75,56 @@ export function filterFilesystemBrowseEntries(
 ) {
   const lowerQuery = query.toLowerCase();
   const showHidden = query.startsWith(".");
-  const visibleEntries = entries.filter(
-    (entry) =>
-      entry.name.toLowerCase().startsWith(lowerQuery) &&
-      (showHidden || !entry.name.startsWith(".")),
-  );
+  const candidates = entries.filter((entry) => showHidden || !entry.name.startsWith("."));
+  const visibleEntries = lowerQuery
+    ? candidates
+        .flatMap((entry) => {
+          const score = scoreQueryMatch({
+            value: entry.name.toLowerCase(),
+            query: lowerQuery,
+            exactBase: 0,
+            prefixBase: 1_000,
+            boundaryBase: 2_000,
+            includesBase: 3_000,
+            fuzzyBase: 4_000,
+            boundaryMarkers: [" ", "-", "_", "."],
+          });
+          return score === null ? [] : [{ entry, score }];
+        })
+        .sort((left, right) => left.score - right.score)
+        .map(({ entry }) => entry)
+    : candidates;
   const exactEntry =
     query.length > 0 ? (visibleEntries.find((entry) => entry.name === query) ?? null) : null;
 
   return { visibleEntries, exactEntry };
+}
+
+/** Shell-style Tab: a single match enters the directory, several extend to their common prefix. */
+export function getFilesystemBrowseTabCompletion(
+  visibleEntries: ReadonlyArray<FilesystemBrowseEntry>,
+  filterQuery: string,
+): { readonly name: string; readonly isComplete: boolean } | null {
+  const [first, ...rest] = visibleEntries;
+  if (first === undefined) return null;
+  if (rest.length === 0) return { name: first.name, isComplete: true };
+  let prefix = Array.from(first.name);
+  for (const entry of rest) {
+    const characters = Array.from(entry.name);
+    let length = 0;
+    while (
+      length < prefix.length &&
+      prefix[length]?.toLowerCase() === characters[length]?.toLowerCase()
+    )
+      length += 1;
+    prefix = prefix.slice(0, length);
+  }
+  const name = prefix.join("");
+  const lowerName = name.toLowerCase();
+  return lowerName.length > filterQuery.toLowerCase().length &&
+    visibleEntries.every((entry) => entry.name.toLowerCase().startsWith(lowerName))
+    ? { name, isComplete: false }
+    : null;
 }
 
 export function createBrowseNavigationCoordinator() {
@@ -121,6 +163,7 @@ export function createFilesystemEnvironmentAtoms<R, E>(
     browse: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:filesystem:browse",
       tag: WS_METHODS.filesystemBrowse,
+      idleTtlMs: 5_000,
     }),
   };
 }

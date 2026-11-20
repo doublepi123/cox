@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import { describe, expect, it } from "vite-plus/test";
 
+import { rehypeHeadingIds } from "./markdownFragments";
 import { splitMarkdownBlocks } from "./markdownStreamBlocks";
 
 // Whitespace between top-level blocks collapses in the rendered message.
@@ -13,7 +14,7 @@ const html = (source: string) =>
   renderToStaticMarkup(
     <ReactMarkdown
       remarkPlugins={CHAT_MARKDOWN_REMARK_PLUGINS}
-      rehypePlugins={CHAT_MARKDOWN_REHYPE_PLUGINS}
+      rehypePlugins={[...CHAT_MARKDOWN_REHYPE_PLUGINS, rehypeHeadingIds]}
     >
       {source}
     </ReactMarkdown>,
@@ -33,12 +34,16 @@ describe("splitMarkdownBlocks", () => {
     "Setext\n===\n\nnext\n---\n\n- [ ] task\n- [x] done",
     "- a\n\n  ```\n  x\n\n```\n\nb",
     "- a\n\n  ```\n  x\n\ny\n\n  ```\n\nb",
+    "## Step 1: Install\n\n## Step 1: Install\n\n[second](#step-1-install-1)",
+    "# Setup\n\n# &#83;etup\n\n[second](#setup-1)",
+    "> Setup\n> ===\n\n> Setup\n> ===",
+    "\ufeff# Setup\n\n# Setup\n\n[second](#setup-1)",
   ])("renders each block as the whole text renders it, at every streamed prefix: %j", (text) => {
     for (let end = 0; end <= text.length; end++) {
       const source = text.slice(0, end);
-      const blocks = splitMarkdownBlocks(source);
-      expect(blocks?.join("")).toBe(source);
-      expect(blocks!.map(html).join("")).toBe(html(source));
+      const blocks = splitMarkdownBlocks(source) ?? [source];
+      expect(blocks.join("")).toBe(source);
+      expect(blocks.map(html).join("")).toBe(html(source));
     }
   });
 

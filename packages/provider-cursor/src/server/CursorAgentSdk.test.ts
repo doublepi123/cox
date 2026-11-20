@@ -23,6 +23,12 @@ const cursorSdkMock = vi.hoisted(() => {
     model: { id: "default" },
     durationMs: 1,
   }));
+  const summarize = vi.fn(async () => ({
+    id: "run-cursor-agent-sdk-test",
+    agentId: "agent-cursor-agent-sdk-test",
+    wait: runWait,
+    cancel: runCancel,
+  }));
   const runCancel = vi.fn(async () => {});
   const prewarmRelease = vi.fn(async () => {});
   const prewarmLocalWorkspace = vi.fn(async () => prewarmRelease);
@@ -59,11 +65,13 @@ const cursorSdkMock = vi.hoisted(() => {
   const create = vi.fn(async () => ({
     agentId: "agent-cursor-agent-sdk-test",
     send,
+    summarize,
     close: agentClose,
   }));
   const resume = vi.fn(async () => ({
     agentId: "agent-cursor-agent-sdk-test",
     send,
+    summarize,
     close: agentClose,
   }));
   const listRuns = vi.fn(async () => {
@@ -91,6 +99,7 @@ const cursorSdkMock = vi.hoisted(() => {
     runCancel,
     runWait,
     send,
+    summarize,
     setAgentCloseFailure: (failure: unknown) => {
       agentCloseFailure = failure;
     },
@@ -212,6 +221,27 @@ describe("CursorAgentSdkRunner", () => {
         assert.strictEqual(failure?.cause, originalFailure);
       }).pipe(Effect.provide([layerTest, Logger.layer([logger], { mergeWithExisting: false })]));
     },
+  );
+
+  it.effect("uses SDK summarize without sending a synthetic user message", () =>
+    Effect.gen(function* () {
+      const runner = yield* CursorAgentSdk.CursorAgentSdkRunner;
+      const session = yield* runner.open({
+        operation: "create",
+        options: { model: { id: "default" }, mode: "agent", local: { cwd: process.cwd() } },
+        threadId: ThreadId.make("thread-cursor-agent-sdk-summarize-test"),
+        providerSessionId: ProviderSessionId.make(
+          "provider-session-cursor-agent-sdk-summarize-test",
+        ),
+      });
+      cursorSdkMock.send.mockClear();
+      cursorSdkMock.summarize.mockClear();
+
+      yield* session.send({ message: "/compress", summarize: true });
+
+      assert.strictEqual(cursorSdkMock.summarize.mock.calls.length, 1);
+      assert.strictEqual(cursorSdkMock.send.mock.calls.length, 0);
+    }).pipe(Effect.provide(layerTest)),
   );
 
   it.effect("retries a resumed send after cancelling its abandoned local run", () =>

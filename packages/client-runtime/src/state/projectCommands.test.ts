@@ -3,6 +3,7 @@ import {
   AuthFilesystemWriteScope,
   EnvironmentId,
   ProjectId,
+  ProjectReadFileError,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ThreadId,
@@ -47,9 +48,9 @@ const PROJECT = {
 
 const makeHarness = Effect.fn("TestProjectCommands.makeHarness")(function* () {
   const metadataRequests: string[][] = [];
-  const file = { byteLength: 5 };
-  const readResponse = {
-    wait: Effect.void as Effect.Effect<void>,
+  const file = { byteLength: 5, contents: "old" };
+  const readResponse: { wait: Effect.Effect<void, ProjectReadFileError>; missing: boolean } = {
+    wait: Effect.void,
     missing: false,
   };
   const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
@@ -60,7 +61,7 @@ const makeHarness = Effect.fn("TestProjectCommands.makeHarness")(function* () {
           [WS_METHODS.projectsEnsureScratch]: () => Effect.succeed({ projectId: PROJECT_ID }),
           [WS_METHODS.projectsReadFile]: () =>
             Effect.gen(function* () {
-              const byteLength = file.byteLength;
+              const { byteLength, contents } = file;
               yield* readResponse.wait;
               return decodeReadFileResult(
                 readResponse.missing
@@ -71,12 +72,13 @@ const makeHarness = Effect.fn("TestProjectCommands.makeHarness")(function* () {
                       truncated: false,
                       exists: false,
                     }
-                  : { relativePath: "foo", byteLength, contents: "old", truncated: false },
+                  : { relativePath: "foo", byteLength, contents, truncated: false },
               );
             }),
-          [WS_METHODS.projectsWriteFile]: () =>
+          [WS_METHODS.projectsWriteFile]: ({ contents }: { readonly contents: string }) =>
             Effect.sync(() => {
               file.byteLength = 10;
+              file.contents = contents;
               return { relativePath: "foo" };
             }),
           [WS_METHODS.filesystemGetMetadata]: (input: { paths: string[] }) =>
@@ -141,7 +143,50 @@ const makeHarness = Effect.fn("TestProjectCommands.makeHarness")(function* () {
   const openScratch = Effect.promise(() =>
     commands.openScratch.run(registry, { environmentId: ENVIRONMENT_ID, input: {} }),
   );
-  return { registry, storedProject, openScratch, commands, metadataRequests, readResponse };
+  return { registry, storedProject, openScratch, commands, metadataRequests, readResponse, file };
+});
+
+describe("saved file overlays", () => {
+  it.effect.each(["external update", "old"])(
+    "shows %s after a successful refresh follows a failed post-save read",
+    (refreshedContents) =>
+      Effect.gen(function* () {
+        const { registry, commands, readResponse, file } = yield* makeHarness();
+        const input = { cwd: "/repo", relativePath: "foo" };
+        const target = { environmentId: ENVIRONMENT_ID, input };
+        const query = commands.readFile(target);
+        const overlay = commands.optimisticFile({ environmentId: ENVIRONMENT_ID, ...input });
+        registry.mount(query);
+        registry.mount(overlay);
+        const read = (atom: typeof query = query) =>
+          AtomRegistry.getResult(registry, atom, { suspendOnWaiting: true });
+        const original = yield* read();
+        const contents = "saved draft";
+        const write = yield* Effect.promise(() =>
+          commands.writeFile.run(registry, { ...target, input: { ...input, contents } }),
+        );
+        expect(write._tag).toBe("Success");
+        registry.set(overlay, {
+          data: { ...original, contents, byteLength: contents.length },
+          saved: true,
+          confirmingQuery: query,
+        });
+        readResponse.wait = new ProjectReadFileError({ ...input, failure: "operation_failed" });
+        registry.refresh(query);
+        expect(yield* Effect.flip(read())).toMatchObject({ failure: "operation_failed" });
+        expect(registry.get(overlay)?.data.contents).toBe(contents);
+
+        file.contents = refreshedContents;
+        file.byteLength =
+          refreshedContents === original.contents ? original.byteLength : refreshedContents.length;
+        readResponse.wait = Effect.void;
+        yield* read(commands.readFile({ ...target, input: { ...input, allowMissing: true } }));
+        expect(registry.get(overlay)?.data.contents).toBe(contents);
+        registry.refresh(query);
+        expect((yield* read()).contents).toBe(refreshedContents);
+        expect(registry.get(overlay)).toBeNull();
+      }).pipe(Effect.scoped),
+  );
 });
 
 describe("writeFile metadata", () => {

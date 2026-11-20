@@ -213,6 +213,7 @@ const readRemoteReason = (detail: unknown): string | undefined =>
     : undefined;
 
 const MAX_REASON_CHARS = 500;
+const MAX_SERVER_REASON_CHARS = 2048;
 
 const classifyResponseError = (
   context: PreviewAutomationRequestErrorContext,
@@ -346,7 +347,7 @@ const classifyResponseError = (
         ...context,
         ...remoteDiagnostics,
         ...(context.clientId === SERVER_BROWSER_AUTOMATION_CLIENT_ID
-          ? { reason: error.message.slice(0, MAX_REASON_CHARS) }
+          ? { reason: error.message.slice(0, MAX_SERVER_REASON_CHARS) }
           : {}),
       });
   }

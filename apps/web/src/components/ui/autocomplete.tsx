@@ -101,7 +101,8 @@ function AutocompletePopup({
           )}
         >
           <AutocompletePrimitive.Popup
-            className="flex max-h-[min(var(--available-height),23rem)] flex-1 flex-col text-foreground"
+            // Electron drag hit-testing ignores z-index; items over a drag region would swallow clicks.
+            className="flex max-h-[min(var(--available-height),23rem)] flex-1 flex-col text-foreground [-webkit-app-region:no-drag]"
             data-slot="autocomplete-popup"
             {...props}
           >
@@ -213,7 +214,11 @@ function AutocompleteList({
   maxHeight?: "threads";
 }) {
   return (
-    <ScrollArea scrollbarGutter scrollFade>
+    <ScrollArea
+      {...(spacing === "composer" ? { preset: "composer-suggestions" } : {})}
+      scrollbarGutter
+      scrollFade
+    >
       <AutocompletePrimitive.List
         className={cn(
           "not-empty:scroll-py-1 not-empty:p-1",

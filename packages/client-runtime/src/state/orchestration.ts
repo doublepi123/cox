@@ -1,5 +1,6 @@
 import {
   ORCHESTRATION_V2_WS_METHODS,
+  type EnvironmentId,
   type ThreadId,
   type OrchestrationGetTurnDiffResult,
 } from "@t3tools/contracts";
@@ -10,7 +11,11 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { HttpClient } from "effect/http";
 import { Atom } from "effect/reactivity";
 
-import { applyCommandOutputFrame, EMPTY_COMMAND_OUTPUT } from "./commandOutput.ts";
+import {
+  applyCommandOutputFrame,
+  EMPTY_COMMAND_OUTPUT,
+  type CommandOutputView,
+} from "./commandOutput.ts";
 
 import {
   createEnvironmentQueryAtomFamily,
@@ -24,10 +29,14 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import { EnvironmentRpcUnavailableError, request } from "../rpc/client.ts";
 import { fetchEnvironmentThreadTranscript } from "./threadTranscriptHttp.ts";
+import type { EnvironmentShellState } from "./shell.ts";
 
 export function createOrchestrationEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | HttpClient.HttpClient | R, E>,
   options: {
+    readonly shellState?: (
+      environmentId: EnvironmentId,
+    ) => Atom.Atom<Pick<EnvironmentShellState, "removedAt">>;
     /** Runs on each turn-range and full-thread diff the server answers. */
     readonly onCheckpointDiffAnswer?: QueryAnswerHandler<
       { readonly ignoreWhitespace?: boolean },
@@ -92,12 +101,15 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
         tag: ORCHESTRATION_V2_WS_METHODS.subscribeThread,
         idleTtlMs: 0,
       }),
-      // One expanded command row's output. Mounted only while the row is open,
-      // and released as soon as it closes, so hidden rows receive nothing.
+      // One expanded command row's output. A running command's subscription ends
+      // as soon as its row closes, so hidden rows receive nothing; a finished
+      // command's final output stays cached so reopening it does not refetch.
       commandOutput: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
         label: "environment-data:orchestration-v2:command-output",
         tag: ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput,
         idleTtlMs: 0,
+        completeWhen: (view: CommandOutputView) => !view.running,
+        completedTtlMs: 5 * 60_000,
         // `scan` emits its seed first; skipping it keeps the row "loading" until the first frame.
         transform: (frames) =>
           frames.pipe(
@@ -162,6 +174,10 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
     archivedShellSnapshot: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:archived-shell-snapshot",
       tag: ORCHESTRATION_V2_WS_METHODS.getArchivedShellSnapshot,
+      refreshTrigger: ({ environmentId }) => {
+        const state = options.shellState?.(environmentId);
+        return state === undefined ? undefined : Atom.map(state, (shell) => shell.removedAt);
+      },
     }),
     // Read right before deleting a worktree, so never served from cache.
     worktreeThreadIds: createEnvironmentRpcQueryAtomFamily(runtime, {

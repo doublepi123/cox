@@ -496,10 +496,24 @@ describe("local service update transaction", () => {
       databasePath,
       runtimeStatePath: join(stateDir, "server-runtime.json"),
       environmentId: "environment-1",
-      operation: join(directory, "operation"),
+      operation: join(baseDir, "local-service-update", "operations", "current"),
       nextUnit: "updated unit\n",
     };
+    const previous = join(baseDir, "local-service-update", "operations", "previous");
+    const abandoned = join(previous, "backup.staging-2147483647");
+    const active = join(previous, `backup.staging-${process.pid}`);
+    const completed = join(previous, "backup");
+    for (const folder of [abandoned, active, completed]) {
+      await mkdir(folder, { recursive: true });
+      await writeFile(join(folder, "statev2.sqlite"), "fixture");
+    }
     await prepareLocalServiceUpdate(plan);
+    await expect(readFile(join(abandoned, "statev2.sqlite"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    for (const kept of [active, completed]) {
+      expect(await readFile(join(kept, "statev2.sqlite"), "utf8")).toBe("fixture");
+    }
     const backup = new DatabaseSync(join(plan.operation, "backup", "statev2.sqlite"), {
       readOnly: true,
     });

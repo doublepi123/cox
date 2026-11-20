@@ -26,6 +26,7 @@ import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  isTimelineMinimapTurnVisible,
   timelineTurnFoldRunIdsByEntryId,
   liveAnswerPreview,
   deriveMessagesTimelineRowsWithState,
@@ -2201,6 +2202,105 @@ describe("deriveMessagesTimelineRows", () => {
       "work:question",
       "work-live:after + running",
     ]);
+  });
+
+  it("shows images the agent viewed outside their collapsed tool group", () => {
+    const threadId = ThreadId.make("viewed-images-thread");
+    const runId = RunId.make("viewed-images-run");
+    const at = (second: number) =>
+      DateTime.makeUnsafe(new Date(Date.UTC(2026, 10, 4, 12, 0, second)).toISOString());
+    const base = (id: string, ordinal: number) => ({
+      id: TurnItemId.make(id),
+      threadId,
+      runId,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal,
+      status: "completed" as const,
+      title: null,
+      startedAt: at(ordinal),
+      completedAt: at(ordinal),
+      updatedAt: at(ordinal),
+    });
+    const read = (id: string, ordinal: number, filePath: string) => ({
+      ...base(id, ordinal),
+      type: "dynamic_tool" as const,
+      toolName: "Read",
+      // The Claude adapter tags reads of image files.
+      ...(filePath.endsWith(".png") ? { viewedImagePath: filePath } : {}),
+      input: { file_path: filePath },
+    });
+    const items = (settled: boolean) =>
+      [
+        {
+          ...base("prompt", 0),
+          type: "user_message" as const,
+          messageId: MessageId.make("prompt"),
+          text: "Show me the mockups",
+          attachments: [],
+          inputIntent: "turn_start" as const,
+          createdBy: "user" as const,
+          creationSource: "web" as const,
+        },
+        read("read-sidebar", 1, "/repo/docs/sidebar.png"),
+        read("read-notes", 2, "/repo/docs/notes.md"),
+        read("read-sidebar-again", 3, "/repo/docs/sidebar.png"),
+        read("read-topbar", 4, "/repo/docs/topbar.png"),
+        settled
+          ? {
+              ...base("answer", 5),
+              type: "assistant_message" as const,
+              messageId: MessageId.make("answer"),
+              text: "Here are both layouts",
+              streaming: false,
+            }
+          : {
+              ...base("ask-again", 5),
+              status: "waiting" as const,
+              completedAt: null,
+              type: "user_input_request" as const,
+              requestId: RuntimeRequestId.make("layout-question"),
+              questions: [],
+            },
+      ].map((item, position) => ({
+        position,
+        visibility: "local" as const,
+        sourceThreadId: threadId,
+        sourceItemId: item.id,
+        item,
+      }));
+    const viewedImages = (settled: boolean, expandedRunIds?: ReadonlySet<RunId>) => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: deriveTimelineEntriesFromVisibleTurnItems({
+          visibleTurnItems: items(settled),
+          optimisticMessages: [],
+        }),
+        latestRun: {
+          runId,
+          status: settled ? "completed" : "running",
+          startedAt: DateTime.formatIso(at(0)),
+          completedAt: settled ? DateTime.formatIso(at(5)) : null,
+        },
+        runningRunId: settled ? null : runId,
+        isWorking: !settled,
+        activeTurnStartedAt: settled ? null : DateTime.formatIso(at(0)),
+        ...(expandedRunIds === undefined ? {} : { expandedRunIds }),
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      });
+      return rows.flatMap((row, index) =>
+        row.kind === "viewed-images" ? [{ after: rows[index - 1]?.kind, paths: row.paths }] : [],
+      );
+    };
+    const paths = ["/repo/docs/sidebar.png", "/repo/docs/topbar.png"];
+
+    expect(viewedImages(false)).toEqual([{ after: "work-live", paths }]);
+    // A settled turn's fold keeps hiding its work, images included, until it is opened.
+    expect(viewedImages(true)).toEqual([]);
+    expect(viewedImages(true, new Set([runId]))).toEqual([{ after: "work-toggle", paths }]);
   });
 
   it("keeps imported V1 turns folded once the thread's first V2 run starts", () => {
@@ -4490,6 +4590,113 @@ describe("live subagents after their parent turn settles", () => {
   });
 });
 
+describe("parent run waiting on foreground subagents", () => {
+  const runId = RunId.make("parent-run");
+  const threadId = ThreadId.make("parent-thread");
+  const at = (second: number) =>
+    DateTime.makeUnsafe(`2026-10-06T10:00:${String(second).padStart(2, "0")}Z`);
+  const base = (id: string, second: number) => ({
+    id: TurnItemId.make(id),
+    threadId,
+    runId,
+    nodeId: null,
+    providerThreadId: null,
+    providerTurnId: ProviderTurnId.make("parent-provider-turn"),
+    nativeItemRef: null,
+    parentItemId: null,
+    ordinal: second,
+    title: null,
+    startedAt: at(second),
+    completedAt: at(second),
+    updatedAt: at(second),
+  });
+  const child = (id: string, second: number): OrchestrationV2TurnItem => ({
+    ...base(id, second),
+    status: "running",
+    completedAt: null,
+    type: "subagent",
+    subagentId: NodeId.make(id),
+    origin: "provider_native",
+    driver: ProviderDriverKind.make("opencode"),
+    providerInstanceId: ProviderInstanceId.make("opencode"),
+    childThreadId: null,
+    prompt: `Read ${id}`,
+    result: null,
+  });
+
+  const liveRow = (later: ReadonlyArray<OrchestrationV2TurnItem>, toolCallVisibility?: "hideAll") =>
+    deriveMessagesTimelineRows({
+      timelineEntries: deriveTimelineEntriesFromVisibleTurnItems({
+        visibleTurnItems: (
+          [
+            {
+              ...base("user", 0),
+              status: "completed",
+              type: "user_message",
+              messageId: MessageId.make("user"),
+              createdBy: "user",
+              creationSource: "web",
+              inputIntent: "turn_start",
+              text: "Research these in parallel",
+              attachments: [],
+            },
+            {
+              ...base("assistant", 1),
+              status: "completed",
+              type: "assistant_message",
+              messageId: MessageId.make("assistant"),
+              text: "Dispatching three subagents.",
+              streaming: false,
+            },
+            child("a", 2),
+            { ...child("b", 3), status: "completed", completedAt: at(3) },
+            child("c", 4),
+            ...later,
+          ] satisfies OrchestrationV2TurnItem[]
+        ).map((item) => ({
+          position: item.ordinal,
+          visibility: "local" as const,
+          sourceThreadId: threadId,
+          sourceItemId: item.id,
+          item,
+        })),
+        optimisticMessages: [],
+      }),
+      latestRun: {
+        runId,
+        status: "running",
+        startedAt: DateTime.formatIso(at(0)),
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: DateTime.formatIso(at(0)),
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      ...(toolCallVisibility ? { toolCallVisibility } : {}),
+    }).find((row) => row.id === "live-activity-row");
+  const thinking = {
+    kind: "thinking",
+    id: "live-activity-row",
+    createdAt: DateTime.formatIso(at(0)),
+  };
+
+  it("names the running children while the open run has done nothing since launching them", () => {
+    expect(liveRow([])).toEqual({ ...thinking, label: "Waiting on 2 subagents" });
+    expect(liveRow([], "hideAll")).toEqual({ ...thinking, label: "Waiting on 2 subagents" });
+  });
+
+  it("keeps Thinking when a hidden newer parent command follows the children", () => {
+    const command: OrchestrationV2TurnItem = {
+      ...base("command", 5),
+      status: "running",
+      completedAt: null,
+      type: "command_execution",
+      input: "sleep 5",
+    };
+    expect(liveRow([command], "hideAll")).toEqual(thinking);
+  });
+});
+
 describe("subagent continued by a later turn", () => {
   const threadId = ThreadId.make("parent-thread");
   const run1 = RunId.make("run-1");
@@ -4616,5 +4823,16 @@ describe("shouldCollapseUserMessage", () => {
 
     expect(shouldCollapseUserMessage(`${citation} Can you expand on this?`)).toBe(false);
     expect(shouldCollapseUserMessage(`${citation} ${"More text. ".repeat(60)}`)).toBe(true);
+  });
+});
+
+describe("isTimelineMinimapTurnVisible", () => {
+  it("keeps a turn lit while only its reply is on screen", () => {
+    // Turn rows 10..499, viewport inside the reply.
+    expect(isTimelineMinimapTurnVisible(10, 500, 200, 210)).toBe(true);
+    expect(isTimelineMinimapTurnVisible(500, undefined, 600, 610)).toBe(true);
+    expect(isTimelineMinimapTurnVisible(500, undefined, 200, 210)).toBe(false);
+    expect(isTimelineMinimapTurnVisible(10, 500, 500, 510)).toBe(false);
+    expect(isTimelineMinimapTurnVisible(10, 500, null, null)).toBe(false);
   });
 });

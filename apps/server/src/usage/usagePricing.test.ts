@@ -17,6 +17,17 @@ const rate = (input: number, cacheRead?: number) => ({
 });
 
 describe("usage pricing", () => {
+  it("prices a bare Bedrock Claude model at the base rate", () => {
+    const table = parseRateTable({
+      "us.anthropic.claude-mythos-5-2": { input_cost_per_token: 9e-6, output_cost_per_token: 5e-5 },
+      "anthropic.claude-mythos-5-2": { input_cost_per_token: 8e-6, output_cost_per_token: 4e-5 },
+    });
+    expect(lookupRate(table, "claude-mythos-5-2")).toMatchObject({
+      inputCostPerToken: 8e-6,
+      outputCostPerToken: 4e-5,
+    });
+  });
+
   const totals = {
     uncachedInputTokens: 1_000_000,
     cachedInputTokens: 1_000_000,
@@ -33,6 +44,23 @@ describe("usage pricing", () => {
     totals,
     reportedCostUsd,
     speed,
+  });
+
+  it("prices one-hour Claude cache writes at their published rate", () => {
+    const model = "claude-example";
+    const table = parseRateTable({
+      [model]: {
+        ...rate(2e-6),
+        cache_creation_input_token_cost: 2.5e-6,
+        cache_creation_input_token_cost_above_1hr: 4e-6,
+        provider_specific_entry: { fast: 2 },
+      },
+    });
+    const standard = { ...record(model), cacheCreation1hTokens: 400_000 };
+    expect(priceUsage(table, standard).categoryCostUsd?.cacheWrite).toBeCloseTo(3.1);
+    expect(
+      priceUsage(table, { ...standard, speed: "fast" }).categoryCostUsd?.cacheWrite,
+    ).toBeCloseTo(6.2);
   });
 
   it("uses custom token rates ahead of public and provider-reported costs", () => {

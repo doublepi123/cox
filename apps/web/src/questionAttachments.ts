@@ -102,19 +102,37 @@ function pruneResolvedQuestionAttachmentDrafts(
   environmentId: EnvironmentId,
   threadId: ThreadId,
   pendingRequestIds: ReadonlyArray<string>,
+  unansweredRequestIds: ReadonlyArray<string>,
 ): void {
   const keys = new Set([
     ...Object.keys(useComposerDraftStore.getState().draftsByThreadKey),
     ...Object.keys(useQuestionAttachmentPreparation.getState().counts),
   ]);
   const prefix = questionAttachmentDraftPrefix(environmentId, threadId);
+  const unanswered = new Set(unansweredRequestIds);
   for (const key of resolvedQuestionDraftKeys(keys, prefix, pendingRequestIds)) {
-    clearQuestionAttachmentDraft(DraftId.make(key));
+    const draftId = DraftId.make(key);
+    const [requestId] = JSON.parse(decodeURIComponent(key.slice(prefix.length))) as [
+      string,
+      string,
+    ];
+    if (unanswered.has(requestId)) {
+      useComposerDraftStore
+        .getState()
+        .recoverQuestionAttachments(draftId, { environmentId, threadId });
+    }
+    clearQuestionAttachmentDraft(draftId);
   }
 }
 
 // Attachment drafts persist across reloads, so a request resolved while this
 // client was away is pruned when its thread's projection first synchronizes.
-onThreadRequestsResolved(({ environmentId, threadId, pendingRequestIds }) =>
-  pruneResolvedQuestionAttachmentDrafts(environmentId, threadId, pendingRequestIds),
+onThreadRequestsResolved(
+  ({ environmentId, threadId, pendingRequestIds, unansweredRequestIds = [] }) =>
+    pruneResolvedQuestionAttachmentDrafts(
+      environmentId,
+      threadId,
+      pendingRequestIds,
+      unansweredRequestIds,
+    ),
 );

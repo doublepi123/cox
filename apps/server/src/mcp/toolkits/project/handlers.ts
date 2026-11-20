@@ -159,11 +159,14 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
               (error) =>
                 new OrchestratorMcpFailure({
                   code: "invalid_request",
-                  message: `${error.message} No thread was created. Pass a branch, tag, or commit that exists there${
-                    strategy.startFromOrigin === true
-                      ? "; the project has no usable remote to fetch it from."
-                      : ", or set startFromOrigin:true if it exists only on a remote."
-                  }`,
+                  message:
+                    error._tag === "ThreadLaunchBranchConflictError"
+                      ? `${error.message} No thread was created. Choose a branch name that neither contains nor is nested under an existing branch.`
+                      : `${error.message} No thread was created. Pass a branch, tag, or commit that exists there${
+                          strategy.startFromOrigin === true
+                            ? "; the project has no usable remote to fetch it from."
+                            : ", or set startFromOrigin:true if it exists only on a remote."
+                        }`,
                 }),
             ),
           );
@@ -346,6 +349,13 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
   ),
   cox_project_delete: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
+      const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+      if (yield* folders.isScratchProject(input.projectId))
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message:
+            '"No project" is the built-in scratch project and cannot be deleted through MCP. The user can remove it in Settings.',
+        });
       const projects = yield* Project.ProjectService;
       const clones = yield* ProjectCloneTracker.ProjectCloneTracker;
       return yield* mutateProjectWithClone(projects, clones, {
@@ -358,7 +368,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
   cox_project_clone: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const repositories = yield* Repositories.SourceControlRepositoryService;
-      return yield* repositories.cloneRepository(input).pipe(
+      return yield* repositories.cloneRepository(input, { timeoutMs: null }).pipe(
         Effect.mapError(
           (error) =>
             new OrchestratorMcpFailure({

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   newRemoteProfileId,
@@ -185,7 +185,14 @@ export class DesktopConnectionStore {
   private persist(): void {
     mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
     const temporary = `${this.file}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, JSON.stringify(this.state, null, 2), { mode: 0o600 });
-    renameSync(temporary, this.file);
+    try {
+      writeFileSync(temporary, JSON.stringify(this.state, null, 2), { mode: 0o600 });
+      renameSync(temporary, this.file);
+    } catch (error) {
+      try {
+        rmSync(temporary, { force: true });
+      } catch {}
+      throw error;
+    }
   }
 }

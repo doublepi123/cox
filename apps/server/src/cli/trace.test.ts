@@ -1,6 +1,15 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as TestConsole from "effect/testing/TestConsole";
+import { Command } from "effect/cli";
 
-import { makeTraceSpanSummary } from "./trace.ts";
+import { makeTraceSpanSummary, traceCommand } from "./trace.ts";
+
+const run = Command.runWith(traceCommand, { version: "0.0.0" });
+const services = Layer.mergeAll(NodeServices.layer, TestConsole.layer);
 
 const MINUTE_MS = 60_000;
 
@@ -62,3 +71,22 @@ it("reads failures and interrupts of browser spans from their OTLP status", () =
   const [render] = summarizer.finish().spans;
   assert.deepStrictEqual([render?.count, render?.interrupted, render?.failures], [4, 2, 1]);
 });
+
+it.effect("prints durations that round up to a second in seconds", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-trace-summary-" });
+    const traceFile = `${baseDir}/userdata/logs/server.trace.ndjson`;
+    yield* fs.makeDirectory(`${baseDir}/userdata/logs`, { recursive: true });
+    yield* fs.writeFileString(
+      traceFile,
+      [span("rpc", 999.4, MINUTE_MS), span("rpc", 999.6, 2 * MINUTE_MS)].join("\n"),
+    );
+
+    yield* run(["summary", "--base-dir", baseDir]);
+
+    const output = (yield* TestConsole.logLines).join("\n");
+    const row = output.split("\n").find((line) => line.startsWith("rpc"));
+    assert.deepStrictEqual(row?.trim().split(/\s+/).slice(3, 6), ["999ms", "1s", "1s"]);
+  }).pipe(Effect.provide(services), Effect.scoped),
+);

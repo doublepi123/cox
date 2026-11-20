@@ -2,6 +2,7 @@ import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretReso
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
+  AuthAccessReadScope,
   AuthSessionId,
   EventId,
   MessageId,
@@ -14,6 +15,8 @@ import {
   WS_METHODS,
   WsServerRefreshProvidersRpc,
   WsSubscribeServerConfigRpc,
+  WsRpcGroup,
+  type AuthAccessStreamEvent,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadShell,
   type OrchestrationProjectShell,
@@ -48,6 +51,7 @@ import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as CodexInstallation from "./provider/CodexInstallation.ts";
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
@@ -725,7 +729,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ProcessDiagnostics.ProcessDiagnostics)({}),
   Layer.mock(ProcessResourceMonitor.ProcessResourceMonitor)({}),
   Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
-  Layer.mock(ProjectService.ProjectService)({}),
+  Layer.mock(ProjectService.ProjectService)({ workspaceScanDirectory: Effect.succeed }),
   Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
   Layer.mock(ProjectStore.ProjectStoreV2)({}),
   Layer.mock(ProviderAuthService.ProviderAuthService)({}),
@@ -1248,5 +1252,108 @@ it.effect("thread resume across compacted history keeps message order and final 
         Layer.provideMerge(ReplayTestLayer),
       ),
     ),
+  ),
+);
+it.effect("access changes made while the snapshot loads reach the client after it", () =>
+  Effect.gen(function* () {
+    const sessionChanges = yield* PubSub.unbounded<SessionStore.SessionCredentialChange>();
+    const subscribed = yield* Queue.unbounded<void>();
+    const subscribe = <A>(changes: PubSub.PubSub<A>) =>
+      Stream.unwrap(
+        PubSub.subscribe(changes).pipe(
+          Effect.tap(() => Queue.offer(subscribed, undefined)),
+          Effect.map(Stream.fromSubscription),
+        ),
+      );
+    const revokedElsewhere = AuthSessionId.make("revoked-elsewhere");
+    const responses = yield* Queue.unbounded<AuthAccessStreamEvent>();
+    const server = yield* RpcServer.makeNoSerialization(WsRpcGroup, {
+      ...WS_RPC_SERVER_OPTIONS,
+      onFromServer: (response) =>
+        response._tag === "Chunk"
+          ? Effect.forEach(
+              response.values,
+              (event) => Queue.offer(responses, event as AuthAccessStreamEvent),
+              {
+                discard: true,
+              },
+            )
+          : Effect.void,
+    }).pipe(
+      Effect.provide(
+        layerWsRpc(
+          {
+            sessionId: AuthSessionId.make("current"),
+            subject: "current",
+            method: "browser-session-cookie",
+            scopes: [],
+          },
+          {},
+          yield* ServerBrowser.ServerBrowser,
+          () => Effect.void,
+        ).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              layerUnusedConfigRpcServices,
+              Layer.mock(ExternalLauncher.ExternalLauncher)({}),
+              Layer.mock(ProviderRegistry.ProviderRegistry)({}),
+              Layer.mock(UsageLimitSources.UsageLimitSources)({}),
+              Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+                namedProjectsRoot: "/unused",
+              }),
+              Layer.mock(ScratchThreadPromotion.ScratchThreadPromotion)({}),
+              Layer.mock(ServerEnvironment.ServerEnvironment)({}),
+              Layer.mock(EnvironmentAuth.EnvironmentAuth)({
+                listClientSessions: () =>
+                  PubSub.publish(sessionChanges, {
+                    type: "clientRemoved",
+                    sessionId: revokedElsewhere,
+                  }).pipe(Effect.as([])),
+              }),
+              Layer.mock(SessionStore.SessionStore)({
+                cookieName: "auth-access-test",
+                legacyCookieName: undefined,
+                streamChanges: subscribe(sessionChanges),
+              }),
+            ),
+          ),
+          Layer.merge(RpcAuthorization.layer([AuthAccessReadScope])),
+        ),
+      ),
+    );
+    const requestId = RpcMessage.RequestId("auth-access");
+    yield* server.write(0, {
+      _tag: "Request",
+      id: requestId,
+      tag: WS_METHODS.subscribeAuthAccess,
+      payload: {},
+      headers: Headers.empty,
+    });
+    const snapshot = yield* Queue.take(responses);
+    assert.equal(snapshot.type, "snapshot");
+    yield* server.write(0, { _tag: "Ack", requestId });
+    yield* Queue.take(subscribed);
+
+    yield* PubSub.publish(sessionChanges, {
+      type: "clientRemoved",
+      sessionId: AuthSessionId.make("later"),
+    });
+    const next = yield* Queue.take(responses);
+    assert.deepEqual(next, {
+      version: 1,
+      revision: 2,
+      type: "clientRemoved",
+      payload: { sessionId: revokedElsewhere },
+    });
+    yield* server.write(0, { _tag: "Interrupt", requestId, interruptors: [] });
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        Layer.fresh(layerConfigSources),
+        Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
+        Layer.mock(ServerBrowser.ServerBrowser)({}),
+      ),
+    ),
+    Effect.scoped,
   ),
 );

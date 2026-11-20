@@ -1,5 +1,12 @@
-import type { ThreadContextRecord, UserInputQuestion } from "@t3tools/contracts";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import type {
+  PreviewAnnotationContextRecord,
+  ThreadContextRecord,
+  UserInputQuestion,
+} from "@t3tools/contracts";
+import {
+  projectComposerContextForProvider,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import {
   buildPendingUserInputAnswers,
@@ -14,13 +21,18 @@ import { collectInlineContextIds } from "./lib/composerContextReferences";
 export function projectPendingUserInputAnswer(
   answer: unknown,
   threadContexts: ReadonlyArray<ThreadContextRecord>,
+  previewAnnotations: ReadonlyArray<PreviewAnnotationContextRecord> = [],
 ) {
-  if (typeof answer !== "string" || threadContexts.length === 0) return answer;
+  if (typeof answer !== "string") return answer;
   const recordsById = new Map(threadContexts.map((record) => [record.contextId, record]));
-  return replaceComposerContextReferences(answer, (reference) => {
+  const text = replaceComposerContextReferences(answer, (reference) => {
     const record = reference.kind === "thread" ? recordsById.get(reference.contextId) : undefined;
     return record ? formatThreadLink(record, reference.label) : reference.source;
   });
+  const referencedIds = new Set(collectInlineContextIds(text));
+  return previewAnnotations.some(({ contextId }) => referencedIds.has(contextId))
+    ? projectComposerContextForProvider({ text, records: previewAnnotations })
+    : text;
 }
 
 // Question drafts retain deleted chip records for undo; only transfer referenced records.

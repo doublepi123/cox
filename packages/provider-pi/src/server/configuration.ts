@@ -35,7 +35,10 @@ export function piEnvironment(
   };
 }
 
-export function configuredPiLaunchArgs(settings: PiSettings): PiLaunchArgsResolution {
+export function configuredPiLaunchArgs(
+  settings: PiSettings,
+  defaultProjectTrust: "--approve" | "--no-approve" = "--approve",
+): PiLaunchArgsResolution {
   const resolved = resolvePiLaunchArgs(settings.launchArgs);
   if (!resolved.ok) return resolved;
   if (settings.apiKey?.trim() && !API_KEY_VARIABLES[modelProvider(settings) ?? ""])
@@ -49,7 +52,7 @@ export function configuredPiLaunchArgs(settings: PiSettings): PiLaunchArgsResolu
     args: [
       ...(resolved.args.some((arg) => ["--approve", "-a", "--no-approve", "-na"].includes(arg))
         ? []
-        : ["--approve"]),
+        : [defaultProjectTrust]),
       ...resolved.args,
       ...(settings.model?.trim()
         ? [

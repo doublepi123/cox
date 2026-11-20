@@ -806,3 +806,58 @@ it("keeps repeated diff blocks independent when surrounding content changes", as
     expect(body(collapsedIndex)?.textContent).toContain("updated second");
   });
 });
+
+it("opens a repository-relative file from a nested project without a remote", async () => {
+  await using _viewport = await viewportScope(1280, 800);
+  const path = "project/back\\slash.txt";
+  using context = setupFiles([path]);
+  state.thread = { ...state.thread!, worktreePath: null };
+  const status = AsyncResult.getOrThrow(context.registry.get(state.status));
+  state.status = Atom.make(
+    AsyncResult.success({ ...status, workingTree: { ...status.workingTree, rootPath: "/" } }),
+  );
+  await using screen = await render(
+    <RegistryContext.Provider value={context.registry}>
+      <div className="flex h-[600px] flex-col">
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>,
+  );
+  await context.load(path);
+  await userEvent.click(screen.getByText(path, { exact: true }));
+  await vi.waitFor(() =>
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, context.threadRef),
+    ).toMatchObject({ activeSurfaceId: "file:back\\slash.txt" }),
+  );
+});
+
+it("says a turn diff cut off at the server's size limit is incomplete", async () => {
+  using context = setup("origin/orphan");
+  state.checkpoints = [
+    {
+      runId: "run",
+      checkpointTurnCount: 1,
+      checkpointRef: "ref",
+      status: "ready",
+      files: [],
+      assistantMessageId: null,
+      completedAt: "2026-01-01T00:00:00Z",
+    },
+  ];
+  state.checkpointDiff = {
+    diff: "diff --git a/first.txt b/first.txt\n--- a/first.txt\n+++ b/first.txt\n@@ -0,0 +1 @@\n+visible\n\n[truncated]",
+  };
+  useDiffPanelStore.getState().selectTurn(context.threadRef, RunId.make("run"));
+  await using screen = await render(
+    <RegistryContext.Provider value={context.registry}>
+      <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
+        <DiffPanel composerDraftTarget={context.threadRef} workspaceMutationId={null} visible />
+      </div>
+    </RegistryContext.Provider>,
+  );
+  await expect.element(screen.getByRole("option", { name: "first.txt" })).toBeInTheDocument();
+  await expect
+    .element(screen.getByText("This preview exceeds the size limit. Changes shown are incomplete."))
+    .toBeVisible();
+});

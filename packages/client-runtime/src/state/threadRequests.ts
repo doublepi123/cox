@@ -13,6 +13,7 @@ import type {
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { parseThreadKey, threadKey } from "./entities.ts";
+import { getProjectionArrayReplacementIndex } from "./orchestrationV2Projection.ts";
 import type { EnvironmentThreadShell } from "./models.ts";
 import * as DateTime from "effect/DateTime";
 import type { AtomCommandResult } from "./runtime.ts";
@@ -166,6 +167,7 @@ export interface ThreadRequestsResolved {
   readonly threadId: ThreadId;
   /** Every request the thread still waits on; drafts for any other request are stale. */
   readonly pendingRequestIds: ReadonlyArray<RuntimeRequestId>;
+  readonly unansweredRequestIds?: ReadonlyArray<RuntimeRequestId>;
 }
 
 const threadRequestsResolvedListeners = new Set<(event: ThreadRequestsResolved) => void>();
@@ -205,11 +207,20 @@ export function makeThreadRequestsResolvedAnnouncer(
   threadId: ThreadId,
 ) {
   let announced: ReadonlySet<RuntimeRequestId> | null = null;
-  return (pendingRequestIds: ReadonlyArray<RuntimeRequestId>) => {
+  return (
+    pendingRequestIds: ReadonlyArray<RuntimeRequestId>,
+    unansweredRequestIds: ReadonlyArray<RuntimeRequestId> = [],
+  ) => {
     const pending = new Set(pendingRequestIds);
     const resolvedSome = announced === null || [...announced].some((id) => !pending.has(id));
     announced = pending;
-    if (resolvedSome) notifyThreadRequestsResolved({ environmentId, threadId, pendingRequestIds });
+    if (resolvedSome)
+      notifyThreadRequestsResolved({
+        environmentId,
+        threadId,
+        pendingRequestIds,
+        ...(unansweredRequestIds.length > 0 ? { unansweredRequestIds } : {}),
+      });
   };
 }
 
@@ -288,54 +299,61 @@ export function createQuestionHistoryProjector<
   let previousRows: Rows | undefined;
   let previousRequests: Requests | undefined;
   let previousResult: Rows | undefined;
+  let byId = new Map<RuntimeRequestId, Requests[number]>();
   const cache = new WeakMap<Row, { request: Requests[number]; row: Row }>();
+  const projectRow = (row: Row): Row => {
+    const item = row.item;
+    if (item.type !== "user_input_request" || item.questionAnswer) return row;
+    const request = byId.get(item.requestId);
+    if (request?.status !== "resolved" || request.answers === undefined) return row;
+    const cached = cache.get(row);
+    const next: Row =
+      cached?.request === request
+        ? cached.row
+        : {
+            ...row,
+            item: {
+              ...item,
+              questionAnswer: {
+                requestId: request.id,
+                answers: request.answers,
+                attachmentsByQuestionId: {},
+                questionTextById: Object.fromEntries(
+                  item.questions.map((question) => [question.id, question.question]),
+                ),
+              },
+            },
+          };
+    cache.set(row, { request, row: next });
+    return next;
+  };
+  const projectRows = (rows: Rows): Rows => {
+    let result: Row[] | undefined;
+    for (const [index, row] of rows.entries()) {
+      const next = projectRow(row);
+      if (next !== row) result ??= rows.slice(0, index);
+      result?.push(next);
+    }
+    return result ?? rows;
+  };
   return (projection: {
     readonly visibleTurnItems: Rows;
     readonly runtimeRequests: Requests;
   }): Rows => {
     const { visibleTurnItems: rows, runtimeRequests: requests } = projection;
-    if (rows === previousRows && requests === previousRequests && previousResult)
-      return previousResult;
-    const byId = new Map(requests.map((request) => [request.id, request]));
-    let result: Row[] | undefined;
-    for (const [index, row] of rows.entries()) {
-      const item = row.item;
-      const request =
-        item.type === "user_input_request" && !item.questionAnswer
-          ? byId.get(item.requestId)
-          : undefined;
-      let next = row;
-      if (
-        item.type === "user_input_request" &&
-        request?.status === "resolved" &&
-        request.answers !== undefined
-      ) {
-        const cached = cache.get(row);
-        next =
-          cached?.request === request
-            ? cached.row
-            : {
-                ...row,
-                item: {
-                  ...item,
-                  questionAnswer: {
-                    requestId: request.id,
-                    answers: request.answers,
-                    attachmentsByQuestionId: {},
-                    questionTextById: Object.fromEntries(
-                      item.questions.map((question) => [question.id, question.question]),
-                    ),
-                  },
-                },
-              };
-        cache.set(row, { request, row: next });
-      }
-      if (next !== row) result ??= rows.slice(0, index);
-      result?.push(next);
-    }
+    const sameRequests = requests === previousRequests;
+    if (rows === previousRows && sameRequests && previousResult) return previousResult;
+    if (!sameRequests) byId = new Map(requests.map((request) => [request.id, request]));
+    // Nothing was overlaid and requests are unchanged, so only an exactly replaced row can differ.
+    const replacedIndex =
+      sameRequests && previousRows !== undefined && previousResult === previousRows
+        ? getProjectionArrayReplacementIndex(previousRows, rows)
+        : undefined;
+    const unchanged =
+      replacedIndex !== undefined && projectRow(rows[replacedIndex]!) === rows[replacedIndex];
     previousRows = rows;
     previousRequests = requests;
-    previousResult = result ?? rows;
+    previousResult = unchanged ? rows : projectRows(rows);
     return previousResult;
   };
 }

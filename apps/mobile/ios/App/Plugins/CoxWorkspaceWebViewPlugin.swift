@@ -129,6 +129,7 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             while self.recent.count >= 2 { self.dispose(self.recent[0]) }
             let configuration = WKWebViewConfiguration()
+            configuration.allowsInlineMediaPlayback = true
             configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: profile.id)
             configuration.userContentController.add(rules)
             let session = WorkspaceSession(profile: profile, configuration: configuration)

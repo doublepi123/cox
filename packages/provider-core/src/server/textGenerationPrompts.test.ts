@@ -4,6 +4,17 @@ import { normalizeCliError } from "./textGenerationUtils.ts";
 import { buildThreadTitlePrompt } from "./textGenerationPrompts.ts";
 
 describe("buildThreadTitlePrompt", () => {
+  it("names the project to omit when generating or revising a title", () => {
+    for (const previousTitle of [undefined, "Login failure"]) {
+      const { prompt } = buildThreadTitlePrompt({
+        message: "Fix login",
+        projectTitle: "Sandbox",
+        previousTitle,
+      });
+      expect(prompt).toContain('Omit the project name ("Sandbox")');
+    }
+  });
+
   it("prioritizes custom title instructions over generic length and format rules", () => {
     for (const previousTitle of [undefined, "Login failure"]) {
       const { prompt } = buildThreadTitlePrompt({

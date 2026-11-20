@@ -25,6 +25,44 @@ import {
   type ComposerPromptEditorProps,
 } from "./ComposerPromptEditorTiptap";
 
+vi.mock(import("../state/server"), async (original) => {
+  const { Atom } = await import("effect/reactivity");
+  const { compileResolvedKeybindingsConfig, DEFAULT_KEYBINDINGS } =
+    await import("@t3tools/shared/keybindings");
+  return {
+    ...(await original()),
+    primaryServerKeybindingsAtom: Atom.make(
+      compileResolvedKeybindingsConfig([
+        ...DEFAULT_KEYBINDINGS,
+        { key: "mod+arrowup", command: "thread.previous" },
+        { key: "mod+arrowdown", command: "thread.next" },
+      ]),
+    ),
+  };
+});
+
+it("leaves Command-arrow thread navigation bindings to the app on macOS", async () => {
+  using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  await using screen = await mountEditor("first\nsecond");
+  const { editor } = screen;
+  await act(async () => {
+    editor.commands.focus("end");
+  });
+  await vi.waitFor(() => expect(document.activeElement).toBe(editor.view.dom));
+  const reachedApp: string[] = [];
+  const onWindowKeyDown = (event: KeyboardEvent) => {
+    if (!event.defaultPrevented && event.key.startsWith("Arrow")) reachedApp.push(event.key);
+  };
+  window.addEventListener("keydown", onWindowKeyDown);
+  using _listener = {
+    [Symbol.dispose]: () => window.removeEventListener("keydown", onWindowKeyDown),
+  };
+
+  await userEvent.keyboard("{Meta>}{ArrowUp}{ArrowDown}{/Meta}");
+
+  expect(reachedApp).toEqual(["ArrowUp", "ArrowDown"]);
+});
+
 const babysit: ServerProviderSkill = {
   name: "babysit",
   path: "/skills/babysit/SKILL.md",
@@ -675,6 +713,23 @@ async function focusAt(editor: Editor, position: number | "end") {
   vi.runOnlyPendingTimers();
 }
 
+it("reopens a long draft scrolled to its caret without taking focus", async () => {
+  // App CSS is not loaded here; give the editor its own scroll box.
+  const style = document.head.appendChild(document.createElement("style"));
+  // The bottom padding stands in for space reserved under overlaid controls.
+  style.textContent =
+    ".composer-tiptap { max-height: 120px; overflow-y: auto; padding-bottom: 48px; }";
+  using _style = { [Symbol.dispose]: () => style.remove() };
+  const value = Array.from({ length: 40 }, (_, line) => `line ${line + 1}`).join("\n");
+  await using screen = await mountEditor(value);
+  const { editor } = screen;
+  const scroller = editor.view.dom;
+  await vi.waitFor(() => expect(scroller.scrollTop).toBeGreaterThan(0));
+  expect(document.activeElement).not.toBe(scroller);
+  const caret = editor.view.coordsAtPos(editor.state.selection.head);
+  expect(caret.bottom).toBeLessThanOrEqual(scroller.getBoundingClientRect().bottom - 48 + 1);
+});
+
 describe("Markdown markers around styled text", () => {
   it.each([
     { keys: "{Backspace}", expected: "**** after" },
@@ -799,6 +854,30 @@ describe("Markdown markers around styled text", () => {
       keys: "{Shift>}{Enter}{/Shift}",
       expected: "**bo**\n**ld** after",
       marks: { bold: ["bo", "ld"] },
+    },
+    {
+      name: "a line break after typed inline code leaves the next line plain",
+      value: "",
+      caret: 1,
+      keys: "`Test`{Shift>}{Enter}{/Shift}f",
+      expected: "`Test`\nf",
+      marks: { code: ["Test"] },
+    },
+    {
+      name: "a line break after typed bold leaves the next line plain",
+      value: "",
+      caret: 1,
+      keys: "**Test**{Shift>}{Enter}{/Shift}f",
+      expected: "**Test**\nf",
+      marks: { bold: ["Test"] },
+    },
+    {
+      name: "Mod+B without a selection after typed bold leaves the next line plain",
+      value: "",
+      caret: 1,
+      keys: `**Test**${isMacPlatform(navigator.platform) ? "{Meta>}b{/Meta}" : "{Control>}b{/Control}"}{Shift>}{Enter}{/Shift}f`,
+      expected: "**Test**\nf",
+      marks: { bold: ["Test"] },
     },
     {
       name: "splitting a list item inside bold keeps both halves bold",

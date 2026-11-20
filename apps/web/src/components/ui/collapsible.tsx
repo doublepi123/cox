@@ -12,7 +12,7 @@ const collapsibleTriggerVariants = {
   advanced:
     "group flex min-h-10 w-full items-center gap-1.5 rounded-b-xl px-3 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-panel-open:rounded-none sm:px-4",
   markdown:
-    "flex w-full items-center gap-2 py-2 text-left text-sm font-medium text-foreground data-panel-open:[&_svg]:rotate-90",
+    "flex w-full items-center gap-2 py-2 text-start text-sm font-medium text-foreground [&:dir(rtl):not([data-panel-open])_svg]:rotate-180 data-panel-open:[&_svg]:rotate-90",
   "review-orphans":
     "flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs text-muted-foreground",
   "review-file":

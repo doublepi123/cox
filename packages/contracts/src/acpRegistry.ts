@@ -277,6 +277,9 @@ export const AcpRegistryProbeResult = Schema.Struct({
   models: Schema.Array(AcpRegistryProbeModel).check(Schema.isMaxLength(256)),
   currentModelId: Schema.NullOr(AcpRegistryProbeText),
   configOptions: Schema.Array(ProviderOptionDescriptor).check(Schema.isMaxLength(16)),
+  modelOptionIds: Schema.optionalKey(
+    Schema.Array(AcpRegistryProbeText).check(Schema.isMaxLength(16)),
+  ),
   sessionManagement: Schema.Struct({
     canList: Schema.Boolean,
     canLoad: Schema.Boolean,

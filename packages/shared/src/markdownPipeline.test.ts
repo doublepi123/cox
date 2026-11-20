@@ -3,7 +3,52 @@ import { unified } from "unified";
 import rehypeRaw from "rehype-raw";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
-import { CHAT_MARKDOWN_REHYPE_PLUGINS, CHAT_MARKDOWN_REMARK_PLUGINS } from "./markdownPipeline.ts";
+import {
+  CHAT_MARKDOWN_REHYPE_PLUGINS,
+  CHAT_MARKDOWN_REMARK_PLUGINS,
+  CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
+  CHAT_USER_MARKDOWN_REMARK_PLUGINS,
+} from "./markdownPipeline.ts";
+
+it("preserves exactly the typed prose indentation in a user message over the sanitizer", () => {
+  const markdown =
+    "Plan\n   Step one\n        Step two\n\n- Item\n    detail\n\n    \n        code";
+  const render = (isUser: boolean) => {
+    const processor = unified()
+      .use(remarkParse)
+      .use(CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
+      .use(isUser ? CHAT_USER_MARKDOWN_REMARK_PLUGINS : [])
+      .use(remarkRehype)
+      .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
+    return processor.runSync(processor.parse(markdown), markdown);
+  };
+  const tree = render(true);
+  expect(tree.children[0]).toMatchObject({
+    tagName: "p",
+    children: [
+      { value: "Plan" },
+      { tagName: "br" },
+      { value: "\n" },
+      {
+        tagName: "span",
+        properties: { dataLeadingWhitespace: "" },
+        children: [{ value: "" }, { value: "   " }],
+      },
+      { value: "Step one" },
+      { tagName: "br" },
+      { value: "\n" },
+      {
+        tagName: "span",
+        properties: { dataLeadingWhitespace: "" },
+        children: [{ value: "" }, { value: "        " }],
+      },
+      { value: "Step two" },
+    ],
+  });
+  expect(JSON.stringify(tree)).toContain('"value":"  "');
+  expect(JSON.stringify(tree)).toContain('"tagName":"pre"');
+  expect(JSON.stringify(render(false))).not.toContain("dataLeadingWhitespace");
+});
 
 it("preserves in-app thread links through the shared Markdown sanitizer", () => {
   const processor = unified()
@@ -180,4 +225,63 @@ it("keeps original task positions but removes synthetic recovered list-item posi
     markdown.indexOf("- [ ] Parent"),
     markdown.indexOf("- [x] Standard nested"),
   ]);
+});
+
+it("moves a <picture>'s color-scheme sources onto its <img>, which the renderer resolves", () => {
+  const processor = unified()
+    .use(remarkParse)
+    .use(CHAT_MARKDOWN_REMARK_PLUGINS)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
+  type Node = { type: string; tagName?: string; properties?: object; children?: Node[] };
+  const tags = (node: Node): string[] => [
+    ...(node.tagName ? [node.tagName] : []),
+    ...(node.children ?? []).flatMap(tags),
+  ];
+  const images = (node: Node): Node[] =>
+    node.tagName === "img" ? [node] : (node.children ?? []).flatMap(images);
+  const tree = processor.runSync(
+    processor.parse(
+      [
+        "<picture>",
+        '  <source media="(prefers-color-scheme: dark)" srcset="docs/dark.webp 1x, docs/dark@2x.webp 2x">',
+        '  <source media="(prefers-color-scheme: dark)" srcset="docs/dark-unused.webp">',
+        '  <source media="(min-width: 600px)" srcset="docs/wide.webp">',
+        '  <img src="docs/light.webp" alt="Studio">',
+        "</picture>",
+        "",
+        '<picture><source media="(prefers-color-scheme: light)" srcset="javascript:alert(1)"><img src="docs/dark.webp"></picture>',
+        "",
+        String.raw`<picture><source media="(prefers-color-scheme: dark)" srcset="C:\shots\dark.png"><img src="C:\shots\light.png"></picture>`,
+      ].join("\n"),
+    ),
+  ) as Node;
+
+  expect(tags(tree)).toEqual(["picture", "img", "p", "picture", "img", "p", "picture", "img"]);
+  expect(images(tree).map((image) => image.properties)).toEqual([
+    { src: "docs/light.webp", alt: "Studio", dataDarkSrc: "docs/dark.webp" },
+    { src: "docs/dark.webp" },
+    { dataLocalSrc: String.raw`C:\shots\light.png`, dataDarkSrc: "file:///C:/shots/dark.png" },
+  ]);
+});
+
+it("ends bare URLs at CJK punctuation and restores surrounding emphasis", () => {
+  const parser = unified().use(remarkParse).use(CHAT_MARKDOWN_REMARK_PLUGINS);
+  const source = "可以看了：**http://localhost:18780**（已重启）。";
+  const result = parser.runSync(parser.parse(source), source);
+  expect(result).toMatchObject({
+    children: [
+      {
+        children: [
+          { type: "text", value: "可以看了：" },
+          { type: "strong", children: [{ type: "link", url: "http://localhost:18780" }] },
+          { type: "text", value: "（已重启）。" },
+        ],
+      },
+    ],
+  });
+  const explicit = "[https://example.com/a。b](https://example.com/a。b)";
+  expect(parser.runSync(parser.parse(explicit), explicit)).toMatchObject({
+    children: [{ children: [{ type: "link", url: "https://example.com/a。b" }] }],
+  });
 });

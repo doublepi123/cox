@@ -5,6 +5,7 @@ import {
   NodeId,
   ORCHESTRATION_V2_WS_METHODS,
   RuntimeRequestId,
+  RunId,
   ThreadId,
   TurnItemId,
   type OrchestrationV2ThreadDetailSnapshot,
@@ -978,6 +979,66 @@ describe("EnvironmentThreads", () => {
           message: "History did not advance.",
         });
         expect((yield* SubscriptionRef.get(harness.threadState)).history.loading).toBe(false);
+      }),
+    );
+    const boundary = (fields: object, id = "boundary", ordinal = 2) => ({
+      ...command(id, "completed", 0, ordinal),
+      ...fields,
+    });
+    const message = (
+      inputIntent: "turn_start" | "steer",
+      createdBy: "agent" | "user",
+      id = "boundary",
+      ordinal = 2,
+    ) =>
+      boundary(
+        {
+          type: "user_message",
+          messageId: MessageId.make(id),
+          inputIntent,
+          createdBy,
+          creationSource: "mcp",
+          text: "Run every check",
+          attachments: [],
+        },
+        id,
+        ordinal,
+      );
+    it.effect.each([
+      ["an agent-started turn", message("turn_start", "agent"), ["3"]],
+      [
+        "a notification",
+        boundary({
+          type: "notification",
+          source: { kind: "delegated_task", taskIds: [] },
+          outcome: "completed",
+          summary: "Checks finished",
+        }),
+        ["3"],
+      ],
+      ["a steer, paging on to its turn", message("steer", "user"), ["3", "2", "1"]],
+    ] as const)("stops paging earlier history at %s", ([, item, expected]) =>
+      Effect.gen(function* () {
+        const pages: Record<string, ReadonlyArray<unknown>> = {
+          "3": [item],
+          "2": [command("work-1", "completed", 0, 1)],
+          "1": [message("turn_start", "user", "opener", 0)],
+        };
+        const requests: string[] = [];
+        const harness = yield* makeHarness({
+          cached: cachedItem(command("tail", "completed", 0, 3)),
+          cachedHistory: { historyCursor: "3", hasMoreHistory: true },
+          historyHttpClient: HttpClient.make((request, url) => {
+            const cursor = url.searchParams.get("cursor")!;
+            requests.push(cursor);
+            const items = (pages[cursor] ?? []) as ReadonlyArray<OrchestrationV2TurnItem>;
+            return Effect.succeed(
+              historyPage(request, items.map(localRow), String(Number(cursor) - 1)),
+            );
+          }),
+        });
+        expect(yield* harness.loadEarlier()).toEqual({ _tag: "loaded" });
+        expect(requests).toEqual(expected);
       }),
     );
     it.effect("loads deferred work on demand and resumes a failed page", () =>
@@ -2209,6 +2270,51 @@ describe("EnvironmentThreads", () => {
       expect(yield* Ref.get(harness.savedThreads)).toHaveLength(1);
       yield* Scope.close(scope, Exit.void);
       expect(yield* Ref.get(harness.savedThreads)).toHaveLength(1);
+    }),
+  );
+
+  it.effect("caches a running thread once when its view closes, not on each update", () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const harness = yield* makeHarness().pipe(Effect.provideService(Scope.Scope, scope));
+      const running: OrchestrationV2ThreadProjection = {
+        ...BASE_PROJECTION,
+        runs: [
+          {
+            id: RunId.make("run-running"),
+            threadId: THREAD_ID,
+            ordinal: 1,
+            providerInstanceId: BASE_PROJECTION.thread.providerInstanceId,
+            modelSelection: BASE_PROJECTION.thread.modelSelection,
+            providerThreadId: null,
+            userMessageId: MessageId.make("message-running"),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "running",
+            requestedAt: v2Now,
+            startedAt: v2Now,
+            completedAt: null,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        ],
+      };
+      yield* Queue.offer(harness.inputs, snapshot(running, 4));
+      yield* Queue.offer(harness.inputs, titleUpdated("Streaming update", 5));
+      yield* awaitThreadState(
+        harness.observed,
+        (value) =>
+          Option.isSome(value.data) && value.data.value.thread.title === "Streaming update",
+      );
+      yield* TestClock.adjust("10 seconds");
+      expect(yield* Ref.get(harness.savedThreads)).toHaveLength(0);
+
+      yield* Scope.close(scope, Exit.void);
+      const saved = yield* Ref.get(harness.savedThreads);
+      expect(saved).toHaveLength(1);
+      expect(saved[0]?.snapshotSequence).toBe(5);
+      expect(saved[0]?.projection.thread.title).toBe("Streaming update");
+      expect(saved[0]?.projection.runs[0]?.status).toBe("running");
     }),
   );
 

@@ -54,7 +54,12 @@ export type PullRequestChecksState = typeof PullRequestChecksState.Type;
 export const PullRequestMergeability = Schema.Literals(["mergeable", "conflicting", "unknown"]);
 export type PullRequestMergeability = typeof PullRequestMergeability.Type;
 
-export const PullRequestMergeMethod = Schema.Literals(["merge", "squash", "rebase"]);
+export const PullRequestMergeMethod = Schema.Literals([
+  "merge",
+  "squash",
+  "rebase",
+  "fast-forward",
+]);
 export type PullRequestMergeMethod = typeof PullRequestMergeMethod.Type;
 
 export const PullRequestAction = Schema.Literals([
@@ -109,6 +114,11 @@ export const PullRequestCheck = Schema.Struct({
   description: Schema.NullOr(Schema.String),
   url: Schema.NullOr(Schema.String),
   required: Schema.optional(Schema.Boolean),
+  /**
+   * Not a check: it stands for ones the host could not list, such as workflow runs awaiting
+   * approval when that read fails, so nothing waits on it or counts it as passing.
+   */
+  placeholder: Schema.optional(Schema.Boolean),
 });
 export type PullRequestCheck = typeof PullRequestCheck.Type;
 
@@ -313,6 +323,7 @@ export const PullRequestMergeCapabilities = Schema.Struct({
   merge: Schema.Boolean,
   squash: Schema.Boolean,
   rebase: Schema.Boolean,
+  "fast-forward": Schema.optional(Schema.Boolean),
 });
 export type PullRequestMergeCapabilities = typeof PullRequestMergeCapabilities.Type;
 
@@ -749,6 +760,7 @@ export const PullRequestSetFilesViewedInput = Schema.Struct({
     Schema.Struct({
       path: FilePath,
       viewed: Schema.Boolean,
+      revision: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
     }),
   ).check(Schema.isMaxLength(MAX_FILES_VIEWED_PRESSES)),
 });
@@ -899,6 +911,7 @@ export const PullRequestUnavailableReason = Schema.Literals([
   "cli-missing",
   "cli-unauthenticated",
   "provider-unsupported",
+  "repository-without-project",
 ]);
 export type PullRequestUnavailableReason = typeof PullRequestUnavailableReason.Type;
 
@@ -927,6 +940,7 @@ export class PullRequestUnavailableError extends Schema.TaggedError<PullRequestU
      * shipped no such field, and for a host that names nothing.
      */
     requirement: Schema.optional(TrimmedNonEmptyString),
+    repository: Schema.optional(TrimmedNonEmptyString),
     cause: Schema.optional(Schema.Defect()),
   },
   { httpApiStatus: 503 },
@@ -943,6 +957,8 @@ export class PullRequestUnavailableError extends Schema.TaggedError<PullRequestU
         return this.requirement ?? "This host has no working credentials.";
       case "provider-unsupported":
         return "Change requests cannot be browsed for this project's host yet.";
+      case "repository-without-project":
+        return `${this.repository ?? "This repository"} is not a project in Cox. Add it as a project to read its change requests.`;
     }
   }
 }

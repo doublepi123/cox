@@ -226,7 +226,7 @@ export function ReviewThreadCard({
 
   return (
     <div
-      className={CARD_CLASS}
+      className={cn(CARD_CLASS, !expanded && "py-1")}
       contentEditable={false}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -247,7 +247,7 @@ export function ReviewThreadCard({
         {thread.isOutdated ? <span>outdated</span> : null}
         {onFix ? (
           <span className="inline-flex min-w-0 ml-auto">
-            <Button size="xs" variant="ghost" disabled={pending || fixPending} onClick={onFix}>
+            <Button size="compact" variant="ghost" disabled={pending || fixPending} onClick={onFix}>
               <HammerIcon className="size-3" />
               {fixPending ? "Preparing..." : fixLabel}
             </Button>
@@ -255,7 +255,11 @@ export function ReviewThreadCard({
         ) : null}
         {onAddToChat && comments.some((comment) => visibleBody(comment.body) !== null) ? (
           <span className={onFix ? undefined : "ml-auto"}>
-            <Button size="xs" variant="ghost" onClick={() => onAddToChat({ ...thread, comments })}>
+            <Button
+              size="compact"
+              variant="ghost"
+              onClick={() => onAddToChat({ ...thread, comments })}
+            >
               <MessageSquarePlusIcon className="size-3" />
               Add to chat
             </Button>
@@ -263,7 +267,7 @@ export function ReviewThreadCard({
         ) : null}
         {canResolve ? (
           <span className={cn("inline-flex min-w-0", onFix || onAddToChat ? undefined : "ml-auto")}>
-            <Button size="xs" variant="ghost" disabled={pending} onClick={onToggleResolved}>
+            <Button size="compact" variant="ghost" disabled={pending} onClick={onToggleResolved}>
               {thread.isResolved ? "Unresolve" : "Resolve"}
             </Button>
           </span>

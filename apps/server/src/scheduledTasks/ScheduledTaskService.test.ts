@@ -520,6 +520,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
 it.effect.each([
   { status: "completed", expectedStatus: "succeeded", error: null },
   { status: "failed", expectedStatus: "failed", error: "Weekly usage limit reached" },
+  { status: "failed", expectedStatus: "failed", error: "Weekly usage limit reached", held: true },
   { status: "interrupted", expectedStatus: "failed", error: "The run was stopped." },
   { status: "cancelled", expectedStatus: "failed", error: "The run was cancelled." },
 ] as const)(
@@ -593,9 +594,32 @@ it.effect.each([
           interactionMode: "default",
         });
         yield* service.runNow({ id: task.id });
+        if ("held" in outcome) {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO orchestration_v2_projection_runs
+              (run_id, thread_id, ordinal, provider, status, requested_at, payload_json)
+            VALUES ('run:held', 'thread:quota', 1, 'codex', 'queued', ${task.createdAt}, '{"queueHeld":true}')
+          `;
+          yield* sql`
+            INSERT INTO orchestration_v2_projection_messages
+              (message_id, thread_id, run_id, role, streaming, created_at, updated_at, payload_json)
+            VALUES ('message:held', 'thread:quota', 'run:held', 'user', 0,
+              ${task.createdAt}, ${task.createdAt}, json_object('scheduledTaskId', ${task.id}))
+          `;
+          yield* TestClock.adjust("65 seconds");
+          const [skipped] = (yield* service.list()).tasks;
+          assert.equal(skipped?.lastRunStatus, "failed");
+          assert.match(skipped?.lastRunError ?? "", /previous occurrence is held/);
+          assert.equal(skipped?.runCount, 1);
+        }
         const recordedOutcome = yield* service.subscribeList().pipe(
           Stream.map(({ tasks }) => tasks.find((candidate) => candidate.id === task.id)),
-          Stream.filter((current) => current?.lastRunStatus === outcome.expectedStatus),
+          Stream.filter(
+            (current) =>
+              current?.lastRunStatus === outcome.expectedStatus &&
+              current.lastRunError === outcome.error,
+          ),
           Stream.runHead,
           Effect.forkChild,
         );

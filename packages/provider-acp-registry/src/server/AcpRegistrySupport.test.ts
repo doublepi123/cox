@@ -525,6 +525,44 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
+  it.effect("launches the managed uv command over a PATH command named after the agent", () => {
+    const agent = makeAgent({
+      uvx: { package: "fast-agent-acp==0.10.1", args: ["--acp"] },
+    });
+    return Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-acp-registry-uv-path-collision-",
+      });
+      const toolchain = yield* makeFakeUvToolchain(cacheDir);
+      const userBin = path.join(cacheDir, "user-bin");
+      const userCommand = path.join(userBin, "example-agent");
+      yield* fileSystem.makeDirectory(userBin, { recursive: true });
+      yield* fileSystem.writeFileString(userCommand, "#!/bin/sh\n");
+      yield* fileSystem.chmod(userCommand, 0o755);
+      const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
+        cacheDir,
+        toolsDir: `${cacheDir}/tools`,
+        registryUrl,
+      });
+
+      const resolved = yield* resolver.resolve(settings(), "/workspace", {
+        ...toolchain.environment,
+        PATH: `${userBin}:${toolchain.environment.PATH}`,
+      });
+
+      expect(resolved.spawn.command).toBe(toolchain.executablePath);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerResolver((request) =>
+          Effect.succeed(HttpClientResponse.fromWeb(request, new Response(makeRegistry(agent)))),
+        ),
+      ),
+    );
+  });
+
   it.effect("honors an exact Windows PATH override when launching a global package", () => {
     const agent = makeAgent({
       uvx: { package: "fast-agent-acp==0.10.1", args: ["--acp"] },
@@ -847,6 +885,55 @@ describe("AcpRegistrySupport", () => {
       );
     },
   );
+
+  it.effect("gives Antigravity a T3-owned temp directory that is removed with the process", () => {
+    const agent = {
+      ...makeAgent({ binary: { "linux-x86_64": { archive: archiveUrl, cmd: "./agy" } } }),
+      id: "antigravity-acp",
+    };
+    return Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-acp-registry-runtime-temp-",
+      });
+      const runtimeTempDir = `${cacheDir}/antigravity-tmp/acp-registry`;
+      yield* fileSystem.makeDirectory(`${runtimeTempDir}/run-killed/_MEI123`, { recursive: true });
+      const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
+        cacheDir,
+        toolsDir: `${cacheDir}/tools`,
+        runtimeTempDir,
+        registryUrl,
+      });
+      expect(yield* fileSystem.exists(`${runtimeTempDir}/run-killed`)).toBe(false);
+
+      const temp = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const resolved = yield* resolver.resolve(
+            settings({ agentId: "antigravity-acp" }),
+            "/workspace",
+            { TMPDIR: "/tmp" },
+          );
+          const directory = resolved.spawn.env?.TMPDIR ?? "";
+          expect(directory.startsWith(`${runtimeTempDir}/run-`)).toBe(true);
+          expect(yield* fileSystem.exists(directory)).toBe(true);
+          return directory;
+        }),
+      );
+      expect(yield* fileSystem.exists(temp)).toBe(false);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerResolver((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(request.url === registryUrl ? makeRegistry(agent) : "#!/bin/sh\n"),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
 
   it.effect("installs a contained binary whose name starts with two dots", () => {
     const agent = makeAgent({

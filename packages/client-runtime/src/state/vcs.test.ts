@@ -4,6 +4,7 @@ import {
   AuthSourceControlWriteScope,
   WS_METHODS,
   VcsProcessExitError,
+  type GitPreparePullRequestThreadResult,
   type VcsListRefsInput,
   type VcsListRefsResult,
   type VcsStatusResult,
@@ -35,6 +36,7 @@ import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 
+import { createGitEnvironmentAtoms } from "./git.ts";
 import {
   commitVcsRefsRefresh,
   createVcsEnvironmentAtoms,
@@ -309,6 +311,19 @@ describe("cached VCS refs", () => {
   it.effect("invalidates persisted refs when ref-affecting commands settle", () =>
     Effect.scoped(
       Effect.gen(function* () {
+        const preparedPullRequest = {
+          pullRequest: {
+            number: 13,
+            title: "Open PR",
+            url: "https://example.com/pr/13",
+            baseBranch: "main",
+            headBranch: "feature/test",
+            state: "open",
+          },
+          branch: "feature/test",
+          worktreePath: null,
+          isOnPullRequestHead: true,
+        } satisfies GitPreparePullRequestThreadResult;
         const expectedError = new EnvironmentRpcUnavailableError({
           environmentId: TARGET.environmentId,
           message: "pull failed after fetching refs",
@@ -316,6 +331,7 @@ describe("cached VCS refs", () => {
         const client = {
           [WS_METHODS.vcsPull]: () => Effect.fail(expectedError),
           [WS_METHODS.vcsRefreshStatus]: () => Effect.void,
+          [WS_METHODS.gitPreparePullRequestThread]: () => Effect.succeed(preparedPullRequest),
         } as unknown as WsRpcProtocolClient;
         const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
           target: TARGET,
@@ -371,6 +387,77 @@ describe("cached VCS refs", () => {
         expect(AsyncResult.isSuccess(refreshResult)).toBe(true);
         expect(yield* Ref.get(clears)).toBe(2);
         expect(registry.get(vcsRefsCacheStateAtom(TARGET)).revision).toBe(2);
+
+        const resultAfterCheckout = yield* Effect.promise(() =>
+          createGitEnvironmentAtoms(runtime).preparePullRequestThread.run(registry, {
+            environmentId: TARGET.environmentId,
+            input: { cwd: "/repo", reference: "13", mode: "local" },
+          }),
+        );
+        expect(AsyncResult.getOrElse(resultAfterCheckout, () => null)).toEqual(preparedPullRequest);
+        expect(yield* Ref.get(clears)).toBe(3);
+        expect(registry.get(vcsRefsCacheStateAtom(TARGET)).revision).toBe(3);
+      }),
+    ),
+  );
+
+  it.effect("a checkout does not wait behind a picker's local status refresh", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const refreshStarted = yield* Deferred.make<void>();
+        const releaseRefresh = yield* Deferred.make<void>();
+        const client = {
+          [WS_METHODS.vcsRefreshStatus]: () =>
+            Deferred.succeed(refreshStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseRefresh)),
+            ),
+          [WS_METHODS.vcsSwitchRef]: () => Effect.succeed({ refName: "feature" }),
+        } as unknown as WsRpcProtocolClient;
+        const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+          target: TARGET,
+          state: yield* SubscriptionRef.make(CONNECTED_CONNECTION_STATE),
+          session: yield* SubscriptionRef.make(Option.some(session(client))),
+          prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
+          connect: Effect.void,
+          disconnect: Effect.void,
+          retryNow: Effect.void,
+        } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+        const run: EnvironmentRegistry.EnvironmentRegistry["Service"]["run"] = (
+          _environmentId,
+          effect,
+        ) => Effect.provideService(effect, EnvironmentSupervisor.EnvironmentSupervisor, supervisor);
+        const runtime = Atom.runtime(
+          Layer.merge(
+            Layer.succeed(
+              EnvironmentRegistry.EnvironmentRegistry,
+              EnvironmentRegistry.EnvironmentRegistry.of({
+                run,
+              } as unknown as EnvironmentRegistry.EnvironmentRegistry["Service"]),
+            ),
+            Layer.succeed(Persistence.EnvironmentCacheStore, cacheWithRefs(Option.none())),
+          ),
+        );
+        const atoms = createVcsEnvironmentAtoms(runtime);
+        const registry = yield* Effect.acquireRelease(Effect.sync(AtomRegistry.make), (registry) =>
+          Effect.sync(() => registry.dispose()),
+        );
+        const target = { environmentId: TARGET.environmentId, input: { cwd: "/repo" } };
+
+        const refresh = atoms.refreshLocalStatusForPicker.run(registry, {
+          ...target,
+          input: { cwd: "/repo", localOnly: true },
+        });
+        yield* Deferred.await(refreshStarted);
+        const checkout = yield* Effect.promise(() =>
+          atoms.switchRef.run(registry, {
+            ...target,
+            input: { cwd: "/repo", refName: "feature" },
+          }),
+        );
+
+        expect(AsyncResult.isSuccess(checkout)).toBe(true);
+        yield* Deferred.succeed(releaseRefresh, undefined);
+        expect(AsyncResult.isSuccess(yield* Effect.promise(() => refresh))).toBe(true);
       }),
     ),
   );

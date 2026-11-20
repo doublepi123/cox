@@ -108,6 +108,45 @@ describe("readEnvironmentFromLoginShell", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")("force-stops a timed out login shell probe", () => {
+    expect(() =>
+      readEnvironmentFromLoginShell("/bin/sh", ["PATH"], (_file, _args, options) =>
+        NodeChildProcess.execFileSync(
+          process.execPath,
+          ["-e", "process.on('SIGTERM', () => process.exit(42)); setTimeout(() => {}, 2000)"],
+          { ...options, timeout: 500 },
+        ),
+      ),
+    ).toThrow(expect.objectContaining({ code: "ETIMEDOUT", signal: "SIGKILL" }));
+  });
+
+  it.runIf(NodeFS.existsSync("/bin/bash"))(
+    "captures values when Bash startup replaces PATH and installs a DEBUG trap",
+    () => {
+      const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cox-bash-env-"));
+      try {
+        const config = NodePath.join(directory, "env.bash");
+        NodeFS.writeFileSync(
+          config,
+          'export PATH=/nonexistent-cox-bin COX_TEST_CAPTURE="value with spaces"\ntrap \'printf "%s\\n" "$BASH_COMMAND"\' DEBUG\n',
+        );
+        expect(
+          readEnvironmentFromLoginShell(
+            "/bin/bash",
+            ["PATH", "COX_TEST_CAPTURE", "COX_TEST_MISSING"],
+            (file, [, command = ""], options) =>
+              NodeChildProcess.execFileSync(file, ["-c", command], {
+                ...options,
+                env: { BASH_ENV: config, PATH: "/usr/bin:/bin" },
+              }),
+          ),
+        ).toEqual({ PATH: "/nonexistent-cox-bin", COX_TEST_CAPTURE: "value with spaces" });
+      } finally {
+        NodeFS.rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("extracts multiple environment variables from a login shell command", () => {
     const execFile = vi.fn<
       (
@@ -471,19 +510,26 @@ effectIt.layer(NodeServices.layer)("resolveCommandPath", (it) => {
         const executable = path.join(cwd, "audit-command.cmd");
         yield* fs.writeFileString(executable, "@echo off\n");
 
-        const resolved = yield* resolveCommandPath(command, {
-          env: { PATH: cwd, PATHEXT: ".CMD" },
-        }).pipe(
-          Effect.provideService(HostProcess.Platform, "win32"),
-          Effect.provideService(CommandResolutionCache, new Map()),
-          Effect.provideService(FileSystem.FileSystem, {
-            ...fs,
-            stat: (filePath) =>
-              fs.stat(filePath === executable ? filePath : path.join(cwd, "missing")),
-          }),
-        );
-
-        expect(resolved).toBe(executable);
+        const decoy = path.join(cwd, "audit-command.exe");
+        yield* fs.writeFileString(decoy, "");
+        for (const key of ["PATHEXT", "PathExt", "pathext"]) {
+          const resolved = yield* resolveCommandPath(command, {
+            env: { PATH: cwd, [key]: ".CMD" },
+          }).pipe(
+            Effect.provideService(HostProcess.Platform, "win32"),
+            Effect.provideService(CommandResolutionCache, new Map()),
+            Effect.provideService(FileSystem.FileSystem, {
+              ...fs,
+              stat: (filePath) =>
+                fs.stat(
+                  filePath === executable || filePath === decoy
+                    ? filePath
+                    : path.join(cwd, "missing"),
+                ),
+            }),
+          );
+          expect(resolved).toBe(executable);
+        }
       }),
   );
 

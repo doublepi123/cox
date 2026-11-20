@@ -106,7 +106,7 @@ export function resolveLockedWorkspaceLabel(
   activeWorktreePath: string | null,
   effectiveEnvMode: EnvMode,
 ): string {
-  if (activeWorktreePath) return "Worktree";
+  if (activeWorktreePath) return activeWorktreePath.split(/[\\/]/).findLast(Boolean) ?? "Worktree";
   return effectiveEnvMode === "worktree" ? resolveEnvModeLabel("worktree") : "Local checkout";
 }
 
@@ -276,6 +276,17 @@ export function resolveBranchSelectionTarget(input: {
     nextWorktreePath,
     reuseExistingWorktree: false,
   };
+}
+
+export function shouldReuseBranchCheckout(
+  target: ReturnType<typeof resolveBranchSelectionTarget>,
+  activeCheckoutCwd: string,
+  canWriteSourceControl: boolean,
+): boolean {
+  return (
+    target.reuseExistingWorktree &&
+    !(target.checkoutCwd === activeCheckoutCwd && canWriteSourceControl)
+  );
 }
 
 export function shouldIncludeBranchPickerItem(input: {

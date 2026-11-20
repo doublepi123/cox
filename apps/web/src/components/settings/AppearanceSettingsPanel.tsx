@@ -20,6 +20,7 @@ import {
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
+import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { useTheme } from "../../hooks/useTheme";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -102,6 +103,13 @@ export function AppearanceSettingsPanel() {
   const updateSettings = useUpdateScopedSettings();
   const environmentStageLabel = useEnvironmentStageLabel();
   const environmentStageVariant = resolveSidebarStageBackdropVariant(environmentStageLabel);
+  const effectiveEnvironmentIdentificationMode = useEnvironmentIdentificationMode();
+  const hidesRequestedArtwork =
+    effectiveEnvironmentIdentificationMode === "pill" &&
+    resolveSidebarStageBackdropVariant(
+      environmentStageLabel,
+      settings.environmentIdentificationMode,
+    ) !== null;
   const environmentIdentificationOptionList =
     environmentIdentificationOptions(environmentStageVariant);
   const environmentIdentificationLabel =
@@ -402,9 +410,11 @@ export function AppearanceSettingsPanel() {
           <SettingsRow
             {...searchableSetting("environment-identification")}
             description={
-              environmentStageVariant
-                ? t("Choose how Dev and Nightly environments are identified.")
-                : t("Show Dev or Nightly artwork in the sidebar header.")
+              hidesRequestedArtwork
+                ? t("The current theme hides the selected artwork.")
+                : environmentStageVariant
+                  ? t("Choose how Dev and Nightly environments are identified.")
+                  : t("Show Dev or Nightly artwork in the sidebar header.")
             }
             resetAction={
               settings.environmentIdentificationMode !== DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE ? (

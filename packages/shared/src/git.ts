@@ -121,12 +121,9 @@ export function isTemporaryWorktreeBranch(refName: string): boolean {
   return TEMP_WORKTREE_BRANCH_PATTERN.test(refName.trim().toLowerCase());
 }
 
-function lowerCaseRemote(value: string): string {
-  return value
-    .trim()
-    .replace(/\/+$/g, "")
-    .replace(/\.git$/i, "")
-    .toLowerCase();
+function lowerCaseRemote(value: string, keepGitSuffix = false): string {
+  const normalized = value.trim().replace(/\/+$/g, "").toLowerCase();
+  return keepGitSuffix ? normalized : normalized.replace(/\.git$/, "");
 }
 
 /**
@@ -135,15 +132,15 @@ function lowerCaseRemote(value: string): string {
  */
 export function parseGitRemoteRepository(
   value: string,
+  options?: { readonly keepGitSuffix?: boolean },
 ): { readonly host: string; readonly path: string } | null {
-  const normalized = lowerCaseRemote(value);
+  const normalized = lowerCaseRemote(value, options?.keepGitSuffix);
 
   if (/^(?:ssh|https?|git):\/\//i.test(normalized)) {
     try {
       const url = new URL(value.trim().toLowerCase());
-      const repositorySegments = url.pathname
-        .replace(/\/+$/, "")
-        .replace(/\.git$/, "")
+      const rawPath = url.pathname.replace(/\/+$/, "");
+      const repositorySegments = (options?.keepGitSuffix ? rawPath : rawPath.replace(/\.git$/, ""))
         .split("/")
         .filter((segment) => segment.length > 0);
       if (url.hostname && repositorySegments.length > 1) {
@@ -157,10 +154,19 @@ export function parseGitRemoteRepository(
   // A userless one-letter prefix is a Windows drive, not an SCP host.
   const scpStyleHostAndPath = /^[a-z]:/i.test(normalized)
     ? null
-    : /^(?:[a-zA-Z0-9._-]+@)?([^@:/\\\s]+):\/?([^/\s]+(?:\/[^/\s]+)+)$/i.exec(normalized);
+    : /^(?:[a-zA-Z0-9._-]+@)?(\[[0-9a-f:.]+\]|[^@:/\\\s[\]]+):\/?([^/\s]+(?:\/[^/\s]+)+)$/i.exec(
+        normalized,
+      );
   const scpHost = scpStyleHostAndPath?.[1];
   const scpPath = scpStyleHostAndPath?.[2];
-  return scpHost && scpPath ? { host: scpHost, path: scpPath } : null;
+  if (!scpHost || !scpPath) return null;
+  if (!scpHost.startsWith("[")) return { host: scpHost, path: scpPath };
+  try {
+    // Spell an IPv6 host as the URL branch does, so `[::1]:a/b` and `ssh://[::1]/a/b` share a key.
+    return { host: new URL(`ssh://${scpHost}`).hostname, path: scpPath };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -254,8 +260,7 @@ export function parseOriginUrlFromGitConfig(configText: string): string | null {
   let section: string | null = null;
   let originUrl: string | null = null;
   let firstRemoteUrl: string | null = null;
-  const joined = configText.replace(/\\\r?\n[ \t]*/g, "");
-  for (const rawLine of joined.split(/\r?\n/)) {
+  for (const rawLine of gitConfigLines(configText)) {
     let line = rawLine.trim();
     if (line.length === 0 || line.startsWith("#") || line.startsWith(";")) continue;
     // Git preserves case in quoted remote subsections but lowercases legacy dotted ones,

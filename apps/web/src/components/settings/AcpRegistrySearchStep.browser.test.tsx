@@ -1,6 +1,6 @@
 import { EnvironmentId, ProviderDriverKind, type AcpRegistrySearchAgent } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../../test/render";
 
@@ -124,4 +124,21 @@ it("leaves out Registry agents that Cox supports as their own providers", async 
 
   expect(page.getByRole("button", { name: "Add Gemini CLI" }).query()).not.toBeNull();
   expect(page.getByRole("button", { name: "Add Codex" }).query()).toBeNull();
+});
+
+it("bounds pasted registry searches before debounce and submission", async () => {
+  setup();
+  await using screen = await render(<Step />);
+  const searchbox = screen.getByRole("searchbox", { name: "Search ACP Registry" });
+
+  await searchbox.fill("agent".repeat(26));
+  await vi.waitFor(() => {
+    expect(state.search).toHaveBeenLastCalledWith({
+      environmentId,
+      input: { query: "agent".repeat(24) },
+    });
+  });
+  await userEvent.keyboard("{Enter}");
+  expect(state.refresh).toHaveBeenCalledTimes(1);
+  await expect.element(searchbox).toHaveValue("agent".repeat(24));
 });

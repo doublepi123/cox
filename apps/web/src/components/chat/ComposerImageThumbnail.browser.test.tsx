@@ -67,3 +67,33 @@ it("shows the fallback while HEIC preparation is pending", async () => {
     await createComposerImageThumbnail(file);
   }
 });
+
+it("loads the local image before the generated thumbnail is ready", async () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 2;
+  canvas.height = 2;
+  const blob = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!)));
+  const file = new File([blob], "native-first.png", { type: "image/png" });
+  let resolveThumbnail!: (bitmap: ImageBitmap) => void;
+  const generate = new Promise<ImageBitmap>((resolve) => {
+    resolveThumbnail = resolve;
+  });
+  const bitmap = await createImageBitmap(file);
+  using _bitmap = vi.spyOn(window, "createImageBitmap").mockReturnValue(generate);
+  await using screen = await render(
+    <ComposerImageThumbnail
+      file={file}
+      alt={file.name}
+      className="size-16 object-cover"
+      fallback={<span>Preparing image</span>}
+    />,
+  );
+  try {
+    const image = screen.getByRole("img", { name: file.name });
+    await expect.element(image).toBeVisible();
+    expect(image.element().getAttribute("src")).toMatch(/^blob:/);
+  } finally {
+    resolveThumbnail(bitmap);
+    await createComposerImageThumbnail(file);
+  }
+});

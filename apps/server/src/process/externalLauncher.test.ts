@@ -94,6 +94,39 @@ const layerTest = (input: {
   );
 };
 
+it.effect.skipIf(windowsHost)("opens a home-relative directory with a colon in its name", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "cox-editor-home-" });
+    const project = path.join(home, "build:2026");
+    yield* fs.makeDirectory(project);
+    const code = path.join(home, "code");
+    yield* fs.writeFileString(code, "#!/bin/sh\n");
+    yield* fs.chmod(code, 0o755);
+    const calls: ChildProcess.StandardCommand[] = [];
+    yield* Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      yield* launcher.launchEditor({ editor: "vscode", cwd: "~/build:2026" });
+      yield* launcher.launchEditor({ editor: "vscode", cwd: "~/build:2026/test.ts:3:7" });
+    }).pipe(
+      Effect.provide(
+        layerTest({ platform: "linux", env: { PATH: home }, onSpawn: (call) => calls.push(call) }),
+      ),
+      Effect.provideService(HostProcess.HomeDirectory, home),
+    );
+    assert.deepEqual(
+      calls
+        .filter((call) => call.args.some((arg) => arg.startsWith(project)))
+        .map((call) => call.args),
+      [
+        ["--new-window", project],
+        ["--goto", path.join(project, "test.ts:3:7")],
+      ],
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect.skipIf(windowsHost)(
   "launched browsers and editors do not inherit ELECTRON_RUN_AS_NODE",
   () =>
@@ -483,7 +516,7 @@ it.effect.skipIf(windowsHost)("prefers zeditor in a later Linux fallback directo
     ] as const) {
       yield* fs.makeDirectory(dir, { recursive: true });
       const executable = path.join(dir, name);
-      yield* fs.writeFileString(executable, "#!/bin/sh\n");
+      yield* fs.writeFileString(executable, name === "zed" ? "#!/bin/sh\nexit 1\n" : "#!/bin/sh\n");
       yield* fs.chmod(executable, 0o755);
     }
     const editor = EDITORS.find((editor) => editor.id === "zed")!;
@@ -504,10 +537,11 @@ it.effect.skipIf(windowsHost)("prefers zeditor in a later Linux fallback directo
       Option.some({ command: path.join(systemBin, "zeditor"), baseArgs: [] }),
     );
     yield* fs.remove(path.join(systemBin, "zeditor"));
-    assert.deepEqual(
-      yield* resolve,
-      Option.some({ command: path.join(localBin, "zed"), baseArgs: [] }),
-    );
+    assert.deepEqual(yield* resolve, Option.none());
+    const laterZed = path.join(systemBin, "zed");
+    yield* fs.writeFileString(laterZed, "#!/bin/sh\necho 'Zed 0.200.0'\n");
+    yield* fs.chmod(laterZed, 0o755);
+    assert.deepEqual(yield* resolve, Option.some({ command: laterZed, baseArgs: [] }));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -530,7 +564,11 @@ it.effect.each([
       yield* Effect.gen(function* () {
         const launcher = yield* ExternalLauncher.ExternalLauncher;
         assert.include(yield* launcher.resolveAvailableEditors(), editor);
-        yield* launcher.launchEditor({ editor, cwd: "/workspace with spaces/file.ts:12:4" });
+        yield* launcher.launchEditor({
+          editor,
+          cwd: "/workspace with spaces/file.ts:12:4",
+          projectRoot: "/workspace with spaces",
+        });
       }).pipe(
         Effect.provide(
           layerTest({
@@ -546,6 +584,7 @@ it.effect.each([
       assert.ok(spawned);
       assert.equal(spawned.command, executable);
       assert.deepEqual(spawned.args, [
+        "/workspace with spaces",
         "--line",
         "12",
         "--column",

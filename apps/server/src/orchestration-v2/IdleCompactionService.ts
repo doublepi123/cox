@@ -49,6 +49,8 @@ export const make = Effect.gen(function* () {
           )
         )
           return;
+        const activeProviderThreadIds =
+          thread.activeProviderThreadId === null ? [] : [thread.activeProviderThreadId];
         const records = yield* projections.getThreadRecords(
           threadId,
           [
@@ -60,7 +62,17 @@ export const make = Effect.gen(function* () {
             "turnItems",
             "contextTransfers",
           ],
-          { messageRunIds: [runId], turnItemStatuses: ["pending", "running", "waiting"] },
+          {
+            messageRunIds: [runId],
+            runStatuses: ["preparing", "starting", "running", "rolled_back"],
+            includeLatestRun: true,
+            providerThreadIds: activeProviderThreadIds,
+            providerTurnThreadIds: activeProviderThreadIds,
+            latestProviderTurnUsageOnly: true,
+            runtimeRequestStatuses: ["pending"],
+            turnItemStatuses: ["pending", "running", "waiting"],
+            contextTransferStatuses: ["pending"],
+          },
         );
         if (
           resolveIdleCompaction(current, records.thread.providerInstanceId) !==

@@ -2,7 +2,7 @@ import { type ReactNode, useRef } from "react";
 
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useHistoryBackDismiss } from "../lib/historyBackDismiss";
-import { Sheet, SheetPopup } from "./ui/sheet";
+import { Sheet, SheetPopup, SheetTitle } from "./ui/sheet";
 
 export function RightPanelSheet(props: {
   animationDurationMs: number;
@@ -31,6 +31,9 @@ export function RightPanelSheet(props: {
         keepMounted
         variant="right-panel"
       >
+        <div className="sr-only">
+          <SheetTitle>Workspace panel</SheetTitle>
+        </div>
         {props.children}
       </SheetPopup>
     </Sheet>

@@ -72,3 +72,21 @@ describe("assistant citation navigation", () => {
     expect(assistantCitationFromLocation(router.state.location.href)).toEqual(citation);
   });
 });
+
+it("routes a side chat quote to its parent without changing the encoded source", async () => {
+  const router = createCitationRouter();
+  await router.load();
+  const parentId = ThreadId.make("parent");
+  await router.navigate(
+    assistantCitationNavigation(citation, {
+      lineage: {
+        parentThreadId: parentId,
+        relationshipToParent: "subagent",
+        sideChat: true,
+        rootThreadId: parentId,
+      },
+    }),
+  );
+  expect(router.state.location.pathname).toBe("/environment-one/parent");
+  expect(assistantCitationFromLocation(router.state.location.href)).toEqual(citation);
+});

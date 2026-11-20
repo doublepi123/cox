@@ -50,6 +50,7 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, Path.Path> {
   const resolvedBaseEnv = { ...(baseEnv ?? process.env) };
   for (const name of CLAUDE_HOST_SESSION_VARIABLES) delete resolvedBaseEnv[name];
+  delete resolvedBaseEnv.ELECTRON_RUN_AS_NODE;
   if (config.baseUrl?.trim() || config.apiKey?.trim())
     resolvedBaseEnv.ANTHROPIC_BASE_URL = (config.baseUrl?.trim() || "https://api.anthropic.com")
       .replace(/\/+$/, "")

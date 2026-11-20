@@ -292,6 +292,7 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                 EnvironmentRpcStreamFailure<TTag>
               >;
               let expectedFailureRetries = 0;
+              let streamFailureRetries = 0;
               let defectReported = false;
               const subscribeToSession = (): Stream.Stream<A, EnvironmentRpcStreamFailure<TTag>> =>
                 Stream.suspend(() =>
@@ -333,6 +334,11 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                         : Effect.void,
                     ),
                     Stream.catchCause((cause) => {
+                      const retryAfter = (base: Duration.Input, retries: number) =>
+                        Stream.fromEffect(Effect.sleep(subscriptionRetryDelay(base, retries))).pipe(
+                          Stream.drain,
+                          Stream.concat(subscribeToSession()),
+                        );
                       const hasOnlyExpectedFailures =
                         cause.reasons.length > 0 &&
                         cause.reasons.every((reason) => reason._tag === "Fail");
@@ -341,6 +347,35 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                         cause.reasons.every(
                           (reason) => reason._tag === "Fail" && isRpcClientError(reason.error),
                         );
+                      const isChunkDecodeDefect =
+                        options?.onDefect === undefined &&
+                        cause.reasons.length > 0 &&
+                        cause.reasons.every(
+                          (reason) => reason._tag === "Die" && Schema.isSchemaError(reason.defect),
+                        );
+                      if (
+                        tag !== ORCHESTRATION_V2_WS_METHODS.searchThreadStream &&
+                        (isTransportFailure || isChunkDecodeDefect)
+                      ) {
+                        return Stream.fromEffect(
+                          Effect.logWarning(
+                            "Durable RPC subscription stream ended; resubscribing.",
+                            {
+                              cause: Cause.pretty(cause),
+                              method: tag,
+                              environmentId: supervisor.target.environmentId,
+                            },
+                          ),
+                        ).pipe(
+                          Stream.drain,
+                          Stream.concat(
+                            retryAfter(
+                              options?.retryExpectedFailureAfter ?? Duration.seconds(1),
+                              streamFailureRetries++,
+                            ),
+                          ),
+                        );
+                      }
                       if (isTransportFailure) {
                         return Stream.fromEffect(
                           Effect.logWarning(
@@ -367,16 +402,10 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                         ) {
                           return handled;
                         }
-                        const retryDelay = subscriptionRetryDelay(
-                          options.retryExpectedFailureAfter,
-                          expectedFailureRetries,
-                        );
-                        expectedFailureRetries += 1;
                         return handled.pipe(
                           Stream.concat(
-                            Stream.fromEffect(Effect.sleep(retryDelay)).pipe(Stream.drain),
+                            retryAfter(options.retryExpectedFailureAfter, expectedFailureRetries++),
                           ),
-                          Stream.concat(subscribeToSession()),
                         );
                       }
                       if (defectReported && Cause.hasDies(cause)) {

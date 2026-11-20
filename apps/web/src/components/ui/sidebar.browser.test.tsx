@@ -1,7 +1,12 @@
+import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { page, userEvent } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { render } from "../../../test/render";
+import {
+  __resetClientSettingsPersistenceForTests,
+  __setClientSettingsForTests,
+} from "../../hooks/useSettings";
 import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./sidebar";
 
 function CollapseFromInside() {
@@ -129,4 +134,15 @@ it("keeps the mobile sheet closed and leaves the saved desktop state alone", asy
     .element(screen.getByRole("button", { name: "Toggle Sidebar" }))
     .toHaveAttribute("aria-pressed", "false");
   localStorage.removeItem(storageKey);
+});
+
+it("opens the mobile sidebar immediately when panel animations are disabled", async () => {
+  await page.viewport(390, 844);
+  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, panelAnimationDurationMs: 0 });
+  using _settings = { [Symbol.dispose]: __resetClientSettingsPersistenceForTests };
+  await using screen = await render(<Harness />, { router: false });
+  await userEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+  const sidebar = page.getByRole("dialog");
+  await expect.element(sidebar).toBeVisible();
+  expect(getComputedStyle(sidebar.element()).transitionDuration).toBe("0s");
 });

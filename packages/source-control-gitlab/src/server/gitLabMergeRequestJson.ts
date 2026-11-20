@@ -60,6 +60,14 @@ const RawMergeRequestDiffRefs = Schema.Struct({
   start_sha: Schema.NullOr(Schema.String),
 });
 
+const RawLabelRefSchema = Schema.Union([
+  Schema.String,
+  Schema.Struct({
+    name: Schema.String,
+    color: Schema.optional(Schema.NullOr(Schema.String)),
+  }),
+]);
+
 const RawMergeRequestSchema = Schema.Struct({
   iid: Schema.Int,
   title: Schema.String,
@@ -79,7 +87,7 @@ const RawMergeRequestSchema = Schema.Struct({
   merged_at: Schema.optional(Schema.NullOr(Schema.String)),
   closed_at: Schema.optional(Schema.NullOr(Schema.String)),
   reviewers: Schema.optional(Schema.NullOr(Schema.Array(RawUserSchema))),
-  labels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  labels: Schema.optional(Schema.NullOr(Schema.Array(RawLabelRefSchema))),
   changes_count: Schema.optional(Schema.NullOr(Schema.String)),
   head_pipeline: Schema.optional(Schema.NullOr(RawPipelineSchema)),
   user: Schema.optional(
@@ -270,10 +278,16 @@ function toMergeability(
   }
 }
 
-function toLabels(raw: ReadonlyArray<string> | null | undefined): ReadonlyArray<PullRequestLabel> {
-  return (raw ?? []).flatMap((label) => {
-    const name = trimmed(label);
-    return name === null ? [] : [{ name, color: null }];
+function toLabels(
+  raw: ReadonlyArray<typeof RawLabelRefSchema.Type> | null | undefined,
+): ReadonlyArray<PullRequestLabel> {
+  return (raw ?? []).flatMap((label): ReadonlyArray<PullRequestLabel> => {
+    if (typeof label === "string") {
+      const name = trimmed(label);
+      return name === null ? [] : [{ name, color: null }];
+    }
+    const name = trimmed(label.name);
+    return name === null ? [] : [{ name, color: trimmed(label.color) }];
   });
 }
 
@@ -1588,7 +1602,34 @@ export function decodeListStatesJson(
 
 export const LIST_ITEM_GRAPHQL_FIELDS = `${LIST_STATE_GRAPHQL_FIELDS}
   title webUrl state draft createdAt updatedAt mergedAt sourceBranch targetBranch
-  conflicts mergeStatusEnum author { username name avatarUrl } labels(first: 100) { nodes { title } }`;
+  conflicts mergeStatusEnum author { username name avatarUrl } labels(first: 100) { nodes { title color } }`;
+
+const RawGraphqlLabelsSchema = Schema.optional(
+  Schema.NullOr(
+    Schema.Struct({
+      nodes: Schema.optional(
+        Schema.NullOr(
+          Schema.Array(
+            Schema.NullOr(
+              Schema.Struct({
+                title: Schema.String,
+                color: Schema.optional(Schema.NullOr(Schema.String)),
+              }),
+            ),
+          ),
+        ),
+      ),
+    }),
+  ),
+);
+
+function toGraphqlLabels(labels: typeof RawGraphqlLabelsSchema.Type) {
+  return toLabels(
+    (labels?.nodes ?? []).flatMap((label) =>
+      label ? [{ name: label.title, color: label.color }] : [],
+    ),
+  );
+}
 
 const RawGraphqlListNodeSchema = Schema.Struct({
   ...RawListStateFields,
@@ -1612,15 +1653,7 @@ const RawGraphqlListNodeSchema = Schema.Struct({
       }),
     ),
   ),
-  labels: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        nodes: Schema.optional(
-          Schema.NullOr(Schema.Array(Schema.NullOr(Schema.Struct({ title: Schema.String })))),
-        ),
-      }),
-    ),
-  ),
+  labels: RawGraphqlLabelsSchema,
 });
 
 const RawGraphqlListSchema = Schema.Struct({
@@ -1696,7 +1729,7 @@ export function decodeMergeRequestGraphqlListJson(
         const login = trimmed(reviewer?.username);
         return login === null ? [] : [login];
       }),
-      labels: toLabels((node.labels?.nodes ?? []).flatMap((label) => (label ? [label.title] : []))),
+      labels: toGraphqlLabels(node.labels),
     });
     states.set(number, toListState(node, enterprise));
   }
@@ -1819,6 +1852,7 @@ export const LABEL_PERMISSION_GRAPHQL_QUERY = `query($fullPath: ID!, $iid: Strin
   project(fullPath: $fullPath) {
     mergeRequest(iid: $iid) {
       userPermissions { adminMergeRequest }
+      labels(first: 100) { nodes { title color } }
     }
   }
 }`;
@@ -1831,6 +1865,7 @@ const decodeLabelPermission = decodeJsonResult(
           mergeRequest: Schema.NullOr(
             Schema.Struct({
               userPermissions: Schema.Struct({ adminMergeRequest: Schema.Boolean }),
+              labels: RawGraphqlLabelsSchema,
             }),
           ),
         }),
@@ -1839,13 +1874,23 @@ const decodeLabelPermission = decodeJsonResult(
   }),
 );
 
-export function decodeLabelPermissionJson(raw: string): Result.Result<boolean, DecodeFailure> {
+export interface GitLabLabelPermission {
+  readonly viewerCanEditLabels: boolean;
+  readonly labels: ReadonlyArray<PullRequestLabel> | null;
+}
+
+export function decodeLabelPermissionJson(
+  raw: string,
+): Result.Result<GitLabLabelPermission, DecodeFailure> {
   const decoded = decodeLabelPermission(raw);
-  return Result.isSuccess(decoded)
-    ? Result.succeed(
-        decoded.success.data.project?.mergeRequest?.userPermissions.adminMergeRequest === true,
-      )
-    : Result.fail(decoded.failure);
+  if (!Result.isSuccess(decoded)) {
+    return Result.fail(decoded.failure);
+  }
+  const mergeRequest = decoded.success.data.project?.mergeRequest;
+  return Result.succeed({
+    viewerCanEditLabels: mergeRequest?.userPermissions.adminMergeRequest === true,
+    labels: mergeRequest?.labels == null ? null : toGraphqlLabels(mergeRequest.labels),
+  });
 }
 
 export const MAINTAINER_EDITS_PERMISSION_GRAPHQL_QUERY = `query($fullPath: ID!, $iid: String!) {

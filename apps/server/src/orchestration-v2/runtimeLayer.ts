@@ -45,6 +45,7 @@ import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryServic
 import * as ProviderSwitchService from "./ProviderSwitchService.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as ProviderTurnStartService from "./ProviderTurnStartService.ts";
+import * as WorktreeRestore from "../workspace/restoreMissingWorktree.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
 import * as ResourceCleanupService from "./ResourceCleanupService.ts";
@@ -253,6 +254,7 @@ const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImp
     Layer.mergeAll(
       layerOrchestratorProvided,
       layerLegacyV1ThreadImporterProvided,
+      WorktreeRestore.layer.pipe(Layer.provide(ProjectStore.layer)),
       layerCommandReceiptStoreProvided,
       layerProviderSessionManagerProvided,
     ),

@@ -158,9 +158,7 @@ export function NoticeText({
             side="top"
             presentation="banner"
           >
-            <ComposerBanner.Scroll className="max-h-[min(var(--available-height),24rem,40dvh)]">
-              {children}
-            </ComposerBanner.Scroll>
+            <ComposerBanner.Scroll>{children}</ComposerBanner.Scroll>
           </PopoverPopup>
         </Popover>
       ) : null}

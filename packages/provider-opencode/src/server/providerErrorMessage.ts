@@ -1,3 +1,10 @@
+export function parseClaudeUsageLimit(message: string | undefined) {
+  if (message === undefined || !/^You've hit your [^\n·]*\blimit\b/.test(message)) {
+    return undefined;
+  }
+  return { resetAt: /\bResets at (\d{4}-\d\d-\d\dT[\d:.]+Z)\.?\s*$/.exec(message)?.[1] ?? null };
+}
+
 /** OpenCode stores `<none>` when it cannot read the provider body. */
 export function readableProviderErrorMessage(
   message?: string,

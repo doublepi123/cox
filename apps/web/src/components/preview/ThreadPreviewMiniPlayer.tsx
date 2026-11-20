@@ -42,6 +42,7 @@ import {
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import type { PreviewStreamViewport } from "@t3tools/client-runtime/preview/server-browser-stream";
+import { PreviewUnreachable } from "./PreviewUnreachable";
 import { showPreviewPopup } from "./showPreviewPopup";
 import {
   clampPreviewMiniPlayerPosition,
@@ -191,9 +192,10 @@ function BrowserMiniPlayer({
     snapshot.navStatus._tag === "Success"
       ? previewPdfAssetUrl(snapshot.navStatus.url, httpBaseUrl)
       : null;
+  const loadFailed = snapshot.navStatus._tag === "LoadFailed" ? snapshot.navStatus : null;
   const poppedOut = serverPictureInPicture;
   const canPopOut = serverTab
-    ? poppedOut || (pdfUrl === null && supportsServerPictureInPicture())
+    ? poppedOut || (loadFailed === null && pdfUrl === null && supportsServerPictureInPicture())
     : true;
   return (
     <MiniPlayerShell
@@ -256,8 +258,18 @@ function BrowserMiniPlayer({
               )
             }
             onPopup={(popupTabId) => showPreviewPopup(threadRef, popupTabId, "floating")}
-            className="size-full"
+            className={cn("size-full", loadFailed && "invisible")}
           />
+          {loadFailed ? (
+            <div className="absolute inset-0 z-30">
+              <PreviewUnreachable
+                url={loadFailed.url}
+                code={loadFailed.code}
+                description={loadFailed.description}
+                onReload={() => serverSurfaceRef.current?.reload()}
+              />
+            </div>
+          ) : null}
         </div>
       )}
     </MiniPlayerShell>

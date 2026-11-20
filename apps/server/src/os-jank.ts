@@ -20,16 +20,39 @@ function logPathHydrationWarning(message: string, error?: unknown): void {
   );
 }
 
+// mise's record of the PATH entries it added. It must travel with the
+// shell's PATH, or `mise x` can rebuild PATH behind a same-named wrapper
+// (`exec mise x claude -- claude`) that then re-runs itself forever.
+const LOGIN_SHELL_ENVIRONMENT_NAMES = ["PATH", "__MISE_DIFF", "JAVA_HOME"];
+const SLOW_LOGIN_SHELL_TIMEOUT_MS = 20_000;
+
 function hydratePosixPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): void {
   let shellEnvironment: Partial<Record<string, string>> = {};
+  let waitedForSlowShell = false;
   for (const shell of listLoginShellCandidates(platform, env.SHELL)) {
     try {
-      // mise's record of the PATH entries it added. It must travel with the
-      // shell's PATH, or `mise x` can rebuild PATH behind a same-named wrapper
-      // (`exec mise x claude -- claude`) that then re-runs itself forever.
-      shellEnvironment = readEnvironmentFromLoginShell(shell, ["PATH", "__MISE_DIFF", "JAVA_HOME"]);
+      shellEnvironment = readEnvironmentFromLoginShell(shell, LOGIN_SHELL_ENVIRONMENT_NAMES);
     } catch (error) {
       logPathHydrationWarning(`Failed to read PATH from login shell ${shell}.`, error);
+      // A profile can be slow only while the machine boots. Wait for it once,
+      // here: providers copy this env when they are built, so a later read
+      // would never reach them.
+      if (!waitedForSlowShell && (error as NodeJS.ErrnoException | null)?.code === "ETIMEDOUT") {
+        waitedForSlowShell = true;
+        try {
+          shellEnvironment = readEnvironmentFromLoginShell(
+            shell,
+            LOGIN_SHELL_ENVIRONMENT_NAMES,
+            undefined,
+            SLOW_LOGIN_SHELL_TIMEOUT_MS,
+          );
+        } catch (retryError) {
+          logPathHydrationWarning(
+            `Failed to read PATH from slow login shell ${shell}.`,
+            retryError,
+          );
+        }
+      }
     }
 
     if (shellEnvironment.PATH) break;

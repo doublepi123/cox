@@ -33,9 +33,20 @@ export function cloneUrlForProtocol(url: string, protocol: CloneProtocol): strin
   if (!parsed) return null;
   if (parsed.protocol === protocol) return url.trim();
   if (parsed.customPort) return null;
-  return protocol === "ssh"
-    ? `git@${parsed.host}:${parsed.path}`
-    : `https://${parsed.host}/${parsed.path}`;
+  try {
+    if (protocol === "ssh") {
+      if (/[?#]/u.test(parsed.path)) return null;
+      const path = decodeURIComponent(parsed.path);
+      if (/\p{Cc}/u.test(path)) return null;
+      return `git@${parsed.host}:${path}`;
+    }
+    const path = SCP_LIKE_URL.test(url.trim())
+      ? parsed.path.split("/").map(encodeURIComponent).join("/")
+      : parsed.path;
+    return `https://${parsed.host}/${path}`;
+  } catch {
+    return null;
+  }
 }
 
 const UNSAFE_SEGMENT = /^\.{1,2}$|[\\:*?"<>|\p{Cc}]|[ .]$/u;
@@ -46,7 +57,15 @@ export function cloneUrlRepositoryPath(url: string): string | null {
   if (isWindowsDrivePath(url.trim())) return null;
   const parsed = parseCloneUrl(url);
   if (!parsed) return null;
-  const segments = [parsed.host, ...parsed.path.split(/[?#]/)[0]!.split("/").filter(Boolean)];
+  let repositoryPath = parsed.path.split(/[?#]/)[0]!;
+  if (SSH_URL.test(url.trim()) || HTTPS_URL.test(url.trim())) {
+    try {
+      repositoryPath = decodeURIComponent(repositoryPath);
+    } catch {
+      return null;
+    }
+  }
+  const segments = [parsed.host, ...repositoryPath.split("/").filter(Boolean)];
   const last = segments.at(-1)!;
   if (last.endsWith(".git")) segments[segments.length - 1] = last.slice(0, -".git".length);
   if (

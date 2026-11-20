@@ -23,6 +23,7 @@ type ExecFileSyncLike = (
   options: {
     encoding: "utf8";
     timeout: number;
+    killSignal?: NodeJS.Signals;
     detached?: true;
     stdio?: ["ignore", "pipe", "ignore"];
   },
@@ -202,6 +203,8 @@ function envCaptureEnd(name: string): string {
   return `__T3CODE_ENV_${name}_END__`;
 }
 
+const DEBUG_TRAP_SHELLS = new Set(["bash", "zsh", "sh", "ksh", "ksh93"]);
+
 export function buildEnvironmentCaptureCommand(
   shell: string,
   names: ReadonlyArray<string>,
@@ -209,7 +212,7 @@ export function buildEnvironmentCaptureCommand(
   const executableName = NodePath.basename(shell).toLowerCase();
   const isNushell = executableName.startsWith("nu");
 
-  return names
+  const capture = names
     .map((name) => {
       if (!SHELL_ENV_NAME_PATTERN.test(name)) {
         throw new Error(`Unsupported environment variable name: ${name}`);
@@ -238,11 +241,15 @@ export function buildEnvironmentCaptureCommand(
 
       return [
         `printf '%s\\n' '${envCaptureStart(name)}'`,
-        `printenv ${name} || true`,
+        `printenv ${name} || /bin/sh -c 'command -p printenv "$1"' sh ${name} || true`,
         `printf '%s\\n' '${envCaptureEnd(name)}'`,
       ].join("; ");
     })
     .join("; ");
+
+  return capture && DEBUG_TRAP_SHELLS.has(executableName)
+    ? `(trap - DEBUG) 2>/dev/null && trap - DEBUG; ${capture}`
+    : capture;
 }
 
 function buildWindowsEnvironmentCaptureCommand(names: ReadonlyArray<string>): string {
@@ -285,12 +292,14 @@ export type ShellEnvironmentReader = (
   shell: string,
   names: ReadonlyArray<string>,
   execFile?: ExecFileSyncLike,
+  timeout?: number,
 ) => Partial<Record<string, string>>;
 
 export const readEnvironmentFromLoginShell: ShellEnvironmentReader = (
   shell,
   names,
   execFile = NodeChildProcess.execFileSync,
+  timeout = 5000,
 ) => {
   if (names.length === 0) {
     return {};
@@ -300,7 +309,8 @@ export const readEnvironmentFromLoginShell: ShellEnvironmentReader = (
   // inherited controlling TTY from stopping the probe while the parent waits.
   const output = execFile(shell, ["-ilc", buildEnvironmentCaptureCommand(shell, names)], {
     encoding: "utf8",
-    timeout: 5000,
+    timeout,
+    killSignal: "SIGKILL",
     detached: true,
     stdio: ["ignore", "pipe", "ignore"],
   });
@@ -446,7 +456,11 @@ function resolvePathEnvironmentVariable(env: NodeJS.ProcessEnv): string {
 }
 
 function resolveWindowsPathExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
-  const rawValue = env.PATHEXT;
+  const rawValue =
+    env.PATHEXT ??
+    Object.entries(env).find(
+      ([key, value]) => key.toUpperCase() === "PATHEXT" && value !== undefined,
+    )?.[1];
   const fallback = [".COM", ".EXE", ".BAT", ".CMD"];
   if (!rawValue) return fallback;
 

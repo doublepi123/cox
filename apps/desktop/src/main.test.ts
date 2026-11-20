@@ -25,6 +25,7 @@ const saved: RemoteConnectionProfile = {
 };
 
 class TestContents extends EventEmitter {
+  readonly reload = vi.fn();
   readonly id = fixture.windows.length + 1;
   readonly mainFrame = { url: "" };
   readonly send = vi.fn();
@@ -187,10 +188,16 @@ const fixture = {
   quit: vi.fn(),
   errors: vi.fn(),
   menu: [] as MenuItemConstructorOptions[],
+  popup: vi.fn(),
+  copyText: vi.fn(),
+  execFileSync: vi.fn(
+    (_file: string, _args: string[], _options: { timeout: number }) => "v26.12.1",
+  ),
+  backendPath: undefined as string | undefined,
 };
 
 vi.mock("node:os", () => ({ homedir: () => userHome }));
-vi.mock("node:child_process", () => ({ execFileSync: () => "v26.12.1" }));
+vi.mock("node:child_process", () => ({ execFileSync: fixture.execFileSync }));
 vi.mock("node:fs", () => ({
   mkdirSync: vi.fn(),
   existsSync: (path: string) =>
@@ -198,7 +205,8 @@ vi.mock("node:fs", () => ({
   readFileSync: (path: string) => {
     if (basename(path) === "icon.png") return Buffer.from("icon");
     const contents = fixture.files.get(path);
-    if (contents === undefined) throw new Error("Missing fixture file: " + path);
+    if (contents === undefined)
+      throw Object.assign(new Error("Missing fixture file: " + path), { code: "ENOENT" });
     return contents;
   },
   writeFileSync: (path: string, contents: string) => fixture.files.set(path, contents),
@@ -239,9 +247,13 @@ vi.mock("electron", () => ({
       fixture.handlers.set(name, action),
   },
   dialog: { showErrorBox: fixture.errors, showMessageBox: fixture.messageBox },
+  clipboard: { writeText: fixture.copyText },
   Menu: {
     setApplicationMenu: vi.fn(),
-    buildFromTemplate: (menu: MenuItemConstructorOptions[]) => (fixture.menu = menu),
+    buildFromTemplate: (menu: MenuItemConstructorOptions[]) => {
+      fixture.menu = menu;
+      return { popup: fixture.popup };
+    },
     getApplicationMenu: () => ({ getMenuItemById: () => undefined }),
   },
   net: { fetch: vi.fn() },
@@ -252,8 +264,12 @@ vi.mock("electron", () => ({
 }));
 vi.mock("./backend.ts", () => ({
   BackendProcess: class {
-    constructor(options: { onUnexpectedExit: (message: string) => void }) {
+    constructor(options: {
+      onUnexpectedExit: (message: string) => void;
+      environment: NodeJS.ProcessEnv;
+    }) {
       fixture.backendConstructed += 1;
+      fixture.backendPath = options.environment.PATH;
       fixture.backendExit = options.onUnexpectedExit;
     }
     async start() {
@@ -388,6 +404,8 @@ beforeEach(() => {
   fixture.backendConstructed = 0;
   fixture.backendStop.mockReset().mockResolvedValue(undefined);
   fixture.shellFetch.mockReset().mockResolvedValue({ ok: false, json: async () => ({}) });
+  fixture.backendPath = undefined;
+  fixture.execFileSync.mockReset().mockReturnValue("v26.12.1");
   fixture.inspect.mockReset().mockResolvedValue(inspection);
   fixture.loadURL.mockReset().mockResolvedValue(undefined);
   fixture.messageBox.mockReset().mockResolvedValue({ response: 1 });
@@ -400,6 +418,74 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("desktop connection manager windows", () => {
+  it("uses the PATH from a login shell that needs more than five seconds", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
+    fixture.launchBackend.mockImplementationOnce((startBackend) => startBackend(resourcesPath));
+    fixture.execFileSync.mockImplementation((_file, args, options) => {
+      if (args[0] !== "-ilc") return "v26.12.1";
+      if (options.timeout === 5_000)
+        throw Object.assign(new Error("probe timed out"), { code: "ETIMEDOUT" });
+      return "\0/opt/slow-shell/bin:/usr/bin\0";
+    });
+    await start();
+    expect(fixture.backendPath?.split(":")).toContain("/opt/slow-shell/bin");
+  });
+
+  it("backs off after repeated renderer crashes and still reloads the window", async () => {
+    await start();
+    const target = primary();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    try {
+      const crash = () => target.webContents.emit("render-process-gone", {}, { reason: "oom" });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        crash();
+        await vi.advanceTimersByTimeAsync(1_000);
+      }
+      crash();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(target.webContents.reload).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(target.webContents.reload).toHaveBeenCalledTimes(4);
+      crash();
+      target.destroy();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(target.webContents.reload).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("copies the address from a mailto link without its query parameters", async () => {
+    await start();
+    const target = primary();
+    target.webContents.emit("context-menu", {}, { linkURL: "https://example.com" });
+    expect(fixture.popup).not.toHaveBeenCalled();
+    target.webContents.emit(
+      "context-menu",
+      {},
+      {
+        linkURL: "mailto:help%40example.com?subject=Hi",
+      },
+    );
+    expect(fixture.popup).toHaveBeenCalledWith({ window: target });
+    fixture.menu[0]!.click?.({} as Electron.MenuItem, undefined, {});
+    expect(fixture.copyText).toHaveBeenCalledWith("help@example.com");
+  });
+
+  it.each([undefined, "unreadable JSON"])(
+    "only initializes a missing window file (%s)",
+    async (saved) => {
+      const boundsFile = join(home, "window.json");
+      if (saved !== undefined) fixture.files.set(boundsFile, saved);
+      await start();
+      primary().emit("resize");
+      expect(fixture.files.get(boundsFile)).toBe(
+        saved ?? JSON.stringify({ width: 1360, height: 900 }),
+      );
+    },
+  );
+
   it("opens and reuses a separate local usage window without navigating the main window", async () => {
     fixture.files.set(backendMetadataFile, JSON.stringify({ coxVersion: "0.1.60" }));
     await start();

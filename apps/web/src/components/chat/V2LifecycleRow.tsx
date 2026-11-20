@@ -82,6 +82,7 @@ export function V2LifecycleRow(props: {
         label={t("Run interrupted")}
         detail={item.message}
         icon={CircleStopIcon}
+        wrapDetail
       />
     );
   }

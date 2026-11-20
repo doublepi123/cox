@@ -28,7 +28,7 @@ import * as ServerConfig from "../config.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as ServerOwnership from "../serverOwnership.ts";
-import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
+import type * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
@@ -200,19 +200,20 @@ const projectCommandUuid = Crypto.Crypto.pipe(
   ),
 );
 
-const layerProjectCliRuntime = RuntimeLayer.layerProjectService.pipe(
-  Layer.provideMerge(ProjectEnrichmentService.layer),
-  Layer.provideMerge(RepositoryIdentityResolver.layer),
-  Layer.provideMerge(
-    ProjectFaviconResolver.layer.pipe(
-      Layer.provide(WorkspacePaths.layer),
-      Layer.provide(T3ProjectFileLoader.layer),
+const makeProjectCliRuntimeLayer = (layerProjectService: typeof RuntimeLayer.layerProjectService) =>
+  layerProjectService.pipe(
+    Layer.provideMerge(ProjectEnrichmentService.layer),
+    Layer.provideMerge(RepositoryIdentityResolver.layer),
+    Layer.provideMerge(
+      ProjectFaviconResolver.layer.pipe(
+        Layer.provide(WorkspacePaths.layer),
+        Layer.provide(T3ProjectFileLoader.layer),
+      ),
     ),
-  ),
-  Layer.provideMerge(WorkspacePaths.layer),
-  Layer.provideMerge(ServerSettings.layer.pipe(Layer.provide(ServerSecretStore.layer))),
-  Layer.provideMerge(SqlitePersistence.layerConfig),
-);
+    Layer.provideMerge(WorkspacePaths.layer),
+    Layer.provideMerge(ServerSettings.layer.pipe(Layer.provide(ServerSecretStore.layer))),
+    Layer.provideMerge(SqlitePersistence.layerConfig),
+  );
 
 const PROJECT_CLI_LIVE_SERVER_PROBE_TIMEOUT = Duration.seconds(1);
 const PROJECT_CLI_LIVE_SERVER_REQUEST_TIMEOUT = Duration.seconds(10);
@@ -422,7 +423,10 @@ const runProjectMutation = Effect.fn("runProjectMutation")(function* (
       );
     }
 
-    const layerOfflineRuntime = layerProjectCliRuntime.pipe(
+    const { layerProjectService } = yield* Effect.promise(
+      () => import("../orchestration-v2/runtimeLayer.ts"),
+    );
+    const layerOfflineRuntime = makeProjectCliRuntimeLayer(layerProjectService).pipe(
       Layer.provide(ServerConfig.layer(config)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, minimumLogLevel)),
     );
@@ -478,6 +482,20 @@ const projectAddCommand = Command.make("add", {
         const existingProject = snapshot.projects.find(
           (project) => project.deletedAt === null && project.workspaceRoot === workspaceRoot,
         );
+        // Re-adding an archived project's folder restores it, matching the clients.
+        if (existingProject?.archivedAt != null) {
+          const title = Option.isSome(flags.title)
+            ? yield* resolveProjectTitle(workspaceRoot, flags.title.value)
+            : undefined;
+          yield* dispatch({
+            type: "project.update",
+            commandId: CommandId.make(yield* projectCommandUuid),
+            projectId: existingProject.id,
+            archived: false,
+            ...(title === undefined ? {} : { title }),
+          });
+          return `Unarchived project ${existingProject.id} (${title ?? existingProject.title}) at ${workspaceRoot}.`;
+        }
         if (existingProject) {
           return yield* new ProjectAlreadyExistsError({
             operation: "addProject",

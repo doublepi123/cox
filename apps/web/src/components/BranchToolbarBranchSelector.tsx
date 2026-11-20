@@ -52,6 +52,7 @@ import {
   resolveBranchTriggerLabel,
   resolveBranchToolbarPrBranch,
   resolveBranchSelectionTarget,
+  shouldReuseBranchCheckout,
   resolveBranchToolbarValue,
   resolveDraftEnvModeAfterBranchChange,
   resolveEffectiveEnvMode,
@@ -129,7 +130,7 @@ export function BranchToolbarBranchSelector({
   const switchRef = useAtomCommand(vcsEnvironment.switchRef, {
     reportFailure: false,
   });
-  const refreshStatus = useAtomCommand(vcsEnvironment.refreshStatus, {
+  const refreshLocalStatusForPicker = useAtomCommand(vcsEnvironment.refreshLocalStatusForPicker, {
     reportFailure: false,
   });
   const createRefMutation = useAtomCommand(vcsEnvironment.createRef, {
@@ -289,8 +290,20 @@ export function BranchToolbarBranchSelector({
     activeThreadBranch,
     currentGitBranch,
   });
+  const [checkoutBranch, setCheckoutBranch] = useState<{
+    environmentId: typeof environmentId;
+    cwd: string;
+    previous: string | null;
+    branch: string;
+  } | null>(null);
+  const holdsCheckoutBranch =
+    checkoutBranch !== null &&
+    checkoutBranch.environmentId === environmentId &&
+    checkoutBranch.cwd === branchCwd &&
+    checkoutBranch.previous === canonicalActiveBranch;
+  if (checkoutBranch !== null && !holdsCheckoutBranch) setCheckoutBranch(null);
   const [resolvedActiveBranch, setOptimisticBranch] = useOptimistic(
-    canonicalActiveBranch,
+    holdsCheckoutBranch ? checkoutBranch.branch : canonicalActiveBranch,
     (_currentBranch: string | null, optimisticBranch: string | null) => optimisticBranch,
   );
   const listedActiveBranch =
@@ -399,7 +412,7 @@ export function BranchToolbarBranchSelector({
       refName,
     });
 
-    if (selectionTarget.reuseExistingWorktree) {
+    if (shouldReuseBranchCheckout(selectionTarget, branchCwd, canWriteSourceControl)) {
       setThreadBranch(refName.name, selectionTarget.nextWorktreePath);
       setIsBranchMenuOpen(false);
       onComposerFocusRequest?.();
@@ -427,6 +440,14 @@ export function BranchToolbarBranchSelector({
         const nextBranchName = refName.isRemote
           ? (checkoutResult.value.refName ?? selectedBranchName)
           : selectedBranchName;
+        if (selectionTarget.checkoutCwd === branchCwd) {
+          setCheckoutBranch({
+            environmentId,
+            cwd: branchCwd,
+            previous: canonicalActiveBranch,
+            branch: nextBranchName,
+          });
+        }
         setOptimisticBranch(nextBranchName);
         setThreadBranch(nextBranchName, selectionTarget.nextWorktreePath);
         return;
@@ -464,6 +485,12 @@ export function BranchToolbarBranchSelector({
         },
       });
       if (createBranchResult._tag === "Success") {
+        setCheckoutBranch({
+          environmentId,
+          cwd: branchCwd,
+          previous: canonicalActiveBranch,
+          branch: createBranchResult.value.refName,
+        });
         setOptimisticBranch(createBranchResult.value.refName);
         setThreadBranch(createBranchResult.value.refName, activeWorktreePath);
         return;
@@ -511,7 +538,10 @@ export function BranchToolbarBranchSelector({
   const handleOpenChange = (open: boolean) => {
     setIsBranchMenuOpen(open);
     if (open && !isBranchMenuOpen && branchCwd !== null) {
-      void refreshStatus({ environmentId, input: { cwd: branchCwd, localOnly: true } });
+      void refreshLocalStatusForPicker({
+        environmentId,
+        input: { cwd: branchCwd, localOnly: true },
+      });
     }
     if (!open) {
       setBranchQuery("");
@@ -725,6 +755,7 @@ export function BranchToolbarBranchSelector({
               )
             }
             disabled={isInitialBranchesLoadPending || isBranchActionPending}
+            aria-label={`Branch: ${triggerLabel}`}
           >
             <GitBranchIcon
               className={cn(
@@ -733,7 +764,7 @@ export function BranchToolbarBranchSelector({
               )}
             />
             <ComposerContextLabel displayMode={displayMode}>
-              <span className="w-full min-w-0">
+              <span aria-hidden className="w-full min-w-0">
                 <MiddleTruncate
                   value={triggerLabel}
                   variant={displayMode === "panel" ? "cap-aligned" : "default"}

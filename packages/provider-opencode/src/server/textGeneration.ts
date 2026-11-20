@@ -212,7 +212,10 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
             client.session.create(
               {
                 title: `Cox ${input.operation}`,
-                permission: [{ permission: "*", pattern: "*", action: "deny" }],
+                permission: [
+                  { permission: "*", pattern: "*", action: "deny" },
+                  { permission: "read", pattern: "*", action: "allow" },
+                ],
               },
               { signal },
             ),

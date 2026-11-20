@@ -62,7 +62,18 @@ export const make = Effect.gen(function* () {
     config: UsageLimitSourceConfig,
   ) {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
-    const base = { id, kind: config.kind, label: sourceLabel(id, config), checkedAt } as const;
+    const url = URL.parse(config.url);
+    const endpoint =
+      url && (url.protocol === "http:" || url.protocol === "https:")
+        ? `${url.origin}${url.pathname.replace(/(\/management\.html)?\/*$/i, "")}`
+        : undefined;
+    const base = {
+      id,
+      kind: config.kind,
+      label: sourceLabel(id, config),
+      checkedAt,
+      ...(endpoint ? { endpoint } : {}),
+    } as const;
     if (config.managementKey.length === 0) {
       return { ...base, accounts: [], error: "No management key configured." };
     }

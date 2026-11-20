@@ -81,8 +81,7 @@ export function withOutputWindow(
         } else if (response._tag === "Chunk") {
           const window = windowFor(clientId, String(response.requestId));
           if (window) {
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            const size = window.bytes ? Buffer.byteLength(JSON.stringify(response)) : 0;
+            const size = window.bytes ? chunkSize(response.values) : 0;
             window.sizes.push(size);
             if (!isFull(window.sizes)) {
               return send.pipe(
@@ -112,13 +111,31 @@ type Subscribe<A, E> = (
   registerCleanup: (stop: () => void) => void,
 ) => Effect.Effect<() => void, E>;
 
+const byteLengthOf = (value: unknown) => (typeof value === "string" ? Buffer.byteLength(value) : 0);
+
 const queuedSize = (event: TerminalEvent | TerminalAttachStreamEvent) =>
   EVENT_OVERHEAD +
+  ("threadId" in event ? byteLengthOf(event.threadId) + byteLengthOf(event.terminalId) : 0) +
   (event.type === "output"
-    ? Buffer.byteLength(event.data)
-    : "snapshot" in event
-      ? Buffer.byteLength(event.snapshot.history)
-      : 0);
+    ? byteLengthOf(event.data)
+    : event.type === "error"
+      ? byteLengthOf(event.message)
+      : event.type === "activity"
+        ? byteLengthOf(event.label)
+        : "snapshot" in event
+          ? byteLengthOf(event.snapshot.threadId) +
+            byteLengthOf(event.snapshot.terminalId) +
+            byteLengthOf(event.snapshot.history) +
+            byteLengthOf(event.snapshot.cwd) +
+            byteLengthOf(event.snapshot.worktreePath) +
+            byteLengthOf(event.snapshot.label)
+          : 0);
+
+const chunkSize = (values: ReadonlyArray<unknown>) =>
+  values.reduce<number>(
+    (total, value) => total + queuedSize(value as TerminalAttachStreamEvent),
+    EVENT_OVERHEAD,
+  );
 
 export function terminalOutputStream<A extends TerminalEvent | TerminalAttachStreamEvent, E>(
   subscribe: Subscribe<A, E>,

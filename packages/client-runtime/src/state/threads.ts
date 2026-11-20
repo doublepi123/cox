@@ -75,6 +75,17 @@ function formatHistoryError(error: unknown): string {
   return "Could not load earlier activity.";
 }
 
+// Steers join a running turn; every other user message opens one. The timeline shows every
+// notification as a response boundary, whether it opened its run or arrived mid-run.
+function startsTurn(item: OrchestrationV2TurnItem): boolean {
+  return (
+    item.type === "notification" ||
+    (item.type === "user_message" &&
+      item.inputIntent !== "steer" &&
+      item.inputIntent !== "promoted_queued_to_steer")
+  );
+}
+
 function historyMetaFromCachedSnapshot(
   snapshot: OrchestrationV2ThreadDetailSnapshot,
 ): ThreadHistoryMeta {
@@ -286,8 +297,15 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     // drafts for, and a superseded scope can lag its successor.
     const owns = resumeCache === undefined || resumeCache.owner === owner;
     if (owns && current.status === "deleted") announceRequests([]);
-    else if (owns && current.status === "live" && Option.isSome(current.data))
-      announceRequests(pendingRuntimeRequestIds(current.data.value));
+    else if (owns && current.status === "live" && Option.isSome(current.data)) {
+      const projection = current.data.value;
+      announceRequests(
+        pendingRuntimeRequestIds(projection),
+        projection.runtimeRequests.flatMap((request) =>
+          request.status === "expired" || request.status === "cancelled" ? [request.id] : [],
+        ),
+      );
+    }
     committed = {
       state: current,
       sequence,
@@ -357,7 +375,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       return Option.match(current.data, {
         onNone: () => Effect.void,
         onSome: (projection) =>
-          shouldPersistThread(projection, current.history)
+          !current.history.expanded
             ? persist(
                 snapshotToPersist(
                   snapshotSequence,
@@ -769,9 +787,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               ? page.nextCursor !== null
               : throughEntryId === undefined &&
                 page.hasMoreHistory &&
-                !page.items.some(
-                  ({ item }) => item.type === "user_message" && item.createdBy === "user",
-                ));
+                !page.items.some(({ item }) => startsTurn(item)));
           if (keepPaging && (page.nextCursor === null || page.nextCursor === requestCursor))
             return yield* failLoad(
               workAnchorId === undefined

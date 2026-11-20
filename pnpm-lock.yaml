@@ -197,6 +197,9 @@ catalogs:
     micromark-util-character:
       specifier: 2.1.1
       version: 2.1.1
+    micromark-util-decode-string:
+      specifier: 2.0.1
+      version: 2.0.1
     micromark-util-types:
       specifier: 2.0.2
       version: 2.0.2
@@ -282,7 +285,7 @@ pnpmfileChecksum: sha256-7YBZ4Ht5JBJAat4rWvS6fNyZJW8kJ14zu/GfyKnu5kw=
 
 patchedDependencies:
   '@effect/vitest@4.0.5': 2731c9c3761c595f25ddc625a7d61ca376b389d5b3049ecb837c8940f21cfa02
-  '@ff-labs/fff-node@0.11.0': cc71fcec015f4d39bc96ae2e2bf6b0ca678124c722c66a7841efce9d34b5983c
+  '@ff-labs/fff-node@0.11.0': d95aebb9decfcf967ff214cf1a0cd2aa20f9a7c248255119cc90d811eefc3f16
   '@legendapp/list@3.3.5': 892caa00d83adda6135574b04ea63752bcedf1d9103f013eef1fe9289a5e02a6
   '@muse-code/sdk@1.4.6': 7b495b607fc5d76b444c7c4d58821e839726a30e6f3c53564f0d59f2d5b42101
   '@pierre/diffs@1.6.1': 4645364ddf113e48e8827f3b4966b3b1ff745317011e5a3d904e2d8672dee7dc
@@ -292,7 +295,7 @@ patchedDependencies:
   micromark-extension-gfm-table@2.1.1: 9ad23a530e45d9f83cba1da8654fe16d5af8b59d5c73d5c7a7c91fd25b9be1d8
   micromark-extension-llm-math@3.1.0: 4eeb9d9e27ebc75e98795e21c0719005483dad7d233055698257f7d10e91603b
   micromark@4.0.2: cb79edde7eca83bbcaaafb6ceb7b044b81b987314cde4910823b15257ecada67
-  node-pty@1.2.0-beta.15: f1e680afec85f650699ea756f91f469844ec4c976f4f168492a45c6b3f67d651
+  node-pty@1.2.0-beta.15: bd1152f841f79914dd37286b40e4b68c4dd31e79ff6dbc831ba9c99c08d3d51a
 
 importers:
 
@@ -413,7 +416,7 @@ importers:
         version: 4.0.5(effect@4.0.5)
       '@ff-labs/fff-node':
         specifier: 0.11.0
-        version: 0.11.0(patch_hash=cc71fcec015f4d39bc96ae2e2bf6b0ca678124c722c66a7841efce9d34b5983c)
+        version: 0.11.0(patch_hash=d95aebb9decfcf967ff214cf1a0cd2aa20f9a7c248255119cc90d811eefc3f16)
       '@muse-code/sdk':
         specifier: 1.4.6
         version: 1.4.6(patch_hash=7b495b607fc5d76b444c7c4d58821e839726a30e6f3c53564f0d59f2d5b42101)(@types/node@24.12.4)
@@ -491,7 +494,7 @@ importers:
         version: 6.2.2
       node-pty:
         specifier: 1.2.0-beta.15
-        version: 1.2.0-beta.15(patch_hash=f1e680afec85f650699ea756f91f469844ec4c976f4f168492a45c6b3f67d651)
+        version: 1.2.0-beta.15(patch_hash=bd1152f841f79914dd37286b40e4b68c4dd31e79ff6dbc831ba9c99c08d3d51a)
       playwright-core:
         specifier: 1.60.0
         version: 1.60.0
@@ -1167,6 +1170,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.5
         version: 4.0.5(patch_hash=2731c9c3761c595f25ddc625a7d61ca376b389d5b3049ecb837c8940f21cfa02)(@opentelemetry/api@1.10.0)(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(effect@4.0.5)(jiti@2.7.0)(playwright@1.60.0)(yaml@2.9.1)
+      '@t3tools/provider-testing':
+        specifier: workspace:*
+        version: link:../provider-testing
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4
@@ -1488,6 +1494,9 @@ importers:
       effect:
         specifier: 4.0.5
         version: 4.0.5
+      get-east-asian-width:
+        specifier: ^1.6.0
+        version: 1.7.0
       jose:
         specifier: 'catalog:'
         version: 6.2.2
@@ -1503,6 +1512,9 @@ importers:
       micromark-util-character:
         specifier: 'catalog:'
         version: 2.1.1
+      micromark-util-decode-string:
+        specifier: 'catalog:'
+        version: 2.0.1
       property-information:
         specifier: ^7.2.0
         version: 7.2.0
@@ -4807,6 +4819,10 @@ packages:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
     engines: {node: 6.* || 8.* || >= 10.*}
 
+  get-east-asian-width@1.7.0:
+    resolution: {integrity: sha512-XjH1AECxf0giL2V1aU8vKyRR2ppRUb5c0EvT7zuJTokQ74bNo52zOtghqdWIqrhUD79fo3x0WfKZdOqxF6LG1Q==}
+    engines: {node: '>=18'}
+
   get-intrinsic@1.3.0:
     resolution: {integrity: sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==}
     engines: {node: '>= 0.4'}
@@ -7142,7 +7158,7 @@ snapshots:
   '@ff-labs/fff-bin-win32-x64@0.11.0':
     optional: true
 
-  '@ff-labs/fff-node@0.11.0(patch_hash=cc71fcec015f4d39bc96ae2e2bf6b0ca678124c722c66a7841efce9d34b5983c)':
+  '@ff-labs/fff-node@0.11.0(patch_hash=d95aebb9decfcf967ff214cf1a0cd2aa20f9a7c248255119cc90d811eefc3f16)':
     dependencies:
       ffi-rs: 1.3.7
     optionalDependencies:
@@ -9487,6 +9503,8 @@ snapshots:
 
   get-caller-file@2.0.5: {}
 
+  get-east-asian-width@1.7.0: {}
+
   get-intrinsic@1.3.0:
     dependencies:
       call-bind-apply-helpers: 1.0.2
@@ -10486,7 +10504,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-pty@1.2.0-beta.15(patch_hash=f1e680afec85f650699ea756f91f469844ec4c976f4f168492a45c6b3f67d651):
+  node-pty@1.2.0-beta.15(patch_hash=bd1152f841f79914dd37286b40e4b68c4dd31e79ff6dbc831ba9c99c08d3d51a):
     dependencies:
       node-addon-api: 7.1.1
 

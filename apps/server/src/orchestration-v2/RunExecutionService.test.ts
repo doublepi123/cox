@@ -601,6 +601,73 @@ it("routes only exact same-thread background items inherited from settled runs",
   );
 });
 
+it("routes an earlier run's plan rows to this thread's active root turn only", () => {
+  const threadId = ThreadId.make("thread:earlier-plan-routing");
+  const priorRunId = RunId.make("run:earlier-plan-routing:prior");
+  const rootTurnId = ProviderTurnId.make("provider-turn:earlier-plan-routing:current");
+  const identity: RunExecutionService.ProviderEventRouteIdentity = {
+    threadId,
+    runId: RunId.make("run:earlier-plan-routing:current"),
+    attemptId: RunAttemptId.make("attempt:earlier-plan-routing:current"),
+    providerThreadId: ProviderThreadId.make("provider-thread:earlier-plan-routing"),
+  };
+  const active = RunExecutionService.makeProviderEventRoutingState({
+    identity,
+    providerTurnId: rootTurnId,
+  });
+  const planRow = {
+    type: "turn_item.updated",
+    driver,
+    turnItem: {
+      id: TurnItemId.make("turn-item:earlier-plan-routing"),
+      threadId,
+      runId: priorRunId,
+      type: "todo_list",
+    },
+  } as ProviderAdapter.ProviderAdapterV2Event;
+  const plan = {
+    type: "plan.updated",
+    driver,
+    plan: { threadId, runId: priorRunId },
+  } as ProviderAdapter.ProviderAdapterV2Event;
+  const otherThreadPlan = {
+    type: "plan.updated",
+    driver,
+    plan: { threadId: ThreadId.make("thread:earlier-plan-routing:other"), runId: priorRunId },
+  } as ProviderAdapter.ProviderAdapterV2Event;
+  const ordinaryRow = {
+    type: "turn_item.updated",
+    driver,
+    turnItem: {
+      id: TurnItemId.make("turn-item:earlier-plan-routing:tool"),
+      threadId,
+      runId: priorRunId,
+      type: "reasoning",
+    },
+  } as ProviderAdapter.ProviderAdapterV2Event;
+  const [, ended] = RunExecutionService.routeProviderEvent(
+    {
+      type: "turn.terminal",
+      driver,
+      providerThreadId: identity.providerThreadId,
+      providerTurnId: rootTurnId,
+      runOrdinal: 2,
+      status: "completed",
+      failure: null,
+      threadDisposition: "reusable",
+    },
+    identity,
+    active,
+  );
+
+  assert.isTrue(RunExecutionService.routeProviderEvent(planRow, identity, active)[0]);
+  assert.isTrue(RunExecutionService.routeProviderEvent(plan, identity, active)[0]);
+  assert.isFalse(RunExecutionService.routeProviderEvent(otherThreadPlan, identity, active)[0]);
+  assert.isFalse(RunExecutionService.routeProviderEvent(ordinaryRow, identity, active)[0]);
+  assert.isFalse(RunExecutionService.routeProviderEvent(planRow, identity, ended)[0]);
+  assert.isFalse(RunExecutionService.routeProviderEvent(plan, identity, ended)[0]);
+});
+
 it("selects only live background items from non-completed settled prior runs", () => {
   const threadId = ThreadId.make("thread:inherited-background-selection");
   const otherThreadId = ThreadId.make("thread:inherited-background-selection:other");
@@ -2581,22 +2648,43 @@ it.effect("does not overwrite Stop when ownership changes after the finalization
   }),
 );
 
-it.effect("emits run_interrupt_result when hard-stop finalizes the active attempt", () =>
-  Effect.gen(function* () {
-    const { written, observed, committedEffects } = yield* captureRootRunTermination({
-      key: "hard-stop",
-      shouldFinalizeRun: () => Effect.succeed(true),
-    });
-    assert.deepEqual(
-      written.map((item) => item.type),
-      ["run_interrupt_result"],
-    );
-    assert.deepEqual(observed, ["run:interrupted", "pull-requests-refreshed"]);
-    assert.deepEqual(
-      committedEffects.map((effect) => effect.request.type),
-      ["checkpoint.capture"],
-    );
-  }),
+it.effect.each([
+  { providerReason: undefined, requestReason: undefined, expected: "Stopped by the provider" },
+  {
+    providerReason: "preCompact hook (project): Save a checkpoint.",
+    requestReason: undefined,
+    expected: "preCompact hook (project): Save a checkpoint.",
+  },
+  {
+    providerReason: "preCompact hook (project): Save a checkpoint.",
+    requestReason: "Stopped by the user",
+    expected: "Stopped by the user",
+  },
+])(
+  "emits run_interrupt_result with $expected when finalizing the active attempt",
+  ({ providerReason, requestReason, expected }) =>
+    Effect.gen(function* () {
+      const { written, observed, committedEffects } = yield* captureRootRunTermination({
+        key: "hard-stop",
+        shouldFinalizeRun: () => Effect.succeed(true),
+        loadRunInterruptReason: () => Effect.succeed(requestReason),
+        events: (ids) =>
+          Stream.make({ ...rootTerminalEvent(ids, "interrupted"), reason: providerReason }),
+      });
+      assert.deepEqual(
+        written.map((item) => item.type),
+        ["run_interrupt_result"],
+      );
+      assert.deepEqual(observed, ["run:interrupted", "pull-requests-refreshed"]);
+      assert.equal(
+        written[0]?.type === "run_interrupt_result" ? written[0].message : undefined,
+        expected,
+      );
+      assert.deepEqual(
+        committedEffects.map((effect) => effect.request.type),
+        ["checkpoint.capture"],
+      );
+    }),
 );
 
 it.effect("records a finished run as failed when its ownership check cannot be read", () =>
@@ -3137,6 +3225,7 @@ function captureRootRunTermination(input: {
   readonly shouldFinalizeRun: () => Effect.Effect<boolean, ProjectionStore.ProjectionStoreV2Error>;
   readonly rejectTerminalWrite?: boolean;
   readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean, never>;
+  readonly loadRunInterruptReason?: () => Effect.Effect<string | undefined, never>;
   readonly hasPendingBackgroundWorkForThread?: ProviderAdapter.ProviderAdapterV2SessionRuntime["hasPendingBackgroundWorkForThread"];
   readonly seedOpenSubagent?: boolean;
   readonly events?: (
@@ -3322,6 +3411,9 @@ function captureRootRunTermination(input: {
         attemptId: ids.attemptId,
         providerTurnOrdinal: 1,
         shouldFinalizeRun: input.shouldFinalizeRun,
+        ...(input.loadRunInterruptReason === undefined
+          ? {}
+          : { loadRunInterruptReason: input.loadRunInterruptReason }),
         ...(input.shouldStartProviderTurn === undefined
           ? {}
           : { shouldStartProviderTurn: input.shouldStartProviderTurn }),

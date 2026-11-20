@@ -4,6 +4,7 @@ import {
   ThreadId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
+import { useImperativeHandle } from "react";
 import { page } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -23,6 +24,7 @@ vi.mock(import("~/state/environments"), async (original) => ({
   ...(await original()),
   useEnvironmentHttpBaseUrl: () => "http://preview.test",
 }));
+const browser = vi.hoisted(() => ({ failed: false, reload: vi.fn() }));
 vi.mock(import("~/previewStateStore"), async (original) => ({
   ...(await original()),
   useThreadPreviewState: (() => ({
@@ -30,7 +32,14 @@ vi.mock(import("~/previewStateStore"), async (original) => ({
     sessions: {
       "tab-1": {
         runtime: "server",
-        navStatus: { _tag: "Success", url: "http://example.com/" },
+        navStatus: browser.failed
+          ? {
+              _tag: "LoadFailed",
+              code: -102,
+              description: "ERR_CONNECTION_REFUSED",
+              url: "http://example.com/",
+            }
+          : { _tag: "Success", url: "http://example.com/" },
         viewport: FILL_PREVIEW_VIEWPORT,
         zoomFactor: 1,
       },
@@ -38,7 +47,16 @@ vi.mock(import("~/previewStateStore"), async (original) => ({
   })) as never,
 }));
 vi.mock(import("~/browser/ServerBrowserSurface"), () => ({
-  ServerBrowserSurface: () => <div data-testid="Server browser" />,
+  ServerBrowserSurface: ({ visible, ref, className }) => {
+    useImperativeHandle(ref, () => ({
+      reload: browser.reload,
+      navigate: vi.fn(),
+      history: vi.fn(),
+      viewport: vi.fn(),
+      canvas: () => null,
+    }));
+    return <div className={className} data-testid={visible ? "Server browser" : "Disconnected"} />;
+  },
 }));
 vi.mock(import("~/browser/serverPictureInPicture"), () => ({
   useServerPictureInPictureKey: () => null,
@@ -88,6 +106,20 @@ function Player() {
 }
 
 describe("mobile floating browser preview", () => {
+  it("renders the load failure over the floating browser surface", async () => {
+    browser.failed = true;
+    try {
+      await using _screen = await render(<Player />, { router: false });
+      await expect
+        .element(page.getByRole("heading", { name: "This site can’t be reached" }))
+        .toBeVisible();
+      await expect.element(page.getByTestId("Server browser")).not.toBeVisible();
+      await page.getByRole("button", { name: "Reload" }).click();
+      expect(browser.reload).toHaveBeenCalledOnce();
+    } finally {
+      browser.failed = false;
+    }
+  });
   it("keeps preview actions visible and touch-sized", async () => {
     await page.viewport(390, 844);
     usePreviewMiniPlayerStore.setState({ byThreadKey: {} });

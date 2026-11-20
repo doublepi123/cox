@@ -1,6 +1,13 @@
 import {
+  CheckpointId,
+  CheckpointRef,
+  CheckpointScopeId,
+  EventId,
+  MessageId,
+  NodeId,
   ProjectId,
   ProviderInstanceId,
+  RunId,
   SourceControlProviderKind,
   ThreadId,
   type OrchestrationProjectShell,
@@ -84,11 +91,12 @@ describe("ThreadPullRequestServiceV2 reads", () => {
     };
   };
 
-  it.effect("does not sweep branch pull requests while no client is connected", () =>
+  it.effect("coalesces turn-end branch refreshes while no client is connected", () =>
     Effect.scoped(
       Effect.gen(function* () {
         // Polling active branches without a connected client wastes GitHub requests.
         const thread = { ...threadShell("idle-branch-thread"), branch: "feature/idle" };
+        const otherThread = { ...threadShell("other-branch-thread"), branch: "feature/other" };
         const project: OrchestrationProjectShell = {
           id: thread.projectId,
           title: "Project",
@@ -99,32 +107,115 @@ describe("ThreadPullRequestServiceV2 reads", () => {
           updatedAt: "2026-08-01T00:00:00.000Z",
         };
         const activation = yield* Deferred.make<void>();
-        const domainEvents = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
-        const turnLookup = yield* Deferred.make<void>();
-        const lookups: Array<{ readonly refresh: boolean }> = [];
+        const sweepStarted = yield* Deferred.make<void>();
+        const burstQueued = yield* Deferred.make<void>();
+        const turnLookupStarted = yield* Deferred.make<void>();
+        const followUpQueued = yield* Deferred.make<void>();
+        const lookups: Array<{ readonly branch: string; readonly refresh: boolean }> = [];
+        const checkpoint = (threadId: ThreadId, ordinal: number): OrchestrationV2DomainEvent => ({
+          type: "checkpoint.captured",
+          id: EventId.make(`checkpoint:${threadId}:${ordinal}`),
+          threadId,
+          occurredAt: NOW,
+          payload: {
+            id: CheckpointId.make(`checkpoint:${threadId}:${ordinal}`),
+            threadId,
+            scopeId: CheckpointScopeId.make(`scope:${threadId}`),
+            runId: RunId.make(`run:${threadId}`),
+            nodeId: NodeId.make(`node:${threadId}`),
+            parentCheckpointId: null,
+            ordinalWithinScope: ordinal,
+            appRunOrdinal: 1,
+            ref: CheckpointRef.make(`refs/checkpoints/${threadId}/${ordinal}`),
+            status: "ready",
+            files: [],
+            capturedAt: NOW,
+          },
+        });
+        const burst: ReadonlyArray<OrchestrationV2DomainEvent> = [
+          {
+            type: "thread.metadata-updated",
+            id: EventId.make("metadata"),
+            threadId: thread.id,
+            occurredAt: NOW,
+            payload: { ...thread, lastVisitedAt: null },
+          },
+          ...[thread, otherThread].flatMap(
+            (candidate): ReadonlyArray<OrchestrationV2DomainEvent> => [
+              checkpoint(candidate.id, 1),
+              checkpoint(candidate.id, 2),
+              {
+                type: "run.updated",
+                id: EventId.make(`completed:${candidate.id}`),
+                threadId: candidate.id,
+                occurredAt: NOW,
+                payload: {
+                  id: RunId.make(`run:${candidate.id}`),
+                  threadId: candidate.id,
+                  ordinal: 1,
+                  providerInstanceId: candidate.providerInstanceId,
+                  modelSelection: candidate.modelSelection,
+                  providerThreadId: null,
+                  userMessageId: MessageId.make(`message:${candidate.id}`),
+                  rootNodeId: null,
+                  activeAttemptId: null,
+                  status: "completed",
+                  requestedAt: NOW,
+                  startedAt: NOW,
+                  completedAt: NOW,
+                  checkpointId: null,
+                  contextHandoffId: null,
+                },
+              },
+            ],
+          ),
+        ];
         const dependencies = Layer.mergeAll(
           Layer.mock(Orchestrator.OrchestratorV2)({
-            streamDomainEvents: Stream.fromQueue(domainEvents),
+            streamDomainEvents: Stream.fromEffect(Deferred.await(sweepStarted)).pipe(
+              Stream.drain,
+              Stream.concat(Stream.fromIterable(burst)),
+              Stream.concat(
+                Stream.fromEffect(Deferred.succeed(burstQueued, undefined)).pipe(Stream.drain),
+              ),
+              Stream.concat(
+                Stream.fromEffect(Deferred.await(turnLookupStarted)).pipe(Stream.drain),
+              ),
+              Stream.concat(Stream.succeed(checkpoint(thread.id, 3))),
+              Stream.concat(
+                Stream.fromEffect(Deferred.succeed(followUpQueued, undefined)).pipe(Stream.drain),
+              ),
+              Stream.concat(Stream.never),
+            ),
             getShellSnapshot: () =>
-              Effect.succeed({
-                schemaVersion: 2,
-                snapshotSequence: 1,
-                threads: [thread],
-                archivedThreads: [],
-              }),
+              Deferred.succeed(sweepStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(burstQueued)),
+                Effect.as({
+                  schemaVersion: 2,
+                  snapshotSequence: 1,
+                  threads: [thread],
+                  archivedThreads: [],
+                }),
+              ),
             getThreadEventSequence: () => Effect.succeed(1),
-            getThreadShell: () => Effect.succeed(thread),
+            getThreadShell: (threadId) =>
+              Effect.succeed(
+                [thread, otherThread].find((candidate) => candidate.id === threadId) ?? null,
+              ),
           }),
           Layer.mock(ProjectStore.ProjectStoreV2)({
             listShells: () => Effect.succeed([project]),
             getShell: () => Effect.succeedSome(project),
           }),
           Layer.mock(GitManager.GitManager)({
-            branchPullRequest: (_input, options) =>
+            branchPullRequest: ({ branch }, options) =>
               Effect.gen(function* () {
-                const refresh = options?.refresh ?? false;
-                lookups.push({ refresh });
-                if (refresh) yield* Deferred.succeed(turnLookup, undefined);
+                const afterSweep = lookups.length > 0;
+                lookups.push({ branch, refresh: options?.refresh ?? false });
+                if (afterSweep && branch === thread.branch) {
+                  yield* Deferred.succeed(turnLookupStarted, undefined);
+                  yield* Deferred.await(followUpQueued);
+                }
                 return null;
               }),
           }),
@@ -165,12 +256,14 @@ describe("ThreadPullRequestServiceV2 reads", () => {
           yield* Deferred.succeed(activation, undefined);
 
           // A finished turn still discovers the pull request for its branch.
-          yield* Queue.offer(domainEvents, {
-            type: "checkpoint.captured",
-            threadId: thread.id,
-          } as OrchestrationV2DomainEvent);
-          yield* Deferred.await(turnLookup);
+          yield* Deferred.await(followUpQueued);
           yield* service.drain;
+          expect(lookups).toEqual([
+            { branch: thread.branch, refresh: false },
+            { branch: thread.branch, refresh: true },
+            { branch: otherThread.branch, refresh: true },
+            { branch: thread.branch, refresh: true },
+          ]);
           const lookupsBeforeIdle = lookups.length;
 
           yield* TestClock.adjust("10 minutes");

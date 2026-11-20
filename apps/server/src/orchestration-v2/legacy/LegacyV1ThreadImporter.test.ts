@@ -88,12 +88,16 @@ it.effect(
       const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
       const projections = yield* ProjectionStore.ProjectionStoreV2;
       yield* seedPendingTranscripts;
-      yield* sql`
-        UPDATE projection_thread_messages SET created_at = '0000-not-a-date'
-        WHERE message_id = 'thread:first:old'
-      `;
 
-      yield* importer.importPendingTranscripts;
+      yield* importer.importPendingTranscripts.pipe(
+        Effect.provideService(Statement.CurrentTransformer, (statement) => {
+          const [query, parameters] = statement.compile();
+          return query.includes("FROM projection_thread_messages") &&
+            parameters.includes("thread:first")
+            ? Effect.die("transcript read failed")
+            : Effect.succeed(statement);
+        }),
+      );
 
       const later = yield* projections.getThreadProjection(ThreadId.make("thread:later"));
       assert.deepStrictEqual(
@@ -102,9 +106,9 @@ it.effect(
       );
       assert.deepStrictEqual(
         yield* sql`
-          SELECT thread_id, transcript_imported_at, last_error FROM orchestration_v2_legacy_imports
-          WHERE transcript_imported_at IS NULL OR last_error IS NOT NULL
-        `,
+        SELECT thread_id, transcript_imported_at, last_error FROM orchestration_v2_legacy_imports
+        WHERE transcript_imported_at IS NULL OR last_error IS NOT NULL
+      `,
         [
           {
             thread_id: "thread:first",
@@ -114,6 +118,43 @@ it.effect(
         ],
       );
     }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("imports valid legacy messages when another message has an invalid timestamp", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    yield* seedPendingTranscripts;
+    yield* sql`
+        UPDATE projection_thread_messages SET created_at = '0000-not-a-date'
+        WHERE message_id = 'thread:first:old'
+      `;
+
+    yield* importer.importPendingTranscripts;
+
+    const first = yield* projections.getThreadProjection(ThreadId.make("thread:first"));
+    const later = yield* projections.getThreadProjection(ThreadId.make("thread:later"));
+    assert.deepStrictEqual(
+      first.messages.map((message) => message.text),
+      ["Old question", "Latest question"],
+    );
+    assert.deepStrictEqual(
+      first.messages[1]?.createdAt,
+      DateTime.makeUnsafe("2026-01-02T01:00:00.000Z"),
+    );
+    assert.deepStrictEqual(
+      later.messages.map((message) => message.text),
+      ["Old question", "Latest question"],
+    );
+    assert.deepStrictEqual(
+      yield* sql`
+          SELECT thread_id, transcript_imported_at, last_error FROM orchestration_v2_legacy_imports
+          WHERE transcript_imported_at IS NULL OR last_error IS NOT NULL
+        `,
+      [],
+    );
+  }).pipe(Effect.provide(layerTest)),
 );
 
 // regression: #15920 one bad legacy message stopped the server from starting

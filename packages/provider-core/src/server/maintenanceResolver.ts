@@ -264,6 +264,22 @@ function isWinGetClaudeCommandPath(commandPath: string): boolean {
   return winGetClaudeCommandPath.test(normalizeCommandPath(commandPath));
 }
 
+const CHOCOLATEY_CLAUDE_PACKAGE = "claude-code";
+
+function isChocolateyClaudeCommandPath(commandPath: string, env: NodeJS.ProcessEnv): boolean {
+  const normalized = normalizeCommandPath(commandPath);
+  if (/\/chocolatey\/(?:bin|lib\/claude-code\/tools)\/claude\.exe$/.test(normalized)) return true;
+  const root = nonEmptyString(
+    Object.entries(env).find(([key]) => key.toLowerCase() === "chocolateyinstall")?.[1],
+  );
+  if (!root) return false;
+  const prefix = normalizeCommandPath(root).replace(/\/+$/, "");
+  return (
+    normalized === `${prefix}/bin/claude.exe` ||
+    normalized === `${prefix}/lib/claude-code/tools/claude.exe`
+  );
+}
+
 function isPnpmGlobalCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
   return (
@@ -408,15 +424,18 @@ const decodePnpmList = Schema.decodeUnknownOption(
 // Unlike npm's latest tag, pnpm outdated respects minimumReleaseAge and its excludes.
 const resolvePnpmGlobalLatestVersion = Effect.fn("resolvePnpmGlobalLatestVersion")(function* (
   packageName: string,
+  env: NodeJS.ProcessEnv,
 ) {
-  // Match the updater's pnpm and server environment, rather than the instance's.
-  const pnpmPath = yield* resolveCommandPath("pnpm");
+  // Match the updater's pnpm and environment.
+  const pnpmPath = yield* resolveCommandPath("pnpm", {
+    env: { ...(yield* HostProcess.Environment), ...env },
+  });
   if (!pnpmPath) return null;
   // Silent reporting keeps project package-manager warnings out of the JSON.
   const outdated = yield* runProbe(
     pnpmPath,
     ["outdated", "-g", "--reporter=silent", "--format", "json", packageName],
-    {},
+    env,
     // pnpm outdated exits 1 when updates are available.
     [0, 1],
   );
@@ -430,7 +449,7 @@ const resolvePnpmGlobalLatestVersion = Effect.fn("resolvePnpmGlobalLatestVersion
   const listed = yield* runProbe(
     pnpmPath,
     ["ls", "-g", "--reporter=silent", "--depth", "0", "--json", packageName],
-    {},
+    env,
   );
   const listedEntries = listed ? Option.getOrUndefined(decodePnpmList(listed)) : undefined;
   return nonEmptyString(listedEntries?.[0]?.dependencies?.[packageName]?.version);
@@ -522,7 +541,14 @@ export const resolveMiseProviderMaintenance = Effect.fn("resolveMiseProviderMain
       const resolved = normalizeCommandPath(context.resolvedCommandPath);
       if (!latestDirs.some((dir) => isUnder(resolved, dir))) return manual(binaryPath);
     }
-    const args = ["upgrade", miseTool];
+    const configured = Option.getOrUndefined(
+      decodeMiseInstalls(yield* runProbe(misePath, ["ls", "--json", "--installed"], context.env)),
+    );
+    const configuredTool =
+      Object.entries(configured ?? {}).find(([, installs]) =>
+        installs.some((candidate) => candidate.install_path === install.install_path),
+      )?.[0] ?? miseTool;
+    const args = ["upgrade", configuredTool];
     const services = yield* Effect.context<ProviderMaintenanceResolverServices>();
     const envHash = NodeCrypto.createHash("sha256");
     for (const [name, value] of Object.entries(context.env).toSorted(([a], [b]) =>
@@ -583,6 +609,34 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     return manual;
   }
 
+  if (
+    definition.provider === "claudeAgent" &&
+    context.platform === "win32" &&
+    commandPaths.some((commandPath) => isChocolateyClaudeCommandPath(commandPath, context.env))
+  ) {
+    const services = yield* Effect.context<ProviderMaintenanceResolverServices>();
+    return {
+      ...manual,
+      manualCommand: `choco upgrade ${CHOCOLATEY_CLAUDE_PACKAGE}`,
+      latestVersion: null,
+      latestVersionCacheKey: `chocolatey\0${context.realCommandPath}`,
+      lookupLatestVersion: runProbe(
+        "choco",
+        ["search", CHOCOLATEY_CLAUDE_PACKAGE, "--exact", "--limit-output"],
+        context.env,
+      ).pipe(
+        Effect.map((output) => {
+          for (const line of output?.split(/\r?\n/) ?? []) {
+            const [name, version] = line.trim().split("|", 2);
+            if (name?.toLowerCase() === CHOCOLATEY_CLAUDE_PACKAGE) return nonEmptyString(version);
+          }
+          return null;
+        }),
+        Effect.provideContext(services),
+      ),
+    };
+  }
+
   const mise = yield* resolveMiseProviderMaintenance(
     { provider: definition.provider, packageName },
     definition.mise,
@@ -627,6 +681,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "vp",
       updateArgs: ["i", "-g", packageName],
       updateLockKey: "vite-plus-global",
+      env: context.env,
     });
   }
   if (commandPaths.some(isBunGlobalCommandPath)) {
@@ -636,6 +691,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "bun",
       updateArgs: ["i", "-g", `${packageName}@latest`],
       updateLockKey: "bun-global",
+      env: context.env,
     });
   }
   if (commandPaths.some(isPnpmGlobalCommandPath)) {
@@ -652,7 +708,8 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "pnpm",
       updateArgs: ["add", "-g", ...allowBuild, `${packageName}@latest`],
       updateLockKey: "pnpm-global",
-      lookupLatestVersion: resolvePnpmGlobalLatestVersion(packageName).pipe(
+      env: context.env,
+      lookupLatestVersion: resolvePnpmGlobalLatestVersion(packageName, context.env).pipe(
         Effect.provideContext(services),
       ),
     });
@@ -665,6 +722,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "yarn",
       updateArgs: ["global", "add", `${packageName}@latest`],
       updateLockKey: "yarn-global",
+      env: context.env,
     });
   }
   if (yield* isVoltaPackageInstall(context, packageName)) {
@@ -674,6 +732,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "volta",
       updateArgs: ["install", `${packageName}@latest`],
       updateLockKey: "volta",
+      env: context.env,
     });
   }
 
@@ -694,6 +753,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
         `${packageName}@latest`,
       ],
       updateLockKey: `npm-global:${normalizeCommandPath(npmPrefix)}`,
+      env: context.env,
     });
   }
 
@@ -849,6 +909,16 @@ const decodeNpmViewVersion = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Union([Schema.String, Schema.Tuple([Schema.String])])),
 );
 
+const decodeNpmGlobalList = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      dependencies: Schema.optional(
+        Schema.Record(Schema.String, Schema.Struct({ version: Schema.optional(Schema.String) })),
+      ),
+    }),
+  ),
+);
+
 const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup")(function* (
   capabilities: ProviderMaintenanceCapabilities,
 ) {
@@ -856,7 +926,8 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
   if (!packageName || capabilities.latestVersion !== undefined) {
     return capabilities;
   }
-  const npmPath = yield* resolveCommandPath("npm");
+  const env = { ...(yield* HostProcess.Environment), ...capabilities.update?.env };
+  const npmPath = yield* resolveCommandPath("npm", { env });
   if (!npmPath) return capabilities;
   const services = yield* Effect.context<ProviderMaintenanceResolverServices>();
   const update = capabilities.update;
@@ -864,22 +935,44 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
     ? update.args.indexOf("--prefix")
     : -1;
   const prefix = prefixIndex >= 0 ? update?.args[prefixIndex + 1] : undefined;
-  const lookup = runProbe(
-    npmPath,
-    [
-      "view",
-      "--global",
-      ...(prefix ? ["--prefix", prefix] : []),
-      "--json",
-      `${packageName}@latest`,
-      "version",
-    ],
-    {},
+  const lookup = (
+    prefix
+      ? Effect.gen(function* () {
+          const args = ["-g", "--prefix", prefix];
+          const outdated = yield* runProbe(
+            npmPath,
+            ["outdated", ...args, "--json", packageName],
+            env,
+            [0, 1],
+          );
+          const entries = outdated
+            ? Option.getOrUndefined(decodePnpmOutdated(outdated))
+            : undefined;
+          if (!entries || Object.hasOwn(entries, "error")) return null;
+          const latest = nonEmptyString(entries[packageName]?.latest);
+          if (latest) return latest;
+          const listing = yield* runProbe(
+            npmPath,
+            ["ls", ...args, "--depth", "0", "--json", packageName],
+            env,
+            [0, 1],
+          );
+          const packages = listing
+            ? Option.getOrUndefined(decodeNpmGlobalList(listing))
+            : undefined;
+          return nonEmptyString(packages?.dependencies?.[packageName]?.version);
+        })
+      : runProbe(
+          npmPath,
+          ["view", "--global", "--json", `${packageName}@latest`, "version"],
+          env,
+        ).pipe(
+          Effect.map((stdout) => {
+            const value = stdout ? Option.getOrNull(decodeNpmViewVersion(stdout.trim())) : null;
+            return nonEmptyString(typeof value === "string" ? value : value?.[0]);
+          }),
+        )
   ).pipe(
-    Effect.map((stdout) => {
-      const value = stdout ? Option.getOrNull(decodeNpmViewVersion(stdout.trim())) : null;
-      return nonEmptyString(typeof value === "string" ? value : value?.[0]);
-    }),
     Effect.tap((version) =>
       version === null
         ? Effect.logWarning("Configured npm version lookup failed", { packageName })
@@ -1005,7 +1098,10 @@ export function createProviderVersionAdvisory(input: {
     status: advisory.status,
     currentVersion: input.currentVersion,
     latestVersion,
-    updateCommand: resolveLatestProviderUpdateAction(capabilities, latestVersion)?.command ?? null,
+    updateCommand:
+      resolveLatestProviderUpdateAction(capabilities, latestVersion)?.command ??
+      capabilities.manualCommand ??
+      null,
     canUpdate: capabilities.update !== null,
     canInstallVersion: makeTargetedProviderUpdateAction(capabilities, "0.0.0") !== null,
     checkedAt: input.checkedAt ?? null,

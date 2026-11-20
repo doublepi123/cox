@@ -1,6 +1,7 @@
 import { InfoIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { expect, it, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 
@@ -22,6 +23,31 @@ it("puts machine notices first, whatever order the notices arrive in", async () 
   );
 
   expect(screen.container.textContent).toBe("OfflineBranch changed");
+});
+
+it("opens the details of a long notice right above its button", async () => {
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  await page.viewport(1280, 800);
+  await using _viewport = {
+    [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
+  };
+  const script = Array.from({ length: 400 }, (_, line) => `echo "line ${line}"`).join("\n");
+  const container = document.createElement("div");
+  container.style.cssText = "position: fixed; bottom: 4rem; right: 4rem;";
+  await using screen = await render(noticeRow("40rem", script), { container });
+  const details = screen.getByRole("button", { name: "Show details" });
+  await userEvent.hover(details);
+  const popup = page.getByLabelText("Notice details");
+  await expect.element(popup).toBeVisible();
+
+  // A positioner sized to the unscrolled text flips beside the button and covers it.
+  await vi.waitFor(() => {
+    const gap =
+      details.element().getBoundingClientRect().top -
+      popup.element().getBoundingClientRect().bottom;
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(8);
+  });
 });
 
 it("leaves the next attachment its own top edge when there are no notices", async () => {

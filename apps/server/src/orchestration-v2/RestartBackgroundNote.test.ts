@@ -14,6 +14,7 @@ import {
   isAwaitedWork,
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
+  restartCancelledBackgroundWorkNote,
   restartContinuationNote,
   mergeRestartCancelledBackgroundWork,
 } from "./RestartBackgroundNote.ts";
@@ -113,6 +114,14 @@ it("names a lost subagent by the id the agent resumes it with", () => {
     parentTaskId: "a".repeat(400),
   }).label;
   assert.lengthOf(longId, 160);
+  const emojiNote = restartCancelledBackgroundWorkNote([
+    cancelledRosterTaskWork({
+      kind: "command",
+      taskId: "shell-1",
+      description: `${"d".repeat(158)}🚀 deploy`,
+    }),
+  ]);
+  assert.isTrue(emojiNote.isWellFormed());
   assert.isFalse(isAwaitedWork(cancelledRosterTaskWork({ kind: "command", taskId: "shell-2" })));
   assert.isTrue(
     isAwaitedWork(cancelledRosterTaskWork({ kind: "command", taskId: "tests", awaited: true })),

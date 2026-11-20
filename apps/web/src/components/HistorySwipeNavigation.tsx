@@ -15,7 +15,7 @@ type SwipeBounds = {
 type SwipeGesture =
   | {
       kind: "pending";
-      target: EventTarget | null;
+      path: EventTarget[];
       y: number;
       sumX: number;
       sumY: number;
@@ -45,13 +45,9 @@ function readMainContentBounds(): SwipeBounds {
   const { left, top, width, height } = main.getBoundingClientRect();
   return { left, top, width, height };
 }
-function canScrollHorizontally(target: EventTarget | null, deltaX: number): boolean {
-  for (
-    let element = target instanceof Element ? target : null;
-    element;
-    element = element.parentElement
-  ) {
-    if (element.scrollWidth <= element.clientWidth) continue;
+function canScrollHorizontally(path: readonly EventTarget[], deltaX: number): boolean {
+  for (const element of path) {
+    if (!(element instanceof Element) || element.scrollWidth <= element.clientWidth) continue;
     const { overflowX } = getComputedStyle(element);
     if (overflowX !== "auto" && overflowX !== "scroll") continue;
     const canScroll =
@@ -75,10 +71,12 @@ function lockSwipeAxis(
     kind: "pending";
   }
 > {
-  const { target, sumX, sumY } = pending;
+  const { path, sumX, sumY } = pending;
   if (Math.abs(sumX) <= Math.abs(sumY)) return { kind: "ignored" };
-  if (target instanceof Element && target.closest('[role="dialog"]')) return { kind: "ignored" };
-  if (canScrollHorizontally(target, sumX)) return { kind: "ignored" };
+  if (path.some((node) => node instanceof Element && node.matches('[role="dialog"]'))) {
+    return { kind: "ignored" };
+  }
+  if (canScrollHorizontally(path, sumX)) return { kind: "ignored" };
   const direction = sumX < 0 ? "back" : "forward";
   if (!canNavigateHistory(direction)) return { kind: "ignored" };
   return {
@@ -126,14 +124,14 @@ export function HistorySwipeNavigation() {
         gesture =
           event.ctrlKey || event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
             ? { kind: "ignored" }
-            : { kind: "pending", target: event.target, y: event.clientY, sumX: 0, sumY: 0 };
+            : { kind: "pending", path: event.composedPath(), y: event.clientY, sumX: 0, sumY: 0 };
       }
       if (gesture.kind === "ignored") return;
       if (gesture.kind === "pending") {
         gesture.sumX += event.deltaX;
         gesture.sumY += event.deltaY;
         if (Math.abs(gesture.sumX) + Math.abs(gesture.sumY) < SWIPE_AXIS_LOCK_DISTANCE) return;
-        gesture = lockSwipeAxis(gesture);
+        gesture = lockSwipeAxis({ ...gesture, path: [...gesture.path, ...event.composedPath()] });
         if (gesture.kind === "ignored") return;
       } else {
         const delta = gesture.direction === "back" ? -event.deltaX : event.deltaX;

@@ -35,6 +35,17 @@ export interface OlderSettled {
 }
 
 /** The scope's projects in one environment, or null for all of them. */
+export function sortOlderSettledScopes(
+  scopes: ReadonlyArray<OlderSettledScope>,
+): ReadonlyArray<OlderSettledScope> {
+  return scopes
+    .map((scope) => ({
+      environmentId: scope.environmentId,
+      projectIds: scope.projectIds === null ? null : [...scope.projectIds].sort(),
+    }))
+    .sort((left, right) => left.environmentId.localeCompare(right.environmentId));
+}
+
 export interface OlderSettledScope {
   readonly environmentId: EnvironmentId;
   readonly projectIds: ReadonlyArray<ProjectId> | null;

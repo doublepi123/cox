@@ -49,7 +49,7 @@ function SheetViewport({
   return (
     <SheetPrimitive.Viewport
       className={cn(
-        "fixed inset-0 z-(--z-sheet) grid",
+        "fixed inset-0 z-(--z-sheet) grid [-webkit-app-region:no-drag]",
         side === "bottom" && "grid grid-rows-[1fr_auto] pt-[max(3rem,var(--workspace-safe-top))]",
         side === "top" && "grid grid-rows-[auto_1fr] pb-[max(3rem,var(--workspace-safe-bottom))]",
         side === "left" && "flex justify-start",
@@ -167,7 +167,7 @@ function SheetHeader({
 function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
   return (
     <SheetPrimitive.Title
-      className={cn("font-semibold text-xl leading-none", className)}
+      className={cn("font-semibold text-xl leading-snug", className)}
       data-slot="sheet-title"
       {...props}
     />

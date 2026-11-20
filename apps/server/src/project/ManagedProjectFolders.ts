@@ -1,5 +1,6 @@
 import {
   CommandId,
+  GitCommandError,
   type GitManagerServiceError,
   ProjectId,
   type ThreadId,
@@ -68,7 +69,9 @@ export class NamedProjectFolderError extends Schema.TaggedError<NamedProjectFold
   },
 ) {
   override get message(): string {
-    return "Failed to create the project folder.";
+    return isMissingExecutable(this.cause)
+      ? "Git isn't installed on this machine. Install Git to create a project."
+      : "Failed to create the project folder.";
   }
 }
 
@@ -200,6 +203,14 @@ const isGitMissing = (error: GitManagerServiceError) =>
   isVcsProcessSpawnError(error.cause) &&
   PlatformError.isPlatformError(error.cause.cause) &&
   error.cause.cause.reason._tag === "NotFound";
+
+const isGitCommandError = Schema.is(GitCommandError);
+
+const isMissingExecutable = (cause: unknown) =>
+  isGitCommandError(cause) &&
+  PlatformError.isPlatformError(cause.cause) &&
+  cause.cause.reason._tag === "NotFound" &&
+  cause.cause.reason.method === "spawn";
 
 const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
@@ -402,7 +413,7 @@ const make = Effect.gen(function* () {
     yield* git.execute({
       operation: "ManagedProjectFolders.add",
       cwd,
-      args: ["add", "--force", "--", "README.md", "assets/icon.svg"],
+      args: ["-c", "core.safecrlf=false", "add", "--force", "--", "README.md", "assets/icon.svg"],
       timeoutMs: 10_000,
     });
     return yield* git

@@ -63,7 +63,7 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
     userId?: string;
     userInfoAt?: number;
     missingToken?: boolean;
-    authMethod?: "oauth-personal" | "gemini-api-key";
+    authMethod?: "oauth-personal" | "oauth-business" | "gemini-api-key";
   } = {},
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -328,65 +328,72 @@ describe("Antigravity subscription limits", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  // Oracle: the existing endpoint merge keeps the most-used reading.
-  it.effect("keeps the used endpoint reading and its reset over an untouched reading", () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-21T10:16:04Z")));
-      const { probe } = yield* fixture({
-        summaryByHost: {
-          "daily-cloudcode-pa.googleapis.com": {
-            buckets: [
-              {
-                bucketId: "3p-5h",
-                window: "5h",
-                remainingFraction: 1,
-                resetTime: "2026-10-21T15:16:04Z",
-              },
-              {
-                bucketId: "3p-weekly",
-                window: "weekly",
-                remainingFraction: 0.5,
-                resetTime: "2026-10-27T10:16:04Z",
-              },
-            ],
+  it.effect.each([
+    { authMethod: "oauth-personal", sessionUsage: 0, weeklyUsage: 50 },
+    { authMethod: "oauth-business", sessionUsage: 50, weeklyUsage: 0 },
+  ] as const)(
+    "takes usage and reset data from the metered host for $authMethod",
+    ({ authMethod, sessionUsage, weeklyUsage }) =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(
+          DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-21T10:16:04Z")),
+        );
+        const { probe } = yield* fixture({
+          authMethod,
+          summaryByHost: {
+            "daily-cloudcode-pa.googleapis.com": {
+              buckets: [
+                {
+                  bucketId: "3p-5h",
+                  window: "5h",
+                  remainingFraction: 1,
+                  resetTime: "2026-10-21T15:16:04Z",
+                },
+                {
+                  bucketId: "3p-weekly",
+                  window: "weekly",
+                  remainingFraction: 0.5,
+                  resetTime: "2026-10-27T10:16:04Z",
+                },
+              ],
+            },
+            "cloudcode-pa.googleapis.com": {
+              buckets: [
+                {
+                  bucketId: "3p-5h",
+                  window: "5h",
+                  remainingFraction: 0.5,
+                  resetTime: "2026-10-21T13:16:04Z",
+                },
+                {
+                  bucketId: "3p-weekly",
+                  window: "weekly",
+                  remainingFraction: 1,
+                  resetTime: "2026-10-28T10:16:04Z",
+                },
+              ],
+            },
           },
-          "cloudcode-pa.googleapis.com": {
-            buckets: [
-              {
-                bucketId: "3p-5h",
-                window: "5h",
-                remainingFraction: 0.5,
-                resetTime: "2026-10-21T13:16:04Z",
-              },
-              {
-                bucketId: "3p-weekly",
-                window: "weekly",
-                remainingFraction: 1,
-                resetTime: "2026-10-28T10:16:04Z",
-              },
-            ],
+        });
+        expect((yield* probe).windows).toEqual([
+          {
+            id: "3p-5h",
+            label: "Claude & GPT (shared) · 5-hour",
+            kind: "session",
+            usedPercent: sessionUsage,
+            windowDurationMins: 300,
+            ...(authMethod === "oauth-business" ? { resetsAt: "2026-10-21T13:16:04.000Z" } : {}),
           },
-        },
-      });
-      expect((yield* probe).windows).toEqual([
-        {
-          id: "3p-5h",
-          label: "Claude & GPT (shared) · 5-hour",
-          kind: "session",
-          usedPercent: 50,
-          windowDurationMins: 300,
-          resetsAt: "2026-10-21T13:16:04.000Z",
-        },
-        {
-          id: "3p-weekly",
-          label: "Claude & GPT (shared) · Weekly",
-          kind: "weekly",
-          usedPercent: 50,
-          windowDurationMins: 10080,
-          resetsAt: "2026-10-27T10:16:04.000Z",
-        },
-      ]);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+          {
+            id: "3p-weekly",
+            label: "Claude & GPT (shared) · Weekly",
+            kind: "weekly",
+            usedPercent: weeklyUsage,
+            windowDurationMins: 10080,
+            ...(authMethod === "oauth-personal" ? { resetsAt: "2026-10-27T10:16:04.000Z" } : {}),
+          },
+        ]);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   // Oracle: model quotas have no evidence for the summary-only rule.
@@ -472,16 +479,22 @@ describe("Antigravity subscription limits", () => {
       const byId = new Map(limits.windows.map((window) => [window.id, window]));
       expect(byId.get("gemini-weekly")?.label).toBe("Gemini · Weekly");
       expect(byId.get("3p-5h")?.usedPercent).toBeCloseTo(70);
-      expect(byId.get("3p-weekly")?.usedPercent).toBe(100);
+      expect(byId.get("3p-weekly")?.usedPercent).toBe(50);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("labels Argon's weekly quota apart from the default Gemini weekly quota", () =>
+  it.effect("labels Argon and Carbon weekly quota apart from the default Gemini weekly quota", () =>
     Effect.gen(function* () {
       const { probe } = yield* fixture({
         summary: {
           groups: [
             ...summary.groups,
+            {
+              displayName: "Gemini 4 Carbon",
+              buckets: [
+                { bucketId: "gemini-carbon-wtu-weekly", window: "weekly", remainingFraction: 0.4 },
+              ],
+            },
             {
               displayName: "Gemini 4 Argon",
               buckets: [
@@ -495,6 +508,7 @@ describe("Antigravity subscription limits", () => {
       const byId = new Map(limits.windows.map((window) => [window.id, window]));
       expect(byId.get("gemini-weekly")?.label).toBe("Gemini · Weekly");
       expect(byId.get("gemini-argon-wtu-weekly")?.label).toBe("Gemini 4 Argon · Weekly");
+      expect(byId.get("gemini-carbon-wtu-weekly")?.label).toBe("Gemini 4 Carbon · Weekly");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 

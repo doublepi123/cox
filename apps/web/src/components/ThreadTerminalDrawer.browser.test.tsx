@@ -3,11 +3,15 @@ import {
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   EnvironmentId,
+  type ResolvedKeybindingsConfig,
   ThreadId,
   type ScopedThreadRef,
   type FilesystemEntryMetadata,
 } from "@t3tools/contracts";
 import { Cause } from "effect";
+import { compileResolvedKeybindingsConfig, DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { useRightPanelStore } from "../rightPanelStore";
+import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { Atom, AsyncResult } from "effect/reactivity";
 import type { GhosttyTerminalSurfaceOptions } from "~/terminal/ghostty/surface";
 import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
@@ -22,6 +26,7 @@ const fixture = vi.hoisted(() => ({
   surfaceOptions: [] as GhosttyTerminalSurfaceOptions[],
   reportedSize: null as { cols: number; rows: number } | null,
   resizeCommand: {},
+  writes: [] as string[],
   runResize: (_input: unknown): Promise<AsyncResult.AsyncResult<unknown, unknown>> =>
     Promise.resolve(AsyncResult.success(undefined)),
   setSession: (
@@ -110,8 +115,11 @@ vi.mock("../state/session", () => ({
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand:
-    (command: object) => async (args: { input: { threadId: string; data?: string } }) =>
-      command === fixture.resizeCommand ? fixture.runResize(args) : { _tag: "Success" },
+    (command: object) => async (args: { input: { threadId: string; data?: string } }) => {
+      if (command === fixture.resizeCommand) return fixture.runResize(args);
+      if (args.input.data !== undefined) fixture.writes.push(args.input.data);
+      return { _tag: "Success" };
+    },
 }));
 // The commands are replaced above; importing their runtime would connect a client.
 vi.mock("../state/server", async () => {
@@ -160,6 +168,7 @@ vi.mock("../hooks/useSettings", async () => {
 });
 
 function Drawer(props: {
+  keybindings?: ResolvedKeybindingsConfig;
   threadRef: ScopedThreadRef;
   cwd?: string;
   onCloseTerminal: (terminalId: string, threadRef?: ScopedThreadRef) => void;
@@ -181,12 +190,14 @@ function Drawer(props: {
       onCloseTerminal={props.onCloseTerminal}
       onHeightChange={() => {}}
       onAddTerminalContext={() => {}}
-      keybindings={[]}
+      keybindings={props.keybindings ?? []}
     />
   );
 }
 
 function setup() {
+  useRightPanelStore.setState(useRightPanelStore.getInitialState());
+  useTerminalUiStateStore.setState(useTerminalUiStateStore.getInitialState());
   const original: ScopedThreadRef = {
     environmentId: EnvironmentId.make("environment-a"),
     threadId: ThreadId.make("thread-a"),
@@ -202,6 +213,7 @@ function setup() {
   fixture.pendingSurfaces = [];
   fixture.surfaceOptions = [];
   fixture.reportedSize = null;
+  fixture.writes = [];
   fixture.runResize = () => Promise.resolve(AsyncResult.success(undefined));
   fixture.deniedScopes.clear();
   fixture.metadataRequests = [];
@@ -212,6 +224,40 @@ function setup() {
   fixture.coarsePointer = false;
   return { original, other };
 }
+
+it("hands thread navigation shortcuts from a focused terminal back to the app", async () => {
+  const { other: threadRef } = setup();
+  using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
+  useRightPanelStore.getState().openBrowser(threadRef, null);
+  await using _screen = await render(
+    <Drawer
+      threadRef={threadRef}
+      onCloseTerminal={() => {}}
+      keybindings={compileResolvedKeybindingsConfig([
+        ...DEFAULT_KEYBINDINGS,
+        { key: "ctrl+r", command: "thread.next", when: "!previewOpen" },
+        { key: "ctrl+g", command: "thread.previous", when: "terminalOpen" },
+      ])}
+    />,
+  );
+  await act(async () => {
+    fixture.pendingSurfaces.shift()?.();
+  });
+  const terminalHandles = (key: string, code: string, shiftKey = true) =>
+    fixture.surfaceOptions
+      .at(-1)!
+      .beforeKey(new KeyboardEvent("keydown", { key, code, ctrlKey: true, shiftKey }));
+
+  expect([terminalHandles("{", "BracketLeft"), terminalHandles("}", "BracketRight")]).toEqual([
+    false,
+    false,
+  ]);
+  expect(terminalHandles("C", "KeyC")).toBe(true);
+  expect([terminalHandles("r", "KeyR", false), terminalHandles("g", "KeyG", false)]).toEqual([
+    true,
+    true,
+  ]);
+});
 
 function SplitDrawer(props: {
   threadRef: ScopedThreadRef;
@@ -476,4 +522,18 @@ it("resends a failed resize once in each writable session", async () => {
     input: { threadId: threadRef.threadId, terminalId: "term-1", cols: 57, rows: 41 },
   };
   expect(resizes).toEqual([resize, resize, resize]);
+});
+
+it("sends a large paste to the attached shell in order", async () => {
+  const { other: threadRef } = setup();
+  await using _screen = await render(<Drawer threadRef={threadRef} onCloseTerminal={() => {}} />);
+  await act(async () => {
+    fixture.pendingSurfaces.shift()?.();
+    fixture.setSession(threadRef, "running", 1, 2);
+  });
+  const data = "\x1b[200~" + "line 🌱\n".repeat(20_000) + "\x1b[201~";
+  await act(() => fixture.surfaceOptions.at(-1)!.onData(data));
+  await vi.waitFor(() => expect(fixture.writes.join("")).toBe(data));
+  expect(fixture.writes.length).toBeGreaterThan(1);
+  expect(fixture.writes.every((chunk) => chunk.length <= 65_536)).toBe(true);
 });

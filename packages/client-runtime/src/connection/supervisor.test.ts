@@ -173,9 +173,7 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
         ready: options?.ready?.(attempt) ?? Effect.void,
         probe: options?.probe?.(attempt) ?? Effect.void,
         inboundFrames: options?.inboundFrames ?? Effect.succeed(0),
-        ...(options?.lastInboundFrameAt
-          ? { lastInboundFrameAt: options.lastInboundFrameAt }
-          : {}),
+        ...(options?.lastInboundFrameAt ? { lastInboundFrameAt: options.lastInboundFrameAt } : {}),
         closed: Deferred.await(closed),
       } satisfies RpcSession.RpcSession),
       () => Ref.update(releaseCount, (count) => count + 1),
@@ -342,33 +340,36 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("does not cancel a loopback setup when the network reports offline", () =>
-    Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      const allow = yield* Deferred.make<void>();
-      const harness = yield* makeHarness({
-        prepare: (_attempt, target) =>
-          Deferred.succeed(started, undefined).pipe(
-            Effect.andThen(Deferred.await(allow)),
-            Effect.as(preparedFor(target)),
-          ),
-      });
-      const supervisor = yield* EnvironmentSupervisor.make(loopbackEntry("http://127.0.0.1:4773"), {
-        initiallyDesired: true,
-      }).pipe(Effect.provide(harness.dependencies));
+  it.effect.each([TARGET_ENTRY, loopbackEntry("http://127.0.0.1:4773")])(
+    "does not cancel setup when the network reports offline (%j)",
+    (entry) =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const allow = yield* Deferred.make<void>();
+        const harness = yield* makeHarness({
+          prepare: (_attempt, target) =>
+            Deferred.succeed(started, undefined).pipe(
+              Effect.andThen(Deferred.await(allow)),
+              Effect.as(preparedFor(target)),
+            ),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(entry, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
 
-      yield* Deferred.await(started);
-      yield* harness.setNetworkStatus("offline");
-      const connected = yield* Effect.raceFirst(
-        Deferred.succeed(allow, undefined).pipe(
-          Effect.andThen(awaitState(supervisor.state, (state) => state.phase === "connected")),
-        ),
-        awaitState(supervisor.state, (state) => state.phase === "offline"),
-      );
-      expect(connected).toMatchObject({ phase: "connected", network: "offline" });
-      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
-      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
-    }).pipe(Effect.provide(TestClock.layer())),
+        yield* Deferred.await(started);
+        yield* harness.setNetworkStatus("offline");
+        yield* TestClock.adjust(0);
+        const connected = yield* Effect.raceFirst(
+          Deferred.succeed(allow, undefined).pipe(
+            Effect.andThen(awaitState(supervisor.state, (state) => state.phase === "connected")),
+          ),
+          awaitState(supervisor.state, (state) => state.phase === "offline"),
+        );
+        expect(connected).toMatchObject({ phase: "connected", network: "offline" });
+        expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+        expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("keeps the latest failure visible throughout the next connection attempt", () =>
@@ -1190,11 +1191,12 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  it.effect("retries a remote target while offline, then stops after the limit", () =>
+  it.effect("reconnects to the primary environment after six failures while still offline", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         networkStatus: "offline",
-        prepare: () => Effect.fail(transient("offline")),
+        prepare: (attempt) =>
+          attempt <= 6 ? Effect.fail(transient("offline")) : Effect.succeed(PREPARED_CONNECTION),
       });
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
         initiallyDesired: true,
@@ -1206,17 +1208,12 @@ describe("EnvironmentSupervisor", () => {
           (state) => state.phase === "backoff" && state.attempt === attempt,
         );
         const delay = waiting.retryAt! - (yield* Clock.currentTimeMillis);
-        expect(delay).toBe(1_000);
         yield* TestClock.adjust(delay);
       }
 
-      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
-      expect(yield* Ref.get(harness.prepareCount)).toBe(6);
-      yield* TestClock.adjust("30 seconds");
-      expect(yield* Ref.get(harness.prepareCount)).toBe(6);
-
-      yield* harness.setNetworkStatus("online");
-      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      const connected = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      expect(connected.network).toBe("offline");
+      expect(yield* Ref.get(harness.prepareCount)).toBe(7);
     }).pipe(Effect.provide(TestClock.layer())),
   );
 

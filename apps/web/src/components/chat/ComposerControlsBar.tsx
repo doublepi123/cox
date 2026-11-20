@@ -194,6 +194,7 @@ export function ComposerControlsBar(props: {
       environmentId={environmentId}
       compact={false}
       isComposerOwned
+      popupAlign={composerControlsCollapsed ? "start" : "end"}
       disabled={providerCatalogPending || isSendBusy}
       multipleModelsEnabled={multipleModelsEnabled}
       multipleModelSelections={multipleModelSelections}

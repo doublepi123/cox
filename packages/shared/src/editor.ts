@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Stream from "effect/Stream";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as HostProcess from "./HostProcess.ts";
 import { isCommandAvailable } from "./shell.ts";
@@ -24,6 +26,27 @@ const isVersionedBundle = (entry: string, name: string) => {
   if (!entry.startsWith(`${name} `) || !entry.endsWith(".app")) return false;
   return /^\d[\d.]*$/.test(entry.slice(name.length + 1, -".app".length));
 };
+
+const isZedEditor = Effect.fn("editor.isZedEditor")(
+  function* (command: string) {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const handle = yield* spawner.spawn(
+      ChildProcess.make(command, ["--version"], {
+        stdin: "ignore",
+        stderr: "ignore",
+        forceKillAfter: "1 second",
+      }),
+    );
+    const [stdout, exitCode] = yield* Effect.all(
+      [handle.stdout.pipe(Stream.decodeText(), Stream.runHead), handle.exitCode],
+      { concurrency: "unbounded" },
+    );
+    return exitCode === 0 && Option.getOrElse(stdout, () => "").startsWith("Zed");
+  },
+  Effect.scoped,
+  Effect.timeout("2 seconds"),
+  Effect.catchCause(() => Effect.succeed(false)),
+);
 
 export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(function* (
   editor: Editor,
@@ -143,10 +166,24 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
   }
 
   if (preferBundle) candidates.push(...editor.commands);
+  const probeZed = preferBundle || preferZeditor;
+  const rejected = new Set<string>();
   for (const candidate of candidates) {
-    if (yield* isCommandAvailable(candidate, { env })) {
+    const paths =
+      probeZed && candidate === "zed"
+        ? (env.PATH ?? "")
+            .split(":")
+            .filter(Boolean)
+            .map((dir) => path.resolve(dir, "zed"))
+        : [candidate];
+    for (const command of paths) {
+      if (rejected.has(command) || !(yield* isCommandAvailable(command, { env }))) continue;
+      if (probeZed && path.basename(command) === "zed" && !(yield* isZedEditor(command))) {
+        rejected.add(command);
+        continue;
+      }
       return Option.some({
-        command: candidate,
+        command,
         baseArgs:
           editor.id === "kiro" && (platform === "darwin" || platform === "win32") ? [] : baseArgs,
       });

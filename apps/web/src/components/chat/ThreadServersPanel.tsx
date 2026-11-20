@@ -11,7 +11,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { GlobeIcon, LoaderCircleIcon, SquareIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, GlobeIcon, SquareIcon } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
 import { resolveDiscoveredServerUrl } from "../../browser/browserTargetResolver";
@@ -23,6 +23,7 @@ import { previewEnvironment } from "../../state/preview";
 import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { openDiscoveredPort } from "../preview/openDiscoveredPort";
+import { Spinner } from "../ui/spinner";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -31,11 +32,21 @@ import { THREAD_DETAILS_PANEL_ICON_CLASS } from "./threadDetailsPanelStyles";
 
 const serverKey = (server: DiscoveredLocalServer) => `${server.pid}:${server.port}`;
 
-/** Local servers the thread's terminals and agent started. Hidden while none run. */
-export function ThreadServersPanel(props: {
+interface ThreadServersPanelProps {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
-}) {
+}
+
+/** Local servers the thread's terminals and agent started. Hidden while none run. */
+export function ThreadServersPanel(props: ThreadServersPanelProps) {
+  return (
+    <ThreadServersList key={JSON.stringify([props.environmentId, props.threadId])} {...props} />
+  );
+}
+
+const SERVER_PAGE_SIZE = 4;
+
+function ThreadServersList(props: ThreadServersPanelProps) {
   const { t: translateUi } = useTranslation();
   const servers = useThreadDiscoveredPorts(props);
   const canOpen = useEnvironmentScope(props.environmentId, AuthPreviewOperateScope);
@@ -50,6 +61,8 @@ export function ThreadServersPanel(props: {
     label: "thread server stop",
   });
   const [stoppingKey, setStoppingKey] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(SERVER_PAGE_SIZE);
+  const hiddenCount = Math.max(0, servers.length - visibleCount);
 
   if (servers.length === 0) return null;
   const externalClickLabel = isMacPlatform(navigator.platform) ? "⌘-click" : "Ctrl-click";
@@ -98,11 +111,15 @@ export function ThreadServersPanel(props: {
   return (
     <ThreadDetailsSection headingId="thread-details-servers-heading" title={translateUi("Servers")}>
       <ul className="m-0 list-none p-0">
-        {servers.map((server) => {
+        {servers.slice(0, visibleCount).map((server, index) => {
           const key = serverKey(server);
           const stoppable = canStop && supportsStop && server.pid !== null;
           return (
-            <li key={key} className="group relative flex items-center rounded-lg">
+            <li
+              key={key}
+              data-thread-details-server-overflow={index >= SERVER_PAGE_SIZE || undefined}
+              className="group relative flex items-center rounded-lg"
+            >
               <Tooltip>
                 <TooltipTrigger
                   delay={200}
@@ -152,7 +169,7 @@ export function ThreadServersPanel(props: {
                       }
                     >
                       {stoppingKey === key ? (
-                        <LoaderCircleIcon aria-hidden className="size-3 animate-spin" />
+                        <Spinner aria-hidden size="xs" />
                       ) : (
                         <SquareIcon aria-hidden className="size-3 fill-current" />
                       )}
@@ -165,6 +182,25 @@ export function ThreadServersPanel(props: {
           );
         })}
       </ul>
+      {servers.length > SERVER_PAGE_SIZE ? (
+        <ThreadDetailsControl
+          variant="ghost"
+          size="sm"
+          tone="muted"
+          fill
+          motion="none"
+          onClick={() =>
+            setVisibleCount((count) =>
+              hiddenCount > 0 ? count + SERVER_PAGE_SIZE : SERVER_PAGE_SIZE,
+            )
+          }
+        >
+          {hiddenCount > 0 ? <ChevronDownIcon aria-hidden /> : <ChevronUpIcon aria-hidden />}
+          {hiddenCount > 0
+            ? translateUi("Show {count} more", { count: Math.min(hiddenCount, SERVER_PAGE_SIZE) })
+            : translateUi("Show less")}
+        </ThreadDetailsControl>
+      ) : null}
     </ThreadDetailsSection>
   );
 }

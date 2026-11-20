@@ -143,8 +143,6 @@ export function SidebarSectionHeader(props: {
       )}
     >
       <CollapsibleSectionHeader
-        role="treeitem"
-        tabIndex={-1}
         data-sidebar-row={`shelf:${shelf}`}
         onClick={props.toggle.onToggle}
         expanded={props.toggle.expanded}

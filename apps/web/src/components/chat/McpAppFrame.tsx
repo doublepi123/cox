@@ -14,6 +14,7 @@ import {
   clampMcpAppHeight,
   MCP_APP_DEFAULT_HEIGHT,
   MCP_APP_MAX_HEIGHT,
+  MCP_APP_COLOR_SCHEME_PARAM,
   mcpAppAllowAttribute,
   mcpAppFileName,
   type McpAppReference,
@@ -116,7 +117,11 @@ export function McpAppFrame(props: {
   // The frame keeps its first URL: a re-minted one would reload the app.
   const [src, setSrc] = useState<string | null>(null);
   const asset = useLongLivedAssetUrl(src === null ? props.environmentId : null, resource);
-  if (src === null && asset._tag === "Success") setSrc(asset.url);
+  if (src === null && asset._tag === "Success") {
+    const url = new URL(asset.url, window.location.href);
+    url.searchParams.set(MCP_APP_COLOR_SCHEME_PARAM, theme.appearance);
+    setSrc(url.toString());
+  }
   const detail = useTurnItemDetail({
     environmentId: props.environmentId,
     threadId: props.threadId,
@@ -368,7 +373,10 @@ export function McpAppFrame(props: {
           setDisplayMode("inline");
           return;
         }
-        void host.teardown().then(() => setClosed(true));
+        // A replacement document may have mounted while this one wound down.
+        void host.teardown().then(() => {
+          if (hostRef.current === host) setClosed(true);
+        });
       },
       onSizeChanged: (size) => {
         // Ignore fullscreen height when restoring inline sizing.

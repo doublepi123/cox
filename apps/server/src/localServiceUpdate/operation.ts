@@ -3,7 +3,7 @@ import { runLocalServiceCommand } from "./process.ts";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import { backup, DatabaseSync } from "node:sqlite";
-import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -116,28 +116,54 @@ export async function readLocalServiceReceipt(
   }
 }
 
-export async function prepareLocalServiceUpdate(plan: LocalServiceUpdatePlan): Promise<void> {
-  await mkdir(plan.operation, { recursive: true, mode: 0o700 });
-  await mkdir(join(plan.baseDir, "local-service-update"), { recursive: true, mode: 0o700 });
-  const backupDirectory = join(plan.operation, "backup");
-  await mkdir(backupDirectory, { mode: 0o700 });
-  const database = new DatabaseSync(plan.databasePath, { readOnly: true });
-  try {
-    await backup(database, join(backupDirectory, "statev2.sqlite"));
-  } finally {
-    database.close();
-  }
-  for (const name of ["settings.json", "client-settings.json", "keybindings.json"]) {
-    try {
-      const info = await lstat(join(plan.stateDir, name));
-      if (!info.isFile() || info.isSymbolicLink())
-        throw new Error("Settings must be regular files.");
-      await cp(join(plan.stateDir, name), join(backupDirectory, name), { force: false });
-    } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-        continue;
-      throw error;
+async function reclaimAbandonedBackupStages(root: string): Promise<void> {
+  for (const operation of await readdir(root, { withFileTypes: true })) {
+    if (!operation.isDirectory()) continue;
+    const directory = join(root, operation.name);
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const match = /^backup\.staging-([1-9]\d*)$/.exec(entry.name);
+      if (!match) continue;
+      try {
+        process.kill(Number(match[1]), 0);
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ESRCH") {
+          await rm(join(directory, entry.name), { recursive: true, force: true });
+        }
+      }
     }
+  }
+}
+
+export async function prepareLocalServiceUpdate(plan: LocalServiceUpdatePlan): Promise<void> {
+  const operations = join(plan.baseDir, "local-service-update", "operations");
+  await mkdir(operations, { recursive: true, mode: 0o700 });
+  await reclaimAbandonedBackupStages(operations);
+  await mkdir(plan.operation, { recursive: true, mode: 0o700 });
+  const staging = join(plan.operation, `backup.staging-${process.pid}`);
+  await mkdir(staging, { mode: 0o700 });
+  try {
+    const database = new DatabaseSync(plan.databasePath, { readOnly: true });
+    try {
+      await backup(database, join(staging, "statev2.sqlite"));
+    } finally {
+      database.close();
+    }
+    for (const name of ["settings.json", "client-settings.json", "keybindings.json"]) {
+      try {
+        const info = await lstat(join(plan.stateDir, name));
+        if (!info.isFile() || info.isSymbolicLink())
+          throw new Error("Settings must be regular files.");
+        await cp(join(plan.stateDir, name), join(staging, name), { force: false });
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+          continue;
+        throw error;
+      }
+    }
+    await rename(staging, join(plan.operation, "backup"));
+  } finally {
+    await rm(staging, { recursive: true, force: true });
   }
   await writeJson(join(plan.operation, "plan.json"), plan);
 }

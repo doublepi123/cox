@@ -20,6 +20,8 @@ export interface GhosttyCellRange {
 const DEFAULT_SELECTION_BACKGROUND = "rgba(72, 122, 191, 0.35)";
 const POWERLINE_SOLID_RIGHT = "\ue0b0";
 const POWERLINE_SOLID_LEFT = "\ue0b2";
+const POWERLINE_ROUND_RIGHT = "\ue0b4";
+const POWERLINE_ROUND_LEFT = "\ue0b6";
 
 function cssColor(color: GhosttyColor): string {
   return `rgb(${color.r}, ${color.g}, ${color.b})`;
@@ -36,7 +38,12 @@ function sameTextStyle(left: GhosttyCell, right: GhosttyCell): boolean {
 }
 
 function isSolidPowerlineSeparator(text: string): boolean {
-  return text === POWERLINE_SOLID_RIGHT || text === POWERLINE_SOLID_LEFT;
+  return (
+    text === POWERLINE_SOLID_RIGHT ||
+    text === POWERLINE_SOLID_LEFT ||
+    text === POWERLINE_ROUND_RIGHT ||
+    text === POWERLINE_ROUND_LEFT
+  );
 }
 
 // Fallback fonts inset or scale these private-use glyphs, leaving a gap where
@@ -48,8 +55,23 @@ function fillSolidPowerlineSeparator(
   left: number,
   top: number,
   metrics: GhosttyCellMetrics,
+  seamOverlap = 0,
 ): void {
   const right = left + metrics.width;
+  const middle = top + metrics.height / 2;
+  if (text === POWERLINE_ROUND_RIGHT || text === POWERLINE_ROUND_LEFT) {
+    const opensRight = text === POWERLINE_ROUND_RIGHT;
+    const base = opensRight ? left : right;
+    const start = opensRight ? -Math.PI / 2 : Math.PI / 2;
+    context.beginPath();
+    context.ellipse(base, middle, metrics.width, metrics.height / 2, 0, start, start + Math.PI);
+    context.closePath();
+    if (seamOverlap > 0) {
+      context.rect(opensRight ? base - seamOverlap : base, top, seamOverlap, metrics.height);
+    }
+    context.fill();
+    return;
+  }
   const [base, point] = text === POWERLINE_SOLID_RIGHT ? [left, right] : [right, left];
   context.beginPath();
   context.moveTo(base, top);
@@ -76,6 +98,48 @@ function ghosttyTextRunEnd(
     end += 1;
   }
   return end;
+}
+
+function isWideGlyph(cells: readonly GhosttyCell[], index: number): boolean {
+  return cells[index + 1]?.wide === GHOSTTY_CELL_WIDE.spacerTail;
+}
+
+function fillGhosttyRunText(
+  context: CanvasRenderingContext2D,
+  cells: readonly GhosttyCell[],
+  start: number,
+  end: number,
+  left: number,
+  baseline: number,
+  cellWidth: number,
+): void {
+  let segmentStart = start;
+  while (segmentStart < end) {
+    let segmentEnd = segmentStart;
+    let text = "";
+    while (segmentEnd < end && !isWideGlyph(cells, segmentEnd)) {
+      text += cells[segmentEnd]!.text;
+      segmentEnd += 1;
+    }
+    if (text.trim()) {
+      context.fillText(
+        text,
+        left + (segmentStart - start) * cellWidth,
+        baseline,
+        (segmentEnd - segmentStart) * cellWidth,
+      );
+    }
+    if (segmentEnd === end) break;
+    context.textAlign = "center";
+    context.fillText(
+      cells[segmentEnd]!.text,
+      left + (segmentEnd - start + 1) * cellWidth,
+      baseline,
+      cellWidth * 2,
+    );
+    context.textAlign = "start";
+    segmentStart = segmentEnd + 2;
+  }
 }
 
 function fontForCell(cell: GhosttyCell, fontSize: number, fontFamily: string): string {
@@ -113,6 +177,22 @@ export function terminalGridSize(
     cols: Math.max(1, Math.floor((width - padding * 2) / metrics.width)),
     rows: Math.max(1, Math.floor((height - padding * 2) / metrics.height)),
   };
+}
+
+function fillCellDecorations(
+  context: CanvasRenderingContext2D,
+  cell: GhosttyCell,
+  underline: boolean,
+  left: number,
+  top: number,
+  width: number,
+  metrics: GhosttyCellMetrics,
+): void {
+  if (underline) context.fillRect(left, top + metrics.height - 2, width, 1);
+  if (cell.strikethrough) {
+    context.fillRect(left, top + Math.floor(metrics.height * 0.55), width, 1);
+  }
+  if (cell.overline) context.fillRect(left, top + 1, width, 1);
 }
 
 export function renderGhosttySnapshot(options: {
@@ -225,17 +305,17 @@ export function renderGhosttySnapshot(options: {
             padding + runStart * metrics.width,
             top,
             metrics,
+            (runStart === 0 && first.text === POWERLINE_ROUND_RIGHT) ||
+              (runStart === row.cells.length - 1 && first.text === POWERLINE_ROUND_LEFT)
+              ? 0
+              : 1,
           );
         }
         runStart += 1;
         continue;
       }
       const runEnd = ghosttyTextRunEnd(row.cells, runStart, (cell) => sameTextStyle(cell, first));
-      const text = row.cells
-        .slice(runStart, runEnd)
-        .map((cell) => cell.text)
-        .join("");
-      if (!first.invisible && text.trim().length > 0) {
+      if (!first.invisible) {
         context.save();
         context.beginPath();
         context.rect(
@@ -247,11 +327,14 @@ export function renderGhosttySnapshot(options: {
         context.clip();
         context.font = fontForCell(first, fontSize, fontFamily);
         context.fillStyle = cssColor(first.foreground);
-        context.fillText(
-          text,
+        fillGhosttyRunText(
+          context,
+          row.cells,
+          runStart,
+          runEnd,
           padding + runStart * metrics.width,
           top + metrics.baseline,
-          (runEnd - runStart) * metrics.width,
+          metrics.width,
         );
         context.restore();
       }
@@ -266,46 +349,55 @@ export function renderGhosttySnapshot(options: {
         rowIndex <= hoveredLinkRange.end.y &&
         (rowIndex > hoveredLinkRange.start.y || column >= hoveredLinkRange.start.x) &&
         (rowIndex < hoveredLinkRange.end.y || column <= hoveredLinkRange.end.x);
-      if (!cell || (!cell.underline && !cell.strikethrough && !cell.overline && !hoveredLink)) {
-        continue;
-      }
+      if (!cell || cell.invisible) continue;
+      if (!cell.underline && !cell.strikethrough && !cell.overline && !hoveredLink) continue;
       context.fillStyle = cssColor(cell.foreground);
       const left = padding + column * metrics.width;
-      if (cell.underline || hoveredLink) {
-        context.fillRect(left, top + metrics.height - 2, metrics.width, 1);
-      }
-      if (cell.strikethrough) {
-        context.fillRect(left, top + Math.floor(metrics.height * 0.55), metrics.width, 1);
-      }
-      if (cell.overline) context.fillRect(left, top + 1, metrics.width, 1);
+      fillCellDecorations(
+        context,
+        cell,
+        cell.underline || hoveredLink,
+        left,
+        top,
+        metrics.width,
+        metrics,
+      );
     }
   }
 
   if (cursorOn && snapshot.cursorVisible && snapshot.cursorX >= 0 && snapshot.cursorY >= 0) {
     const left = padding + snapshot.cursorX * metrics.width;
     const top = originY + snapshot.cursorY * metrics.height;
+    const cells = snapshot.rowData[snapshot.cursorY]?.cells ?? [];
+    const wide = isWideGlyph(cells, snapshot.cursorX);
+    const width = wide ? metrics.width * 2 : metrics.width;
     context.fillStyle = cssColor(snapshot.cursor);
-    if (!focused) {
+    if (!focused || snapshot.cursorStyle === 3) {
       context.strokeStyle = cssColor(snapshot.cursor);
-      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, metrics.height - 1);
+      context.strokeRect(left + 0.5, top + 0.5, width - 1, metrics.height - 1);
     } else if (snapshot.cursorStyle === 0) {
       context.fillRect(left, top, 2, metrics.height);
     } else if (snapshot.cursorStyle === 2) {
-      context.fillRect(left, top + metrics.height - 2, metrics.width, 2);
-    } else if (snapshot.cursorStyle === 3) {
-      context.strokeStyle = cssColor(snapshot.cursor);
-      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, metrics.height - 1);
+      context.fillRect(left, top + metrics.height - 2, width, 2);
     } else {
-      context.fillRect(left, top, metrics.width, metrics.height);
-      const cell = snapshot.rowData[snapshot.cursorY]?.cells[snapshot.cursorX];
-      if (cell?.text) {
+      context.fillRect(left, top, width, metrics.height);
+      const cell = cells[snapshot.cursorX];
+      if (cell && !cell.invisible) {
         context.fillStyle = cssColor(snapshot.background);
         if (isSolidPowerlineSeparator(cell.text)) {
           fillSolidPowerlineSeparator(context, cell.text, left, top, metrics);
-        } else {
+        } else if (cell.text) {
           context.font = fontForCell(cell, fontSize, fontFamily);
-          context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+          if (wide) context.textAlign = "center";
+          context.fillText(
+            cell.text,
+            wide ? left + metrics.width : left,
+            top + metrics.baseline,
+            width,
+          );
+          if (wide) context.textAlign = "start";
         }
+        fillCellDecorations(context, cell, cell.underline, left, top, metrics.width, metrics);
       }
     }
   }

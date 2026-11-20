@@ -231,7 +231,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
       serverScoped
       settingKeys={["fallbackModelSelection"]}
       mixed={mixedFallback}
-      id="fallback-model"
+      {...searchableSetting("fallback-model")}
       title={t("Fallback model")}
       description={t("Used for new threads when the default model's provider is out of usage.")}
       resetAction={

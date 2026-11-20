@@ -1,8 +1,18 @@
-import type { Paragraph, PhrasingContent, Root, RootContent } from "mdast";
+import type {
+  Heading,
+  Link,
+  Paragraph,
+  PhrasingContent,
+  Root,
+  RootContent,
+  TableCell,
+  Text,
+} from "mdast";
 import { isLocalEditorFileUrl } from "@t3tools/contracts";
 import { remarkKeepWindowsPaths } from "./markdownWindowsPaths.ts";
 import { type PluggableList, type Processor, unified } from "unified";
 import remarkParse from "remark-parse";
+import type { Transformer } from "unified";
 import remarkRehype from "remark-rehype";
 import { find, html } from "property-information";
 import rehypeRaw from "rehype-raw";
@@ -10,7 +20,15 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { remarkGithubAlerts } from "./markdownGithubAlerts.ts";
+import {
+  remarkEnableLeadingWhitespace,
+  remarkKeepLeadingWhitespace,
+} from "./markdownLeadingWhitespace.ts";
 import { remarkNormalizeListItemIndentation } from "./markdownListIndentation.ts";
+import {
+  remarkEnableOrderedListNumbers,
+  remarkKeepOrderedListNumbers,
+} from "./markdownOrderedListNumbers.ts";
 import {
   CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES,
   remarkCodexDirectives,
@@ -110,11 +128,44 @@ function rehypePreserveBareAnchorPlaceholders() {
   };
 }
 
+const COLOR_SCHEME_MEDIA = /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/i;
+
+/**
+ * The renderer resolves an `<img>`'s `src` (workspace files, host media) but never a `<source>`'s
+ * `srcset`, which would load unresolved whenever its media matched. A color-scheme source moves
+ * onto the `<img>` for the renderer to pick by theme; every source is then dropped.
+ */
+function moveColorSchemeSourcesToImage(picture: MarkdownImageHastNode) {
+  if (!picture.children) return;
+  const image = picture.children.find((child) => child.tagName === "img");
+  for (const source of picture.children) {
+    if (source.tagName !== "source" || !image) continue;
+    const media = source.properties?.media;
+    const scheme = typeof media === "string" ? COLOR_SCHEME_MEDIA.exec(media)?.[1] : undefined;
+    const srcSet = source.properties?.srcSet;
+    const candidate = Array.isArray(srcSet) ? srcSet[0] : srcSet;
+    // A candidate's URL runs to the first space (a descriptor such as `2x` may follow).
+    const url =
+      typeof candidate === "string" ? candidate.trim().split(/\s/, 1)[0]?.replace(/,+$/, "") : "";
+    const key = scheme?.toLowerCase() === "dark" ? "dataDarkSrc" : "dataLightSrc";
+    // As in a browser, the first source that matches a scheme is the one shown.
+    if (scheme && url && image.properties?.[key] === undefined) {
+      // The sanitizer reads a drive letter as a protocol; as a file URL it resolves to the same path.
+      const value = isWindowsDrivePathHref(url) ? `file:///${url.replaceAll("\\", "/")}` : url;
+      image.properties = { ...image.properties, [key]: value };
+    }
+  }
+  picture.children = picture.children.filter((child) => child.tagName !== "source");
+}
+
 function rehypePreserveImageSourceMeta() {
   return (tree: MarkdownImageHastNode) => {
     const visit = (node: MarkdownImageHastNode) => {
       const src = node.properties?.src;
       const title = node.properties?.title;
+      if (node.type === "element" && node.tagName === "picture") {
+        moveColorSchemeSourcesToImage(node);
+      }
       if (node.type === "element" && node.tagName === "img") {
         node.properties = {
           ...node.properties,
@@ -150,6 +201,8 @@ function rehypeNormalizeLocalEditorLinks() {
   };
 }
 
+const IMAGE_SRC_PROTOCOLS = [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"];
+
 const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   ...defaultSchema,
   attributes: {
@@ -162,10 +215,13 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
       "dataInlineCode",
     ],
     blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "dataAlert"],
+    span: [...(defaultSchema.attributes?.span ?? []), "dataLeadingWhitespace"],
     div: [...(defaultSchema.attributes?.div ?? []), ...CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES],
     a: [...(defaultSchema.attributes?.a ?? []), "dataPullRequestAutolink"],
     img: [
       ...(defaultSchema.attributes?.img ?? []),
+      "dataDarkSrc",
+      "dataLightSrc",
       "dataLocalSrc",
       "dataMarkdownTitle",
       "dataStandalone",
@@ -182,14 +238,18 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
       "t3-context",
       THREAD_LINK_PROTOCOL,
     ],
-    src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
+    src: IMAGE_SRC_PROTOCOLS,
+    dataDarkSrc: IMAGE_SRC_PROTOCOLS,
+    dataLightSrc: IMAGE_SRC_PROTOCOLS,
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
 
 export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkGfm,
   remarkKeepWindowsPaths,
+  remarkEndAutolinksAtCjkPunctuation,
   remarkGithubAlerts,
+  remarkKeepOrderedListNumbers,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkBreakAroundImageLines,
@@ -199,14 +259,25 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
 
 export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkGfm,
+  remarkKeepLeadingWhitespace,
   remarkKeepWindowsPaths,
+  remarkEndAutolinksAtCjkPunctuation,
   remarkGithubAlerts,
+  remarkKeepOrderedListNumbers,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkBreakAroundImageLines,
   remarkBreaks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
+];
+
+// Users type paths like ~/a and (~/b, which GFM's single-tilde strikethrough hides as <del>.
+// Appended after the base list, this reconfigures its remark-gfm entry; ~~double~~ still strikes.
+export const CHAT_USER_MARKDOWN_REMARK_PLUGINS: PluggableList = [
+  remarkEnableOrderedListNumbers,
+  [remarkGfm, { singleTilde: false }],
+  remarkEnableLeadingWhitespace,
 ];
 
 // Start tags an HTML parser closes an open `<p>` for.
@@ -372,6 +443,180 @@ function remarkPreserveCodeMeta() {
   };
 }
 
+const CJK_PUNCTUATION = /(?=[　-〿＀-￯])[\p{P}\p{S}]/u;
+
+function cjkPunctuationIndex(link: Link): number {
+  const label = link.children.length === 1 ? link.children[0] : undefined;
+  if (label?.type !== "text" || !/^https?:\/\//i.test(link.url)) return -1;
+  if (link.url !== label.value && link.url !== `http://${label.value}`) return -1;
+  const index = label.value.search(/[^!-~]/u);
+  return index > 0 && CJK_PUNCTUATION.test(label.value.charAt(index)) ? index : -1;
+}
+
+function isBareLink(link: Link, source: string): boolean {
+  const start = link.position?.start.offset;
+  const end = link.position?.end.offset;
+  const label = link.children[0];
+  return (
+    !link.position ||
+    (start !== undefined &&
+      end !== undefined &&
+      label?.type === "text" &&
+      source.slice(start, end) === label.value)
+  );
+}
+
+function cjkPunctuationOffsets(node: RootContent, source: string): number[] {
+  if (node.type === "link") {
+    const index = cjkPunctuationIndex(node);
+    const start = node.position?.start.offset;
+    return index > 0 && start !== undefined && isBareLink(node, source) ? [start + index] : [];
+  }
+  return "children" in node && node.type !== "linkReference"
+    ? (node.children as RootContent[]).flatMap((child) => cjkPunctuationOffsets(child, source))
+    : [];
+}
+
+const hasReference = (node: RootContent): boolean =>
+  node.type === "linkReference" ||
+  node.type === "imageReference" ||
+  node.type === "footnoteReference" ||
+  ("children" in node && (node.children as RootContent[]).some(hasReference));
+
+function countBelow(sorted: readonly number[], value: number): number {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (sorted[middle]! < value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function reparseAtCjkPunctuation(
+  processor: Processor,
+  block: Paragraph | Heading | TableCell,
+  source: string,
+  offsets: number[],
+): boolean {
+  const from = block.children[0]?.position?.start;
+  const to = block.children.at(-1)?.position?.end;
+  if (from?.offset === undefined || to?.offset === undefined || hasReference(block)) return false;
+  const base = from.offset;
+  const text = source.slice(base, to.offset);
+
+  if (
+    text.includes("\t") ||
+    /[\r\n][ ]*>/.test(text) ||
+    (/[\r\n] /.test(text) && text.includes("`")) ||
+    (block.type === "tableCell" && text.includes("\\|"))
+  ) {
+    return false;
+  }
+  const marks = offsets.map((offset) => offset - base);
+
+  for (let attempt = 0; attempt < 16; attempt++) {
+    marks.sort((a, b) => a - b);
+    const tabs = marks.map((mark, index) => mark + index);
+    const unmarked = (offset: number) => offset - countBelow(tabs, offset);
+    const marked = [0, ...marks]
+      .map((start, index) => text.slice(start, marks[index] ?? text.length))
+      .join("\t");
+    const [paragraph, ...rest] = (processor.parse(marked) as Root).children;
+    if (paragraph?.type !== "paragraph" || rest.length > 0) return false;
+    const more = cjkPunctuationOffsets(paragraph, marked);
+    if (more.length > 0) {
+      marks.push(...more.map(unmarked));
+      continue;
+    }
+
+    let tabCount = 0;
+    const moved = new Set<object>();
+    const restore = (node: RootContent): boolean => {
+      for (const point of node.position ? [node.position.start, node.position.end] : []) {
+        const offset = point.offset;
+        if (offset === undefined || moved.has(point)) continue;
+        moved.add(point);
+        const tabsOnLine = countBelow(tabs, offset) - countBelow(tabs, offset - point.column + 1);
+        point.column = (point.line === 1 ? from.column - 1 : 0) + point.column - tabsOnLine;
+        point.line += from.line - 1;
+        point.offset = base + unmarked(offset);
+      }
+      if (node.type === "text") {
+        tabCount += node.value.split("\t").length - 1;
+        node.value = node.value.replaceAll("\t", "");
+      } else if (
+        ("value" in node && node.value.includes("\t")) ||
+        ("url" in node && node.url.includes("\t"))
+      ) {
+        return false;
+      }
+      if (!("children" in node)) return true;
+      const children = node.children as RootContent[];
+      if (!children.every(restore)) return false;
+      node.children = children.filter(
+        (child) => child.type !== "text" || child.value !== "",
+      ) as typeof node.children;
+      return true;
+    };
+    if (!restore(paragraph) || tabCount !== tabs.length) return false;
+    block.children = paragraph.children;
+    return true;
+  }
+  return false;
+}
+
+function splitAtCjkPunctuation(node: RootContent, source: string) {
+  if (!("children" in node) || node.type === "link" || node.type === "linkReference") return;
+  const children = node.children as RootContent[];
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index]!;
+    if (child.type !== "link") {
+      splitAtCjkPunctuation(child, source);
+      continue;
+    }
+    const at = isBareLink(child, source) ? cjkPunctuationIndex(child) : -1;
+    const label = child.children[0];
+    if (at < 0 || label?.type !== "text") continue;
+
+    const length = label.value.slice(0, at).replace(/[!"'*,.:;?_~]+$/, "").length;
+    const tail: Text = { type: "text", value: label.value.slice(length) };
+    const start = child.position?.start;
+    if (child.position && start?.offset !== undefined) {
+      const end = {
+        line: start.line,
+        column: start.column + length,
+        offset: start.offset + length,
+      };
+      tail.position = { start: end, end: child.position.end };
+      child.position = { start, end };
+      label.position = { start, end };
+    }
+    child.url = child.url.slice(0, child.url.length - label.value.length + length);
+    label.value = label.value.slice(0, length);
+    children.splice(index + 1, 0, tail);
+    index++;
+  }
+}
+
+function remarkEndAutolinksAtCjkPunctuation(this: Processor): Transformer<Root> {
+  return (tree, file) => {
+    const source = String(file);
+    if (!CJK_PUNCTUATION.test(source)) return;
+    const visit = (node: RootContent) => {
+      if (node.type === "paragraph" || node.type === "heading" || node.type === "tableCell") {
+        const offsets = cjkPunctuationOffsets(node, source);
+        if (offsets.length > 0) reparseAtCjkPunctuation(this, node, source, offsets);
+        splitAtCjkPunctuation(node, source);
+      } else if ("children" in node) {
+        (node.children as RootContent[]).forEach(visit);
+      }
+    };
+    tree.children.forEach(visit);
+  };
+}
+
 function remarkNormalizeLinksAndTagInlineCode() {
   return (tree: MarkdownAstNode) => {
     const visit = (node: MarkdownAstNode, insideLink: boolean) => {
@@ -412,7 +657,12 @@ const imageSourceProcessor = unified()
 interface ImageSourceNode {
   readonly type: string;
   readonly tagName?: string;
-  readonly properties?: { readonly src?: unknown; readonly dataLocalSrc?: unknown };
+  readonly properties?: {
+    readonly src?: unknown;
+    readonly dataLocalSrc?: unknown;
+    readonly dataDarkSrc?: unknown;
+    readonly dataLightSrc?: unknown;
+  };
   readonly children?: ReadonlyArray<ImageSourceNode>;
 }
 
@@ -424,12 +674,16 @@ export function chatMarkdownImageSources(markdown: string): Array<string> {
   const sources: Array<string> = [];
   const visit = (node: ImageSourceNode) => {
     if (node.type === "element" && node.tagName === "img") {
-      const { src, dataLocalSrc } = node.properties ?? {};
+      const { src, dataLocalSrc, dataDarkSrc, dataLightSrc } = node.properties ?? {};
       // The sanitizer drops a Windows drive path from `src`; the renderer reads it from here.
       if (typeof dataLocalSrc === "string") {
         sources.push(normalizeMarkdownLinkDestination(dataLocalSrc).replaceAll("\\", "/"));
       } else if (typeof src === "string") {
         sources.push(normalizeMarkdownLinkDestination(src));
+      }
+      // A `<picture>` shows one of these instead, by the viewer's theme.
+      for (const variant of [dataDarkSrc, dataLightSrc]) {
+        if (typeof variant === "string") sources.push(normalizeMarkdownLinkDestination(variant));
       }
     }
     node.children?.forEach(visit);

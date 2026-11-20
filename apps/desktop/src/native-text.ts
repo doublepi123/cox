@@ -5,6 +5,7 @@ const chinese = {
   "Update the client first; Cox will be checked again after relaunch.":
     "需要先更新客户端，重新启动后将再次检查 Cox 更新。",
   "Check for updates": "检查更新",
+  "Copy Email Address": "复制电子邮件地址",
   "Automatic update checks": "自动检查更新",
   "Software updates": "软件更新",
   "Software updates are available.": "发现可用更新。",

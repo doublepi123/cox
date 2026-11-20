@@ -93,6 +93,7 @@ describe("openPreviewSession", () => {
           url: input.url,
           viewport,
           profileId: "work",
+          ...(entryPoint === "session" ? { zoomFactor: 1, colorScheme: "system" } : {}),
         },
       });
     },

@@ -86,7 +86,7 @@ export function CommandPaletteContent({
           {children}
         </CommandPanel>
         <CommandFooter mobileStack>
-          <div className="flex items-center gap-3 pointer-coarse:hidden">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 pointer-coarse:hidden">
             <KbdGroup>
               <Kbd>
                 <ArrowUpIcon />

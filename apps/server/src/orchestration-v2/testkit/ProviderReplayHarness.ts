@@ -273,6 +273,9 @@ export function layerWithRegistry<Error>(
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    readonly wrapProjectionStore?: (
+      store: ProjectionStore.ProjectionStoreV2Shape,
+    ) => ProjectionStore.ProjectionStoreV2Shape;
   } = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
@@ -306,9 +309,17 @@ export function layerWithRegistry<Error>(
       ? {}
       : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),
   }).pipe(Layer.orDie);
+  const wrap = options.wrapProjectionStore;
+  const layerProjectionStore =
+    wrap === undefined
+      ? ProjectionStore.layer
+      : Layer.effect(
+          ProjectionStore.ProjectionStoreV2,
+          Effect.map(ProjectionStore.ProjectionStoreV2, wrap),
+        ).pipe(Layer.provide(ProjectionStore.layer));
   const layerStores = Layer.mergeAll(
     EventStore.layer,
-    ProjectionStore.layer,
+    layerProjectionStore,
     ProjectStore.layer,
     CommandReceiptStore.layer,
     EffectOutbox.layer,

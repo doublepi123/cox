@@ -23,6 +23,7 @@ const dependencies = Layer.mergeAll(
   Scheduler.layer,
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({
     launch: () => Effect.die("synthetic dispatch failure"),
+    isNonGitProject: (projectId) => Effect.succeed(projectId === "project-plain-folder"),
   }),
   Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
     namedProjectsRoot: "/projects",
@@ -44,6 +45,24 @@ const input = {
   runtimeMode: "full-access",
   interactionMode: "default",
 };
+
+it.effect("stores a root launch for an ordinary folder", () =>
+  Effect.gen(function* () {
+    const service = yield* ScheduledTaskService.ScheduledTaskService;
+    const decoded = yield* decodeInput({
+      ...input,
+      projectId: "project-plain-folder",
+      workspaceStrategy: { type: "worktree", baseRef: "main", startFromOrigin: true },
+      schedule: { type: "interval", everyMs: 60_000 },
+    });
+    const { task } = yield* service.upsert(decoded);
+    expect(task.workspaceStrategy).toEqual({ type: "root" });
+  }).pipe(
+    Effect.provide(serviceLayer),
+    Effect.provideService(ServerActivation, Effect.never),
+    Effect.provide(SqlitePersistence.layerMemory),
+  ),
+);
 
 it.effect.each([
   {

@@ -4,6 +4,7 @@ import {
   makeQueuedRunsAtom,
 } from "@t3tools/client-runtime/queued-run-edit";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
+import { deriveThreadQueueWorkflowState } from "@t3tools/client-runtime/state/thread-workflows";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ChatAttachment,
@@ -197,6 +198,7 @@ export function useQueuedRunEdit(input: {
     composerRef,
   } = input;
   const editQueuedRunCommand = useEditQueuedRunCommand();
+  const promoteQueuedRun = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const editKey = scopedThreadKey(routeThreadRef);
   const storedEdit = useAtomValue(queuedRunEdits.atom)[editKey] ?? null;
   const editing = activeThreadId === null ? null : storedEdit;
@@ -307,6 +309,7 @@ export function useQueuedRunEdit(input: {
   const saveEdit = async (
     content: QueuedRunEditContent,
     setThreadError: (threadId: ThreadId, error: string | null) => void,
+    steerAfterSave = false,
   ) => {
     if (editing === null || isSaving) return;
     const newAttachments = [...content.images, ...content.files];
@@ -347,6 +350,25 @@ export function useQueuedRunEdit(input: {
     clearEditDraft(editing.runId);
     composerRef.current?.resetCursorState();
     focusComposerSoon();
+    if (!steerAfterSave) return;
+    const projection = appAtomRegistry.get(
+      environmentThreadDetails.quietThreadAtom({ environmentId, threadId: editing.threadId }),
+    )?.projection;
+    if (!projection) return;
+    const { queuedRuns, activeRun, canPromoteToSteer, promoteSkipsCompaction } =
+      deriveThreadQueueWorkflowState(projection);
+    const queued = queuedRuns.find(({ run }) => run.id === editing.runId);
+    if (
+      !queued ||
+      !activeRun ||
+      !canPromoteToSteer ||
+      (queued.run.freshContext && !promoteSkipsCompaction)
+    )
+      return;
+    await promoteQueuedRun({
+      environmentId,
+      input: { threadId: editing.threadId, queuedRunId: editing.runId, targetRunId: activeRun.id },
+    });
   };
 
   return {

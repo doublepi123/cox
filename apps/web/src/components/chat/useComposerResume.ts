@@ -26,6 +26,7 @@ interface ComposerResumeInput {
   readonly currentRouteThreadKeyRef: { readonly current: string | null };
   readonly activeThread: EnvironmentThreadShell | undefined;
   readonly resumableRunId: RunId | null;
+  readonly canResume: boolean;
   readonly hasHeldQueuedRuns: boolean;
   readonly isSendBusy: boolean;
   readonly isRevertingCheckpoint: boolean;
@@ -58,6 +59,7 @@ export function useComposerResume(input: ComposerResumeInput) {
     currentRouteThreadKeyRef,
     activeThread,
     resumableRunId,
+    canResume,
     hasHeldQueuedRuns,
     isSendBusy,
     isRevertingCheckpoint,
@@ -87,7 +89,7 @@ export function useComposerResume(input: ComposerResumeInput) {
   const onResume = async () => {
     if (
       !activeThread ||
-      (resumableRunId === null && !hasHeldQueuedRuns) ||
+      !canResume ||
       isSendBusy ||
       isResuming ||
       isRevertingCheckpoint ||

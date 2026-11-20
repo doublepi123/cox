@@ -4,10 +4,12 @@ import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
 import {
   deriveLocalBranchNameFromRemoteRef,
   resolveBranchSelectionTarget,
+  shouldReuseBranchCheckout,
   resolveDraftEnvModeAfterBranchChange,
   resolveEffectiveEnvMode,
   resolveBranchToolbarPrBranch,
   resolveLocalCheckoutBranchMismatch,
+  resolveLockedWorkspaceLabel,
   sanitizeNewRefName,
   shouldIncludeBranchPickerItem,
 } from "./BranchToolbar.logic";
@@ -92,6 +94,16 @@ describe("resolveEffectiveEnvMode", () => {
   });
 });
 
+describe("resolveLockedWorkspaceLabel", () => {
+  it.each([
+    ["/home/me/.t3/worktrees/app/t3-ff466c42", "t3-ff466c42"],
+    ["/home/me/.t3/worktrees/app/t3-ff466c42/", "t3-ff466c42"],
+    ["C:\\Users\\me\\worktrees\\feature-x", "feature-x"],
+  ])("names the worktree at %s", (path, label) => {
+    expect(resolveLockedWorkspaceLabel(path, "worktree")).toBe(label);
+  });
+});
+
 describe("deriveLocalBranchNameFromRemoteRef", () => {
   it("supports remote names that contain slashes", () => {
     expect(deriveLocalBranchNameFromRemoteRef("my-org/upstream/feature/demo")).toBe(
@@ -159,6 +171,16 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
 });
 
 describe("resolveBranchSelectionTarget", () => {
+  it("asks Git to switch when a listed ref might be stale in the active checkout", () => {
+    const target = resolveBranchSelectionTarget({
+      activeProjectCwd: "/repo",
+      activeWorktreePath: null,
+      refName: { isDefault: true, worktreePath: "/repo" },
+    });
+    expect(shouldReuseBranchCheckout(target, "/repo", true)).toBe(false);
+    expect(shouldReuseBranchCheckout(target, "/repo", false)).toBe(true);
+    expect(shouldReuseBranchCheckout(target, "/repo/feature", true)).toBe(true);
+  });
   it("reuses an existing secondary worktree for the selected ref", () => {
     expect(
       resolveBranchSelectionTarget({

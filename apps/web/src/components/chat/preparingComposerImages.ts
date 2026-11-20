@@ -7,6 +7,16 @@ export interface PreparingComposerImage {
   readonly file: File;
 }
 
+/** Drops every image still preparing for the target, so its compression result is discarded. */
+export function cancelPreparingComposerImages(targetKey: string): void {
+  if (!usePreparingComposerImageStore.getState().byTargetKey[targetKey]) return;
+  usePreparingComposerImageStore.setState((state) => {
+    const byTargetKey = { ...state.byTargetKey };
+    delete byTargetKey[targetKey];
+    return { byTargetKey };
+  });
+}
+
 const NO_PREPARING_IMAGES: ReadonlyArray<PreparingComposerImage> = [];
 
 /**

@@ -122,6 +122,13 @@ describe("GhosttyTerminalCore snapshots", () => {
     expect(terminalNavigationShortcutData(event, "Win32") ?? core.encodeKey(event)).toBe(expected);
   });
 
+  it("keeps a leading U+FEFF in an unbracketed paste", async () => {
+    const core = await createCore();
+    core.write("\x1b[?2004l");
+
+    expect(core.encodePaste("\ufeffsample")).toBe("\ufeffsample");
+  });
+
   it.each([
     { code: "", key: "Backspace", expected: "\x7f" },
     { code: "Unidentified", key: "Backspace", expected: "\x7f" },
@@ -209,7 +216,34 @@ describe("GhosttyTerminalCore snapshots", () => {
     ]);
   });
 
-  it("paints ANSI colors from the theme palette and repaints them on theme change", async () => {
+  it.each([
+    { mode: "", ctrlKey: true, expected: "\x1b[13;5~" },
+    { mode: "\x1b[?1h\x1b=", ctrlKey: true, expected: "\x1b[1;5R" },
+    { mode: "\x1b[?1h\x1b=", shiftKey: true, expected: "\x1b[1;2R" },
+    { mode: "\x1b[?1h\x1b=\x1b[?1l\x1b>", ctrlKey: true, expected: "\x1b[13;5~" },
+    { mode: "\x1b[?1h\x1b=\x1b[>1u", ctrlKey: true, expected: "\x1b[13;5~" },
+  ])(
+    "encodes modified F3 as $expected after $mode",
+    async ({ mode, ctrlKey = false, shiftKey = false, expected }) => {
+      const core = await createCore();
+      core.write(mode);
+      const event = {
+        code: "F3",
+        key: "F3",
+        repeat: false,
+        shiftKey,
+        ctrlKey,
+        altKey: false,
+        metaKey: false,
+        isComposing: false,
+        getModifierState: () => false,
+      } as unknown as KeyboardEvent;
+
+      expect(core.encodeKey(event)).toBe(expected);
+    },
+  );
+
+  it("paints ANSI colors from the theme palette and repaints them when the theme or a program changes colors", async () => {
     const core = await createCore();
     const theme = {
       foreground: { r: 255, g: 255, b: 255 },
@@ -227,6 +261,40 @@ describe("GhosttyTerminalCore snapshots", () => {
     cells = core.snapshot().rowData[0]!.cells;
     expect(cells[0]!.foreground).toEqual({ r: 1, g: 9, b: 2 });
     expect(cells[1]!.foreground).toEqual({ r: 255, g: 0, b: 0 });
+
+    core.resetAndWrite("\x1b[7mI\x1b[0mD\x1b[48;2;9;8;7mB\x1b[0m\r\n");
+    core.snapshot();
+    const colors = () => {
+      const { background, rowData } = core.snapshot();
+      return {
+        background,
+        cells: rowData[0]!.cells
+          .slice(0, 3)
+          .map(({ foreground, background }) => ({ foreground, background })),
+      };
+    };
+    const programForeground = { r: 17, g: 34, b: 51 };
+    const programBackground = { r: 68, g: 85, b: 102 };
+    const explicitBackground = { r: 9, g: 8, b: 7 };
+    core.write("\x1b]10;rgb:11/22/33\x07\x1b]11;rgb:44/55/66\x07");
+    expect(colors()).toEqual({
+      background: programBackground,
+      cells: [
+        { foreground: programBackground, background: programForeground },
+        { foreground: programForeground, background: programBackground },
+        { foreground: programForeground, background: explicitBackground },
+      ],
+    });
+
+    core.write("\x1b]110\x07\x1b]111\x07");
+    expect(colors()).toEqual({
+      background: theme.background,
+      cells: [
+        { foreground: theme.background, background: theme.foreground },
+        { foreground: theme.foreground, background: theme.background },
+        { foreground: theme.foreground, background: explicitBackground },
+      ],
+    });
   });
 
   it("preserves Unicode and split ANSI parser state across batched renderer reads", async () => {
@@ -342,7 +410,7 @@ describe("GhosttyTerminalCore snapshots", () => {
     expect(core.snapshot()).toEqual(reference.snapshot());
   });
 
-  it("resets real Ghostty for a repeated snapshot, clear, restart, and a fresh attach", async () => {
+  it("clears real Ghostty without resetting it, then resets on restart and reattach", async () => {
     const [core, reference] = await Promise.all([createCore(), createCore()]);
     let state = createSession("hello");
     const initial = readTerminalOutputUpdate(state.output, INITIAL_TERMINAL_OUTPUT_CURSOR);
@@ -371,10 +439,11 @@ describe("GhosttyTerminalCore snapshots", () => {
       core.write("\r\nstale local text");
       state = applyTerminalAttachStreamEvent(state, event);
       const update = readTerminalOutputUpdate(state.output, cursor);
-      expect(update.type).toBe("reset");
+      expect(update.type).toBe(event.type === "cleared" ? "append" : "reset");
       writeTerminalOutputUpdate(core, update);
       cursor = update.cursor;
-      reference.resetAndWrite(event.type === "cleared" ? "" : "hello");
+      if (event.type === "cleared") reference.write("\u001b[H\u001b[2J\u001b[3J");
+      else reference.resetAndWrite("hello");
       expect(core.snapshot()).toEqual(reference.snapshot());
     }
 

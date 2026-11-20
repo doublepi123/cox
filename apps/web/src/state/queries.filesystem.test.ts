@@ -2,6 +2,7 @@ import { AuthFilesystemReadScope, EnvironmentId, type AuthSessionState } from "@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
+  debouncedValue: undefined as unknown,
   session: null as Pick<AuthSessionState, "authenticated" | "scopes"> | null,
   sessionError: null as string | null,
   sessionWaiting: false,
@@ -22,7 +23,7 @@ vi.mock("react", async (importOriginal) => ({
   useCallback: <A>(callback: A) => callback,
   useEffect: () => {},
   useMemo: <A>(factory: () => A) => factory(),
-  useState: <A>(value: A) => [value, vi.fn()],
+  useState: <A>(value: A) => [(state.debouncedValue ?? value) as A, vi.fn()],
 }));
 vi.mock("./session", () => ({
   environmentSession: { sessionStateAtom: () => state.sessionAtom },
@@ -67,7 +68,7 @@ vi.mock("./query", () => ({
   }),
 }));
 
-import { useProjectContentSearch } from "./queries";
+import { useComposerPathSearch, useProjectContentSearch } from "./queries";
 
 const target = {
   environmentId: EnvironmentId.make("test-environment"),
@@ -76,12 +77,31 @@ const target = {
 };
 
 beforeEach(() => {
+  state.debouncedValue = undefined;
   state.session = null;
   state.sessionError = null;
   state.sessionWaiting = false;
   state.phase = "connected";
   state.contentRequests.mockClear();
   state.contentError = null;
+});
+
+it("hides the previous checkout's entries until the new target is ready", () => {
+  state.session = { authenticated: true, scopes: [AuthFilesystemReadScope] };
+  expect(useComposerPathSearch(target).entries).toEqual([{ path: "src/index.ts", kind: "file" }]);
+
+  state.debouncedValue = target;
+  expect(useComposerPathSearch({ ...target, cwd: "/other" })).toMatchObject({
+    entries: [],
+    isPending: true,
+  });
+});
+
+it("offers workspace entries for a bare path mention", () => {
+  state.session = { authenticated: true, scopes: [AuthFilesystemReadScope] };
+  expect(useComposerPathSearch({ ...target, query: "" }).entries).toEqual([
+    { path: "src/index.ts", kind: "file" },
+  ]);
 });
 
 const contentTarget = {
@@ -91,6 +111,16 @@ const contentTarget = {
   wholeWord: true,
   useRegex: false,
 };
+
+it("explains an overlong content query instead of sending it", () => {
+  state.session = { authenticated: true, scopes: [AuthFilesystemReadScope] };
+  const result = useProjectContentSearch({ ...contentTarget, query: "a".repeat(257) });
+
+  expect(state.contentRequests).not.toHaveBeenCalled();
+  expect(result.matches).toEqual([]);
+  expect(result.isPending).toBe(false);
+  expect(result.error).toMatch(/256/);
+});
 
 it("shows content-search denial before typing and never issues an unauthorized request", () => {
   state.session = { authenticated: true, scopes: [] };

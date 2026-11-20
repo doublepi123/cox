@@ -116,11 +116,23 @@ export function subagentDetailPreview(input: {
   readonly result?: string | null | undefined;
   readonly progress?: string | null | undefined;
 }): string | null {
-  const result = input.result?.trim();
-  const progress = input.progress?.trim();
-  const detail =
-    (isTerminalSubagentStatus(input.status) ? result || progress : progress || result) || "";
-  const compact = detail.replace(/\s+/gu, " ");
+  const terminal = isTerminalSubagentStatus(input.status);
+  const preferred = terminal ? input.result : input.progress;
+  const fallback = terminal ? input.progress : input.result;
+  const detail = preferred?.trimStart() || fallback?.trimStart() || "";
+  const whitespace = /\s+/uy;
+  let compact = "";
+  for (let index = 0; index < detail.length; index += 1) {
+    whitespace.lastIndex = index;
+    const gap = whitespace.exec(detail);
+    if (gap) {
+      index += gap[0].length;
+      if (index === detail.length) break;
+      compact += " ";
+    }
+    compact += detail[index];
+    if (compact.length > 280) break;
+  }
   if (compact.length <= 280) return compact || null;
   let end = 280;
   const previous = compact.charCodeAt(end - 1);

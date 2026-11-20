@@ -59,6 +59,19 @@ it("switches shared confirmation buttons without changing caller-owned content",
   await expect.element(page.getByRole("button", { name: "确认", exact: true })).toBeVisible();
 });
 
+it("keeps wrapped confirmation headings readable on narrow screens", async () => {
+  await page.viewport(390, 844);
+  using _language = testLanguage("en");
+  await using _screen = await render(<ConfirmDialogHost />, { router: false });
+  const title = "Remove the project and its local worktree from this environment?";
+  await act(() => {
+    requestConfirmDialog(`${title}\nThis will remove the local worktree.`);
+  });
+  const heading = page.getByRole("heading", { name: title }).element();
+  const { lineHeight, fontSize } = getComputedStyle(heading);
+  expect(Number.parseFloat(lineHeight)).toBeGreaterThan(Number.parseFloat(fontSize));
+});
+
 it("updates empty-thread navigation copy when the language changes", async () => {
   using _language = testLanguage("en");
   await using screen = await render(<NoActiveThreadState />, { router: false });

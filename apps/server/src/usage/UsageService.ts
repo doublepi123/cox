@@ -40,7 +40,12 @@ import type {
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
-import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+import {
+  createOverrideRateTable,
+  isUnlistedModel,
+  parseRateTable,
+  type RateTable,
+} from "./usagePricing.ts";
 import { createModelServiceUsagePricing } from "./modelServicePricing.ts";
 import {
   listTranscriptFiles,
@@ -280,6 +285,7 @@ export const make = Effect.gen(function* () {
   });
 
   const ensureRates = (force: boolean) => ratesLock.withPermit(loadRates(force));
+  const checkedUnlistedModels = new Set<string>();
 
   const refreshRates = ensureRates(true).pipe(
     Effect.map(pricing),
@@ -346,16 +352,25 @@ export const make = Effect.gen(function* () {
   const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
     settings: ServerSettingsValue,
     retentionCutoffMs: number,
+    awaitRefresh: boolean,
   ) {
     const dirs: Array<TranscriptSource> = [];
+    const pending: Array<ScannedDir> = [];
     const seen = new Set<string>();
     for (const { driver, reader } of transcriptReaders) {
       const { provider, format } = reader;
       const directories = yield* Effect.forEach(
         yield* usageInstances(driver, settings),
-        (instance) => reader.directories(instance),
+        (instance) => reader.directories(instance, { awaitRefresh }),
       );
-      for (const { dir: directory, fileName } of directories.flat()) {
+      for (const { dir: directory, fileName, refreshing } of directories.flat()) {
+        if (refreshing) {
+          const key = `${provider}\0${directory}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          pending.push({ provider, dir: directory, volumeId: "", files: [], refreshing });
+          continue;
+        }
         const sourceKey = provider + "\0" + directory;
         const previous = sourceCache.get(sourceKey);
         const dir = yield* fileSystem
@@ -391,7 +406,7 @@ export const make = Effect.gen(function* () {
         });
       }
     }
-    return dirs;
+    return { dirs, pending };
   });
 
   // Share first loads so concurrent readers cannot scan against a still-empty cache.
@@ -607,6 +622,20 @@ export const make = Effect.gen(function* () {
       }
       return { path, records, malformedRecords };
     });
+    if (provider === "codex") {
+      const livePaths = new Set(files.map((file) => file.path));
+      for (const file of read) {
+        if (file.failed || !file.path.endsWith(".jsonl.zst")) continue;
+        const originalPath = file.path.slice(0, -4);
+        if (
+          !livePaths.has(originalPath) &&
+          fileCache.get(originalPath)?.provider === provider &&
+          fileCache.delete(originalPath)
+        ) {
+          cacheDirty = true;
+        }
+      }
+    }
     const unread = failedPaths + read.filter((file) => file.failed).length;
     yield* Effect.annotateCurrentSpan({
       "usage.files": files.length,
@@ -632,9 +661,11 @@ export const make = Effect.gen(function* () {
     retentionCutoffMs: number,
     awaitRefresh: boolean,
   ) {
-    const dirs = yield* resolveTranscriptDirs(settings, retentionCutoffMs).pipe(
-      Effect.provideContext(readerContext),
-    );
+    const { dirs, pending } = yield* resolveTranscriptDirs(
+      settings,
+      retentionCutoffMs,
+      awaitRefresh,
+    ).pipe(Effect.provideContext(readerContext));
 
     const scans = Effect.forEach(
       scanReaders,
@@ -668,7 +699,7 @@ export const make = Effect.gen(function* () {
       [Effect.forEach(dirs, (dir) => scanTranscriptDir(dir, windowStartMs)), scans],
       { concurrency: "unbounded" },
     );
-    const scanned: readonly ScannedDir[] = [...transcripts, ...scanDirs.flat()];
+    const scanned: readonly ScannedDir[] = [...transcripts, ...pending, ...scanDirs.flat()];
     return scanned;
   });
 
@@ -730,20 +761,12 @@ export const make = Effect.gen(function* () {
       { concurrency: 2 },
     );
 
-    const aggregator = new UsageAggregator({
-      timeZone: input.timeZone,
-      sinceDay: input.sinceDay,
-      untilDay: input.untilDay,
-      resolution: input.resolution ?? "day",
-      ...hourlyWindow,
-      rates,
-      priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
-      modelAliases: resolveModelAliases(settings.usageModelAliases),
-      modelServicePrice: createModelServiceUsagePricing(settings, (dir) => {
-        const relative = path.relative(path.join(config.baseDir, "model-services", "runtime"), dir);
-        if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
-        return relative.split(path.sep)[0];
-      }),
+    const priceOverrides = createOverrideRateTable(settings.usagePriceOverrides);
+    const modelAliases = resolveModelAliases(settings.usageModelAliases);
+    const modelServicePrice = createModelServiceUsagePricing(settings, (dir) => {
+      const relative = path.relative(path.join(config.baseDir, "model-services", "runtime"), dir);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+      return relative.split(path.sep)[0];
     });
 
     const sources: UsageSource[] = [];
@@ -812,6 +835,44 @@ export const make = Effect.gen(function* () {
         cacheDirty = true;
       }
     }
+    const unlisted = new Set<string>();
+    for (const [index, files] of filesByDir.entries()) {
+      for (const file of files) {
+        for (const record of file.records) {
+          if (record.timestampMs < windowStartMs || record.timestampMs >= windowEndMs) continue;
+          const alias = modelAliases.get(record.model);
+          const model = alias ?? record.model;
+          const service =
+            alias === undefined ? modelServicePrice(record, scannedDirs[index]!.dir) : undefined;
+          if (priceOverrides.has(model.trim()) || service?.pricing !== undefined) continue;
+          const rateModel =
+            service?.rateModel ?? (alias === undefined ? (record.rateModel ?? model) : model);
+          if (!checkedUnlistedModels.has(rateModel) && isUnlistedModel(rates, rateModel)) {
+            unlisted.add(rateModel);
+          }
+        }
+      }
+    }
+    if (unlisted.size > 0) {
+      yield* ensureRates(true);
+      const now = yield* Clock.currentTimeMillis;
+      if (ratesFetchedAtMs !== null && now - ratesFetchedAtMs < RATES_REFRESH_FLOOR_MS) {
+        for (const model of unlisted) checkedUnlistedModels.add(model);
+      }
+    }
+
+    const summaryPricing = pricing();
+    const aggregator = new UsageAggregator({
+      timeZone: input.timeZone,
+      sinceDay: input.sinceDay,
+      untilDay: input.untilDay,
+      resolution: input.resolution ?? "day",
+      ...hourlyWindow,
+      rates,
+      priceOverrides,
+      modelAliases,
+      modelServicePrice,
+    });
     const crossFileSessions = sharedSessions(filesByDir.flat());
 
     for (const [
@@ -899,7 +960,7 @@ export const make = Effect.gen(function* () {
       untilDay: input.untilDay,
       buckets: aggregated.buckets,
       sources,
-      pricing: pricing(),
+      pricing: summaryPricing,
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
     } satisfies UsageSummary;
   });

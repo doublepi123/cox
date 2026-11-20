@@ -4,6 +4,7 @@ import * as Tracer from "effect/Tracer";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { CommandId, type Project, ProjectId, ProviderInstanceId } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -120,8 +121,50 @@ const layerProjectServiceDependencies = Layer.mergeAll(
   Layer.provideMerge(layerMetadata),
   Layer.provideMerge(SqlitePersistence.layerMemory),
   Layer.provideMerge(ServerSettings.layerTest()),
-  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "project-service-race-" })),
-  Layer.provide(NodeServices.layer),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "project-service-race-" })),
+  Layer.provideMerge(NodeServices.layer),
+);
+
+it.effect("hydrates only the active projects on the requested page", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const enrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
+    const inspected = yield* Ref.make<ReadonlyArray<string>>([]);
+    const service = yield* ProjectService.make.pipe(
+      Effect.provideService(ProjectEnrichmentService.ProjectEnrichmentService, {
+        ...enrichment,
+        getAvailable: (workspaceRoot) =>
+          Ref.update(inspected, (roots) => [...roots, workspaceRoot]).pipe(
+            Effect.as({
+              repositoryIdentity: null,
+              faviconPath: null,
+              repositoryIdentityResolved: false,
+            }),
+          ),
+      }),
+    );
+    yield* sql`INSERT INTO projection_projects ${sql.insert(
+      Array.from({ length: 4 }, (_, index) => ({
+        project_id: `page:${index}`,
+        title: `Project ${index}`,
+        workspace_root: `/work/page-${index}`,
+        scripts_json: "[]",
+        created_at: "2026-10-01T00:00:00.000Z",
+        updated_at: "2026-10-01T00:00:00.000Z",
+        deleted_at: index === 1 ? "2026-10-02T00:00:00.000Z" : null,
+        auto_pull: 0,
+      })),
+    )}`;
+
+    const page = yield* service.listPage({ cursor: 1, limit: 1 });
+    assert.deepEqual(
+      page.projects.map((project) => project.id),
+      ["page:2"],
+    );
+    assert.equal(page.projects[0]?.repositoryIdentity?.canonicalKey, "github.com/t3tools/page-2");
+    assert.equal(page.nextCursor, 2);
+    assert.deepEqual(yield* Ref.get(inspected), ["/work/page-2"]);
+  }).pipe(Effect.provide(layerProjectServiceDependencies)),
 );
 
 const waitForProject = Effect.fn("ProjectServiceTest.waitForProject")(function* (
@@ -414,6 +457,53 @@ it.layer(layerTest)("ProjectService", (it) => {
         Option.getOrThrow(yield* service.getById(other)).workspaceRoot,
         "/work/conflict-mover",
       );
+    }),
+  );
+
+  it.effect("refuses a WSL share path on Windows and allows it elsewhere", () =>
+    Effect.gen(function* () {
+      const service = yield* ProjectService.ProjectService;
+      const onWindows = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        effect.pipe(Effect.provideService(HostProcess.Platform, "win32"));
+      const projectId = ProjectId.make("project:wsl-share");
+      const refused = yield* onWindows(
+        service.create({
+          commandId: CommandId.make("command:wsl-share"),
+          projectId,
+          title: "WSL",
+          workspaceRoot: "\\\\wsl$\\Ubuntu\\home\\ubuntu\\repo",
+        }),
+      ).pipe(Effect.flip);
+      assert.equal(refused._tag, "ProjectInvalidError");
+      assert.isTrue(Option.isNone(yield* service.getById(projectId)));
+
+      const mover = ProjectId.make("project:wsl-share:mover");
+      yield* onWindows(
+        service.create({
+          commandId: CommandId.make("command:wsl-share:mover"),
+          projectId: mover,
+          title: "Mover",
+          workspaceRoot: "C:\\work\\wsl-share-mover",
+        }),
+      );
+      const move = yield* onWindows(
+        service.update({
+          commandId: CommandId.make("command:wsl-share:move"),
+          projectId: mover,
+          workspaceRoot: "\\\\wsl.localhost\\Ubuntu\\home\\ubuntu\\repo",
+        }),
+      ).pipe(Effect.flip);
+      assert.equal(move._tag, "ProjectInvalidError");
+
+      const linux = yield* service
+        .create({
+          commandId: CommandId.make("command:wsl-share:linux"),
+          projectId: ProjectId.make("project:wsl-share:linux"),
+          title: "Linux",
+          workspaceRoot: "\\\\wsl.localhost\\Ubuntu\\home\\ubuntu\\repo",
+        })
+        .pipe(Effect.provideService(HostProcess.Platform, "linux"));
+      assert.equal(linux.title, "Linux");
     }),
   );
 

@@ -119,7 +119,14 @@
       "gpt-daybreak-red-latest"
     ],
     "claudeAgent": ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
-    "antigravity": ["gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"]
+    "antigravity": [
+      "gemini-4-carbon",
+      "gemini-4-argon",
+      "gemini-3.8-flash",
+      "gemini-3.8-flash-high",
+      "gemini-3.8-flash-medium",
+      "gemini-3.8-flash-low"
+    ]
   },
   "providers": {
     "codex": {
@@ -860,6 +867,13 @@
       },
       "profiles": {},
       "models": [
+        {
+          "slug": "gemini-4-carbon",
+          "name": "Gemini 4 Carbon",
+          "status": "current"
+        },
+        { "slug": "gemini-4-argon", "name": "Gemini 4 Argon", "status": "current" },
+        { "slug": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "status": "current" },
         {
           "slug": "gemini-3.8-flash-high",
           "name": "Gemini 3.8 Flash (High)",

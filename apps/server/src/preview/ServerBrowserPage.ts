@@ -26,6 +26,7 @@ import { BrowserControlInterrupted } from "./SessionControl.ts";
 const MAX_EVALUATION_BYTES = 64_000;
 const MAX_VISIBLE_TEXT_LENGTH = 20_000;
 const MAX_SCREENSHOT_WIDTH = 1280;
+const SCREENSHOT_TIMEOUT_MS = 3_000;
 const WAIT_POLL_MS = 100;
 export const DIAGNOSTIC_BUFFER_LIMIT = 200;
 
@@ -60,9 +61,7 @@ export const toOperationError = (
       timeoutMs === undefined ? undefined : { timeoutMs },
     );
   }
-  if (
-    /while parsing selector|Unknown engine|Unexpected token|strict mode violation/i.test(message)
-  ) {
+  if (/while parsing selector|Unknown engine|Unexpected token/i.test(message)) {
     return new ServerBrowserOperationError("PreviewAutomationInvalidSelectorError", firstLine);
   }
   if (/not an <input>|not editable|not an editable/i.test(message)) {
@@ -152,11 +151,11 @@ const targetPoint = async (
   page: Page,
   locator: Locator | null,
   input: { readonly x?: number | undefined; readonly y?: number | undefined },
-  timeout: number,
+  remaining: () => number,
 ) => {
   if (locator === null) return { x: input.x ?? 0, y: input.y ?? 0 };
-  await scrollIntoView(locator, timeout);
-  const box = await locator.boundingBox({ timeout });
+  await scrollIntoView(locator, remaining());
+  const box = await locator.boundingBox({ timeout: remaining() });
   if (box) return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const viewport = page.viewportSize();
   return { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 };
@@ -465,14 +464,50 @@ const readPageMetrics = async (cdp: CDPSession) => {
 // in any capture it shrinks.
 export const captureViewport = async (
   cdp: CDPSession,
-  options: { readonly format: "png" | "jpeg"; readonly quality?: number },
+  options: {
+    readonly format: "png" | "jpeg";
+    readonly quality?: number;
+    readonly timeoutMs?: number;
+  },
 ) => {
-  const { data } = await cdp.send("Page.captureScreenshot", {
+  const capture = cdp.send("Page.captureScreenshot", {
     format: options.format,
     ...(options.quality === undefined ? {} : { quality: options.quality }),
   });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ServerBrowserOperationError(
+            "PreviewAutomationExecutionError",
+            "The browser is not producing screenshot frames. Show or restore the browser window and try again.",
+          ),
+        ),
+      options.timeoutMs ?? SCREENSHOT_TIMEOUT_MS,
+    );
+  });
+  const { data } = await Promise.race([capture, expired]).finally(() => clearTimeout(timer));
   return data;
 };
+
+export const captureFinalRecordingFrame = (cdp: CDPSession, quality: number) =>
+  answered(
+    cdp
+      .send("Runtime.evaluate", {
+        // Capture the destination of finite transitions, not their initially transparent frame.
+        expression: `(async () => {
+          const paint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          await paint();
+          await Promise.allSettled(document.getAnimations()
+            .filter(animation => animation.playState === "running" && animation.effect?.getComputedTiming().iterations !== Infinity)
+            .map(animation => animation.finished));
+          await paint();
+        })()`,
+        awaitPromise: true,
+      })
+      .then(() => captureViewport(cdp, { format: "jpeg", quality })),
+  );
 
 /** Runs in the page's own isolated world, as the server has no image library. */
 const SHRINK_PNG = `async function (png, width, height) {
@@ -709,7 +744,7 @@ const clickTarget = async (
   timeout: number,
   pointer: PointerReporter,
 ) => {
-  const point = await targetPoint(page, locator, input, timeout);
+  const point = await targetPoint(page, locator, input, () => timeout);
   await pointer(point, "click");
   const options = { button: input.button ?? "left", clickCount: input.clickCount ?? 1 } as const;
   const clicked =
@@ -794,14 +829,15 @@ export const hover = async (
   input: PreviewAutomationHoverInput,
   pointer: PointerReporter = noPointer,
 ) => {
-  const timeout = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = Date.now() + (input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const remaining = () => Math.max(1, deadline - Date.now());
   const locator = targetLocator(page, input);
-  await pointer(await targetPoint(page, locator, input, timeout), "move");
+  await pointer(await targetPoint(page, locator, input, remaining), "move");
   if (locator === null) {
     await page.mouse.move(input.x ?? 0, input.y ?? 0);
     return;
   }
-  await locator.hover({ timeout });
+  await locator.hover({ timeout: remaining() });
 };
 
 export const select = async (
@@ -844,16 +880,17 @@ export const drag = async (
   input: PreviewAutomationDragInput,
   pointer: PointerReporter = noPointer,
 ) => {
-  const timeout = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = Date.now() + (input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const remaining = () => Math.max(1, deadline - Date.now());
   const source = targetLocator(page, { locator: input.source })!;
   const target = targetLocator(page, { locator: input.target })!;
-  await pointer(await targetPoint(page, source, {}, timeout), "move");
+  await pointer(await targetPoint(page, source, {}, remaining), "move");
   // Observe drag rejection immediately; an unhandled rejection during cursor movement exits the server.
-  const dragFailure = source.dragTo(target, { timeout, steps: 5 }).then(
+  const dragFailure = source.dragTo(target, { timeout: remaining(), steps: 5 }).then(
     () => null,
     (error: unknown) => ({ error }),
   );
-  const end = await target.boundingBox({ timeout }).catch(() => null);
+  const end = await target.boundingBox({ timeout: remaining() }).catch(() => null);
   if (end) await pointer({ x: end.x + end.width / 2, y: end.y + end.height / 2 }, "move");
   const failure = await dragFailure;
   if (failure) throw failure.error;
@@ -881,6 +918,26 @@ export const scroll = async (page: Page, input: PreviewAutomationScrollInput) =>
   await locator.evaluate((element, [x, y]) => element.scrollBy(x, y), delta);
 };
 
+const UNRESPONSIVE_SCRIPT_PROBE_MS = 1_000;
+
+/**
+ * A same-site navigation reuses the renderer, so it never commits while a page script holds it.
+ * Call before starting the navigation: Chrome does not deliver a terminate once one is pending.
+ */
+export const stopUnresponsiveScript = async (cdp: CDPSession, budgetMs = Infinity) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const answered = cdp.send("Runtime.evaluate", { expression: "0" }).then(
+    () => true,
+    () => true,
+  );
+  const expired = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), Math.min(budgetMs, UNRESPONSIVE_SCRIPT_PROBE_MS));
+  });
+  const responsive = await Promise.race([answered, expired]).finally(() => clearTimeout(timer));
+  // Not awaited: a renderer blocked on something other than script may never acknowledge it.
+  if (!responsive) void cdp.send("Runtime.terminateExecution").catch(constVoid);
+};
+
 /** Terminate expired page scripts so a hung expression cannot block the tab's control queue. */
 export const evaluate = async (
   cdp: CDPSession,
@@ -888,8 +945,10 @@ export const evaluate = async (
   timeoutMs: number,
 ) => {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      timedOut = true;
       // Stops a busy script; an awaited promise is abandoned and settles unread.
       void cdp.send("Runtime.terminateExecution").catch(constVoid);
       reject(
@@ -900,10 +959,23 @@ export const evaluate = async (
       );
     }, timeoutMs);
   });
-  const evaluation = cdp.send("Runtime.evaluate", {
+  const params = {
     expression: input.expression,
     awaitPromise: input.awaitPromise ?? true,
     returnByValue: input.returnByValue ?? true,
+  };
+  // The devtools console's replMode allows top-level await but returns a trailing promise unawaited,
+  // so it only retries what the page's parser rejected. A parse error has a scriptId but no stack and
+  // ran nothing; a browser-internal rejection has neither.
+  const evaluation = cdp.send("Runtime.evaluate", params).then((classic) => {
+    const failure = classic.exceptionDetails;
+    const unparsed =
+      failure?.exception?.className === "SyntaxError" &&
+      failure.scriptId !== undefined &&
+      failure.stackTrace === undefined;
+    return unparsed && !timedOut && input.expression.includes("await")
+      ? cdp.send("Runtime.evaluate", { ...params, replMode: true })
+      : classic;
   });
   void evaluation.catch(constVoid);
   const result = await Promise.race([evaluation, expired]).finally(() => clearTimeout(timer));
@@ -928,7 +1000,6 @@ export const evaluate = async (
 
 export const waitFor = async (page: Page, input: PreviewAutomationWaitForInput) => {
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
   const locator = targetLocator(page, input);
   const { text, urlIncludes } = input;
   const checks: Array<() => Promise<boolean>> = [];
@@ -943,16 +1014,27 @@ export const waitFor = async (page: Page, input: PreviewAutomationWaitForInput) 
     );
   }
   if (urlIncludes !== undefined) checks.push(async () => page.url().includes(urlIncludes));
-  for (;;) {
-    const results = await Promise.all(checks.map((check) => check()));
-    if (results.every(Boolean)) return;
-    if (Date.now() >= deadline) {
-      throw new ServerBrowserOperationError(
-        "PreviewAutomationTimeoutError",
-        `Waited ${timeoutMs}ms without every condition holding.`,
-      );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ServerBrowserOperationError(
+            "PreviewAutomationTimeoutError",
+            `Waited ${timeoutMs}ms without every condition holding.`,
+          ),
+        ),
+      timeoutMs,
+    );
+  });
+  try {
+    for (;;) {
+      const results = await Promise.race([Promise.all(checks.map((check) => check())), expired]);
+      if (results.every(Boolean)) return;
+      await Promise.race([new Promise((resolve) => setTimeout(resolve, WAIT_POLL_MS)), expired]);
     }
-    await new Promise((resolve) => setTimeout(resolve, WAIT_POLL_MS));
+  } finally {
+    clearTimeout(timer);
   }
 };
 
@@ -1037,7 +1119,8 @@ export const recordingEncoderScript = (frameRate: BrowserRecordingFrameRate) => 
   window.__t3Recorder = {
     async frame(base64, cssWidth) {
       if (tooLarge) return false;
-      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      // A per-character atob copy costs ~30 ms on a 3200x1800 frame and throttles recordings.
+      const bytes = Uint8Array.fromBase64(base64);
       const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
       if (tooLarge) { bitmap.close(); return false; }
       if (!recorder) {
@@ -1119,11 +1202,18 @@ export const recordingEncoderScript = (frameRate: BrowserRecordingFrameRate) => 
     },
     async chunk(index) {
       const bytes = new Uint8Array(await chunks[index].arrayBuffer());
+      if (typeof bytes.toBase64 === "function") return bytes.toBase64();
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
         binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
       }
       return btoa(binary);
+    },
+    download() {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType }));
+      link.download = "recording";
+      link.click();
     },
   };
 })()`;

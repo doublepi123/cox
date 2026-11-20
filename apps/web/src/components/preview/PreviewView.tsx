@@ -418,6 +418,7 @@ export function PreviewView({ threadRef, tabId: requestedTabId, configuredUrls, 
                 }
                 visible={visible}
                 onFirstFrame={() => setServerFrameTabId(runtimeTabId)}
+                onNoFrames={() => setServerFrameTabId(runtimeTabId)}
                 onControl={(control) =>
                   setServerControlledTabId(control?.controller === "you" ? runtimeTabId : null)
                 }

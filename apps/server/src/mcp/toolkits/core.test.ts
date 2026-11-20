@@ -12,6 +12,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunId,
+  ScheduledTaskError,
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
@@ -200,6 +201,80 @@ it.effect("an answered question reports already answered instead of not found", 
                 ],
               }),
             dispatch: () => Effect.die("an answered question must not dispatch again"),
+          }),
+        ),
+      ),
+    ),
+  );
+});
+
+it.effect("a pending question read keeps option previews", () => {
+  const shell = McpToolAccessTestkit.liveThreadShell(threadId);
+  const requestId = RuntimeRequestId.make("previewed-question");
+  const projection = McpToolAccessTestkit.idleThreadProjection(shell);
+  const questions = [
+    {
+      id: "post",
+      header: "Review",
+      question: "Post it?",
+      options: [{ label: "Post", description: "Publish the draft", preview: "Full proposed text" }],
+    },
+  ];
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({ name: "cox_pending_request", arguments: { action: "read", requestId } })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.structuredContent).toEqual({ requestId, questions });
+  }).pipe(
+    Effect.provide(
+      layerThreadToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: () => Effect.succeed(shell),
+            getProjectThreadRecords: () =>
+              Effect.succeed({
+                ...projection,
+                runtimeRequests: [
+                  {
+                    id: requestId,
+                    nodeId: NodeId.make("root"),
+                    providerTurnId: null,
+                    nativeRequestRef: null,
+                    kind: "user_input",
+                    status: "pending",
+                    responseCapability: { type: "message" },
+                    createdAt: shell.createdAt,
+                    resolvedAt: null,
+                  },
+                ],
+                turnItems: [
+                  {
+                    id: TurnItemId.make("previewed-question-item"),
+                    threadId,
+                    runId: null,
+                    nodeId: null,
+                    providerThreadId: null,
+                    providerTurnId: null,
+                    nativeItemRef: null,
+                    parentItemId: null,
+                    ordinal: 0,
+                    status: "running",
+                    title: null,
+                    startedAt: shell.createdAt,
+                    completedAt: null,
+                    updatedAt: shell.updatedAt,
+                    type: "user_input_request",
+                    requestId,
+                    questions,
+                  },
+                ],
+              }),
           }),
         ),
       ),
@@ -735,6 +810,62 @@ it.effect("a caller cannot rewrite a scheduled task that runs above its own mode
               } as never),
           }),
         ),
+        Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
+        Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
+      ),
+    ),
+  ),
+);
+
+it.effect("returns the public reason when a scheduled task run is refused", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({
+        name: "run_scheduled_task_now",
+        arguments: { taskId: "task-paused" },
+      })
+      .pipe(
+        Effect.provideService(
+          McpInvocationContext.McpInvocationContext,
+          clientScope("full-access"),
+        ),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(declaredFailure(result)).toEqual({
+      _tag: "OrchestratorMcpFailure",
+      code: "orchestration_error",
+      message: "task is paused",
+    });
+    expect(JSON.stringify(result)).not.toContain("internal scheduler detail");
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerThreadToolkit.pipe(
+        Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({
+            list: () => Effect.succeed({ tasks: [scheduledTask("task-paused", "auto")] }),
+            runNow: () =>
+              Effect.fail(
+                new ScheduledTaskError({
+                  message: "task is paused",
+                  cause: new Error("internal scheduler detail"),
+                }),
+              ),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: () => Effect.die("unexpected thread lookup"),
+          }),
+        ),
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+        Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
         Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
         Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
       ),

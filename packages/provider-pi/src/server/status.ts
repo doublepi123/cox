@@ -163,7 +163,7 @@ const makePiDiscoveryConnection = Effect.fnUntraced(function* (
   return connection;
 });
 
-const discoverPiViaRpc = Effect.fn("PiProviderStatus.discoverPiViaRpc")(function* (
+const readPiInventory = Effect.fn("PiProviderStatus.readPiInventory")(function* (
   piSettings: PiSettings,
   environment: NodeJS.ProcessEnv,
   launchArgs: ReadonlyArray<string>,
@@ -175,6 +175,28 @@ const discoverPiViaRpc = Effect.fn("PiProviderStatus.discoverPiViaRpc")(function
   const commandsData = yield* connection
     .request({ type: "get_commands" })
     .pipe(Effect.orElseSucceed(() => undefined));
+  return { stateData, modelsData, commandsData };
+}, Effect.scoped);
+
+const discoverPiViaRpc = Effect.fn("PiProviderStatus.discoverPiViaRpc")(function* (
+  piSettings: PiSettings,
+  environment: NodeJS.ProcessEnv,
+  launchArgs: ReadonlyArray<string>,
+  cwd?: string,
+) {
+  const declinedTrust = configuredPiLaunchArgs(piSettings, "--no-approve");
+  const inventory = readPiInventory(piSettings, environment, launchArgs, cwd);
+  const { stateData, modelsData, commandsData } = yield* declinedTrust.ok &&
+  declinedTrust.args[0] !== launchArgs[0]
+    ? inventory.pipe(
+        Effect.catchIf(
+          (error) =>
+            error._tag === "PiRpcError" &&
+            (error.operation === "read" || error.operation === "exit"),
+          () => readPiInventory(piSettings, environment, declinedTrust.args, cwd),
+        ),
+      )
+    : inventory;
   const discoveredModels = yield* Effect.fromResult(parseDiscoveredModels(modelsData, stateData));
   const { slashCommands, skills } = parsePiDiscoveredCommands(commandsData);
   // Pi lists only models of providers it holds credentials for, including extension, virtual and
@@ -194,7 +216,7 @@ const discoverPiViaRpc = Effect.fn("PiProviderStatus.discoverPiViaRpc")(function
         ? { provider: activeProvider, id: activeModelId }
         : undefined,
   } satisfies PiDiscovery;
-}, Effect.scoped);
+});
 
 export const discoverPiCommandsForCwd = Effect.fn("discoverPiCommandsForCwd")(
   function* (piSettings: PiSettings, environment: NodeJS.ProcessEnv, cwd: string) {

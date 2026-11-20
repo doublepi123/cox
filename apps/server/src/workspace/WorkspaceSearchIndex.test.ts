@@ -5,11 +5,14 @@ import {
   type GrepOptions,
   type GrepResult,
 } from "@ff-labs/fff-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { ExitCode } from "effect/process/ChildProcessSpawner";
 import { vi } from "vite-plus/test";
 
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
+import { VcsProcess } from "../vcs/VcsProcess.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -51,7 +54,19 @@ it.effect("filters image searches before applying the result limit", () =>
       } as unknown as FileFinder;
       vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
 
-      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project");
+      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project").pipe(
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(VcsProcess, {
+          run: () =>
+            Effect.succeed({
+              exitCode: ExitCode(0),
+              stdout: "",
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }),
+        }),
+      );
       const resultWithoutKind = yield* searchIndex.search("", 200, undefined, true);
       const resultWithDirectoryKind = yield* searchIndex.search("", 200, "directory", true);
 
@@ -114,7 +129,19 @@ it.effect("continues whole-word searches after a filtered grep page", () =>
       } as unknown as FileFinder;
       vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
 
-      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project", "content");
+      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project", "content").pipe(
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(VcsProcess, {
+          run: () =>
+            Effect.succeed({
+              exitCode: ExitCode(0),
+              stdout: "",
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }),
+        }),
+      );
       const result = yield* searchIndex.searchContents({
         query: "needle",
         limit: 1,
@@ -136,6 +163,37 @@ it.effect("continues whole-word searches after a filtered grep page", () =>
       });
       expect(grep).toHaveBeenCalledTimes(2);
       expect(grep.mock.calls[1]?.[1]?.cursor).toBe(nextCursor);
+    }),
+  ),
+);
+
+it.effect("refreshes the index through FFF's asynchronous scan", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const scanFilesAsync = vi.fn(async () => ({ ok: true as const, value: undefined }));
+      const finder = {
+        destroy: vi.fn(),
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
+        scanFilesAsync,
+      } as unknown as FileFinder;
+      vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
+
+      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project").pipe(
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(VcsProcess, {
+          run: () =>
+            Effect.succeed({
+              exitCode: ExitCode(0),
+              stdout: "",
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }),
+        }),
+      );
+      yield* searchIndex.refresh();
+
+      expect(scanFilesAsync).toHaveBeenCalledOnce();
     }),
   ),
 );

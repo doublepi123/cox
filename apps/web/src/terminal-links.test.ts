@@ -5,6 +5,7 @@ import {
   collectWrappedTerminalLinkLine,
   extractTerminalLinks,
   isTerminalUrl,
+  resolveTerminalLinkTarget,
   type TerminalBufferLineLike,
 } from "./terminal-links";
 
@@ -16,6 +17,13 @@ function createBufferLine(text: string, isWrapped = false): TerminalBufferLineLi
 }
 
 describe("extractTerminalLinks", () => {
+  it("ignores SCP-style Git remotes while preserving paths containing @", () => {
+    expect(extractTerminalLinks("git clone git@github.com:acme/widgets.git")).toEqual([]);
+    expect(extractTerminalLinks("remote: git@gitlab.com:group/sub/project.git")).toEqual([]);
+    expect(extractTerminalLinks("src/contact@support.vue:12:3")).toEqual([
+      { kind: "path", text: "src/contact@support.vue:12:3", start: 0, end: 28 },
+    ]);
+  });
   it.each([
     String.raw`C:\dev\ai-test\dir 1`,
     String.raw`C:\dev\ai-test\dir 1\test`,
@@ -116,6 +124,20 @@ describe("extractTerminalLinks", () => {
         start: 28,
         end: 44,
       },
+    ]);
+  });
+
+  it.each([
+    ["https://example.com/a(b)c)", "https://example.com/a(b)c"],
+    ["https://example.com/(docs)", "https://example.com/(docs)"],
+    ["https://example.com/docs)}])", "https://example.com/docs)"],
+    ["https://example.com/docs):", "https://example.com/docs):"],
+    ["/tmp/a[b]c]", "/tmp/a[b]c"],
+    ["/tmp/docs)}])", "/tmp/docs)"],
+    ["/tmp/docs):", "/tmp/docs"],
+  ])("trims only unbalanced closing delimiters from %s", (raw, text) => {
+    expect(extractTerminalLinks(`see ${raw}`)).toEqual([
+      { kind: isTerminalUrl(text) ? "url" : "path", text, start: 4, end: 4 + text.length },
     ]);
   });
 
@@ -271,6 +293,19 @@ describe("resolvePathLinkTarget", () => {
     const [link] = extractTerminalLinks("/Users/julius/project/main.c:10:5: error: expected ';'");
     expect(resolvePathLinkTarget(link?.text ?? "", "/Users/julius/project")).toBe(
       "/Users/julius/project/main.c:10:5",
+    );
+  });
+
+  // regression: #36005 OSC 8 file URIs were joined onto the cwd as relative paths
+  it("does not resolve an OSC 8 file URI target against the cwd", () => {
+    expect(resolveTerminalLinkTarget("file:///var/tmp/report.txt", "/workspace/project")).toBe(
+      "/var/tmp/report.txt",
+    );
+    expect(
+      resolveTerminalLinkTarget("file://remote.invalid/var/tmp/report.txt", "/workspace/project"),
+    ).not.toMatch(/^\/workspace\/project\//);
+    expect(resolvePathLinkTarget("file:notes.md", "/workspace/project")).toBe(
+      "/workspace/project/file:notes.md",
     );
   });
 });

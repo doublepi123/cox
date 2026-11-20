@@ -14,6 +14,14 @@ import { icon } from "./icon.ts";
 const CHANGE_REQUEST_PATH = /^\/((?:[^/]+\/)*_git\/[^/]+)\/pullrequest\/(\d+)(?:\/|$)/u;
 const COMMIT_PATH = /^\/((?:[^/]+\/)*_git\/[^/]+)\/commit\/([0-9a-f]+)\/?$/iu;
 const CHECKOUT_COMMAND = /^az\s+repos\s+pr\s+checkout\s+(.+)$/i;
+function isAzureHostname(hostname: string): boolean {
+  return (
+    hostname === "dev.azure.com" ||
+    hostname.endsWith(".dev.azure.com") ||
+    hostname.endsWith(".visualstudio.com")
+  );
+}
+
 const CHANGE_REQUEST_REFERENCE =
   /^https:\/\/(?:dev\.azure\.com\/[^/\s]+\/[^/\s]+|[^/\s]+\.visualstudio\.com\/[^/\s]+)\/_git\/[^/\s]+\/pullrequest\/(\d+)(?:[/?#].*)?$/i;
 
@@ -26,7 +34,10 @@ const CHANGE_REQUEST_REFERENCE =
 function repositoryKeyFromRemote(key: string): string | null {
   const match =
     /^(ssh\.dev\.azure\.com|vs-ssh\.visualstudio\.com)\/v3\/([^/]+)\/([^/]+)\/([^/]+)$/u.exec(key);
-  if (match === null) return null;
+  if (match === null) {
+    const host = key.split("/", 1)[0];
+    return host !== undefined && isAzureHostname(host) ? key : null;
+  }
   const [, host, organization, project, repository] = match;
   return host === "ssh.dev.azure.com"
     ? `dev.azure.com/${organization}/${project}/_git/${repository}`

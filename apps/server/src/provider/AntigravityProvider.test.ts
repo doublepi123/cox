@@ -590,6 +590,22 @@ it.layer(layerTest)("Antigravity provider snapshots", (it) => {
     ),
   );
 
+  it.effect("keeps workspace commands when the catalog reports a different list", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* harness.initialize;
+        yield* harness.provider.onSessionStarted(started, "/workspace");
+        yield* harness.provider.onAvailableCommands(commands, "/workspace");
+        yield* harness.provider.onAvailableCommands([]);
+        expect((yield* harness.provider.snapshotForCwd("/workspace")).slashCommands).toEqual(
+          expectedCommands,
+        );
+        expect((yield* harness.provider.snapshot.getSnapshot).slashCommands).toEqual([]);
+      }),
+    ),
+  );
+
   it.effect("keeps discovered workspace skills through session and command updates", () =>
     Effect.scoped(
       Effect.gen(function* () {

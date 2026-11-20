@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import {
   collectAssistantCitations,
@@ -6,6 +6,7 @@ import {
 } from "@t3tools/shared/assistantCitations";
 
 import { removeLocalStorageItem } from "./hooks/useLocalStorage";
+import { createMemoryStorage } from "./lib/storage";
 
 import {
   MAX_STASH_ENTRIES,
@@ -273,4 +274,32 @@ describe("prompt stash context records", () => {
     const taken = usePromptStashStore.getState().takeEntry("entry-records");
     expect(taken.entry?.records).toEqual(records);
   });
+});
+
+it("preserves finalized stash images and concurrent changes across tabs", async () => {
+  vi.stubGlobal("localStorage", createMemoryStorage());
+  vi.resetModules();
+  try {
+    const owner = (await import("./promptStashStore")).usePromptStashStore.getState();
+    owner.stashEntry({ ...makeEntry({ id: "encoding" }), pendingImageCount: 1 });
+    owner.stashEntry({ ...makeEntry({ id: "removed" }), pendingImageCount: 1 });
+    vi.resetModules();
+    const staleStore = (await import("./promptStashStore")).usePromptStashStore;
+    const stale = staleStore.getState();
+    stale.takeEntry("removed");
+    stale.stashEntry(makeEntry({ id: "first" }));
+    expect(
+      staleStore.getState().entries.find(({ id }) => id === "encoding")?.pendingImageCount,
+    ).toBe(0);
+    const { attachments } = makeEntry({ id: "encoding", attachmentChars: 12 });
+    const images = { attachments, droppedImageNames: [], unreadableImageNames: [] };
+    expect(owner.finalizeEntryImages("removed", images).attached).toBe(false);
+    expect(owner.finalizeEntryImages("encoding", images).durable).toBe(true);
+    stale.stashEntry(makeEntry({ id: "second" }));
+    expect(stale.takeEntry("first").entry?.id).toBe("first");
+    expect(stale.takeEntry("encoding").entry?.attachments).toEqual(attachments);
+  } finally {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  }
 });

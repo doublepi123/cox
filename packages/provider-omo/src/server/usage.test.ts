@@ -45,14 +45,17 @@ it.effect.each([
   ({ instanceId, config, modelServiceAgentDir, expected }) =>
     Effect.gen(function* () {
       if (omoUsageReader.kind !== "transcripts") throw new Error("Expected transcript usage");
-      const directories = yield* omoUsageReader.directories({
-        instanceId: ProviderInstanceId.make(instanceId),
-        configured: true,
-        config: decodeSettings(config),
-        environment: {},
-        baseDir: "/cox",
-        ...(modelServiceAgentDir === undefined ? {} : { modelServiceAgentDir }),
-      });
+      const directories = yield* omoUsageReader.directories(
+        {
+          instanceId: ProviderInstanceId.make(instanceId),
+          configured: true,
+          config: decodeSettings(config),
+          environment: {},
+          baseDir: "/cox",
+          ...(modelServiceAgentDir === undefined ? {} : { modelServiceAgentDir }),
+        },
+        { awaitRefresh: true },
+      );
       expect(directories).toEqual(expected.map((dir) => ({ dir })));
     }).pipe(
       Effect.provide(Path.layer),

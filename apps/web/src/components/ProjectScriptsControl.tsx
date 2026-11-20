@@ -15,6 +15,7 @@ import {
 import { projectScriptMenuLabel } from "@t3tools/shared/projectScripts";
 import { ChevronDownIcon, DownloadIcon, PlusIcon, SettingsIcon, WrenchIcon } from "lucide-react";
 import React, { useState } from "react";
+import { toastManager } from "./ui/toast";
 
 import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
 import { shortcutLabelForCommand } from "~/keybindings";
@@ -105,6 +106,7 @@ export default function ProjectScriptsControl({
     setActionsMenuOpen({ presentation, scripts: false, imports: false });
   }
   const [editorRequest, setEditorRequest] = useState<ProjectScriptEditorRequest | null>(null);
+  const editorRequestId = React.useRef(0);
 
   const primaryScript =
     (preferredScriptId ? scripts.find((script) => script.id === preferredScriptId) : undefined) ??
@@ -119,10 +121,12 @@ export default function ProjectScriptsControl({
   );
 
   const openAddDialog = () => {
+    editorRequestId.current += 1;
     setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT });
   };
 
   const openEditDialog = (script: ProjectScript) => {
+    editorRequestId.current += 1;
     onRequestMenuClose?.();
     setActionsMenuOpen({ presentation, scripts: false, imports: false });
     setEditorRequest(editorRequestForScript(script, keybindings));
@@ -132,6 +136,7 @@ export default function ProjectScriptsControl({
     scriptId === null ? onAddScript(input) : onUpdateScript(scriptId, input);
 
   const importFileScript = async (fileScript: T3ProjectFileScript) => {
+    const requestId = ++editorRequestId.current;
     const payload: NewProjectScriptInput = {
       name: fileScript.name,
       command: fileScript.command,
@@ -147,6 +152,14 @@ export default function ProjectScriptsControl({
     const result = await onAddScript(payload);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
+      if (requestId !== editorRequestId.current) {
+        toastManager.add({
+          type: "error",
+          title: t("Failed to import action."),
+          ...(error instanceof Error ? { description: error.message } : {}),
+        });
+        return;
+      }
       setEditorRequest({
         scriptId: null,
         initial: payload,
@@ -474,7 +487,10 @@ export default function ProjectScriptsControl({
         scripts={scripts}
         onSubmit={submitScript}
         onDelete={(scriptId) => void onDeleteScript(scriptId)}
-        onClose={() => setEditorRequest(null)}
+        onClose={() => {
+          editorRequestId.current += 1;
+          setEditorRequest(null);
+        }}
       />
     </>
   );

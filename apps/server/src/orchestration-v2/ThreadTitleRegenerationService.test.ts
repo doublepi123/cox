@@ -1,4 +1,5 @@
 import { assert, describe, it, vi } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
   ChatAttachmentId,
@@ -98,6 +99,7 @@ function makeHarness(
         layerProjectedProjects,
         Layer.mock(TextGeneration.TextGeneration)({ generateThreadTitle }),
         layerServerSettings,
+        NodeServices.layer,
       ),
     ),
   );
@@ -113,7 +115,11 @@ function makeHarness(
   };
 }
 
-function createThread(input: { readonly command: string; readonly thread: string }) {
+function createThread(input: {
+  readonly command: string;
+  readonly thread: string;
+  readonly worktreePath?: string;
+}) {
   return Effect.gen(function* () {
     const threads = yield* ThreadManagement.ThreadManagementService;
     const threadId = ThreadId.make(input.thread);
@@ -127,7 +133,7 @@ function createThread(input: { readonly command: string; readonly thread: string
       runtimeMode: "full-access",
       interactionMode: "default",
       branch: null,
-      worktreePath: null,
+      worktreePath: input.worktreePath ?? null,
       createdBy: "user",
       creationSource: "web",
     });
@@ -276,6 +282,61 @@ describe("formatThreadTitleContext", () => {
 });
 
 describe("ThreadTitleRegenerationService", () => {
+  it.effect("keeps a title set before the first message unless it is a placeholder", () =>
+    Effect.gen(function* () {
+      const seed = "work on this and pr to dev";
+      const harness = makeHarness();
+      yield* Effect.gen(function* () {
+        const threads = yield* ThreadManagement.ThreadManagementService;
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        for (const [key, title, expectedTitle, generates] of [
+          ["preset", "[API] #4821 - retry webhook deliveries after a timeout", undefined, false],
+          ["placeholder", "Parent thread 1", seed, true],
+        ] as const) {
+          const threadId = ThreadId.make(`thread:title:${key}`);
+          yield* threads.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make(`command:title:${key}:create`),
+            threadId,
+            projectId,
+            title,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdBy: "agent",
+            creationSource: "mcp",
+          });
+          const requestId = CommandId.make(`command:title:${key}:message`);
+          yield* threads.dispatch({
+            type: "message.dispatch",
+            commandId: requestId,
+            threadId,
+            messageId: MessageId.make(`command:title:${key}:message:message`),
+            text: seed,
+            titleSeed: seed,
+            attachments: [],
+            modelSelection,
+            dispatchMode: { type: "defer_start" },
+            createdBy: "user",
+            creationSource: "web",
+          });
+
+          const settled = yield* threads.getThreadProjection(threadId);
+          assert.equal(settled.thread.title, expectedTitle ?? title, key);
+          assert.equal(
+            (yield* outbox.listByCommandId(requestId)).some(
+              (effect) => effect.request.type === "thread-title.generate",
+            ),
+            generates,
+            key,
+          );
+        }
+      }).pipe(Effect.provide(harness.layer));
+    }),
+  );
+
   it.effect(
     "titles an image-only first message without sending bootstrap text to the title model",
     () =>
@@ -414,6 +475,33 @@ describe("ThreadTitleRegenerationService", () => {
         const projection = yield* threads.getThreadProjection(threadId);
         assert.equal(projection.thread.title, "Fresh title");
         assert.isNotOk(projection.thread.titleRegeneration);
+      }).pipe(Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect("regenerates a deleted worktree thread title from the project root", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      yield* Effect.gen(function* () {
+        const titleRegeneration = yield* ThreadTitleRegeneration.ThreadTitleRegenerationService;
+        const threadId = yield* createThread({
+          command: "command:title:deleted-worktree:create",
+          thread: "thread:title:deleted-worktree",
+          worktreePath: "/repo-worktrees/deleted",
+        });
+        yield* dispatchUserMessage({
+          command: "command:title:deleted-worktree:message",
+          threadId,
+          text: "Investigate the flaky login test",
+        });
+        const requestId = yield* armRegeneration({
+          command: "command:title:deleted-worktree:1",
+          threadId,
+        });
+
+        yield* titleRegeneration.execute({ threadId, requestId, kind: { type: "regenerate" } });
+
+        assert.equal(harness.generateThreadTitle.mock.calls[0]?.[0]?.cwd, "/repo");
       }).pipe(Effect.provide(harness.layer));
     }),
   );

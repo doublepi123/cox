@@ -100,6 +100,11 @@ import {
 
 const DEFAULT_GROK_SETTINGS = Schema.decodeSync(GrokSettings)({});
 const DROID_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "factory-droid" });
+const OPENCODE_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({
+  source: "local",
+  commandPath: "/usr/local/bin/opencode",
+  commandArgs: ["acp"],
+});
 
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
@@ -1649,7 +1654,7 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  // Factory Droid 0.243.0 sends an optional text companion for every AskUser choice.
+  // Droid 0.243.0 and OpenCode 2.1 pair each choice with an optional free-form companion field.
   const droidChoice = {
     type: "string",
     title: "Format",
@@ -1679,6 +1684,41 @@ describe("AcpAdapterV2", () => {
       { label: "Plain text", description: "Plain text", value: "option_1" },
     ],
   }));
+
+  // OpenCode 2.1 pairs each qN choice with a qN_custom free-form companion.
+  const openCodeSchema = {
+    type: "object",
+    properties: {
+      q0: {
+        type: "string",
+        title: "Color preference",
+        description: "Which color do you prefer?",
+        oneOf: [
+          { const: "red", title: "Red", description: "Choose the color red" },
+          { const: "blue", title: "Blue" },
+        ],
+        default: "red",
+      },
+      q0_custom: {
+        type: "string",
+        title: "Color preference (other)",
+        description: "Type your own answer",
+        minLength: 1,
+      },
+    },
+  };
+  const openCodeQuestions = [
+    {
+      id: "q0",
+      header: "Color preference",
+      question: "Which color do you prefer?",
+      options: [
+        { label: "Red", description: "Choose the color red", value: "red" },
+        { label: "Blue", description: "Blue", value: "blue" },
+      ],
+      allowCustomAnswer: true,
+    },
+  ];
 
   // regression: #20417 Droid AskUser answers were sent as a cancel
   it.live.each([
@@ -1725,11 +1765,22 @@ describe("AcpAdapterV2", () => {
       answers: { name: "Ada" },
       result: { action: "accept", content: { name: "Ada" } },
     },
-  ])("Droid elicitation $scenario", ({ schema, questions, answers, result, withAttachments }) =>
-    Effect.gen(function* () {
+    {
+      scenario: "OpenCode keeps the selected option and hides the custom companion",
+      settings: OPENCODE_SETTINGS,
+      schema: openCodeSchema,
+      questions: openCodeQuestions,
+      answers: { q0: "blue" },
+      result: { action: "accept", content: { q0: "blue" } },
+    },
+  ])("Registry elicitation $scenario", (fixture) => {
+    const { schema, questions, answers, result } = fixture;
+    const withAttachments = "withAttachments" in fixture && fixture.withAttachments;
+    const settings = "settings" in fixture ? fixture.settings : DROID_SETTINGS;
+    return Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-droid-form-" });
+      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-registry-form-" });
       const statusPath = path.join(directory, "status.json");
       const expectedResult = typeof result === "function" ? result(directory) : result;
       let preparedAnswers: ProviderUserInputAnswers | undefined = answers;
@@ -1833,7 +1884,7 @@ describe("AcpAdapterV2", () => {
       const adapter = yield* makeAcpRegistryAdapterV2({
         instanceId,
         selfInvocation: yield* resolveSelfInvocation(),
-        settings: DROID_SETTINGS,
+        settings,
         environment: {},
         makeRuntime: makeAcpReplayRuntime({
           transcript,
@@ -1849,7 +1900,7 @@ describe("AcpAdapterV2", () => {
           Layer.mock(AcpRegistryCatalog)({ resolve: () => Effect.die("runtime is injected") }),
         ),
       );
-      const threadId = ThreadId.make("droid-form-thread");
+      const threadId = ThreadId.make("registry-form-thread");
       const modelSelection = { instanceId, model: "default" } as const;
       const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         runtimeMode: "approval-required",
@@ -1886,7 +1937,7 @@ describe("AcpAdapterV2", () => {
         ),
       );
       if (item.type !== "turn_item.updated" || item.turnItem.type !== "user_input_request")
-        return yield* Effect.die("Expected Droid question");
+        return yield* Effect.die("Expected a user input question");
       assert.deepEqual(item.turnItem.questions, questions);
       yield* runtime.respondToRuntimeRequest({
         requestId: item.turnItem.requestId,
@@ -1897,8 +1948,8 @@ describe("AcpAdapterV2", () => {
         Stream.runHead,
       );
       assert.equal(Option.getOrThrow(terminal).status, "completed");
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
-  );
+    }).pipe(Effect.provide(layerTest), Effect.scoped);
+  });
 
   it.live.each(["failed", "recovered", "cancelled"] as const)(
     "projects Mistral retry notices and their %s outcome",
@@ -3533,6 +3584,71 @@ describe("AcpAdapterV2", () => {
       assert.deepEqual(webItem("grok-web-fetch", "completed")?.results, [
         { url: "https://t3.codes", snippet: "Cox page" },
       ]);
+      const completedSearches = [
+        "antigravity-running-search-web",
+        "antigravity-web-search",
+        "antigravity-web-search-streamed",
+        "grep-query-without-output",
+        "grep-explicit-location",
+        "grep-query-with-output",
+      ].map((nativeId) => {
+        const item = items.findLast(
+          (candidate) =>
+            candidate.status === "completed" && candidate.nativeItemRef?.nativeId === nativeId,
+        );
+        return {
+          nativeId,
+          type: item?.type,
+          pattern: item?.type === "file_search" ? item.pattern : undefined,
+          patterns: item?.type === "web_search" ? item.patterns : undefined,
+          results:
+            item?.type === "web_search" || item?.type === "file_search" ? item.results : undefined,
+        };
+      });
+      assert.deepEqual(completedSearches, [
+        {
+          nativeId: "antigravity-running-search-web",
+          type: "web_search",
+          pattern: undefined,
+          patterns: ["streamed citations"],
+          results: undefined,
+        },
+        {
+          nativeId: "antigravity-web-search",
+          type: "web_search",
+          pattern: undefined,
+          patterns: ["streamed citations"],
+          results: [{ url: "https://example.com/streamed_(detail)" }],
+        },
+        {
+          nativeId: "antigravity-web-search-streamed",
+          type: "web_search",
+          pattern: undefined,
+          patterns: ["streamed citations"],
+          results: [{ url: "https://example.com/streamed_(detail)" }],
+        },
+        {
+          nativeId: "grep-query-without-output",
+          type: "file_search",
+          pattern: "FIXME",
+          patterns: undefined,
+          results: undefined,
+        },
+        {
+          nativeId: "grep-explicit-location",
+          type: "file_search",
+          pattern: "README.md",
+          patterns: undefined,
+          results: [{ fileName: "README.md", preview: "# Title" }],
+        },
+        {
+          nativeId: "grep-query-with-output",
+          type: "file_search",
+          pattern: "TODO",
+          patterns: undefined,
+          results: [{ fileName: "TODO", preview: "src/a.ts: TODO" }],
+        },
+      ]);
       const completedCompaction = items.find(
         (item) =>
           item.type === "compaction" &&
@@ -4737,134 +4853,140 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  it.effect("does not turn an unknown permission approval into an execute grant", () =>
-    Effect.gen(function* () {
-      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const path = yield* Path.Path;
-      const selfInvocation = yield* resolveSelfInvocation();
-      const mockAgentPath = yield* path.fromFileUrl(
-        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
-      );
-      type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
-      let requestPermission: Parameters<RuntimeService["handleRequestPermission"]>[0] | undefined;
-      let createTerminal: Parameters<RuntimeService["handleCreateTerminal"]>[0] | undefined;
-      let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
-      const makeRuntime = makeMockRuntime({
-        childProcessSpawner,
-        mockAgentPath,
-        environment: { T3_ACP_HANG_PROMPT_FOREVER: "1" },
-        wrapRuntime: (runtime) => ({
-          ...runtime,
-          handleRequestPermission: (handler) =>
-            Effect.sync(() => {
-              requestPermission = handler;
-            }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
-          handleCreateTerminal: (handler) =>
-            Effect.sync(() => {
-              createTerminal = handler;
-            }).pipe(Effect.andThen(runtime.handleCreateTerminal(handler))),
-        }),
-      });
-      const instanceId = ProviderInstanceId.make("acp-test-unknown-permission-grant");
-      const adapter = yield* makeAcpAdapterV2({
-        instanceId,
-        flavor: {
-          driver: ACP_TEST_DRIVER,
-          capabilities: AcpProviderCapabilitiesV2,
-          interruptPromptOnCancel: true,
-          makeRuntime: (input) =>
-            Effect.sync(() => {
-              runtimeInput = input;
-            }).pipe(Effect.andThen(makeRuntime(input))),
-        },
-        selfInvocation,
-        clientTerminals: {},
-      });
-      const threadId = ThreadId.make("thread-acp-unknown-permission-grant");
-      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-        runtimeMode: "approval-required",
-        interactionMode: "default",
-        cwd: process.cwd(),
-      });
-      const modelSelection = { instanceId, model: "default" } as const;
-      const runtime = yield* adapter.openSession({
-        threadId,
-        providerSessionId: ProviderSessionId.make("provider-session-acp-unknown-permission-grant"),
-        modelSelection,
-        runtimePolicy,
-      });
-      const providerThread = yield* runtime.ensureThread({
-        threadId,
-        modelSelection,
-        runtimePolicy,
-      });
-      const turnFiber = yield* runtime
-        .startTurn(
-          makeTurnInput({
-            threadId,
-            providerThread,
-            instanceId,
-            runtimePolicy,
-            now: yield* DateTime.now,
+  it.effect.each(["accept", "acceptForSession"] as const)(
+    "maps %s to allow-once without granting execute access for an unknown permission",
+    (decision) =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const path = yield* Path.Path;
+        const selfInvocation = yield* resolveSelfInvocation();
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+        let requestPermission: Parameters<RuntimeService["handleRequestPermission"]>[0] | undefined;
+        let createTerminal: Parameters<RuntimeService["handleCreateTerminal"]>[0] | undefined;
+        let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
+        const makeRuntime = makeMockRuntime({
+          childProcessSpawner,
+          mockAgentPath,
+          environment: { T3_ACP_HANG_PROMPT_FOREVER: "1" },
+          wrapRuntime: (runtime) => ({
+            ...runtime,
+            handleRequestPermission: (handler) =>
+              Effect.sync(() => {
+                requestPermission = handler;
+              }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
+            handleCreateTerminal: (handler) =>
+              Effect.sync(() => {
+                createTerminal = handler;
+              }).pipe(Effect.andThen(runtime.handleCreateTerminal(handler))),
           }),
-        )
-        .pipe(Effect.forkScoped);
-      if (requestPermission === undefined || createTerminal === undefined) {
-        return yield* Effect.die("ACP runtime must register permission and terminal handlers");
-      }
-
-      const permissionFiber = yield* requestPermission(
-        {
-          sessionId: "mock-session-1",
-          toolCall: {
-            toolCallId: "unknown-permission-tool",
-            title: "Unknown permission kind",
+        });
+        const instanceId = ProviderInstanceId.make("acp-test-unknown-permission-grant");
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            interruptPromptOnCancel: true,
+            makeRuntime: (input) =>
+              Effect.sync(() => {
+                runtimeInput = input;
+              }).pipe(Effect.andThen(makeRuntime(input))),
           },
-          options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }],
-        },
-        { requestId: "unknown-permission-request", method: "session/request_permission" },
-      ).pipe(Effect.forkScoped);
-      const pending = Option.getOrThrow(
-        yield* runtime.events.pipe(
-          Stream.filter(
-            (event) =>
-              event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+          selfInvocation,
+          clientTerminals: {},
+        });
+        const threadId = ThreadId.make("thread-acp-unknown-permission-grant");
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "default" } as const;
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make(
+            "provider-session-acp-unknown-permission-grant",
           ),
-          Stream.runHead,
-        ),
-      );
-      if (
-        pending.type !== "runtime_request.updated" ||
-        pending.runtimeRequest.providerTurnId === null
-      ) {
-        return yield* Effect.die("Expected an unknown ACP permission request");
-      }
-      const responseFiber = yield* runtime
-        .respondToRuntimeRequest({ requestId: pending.runtimeRequest.id, decision: "accept" })
-        .pipe(Effect.forkScoped);
-      assert.equal((yield* Fiber.join(permissionFiber)).outcome.outcome, "selected");
-      if (runtimeInput?.onOutgoingResponse === undefined) {
-        return yield* Effect.die("ACP runtime must expose native response acknowledgements");
-      }
-      yield* runtimeInput.onOutgoingResponse("unknown-permission-request");
-      yield* Fiber.join(responseFiber);
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const turnFiber = yield* runtime
+          .startTurn(
+            makeTurnInput({
+              threadId,
+              providerThread,
+              instanceId,
+              runtimePolicy,
+              now: yield* DateTime.now,
+            }),
+          )
+          .pipe(Effect.forkScoped);
+        if (requestPermission === undefined || createTerminal === undefined) {
+          return yield* Effect.die("ACP runtime must register permission and terminal handlers");
+        }
 
-      const terminalExit = yield* createTerminal(
-        {
-          sessionId: "mock-session-1",
-          command: process.execPath,
-          args: ["-e", "process.stdout.write('unexpected')"],
-        },
-        { requestId: "unknown-permission-terminal", method: "terminal/create" },
-      ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(terminalExit));
+        const permissionFiber = yield* requestPermission(
+          {
+            sessionId: "mock-session-1",
+            toolCall: {
+              toolCallId: "unknown-permission-tool",
+              title: "Unknown permission kind",
+            },
+            options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }],
+          },
+          { requestId: "unknown-permission-request", method: "session/request_permission" },
+        ).pipe(Effect.forkScoped);
+        const pending = Option.getOrThrow(
+          yield* runtime.events.pipe(
+            Stream.filter(
+              (event) =>
+                event.type === "runtime_request.updated" &&
+                event.runtimeRequest.status === "pending",
+            ),
+            Stream.runHead,
+          ),
+        );
+        if (
+          pending.type !== "runtime_request.updated" ||
+          pending.runtimeRequest.providerTurnId === null
+        ) {
+          return yield* Effect.die("Expected an unknown ACP permission request");
+        }
+        const responseFiber = yield* runtime
+          .respondToRuntimeRequest({ requestId: pending.runtimeRequest.id, decision })
+          .pipe(Effect.forkScoped);
+        const { outcome } = yield* Fiber.join(permissionFiber);
+        if (runtimeInput?.onOutgoingResponse === undefined) {
+          return yield* Effect.die("ACP runtime must expose native response acknowledgements");
+        }
+        yield* runtimeInput.onOutgoingResponse("unknown-permission-request");
+        yield* Fiber.join(responseFiber);
 
-      yield* runtime.interruptTurn({
-        providerThread,
-        providerTurnId: pending.runtimeRequest.providerTurnId,
-      });
-      yield* Fiber.join(turnFiber);
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
+        const terminalExit = yield* createTerminal(
+          {
+            sessionId: "mock-session-1",
+            command: process.execPath,
+            args: ["-e", "process.stdout.write('unexpected')"],
+          },
+          { requestId: "unknown-permission-terminal", method: "terminal/create" },
+        ).pipe(Effect.exit);
+        assert.isTrue(Exit.isFailure(terminalExit));
+
+        yield* runtime.interruptTurn({
+          providerThread,
+          providerTurnId: pending.runtimeRequest.providerTurnId,
+        });
+        yield* Fiber.join(turnFiber);
+        assert.deepEqual(outcome, { outcome: "selected", optionId: "allow-once" });
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
   it.effect.each([

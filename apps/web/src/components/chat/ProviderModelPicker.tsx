@@ -113,6 +113,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   size?: ComposerControlSize;
   compact?: boolean;
   isComposerOwned?: boolean;
+  popupAlign?: "start" | "end";
   disabled?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
@@ -522,7 +523,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         initialFocus={(openType) =>
           coarsePointer || openType === "touch" ? popupRef.current : searchInputRef.current
         }
-        align="start"
+        align={props.popupAlign ?? "start"}
+        {...(docked ? { collisionAvoidance: { align: "shift", fallbackAxisSide: "none" } } : {})}
         presentation="model-picker"
         padding="none"
         touchBackdrop

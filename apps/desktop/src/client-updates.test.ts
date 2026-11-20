@@ -244,7 +244,11 @@ describe("desktop client update lifecycle", () => {
     const selected = feed().artifacts.find(
       (artifact) => `${artifact.platform}-${artifact.architecture}-${artifact.flavor}` === identity,
     )!;
-    expect(fetcher.mock.calls[1]?.[0]).toBe(selected.url);
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      clientUpdateFeedUrl,
+      clientUpdateFeedUrl,
+      selected.url,
+    ]);
     expect(openInstaller).not.toHaveBeenCalled();
   });
 
@@ -296,9 +300,35 @@ describe("desktop client update lifecycle", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the same waiting update visible without re-announcing it on an automatic check", async () => {
+    const { updates, fetcher, states } = await fixture();
+    await updates.check();
+    const announced = states.length;
+    expect((await updates.check()).status).toBe("available");
+    expect(states).toHaveLength(announced);
+    fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    expect((await updates.check()).status).toBe("available");
+    expect(states).toHaveLength(announced);
+    fetcher.mockResolvedValueOnce(Response.json(feed("0.4.0")));
+    expect(await updates.check()).toMatchObject({ status: "available", latestVersion: "0.4.0" });
+    expect(states).toHaveLength(announced + 1);
+  });
+
+  it("downloads the newer release from the current feed and fails closed if the feed is unavailable", async () => {
+    const { updates, fetcher } = await fixture();
+    await updates.check();
+    fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    expect((await updates.download()).status).toBe("error");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    fetcher.mockResolvedValueOnce(Response.json(feed("0.4.0")));
+    expect(await updates.download()).toMatchObject({ status: "ready", latestVersion: "0.4.0" });
+    expect(fetcher.mock.calls[3]?.[0]).toContain("/desktop-v0.4.0/");
+  });
+
   it("limits streaming progress updates while always reporting the final bytes", async () => {
     const { updates, fetcher, states } = await fixture({ now: () => 0 });
     await updates.check();
+    fetcher.mockResolvedValueOnce(Response.json(feed()));
     fetcher.mockResolvedValueOnce(
       new Response(
         new ReadableStream<Uint8Array>({
@@ -424,12 +454,13 @@ describe("desktop client update lifecycle", () => {
           : kind === "oversized"
             ? Buffer.concat([bytes, bytes])
             : Buffer.alloc(bytes.length, 1);
-      fetcher.mockImplementation(
-        async () =>
-          new Response(
-            contents,
-            kind === "wrong content length" ? { headers: { "content-length": "1" } } : {},
-          ),
+      fetcher.mockImplementation(async (url) =>
+        String(url) === clientUpdateFeedUrl
+          ? Response.json(feed())
+          : new Response(
+              contents,
+              kind === "wrong content length" ? { headers: { "content-length": "1" } } : {},
+            ),
       );
       expect((await updates.download()).status).toBe("error");
       await expect(updates.apply()).rejects.toThrow();
@@ -458,6 +489,7 @@ describe("desktop client update lifecycle", () => {
     const { updates, fetcher, home } = await fixture();
     await updates.check();
     let chunks = 0;
+    fetcher.mockResolvedValueOnce(Response.json(feed()));
     fetcher.mockResolvedValueOnce(
       new Response(
         new ReadableStream<Uint8Array>({
@@ -498,14 +530,15 @@ describe("desktop client update lifecycle", () => {
     const { updates, fetcher, home } = await fixture();
     await updates.check();
     let downloading = false;
-    fetcher.mockImplementation(
-      async (_url, options) =>
-        new Promise((_resolve, reject) => {
-          downloading = true;
-          options?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
-            once: true,
-          });
-        }),
+    fetcher.mockImplementation(async (url, options) =>
+      String(url) === clientUpdateFeedUrl
+        ? Response.json(feed())
+        : new Promise((_resolve, reject) => {
+            downloading = true;
+            options?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+              once: true,
+            });
+          }),
     );
     const download = updates.download();
     await vi.waitFor(() => expect(downloading).toBe(true));
@@ -535,14 +568,15 @@ describe("desktop client update lifecycle", () => {
     const { updates, fetcher, states } = await fixture();
     await updates.check();
     let downloading = false;
-    fetcher.mockImplementation(
-      async (_url, options) =>
-        new Promise((_resolve, reject) => {
-          downloading = true;
-          options?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
-            once: true,
-          });
-        }),
+    fetcher.mockImplementation(async (url, options) =>
+      String(url) === clientUpdateFeedUrl
+        ? Response.json(feed())
+        : new Promise((_resolve, reject) => {
+            downloading = true;
+            options?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+              once: true,
+            });
+          }),
     );
     const download = updates.download();
     await vi.waitFor(() => expect(downloading).toBe(true));

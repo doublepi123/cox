@@ -379,9 +379,9 @@ it.each([320, 1024])(
     }
     await using screen = await render(<Picker />);
     await screen.getByRole("button", { name: "Choose model" }).click();
-    await expect
-      .element(page.getByRole("radio", { name: "Build Default", exact: true }))
-      .toBeVisible();
+    const build = (selected: boolean) =>
+      page.getByRole("radio", { name: selected ? "Build" : "Build Default", exact: true });
+    await expect.element(build(true)).toHaveAttribute("aria-checked", "true");
     await page.getByRole("radio", { name: "Plan", exact: true }).click();
     await expect
       .element(screen.getByRole("status", { name: "Selected OpenCode agent" }))
@@ -389,7 +389,7 @@ it.each([320, 1024])(
     await expect
       .element(page.getByRole("radio", { name: "Plan", exact: true }))
       .toHaveAttribute("aria-checked", "true");
-    await page.getByRole("radio", { name: "Build Default", exact: true }).click();
+    await build(false).click();
     await expect
       .element(screen.getByRole("status", { name: "Selected OpenCode agent" }))
       .toHaveTextContent("build");

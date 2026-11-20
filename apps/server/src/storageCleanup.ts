@@ -38,6 +38,8 @@ import { parse as parseYaml } from "yaml";
 
 import * as ServerConfig from "./config.ts";
 import * as GitManager from "./git/GitManager.ts";
+import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import * as WorktreeBranchSync from "./orchestration-v2/WorktreeBranchSync.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "./orchestration-v2/ProjectionStore.ts";
@@ -294,6 +296,8 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+  const reconcileBranch = yield* WorktreeBranchSync.makeReconcile;
   const terminals = yield* TerminalManager.TerminalManager;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -366,36 +370,43 @@ const make = Effect.gen(function* () {
       let entries = 1;
       let bytes = 0;
       while (pending.length > 0) {
-        const target = pending.pop()!;
-        if (target === skipped) continue;
-        // Effect's stat follows links. Probe with readLink first to get lstat
-        // semantics, including skipping dangling links and directory links.
-        const isLink = yield* fs.readLink(target).pipe(
-          Effect.as(true),
-          Effect.catchIf(
-            (error) =>
-              error.cause instanceof Error &&
-              "code" in error.cause &&
-              error.cause.code === "EINVAL",
-            () => Effect.succeed(false),
-          ),
+        const inspected = yield* Effect.forEach(
+          pending.splice(-8),
+          Effect.fnUntraced(function* (target) {
+            if (target === skipped) return { target, bytes: 0, names: [] };
+            const isLink = yield* fs.readLink(target).pipe(
+              Effect.as(true),
+              Effect.catchIf(
+                (error) =>
+                  error.cause instanceof Error &&
+                  "code" in error.cause &&
+                  error.cause.code === "EINVAL",
+                () => Effect.succeed(false),
+              ),
+            );
+            if (isLink) return { target, bytes: 0, names: [] };
+            if ((yield* fs.realPath(target)) !== target) return null;
+            const stat = yield* fs.stat(target);
+            if (stat.type === "Directory")
+              return { target, bytes: 0, names: yield* fs.readDirectory(target) };
+            // Removing a shared hardlink leaves its blocks allocated.
+            if (stat.type !== "File" || Option.getOrElse(stat.nlink, () => 1n) !== 1n)
+              return { target, bytes: 0, names: [] };
+            const bytes = Option.match(stat.blocks, {
+              onNone: () => Number(stat.size),
+              onSome: (blocks) => Number(blocks * 512n),
+            });
+            return { target, bytes, names: [] };
+          }),
+          { concurrency: "unbounded" },
         );
-        if (isLink) continue;
-        if ((yield* fs.realPath(target)) !== target) return null;
-        const stat = yield* fs.stat(target);
-        if (stat.type === "File") {
-          // Removing a shared hardlink leaves its blocks allocated.
-          if (Option.getOrElse(stat.nlink, () => 1n) !== 1n) continue;
-          bytes += Option.match(stat.blocks, {
-            onNone: () => Number(stat.size),
-            onSome: (blocks) => Number(blocks * 512n),
-          });
-        } else if (stat.type === "Directory") {
-          const names = yield* fs.readDirectory(target);
-          entries += names.length;
+        for (const result of inspected) {
+          if (result === null) return null;
+          bytes += result.bytes;
+          entries += result.names.length;
           if (entries > 2_000_000) return null;
-          for (const name of names) {
-            const child = path.join(target, name);
+          for (const name of result.names) {
+            const child = path.join(result.target, name);
             if (!inside(root, child)) return null;
             pending.push(child);
           }
@@ -435,6 +446,7 @@ const make = Effect.gen(function* () {
     roots: ReadonlyArray<string>,
     projects: ReadonlyArray<{ readonly workspaceRoot: string }>,
     entries: StorageCleanupReportEntry[],
+    trigger: StorageCleanupReport["trigger"],
   ) {
     const rows = yield* sql<{ worktreePath: string }>`
       SELECT DISTINCT json_extract(payload_json, '$.worktreePath') AS "worktreePath"
@@ -487,11 +499,8 @@ const make = Effect.gen(function* () {
       }
       return result;
     });
-    // Let the first walk time out and cache unmeasurable folders; later walks share the remaining budget.
     const now = yield* Clock.currentTimeMillis;
-    const measurementDeadline = now + 30_000;
-    let firstMeasurement = true;
-    const reported = new Set<string>();
+    const reported = new Map<string, { path: string; reason: string }>();
     const report = Effect.fnUntraced(
       function* (worktreePath: string) {
         const key = pathKey(worktreePath);
@@ -506,28 +515,11 @@ const make = Effect.gen(function* () {
         if (modified !== null && modified.getTime() > now - ORPHAN_WORKTREE_GRACE_MS) return;
         const gitPath = path.join(worktreePath, ".git");
         const linked = (yield* fs.exists(gitPath)) && (yield* fs.stat(gitPath)).type === "File";
-        reported.add(key);
-        const remaining = measurementDeadline - (yield* Clock.currentTimeMillis);
-        if (!orphanSizes.has(key) && (firstMeasurement || remaining > 0)) {
-          const measured = yield* measureWorktree(worktreePath).pipe(
-            firstMeasurement ? Effect.asSome : Effect.timeoutOption(remaining),
-          );
-          firstMeasurement = false;
-          if (Option.isSome(measured)) orphanSizes.set(key, measured.value);
-        }
-        const bytes = orphanSizes.get(key) ?? null;
-        entries.push({
-          kind: "worktree",
-          outcome: "kept",
+        reported.set(key, {
           reason: linked
             ? "No thread uses this worktree"
             : "No thread uses this folder, and it isn't a git worktree",
           path: worktreePath,
-          projectPath: null,
-          threadId: null,
-          threadTitle: null,
-          bytes,
-          files: null,
         });
       },
       Effect.orElseSucceed(() => undefined),
@@ -565,6 +557,40 @@ const make = Effect.gen(function* () {
           }
         }).pipe(Effect.orElseSucceed(() => undefined));
       }
+    }
+    const refresh = trigger === "manual" ? [...orphanSizes] : [];
+    const deadline = (yield* Clock.currentTimeMillis) + 30_000;
+    let firstMeasurement = true;
+    for (const [key, orphan] of reported) {
+      if (orphanSizes.has(key)) continue;
+      const remaining = deadline - (yield* Clock.currentTimeMillis);
+      if (!firstMeasurement && remaining <= 0) break;
+      const measured = yield* measureWorktree(orphan.path).pipe(
+        firstMeasurement ? Effect.asSome : Effect.timeoutOption(remaining),
+      );
+      firstMeasurement = false;
+      if (Option.isSome(measured)) orphanSizes.set(key, measured.value);
+    }
+    for (const [key, bytes] of refresh) {
+      const orphan = reported.get(key);
+      if (orphan === undefined) continue;
+      const remaining = deadline - (yield* Clock.currentTimeMillis);
+      if (remaining <= 0) break;
+      const measured = yield* measureWorktree(orphan.path).pipe(Effect.timeoutOption(remaining));
+      orphanSizes.delete(key);
+      orphanSizes.set(key, Option.getOrNull(measured) ?? bytes);
+    }
+    for (const [key, orphan] of reported) {
+      entries.push({
+        ...orphan,
+        kind: "worktree",
+        outcome: "kept",
+        projectPath: null,
+        threadId: null,
+        threadTitle: null,
+        bytes: orphanSizes.get(key) ?? null,
+        files: null,
+      });
     }
     for (const key of orphanSizes.keys()) {
       if (!reported.has(key)) orphanSizes.delete(key);
@@ -715,6 +741,8 @@ const make = Effect.gen(function* () {
             "rev-list",
             "--max-count=1",
             "HEAD",
+            // Checkpoint refs hold workspace snapshots, not commits a user could lose.
+            "--exclude=refs/t3/*",
             "--all",
             "--reflog",
             "--not",
@@ -803,6 +831,7 @@ const make = Effect.gen(function* () {
     serverSettings: ServerSettings,
     now: number,
     entries: StorageCleanupReportEntry[],
+    trigger: StorageCleanupReport["trigger"],
   ) {
     if (!anyWorktreePolicy(serverSettings, worktreeCleanupEnabled))
       return { waiting: false, kept: [] };
@@ -918,11 +947,9 @@ const make = Effect.gen(function* () {
         if (members.length > 1 && worktreeOwner(members) === undefined)
           return keep(`shared by ${members.length} threads`);
         if (project === undefined) return keep("project is unavailable");
-        if (
-          thread.branch === null ||
-          !group.every((member) => storageCleanupThreadIdle(member, now, serverSettings))
-        )
+        if (!group.every((member) => storageCleanupThreadIdle(member, now, serverSettings)))
           return keep(waitForStop("thread is running or has pending work"));
+        if (thread.branch === null) return keep("thread has no branch");
         if (group.some((member) => member.branch !== thread.branch))
           return keep("a subagent thread's branch differs from this worktree's branch");
         if (hasTerminal(worktreePath)) return keep(waitForStop("open terminal"));
@@ -949,6 +976,8 @@ const make = Effect.gen(function* () {
           settings.worktreeSettledAfterDays !== null &&
           settledFor >= settings.worktreeSettledAfterDays * DAY_MS;
         let eligible = deleted || old || settled;
+        const unchangedApplies =
+          settings.worktreeUnchanged && (settledThread !== undefined || thread.archivedAt !== null);
         let removalReason = deleted
           ? "thread was deleted"
           : old
@@ -963,58 +992,108 @@ const make = Effect.gen(function* () {
                 : `settled for ${settledDays} of ${settings.worktreeSettledAfterDays} days`
               : settings.worktreeOnMerge
                 ? "not merged"
-                : settings.worktreeUnchanged
+                : unchangedApplies
                   ? "has commits beyond the default branch"
-                  : "no rules apply";
-        if (!eligible && !settings.worktreeUnchanged && !settings.worktreeOnMerge)
-          return keep(notDueReason);
+                  : settings.worktreeUnchanged
+                    ? "not settled"
+                    : "no rules apply";
+        if (!eligible && !unchangedApplies && !settings.worktreeOnMerge) return keep(notDueReason);
         const pathReason = yield* worktreePathReason(worktreePath);
         if (pathReason !== null) return keep(pathReason);
         if (yield* containsProjectRoot(worktreePath, [project, ...snapshot.projects]))
           return keep("contains a project checkout");
-        if (yield* branchChanged(worktreePath, thread.branch))
+        if (yield* branchChanged(worktreePath, thread.branch)) {
+          if (!deleted) {
+            yield* Effect.gen(function* () {
+              const cwd = yield* fs.realPath(worktreePath);
+              yield* reconcileBranch({ cwd, refName: yield* gitWorkflow.currentBranch(cwd) });
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Failed to reconcile worktree branch", {
+                  cwd: worktreePath,
+                  cause,
+                }),
+              ),
+            );
+          }
           return keep("repository or branch changed");
+        }
         const changes = yield* localChangesReason(worktreePath, settings);
         if (changes !== null) return keep(changes);
         const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
+        const owner = yield* git.execute({
+          operation: "StorageCleanup.worktreeRepository",
+          cwd: worktreePath,
+          args: ["rev-parse", "--git-common-dir"],
+        });
+        const commonDir = path.resolve(worktreePath, owner.stdout.replace(/\r?\n$/, ""));
+        const repositoryCwd =
+          path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
         if (!eligible) {
-          const repositoryCwd = path.resolve(project.workspaceRoot);
-          const remote = yield* git.resolvePrimaryRemoteName(repositoryCwd);
-          const defaultBranchKey = `${repositoryCwd}\0${remote}`;
-          let branch = defaultBranches.get(defaultBranchKey);
-          if (branch === undefined) {
-            branch = yield* git.resolveDefaultBranchName(repositoryCwd, remote);
-            // Without a local HEAD ref, only the remote can identify its default;
-            // a conventional name may be a feature branch.
-            if (branch === null) {
-              branch = yield* git
-                .execute({
-                  operation: "StorageCleanup.resolveDefaultBranch",
-                  cwd: repositoryCwd,
-                  args: ["ls-remote", "--symref", "--", remote, "HEAD"],
-                  timeoutMs: 20_000,
-                })
-                .pipe(
-                  Effect.map(
-                    (result) =>
-                      /^ref: refs\/heads\/(.+)\tHEAD\r?$/m.exec(result.stdout)?.[1] ?? null,
-                  ),
-                  Effect.orElseSucceed(() => null),
-                );
-            }
-            defaultBranches.set(defaultBranchKey, branch);
-          }
-          if (branch === null) return keep("default branch is unavailable");
-          const defaultRef = `refs/remotes/${remote}/${branch}`;
-          const refreshed = refreshedDefaultRefs.get(repositoryCwd) ?? new Set<string>();
-          if (!refreshed.has(defaultRef)) {
-            yield* git.fetchRemoteTrackingBranch({
+          const remotes = yield* git.execute({
+            operation: "StorageCleanup.listRemotes",
+            cwd: repositoryCwd,
+            args: ["remote"],
+          });
+          const remote =
+            remotes.stdout.trim() === ""
+              ? null
+              : yield* git.resolvePrimaryRemoteName(repositoryCwd);
+          let branch: string | null | undefined;
+          let defaultRef: string;
+          if (remote === null) {
+            if (!unchangedApplies)
+              return keep(
+                settings.worktreeUnchanged
+                  ? notDueReason
+                  : "no remote is configured for merged-worktree cleanup",
+              );
+            const projectHead = yield* git.execute({
+              operation: "StorageCleanup.resolveProjectBranch",
               cwd: repositoryCwd,
-              remoteName: remote,
-              remoteBranch: branch,
+              args: ["symbolic-ref", "--quiet", "HEAD"],
+              allowNonZeroExit: true,
             });
-            refreshed.add(defaultRef);
-            refreshedDefaultRefs.set(repositoryCwd, refreshed);
+            if (projectHead.exitCode !== 0) return keep("project branch is unavailable");
+            defaultRef = projectHead.stdout.trim();
+            branch = defaultRef.slice("refs/heads/".length);
+          } else {
+            const defaultBranchKey = `${repositoryCwd}\0${remote}`;
+            branch = defaultBranches.get(defaultBranchKey);
+            if (branch === undefined) {
+              branch = yield* git.resolveDefaultBranchName(repositoryCwd, remote);
+              // Without a local HEAD ref, only the remote can identify its default;
+              // a conventional name may be a feature branch.
+              if (branch === null) {
+                branch = yield* git
+                  .execute({
+                    operation: "StorageCleanup.resolveDefaultBranch",
+                    cwd: repositoryCwd,
+                    args: ["ls-remote", "--symref", "--", remote, "HEAD"],
+                    timeoutMs: 20_000,
+                  })
+                  .pipe(
+                    Effect.map(
+                      (result) =>
+                        /^ref: refs\/heads\/(.+)\tHEAD\r?$/m.exec(result.stdout)?.[1] ?? null,
+                    ),
+                    Effect.orElseSucceed(() => null),
+                  );
+              }
+              defaultBranches.set(defaultBranchKey, branch);
+            }
+            if (branch === null) return keep("default branch is unavailable");
+            defaultRef = `refs/remotes/${remote}/${branch}`;
+            const refreshed = refreshedDefaultRefs.get(repositoryCwd) ?? new Set<string>();
+            if (!refreshed.has(defaultRef)) {
+              yield* git.fetchRemoteTrackingBranch({
+                cwd: repositoryCwd,
+                remoteName: remote,
+                remoteBranch: branch,
+              });
+              refreshed.add(defaultRef);
+              refreshedDefaultRefs.set(repositoryCwd, refreshed);
+            }
           }
           const base = yield* git.resolveCommit({
             cwd: worktreePath,
@@ -1027,8 +1106,14 @@ const make = Effect.gen(function* () {
             allowNonZeroExit: true,
           });
           const integrated = ancestor.exitCode === 0;
-          eligible = integrated && settings.worktreeUnchanged;
-          if (eligible) removalReason = "no commits beyond the default branch";
+          eligible = integrated && unchangedApplies;
+          if (eligible)
+            removalReason =
+              remote === null
+                ? "no commits beyond the project branch"
+                : "no commits beyond the default branch";
+          if (!eligible && remote === null)
+            return keep(integrated ? notDueReason : "has commits beyond the project branch");
           if (!eligible && settings.worktreeOnMerge && thread.branch !== null) {
             const pullRequest = yield* gitManager.branchPullRequest(
               { cwd: worktreePath, branch: thread.branch },
@@ -1157,26 +1242,28 @@ const make = Effect.gen(function* () {
           )
         )
           return keep("settings changed since check");
-        // Clean only untracked files. Ordinary worktrees retain Git's final tracked-edit check.
-        if (settings.worktreeKeepWhen === "tracked-changes")
-          yield* cleanupGit(worktreePath, ["clean", "-ffdx"], "git clean");
         const submodules = yield* submoduleRemoval(worktreePath, settings);
         if (submodules.reason !== null) return keep(submodules.reason);
         if (submodules.force) {
           const changes = yield* localChangesReason(worktreePath, settings);
           if (changes !== null) return keep(changes);
         }
+        if (settings.worktreeKeepWhen === "tracked-changes" && !submodules.force)
+          yield* cleanupGit(worktreePath, ["clean", "-ffdx"], "git clean");
         yield* removeLinkedWorktree({
           operation: "StorageCleanup.cleanupGit",
-          cwd: project.workspaceRoot,
+          cwd: repositoryCwd,
           worktreePath,
           // Git requires force for submodules; recursive checks above cannot make removal atomic.
           force: submodules.force,
           execute: git.execute,
-          run: (args) => cleanupGit(project.workspaceRoot, [...args], "git worktree remove"),
+          run: (args) => cleanupGit(repositoryCwd, [...args], "git worktree remove"),
         });
         entries.push({ ...entry, outcome: "removed", reason: sentence(removalReason), bytes });
         yield* gitManager.invalidateStatus(project.workspaceRoot);
+        if (repositoryCwd !== path.resolve(project.workspaceRoot)) {
+          yield* gitManager.invalidateStatus(repositoryCwd);
+        }
         // Preserve branch/path so ProviderTurnStartService can recreate the checkout on resume.
         yield* Effect.logInfo("storage cleanup removed worktree", { threadId: thread.id });
       }).pipe(
@@ -1201,6 +1288,7 @@ const make = Effect.gen(function* () {
       roots,
       yield* projectStore.list({ includeDeleted: true }),
       entries,
+      trigger,
     );
     return { waiting, kept };
   });
@@ -1258,7 +1346,7 @@ const make = Effect.gen(function* () {
     const serverSettings = yield* settingsService.getSettings;
     const settings = serverSettings.storageCleanup;
     const entries: StorageCleanupReportEntry[] = [];
-    const deletedWorktrees = yield* cleanWorktrees(serverSettings, now, entries).pipe(
+    const deletedWorktrees = yield* cleanWorktrees(serverSettings, now, entries, trigger).pipe(
       Effect.catch((error) =>
         Effect.gen(function* () {
           entries.push({

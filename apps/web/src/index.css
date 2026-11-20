@@ -1857,6 +1857,7 @@ html[data-theme-id] [data-app-sidebar] {
   --accent-foreground: var(--app-theme-accent-surface-foreground);
   --muted: var(--app-theme-muted);
   --muted-foreground: var(--app-theme-muted-foreground);
+  --secondary-label: var(--app-theme-secondary-label);
   --border: var(--app-theme-border);
   --input: var(--app-theme-input);
   --sidebar: var(--app-theme-sidebar);
@@ -2279,6 +2280,10 @@ code {
   list-style-type: lower-roman;
 }
 
+.chat-markdown.user-message-markdown ol {
+  list-style-type: decimal;
+}
+
 .chat-markdown li + li {
   margin-top: 0.25rem;
 }
@@ -2302,6 +2307,25 @@ code {
 
 .chat-markdown a {
   text-decoration: none;
+}
+
+/* Triple-click selection stops at block-level boxes, flex items included, so file chips in
+   prose stay inline-level down to the icon and label. */
+.chat-markdown-file-link {
+  display: inline-block;
+  overflow-x: clip;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-markdown-file-link > :is(svg, img) {
+  display: inline;
+  margin-inline-end: 0.2em;
+  vertical-align: -0.125em;
+}
+
+.chat-markdown-file-link > [data-slot="context-chip-label"] {
+  display: inline;
 }
 
 /* File links and context chips own their color and focus ring. */
@@ -2442,6 +2466,11 @@ code {
   border: none;
   border-radius: 0;
   background: transparent;
+}
+
+.chat-markdown [data-leading-whitespace] {
+  white-space: pre-wrap;
+  user-select: none;
 }
 
 :is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock[data-wrap="true"] pre {

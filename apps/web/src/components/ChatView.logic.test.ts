@@ -1,8 +1,17 @@
+import { rewindToMessage } from "./chat/chatViewSend";
+import * as session from "../state/session";
+import {
+  environmentContextRecord,
+  environmentContextReference,
+  threadContextReference,
+} from "../lib/composerContextRecords";
+import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 import {
   boundAttachmentIds,
   buildExpiredTerminalContextToastCopy,
   mergeDirectPreviewAnnotation,
   planComposerTurn,
+  deriveTimelineWorking,
   restorePlanFollowUpComposer,
   snapshotComposerSend,
   withMessageContext,
@@ -34,9 +43,12 @@ import * as Option from "effect/Option";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { AsyncResult } from "effect/reactivity";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentThreadDetails } from "../state/threads";
 
 import type { Thread } from "../types";
+import { derivePhase } from "../session-logic";
 import { makeThreadFixture, makeThreadProjectionFixture } from "../test-fixtures";
 import {
   getAntigravitySendBlockReason,
@@ -790,6 +802,75 @@ describe("waitForRevertedMessage", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it("restores the rewound message's thread and machine mentions beside the existing draft", async () => {
+    const { state, projection } = projectionAtom();
+    vi.spyOn(session, "readPreparedConnection").mockReturnValue({
+      httpBaseUrl: "http://localhost",
+    } as never);
+    useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
+    const thread = (id: string, title: string) =>
+      threadContextRecord(
+        { environmentId: threadRef.environmentId, threadId: ThreadId.make(id) },
+        title,
+      );
+    const drafted = thread("drafted-thread", "Drafted thread");
+    const mentioned = thread("referenced-thread", "Other thread");
+    const machine = environmentContextRecord(EnvironmentId.make("env-2"), "Build box");
+    useComposerDraftStore.getState().addThreadContexts(threadRef, [drafted]);
+    const draftPrompt = useComposerDraftStore.getState().getComposerDraft(threadRef)!.prompt;
+    const sentPrompt = ensureInlineContextReferences("Review", [
+      threadContextReference(mentioned),
+      environmentContextReference(machine),
+    ]).trim();
+
+    const result = await rewindToMessage({
+      message: {
+        id: messageId,
+        role: "user",
+        runId: projection.messages[0]!.runId,
+        streaming: false,
+        createdAt: "2026-03-29T00:00:10.000Z",
+        updatedAt: "2026-03-29T00:00:10.000Z",
+        text: sentPrompt,
+        context: { version: 1, records: [mentioned, machine] },
+      },
+      environmentId: threadRef.environmentId,
+      routeThreadRef: threadRef,
+      threadId: threadRef.threadId,
+      turnCount: 1,
+      restoreFiles: false,
+      checkpoint: undefined,
+      draftTarget: threadRef,
+      composerHasPendingAttachments: false,
+      createAssetUrl: async () => {
+        throw new Error("No attachment expected");
+      },
+      revertThreadCheckpoint: async () => {
+        appAtomRegistry.set(state, {
+          data: Option.some({
+            ...projection,
+            providerThreads: projection.providerThreads.map((providerThread) => ({
+              ...providerThread,
+              lastRunOrdinal: 1,
+            })),
+            runs: projection.runs.map((run) =>
+              run.ordinal > 1 ? { ...run, status: "rolled_back" as const } : run,
+            ),
+          }),
+        });
+        return AsyncResult.success(undefined);
+      },
+    });
+
+    const prompt = `${draftPrompt}\n\n${sentPrompt}`;
+    expect(result).toEqual({ error: null, prompt });
+    expect(useComposerDraftStore.getState().getComposerDraft(threadRef)).toMatchObject({
+      prompt,
+      threadContexts: [drafted, mentioned],
+      environmentContexts: [machine],
+    });
+  });
+
   it("rejects with the projected reason when the rollback fails for good", async () => {
     const { state, projection } = projectionAtom();
     const waiting = waitForRevertedMessage(threadRef, 1, requestId, async () => {});
@@ -1058,6 +1139,28 @@ describe("snapshotComposerSend", () => {
   });
 });
 
+describe("deriveTimelineWorking", () => {
+  it.each(["preparing", "starting", "queued"] as const)(
+    "restores activity from a persisted %s session without a local send",
+    (status) => {
+      const state = {
+        phase: derivePhase({ ...readySession, status }),
+        isSendBusy: false,
+        isCompacting: false,
+        runlessWorkStartedAt: null,
+      };
+      expect(deriveTimelineWorking(state)).toBe(true);
+      expect(deriveTimelineWorking({ ...state, phase: "ready" })).toBe(false);
+      expect(
+        deriveTimelineWorking({
+          ...state,
+          phase: derivePhase({ ...readySession, status: "failed" }),
+        }),
+      ).toBe(false);
+    },
+  );
+});
+
 describe("planComposerTurn", () => {
   const base = {
     messageText: "hello",
@@ -1067,6 +1170,7 @@ describe("planComposerTurn", () => {
     sendEnvMode: "worktree" as const,
     worktreePath: null,
     activeThreadBranch: "main",
+    isScratchProject: false,
     resumeCompactionTokens: null,
     keepFullHistory: false,
     phase: "ready" as const,
@@ -1079,6 +1183,12 @@ describe("planComposerTurn", () => {
       missingWorktreeBaseBranch: false,
       baseBranchForWorktree: "main",
       shouldQueueBehindActiveRun: false,
+    });
+    expect(
+      planComposerTurn({ ...base, activeThreadBranch: null, isScratchProject: true }),
+    ).toMatchObject({
+      missingWorktreeBaseBranch: false,
+      baseBranchForWorktree: null,
     });
   });
 

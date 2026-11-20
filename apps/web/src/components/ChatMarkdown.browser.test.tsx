@@ -10,7 +10,22 @@ import "../index.css";
 import { filesystemEnvironment } from "../state/filesystem";
 import { useRightPanelStore } from "../rightPanelStore";
 import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
+import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
+import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
+
+const deniedVideoEnvironment = EnvironmentId.make("denied-video-environment");
+
+vi.mock(import("../state/filesystem"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    useFilesystemReadAccess: (environmentId: EnvironmentId | null) =>
+      environmentId === deniedVideoEnvironment
+        ? { canReadFiles: false, isPending: false, error: null }
+        : actual.useFilesystemReadAccess(environmentId),
+  };
+});
 
 const { workspaceSearch, filesystemMetadata } = vi.hoisted(() => ({
   workspaceSearch: vi.fn(),
@@ -118,6 +133,24 @@ function renderText(text: string, props: Partial<Parameters<typeof ChatMarkdown>
   return render(<ChatMarkdown cwd="/tmp/project" text={text} {...props} />);
 }
 
+it("explains why a host video cannot be played when file access is missing", async () => {
+  setup();
+  await using screen = await renderText("![Demo](/tmp/demo.mp4)", {
+    threadRef: {
+      environmentId: deniedVideoEnvironment,
+      threadId: ThreadId.make("thread"),
+    },
+  });
+  await vi.waitFor(() =>
+    expect(screen.getByRole("alert").element().textContent).toContain(
+      "This connection cannot read host files.",
+    ),
+  );
+  await expect
+    .element(screen.getByRole("button", { name: /retry video/i }))
+    .not.toBeInTheDocument();
+});
+
 function buttonsLabelled(container: HTMLElement, label: string) {
   return [...container.querySelectorAll<HTMLButtonElement>("button")].filter(
     (button) => button.getAttribute("aria-label") === label,
@@ -146,6 +179,30 @@ it("loads a host image through the page's own route when there is no environment
   expect(new Set(hostImageUrl.mock.calls.map(([path]) => path))).toEqual(
     new Set(["/work/my shot.png"]),
   );
+});
+
+it("sizes a raw HTML image by width and height written with px units", async () => {
+  setup();
+  const largeImage = `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"/>',
+  )}`;
+  await using screen = await render(
+    <HostImageUrlContext value={() => largeImage}>
+      <ChatMarkdown
+        cwd={undefined}
+        parseRawHtml
+        text={
+          '### PR Review in progress <img src="/work/spinner.gif" alt="spinner" width="14px" height="7px" />'
+        }
+      />
+    </HostImageUrlContext>,
+  );
+  const image = screen.getByAltText("spinner");
+  await expect.element(image).toHaveAttribute("src", largeImage);
+  const element = image.element() as HTMLImageElement;
+  await element.decode();
+  const { width, height } = element.getBoundingClientRect();
+  expect({ width, height }).toEqual({ width: 14, height: 7 });
 });
 
 it("reuses the parse of a streaming reply's finished blocks when it remounts", async () => {
@@ -401,6 +458,42 @@ describe("ChatMarkdown inline code selection", () => {
     await userEvent.dblClick(fenced, { position: { x: 4, y: 4 } });
     expect(window.getSelection()?.toString()).toBe("fenced");
   });
+
+  it("selects the whole line on triple-click beside a favicon link or a file chip", async () => {
+    setup();
+    await using screen = await renderText(
+      "Before [docs](https://example.com/docs) after words\n\nBefore [App.tsx](/tmp/project/src/App.tsx) after words",
+    );
+    const tripleClickWord = async (paragraph: HTMLElement, word: string) => {
+      const text = [...paragraph.childNodes].find((node) => node.textContent?.includes(word))!;
+      const range = document.createRange();
+      range.setStart(text, text.textContent!.indexOf(word));
+      range.setEnd(text, text.textContent!.indexOf(word) + word.length);
+      const wordBox = range.getBoundingClientRect();
+      const paragraphBox = paragraph.getBoundingClientRect();
+      window.getSelection()?.removeAllRanges();
+      await userEvent.tripleClick(paragraph, {
+        position: {
+          x: wordBox.left - paragraphBox.left + wordBox.width / 2,
+          y: wordBox.top - paragraphBox.top + wordBox.height / 2,
+        },
+      });
+      return window.getSelection()?.toString().trim();
+    };
+
+    const paragraphs = screen.container.querySelectorAll("p");
+    expect(paragraphs).toHaveLength(2);
+    const selections = [];
+    const lines = [];
+    for (const paragraph of paragraphs) {
+      lines.push(paragraph.textContent?.trim(), paragraph.textContent?.trim());
+      selections.push(
+        await tripleClickWord(paragraph, "Before"),
+        await tripleClickWord(paragraph, "after"),
+      );
+    }
+    expect(selections).toEqual(lines);
+  });
 });
 
 describe("ChatMarkdown Windows file links", () => {
@@ -468,3 +561,72 @@ it.each([false, true])(
     expect(onTaskListChange).toHaveBeenCalledExactlyOnceWith({ markerOffset: 2, checked: true });
   },
 );
+
+it.each([
+  ["عنوان التفاصيل", "محتوى الفقرة"],
+  ["כותרת פרטים", "תוכן הפסקה"],
+])("uses right-to-left direction in the disclosure %s", async (summary, content) => {
+  setup();
+  await using screen = await render(
+    <ChatMarkdown
+      cwd={undefined}
+      text={"<details>\n<summary>" + summary + "</summary>\n\n" + content + "\n\n</details>"}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: summary });
+  const button = trigger.element();
+  expect(getComputedStyle(button).direction).toBe("rtl");
+  expect(getComputedStyle(button).textAlign).toBe("start");
+  await trigger.click();
+  const body = screen.getByText(content, { exact: true });
+  await expect.element(body).toBeVisible();
+  expect(getComputedStyle(body.element()).direction).toBe("rtl");
+});
+
+describe("ChatMarkdown alert copy", () => {
+  it("copies a fully selected callout as alert Markdown and a partial one as text", async () => {
+    await using screen = await renderText("> [!WARNING]\n> Back up first.");
+    const [label, body] = screen.container.querySelectorAll('[role="note"] > p');
+    const select = (startNode: Node, endNode: Node, endOffset: number) => {
+      const range = document.createRange();
+      range.setStart(startNode, 0);
+      range.setEnd(endNode, endOffset);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return chatMarkdownClipboardPayload(selection)?.text;
+    };
+    const labelText = label!.lastChild!;
+    const bodyText = body!.firstChild!;
+
+    expect(select(labelText, bodyText, bodyText.textContent!.length)).toBe(
+      "> [!WARNING]\n> Back up first.",
+    );
+    expect(select(labelText, bodyText, "Back up".length)).toBe("Warning\n\nBack up");
+  });
+});
+
+it("preserves typed list values and the first copied item number", async () => {
+  await using screen = await render(
+    <ChatMarkdown
+      cwd={undefined}
+      text={"3. First\n5. Second\n6. Third\n\nAfter"}
+      extraRemarkPlugins={CHAT_USER_MARKDOWN_REMARK_PLUGINS}
+    />,
+  );
+  const list = screen.container.querySelector("ol")!;
+  const items = list.querySelectorAll("li");
+  expect(items[1]!.getAttribute("value")).toBe("5");
+  const range = document.createRange();
+  range.setStart(items[1]!.firstChild!, 0);
+  const end = screen.container.querySelector("p:last-child")!;
+  range.setEnd(end, end.childNodes.length);
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  try {
+    expect(chatMarkdownClipboardPayload(selection)?.text).toBe("5. Second\n6. Third\n\nAfter");
+  } finally {
+    selection.removeAllRanges();
+  }
+});

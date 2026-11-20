@@ -22,6 +22,7 @@ import * as Stream from "effect/Stream";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
@@ -479,11 +480,13 @@ describe("AcpRegistryAdapterV2", () => {
     const openWithStoredPicks = Effect.fn("openWithStoredPicks")(function* (input: {
       readonly setup: unknown;
       readonly pickFrames: ReadonlyArray<Frame>;
+      readonly agentId?: string;
       readonly customModels?: ReadonlyArray<string>;
       readonly storedModel?: string;
       readonly storedModePick?: string;
       readonly turnModels?: ReadonlyArray<string>;
       readonly rejectedModel?: string;
+      readonly liveConfiguration?: AcpRegistryLiveConfiguration;
     }) {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       // Scope release gives the replay agent at most a second to exit, so the status
@@ -530,7 +533,7 @@ describe("AcpRegistryAdapterV2", () => {
         selfInvocation: yield* resolveSelfInvocation(),
         instanceId,
         settings: yield* decodeAcpRegistryAdapterSettings({
-          agentId: "fixture-agent",
+          agentId: input.agentId ?? "fixture-agent",
           authMethodId: "test",
           customModels: input.customModels ?? [],
         }),
@@ -551,6 +554,8 @@ describe("AcpRegistryAdapterV2", () => {
             layerInjectedRuntimeCatalog,
             Layer.mock(AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator)({
               withForegroundStartup: (_startupKey, effect) => effect,
+              getLiveConfiguration: () =>
+                Effect.sync(() => Option.fromUndefinedOr(published ?? input.liveConfiguration)),
               publishLiveConfiguration: (_instanceId, configuration) =>
                 Effect.sync(() => {
                   published = configuration;
@@ -798,6 +803,81 @@ describe("AcpRegistryAdapterV2", () => {
             ],
           );
         }).pipe(Effect.provide(layerTest), Effect.scoped),
+    );
+
+    it.effect(
+      "writes the selected Copilot model and the shown effort when session/new reports defaults",
+      () => {
+        const copilotModel = (currentValue: string) => ({
+          ...modelOption("model", currentValue),
+          options: ["claude-sonnet-5.5", "claude-haiku-4.5"].map((value) => ({
+            value,
+            name: value,
+          })),
+        });
+        const effort = (currentValue: string) => ({
+          id: "reasoning_effort",
+          name: "Reasoning effort",
+          category: "thought_level",
+          type: "select",
+          currentValue,
+          options: ["medium", "xhigh"].map((value) => ({ value, name: value })),
+        });
+        return openWithStoredPicks({
+          agentId: "github-copilot-cli",
+          setup: { configOptions: [copilotModel("claude-sonnet-5.5"), effort("medium")] },
+          storedModel: "claude-sonnet-5.5",
+          liveConfiguration: {
+            models: [],
+            currentModelId: null,
+            configOptions: [
+              {
+                id: "reasoning_effort",
+                label: "Reasoning effort",
+                type: "select",
+                role: "reasoning",
+                currentValue: "xhigh",
+                options: [
+                  { id: "medium", label: "medium" },
+                  { id: "xhigh", label: "xhigh" },
+                ],
+              },
+            ],
+          },
+          pickFrames: [
+            {
+              type: "emit_inbound",
+              frame: {
+                kind: "notification",
+                method: "session/update",
+                params: {
+                  sessionId: "agent-session",
+                  update: {
+                    sessionUpdate: "config_option_update",
+                    configOptions: [copilotModel("claude-sonnet-5.5"), effort("medium")],
+                  },
+                },
+              },
+            },
+            outbound("session/set_config_option", {
+              sessionId: "agent-session",
+              configId: "model",
+              value: "claude-sonnet-5.5",
+            }),
+            answer("session/set_config_option", {
+              configOptions: [copilotModel("claude-sonnet-5.5"), effort("medium")],
+            }),
+            outbound("session/set_config_option", {
+              sessionId: "agent-session",
+              configId: "reasoning_effort",
+              value: "xhigh",
+            }),
+            answer("session/set_config_option", {
+              configOptions: [copilotModel("claude-sonnet-5.5"), effort("xhigh")],
+            }),
+          ],
+        }).pipe(Effect.provide(layerTest), Effect.scoped);
+      },
     );
 
     it.effect.each([
@@ -1628,6 +1708,91 @@ describe("AcpRegistryAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.effect("settles Copilot's reply on assistant.idle while an async shell holds the prompt", () =>
+    Effect.gen(function* () {
+      const sessionId = "copilot-session";
+      const sessionEvent = (type: string) => ({
+        type: "emit_inbound",
+        frame: {
+          kind: "notification",
+          method: "github.com/copilot/sessionEvent",
+          params: { sessionId, type, data: {} },
+        },
+      });
+      const update = (sessionUpdate: Record<string, unknown>) =>
+        claudeFrames.update(sessionId, sessionUpdate);
+      const session = yield* openClaudeReplaySession(
+        [
+          {
+            type: "expect_outbound",
+            frame: { kind: "request", method: "initialize", params: "<any>" },
+          },
+          {
+            type: "emit_inbound",
+            frame: {
+              kind: "response",
+              method: "initialize",
+              result: {
+                protocolVersion: 1,
+                agentInfo: { name: "Copilot", version: "1.0.110" },
+                agentCapabilities: { loadSession: true },
+                authMethods: [],
+              },
+            },
+          },
+          {
+            type: "expect_outbound",
+            frame: { kind: "request", method: "session/new", params: "<any>" },
+          },
+          {
+            type: "emit_inbound",
+            frame: { kind: "response", method: "session/new", result: { sessionId } },
+          },
+          {
+            type: "expect_outbound",
+            frame: { kind: "request", method: "session/prompt", params: "<any>" },
+          },
+          sessionEvent("assistant.idle"),
+          update({ sessionUpdate: "session_info_update", title: "after stale idle" }),
+          sessionEvent("assistant.turn_start"),
+          update({
+            sessionUpdate: "tool_call",
+            toolCallId: "shell-1",
+            title: "sleep 120",
+            kind: "execute",
+            status: "completed",
+            rawInput: { command: "sleep 120", mode: "async", detach: false },
+          }),
+          update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } }),
+          sessionEvent("assistant.idle"),
+          update({ sessionUpdate: "session_info_update", title: "after foreground idle" }),
+          {
+            type: "expect_outbound",
+            frame: { kind: "request", method: "session/prompt", params: "<any>" },
+          },
+          sessionEvent("assistant.turn_start"),
+          update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "two" } }),
+          sessionEvent("assistant.idle"),
+          update({ sessionUpdate: "session_info_update", title: "after second idle" }),
+        ],
+        undefined,
+        false,
+        "github-copilot-cli",
+      );
+      yield* session.runtime.startTurn(session.turnInput(1));
+      const stale = yield* session.throughMarker("after stale idle");
+      assert.isFalse(stale.some((event) => event.type === "turn.terminal"));
+      const foreground = yield* session.throughMarker("after foreground idle");
+      const terminal = foreground.find((event) => event.type === "turn.terminal");
+      assert.isDefined(terminal, "the run settles once Copilot's foreground work is idle");
+      assert.equal(terminal?.type === "turn.terminal" ? terminal.status : null, "completed");
+      yield* session.runtime.startTurn(session.turnInput(2));
+      const second = yield* session.throughMarker("after second idle");
+      const secondTerminal = second.find((event) => event.type === "turn.terminal");
+      assert.equal(secondTerminal?.type === "turn.terminal" ? secondTerminal.runOrdinal : null, 2);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect.each([
     { kind: "approval", stopReason: "end_turn", status: "completed" },
     { kind: "question", stopReason: "error", status: "failed" },
@@ -2053,6 +2218,69 @@ describe("AcpRegistryAdapterV2", () => {
         assert.deepEqual(answer, { outcome: "selected", optionId: "plan_accept_edits" });
         assert.equal((yield* session.terminal).status, "completed");
       }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("replaces streamed root tool output with a later content list", () =>
+    Effect.gen(function* () {
+      const { update } = claudeFrames;
+      const text = (value: string) => [{ type: "content", content: { type: "text", text: value } }];
+      const session = yield* openClaudeReplaySession([
+        ...claudeFrames.open,
+        ...claudeFrames.prompt(1),
+        update(CLAUDE_ROOT_SESSION, {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "root-tool",
+          title: "Stream",
+          status: "in_progress",
+          content: text("one"),
+        }),
+        update(CLAUDE_ROOT_SESSION, {
+          sessionUpdate: "tool_call_content_chunk",
+          toolCallId: "root-tool",
+          content: { type: "content", content: { type: "text", text: "two" } },
+        }),
+        update(CLAUDE_ROOT_SESSION, {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "root-tool",
+          status: "completed",
+          content: text("replacement"),
+        }),
+        update(CLAUDE_ROOT_SESSION, {
+          sessionUpdate: "tool_call_content_chunk",
+          toolCallId: "root-tool",
+          content: { type: "content", content: { type: "text", text: "-more" } },
+        }),
+        update(CLAUDE_ROOT_SESSION, {
+          sessionUpdate: "tool_call_content_chunk",
+          toolCallId: "root-tool",
+          content: {
+            type: "diff",
+            changes: [{ operation: "add", path: "/a.txt" }],
+            patch: { format: "git_patch", text: "PATCH" },
+          },
+        }),
+        claudeMarker("tools complete"),
+        claudeFrames.idle("end_turn"),
+        claudeFrames.closeRequest,
+        claudeFrames.closed,
+      ]);
+      yield* session.runtime.startTurn(session.turnInput(1));
+      const events = yield* session.throughMarker("tools complete");
+      const outputs = events.flatMap((event) =>
+        event.type === "turn_item.updated" &&
+        event.turnItem.nativeItemRef?.nativeId === "root-tool" &&
+        "output" in event.turnItem
+          ? [event.turnItem.output]
+          : [],
+      );
+      assert.deepEqual(outputs, [
+        text("one"),
+        text("onetwo"),
+        text("replacement"),
+        text("replacement-more"),
+        { type: "Text", text: "replacement-morePATCH" },
+      ]);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
   it.effect("keeps stopped child tools interrupted when a late output chunk arrives", () =>
@@ -2683,6 +2911,175 @@ describe("AcpRegistryAdapterV2", () => {
       assert.equal(queuedTerminal.status, "interrupted");
       assert.isNull(queuedTerminal.failure);
       assert.isFalse(yield* queued.runtime.hasPendingBackgroundWork!);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect.each([
+    {
+      failure: "a lost session",
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: {
+          details:
+            "Request session.send failed with message: session event delivery failed: session not found: copilot-session",
+        },
+      },
+      restarts: true,
+    },
+    {
+      failure: "a lost session reported in the message",
+      error: {
+        code: -32603,
+        message:
+          "Request session.send failed with message: session event delivery failed: session not found: copilot-session",
+      },
+      restarts: true,
+    },
+    {
+      failure: "a session-lock timeout",
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: {
+          details:
+            "session lock unavailable during is_session_generation_current: acquisition timed out",
+        },
+      },
+      restarts: true,
+    },
+    {
+      failure: "a session-lock timeout reported in the message",
+      error: {
+        code: -32603,
+        message:
+          "Request session.send failed with message: session lock unavailable during is_session_generation_current: acquisition timed out",
+      },
+      restarts: true,
+    },
+    {
+      failure: "an unrelated internal error",
+      error: {
+        code: -32603,
+        message: "Request session.send failed with message: Session directory no longer exists",
+      },
+      restarts: false,
+    },
+  ] as const)("runs Copilot's next message after $failure", ({ error, restarts }) =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const replayDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-copilot-lost-" });
+      const scriptPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-replay-agent.ts", import.meta.url),
+      );
+      const request = (method: string, params: unknown = "<any>") => ({
+        type: "expect_outbound",
+        frame: { kind: "request", method, params },
+      });
+      const respond = (method: string, response: object) => ({
+        type: "emit_inbound",
+        frame: { kind: "response", method, ...response },
+      });
+      const start = (sessionId: string) => [
+        request("initialize"),
+        respond("initialize", {
+          result: { protocolVersion: 1, agentCapabilities: { loadSession: true } },
+        }),
+        request("session/new"),
+        respond("session/new", { result: { sessionId } }),
+      ];
+      const failedPrompt = [
+        ...start("copilot-session"),
+        request("session/prompt"),
+        respond("session/prompt", { error }),
+      ];
+      const completedPrompt = [
+        request("session/prompt"),
+        respond("session/prompt", { result: { stopReason: "end_turn" } }),
+      ];
+      const processes = restarts
+        ? [
+            failedPrompt,
+            [
+              ...start("replacement-session"),
+              request("session/load", {
+                sessionId: "copilot-session",
+                cwd: "<workspace>",
+                mcpServers: "<any>",
+              }),
+              respond("session/load", { result: {} }),
+              ...completedPrompt,
+            ],
+          ]
+        : [[...failedPrompt, ...completedPrompt]];
+      let spawned = 0;
+      const instanceId = ProviderInstanceId.make("copilot-lost-session");
+      const adapter = yield* makeAcpRegistryAdapterV2({
+        selfInvocation: yield* resolveSelfInvocation(),
+        instanceId,
+        settings: yield* decodeAcpRegistryAdapterSettings({ agentId: "github-copilot-cli" }),
+        environment: {},
+        makeRuntime: (runtimeInput) =>
+          Effect.gen(function* () {
+            const index = spawned++;
+            const transcript = yield* decodeAcpReplayTranscript(
+              {
+                provider: ACP_REGISTRY_PROVIDER,
+                protocol: "acp.ndjson-jsonrpc",
+                version: "1",
+                scenario: `copilot-lost-session-${index}`,
+                entries: processes[index] as never,
+              },
+              ACP_REGISTRY_PROVIDER,
+            ).pipe(Effect.orDie);
+            return yield* makeAcpReplayRuntime({
+              transcript,
+              statusPath: path.join(replayDir, `status-${index}.json`),
+              scriptPath,
+              childProcessSpawner,
+              fileSystem,
+            })(runtimeInput);
+          }),
+      }).pipe(Effect.provide(layerInjectedRuntimeCatalog));
+      const threadId = ThreadId.make("thread-copilot-lost-session");
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        cwd: replayDir,
+      });
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("session-copilot-lost-session"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      const runTurn = (ordinal: number) =>
+        runtime
+          .startTurn(
+            makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now, ordinal }),
+          )
+          .pipe(
+            Effect.andThen(
+              runtime.events.pipe(
+                Stream.filter((event) => event.type === "turn.terminal"),
+                Stream.take(1),
+                Stream.runCollect,
+              ),
+            ),
+            Effect.map(([terminal]) => terminal?.status),
+          );
+      assert.equal(yield* runTurn(1), "failed");
+      assert.equal(yield* runTurn(2), "completed");
+      assert.equal(spawned, restarts ? 2 : 1);
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 });

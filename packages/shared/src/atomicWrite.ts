@@ -17,6 +17,11 @@ export const isWindowsRenameLock = (error: PlatformError.PlatformError) => {
 const LOCKED_RENAME_RETRIES = 20;
 const LOCKED_RENAME_RETRY_DELAY = "100 millis";
 
+const isUnsupportedSync = (error: PlatformError.PlatformError) => {
+  const code = (error.reason.cause as NodeJS.ErrnoException | undefined)?.code;
+  return code === "EINVAL" || code === "ENOTSUP" || code === "ENOSYS";
+};
+
 /** Resolves symlink targets before renaming so writes preserve the link. */
 export const writeFileStringAtomically = (input: {
   readonly filePath: string;
@@ -41,8 +46,34 @@ export const writeFileStringAtomically = (input: {
       );
       const tempPath = path.join(tempDirectory, "contents.tmp");
 
-      yield* fs.writeFileString(tempPath, input.contents);
-      if (platform !== "win32") return yield* fs.rename(tempPath, targetPath);
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const file = yield* fs.open(tempPath, { flag: "w" });
+          yield* file.writeAll(new TextEncoder().encode(input.contents));
+          if (platform !== "win32") {
+            const mode = yield* fs.stat(targetPath).pipe(
+              Effect.map((info) => info.mode & 0o777),
+              Effect.catchIf(
+                (error) => error.reason._tag === "NotFound",
+                () => Effect.succeed(0o600),
+              ),
+            );
+            yield* fs.chmod(tempPath, mode);
+          }
+          yield* file.sync;
+        }),
+      );
+      if (platform !== "win32") {
+        yield* fs.rename(tempPath, targetPath);
+        return yield* fs.open(targetDirectory, { flag: "r" }).pipe(
+          Effect.flatMap((directory) => directory.sync),
+          Effect.scoped,
+          Effect.catchIf(
+            (error) => error.reason._tag === "PermissionDenied" || isUnsupportedSync(error),
+            (error) => Effect.logWarning(error),
+          ),
+        );
+      }
 
       // Stop retrying if another save changes the target; read-only targets also return permanent EPERM.
       const targetVersion = fs.stat(targetPath).pipe(

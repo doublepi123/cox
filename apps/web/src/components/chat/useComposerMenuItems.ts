@@ -1,3 +1,7 @@
+import {
+  legacyThreadPullRequestKey,
+  threadPullRequestKeyOf,
+} from "@t3tools/client-runtime/thread-pull-requests";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
 import { translateCurrent } from "../../i18n";
 
@@ -312,10 +316,17 @@ export function useComposerMenuItems({
     ) {
       const exactPullRequest =
         exactPullRequestLookup.data?.number === pullRequestTriggerNumber
-          ? [exactPullRequestLookup.data]
+          ? [
+              {
+                ...exactPullRequestLookup.data,
+                // Only the host: the URL's full repository path would not match the project's selector.
+                host: legacyThreadPullRequestKey(exactPullRequestLookup.data).host,
+              },
+            ]
           : [];
       const matches = /^\d*$/u.test(composerTrigger.query)
         ? filterComposerPullRequestMatches({
+            keyOf: threadPullRequestKeyOf,
             entries: [...exactPullRequest, ...(pullRequestLookup.data?.entries ?? [])],
             linked: linkedPullRequests,
             projectId: pullRequestProjectId,
@@ -324,6 +335,7 @@ export function useComposerMenuItems({
             limit: COMPOSER_PULL_REQUEST_RESULT_LIMIT,
           })
         : withLinkedComposerPullRequestsFirst({
+            keyOf: threadPullRequestKeyOf,
             matches: rankPullRequestMatches(
               (pullRequestLookup.data?.entries ?? []).filter((entry) => {
                 if (
@@ -348,7 +360,7 @@ export function useComposerMenuItems({
             limit: COMPOSER_PULL_REQUEST_RESULT_LIMIT,
           });
       return matches.map((pullRequest) => ({
-        id: `pull-request:${pullRequest.projectId}:${pullRequest.repository}:${pullRequest.number}`,
+        id: `pull-request:${pullRequest.projectId}:${threadPullRequestKeyOf(pullRequest)}`,
         type: "pull-request",
         pullRequest: {
           number: pullRequest.number,
@@ -369,7 +381,7 @@ export function useComposerMenuItems({
     return [];
   })();
   const isLoading =
-    (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
+    (composerTriggerKind === "path" && workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&

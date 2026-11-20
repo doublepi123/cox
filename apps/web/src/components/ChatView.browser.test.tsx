@@ -34,6 +34,8 @@ const threadStreamFailure = vi.hoisted(() => ({
   delivered: new Set<string>(),
 }));
 
+const rejectSend = vi.hoisted(() => ({ pending: null as (() => void) | null, enabled: false }));
+
 const sendGate = vi.hoisted(() => ({
   started: false,
   completion: null as Promise<void> | null,
@@ -58,7 +60,24 @@ vi.mock("../../../../packages/client-runtime/src/connection/driver.ts", async (i
         const method = Reflect.get(target, property, receiver) as unknown;
         if (typeof method !== "function") return method;
         if (property === contracts.ORCHESTRATION_V2_WS_METHODS.dispatchCommand) {
-          return () => Effect.succeed({ sequence: 1 });
+          return (command: import("@t3tools/contracts").OrchestrationV2Command) =>
+            rejectSend.enabled && command.type === "message.dispatch"
+              ? Effect.callback<
+                  { sequence: number },
+                  InstanceType<typeof contracts.OrchestrationV2DispatchCommandError>
+                >((resume) => {
+                  rejectSend.pending = () =>
+                    resume(
+                      Effect.fail(
+                        new contracts.OrchestrationV2DispatchCommandError({
+                          commandId: command.commandId,
+                          commandType: command.type,
+                          message: "The server rejected this send.",
+                        }),
+                      ),
+                    );
+                })
+              : Effect.succeed({ sequence: 1 });
         }
         if (property === contracts.ORCHESTRATION_V2_WS_METHODS.launchThread) {
           return (input: { readonly threadId: ThreadId }) => {
@@ -137,6 +156,7 @@ installFakeEnvironment([
   threadWithHistory("thread-stream-empty", 1),
   threadWithHistory("thread-stream-cached", 1),
   threadWithHistory("thread-send-destination", 1),
+  threadWithHistory("thread-rejected-send", 1),
 ]);
 
 const returningUserSettings = () =>
@@ -232,6 +252,30 @@ it("a thread with cached detail shows its stored stream failure instead of sync 
   expect(composerSyncStatus()).toBeNull();
 
   await recoverThreadStream();
+});
+
+it("removes a rejected optimistic message and keeps the new draft", async () => {
+  returningUserSettings();
+  rejectSend.enabled = true;
+  try {
+    await using _app = await mountThread(ThreadId.make("thread-rejected-send"));
+    await expect.element(page.getByText("Answer 0 for thread-rejected-send.")).toBeVisible();
+    const editor = page.getByTestId("composer-editor");
+    await userEvent.click(editor);
+    await userEvent.keyboard("Rejected prompt{Enter}");
+    await vi.waitFor(() => expect(rejectSend.pending).not.toBeNull());
+    await expect.element(page.getByText("Rejected prompt", { exact: true })).toBeVisible();
+    await userEvent.keyboard("New draft");
+    rejectSend.pending?.();
+    await expect.element(page.getByText("The server rejected this send.")).toBeVisible();
+    await expect
+      .element(page.getByText("Rejected prompt", { exact: true }))
+      .not.toBeInTheDocument();
+    expect(editor.element().textContent).toContain("New draft");
+  } finally {
+    rejectSend.enabled = false;
+    rejectSend.pending = null;
+  }
 });
 
 it("a send finishing after navigation leaves the open thread's composer alone", async () => {

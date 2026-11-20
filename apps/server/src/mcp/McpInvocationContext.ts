@@ -93,6 +93,7 @@ export interface McpInvocationScope {
   readonly requestNamespace: string;
   readonly thread: McpThreadCaller | undefined;
   readonly client: McpClientCaller | undefined;
+  readonly origin?: string | undefined;
 }
 
 /**

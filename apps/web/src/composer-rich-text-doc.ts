@@ -1,4 +1,4 @@
-import { joinBackward, joinTextblockBackward, joinTextblockForward } from "@tiptap/pm/commands";
+import { joinTextblockBackward, joinTextblockForward } from "@tiptap/pm/commands";
 import {
   Fragment,
   Mark,
@@ -19,6 +19,8 @@ import { Heading } from "@tiptap/extension-heading";
 import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
 import { Italic, starInputRegex, starPasteRegex } from "@tiptap/extension-italic";
 import {
+  combineTransactionSteps,
+  getChangedRanges,
   type Command,
   type Editor,
   Extension,
@@ -27,6 +29,8 @@ import {
   markPasteRule,
   mergeAttributes,
 } from "@tiptap/core";
+import { isHistoryTransaction } from "@tiptap/pm/history";
+import { canJoin, findWrapping, ReplaceStep } from "@tiptap/pm/transform";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -85,7 +89,7 @@ function codePairCaretPlugin(type: MarkType) {
           const to = tr.mapping.mapResult(pair.to, -1);
           return from.deleted || to.deleted ? [] : [{ from: from.pos, to: to.pos }];
         });
-        const typed = tr.getMeta(codePairKey) as CodePair | undefined;
+        const typed = (tr.getMeta(codePairKey) as CodePair | undefined) ?? composedCodePair(tr);
         return typed ? [...mapped, typed] : mapped;
       },
     },
@@ -94,14 +98,37 @@ function codePairCaretPlugin(type: MarkType) {
         if (view.composing || from !== to || text !== "`") return false;
         if (touchesMarkdownSource(view.state, from, to)) return false;
         const $from = view.state.doc.resolve(from);
-        if (
-          !$from.parent.isTextblock ||
-          $from.parent.type.spec.code ||
-          !/(^|[^`])`$/.test($from.nodeBefore?.text ?? "")
-        ) {
-          return false;
+        if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
+        const before = $from.nodeBefore?.text ?? "";
+        if (closesBacktickPair($from)) {
+          view.dispatch(insert().setMeta(codePairKey, { from: from - 1, to: from + 1 }));
+          return true;
         }
-        view.dispatch(insert().setMeta(codePairKey, { from: from - 1, to: from + 1 }));
+        if (before.endsWith("`")) return false;
+
+        // The opening tick can be typed after the closing one. Input rules
+        // cannot recognize that pair because they only read before the caret.
+        const after = $from.parent.textBetween(
+          $from.parentOffset,
+          $from.parent.content.size,
+          "\n",
+          "\n",
+        );
+        const match = /^([^`\n]+)`(?!`)/.exec(after);
+        if (!match) return false;
+        const end = from + match[1]!.length;
+        let plain = true;
+        view.state.doc.nodesBetween(from, end + 1, (node) => {
+          if (node.isInline && (!node.isText || node.marks.length > 0)) plain = false;
+        });
+        if (!plain) return false;
+        const tr = insert()
+          .delete(end + 1, end + 2)
+          .delete(from, from + 1);
+        tr.addMark(from, end, type.create());
+        tr.setSelection(TextSelection.create(tr.doc, from));
+        tr.addStoredMark(type.create());
+        view.dispatch(tr);
         return true;
       },
     },
@@ -158,7 +185,8 @@ export const ComposerCodeExtension = Code.extend({
           find: rule.find,
           undoable: rule.undoable,
           handler: (props) =>
-            touchesMarkdownSource(props.state, props.range.from, props.range.to)
+            touchesMarkdownSource(props.state, props.range.from, props.range.to) ||
+            literalBackticksBefore(props.state.doc.resolve(props.range.from)) % 2 === 1
               ? null
               : rule.handler(props),
         }),
@@ -166,7 +194,50 @@ export const ComposerCodeExtension = Code.extend({
   },
 });
 
-function touchesMarkdownSource(state: EditorState, from: number, to: number): boolean {
+function closesBacktickPair($pos: ResolvedPos): boolean {
+  return (
+    $pos.parent.isTextblock &&
+    !$pos.parent.type.spec.code &&
+    /(^|[^`])`$/.test($pos.nodeBefore?.text ?? "") &&
+    literalBackticksBefore($pos) % 2 === 1
+  );
+}
+
+function composedCodePair(tr: Transaction): CodePair | undefined {
+  if (tr.getMeta("composition") === undefined || tr.steps.length !== 1) return undefined;
+  const step = tr.steps[0];
+  if (!(step instanceof ReplaceStep) || step.from !== step.to || step.slice.size !== 1) {
+    return undefined;
+  }
+  if (
+    step.slice.content.firstChild?.text !== "`" ||
+    touchesMarkdownSource({ schema: tr.before.type.schema, doc: tr.before }, step.from, step.to) ||
+    !closesBacktickPair(tr.before.resolve(step.from))
+  ) {
+    return undefined;
+  }
+  return { from: step.from - 1, to: step.from + 1 };
+}
+
+function literalBackticksBefore($pos: ResolvedPos): number {
+  let count = 0;
+  $pos.parent.forEach((node, offset) => {
+    if (offset >= $pos.parentOffset) return;
+    if (!node.isText) {
+      count = 0;
+    } else if (!node.marks.some((mark) => mark.type.spec.code)) {
+      const text = node.text!.slice(0, $pos.parentOffset - offset);
+      count += [...text.matchAll(/(?<!`)`(?!`)/g)].length;
+    }
+  });
+  return count;
+}
+
+function touchesMarkdownSource(
+  state: Pick<EditorState, "schema" | "doc">,
+  from: number,
+  to: number,
+): boolean {
   const type = state.schema.marks[MARKDOWN_SOURCE_MARK];
   if (!type) return false;
   if (from < to) return state.doc.rangeHasMark(from, to, type);
@@ -194,6 +265,45 @@ function markInputRuleOutsideCode(find: RegExp, type: MarkType) {
       return rule.handler(props);
     },
   });
+}
+
+const SURROUND_MARKS: Record<string, string> = { "`": "code", "*": "italic", _: "italic" };
+
+export function surroundSelectionWithMark(
+  state: EditorState,
+  from: number,
+  to: number,
+  marker: string,
+) {
+  const markType = state.schema.marks[SURROUND_MARKS[marker] ?? ""];
+  if (!markType || touchesMarkdownSource(state, from, to)) return null;
+  const $from = state.doc.resolve(from);
+  if (!$from.sameParent(state.doc.resolve(to)) || !$from.parent.type.allowsMarkType(markType)) {
+    return null;
+  }
+  // Inline markdown cannot span lines, so keep literal wrapping across hard breaks.
+  let crossesLine = false;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (node.type.name === "hardBreak") crossesLine = true;
+    return !crossesLine;
+  });
+  if (crossesLine) return null;
+  const tr = state.tr.addMark(from, to, markType.create());
+  // Nearby delimiters can change how the saved span parses. Atoms are opaque
+  // to inline markdown, so use a placeholder instead of parsing their sources.
+  const children: ProseMirrorNode[] = [];
+  tr.doc.resolve(from).parent.forEach((node) => {
+    children.push(
+      node.isAtom && !node.isText && node.type.name !== "hardBreak"
+        ? state.schema.text("\uFFFC", node.marks)
+        : node,
+    );
+  });
+  const paragraph = state.schema.nodes.paragraph!.create(null, children);
+  const markdown = serializeEditorDoc(state.doc.type.create(null, paragraph)).value;
+  const rebuilt = buildTiptapContent(markdown, () => null, { blocks: false });
+  const restored = state.schema.nodeFromJSON({ type: "doc", content: rebuilt });
+  return paragraph.content.eq(restored.firstChild!.content) ? tr : null;
 }
 
 /**
@@ -375,6 +485,9 @@ const ComposerListItemExtension = ListItem.extend({
 
 export const ComposerListExtensions = [
   BulletList.extend({
+    addProseMirrorPlugins() {
+      return [...(this.parent?.() ?? []), listNormalizationPlugin(this.editor)];
+    },
     addKeyboardShortcuts() {
       return withoutBlockChords(this.parent?.(), ["Mod-Shift-8"]);
     },
@@ -507,6 +620,159 @@ function parseListPrefix(line: string): { prefix: ListLinePrefix; markerLength: 
     };
   }
   return null;
+}
+
+/** Only changed top-level paragraphs can acquire a literal list prefix outside an input rule. */
+function listNormalizationPlugin(editor: Editor) {
+  let pending = new Set<number>();
+  const key = new PluginKey("composerListNormalization");
+  return new Plugin({
+    key,
+    props: {
+      handleDOMEvents: {
+        // ProseMirror tags the DOM flush after compositionend as composition, so nothing else would normalize.
+        compositionend(view) {
+          setTimeout(() => {
+            if (!view.isDestroyed && !view.composing && pending.size > 0) {
+              view.dispatch(view.state.tr);
+            }
+          });
+          return false;
+        },
+      },
+    },
+    appendTransaction(transactions, oldState, state) {
+      // Tiptap's undoInputRule (Backspace right after a rule) restores the typed text on purpose.
+      const undoesInputRule = oldState.plugins.some(
+        (plugin) => plugin.spec.isInputRules && plugin.getState(oldState),
+      );
+      if (undoesInputRule || transactions.some(isHistoryTransaction)) {
+        pending.clear();
+        return null;
+      }
+      if (pending.size === 0 && !transactions.some((tr) => tr.docChanged)) return null;
+      const changes = combineTransactionSteps(oldState.doc, [...transactions]);
+      pending = new Set(
+        [...pending].flatMap((pos) => {
+          const mapped = changes.mapping.mapResult(pos, 1);
+          return mapped.deleted ? [] : [mapped.pos];
+        }),
+      );
+      for (const { newRange } of getChangedRanges(changes)) {
+        state.doc.nodesBetween(newRange.from, newRange.to, (node, pos) => {
+          if (node.type.name !== "paragraph") return false;
+          const parsed = parseListPrefix(paragraphText(node));
+          // Typing after a marker left literal keeps it literal; only an edit reaching the marker converts.
+          if (parsed && newRange.from <= pos + 1 + parsed.markerLength) pending.add(pos);
+          return false;
+        });
+      }
+      // The next non-composition transaction can normalize after the browser finishes its DOM edits.
+      if (editor.view.composing || transactions.some((tr) => tr.getMeta("composition") != null))
+        return null;
+
+      const tr = state.tr;
+      for (const pos of [...pending].sort((a, b) => b - a)) {
+        pending.delete(pos);
+        if (state.doc.resolve(pos).depth !== 0) continue;
+        const node = state.doc.nodeAt(pos);
+        if (node?.type.name !== "paragraph") continue;
+        const text = paragraphText(node);
+        const parsed = parseListPrefix(text);
+        // Input rules only introduce unindented top-level lists; keep the same boundary here.
+        if (!parsed || parsed.prefix.indent) continue;
+        const { prefix, markerLength } = parsed;
+        if (
+          Object.values(state.schema.marks).some((mark) => node.rangeHasMark(0, markerLength, mark))
+        )
+          continue;
+        const active = state.selection.$from.depth === 1 && state.selection.$from.before(1) === pos;
+        const content = text.slice(markerLength);
+        // Keep `- ` and unfinished task markers literal while the user is entering the gesture.
+        if (
+          active &&
+          (prefix.kind === "task"
+            ? !prefix.contentSpace
+            : prefix.kind === "bullet" &&
+              prefix.marker === "-" &&
+              (!content || /^\[(?:[ xX]\]?)?$/.test(content)))
+        ) {
+          pending.add(pos);
+          continue;
+        }
+        if (prefix.kind !== "task" && !prefix.space) continue;
+        if (
+          active &&
+          prefix.kind === "bullet" &&
+          prefix.marker === "-" &&
+          [...content].length === 1 &&
+          state.doc.content.size === oldState.doc.content.size + content.length
+        ) {
+          pending.add(pos);
+          queueMicrotask(() => {
+            if (!editor.isDestroyed && pending.size > 0 && !editor.view.composing)
+              editor.view.dispatch(editor.state.tr);
+          });
+          continue;
+        }
+        const listType =
+          state.schema.nodes[
+            prefix.kind === "task"
+              ? "taskList"
+              : prefix.kind === "ordered"
+                ? "orderedList"
+                : "bulletList"
+          ];
+        if (!listType) continue;
+        const attrs =
+          prefix.kind === "ordered" ? { start: Number.parseInt(prefix.marker, 10) || 1 } : {};
+        const $from = tr.doc.resolve(pos + 1);
+        const range = $from.blockRange();
+        const wrapping = range && findWrapping(range, listType, attrs);
+        if (!range || !wrapping) continue;
+        tr.wrap(range, wrapping);
+        tr.setNodeMarkup(
+          pos + 1,
+          undefined,
+          prefix.kind === "task"
+            ? {
+                checked: prefix.checked,
+                indent: prefix.indent,
+                markerSpace: prefix.markerSpace,
+                contentSpace: prefix.contentSpace,
+              }
+            : { indent: prefix.indent, marker: prefix.marker, space: prefix.space },
+        );
+        tr.delete(pos + 3, pos + 3 + markerLength);
+        joinCompatibleLists(tr, pos + tr.doc.nodeAt(pos)!.nodeSize);
+        joinCompatibleLists(tr, pos);
+      }
+      pending = new Set([...pending].map((pos) => tr.mapping.map(pos, 1)));
+      return tr.docChanged ? tr : null;
+    },
+  });
+}
+
+function paragraphText(node: ProseMirrorNode): string {
+  return node.textBetween(0, node.content.size, undefined, "\ufffc");
+}
+
+/** Rebuilding from Markdown merges adjacent lists of one type whose markers share a delimiter. */
+function joinCompatibleLists(tr: Transaction, pos: number): void {
+  const $pos = tr.doc.resolve(pos);
+  const before = $pos.nodeBefore;
+  const after = $pos.nodeAfter;
+  const delimiter = (list: ProseMirrorNode) =>
+    String(list.firstChild?.attrs.marker ?? "").slice(-1);
+  if (
+    before &&
+    after &&
+    before.type === after.type &&
+    delimiter(before) === delimiter(after) &&
+    canJoin(tr.doc, pos)
+  ) {
+    tr.join(pos);
+  }
 }
 
 function listKey(prefix: ListLinePrefix): string {
@@ -784,7 +1050,12 @@ export function buildTiptapContent(
     });
     openQuote = null;
   };
-  for (const entry of entries) {
+  const isProseLine = (entry: (typeof entries)[number] | undefined, empty: boolean) =>
+    entry !== undefined &&
+    "line" in entry &&
+    !entry.line.list &&
+    (entry.line.inline.length === 0) === empty;
+  for (const [entryIndex, entry] of entries.entries()) {
     if ("quote" in entry) {
       flushLists();
       if (openQuote && openQuote.prefix !== entry.quote.prefix) flushQuote();
@@ -792,7 +1063,11 @@ export function buildTiptapContent(
       openQuote.content.push(entry.quote.inline);
       continue;
     }
+    // The serializer separates a quote from the prose after it with one blank line; it is not an empty paragraph.
+    const quoteSeparator =
+      openQuote !== null && isProseLine(entry, true) && isProseLine(entries[entryIndex + 1], false);
     flushQuote();
+    if (quoteSeparator) continue;
     if ("code" in entry) {
       flushLists();
       blocks.push(entry.code);
@@ -1207,7 +1482,8 @@ function backspaceAcrossList(editor: Editor): boolean {
       return moved;
     };
     // can() skips the schema check and can accept tasks with no parent list to lift into.
-    return editor.chain().command(lift).run() || joinBackward(state, editor.view.dispatch);
+    // Those join the line above; joinBackward would re-nest them or select the parent line.
+    return editor.chain().command(lift).run() || joinTextblockBackward(state, editor.view.dispatch);
   }
   const before = $from.depth === 1 ? $from.node(0).maybeChild($from.index(0) - 1) : null;
   if (before && LIST_NODE_NAMES.has(before.type.name) && $from.parent.type.name !== "codeBlock") {

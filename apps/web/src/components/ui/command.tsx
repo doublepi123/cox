@@ -45,7 +45,7 @@ function CommandDialogViewport({ className, ...props }: CommandDialogPrimitive.V
   return (
     <CommandDialogPrimitive.Viewport
       className={cn(
-        "pointer-events-none fixed inset-0 z-50 flex flex-col items-center px-[max(1rem,var(--workspace-safe-left),var(--workspace-safe-right))] pt-[max(--spacing(4),4vh,var(--workspace-safe-top),calc(var(--command-titlebar-height)+--spacing(2)))] pb-[max(--spacing(4),4vh,var(--workspace-safe-bottom))] sm:pt-[max(10vh,var(--workspace-safe-top),calc(var(--command-titlebar-height)+--spacing(2)))] sm:pb-[max(10vh,var(--workspace-safe-bottom))]",
+        "pointer-events-none fixed inset-0 z-50 flex flex-col items-center [-webkit-app-region:no-drag] px-[max(1rem,var(--workspace-safe-left),var(--workspace-safe-right))] pt-[max(--spacing(4),4vh,var(--workspace-safe-top),calc(var(--command-titlebar-height)+--spacing(2)))] pb-[max(--spacing(4),4vh,var(--workspace-safe-bottom))] sm:pt-[max(10vh,var(--workspace-safe-top),calc(var(--command-titlebar-height)+--spacing(2)))] sm:pb-[max(10vh,var(--workspace-safe-bottom))]",
         className,
       )}
       data-slot="command-dialog-viewport"

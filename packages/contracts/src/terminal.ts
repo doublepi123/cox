@@ -5,6 +5,33 @@ import { ProviderInstanceId } from "./providerInstance.ts";
 export const DEFAULT_TERMINAL_ID = "term-1";
 export const DEFAULT_MAX_TERMINAL_BUFFER_BYTES = 512 * 1024;
 
+const historyEncoder = new TextEncoder();
+// A BOM at a retained chunk boundary is terminal data, not an encoding marker.
+const historyDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
+
+/** The final `maxBytes` of UTF-8 a client retains, starting at a code point boundary. */
+export function retainedTerminalHistory(history: string, maxBytes: number): string {
+  if (maxBytes <= 0) {
+    return "";
+  }
+
+  const encoded = historyEncoder.encode(history);
+  if (encoded.byteLength <= maxBytes) {
+    return history;
+  }
+
+  let start = encoded.byteLength - maxBytes;
+  while (start < encoded.length) {
+    const byte = encoded[start];
+    if (byte === undefined || (byte & 0b1100_0000) !== 0b1000_0000) {
+      break;
+    }
+    start += 1;
+  }
+
+  return historyDecoder.decode(encoded.subarray(start));
+}
+
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const TerminalColsSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).check(
   Schema.isLessThanOrEqualTo(1000),
@@ -57,17 +84,40 @@ export const TerminalAttachInput = Schema.Struct({
   restartIfNotRunning: Schema.optional(Schema.Boolean),
   // Resubscriptions preserve stopped terminals; unknown IDs recover after a server restart.
   resume: Schema.optional(Schema.Boolean),
+  // Snapshots carry only the history a client this bounded keeps; older servers ignore it.
+  maxHistoryBytes: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export type TerminalAttachInput = typeof TerminalAttachInput.Type;
 
 export const TerminalObserveInput = TerminalSessionInput;
 export type TerminalObserveInput = Schema.Codec.Encoded<typeof TerminalObserveInput>;
 
+/** Longest `data` one `terminal.write` carries, in UTF-16 code units. */
+export const TERMINAL_WRITE_MAX_LENGTH = 65_536;
+
 export const TerminalWriteInput = Schema.Struct({
   ...TerminalSessionInput.fields,
-  data: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(65_536)),
+  data: Schema.String.check(Schema.isNonEmpty()).check(
+    Schema.isMaxLength(TERMINAL_WRITE_MAX_LENGTH),
+  ),
 });
 export type TerminalWriteInput = Schema.Codec.Encoded<typeof TerminalWriteInput>;
+
+/** Splits input into writes that fit `TerminalWriteInput`, never between a surrogate pair. */
+export function chunkTerminalWrite(data: string): ReadonlyArray<string> {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < data.length) {
+    let end = Math.min(start + TERMINAL_WRITE_MAX_LENGTH, data.length);
+    const last = data.charCodeAt(end - 1);
+    if (end < data.length && last >= 0xd800 && last <= 0xdbff) {
+      end -= 1;
+    }
+    chunks.push(data.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
 
 export const TerminalResizeInput = Schema.Struct({
   ...TerminalSessionInput.fields,

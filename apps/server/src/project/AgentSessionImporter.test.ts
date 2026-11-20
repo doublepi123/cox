@@ -75,6 +75,7 @@ function candidate(
       model: modelSelection.model,
       createdAt: timestamp,
       updatedAt: timestamp,
+      omittedMessageCount: 0,
       messages: [
         { role: "user" as const, text: "Fix it", createdAt: timestamp },
         { role: "assistant" as const, text: "Fixed", createdAt: timestamp },
@@ -167,7 +168,7 @@ const seedOwner = Effect.fn(function* (
 });
 
 const makeImporter = Effect.fn(function* (
-  candidates: ReadonlyArray<ReturnType<typeof candidate>>,
+  candidates: ReadonlyArray<AgentSessionScanner.AgentSessionRecentThread>,
   beforeTransaction: Effect.Effect<void> = Effect.void,
 ) {
   const sql = yield* SqlClient.SqlClient;
@@ -323,6 +324,45 @@ it.effect(
         });
       }
     }).pipe(Effect.scoped, Effect.provide(persistence)),
+);
+
+it.effect("shows how much history an imported transcript left out", () =>
+  Effect.gen(function* () {
+    const source = candidate(
+      CLAUDE_MODEL_SELECTION,
+      "b06e969c-5d1f-4d39-a790-6caf32b4fc29",
+      "claudeAgent",
+    );
+    const thread = AgentSessionScanner.parseAgentSessionTranscript({
+      contents: Array.from({ length: 203 }, (_, index) =>
+        JSON.stringify({
+          type: index === 0 ? "user" : "assistant",
+          message: { content: `Message ${index}` },
+        }),
+      ).join("\n"),
+      source: "claudeAgent",
+      providerInstanceId: source.source.providerInstanceId,
+      fallbackSessionId: source.source.providerSessionId,
+      lastActiveAtMs: Date.parse(source.thread.updatedAt),
+    });
+    expect(thread).not.toBeNull();
+    if (thread === null) return;
+
+    const importer = yield* makeImporter([{ ...source, thread }]);
+    expect(yield* importer.run).toEqual({ importedCount: 1, skippedCount: 0 });
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const records = yield* projections.getThreadRecords(importId(source), [
+      "messages",
+      "turnItems",
+    ]);
+    expect(records.messages).toHaveLength(200);
+    expect(records.messages[0]?.text).toBe("Message 0");
+    expect(records.messages.at(-1)?.text).toBe("Message 202");
+    expect(records.turnItems[0]).toMatchObject({
+      type: "system_notice",
+      message: expect.stringContaining("3 earlier messages were not imported"),
+    });
+  }).pipe(Effect.scoped, Effect.provide(persistence)),
 );
 
 it.effect("rechecks ownership after the import reaches the commit transaction", () =>

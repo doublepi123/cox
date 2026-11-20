@@ -47,7 +47,6 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
 import { type SetStateAction, useLayoutEffect, useRef } from "react";
-import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import {
   isAtomCommandInterrupted,
@@ -63,6 +62,7 @@ import {
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -170,6 +170,7 @@ interface ComposerSendInput {
   readonly activeThreadKey: string | null;
   readonly activeThreadBranch: string | null;
   readonly activeProject: EnvironmentProject | null;
+  readonly activeProjectIsScratch: boolean;
   readonly activeProjectDefaultModelSelection: ModelSelection | null;
   readonly activeProposedPlan: LatestProposedPlanState | null;
   readonly activeMessageCount: number;
@@ -268,6 +269,7 @@ export function useComposerSend(input: ComposerSendInput) {
     activeThreadKey,
     activeThreadBranch,
     activeProject,
+    activeProjectIsScratch,
     activeProjectDefaultModelSelection,
     activeProposedPlan,
     activeMessageCount,
@@ -617,6 +619,18 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     if (queuedRunEdit.isEditing) {
+      // A queued message stays in its thread, so saving `/side` would send it to main.
+      if (!directAnnotation && parseSideChatCommand(promptAtSend)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: "Queued message not updated",
+            description:
+              "A queued message can't move to a side chat. Remove /side or /btw to save it.",
+          }),
+        );
+        return;
+      }
       // Edit mode repurposes the composer: sending saves the queued message
       // in place instead of dispatching a new turn.
       await queuedRunEdit.saveEdit(
@@ -631,6 +645,7 @@ export function useComposerSend(input: ComposerSendInput) {
           environmentContexts: composerEnvironmentContexts,
         },
         setThreadError,
+        submissionIntent === "alternate" && dispatchMode === "steer",
       );
       return;
     }
@@ -877,6 +892,7 @@ export function useComposerSend(input: ComposerSendInput) {
       sendEnvMode,
       worktreePath: activeThread.worktreePath,
       activeThreadBranch,
+      isScratchProject: activeProjectIsScratch,
       resumeCompactionTokens,
       keepFullHistory,
       phase,
@@ -980,25 +996,18 @@ export function useComposerSend(input: ComposerSendInput) {
       shouldDockDraftHeroForSubmission({ isDraftHeroState, activeThreadKey, submissionIntent }) &&
       activeThreadKey
     ) {
-      let resolveDockStarted: (() => void) | undefined;
-      const dockStarted = new Promise<void>((resolve) => {
-        resolveDockStarted = resolve;
-      });
-      const dockTransition = runMobileComposerTransition(
+      const docking = runMobileComposerTransition(
         () => {
-          flushSync(() => {
-            captureDraftHeroComposerRect();
-            setDockedDraftHeroThreadKey(activeThreadKey);
-          });
-          resolveDockStarted?.();
+          captureDraftHeroComposerRect();
+          setDockedDraftHeroThreadKey(activeThreadKey);
         },
         {
           active: panelAnimationsActive,
           durationMs: panelAnimationDurationMs,
         },
       );
-      void dockTransition.catch(() => resolveDockStarted?.());
-      await dockStarted;
+      // Awaiting only a real transition keeps an inline dock in the same render as the send.
+      if (docking) await docking;
     }
 
     const attachmentCapabilitiesBeforeDispatch = readLiveAttachmentCapabilities();
@@ -1429,22 +1438,20 @@ export function useComposerSend(input: ComposerSendInput) {
         }
         if (backgroundThreadRef) {
           if (backgroundDraftOpened) {
-            toastManager.add(
-              stackedThreadToast({
-                type: "success",
-                title: "Started in background",
-                timeout: 5_000,
-                actionProps: {
-                  children: "Open",
-                  onClick: () => {
-                    void navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(backgroundThreadRef),
-                    });
-                  },
+            toastManager.add({
+              type: "success",
+              title: "Started in background",
+              timeout: 5_000,
+              actionProps: {
+                children: "Open",
+                onClick: () => {
+                  void navigate({
+                    to: "/$environmentId/$threadId",
+                    params: buildThreadRouteParams(backgroundThreadRef),
+                  });
                 },
-              }),
-            );
+              },
+            });
           }
         } else if (
           submissionIntent === "background" &&
@@ -1466,17 +1473,37 @@ export function useComposerSend(input: ComposerSendInput) {
         );
         clearBackgroundDraftSubmissionByRef(scopeThreadRef(environmentId, threadIdForSend));
       }
+      setOptimisticUserMessages((existing) => {
+        const next = existing.filter((message) => message.id !== messageIdForSend);
+        return next.length === existing.length ? existing : next;
+      });
+      optimisticBlobPreviews.release(optimisticMessage);
       if (
-        !composerDraftHasUserContent(
+        composerDraftHasUserContent(
           useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
         )
       ) {
-        setOptimisticUserMessages((existing) => {
-          const next = existing.filter((message) => message.id !== messageIdForSend);
-          return next.length === existing.length ? existing : next;
-        });
-        // The restored draft clones its images, so the sent copies are no longer used.
-        optimisticBlobPreviews.release(optimisticMessage);
+        const failedText = promptForSend;
+        if (failedText.trim()) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: isAtomCommandInterrupted(failure)
+                ? "Message may not have been sent"
+                : "Message not sent",
+              description: "Your new draft was kept. Copy the failed message to send it again.",
+              timeout: 0,
+              data: { hideCopyButton: true },
+              actionProps: {
+                children: "Copy message",
+                onClick: () => {
+                  void writeTextToClipboard(failedText, "failed message").catch(() => undefined);
+                },
+              },
+            }),
+          );
+        }
+      } else {
         const retryComposerImages = restoreComposerDraft(composerDraftTarget, sendSnapshot);
         if (currentRouteThreadKeyRef.current === routeThreadKey) {
           promptRef.current = messageTextForSend;

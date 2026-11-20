@@ -4,12 +4,42 @@ import * as NodeFS from "node:fs";
 import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it, vi } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+
+it.effect.each([
+  { platform: "win32", detached: false },
+  { platform: "linux", detached: true },
+] as const)("configures ACP process group spawning on $platform", ({ platform, detached }) =>
+  Effect.gen(function* () {
+    let actual: boolean | undefined;
+    yield* AcpSessionRuntime.make({
+      spawn: { command: "acp-agent", args: [], shell: false },
+      cwd: process.cwd(),
+      clientInfo: { name: "test", version: "1" },
+      ownDetachedProcessGroup: true,
+      processGroupPlatform: platform,
+    }).pipe(
+      Effect.provideService(HostProcess.Platform, platform),
+      Effect.provideService(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make((command) => {
+          if (ChildProcess.isStandardCommand(command)) actual = command.options.detached;
+          return Effect.die("spawn stopped by test");
+        }),
+      ),
+      Effect.exit,
+    );
+    expect(actual).toBe(detached);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 const identity = (
   pid: number,

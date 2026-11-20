@@ -159,6 +159,8 @@ export const layerSettingsWatcher = (
     }),
   );
 
+export const providerHostLayer = Layer.fresh(ProviderHostLive.layer);
+
 export const layer: Layer.Layer<
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator,
@@ -186,7 +188,7 @@ export const layer: Layer.Layer<
     }).pipe(
       Layer.provide(ProviderOrchestrationAdapterInfrastructure.layer),
       Layer.provide(AcpRegistrySupport.layerFromHost),
-      Layer.provide(ProviderHostLive.layer),
+      Layer.provide(providerHostLayer),
       Layer.provide(SecretResolver.layer),
     );
 

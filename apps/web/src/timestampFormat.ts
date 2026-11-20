@@ -61,6 +61,11 @@ function resolveWeekStartsOn(locale: string | undefined): WeekdayIndex | undefin
   }
 }
 export const weekStartsOn = resolveWeekStartsOn(timestampLocale);
+
+function wallClockAsUtc(date: Date): Date {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+}
+
 const timestampFormatterCache = new Map<string, Intl.DateTimeFormat>();
 function getTimestampFormatter(
   timestampFormat: TimestampFormat,
@@ -71,10 +76,10 @@ function getTimestampFormatter(
   if (cachedFormatter) {
     return cachedFormatter;
   }
-  const formatter = new Intl.DateTimeFormat(
-    timestampLocale,
-    getTimestampFormatOptions(timestampFormat, includeSeconds),
-  );
+  const formatter = new Intl.DateTimeFormat(timestampLocale, {
+    ...getTimestampFormatOptions(timestampFormat, includeSeconds),
+    timeZone: "UTC",
+  });
   timestampFormatterCache.set(cacheKey, formatter);
   return formatter;
 }
@@ -88,7 +93,7 @@ export function parseTimestampDate(isoDate: string): Date | null {
 // Deliberately not the host locale: the tooltip's ordinal suffix and
 // day-before-month order below are English, so a localized month alone would
 // read "4th Juni 2026".
-const monthNameFormatter = new Intl.DateTimeFormat("en-US", { month: "long" });
+const monthNameFormatter = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" });
 function ordinalSuffix(day: number): string {
   const lastTwo = day % 100;
   if (lastTwo >= 11 && lastTwo <= 13) return "th";
@@ -118,25 +123,35 @@ export function formatChatTimestampTooltip(
       ...getTimestampFormatOptions(timestampFormat, false),
     }).format(date);
   }
-  const time = formatShortTimestamp(isoDate, timestampFormat);
+  const displayDate = wallClockAsUtc(date);
+  const time = getTimestampFormatter(timestampFormat, false).format(displayDate);
   const day = date.getDate();
-  const month = monthNameFormatter.format(date);
+  const month = monthNameFormatter.format(displayDate);
   const year = date.getFullYear();
   return `${time}, ${day}${ordinalSuffix(day)} ${month} ${year}`;
 }
+export function formatFullTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
+  return new Date(isoDate).toLocaleString(
+    undefined,
+    timestampFormat === "locale" ? undefined : { hour12: timestampFormat === "12-hour" },
+  );
+}
+
 export function formatShortTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
-  return getTimestampFormatter(timestampFormat, false).format(date);
+  return getTimestampFormatter(timestampFormat, false).format(wallClockAsUtc(date));
 }
 const numericDateFormatter = new Intl.DateTimeFormat(timestampLocale, {
   month: "numeric",
   day: "numeric",
+  timeZone: "UTC",
 });
 const numericDateWithYearFormatter = new Intl.DateTimeFormat(timestampLocale, {
   month: "numeric",
   day: "numeric",
   year: "numeric",
+  timeZone: "UTC",
 });
 export function formatDayAwareTimestamp(
   isoDate: string,
@@ -146,7 +161,8 @@ export function formatDayAwareTimestamp(
 ): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
-  const time = getTimestampFormatter(timestampFormat, false).format(date);
+  const displayDate = wallClockAsUtc(date);
+  const time = getTimestampFormatter(timestampFormat, false).format(displayDate);
   const now = new Date(nowMs);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfMessageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
@@ -156,7 +172,7 @@ export function formatDayAwareTimestamp(
   if (dayDiff === 1) return translate(language, "yesterday at {time}", { time });
   const dateFormatter =
     date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
-  return `${dateFormatter.format(date)} ${time}`;
+  return `${dateFormatter.format(displayDate)} ${time}`;
 }
 export function formatUpcomingTimestamp(
   isoDate: string,
@@ -165,7 +181,8 @@ export function formatUpcomingTimestamp(
 ): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
-  const time = getTimestampFormatter(timestampFormat, false).format(date);
+  const displayDate = wallClockAsUtc(date);
+  const time = getTimestampFormatter(timestampFormat, false).format(displayDate);
   const now = new Date(nowMs);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfTargetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
@@ -175,7 +192,7 @@ export function formatUpcomingTimestamp(
   if (dayDiff === 1) return `tomorrow at ${time}`;
   const dateFormatter =
     date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
-  return `${dateFormatter.format(date)} ${time}`;
+  return `${dateFormatter.format(displayDate)} ${time}`;
 }
 type RelativeTimeParts = {
   value: string;

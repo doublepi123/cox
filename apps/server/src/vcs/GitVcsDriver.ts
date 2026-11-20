@@ -4,6 +4,7 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -460,6 +461,8 @@ const FLAGGED_INDEX_ENTRIES_MAX_BYTES = 1024 * 1024;
 const CHECKPOINT_RECOVERY_MAX_CANDIDATES = 64;
 const CHECKPOINT_RECOVERY_TIMEOUT = "5 seconds";
 const GIT_CHECK_IGNORE_MAX_STDIN_BYTES = 256 * 1024;
+const REF_MOVE_REFLOG_SUBJECT =
+  /^(?:$|(?:checkout|reset|branch|clone|fetch)\b|[^:]*\((?:start|finish|abort|reset)\): |(?:merge|pull|rebase|cherry-pick)\b[^()]*: fast-forward$)/i;
 const WORKSPACE_GIT_HARDENED_CONFIG_ARGS = [
   "-c",
   "core.fsmonitor=false",
@@ -510,14 +513,10 @@ function parseGitRemoteVerboseOutput(
   output: string,
 ): Map<string, { url?: string; pushUrl?: string }> {
   const remotes = new Map<string, { url?: string; pushUrl?: string }>();
-  for (const line of output.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) {
-      continue;
-    }
-
+  for (const line of output.split(/\r?\n/)) {
+    // Git uses a tab before the URL and one space before the direction; both can occur in URLs.
     // Partial clones append the promisor filter, e.g. `(fetch) [blob:none]`.
-    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)(?:\s+\[[^\]]+\])?$/.exec(trimmed);
+    const match = /^(\S+)\t(.+) \((fetch|push)\)(?:\s+\[[^\]]+\])?$/.exec(line);
     if (!match) {
       continue;
     }
@@ -547,6 +546,7 @@ const gitCommand = Effect.fn("GitVcsDriver.gitCommand")(
     args: ReadonlyArray<string>,
     options?: {
       readonly stdin?: string;
+      readonly onSpawn?: () => void;
       readonly env?: NodeJS.ProcessEnv;
       readonly allowNonZeroExit?: boolean;
       readonly timeoutMs?: number;
@@ -562,6 +562,7 @@ const gitCommand = Effect.fn("GitVcsDriver.gitCommand")(
       cwd,
       spawnCwd: globalThis.process.cwd(),
       ...(options?.stdin !== undefined ? { stdin: options.stdin } : {}),
+      ...(options?.onSpawn !== undefined ? { onSpawn: options.onSpawn } : {}),
       ...(options?.env !== undefined ? { env: options.env } : {}),
       ...(options?.allowNonZeroExit !== undefined
         ? { allowNonZeroExit: options.allowNonZeroExit }
@@ -864,6 +865,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         "--git-common-dir",
         "--git-path",
         "index",
+        "--show-toplevel",
         "--show-prefix",
         "--verify",
         "--quiet",
@@ -874,11 +876,12 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     const headExists = result.exitCode === 0;
     const headChecked = headExists || result.exitCode === 1;
     const lines = result.stdout.split("\n");
-    const [gitCommonDir = "", indexPath = "", prefix = ""] = lines;
-    if (headChecked && lines.length === (headExists ? 5 : 4) && lines.at(-1) === "") {
+    const [gitCommonDir = "", indexPath = "", topLevel = "", prefix = ""] = lines;
+    if (headChecked && lines.length === (headExists ? 6 : 5) && lines.at(-1) === "") {
       return {
         gitCommonDir: gitCommonDir.trim(),
         indexPath: indexPath.trim(),
+        topLevel: topLevel.trim(),
         prefix,
         headExists,
       };
@@ -894,9 +897,22 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     return {
       gitCommonDir: fallbackCommonDir,
       indexPath: undefined,
+      topLevel: undefined,
       prefix: prefixResult.stdout.replace(/\n$/, ""),
       headExists: headChecked ? headExists : yield* hasHeadCommit(cwd),
     };
+  });
+
+  const listSubmodules = Effect.fn("GitVcsDriver.listSubmodules")(function* (cwd: string) {
+    const result = yield* execute({
+      operation: "GitVcsDriver.checkpoints.listSubmodules",
+      cwd,
+      args: ["submodule", "foreach", "--quiet", 'printf "%s\\0" "$displaypath"'],
+    });
+    return result.stdout
+      .split("\0")
+      .filter((entry) => entry !== "" && !entry.startsWith("../"))
+      .map((entry) => path.join(cwd, entry));
   });
 
   // Git defaults and macOS writeout-only can leave empty refs after crashes; flush before publication.
@@ -931,9 +947,8 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         "-c",
         "splitIndex.sharedIndexExpire=never",
       ];
-      const { gitCommonDir, indexPath, prefix, headExists } = yield* resolveCaptureRepository(
-        input.cwd,
-      );
+      const { gitCommonDir, indexPath, topLevel, prefix, headExists } =
+        yield* resolveCaptureRepository(input.cwd);
       const indexId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
       const tempIndexPath = path.join(gitCommonDir, `t3-checkpoint-index-${indexId}`);
       const commitEnv: NodeJS.ProcessEnv = {
@@ -1193,6 +1208,9 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
               ...indexConfig,
               ...durableWrite,
               ...longPaths,
+              // safecrlf=true refuses LF files under CRLF conversion; capture them as Git's default does.
+              "-c",
+              "core.safecrlf=false",
               "add",
               // Unreadable files keep their indexed version and unreadable new files are left out.
               ...(ignoreErrors ? ["--ignore-errors"] : []),
@@ -1317,6 +1335,38 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           args: [...durableWrite, "update-ref", input.checkpointRef, commitOid],
         });
       }).pipe(Effect.ensuring(cleanupTempIndex));
+
+      const hasSubmodules =
+        topLevel === undefined ||
+        (yield* fileSystem
+          .exists(path.join(topLevel, ".gitmodules"))
+          .pipe(Effect.orElseSucceed(() => true)));
+      if (!hasSubmodules) return;
+      yield* listSubmodules(input.cwd).pipe(
+        Effect.flatMap((submodules) =>
+          Effect.forEach(
+            submodules,
+            (cwd) =>
+              checkpoints
+                .captureCheckpoint({ cwd, checkpointRef: input.checkpointRef })
+                .pipe(
+                  Effect.catch((cause) =>
+                    Effect.logWarning("submodule checkpoint capture failed", { cwd, cause }).pipe(
+                      Effect.andThen(
+                        checkpoints
+                          .deleteCheckpointRefs({ cwd, checkpointRefs: [input.checkpointRef] })
+                          .pipe(Effect.ignore),
+                      ),
+                    ),
+                  ),
+                ),
+            { discard: true },
+          ),
+        ),
+        Effect.catch((cause) =>
+          Effect.logWarning("submodule checkpoint capture failed", { cwd: input.cwd, cause }),
+        ),
+      );
     }),
 
     hasCheckpointRef: (input) =>
@@ -1342,23 +1392,6 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         cwd: input.cwd,
         args: ["ls-files", "--cached", `--with-tree=${commitOid}`, "-z", "--", "."],
       });
-      // An empty index and checkpoint have nothing for git restore's pathspec to match.
-      if (tracked.stdout.length > 0) {
-        yield* execute({
-          operation,
-          cwd: input.cwd,
-          args: [
-            ...longPaths,
-            "restore",
-            "--source",
-            commitOid,
-            "--worktree",
-            "--staged",
-            "--",
-            ".",
-          ],
-        });
-      }
       // Restoring away the last tracked file can remove a nested workspace directory.
       const recreateWorkspace = fileSystem.makeDirectory(input.cwd, { recursive: true }).pipe(
         Effect.mapError(
@@ -1382,6 +1415,23 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           });
         }
       });
+      let restoreSpawned = false;
+      yield* Effect.addFinalizer((exit) =>
+        restoreSpawned && Exit.hasInterrupts(exit) ? resetIndex.pipe(Effect.ignore) : Effect.void,
+      );
+      if (tracked.stdout.length > 0) {
+        yield* gitCommand(
+          vcsProcess,
+          operation,
+          input.cwd,
+          [...longPaths, "restore", "--source", commitOid, "--worktree", "--staged", "--", "."],
+          {
+            onSpawn: () => {
+              restoreSpawned = true;
+            },
+          },
+        );
+      }
       yield* recreateWorkspace;
       const clean = execute({
         operation,
@@ -1440,8 +1490,32 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       }
       yield* resetIndex;
 
+      yield* listSubmodules(input.cwd).pipe(
+        Effect.flatMap((submodules) =>
+          Effect.forEach(
+            submodules,
+            (cwd) =>
+              checkpoints
+                .restoreCheckpoint({
+                  cwd,
+                  checkpointRef: input.checkpointRef,
+                  fallbackToHead: false,
+                })
+                .pipe(
+                  Effect.catch((cause) =>
+                    Effect.logWarning("submodule checkpoint restore failed", { cwd, cause }),
+                  ),
+                ),
+            { discard: true },
+          ),
+        ),
+        Effect.catch((cause) =>
+          Effect.logWarning("submodule checkpoint restore failed", { cwd: input.cwd, cause }),
+        ),
+      );
+
       return true;
-    }),
+    }, Effect.scoped),
 
     diffCheckpoints: Effect.fn("GitVcsDriver.checkpoints.diffCheckpoints")(function* (input) {
       const operation = "GitVcsDriver.checkpoints.diffCheckpoints";
@@ -1540,39 +1614,90 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         return null;
       }
 
-      const listPaths = (args: ReadonlyArray<string>) =>
+      const listLines = (args: ReadonlyArray<string>, stdin?: string) =>
+        execute({
+          operation,
+          cwd: input.cwd,
+          args: ["-c", "log.showSignature=false", ...args],
+          ...(stdin === undefined ? {} : { stdin }),
+          maxOutputBytes: VcsDriver.CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
+          outputMode: "error",
+        }).pipe(Effect.map((result) => result.stdout.split("\n").filter((line) => line !== "")));
+      const listPaths = (args: ReadonlyArray<string>, stdin?: string) =>
         execute({
           operation,
           cwd: input.cwd,
           args: [
             "-c",
             "diff.relative=false",
+            "-c",
+            "log.showSignature=false",
             ...args,
             "--name-only",
             "-z",
             "--no-renames",
             "--no-ext-diff",
           ],
+          ...(stdin === undefined ? {} : { stdin }),
           maxOutputBytes: VcsDriver.CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
           outputMode: "error",
         }).pipe(Effect.map((result) => result.stdout.split("\0")));
-      // Remerge diffs retain merge conflict fixes while excluding clean upstream changes.
-      const pathLists = yield* Effect.all(
+
+      const listImportedCommits = Effect.gen(function* () {
+        const entries = (yield* listLines([
+          "log",
+          "--walk-reflogs",
+          "--all",
+          `--since=@${capturedAt}`,
+          "--format=%H %gD %gs",
+        ])).map((line) => {
+          const [commit = "", selector = "", ...subject] = line.split(" ");
+          return {
+            commit,
+            fetched: selector.startsWith("refs/remotes/"),
+            subject: subject.join(" "),
+          };
+        });
+        const fetchedTips = new Set(
+          entries
+            .filter((entry) => entry.fetched && entry.subject !== "update by push")
+            .map((entry) => entry.commit),
+        );
+        if (fetchedTips.size === 0) return fetchedTips;
+        const createdHere = new Set(
+          entries
+            .filter((entry) => !entry.fetched && !REF_MOVE_REFLOG_SUBJECT.test(entry.subject))
+            .map((entry) => entry.commit),
+        );
+        const fetched = yield* listLines(
+          ["rev-list", `--since=@${capturedAt}`, "--stdin"],
+          `${[...fetchedTips, `^${startHead}`].join("\n")}\n`,
+        );
+        return new Set(fetched.filter((commit) => !createdHere.has(commit)));
+      });
+
+      const [recentCommits, ...pathLists] = yield* Effect.all(
         [
+          listLines(["rev-list", `--since=@${capturedAt}`, `${startHead}..${endHead}`]),
           listPaths(["diff", startHead, `${input.fromCheckpointRef}^{commit}`]),
           listPaths(["diff", endHead, `${input.toCheckpointRef}^{commit}`]),
           listPaths(["log", "--format=", "--diff-merges=remerge", `${endHead}..${startHead}`]),
-          listPaths([
-            "log",
-            "--format=",
-            "--diff-merges=remerge",
-            `--since=@${capturedAt}`,
-            `${startHead}..${endHead}`,
-          ]),
         ],
         { concurrency: "unbounded" },
       );
-      return new Set(pathLists.flat().filter((path) => path.length > 0));
+      const importedCommits =
+        recentCommits.length === 0
+          ? new Set<string>()
+          : yield* listImportedCommits.pipe(Effect.orElseSucceed(() => new Set<string>()));
+      const ownCommits = recentCommits.filter((commit) => !importedCommits.has(commit));
+      const ownCommitPaths =
+        ownCommits.length === 0
+          ? []
+          : yield* listPaths(
+              ["log", "--no-walk=unsorted", "--stdin", "--format=", "--diff-merges=remerge"],
+              `${ownCommits.join("\n")}\n`,
+            );
+      return new Set([...pathLists.flat(), ...ownCommitPaths].filter((path) => path.length > 0));
     }),
 
     deleteCheckpointRefs: Effect.fn("GitVcsDriver.checkpoints.deleteCheckpointRefs")(
@@ -1588,6 +1713,10 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
             }),
           { discard: true },
         );
+        const submodules = yield* listSubmodules(input.cwd).pipe(Effect.orElseSucceed(() => []));
+        for (const cwd of submodules) {
+          yield* checkpoints.deleteCheckpointRefs({ cwd, checkpointRefs: input.checkpointRefs });
+        }
       },
     ),
   };

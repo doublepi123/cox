@@ -59,6 +59,8 @@ const piDiscoverySpawner = (
     readonly version?: string;
     readonly state?: unknown;
     readonly authCheck?: string | undefined;
+    readonly startupDialog?: boolean;
+    readonly onLaunch?: (args: ReadonlyArray<string>) => void;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -102,6 +104,14 @@ const piDiscoverySpawner = (
           ? Effect.die(`Unexpected pi ${args.join(" ")}`)
           : Effect.succeed(processHandle({ stdout: options.authCheck, exitCode: 1 }));
       }
+      options.onLaunch?.(args);
+      if (options.startupDialog && !args.includes("--no-approve")) {
+        return Effect.succeed(
+          processHandle({
+            stdout: `${encodeJsonLine({ type: "extension_ui_request", id: "trust", method: "select", options: ["Deny", "Allow"] })}\n`,
+          }),
+        );
+      }
       return Effect.succeed(
         ChildProcessSpawner.makeHandle({
           ...processHandle({}),
@@ -122,6 +132,35 @@ const settings = {
 } as const;
 
 describe("PiProvider", () => {
+  it.effect.each([
+    { launchArgs: "", startupDialog: true, models: ["default", "anthropic/claude-opus"] },
+    { launchArgs: "--approve", startupDialog: true, models: ["default"] },
+    { launchArgs: "", startupDialog: false, models: ["default", "anthropic/claude-opus"] },
+  ])("loads discovery with the chosen Pi trust mode ($launchArgs, dialog: $startupDialog)", (row) =>
+    Effect.gen(function* () {
+      const launches: ReadonlyArray<string>[] = [];
+      const spawner = yield* piDiscoverySpawner(
+        {
+          models: [{ provider: "anthropic", id: "claude-opus" }],
+        },
+        { startupDialog: row.startupDialog, onLaunch: (args) => launches.push(args) },
+      );
+      const snapshot = yield* checkPiProviderStatus({
+        ...settings,
+        launchArgs: row.launchArgs,
+      }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+      assert.deepEqual(
+        launches.map((args) => args.includes("--no-approve")),
+        row.startupDialog && !row.launchArgs ? [false, true] : [false],
+        snapshot.message,
+      );
+      assert.deepEqual(
+        snapshot.models.map((model) => model.slug),
+        row.models,
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("requires the first published Pi version with entries and settlement hooks", () =>
     Effect.gen(function* () {
       const snapshot = yield* checkPiProviderStatus(settings).pipe(

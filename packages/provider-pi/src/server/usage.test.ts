@@ -26,16 +26,19 @@ it.effect.each([
   ({ launchArgs, launchDir, sessionDir }) =>
     Effect.gen(function* () {
       if (piUsageReader.kind !== "transcripts") throw new Error("Expected transcript usage");
-      const directories = yield* piUsageReader.directories({
-        instanceId: ProviderInstanceId.make("pi_usage"),
-        configured: true,
-        config: decodeSettings({
-          launchArgs,
-          agentDir: "~/configured",
-          ...(sessionDir === undefined ? {} : { sessionDir }),
-        }),
-        environment: { HOME: "/instance", PI_CODING_AGENT_DIR: "/inherited" },
-      });
+      const directories = yield* piUsageReader.directories(
+        {
+          instanceId: ProviderInstanceId.make("pi_usage"),
+          configured: true,
+          config: decodeSettings({
+            launchArgs,
+            agentDir: "~/configured",
+            ...(sessionDir === undefined ? {} : { sessionDir }),
+          }),
+          environment: { HOME: "/instance", PI_CODING_AGENT_DIR: "/inherited" },
+        },
+        { awaitRefresh: true },
+      );
       expect(directories).toEqual([
         ...(launchDir === undefined ? [] : [{ dir: launchDir }]),
         ...(sessionDir === undefined ? [] : [{ dir: sessionDir.replace(/^~/, "/instance") }]),
@@ -52,12 +55,15 @@ it.effect("keeps explicit session history when a launch directory is configured"
   Effect.gen(function* () {
     if (piUsageReader.kind !== "transcripts") throw new Error("Expected transcript usage");
     expect(
-      yield* piUsageReader.directories({
-        instanceId: ProviderInstanceId.make("pi_usage"),
-        configured: true,
-        config: decodeSettings({ launchArgs: "--session-dir /launch", agentDir: "/configured" }),
-        environment: { PI_CODING_AGENT_SESSION_DIR: "/explicit" },
-      }),
+      yield* piUsageReader.directories(
+        {
+          instanceId: ProviderInstanceId.make("pi_usage"),
+          configured: true,
+          config: decodeSettings({ launchArgs: "--session-dir /launch", agentDir: "/configured" }),
+          environment: { PI_CODING_AGENT_SESSION_DIR: "/explicit" },
+        },
+        { awaitRefresh: true },
+      ),
     ).toEqual([{ dir: "/launch" }, { dir: "/explicit" }]);
   }).pipe(Effect.provide(Path.layer)),
 );

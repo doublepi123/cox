@@ -200,6 +200,8 @@ export class PullRequestService extends Context.Service<
       input: PullRequestRef,
       options?: { readonly recoverTransientFailure?: boolean },
     ) => Effect.Effect<PullRequestSummary, PullRequestError>;
+    /** Whether the reference's host batches summary reads; false when it cannot be resolved. */
+    readonly batchesReads: (input: PullRequestRef) => Effect.Effect<boolean>;
     readonly stack: (
       input: PullRequestRef,
       options?: { readonly includeDetails?: boolean },
@@ -468,32 +470,37 @@ function withRateLimitBackoff(
   const protect = <A>(
     operation: string,
     effect: Effect.Effect<A, PullRequestProviderError>,
-    allowPaused: boolean,
+    alwaysInteractive: boolean,
   ) =>
-    limits.check(key, allowPaused ? { allowPaused: true } : undefined).pipe(
-      Effect.mapError(
-        (error) =>
-          new PullRequestProviderError({
-            provider: api.kind,
-            operation,
-            reason: "rate-limited",
-            detail: error.detail,
-            retryAt: error.retryAt,
-            cause: error,
-          }),
-      ),
-      Effect.flatMap((lease) =>
-        effect.pipe(
-          Effect.provideService(SourceControlRateLimit.Interactive, allowPaused),
-          Effect.tap(() => limits.recordSuccess({ ...key, lease })),
-          Effect.tapError((error) =>
-            error.reason === "rate-limited"
-              ? limits.recordRateLimit({
-                  ...key,
-                  lease,
-                  ...(error.retryAt === undefined ? {} : { retryAt: error.retryAt }),
-                })
-              : Effect.void,
+    SourceControlRateLimit.Interactive.pipe(
+      Effect.map((callerInteractive) => alwaysInteractive || callerInteractive),
+      Effect.flatMap((allowPaused) =>
+        limits.check(key, allowPaused ? { allowPaused: true } : undefined).pipe(
+          Effect.mapError(
+            (error) =>
+              new PullRequestProviderError({
+                provider: api.kind,
+                operation,
+                reason: "rate-limited",
+                detail: error.detail,
+                retryAt: error.retryAt,
+                cause: error,
+              }),
+          ),
+          Effect.flatMap((lease) =>
+            effect.pipe(
+              Effect.provideService(SourceControlRateLimit.Interactive, allowPaused),
+              Effect.tap(() => limits.recordSuccess({ ...key, lease })),
+              Effect.tapError((error) =>
+                error.reason === "rate-limited"
+                  ? limits.recordRateLimit({
+                      ...key,
+                      lease,
+                      ...(error.retryAt === undefined ? {} : { retryAt: error.retryAt }),
+                    })
+                  : Effect.void,
+              ),
+            ),
           ),
         ),
       ),
@@ -502,10 +509,10 @@ function withRateLimitBackoff(
     <Args extends ReadonlyArray<unknown>, A>(
       operation: string,
       call: (...args: Args) => Effect.Effect<A, PullRequestProviderError>,
-      allowPaused = false,
+      alwaysInteractive = false,
     ) =>
     (...args: Args) =>
-      protect(operation, call(...args), allowPaused);
+      protect(operation, call(...args), alwaysInteractive);
   const interactive = <Args extends ReadonlyArray<unknown>, A>(
     operation: string,
     call: (...args: Args) => Effect.Effect<A, PullRequestProviderError>,
@@ -525,6 +532,7 @@ function withRateLimitBackoff(
     ...(api.readsPublicHostWithoutCheckout === undefined
       ? {}
       : { readsPublicHostWithoutCheckout: api.readsPublicHostWithoutCheckout }),
+    ...(api.batchesReads === undefined ? {} : { batchesReads: api.batchesReads }),
     getViewer:
       options?.viewerAllowsPause === true
         ? interactive("getViewer", api.getViewer)
@@ -1052,6 +1060,19 @@ export const make = Effect.gen(function* () {
                     };
                   }
                 }
+                const owner =
+                  publicHost ?? sourceControlDefinitions.findByRepositoryKey(referenceKey);
+                const readable = owner === undefined ? null : registry.get(owner.kind);
+                if (
+                  readable !== null &&
+                  !readable.readsPublicHostWithoutCheckout &&
+                  readable.servesHost?.(host) !== false
+                ) {
+                  return yield* new PullRequestUnavailableError({
+                    reason: "repository-without-project",
+                    repository,
+                  });
+                }
                 return yield* new PullRequestUnavailableError({ reason: "provider-unsupported" });
               });
             }
@@ -1490,7 +1511,18 @@ export const make = Effect.gen(function* () {
         filters: input.filters,
         ...(cursor === undefined
           ? {}
-          : { cursor: { updatedBefore: cursor.updatedBefore, delivered: cursor.delivered } }),
+          : {
+              cursor: {
+                updatedBefore: cursor.updatedBefore,
+                delivered: cursor.delivered,
+                seenAt: chunk.flatMap((project) =>
+                  (cursorOf(project)?.seenAt ?? []).map((number) => ({
+                    repository: project.repository,
+                    number,
+                  })),
+                ),
+              },
+            }),
       }).pipe(
         observeRead,
         Effect.flatMap(({ value: page, observedAt }) => {
@@ -3019,6 +3051,16 @@ export const make = Effect.gen(function* () {
         );
   };
 
+  const batchesReads: PullRequestService["Service"]["batchesReads"] = Effect.fn(
+    "PullRequestService.batchesReads",
+  )(
+    function* (input) {
+      const project = yield* requireProject(input);
+      return project.api.batchesReads === true;
+    },
+    Effect.orElseSucceed(() => false),
+  );
+
   const stack: PullRequestService["Service"]["stack"] = (input, options) =>
     persistedRead(
       input,
@@ -3173,9 +3215,11 @@ export const make = Effect.gen(function* () {
       return detailUncached(refOfCacheKey(key)).pipe(
         Effect.tap(
           Effect.fn("PullRequestService.recordDetailStats")(function* (value: PullRequestDetail) {
-            // GitHub detail includes the same checks; the checks TTL counts from their observation.
+            // GitHub and Azure detail include the same checks; the checks TTL counts from their observation.
+            // Azure detail answers a failed policy read with no checks, which must not be cached.
             if (
-              value.provider === "github" &&
+              (value.provider === "github" ||
+                (value.provider === "azure-devops" && value.checks.length > 0)) &&
               value.observedAt !== undefined &&
               !(yield* Cache.has(checksCache, key))
             ) {
@@ -3794,6 +3838,7 @@ export const make = Effect.gen(function* () {
       return yield* listStats({ ...input, refs: refs.flatMap(Option.toArray) });
     }),
     summary: credentialCached(summary),
+    batchesReads,
     stack: credentialCached(stack),
     subscribeMerges: PubSub.subscribe(mergedPullRequests).pipe(
       Effect.map((subscription) => Stream.fromSubscription(subscription)),

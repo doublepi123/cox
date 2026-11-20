@@ -26,7 +26,7 @@ import * as ConnectionWakeups from "../connection/wakeups.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { runCachePersistence } from "./cachePersistence.ts";
-import { subscribeDynamicWithSession } from "../rpc/client.ts";
+import { subscribeDynamicWithSession, subscriptionRetryDelay } from "../rpc/client.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import * as ShellSnapshotLoader from "./shellSnapshotHttp.ts";
 import type { DeferredShellSnapshot } from "./shellPullRequests.ts";
@@ -390,6 +390,8 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     onSome: (service) =>
       service.changes.pipe(Stream.filter(ConnectionWakeups.shouldResubscribeAfterWakeup)),
   });
+  const defectRetryRequests = yield* Queue.unbounded<void>();
+  let defectRetries = 0;
 
   yield* setSynchronizing;
   yield* Effect.forkScoped(
@@ -491,9 +493,18 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         };
       }),
       {
+        onDefect: (cause) => {
+          const reportError = setStreamError(Cause.squash(cause));
+          return Cause.hasDies(cause)
+            ? reportError.pipe(
+                Effect.andThen(Effect.sleep(subscriptionRetryDelay("250 millis", defectRetries++))),
+                Effect.andThen(Queue.offer(defectRetryRequests, undefined)),
+              )
+            : reportError;
+        },
         onExpectedFailure: (cause) => setStreamError(Cause.squash(cause)),
         retryExpectedFailureAfter: "250 millis",
-        resubscribe: foregroundResubscriptions,
+        resubscribe: Stream.merge(foregroundResubscriptions, Stream.fromQueue(defectRetryRequests)),
       },
     ).pipe(
       Stream.runForEachArray((entries) =>
@@ -504,6 +515,12 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
               Effect.andThen(applyItems(items, sessionOmissions.get(session) ?? null)),
             ),
           { discard: true },
+        ).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              defectRetries = 0;
+            }),
+          ),
         ),
       ),
     ),

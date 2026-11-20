@@ -1,8 +1,12 @@
 import { SourceControlProviderKind } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
+import * as Semaphore from "effect/Semaphore";
 import { SourceControlProviderError } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
@@ -268,6 +272,16 @@ const cloneUrls = (raw: typeof RepositorySchema.Type) => ({
 const repositoryPath = (repository: string) =>
   `repos/${repository.split("/").map(encodeURIComponent).join("/")}`;
 
+type ForgejoPull = typeof ForgejoPullRequestSchema.Type;
+const unfilteredPullsMaxAgeMs = 60 * 60_000;
+
+interface UnfilteredPulls {
+  readonly lock: Semaphore.Semaphore;
+  pulls: Map<number, ForgejoPull>;
+  newest: number | undefined;
+  scannedAt: number;
+}
+
 export const make = Effect.gen(function* () {
   const cli = yield* ForgejoCli.ForgejoCli;
   const fs = yield* FileSystem.FileSystem;
@@ -322,6 +336,45 @@ export const make = Effect.gen(function* () {
       ForgejoPullRequestSchema,
     );
   });
+  const unfilteredPulls = new Map<string, UnfilteredPulls>();
+  const refreshUnfilteredPulls = Effect.fn("ForgejoSourceControlProvider.refreshUnfilteredPulls")(
+    function* (
+      input: ForgejoCli.ForgejoRepositoryInput,
+      path: string,
+      cache: UnfilteredPulls,
+      firstPage: ReadonlyArray<ForgejoPull> | undefined,
+    ) {
+      const now = yield* Clock.currentTimeMillis;
+      const since = now - cache.scannedAt < unfilteredPullsMaxAgeMs ? cache.newest : undefined;
+      const updates = new Map<number, ForgejoPull>();
+      let newest = since;
+      for (let page = 1; ; page++) {
+        const items =
+          page === 1 && firstPage !== undefined && !Number.isFinite(cache.scannedAt)
+            ? firstPage
+            : yield* request(
+                { ...input, path: `${path}?state=all&sort=recentupdate&limit=50&page=${page}` },
+                Schema.Array(ForgejoPullRequestSchema),
+              );
+        const updated = items.flatMap(
+          (item) =>
+            Option.getOrUndefined(
+              Option.map(item.updated_at ?? Option.none(), DateTime.toEpochMillis),
+            ) ?? [],
+        );
+        for (const item of items) updates.set(item.number, item);
+        if (page === 1 && updated.length > 0) newest = Math.max(...updated);
+        if (items.length === 0 || (since !== undefined && updated.some((at) => at < since))) break;
+      }
+      if (since === undefined) {
+        cache.scannedAt = now;
+        cache.pulls = updates;
+      } else {
+        for (const [number, pull] of updates) cache.pulls.set(number, pull);
+      }
+      cache.newest = newest;
+    },
+  );
   return SourceControlProvider.SourceControlProvider.of({
     kind: SourceControlProviderKind.make("forgejo"),
     repositoryNameFromRemoteUrl,
@@ -332,16 +385,11 @@ export const make = Effect.gen(function* () {
         const repo = yield* cli.resolveRepository(input);
         const source = SourceControlProvider.sourceControlRefFromInput(input);
         const branch = SourceControlProvider.sourceBranch(input);
-        const results: ReturnType<typeof toForgejoChangeRequest>[] = [];
         const limit = input.limit ?? 20;
-        for (let page = 1; results.length < limit; page++) {
-          const items = yield* request(
-            {
-              ...input,
-              path: `${repositoryPath(repo.repository)}/pulls?state=${input.state === "merged" ? "closed" : input.state}&head=${encodeURIComponent(branch)}&sort=recentupdate&limit=50&page=${page}`,
-            },
-            Schema.Array(ForgejoPullRequestSchema),
-          );
+        if (limit <= 0) return [];
+        const path = `${repositoryPath(repo.repository)}/pulls`;
+        const matching = (items: Iterable<ForgejoPull>) => {
+          const matches: ReturnType<typeof toForgejoChangeRequest>[] = [];
           for (const item of items) {
             if (
               item.head.ref !== branch ||
@@ -350,11 +398,67 @@ export const make = Effect.gen(function* () {
             )
               continue;
             const normalized = toForgejoChangeRequest(item);
-            if (input.state === "all" || normalized.state === input.state) results.push(normalized);
+            if (input.state === "all" || normalized.state === input.state) matches.push(normalized);
           }
-          if (items.length === 0) break;
+          return matches;
+        };
+        const key = [input.cwd, repo.command, repo.login, repo.baseUrl, repo.repository].join("\0");
+        let cache = unfilteredPulls.get(key);
+        let firstPage: ReadonlyArray<ForgejoPull> | undefined;
+        const results: ReturnType<typeof toForgejoChangeRequest>[] = [];
+        if (cache === undefined) {
+          for (let page = 1; results.length < limit; page++) {
+            const items = yield* request(
+              {
+                ...input,
+                path: `${path}?state=${input.state === "merged" ? "closed" : input.state}&head=${encodeURIComponent(branch)}&sort=recentupdate&limit=50&page=${page}`,
+              },
+              Schema.Array(ForgejoPullRequestSchema),
+            );
+            if (items.some((item) => item.head.ref !== branch)) {
+              cache = unfilteredPulls.get(key) ?? {
+                lock: Semaphore.makeUnsafe(1),
+                pulls: new Map(),
+                newest: undefined,
+                scannedAt: -Infinity,
+              };
+              unfilteredPulls.set(key, cache);
+              if (page === 1 && input.state === "all") firstPage = items;
+              break;
+            }
+            results.push(...matching(items));
+            if (items.length === 0) break;
+          }
+          if (cache === undefined) return results.slice(0, limit);
+          results.length = 0;
         }
-        return results.slice(0, limit);
+        const state = cache;
+        const candidates = yield* state.lock.withPermits(1)(
+          refreshUnfilteredPulls(input, path, state, firstPage).pipe(
+            Effect.map(() =>
+              matching(state.pulls.values()).sort(
+                (left, right) =>
+                  Option.getOrElse(Option.map(right.updatedAt, DateTime.toEpochMillis), () => 0) -
+                    Option.getOrElse(Option.map(left.updatedAt, DateTime.toEpochMillis), () => 0) ||
+                  right.number - left.number,
+              ),
+            ),
+          ),
+        );
+        for (const candidate of candidates) {
+          if (results.length >= limit) break;
+          const current = yield* request(
+            { ...input, path: `${path}/${candidate.number}` },
+            ForgejoPullRequestSchema,
+          ).pipe(
+            Effect.catchIf(
+              (error) => error.httpStatus === 404,
+              () => Effect.undefined,
+            ),
+          );
+          if (current?.number === candidate.number) results.push(...matching([current]));
+        }
+        return results;
       },
       (effect, input) => effect.pipe(mapError("listChangeRequests", input.cwd)),
     ),

@@ -136,3 +136,45 @@ it("clears attachment drafts for requests the thread resolved, wherever they wer
   expect(store.getComposerDraft(elsewhere)?.prompt).toBe("Answer context");
   expect(useQuestionAttachmentPreparation.getState().counts[drop]).toBeUndefined();
 });
+
+it("returns unanswered question attachments to the thread without releasing them", () => {
+  const thread = { environmentId, threadId };
+  const expired = RuntimeRequestId.make("expired");
+  const answered = RuntimeRequestId.make("answered");
+  const expiredKey = questionAttachmentDraftId(environmentId, threadId, expired, "first");
+  const answeredKey = questionAttachmentDraftId(environmentId, threadId, answered, "first");
+  const store = useComposerDraftStore.getState();
+  const file = {
+    type: "file" as const,
+    id: "file",
+    name: "notes.txt",
+    mimeType: "text/plain",
+    sizeBytes: 4,
+    file: new File(["note"], "notes.txt", { type: "text/plain" }),
+  };
+  const image = {
+    type: "image" as const,
+    id: "image",
+    name: "picture.png",
+    mimeType: "image/png",
+    sizeBytes: 5,
+    previewUrl: "blob:recovered-question-image",
+    file: new File(["image"], "picture.png", { type: "image/png" }),
+  };
+  const submittedFile = { ...file, id: "submitted" };
+  store.setPrompt(thread, "Unsent prompt");
+  store.addFiles(expiredKey, [file]);
+  store.addImages(expiredKey, [image]);
+  store.addFiles(answeredKey, [submittedFile]);
+  const announce = makeThreadRequestsResolvedAnnouncer(environmentId, threadId);
+  announce([expired, answered]);
+  announce([], [expired]);
+  expect(store.getComposerDraft(thread)).toMatchObject({
+    prompt: "Unsent prompt",
+    files: [file],
+    images: [image],
+  });
+  expect(store.getComposerDraft(expiredKey)).toBeNull();
+  expect(store.getComposerDraft(answeredKey)).toBeNull();
+  expect(release.mock.calls.flat(2)).toEqual([submittedFile]);
+});

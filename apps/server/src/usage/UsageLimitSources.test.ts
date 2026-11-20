@@ -24,6 +24,13 @@ it.effect("keeps malformed source URLs encodable for config subscribers", () =>
       "hub.test:8317",
       "Usage limit source",
     ]);
+    expect(snapshots.map(({ endpoint }) => endpoint)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      "https://hub.test:8317/team-a",
+      undefined,
+    ]);
     expect(() =>
       encodeConfigEvent({
         version: 1,
@@ -59,7 +66,7 @@ it.effect("keeps malformed source URLs encodable for config subscribers", () =>
           },
           [UsageLimitSourceId.make("valid-hub")]: {
             kind: "cliproxy",
-            url: "https://hub.test:8317",
+            url: "https://hub.test:8317/team-a/management.html?view=limits#section",
             managementKey: "",
             enabled: true,
           },

@@ -6,7 +6,38 @@ export function resolveProtocolRelativeMediaUrl(src: string): string {
   return `${protocol}${src}`;
 }
 
+function decodePercentBytes(payload: string): Uint8Array<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  return Uint8Array.from(
+    payload
+      .split(/(%[0-9a-f]{2})/i)
+      .flatMap((part) =>
+        /^%[0-9a-f]{2}$/i.test(part)
+          ? [Number.parseInt(part.slice(1), 16)]
+          : [...encoder.encode(part)],
+      ),
+  );
+}
+
+function readDataUrlBlob(src: string): Blob {
+  const url = src.split("#", 1)[0] ?? src;
+  const comma = url.indexOf(",");
+  const [mimeType = "", ...parameters] = url.slice("data:".length, comma).split(";");
+  const payload = url.slice(comma + 1);
+  try {
+    if (comma < 0) throw new Error("Missing data URL payload.");
+    const isBase64 = parameters.some((parameter) => parameter.trim().toLowerCase() === "base64");
+    const bytes = isBase64
+      ? Uint8Array.from(atob(decodeURIComponent(payload)), (char) => char.charCodeAt(0))
+      : decodePercentBytes(payload);
+    return new Blob([bytes], { type: mimeType || "text/plain" });
+  } catch (cause) {
+    throw new Error("This inline media could not be decoded.", { cause });
+  }
+}
+
 async function readMediaBlob(src: string): Promise<Blob> {
+  if (/^data:/i.test(src)) return readDataUrlBlob(src);
   let response: Response;
   try {
     response = await fetch(src);

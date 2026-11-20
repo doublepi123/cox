@@ -67,6 +67,11 @@ import {
   useThreadRelationshipShells,
 } from "../../state/entities";
 import { useEnvironment, useEnvironmentProviders } from "../../state/environments";
+import { serverEnvironment } from "../../state/server";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+} from "../../providerInstances";
 import { threadEnvironment } from "../../state/threads";
 import { orchestrationEnvironment } from "../../state/orchestration";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -379,6 +384,7 @@ export function ThreadRelationshipsPanel(props: {
   const ref = scopeThreadRef(props.environmentId, props.threadId);
   const projection = useThreadProjection(ref)?.projection ?? null;
   const providersByEnvironment = useEnvironmentProviders();
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
   const relationshipShells = useThreadRelationshipShells(ref);
   const allProjects = useProjects();
   const archived = useArchivedThreadSnapshots([props.environmentId]);
@@ -416,6 +422,14 @@ export function ThreadRelationshipsPanel(props: {
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   // Derive graphs after hooks to preserve their compiler cache.
   const providers = providersByEnvironment.get(props.environmentId);
+  const derivedProviderEntries = deriveProviderInstanceEntries(providers ?? []);
+  const providerEntries = settings
+    ? applyProviderInstanceSettings(
+        derivedProviderEntries,
+        settings,
+        currentThread?.projectId ?? null,
+      )
+    : derivedProviderEntries;
   const projects = allProjects.filter((project) => project.environmentId === props.environmentId);
   const parentNativeStatus = parentProjection
     ? deriveProviderSubagentStatus(parentProjection)?.status
@@ -695,6 +709,7 @@ export function ThreadRelationshipsPanel(props: {
         <ThreadRelationshipIcon
           driver={isSubagent && !isParent ? providerDriver : undefined}
           provider={provider}
+          providerEntries={providerEntries}
           fallbackIcon={RelationshipIcon}
           status={rowStatus}
         />
@@ -751,6 +766,7 @@ export function ThreadRelationshipsPanel(props: {
           providerInstanceId={agent.providerInstanceId}
           provider={provider}
           providers={providers}
+          providerEntries={providerEntries}
           driver={providerDriver}
           onOpenThread={(memberThreadId) => openThread(memberThreadId as ThreadId)}
           onStop={canStopWorkflow ? () => void stopWorkflow(agent.id) : undefined}
@@ -794,7 +810,7 @@ export function ThreadRelationshipsPanel(props: {
                         ? `Merge back to ${parentTitle}`
                         : "Merge back to source conversation"
                     }
-                    disabled={!canMerge || busyAction !== null}
+                    aria-disabled={!canMerge || busyAction !== null || undefined}
                     onClick={() => void merge()}
                   >
                     {busyAction === "merge" ? (

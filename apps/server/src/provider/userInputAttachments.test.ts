@@ -7,6 +7,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -85,6 +86,114 @@ describe("question answer paths", () => {
           }),
         );
       }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect.each(["interrupted", "failed"])(
+    "extracts two documents at once and frees a slot when one is %s",
+    (outcome) =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const [first, second, third] = ["first", "second", "third"].map((name) =>
+          NodePath.join(config.attachmentsDir, `${name}.rtf`),
+        );
+        NodeFS.writeFileSync(first!, String.raw`{\rtf1 First}`);
+        NodeFS.writeFileSync(second!, "invalid document");
+        NodeFS.writeFileSync(third!, String.raw`{\rtf1 Third}`);
+        const started = yield* Queue.unbounded<string>();
+        const releases = new Map<string, Deferred.Deferred<void>>();
+        for (const path of [first!, second!, third!])
+          releases.set(path, yield* Deferred.make<void>());
+        yield* Effect.gen(function* () {
+          const documents = yield* DocumentText.DocumentText;
+          const leaving = yield* documents.ensure(first!).pipe(Effect.forkChild);
+          const staying = yield* documents.ensure(first!).pipe(Effect.forkChild);
+          const freed = yield* documents.ensure(second!).pipe(Effect.forkChild);
+          expect(new Set([yield* Queue.take(started), yield* Queue.take(started)])).toEqual(
+            new Set([first, second]),
+          );
+          const waiting = yield* documents.ensure(third!).pipe(Effect.forkChild);
+          yield* Fiber.interrupt(leaving);
+          if (outcome === "interrupted") yield* Fiber.interrupt(freed);
+          else {
+            yield* Deferred.succeed(releases.get(second!)!, undefined);
+            expect(yield* Fiber.join(freed)).toBeUndefined();
+          }
+          expect(yield* Queue.take(started)).toBe(third);
+          yield* Deferred.succeed(releases.get(first!)!, undefined);
+          yield* Deferred.succeed(releases.get(third!)!, undefined);
+          expect(yield* Fiber.join(staying)).toBe(first + ".txt");
+          expect(yield* Fiber.join(waiting)).toBe(third + ".txt");
+          expect(yield* Queue.size(started)).toBe(0);
+          expect(NodeFS.existsSync(second + ".txt")).toBe(false);
+          expect(
+            NodeFS.readdirSync(config.attachmentsDir).filter((file) => file.endsWith(".part")),
+          ).toEqual([]);
+        }).pipe(
+          Effect.provide(Layer.fresh(DocumentText.layer)),
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fs,
+            stat: (file) =>
+              Effect.gen(function* () {
+                yield* Queue.offer(started, file);
+                yield* Deferred.await(releases.get(file)!);
+                return yield* fs.stat(file);
+              }),
+          }),
+        );
+      }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("retries a document while its cancelled extraction is still publishing", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const path = NodePath.join(config.attachmentsDir, "retried.rtf");
+      NodeFS.writeFileSync(path, String.raw`{\rtf1 Retried}`);
+      const writing = yield* Deferred.make<void>();
+      const writeReleased = yield* Deferred.make<void>();
+      const renaming = yield* Deferred.make<void>();
+      const renameReleased = yield* Deferred.make<void>();
+      let writes = 0;
+      let renames = 0;
+      yield* Effect.gen(function* () {
+        const documents = yield* DocumentText.DocumentText;
+        const cancelled = yield* documents.ensure(path).pipe(Effect.forkChild);
+        yield* Deferred.await(writing);
+        const interrupting = yield* Fiber.interrupt(cancelled).pipe(Effect.forkChild);
+        const retry = yield* documents.ensure(path).pipe(Effect.forkChild);
+        yield* Deferred.await(renaming);
+        yield* Deferred.succeed(writeReleased, undefined);
+        yield* Fiber.join(interrupting);
+        yield* Deferred.succeed(renameReleased, undefined);
+        expect(yield* Fiber.join(retry)).toBe(path + ".txt");
+        expect(NodeFS.readFileSync(path + ".txt", "utf8")).toBe("Retried");
+        expect(
+          NodeFS.readdirSync(config.attachmentsDir).filter((file) => file.endsWith(".part")),
+        ).toEqual([]);
+      }).pipe(
+        Effect.provide(Layer.fresh(DocumentText.layer)),
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fs,
+          writeFileString: (file, data) =>
+            Effect.gen(function* () {
+              if (++writes === 1) {
+                yield* Deferred.succeed(writing, undefined);
+                yield* Deferred.await(writeReleased);
+              }
+              return yield* fs.writeFileString(file, data);
+            }),
+          rename: (from, to) =>
+            Effect.gen(function* () {
+              if (++renames === 1) {
+                yield* Deferred.succeed(renaming, undefined);
+                yield* Deferred.await(renameReleased);
+              }
+              return yield* fs.rename(from, to);
+            }),
+        }),
+      );
+    }).pipe(Effect.provide(layer)),
   );
 
   it.effect.each(["spawn", "read"])("retries after a transient %s failure expires", (failure) =>
@@ -369,6 +478,65 @@ describe("question answer paths", () => {
       const cases = [
         {
           ext: "docx",
+          parts: {
+            "word/document.xml": [
+              '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>',
+              '<w:p><w:r><w:t>Page</w:t><w:fldChar w:fldCharType="begin"/></w:r>',
+              String.raw`<w:r><w:instrText xml:space="preserve"> PAGEREF _Toc1 \h </w:instrText></w:r>`,
+              '<w:r><w:fldChar w:fldCharType="separate"/><w:t xml:space="preserve"> 3</w:t><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+              '<w:p><w:pPr><w:pStyle w:val="Heading2"/><w:tabs><w:tab w:val="right" w:pos="9350"/></w:tabs></w:pPr>',
+              '<w:r><w:t xml:space="preserve">Fee </w:t></w:r>',
+              '<w:del w:id="1" w:author="Reviewer"><w:r><w:delText>$500</w:delText><w:delInstrText>OLD FIELD</w:delInstrText></w:r></w:del>',
+              '<w:ins w:id="2" w:author="Reviewer"><w:r><w:t>$700</w:t></w:r></w:ins>',
+              '<w:moveFrom w:id="3" w:author="Reviewer"><w:r><w:t>Moved away</w:t></w:r></w:moveFrom>',
+              '<w:moveTo w:id="4" w:author="Reviewer"><w:r><w:tab/><w:t>due</w:t></w:r></w:moveTo></w:p></w:body></w:document>',
+            ].join(""),
+          },
+          expectedSidecar: "Page 3\n## Fee $700\tdue",
+        },
+        {
+          ext: "xlsx",
+          bounded: true,
+          parts: {
+            "xl/workbook.xml": '<workbook><sheet name="Flags" r:id="a"/></workbook>',
+            "xl/_rels/workbook.xml.rels":
+              '<Relationships><Relationship Id="a" Target="worksheets/a.xml"/></Relationships>',
+            "xl/worksheets/a.xml":
+              '<worksheet><row><c r="A1" t="b"><v>1</v></c><c r="B1" t="b"><v>0</v></c><c r="C1" t="n"><v>1</v></c><c r="D1" t="b"><v>2</v></c></row></worksheet>',
+          },
+          expected: ["true\tfalse\t1\t2"],
+        },
+        {
+          ext: "xlsx",
+          bounded: true,
+          parts: {
+            "xl/workbook.xml": '<workbook><sheet name="Escapes" r:id="a"/></workbook>',
+            "xl/_rels/workbook.xml.rels":
+              '<Relationships><Relationship Id="a" Target="worksheets/a.xml"/></Relationships>',
+            "xl/sharedStrings.xml":
+              "<sst><si><t>first_x000D_\nsecond</t></si><si><t>_x005F_x0041_</t></si><si><t>_x005F_x005F_x0041_</t></si><si><r><t>Bold_x000D_</t></r><r><t>_x005F_x000D_</t></r></si><si><t>&amp;_xnothex_ cap_X0041_ _x000d_ tail</t></si></sst>",
+            "xl/worksheets/a.xml":
+              '<worksheet><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c><c t="s"><v>2</v></c><c t="s"><v>3</v></c><c t="s"><v>4</v></c></row><row><c t="inlineStr"><is><t>_x005F_x005F_</t></is></c><c t="inlineStr"><is><t>first_x000D_second</t></is></c><c t="str"><f>A1</f><v>Total_x000D_due</v></c></row></worksheet>',
+          },
+          expected: [
+            "## Sheet: Escapes\nfirst second\t_x0041_\t_x005F_x0041_\tBold _x000D_\t&_xnothex_ cap_X0041_ tail\n_x005F_\tfirst second\tTotal due",
+          ],
+        },
+        {
+          ext: "odt",
+          parts: {
+            "content.xml": [
+              '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:dc="http://purl.org/dc/elements/1.1/" office:version="1.3">',
+              '<office:body><office:text><text:tracked-changes><text:changed-region text:id="change1"><text:deletion>',
+              "<office:change-info><dc:creator>Reviewer</dc:creator></office:change-info><text:p>Fee $500</text:p>",
+              '</text:deletion></text:changed-region></text:tracked-changes><text:p>Fee <text:change text:change-id="change1"/>$700</text:p>',
+              "</office:text></office:body></office:document-content>",
+            ].join(""),
+          },
+          expectedSidecar: "Fee $700",
+        },
+        {
+          ext: "docx",
           bounded: true,
           parts: {
             "word/document.xml": "<document><p>Readable despite embedded media</p></document>",
@@ -554,6 +722,25 @@ describe("question answer paths", () => {
           parts: { "content.xml": '<document><p>Start<s c="1000001"/>Unneeded</p></document>' },
           expected: ["Start", "[Extracted text truncated at document extraction limits.]"],
           absent: ["Unneeded"],
+        },
+        {
+          ext: "docx",
+          bounded: true,
+          parts: {
+            "word/document.xml":
+              '<w:document xmlns:w="urn:w" xmlns:mc="urn:mc"><w:body><w:p><w:r><w:t>Body</w:t></w:r></w:p><w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wps:wsp><wps:txbx><w:txbxContent><w:p><w:r><w:t>Callout box</w:t></w:r></w:p></w:txbxContent></wps:txbx></wps:wsp></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Callout box</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p></w:body></w:document>',
+          },
+          expected: ["Body\nCallout box"],
+          occurrences: { text: "Callout box", count: 1 },
+        },
+        {
+          ext: "docx",
+          bounded: true,
+          parts: {
+            "word/document.xml":
+              '<w:document xmlns:w="urn:w" xmlns:mc="urn:mc"><w:body><w:p><w:r><mc:AlternateContent><mc:Choice Requires="cx"><w:drawing><cx:chart/></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Chart caption</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p></w:body></w:document>',
+          },
+          expected: ["Chart caption"],
         },
         {
           ext: "docx",
@@ -946,6 +1133,14 @@ describe("question answer paths", () => {
         end.writeUInt32LE(offset, 16);
         const path = NodePath.join(config.attachmentsDir, `structure-${caseIndex}.${item.ext}`);
         NodeFS.writeFileSync(path, Buffer.concat([...local, ...central, end]));
+        if ("expectedSidecar" in item) {
+          const documents = yield* DocumentText.DocumentText;
+          expect(yield* documents.ensure(path)).toBe(path + ".txt");
+          expect
+            .soft(NodeFS.readFileSync(path + ".txt", "utf8"), item.ext)
+            .toBe(item.expectedSidecar);
+          continue;
+        }
         const extracted = yield* Effect.promise(() => extractDocumentText(path, `.${item.ext}`));
         let previous = -1;
         for (const expected of item.expected) {

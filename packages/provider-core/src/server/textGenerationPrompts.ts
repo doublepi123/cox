@@ -356,6 +356,7 @@ export function buildBranchNamePrompt(input: BranchNamePromptInput) {
 export interface ThreadTitlePromptInput {
   linkedContext?: string | undefined;
   message: string;
+  projectTitle?: string | undefined;
   previousTitle?: string | undefined;
   forkSource?: ThreadTitleForkSource | undefined;
   attachments?: ReadonlyArray<ChatAttachment> | undefined;
@@ -375,7 +376,14 @@ function threadTitleLengthRule(hasInstructions: boolean): string {
     : "- 3-8 words, fewer than 40 characters.";
 }
 
-function initialThreadTitlePrompt(hasInstructions: boolean): string {
+function titleProjectRule(projectTitle: string | undefined): string {
+  const name = projectTitle?.trim();
+  return name
+    ? `- Omit the project name (${JSON.stringify(name)}), which the UI already shows beside the title.`
+    : "- Avoid project names already visible in the UI.";
+}
+
+function initialThreadTitlePrompt(hasInstructions: boolean, projectTitle?: string): string {
   return `Generate a title that will help the user recognize this Cox thread weeks later.
 Return JSON with keys title and needsRefinement.
 Set needsRefinement to true only if the subject is still unknown, such as an unresolved link, "fix this", or an unexplained attachment. Otherwise set it to false.
@@ -397,14 +405,19 @@ ${threadTitleLengthRule(hasInstructions)}
 - For research, name the question domain rather than the requested research process.
 - Do not claim the work is complete.
 - Do not copy and truncate the user's message.
-- Avoid project names already visible in the UI, quotes, labels, filler, and trailing punctuation.
+- Avoid quotes, labels, filler, and trailing punctuation.
+${titleProjectRule(projectTitle)}
 - Use attached images as primary context for UI issues.
 - When a URL or attachment is the only source of the subject, use available tools to inspect it directly.
 - Local git history is not evidence of what a linked PR or issue is about. Never title the thread after branch names, commit messages, or merged commits found in the checkout.
 - If a linked PR or issue cannot be read, fall back to the user's stated action plus its number, such as "Take Over PR 8588". This is the one case where a PR or issue number belongs in the title.`;
 }
 
-function regenerateThreadTitlePrompt(previousTitle: string, hasInstructions: boolean): string {
+function regenerateThreadTitlePrompt(
+  previousTitle: string,
+  hasInstructions: boolean,
+  projectTitle?: string,
+): string {
   return `Regenerate the title for an existing Cox thread so the user can recognize it weeks later.
 The previous title was ${JSON.stringify(previousTitle)}.
 Return JSON with keys title and needsRefinement. Set needsRefinement to false.
@@ -427,7 +440,8 @@ ${threadTitleLengthRule(hasInstructions)}
 - For research, name the question domain rather than the research process.
 - Do not claim the work is complete.
 - Do not copy and truncate a thread message.
-- Avoid project names already visible in the UI, PR numbers, quotes, labels, filler, and trailing punctuation.
+- Avoid PR numbers, quotes, labels, filler, and trailing punctuation.
+${titleProjectRule(projectTitle)}
 - Use attached images as primary context for UI issues.
 - When a URL or attachment is the only source of the subject, use available tools to inspect it directly.
 - Local git history is not evidence of what a linked PR or issue is about. Never title the thread after branch names, commit messages, or merged commits found in the checkout.
@@ -487,12 +501,12 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
   if (input.previousTitle === undefined) {
     const message = limitTitleMessage(input.message, 8_000);
     const label = input.forkSource === undefined ? "User message" : "User message after the fork";
-    prompt = `${initialThreadTitlePrompt(hasInstructions)}${forkSourceSection(input.forkSource)}\n\n${label}:\n${message}${threadTitlePromptSuffix(input)}`;
+    prompt = `${initialThreadTitlePrompt(hasInstructions, input.projectTitle)}${forkSourceSection(input.forkSource)}\n\n${label}:\n${message}${threadTitlePromptSuffix(input)}`;
   } else {
     const message = preserveMessageEnd(input.message);
     const label =
       input.forkSource === undefined ? "Thread contents" : "Thread contents after the fork";
-    prompt = `${regenerateThreadTitlePrompt(input.previousTitle, hasInstructions)}${forkSourceSection(input.forkSource)}\n\n${label}:\n${message}${threadTitlePromptSuffix(input)}`;
+    prompt = `${regenerateThreadTitlePrompt(input.previousTitle, hasInstructions, input.projectTitle)}${forkSourceSection(input.forkSource)}\n\n${label}:\n${message}${threadTitlePromptSuffix(input)}`;
   }
   const outputSchema = Schema.Struct({
     title: Schema.String,

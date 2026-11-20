@@ -30,6 +30,8 @@ const snapshot: PreviewSessionSnapshot = {
   canGoForward: false,
   viewport: { _tag: "freeform", width: 1200, height: 800 },
   profileId: "work",
+  colorScheme: "dark",
+  zoomFactor: 1.5,
   updatedAt: "2026-09-22T12:00:00.000Z",
 };
 
@@ -199,6 +201,8 @@ describe("reopenClosedView", () => {
         url: "https://example.com",
         viewport: snapshot.viewport,
         profileId: "work",
+        colorScheme: "dark",
+        zoomFactor: 1.5,
       },
     });
     expect(readThreadPreviewState(threadRef).snapshot?.tabId).toBe("new-tab");

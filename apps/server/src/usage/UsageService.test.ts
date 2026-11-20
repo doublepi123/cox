@@ -11,6 +11,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 import { mergeUsage } from "@t3tools/shared/usageMerge";
 import {
   EnvironmentId,
@@ -527,9 +528,55 @@ describe("UsageService", () => {
         assert.strictEqual(totalOutputTokens(rewritten), 71);
         assert.deepStrictEqual((yield* service.readSummary(WINDOW)).buckets, rewritten.buckets);
         yield* service.awaitPersisted;
+        const { stateDir } = yield* ServerConfig.ServerConfig;
+        const cachePath = NodePath.join(stateDir, SCAN_CACHE_FILE_NAME);
+        const originalPath = (yield* Effect.promise(() => NodeFSP.realpath(compressedPath))).slice(
+          0,
+          -4,
+        );
+        yield* Effect.promise(async () => {
+          const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
+            files: Record<
+              string,
+              { cs: Record<string, unknown>; r: unknown[]; t: unknown[]; mr: number }
+            >;
+          };
+          const archived = document.files[await NodeFSP.realpath(compressedPath)];
+          assert.ok(archived);
+          document.files[originalPath] = {
+            ...archived,
+            r: [],
+            t: [],
+            mr: 1,
+            cs: { ...archived.cs, malformedRecords: 1 },
+          };
+          await NodeFSP.writeFile(cachePath, encodeUnknownJsonString(document));
+        });
         const restarted = yield* UsageService.make;
-        assert.deepStrictEqual((yield* restarted.readSummary(WINDOW)).buckets, rewritten.buckets);
+        const restored = yield* restarted.readSummary(WINDOW);
+        assert.deepStrictEqual(restored.buckets, rewritten.buckets);
+        assert.strictEqual(
+          restored.sources.find((source) => source.fingerprint.provider === "codex")
+            ?.malformedRecords,
+          0,
+        );
         yield* restarted.awaitPersisted;
+        yield* Effect.promise(async () => {
+          const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
+            files: Record<string, unknown>;
+          };
+          assert.strictEqual(document.files[originalPath], undefined);
+          await NodeFSP.rm(compressedPath);
+        });
+        const removed = yield* UsageService.make;
+        const retained = yield* removed.readSummary(WINDOW);
+        assert.deepStrictEqual(retained.buckets, rewritten.buckets);
+        assert.strictEqual(
+          retained.sources.find((source) => source.fingerprint.provider === "codex")
+            ?.malformedRecords,
+          0,
+        );
+        yield* removed.awaitPersisted;
       }).pipe(
         Effect.scoped,
         Effect.provide(layerService({ prefix: "usage-compressed-codex", home, settings })),
@@ -1071,7 +1118,7 @@ describe("UsageService", () => {
           };
           const muse = (summary: UsageSummary) =>
             summary.buckets.filter((bucket) => bucket.provider === "muse");
-          const first = yield* service.readSummary(window);
+          const first = yield* service.readSummary({ ...window, awaitRefresh: true });
           const buckets = muse(first);
           assert.strictEqual(
             buckets.reduce((sum, b) => sum + b.records, 0),
@@ -1153,6 +1200,7 @@ describe("UsageService", () => {
           assert.closeTo(repriced?.costUsd ?? NaN, 0.000486, 1e-12);
         }).pipe(
           Effect.scoped,
+          Effect.provideService(SpawnExecutableResolution, (command: string) => command),
           Effect.provide(
             layerService({
               prefix: "usage-muse",
@@ -1369,6 +1417,66 @@ describe("UsageService", () => {
         );
         assert.strictEqual(totalsFor("pi"), 10);
       }).pipe(Effect.scoped),
+  );
+
+  it.live("returns other providers' usage while Muse home discovery is still pending", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() => NodeFSP.writeFile(transcript, claudeLine(1, 5)));
+      const museStarted = yield* Deferred.make<void>();
+      const museReady = yield* Deferred.make<MuseSdk.MuseSdkHost>();
+      const museHome = NodePath.join(home, "muse");
+      yield* Effect.promise(() =>
+        NodeFSP.mkdir(NodePath.join(museHome, "sessions"), { recursive: true }),
+      );
+      using _create = vi
+        .spyOn(MuseSdk, "createMuseSdkHostEffect")
+        .mockImplementation(() =>
+          Deferred.succeed(museStarted, undefined).pipe(Effect.andThen(Deferred.await(museReady))),
+        );
+      const museSources = (summary: UsageSummary) =>
+        summary.sources
+          .filter((source) => source.fingerprint.provider === "muse")
+          .map((source) => [source.fingerprint.resolvedHomePath, source.status, source.refreshing]);
+      const [pending, refreshed] = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        const read = yield* Effect.forkChild(service.readSummary(WINDOW));
+        yield* Deferred.await(museStarted);
+        const pending = yield* Fiber.join(read);
+        const refresh = yield* Effect.forkChild(
+          service.readSummary({ ...WINDOW, awaitRefresh: true }),
+        );
+        yield* Deferred.succeed(museReady, {
+          initializeResult: { grantedCapabilities: [], museHome },
+          close: async () => {},
+        } as unknown as MuseSdk.MuseSdkHost);
+        return [pending, yield* Fiber.join(refresh)] as const;
+      }).pipe(
+        Effect.scoped,
+        Effect.provideService(SpawnExecutableResolution, (command: string) => command),
+        Effect.provide(
+          layerService({
+            prefix: "usage-muse-pending",
+            home,
+            settings: {
+              ...settings,
+              providerInstances: {
+                ...settings.providerInstances,
+                [ProviderInstanceId.make("muse")]: {
+                  driver: ProviderDriverKind.make("muse"),
+                  enabled: false,
+                },
+              },
+            },
+          }),
+        ),
+      );
+      assert.strictEqual(totalOutputTokens(pending), 5);
+      assert.deepStrictEqual(museSources(pending), [["muse", "ok", true]]);
+      assert.deepStrictEqual(museSources(refreshed), [
+        [NodePath.join(museHome, "sessions"), "ok", undefined],
+      ]);
+    }).pipe(Effect.scoped),
   );
 
   it.live("reports missing Pi history and skips malformed records without losing valid usage", () =>
@@ -2652,7 +2760,7 @@ describe("UsageService", () => {
       }).pipe(Effect.scoped),
   );
 
-  it.live.each([4, 5, 6, 7, 8, 10])(
+  it.live.each([4, 5, 6, 7, 8, 10, 11])(
     "upgrades a v%s cache: reparses live Codex usage, keeps deleted rollouts and the old file",
     (version) =>
       Effect.gen(function* () {
@@ -2719,7 +2827,7 @@ describe("UsageService", () => {
                 delete file.cs.lastCumulativeUsage;
                 delete file.cs.malformedRecords;
               }
-              if (version >= 8 && path === livePath) {
+              if (version >= 8 && version < 11 && path === livePath) {
                 file.r = [];
                 file.mr = 1;
                 file.cs.malformedRecords = 1;
@@ -2751,7 +2859,7 @@ describe("UsageService", () => {
             60 + 20 * (version === 4 ? 1 : 2),
           );
           yield* upgraded.awaitPersisted;
-          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v11.json");
+          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v12.json");
           assert.strictEqual(
             yield* Effect.promise(() => NodeFSP.readFile(legacyPath, "utf8")),
             legacy,
@@ -3241,6 +3349,56 @@ describe("UsageService", () => {
         assert.deepStrictEqual(cached.buckets, summary.buckets);
         assert.strictEqual(requests.length, 2);
       }).pipe(Effect.scoped),
+  );
+
+  it.live("refetches cached rates early for a model they do not list", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-08-02T00:00:00Z"));
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          claudeLine(1, 5, "claude-new-model") + claudeLine(2, 5, "claude-unknown-model"),
+        ),
+      );
+      const requests: string[] = [];
+      let ratesDocument: Record<string, unknown> = {
+        "claude-fable-5": { input_cost_per_token: 1e-5, output_cost_per_token: 5e-5 },
+      };
+      const serviceLayer = layerService({
+        prefix: "usage-service-unlisted-model-test",
+        home,
+        settings,
+        onRatesFetch: (request) => requests.push(request.url),
+        ratesResponse: () => Effect.succeed(Response.json(ratesDocument)),
+      });
+      const newModelCost = (summary: UsageSummary) =>
+        summary.buckets.find((bucket) => bucket.model === "claude-new-model")?.costUsd;
+
+      // Rates fetched for this scan are fresh: no second request for the models they lack.
+      const first = yield* (yield* UsageService.make.pipe(
+        Effect.provide(serviceLayer),
+      )).readSummary(WINDOW);
+      assert.strictEqual(newModelCost(first), 0);
+      assert.strictEqual(requests.length, 1);
+
+      // An hour later LiteLLM lists the new model; a restarted server starts from the cached table.
+      ratesDocument = {
+        ...ratesDocument,
+        "claude-new-model": { input_cost_per_token: 2e-5, output_cost_per_token: 1e-4 },
+      };
+      yield* TestClock.adjust(Duration.hours(1));
+      const service = yield* UsageService.make.pipe(Effect.provide(serviceLayer));
+      const refreshed = yield* service.readSummary(WINDOW);
+      assert.strictEqual(refreshed.pricing.status, "fresh");
+      assert.closeTo(newModelCost(refreshed) ?? -1, 10 * 2e-5 + 5 * 1e-4, 1e-12);
+      assert.strictEqual(requests.length, 2);
+
+      // A model the fresh table still lacks does not refetch again before the TTL.
+      yield* TestClock.adjust(Duration.hours(1));
+      yield* service.readSummary(WINDOW);
+      assert.strictEqual(requests.length, 2);
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.live("does not orphan an in-flight scan when its first caller is interrupted", () =>

@@ -488,6 +488,7 @@ layer("GitLabPullRequestCli.layer", (it) => {
       const path = argsOfCall(0)[1] ?? "";
       expect(path).not.toContain("updated_before=");
       expect(path).toContain("order_by=updated_at");
+      expect(path).toContain("with_labels_details=true");
       expect(path).toContain("per_page=11");
       expect(path).toContain("page=1");
     }),
@@ -581,6 +582,38 @@ layer("GitLabPullRequestCli.layer", (it) => {
       assert.strictEqual(batch.items.length, 40);
       assert.isFalse(batch.truncated);
       assert.strictEqual(mockedExecute.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("reads a page of merge requests larger than the VCS default output limit", () =>
+    Effect.gen(function* () {
+      const vcsDefaultMaxOutputBytes = 1_000_000;
+      const rows = (JSON.parse(mergeRequests(100, 1)) as ReadonlyArray<object>).map((row) => ({
+        ...row,
+        description: "x".repeat(20_000),
+      }));
+      const response = JSON.stringify(rows);
+      expect(Buffer.byteLength(response)).toBeGreaterThan(vcsDefaultMaxOutputBytes);
+      mockedExecute.mockImplementationOnce(({ maxOutputBytes = vcsDefaultMaxOutputBytes }) =>
+        Effect.succeed(
+          maxOutputBytes >= Buffer.byteLength(response)
+            ? output(response)
+            : output(response.slice(0, maxOutputBytes), true),
+        ),
+      );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const batch = yield* cli.listMergeRequests({
+        cwd: "/w",
+        repository: "acme/web",
+        state: "open",
+        involvement: "all",
+        viewer: "bilal",
+        limit: 99,
+      });
+
+      assert.strictEqual(batch.items.length, 99);
+      assert.isTrue(batch.truncated);
     }),
   );
 
@@ -1975,6 +2008,62 @@ layer("GitLabPullRequestCli.layer", (it) => {
 
       expect(detail.maintainerCanModify).toBe(allowCollaboration);
       expect(detail.viewerCanEditMaintainerEdits).toBe(row.allowed);
+    }),
+  );
+
+  it.effect("asks GraphQL for merge request label colours the single REST GET cannot return", () =>
+    Effect.gen(function* () {
+      const restLabels = ["bug", ...Array.from({ length: 100 }, (_, index) => `extra-${index}`)];
+      const graphqlNodes = [
+        { title: "bug", color: "#E24329" },
+        ...Array.from({ length: 99 }, (_, index) => ({
+          title: `extra-${index}`,
+          color: "#FFFFFF",
+        })),
+      ];
+      mockedExecute.mockImplementation(({ args }) =>
+        Effect.succeed(
+          output(
+            args[1] === "graphql"
+              ? JSON.stringify({
+                  data: {
+                    project: {
+                      mergeRequest: {
+                        userPermissions: { adminMergeRequest: false },
+                        labels: { nodes: graphqlNodes },
+                      },
+                    },
+                  },
+                })
+              : mergeRequestJson({ labels: restLabels }),
+          ),
+        ),
+      );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const detail = yield* cli.getMergeRequestDetail({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+        downstreamChecks: false,
+        maintainerEdits: false,
+      });
+
+      const graphql = mockedExecute.mock.calls.find(([call]) => call.args[1] === "graphql");
+      assert.isDefined(graphql);
+      expect(JSON.parse(graphql[0].stdin ?? "").query).toContain(
+        "labels(first: 100) { nodes { title color } }",
+      );
+      expect(
+        mockedExecute.mock.calls.some(([call]) => call.args[1]?.includes("with_labels_details")),
+      ).toBe(false);
+      expect(detail.labels).toHaveLength(101);
+      expect(detail.labels[0]).toEqual({
+        name: "bug",
+        color: "#E24329",
+      });
+      expect(detail.labels[1]).toEqual({ name: "extra-0", color: "#FFFFFF" });
+      expect(detail.labels.at(-1)).toEqual({ name: "extra-99", color: null });
     }),
   );
 

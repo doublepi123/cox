@@ -1,11 +1,22 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
+import { tmpdir } from "node:os";
 import { vi } from "vite-plus/test";
 
 import * as CursorSdk from "./CursorSdk.ts";
 
-vi.mock("./sdk.ts", () => ({ Agent: {}, createAgentPlatform: {}, SqliteLocalAgentStore: {} }));
+const configure = vi.hoisted(() => vi.fn());
+vi.mock("./sdk.ts", () => ({
+  Agent: {},
+  createAgentPlatform: {},
+  Cursor: { configure },
+  SqliteLocalAgentStore: {},
+}));
 
 // Shaped like the SDK's minified class: the constructor is not named after the error.
 class o extends Error {
@@ -28,7 +39,10 @@ const rejectThroughGuard = (reason: unknown) =>
       for (const listener of others) process.on("unhandledRejection", listener);
     }
     return exit.mock.calls;
-  }).pipe(Effect.scoped);
+  }).pipe(
+    Effect.scoped,
+    Effect.provideService(HostProcess.Environment, { CURSOR_CONFIG_DIR: tmpdir() }),
+  );
 
 describe("CursorSdk unhandled rejection guard", () => {
   it.effect("keeps the server running when the SDK writes to a closed stream", () =>
@@ -85,5 +99,51 @@ describe("CursorSdk unhandled rejection guard", () => {
       });
       assert.deepStrictEqual(yield* rejectThroughGuard(reason), [[1]]);
     }),
+  );
+});
+
+describe("Cursor SDK agent transport", () => {
+  it.effect.each([
+    ["explicit", "explicit/cli-config.json", true],
+    ["xdg", "xdg/cursor/cli-config.json", true],
+    ["home", "home/.cursor/cli-config.json", true],
+    ["home", "home/.cursor/cli-config.json", false],
+    ["home", null, false],
+  ] as const)("uses the CLI config at %s (%s, %s)", ([source, file, enabled]) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "cox-cursor-config-" });
+      configure.mockClear();
+      if (file !== null) {
+        const configPath = path.join(root, file);
+        yield* fs.makeDirectory(path.dirname(configPath), { recursive: true });
+        yield* fs.writeFileString(
+          configPath,
+          JSON.stringify({ network: { useHttp1ForAgent: enabled } }),
+        );
+      }
+      const environment = {
+        ...(source === "explicit" ? { CURSOR_CONFIG_DIR: path.join(root, "explicit") } : {}),
+        ...(source === "home" ? {} : { XDG_CONFIG_HOME: path.join(root, "xdg") }),
+      };
+      yield* Effect.gen(function* () {
+        yield* Layer.build(CursorSdk.layer);
+        assert.deepStrictEqual(
+          configure.mock.calls,
+          enabled ? [[{ local: { useHttp1ForAgent: true } }]] : [],
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provideService(HostProcess.Environment, environment),
+        Effect.provideService(HostProcess.HomeDirectory, path.join(root, "home")),
+      );
+      assert.deepStrictEqual(
+        configure.mock.calls,
+        enabled
+          ? [[{ local: { useHttp1ForAgent: true } }], [{ local: { useHttp1ForAgent: null } }]]
+          : [],
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

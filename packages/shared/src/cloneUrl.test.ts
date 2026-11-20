@@ -27,6 +27,15 @@ describe("cloneUrlForProtocol", () => {
     );
   });
 
+  it("round trips spaces, literal percent escapes, and reserved characters", () => {
+    const ssh = "git@host.example:Research Tools/repo%20#?.git";
+    const https = "https://host.example/Research%20Tools/repo%2520%23%3F.git";
+    expect(cloneUrlForProtocol(ssh, "https")).toBe(https);
+    expect(cloneUrlForProtocol(https, "ssh")).toBe(ssh);
+    expect(cloneUrlForProtocol("https://host.example/a/%FF.git", "ssh")).toBeNull();
+    expect(cloneUrlForProtocol("https://host.example/a/b.git?ref=main", "ssh")).toBeNull();
+  });
+
   it("keeps the URL as is for its own protocol and drops HTTPS credentials on switch", () => {
     expect(cloneUrlForProtocol("https://token@github.com/a/b.git", "https")).toBe(
       "https://token@github.com/a/b.git",
@@ -59,6 +68,22 @@ describe("cloneUrlForProtocol", () => {
 });
 
 describe("cloneUrlRepositoryPath", () => {
+  it("decodes URI clone paths without rewriting SCP paths", () => {
+    for (const prefix of ["https://host.example/", "ssh://git@host.example/"]) {
+      expect(cloneUrlRepositoryPath(`${prefix}Research%20Tools/r%C3%A9sum%C3%A9.git`)).toBe(
+        "host.example/Research Tools/résumé",
+      );
+      expect(cloneUrlRepositoryPath(`${prefix}team/repo%2520name.git`)).toBe(
+        "host.example/team/repo%20name",
+      );
+      expect(cloneUrlRepositoryPath(`${prefix}team/%2e%2e/repo.git`)).toBeNull();
+      expect(cloneUrlRepositoryPath(`${prefix}team/bad%FF.git`)).toBeNull();
+    }
+    expect(cloneUrlRepositoryPath("git@host.example:team/repo%20name.git")).toBe(
+      "host.example/team/repo%20name",
+    );
+  });
+
   it("uses host and full repository paths for remote clone destinations", () => {
     expect(cloneUrlRepositoryPath("git@github.com:acme/repo.git")).toBe("github.com/acme/repo");
     expect(cloneUrlRepositoryPath("ssh://git@gitlab.com:2222/group/sub/repo.git")).toBe(

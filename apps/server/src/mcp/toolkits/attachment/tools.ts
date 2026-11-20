@@ -34,9 +34,12 @@ const shared = {
 const AttachmentUploadTool = Tool.make("cox_attachment_prepare_upload", {
   ...shared,
   description:
-    "Get an upload URL. POST the file's exact bytes to `relativeUrl` on this MCP server's HTTP origin, then send via `cox_thread_send_attachments` with the returned `attachmentId`.",
+    "Get an upload URL. POST the file's exact bytes to `uploadUrl` (or `relativeUrl` on this MCP server's HTTP origin), then send via `cox_thread_send_attachments` with the returned `attachmentId`.",
   parameters: Schema.Struct({ upload: AttachmentCreateUploadUrlInput }),
-  success: AttachmentCreateUploadUrlResult,
+  success: Schema.Struct({
+    ...AttachmentCreateUploadUrlResult.fields,
+    uploadUrl: Schema.optionalKey(Schema.String),
+  }),
 }).annotate(Tool.Destructive, true);
 const AttachmentDiscardTool = Tool.make("cox_attachment_discard", {
   ...shared,

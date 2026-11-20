@@ -7,26 +7,65 @@ import {
   SecretProviderKind,
   type ServerSettings,
 } from "@t3tools/contracts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it as effectIt } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../config.ts";
+import * as PortScanner from "../preview/PortScanner.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
   DEV_REPLAY_INSTANCE_ID,
   deriveProviderInstanceConfigMap,
   layerSettingsWatcher,
+  providerHostLayer,
   seedDevReplayInstance,
   materializeInstances,
 } from "./ProviderInstanceRegistryHydration.ts";
+import * as ProviderHostLive from "./ProviderHostLive.ts";
 import { ProviderInstanceRegistryMutator } from "./ProviderInstanceRegistryMutator.ts";
 import { ModelServiceGateway } from "../modelServices/ModelServiceGateway.ts";
 import { HttpServerResponse } from "effect/http";
+
+effectIt.effect("supplies port discovery even after the ACP host has been built", () =>
+  Effect.gen(function* () {
+    const dependencies = ServerConfig.layerTest(process.cwd(), {
+      prefix: "provider-host-hydration-test",
+    }).pipe(
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      Layer.provideMerge(Layer.mock(ServerSecretStore.ServerSecretStore)({})),
+      Layer.provideMerge(Layer.mock(BackgroundPolicy.BackgroundPolicy)({})),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
+    );
+    const memo = yield* Layer.makeMemoMap;
+    const scope = yield* Effect.scope;
+    const trackAgent = () => () => undefined;
+    const early = yield* Layer.buildWithMemoMap(
+      ProviderHostLive.layer.pipe(Layer.provide(dependencies)),
+      memo,
+      scope,
+    );
+    const hydrated = yield* Layer.buildWithMemoMap(
+      providerHostLayer.pipe(
+        Layer.provide(Layer.mock(PortScanner.PortDiscovery)({ trackAgent })),
+        Layer.provide(dependencies),
+      ),
+      memo,
+      scope,
+    );
+    expect(Context.get(early, ProviderHost.ProviderHost).trackAgent).toBeUndefined();
+    expect(Context.get(hydrated, ProviderHost.ProviderHost).trackAgent).toBe(trackAgent);
+  }),
+);
 
 const projectId = ProjectId.make("project-a");
 const instanceId = ProviderInstanceId.make("codex_work");

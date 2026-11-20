@@ -187,6 +187,8 @@ export const make = Effect.gen(function* PreviewManagerMake() {
         canGoBack: false,
         canGoForward: false,
         viewport: input.viewport ?? FILL_PREVIEW_VIEWPORT,
+        ...(input.colorScheme === undefined ? {} : { colorScheme: input.colorScheme }),
+        ...(input.zoomFactor === undefined ? {} : { zoomFactor: input.zoomFactor }),
         ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
         ...(runtime === undefined ? {} : { runtime }),
         ...(runtime === "server" && input.automationOwner !== undefined

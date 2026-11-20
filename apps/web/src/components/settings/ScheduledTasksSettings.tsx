@@ -2,6 +2,7 @@ import { translateCurrent, useTranslation } from "../../i18n";
 import { Link } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
+import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
 import { AsyncResult } from "effect/reactivity";
 import {
   ChevronDownIcon,
@@ -315,7 +316,11 @@ function splitModelKey(value: string): ModelSelection | null {
   };
 }
 
-export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
+export function scheduleLabel(
+  schedule: ScheduledTaskSchedule,
+  timeZone?: string,
+  nextRunAt?: string | null,
+): string {
   if (schedule.type === "webhook") return translateCurrent("On webhook");
   if (schedule.type === "interval") {
     const minutes = schedule.everyMs / 60_000;
@@ -332,7 +337,9 @@ export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
         ? translateCurrent("Weekdays")
         : weekdays.map((day) => translateCurrent(WEEKDAY_LABELS[day] ?? "")).join(", ");
-  return translateCurrent("{days} at {time}", { days: days, time: schedule.timeOfDay });
+  const label = translateCurrent("{days} at {time}", { days, time: schedule.timeOfDay });
+  const zone = scheduleTimeZoneLabel(timeZone, nextRunAt);
+  return zone === undefined ? label : `${label} ${zone}`;
 }
 
 /** formatRelativeTime handles only the past; upcoming runs need future labels. */
@@ -545,6 +552,7 @@ function ScheduledTaskEnvironmentList({
     return {
       environment,
       connected: index >= 0,
+      timeZone: data?.timeZone,
       tasks: data?.tasks.filter((task) =>
         matchesScheduledTaskScope(scope, environment.environmentId, task.projectId),
       ),
@@ -579,7 +587,7 @@ function ScheduledTaskEnvironmentList({
 
   return (
     <SettingsGroup>
-      {populated.map(({ environment, tasks }) => {
+      {populated.map(({ environment, tasks, timeZone }) => {
         return (
           <div key={environment.environmentId} className="divide-y divide-border/50">
             <div className="flex items-center justify-between gap-3">
@@ -596,6 +604,7 @@ function ScheduledTaskEnvironmentList({
                 key={task.id}
                 environmentId={environment.environmentId}
                 task={task}
+                timeZone={timeZone}
                 onEdit={() => onEdit(environment.environmentId, task)}
               />
             ))}
@@ -605,7 +614,9 @@ function ScheduledTaskEnvironmentList({
       {taskId && linkedState?.tasks && linkedState.error === null && !linkedTask ? (
         <SettingsRow
           title={t("Task unavailable")}
-          description={t("This task no longer exists or is outside the selected project scope.")}
+          description={t(
+            "This task was deleted or belongs to a different project. Check your project filter.",
+          )}
           role="status"
         />
       ) : null}
@@ -691,7 +702,7 @@ function ScheduledTaskEnvironmentSection({
             <SettingsRow
               title={t("Task unavailable")}
               description={t(
-                "This task no longer exists or is outside the selected project scope.",
+                "This task was deleted or belongs to a different project. Check your project filter.",
               )}
               role="status"
             />
@@ -707,6 +718,7 @@ function ScheduledTaskEnvironmentSection({
                 key={task.id}
                 environmentId={environment.environmentId}
                 task={task}
+                timeZone={tasksQuery.data?.timeZone}
                 onEdit={() => onEdit(environment.environmentId, task)}
               />
             ))
@@ -720,10 +732,12 @@ function ScheduledTaskEnvironmentSection({
 function ScheduledTaskRow({
   environmentId,
   task,
+  timeZone,
   onEdit,
 }: {
   readonly environmentId: EnvironmentId;
   readonly task: ScheduledTask;
+  readonly timeZone: string | undefined;
   readonly onEdit: () => void;
 }) {
   const { t } = useTranslation();
@@ -769,7 +783,7 @@ function ScheduledTaskRow({
       status={
         <div className="flex flex-wrap items-center gap-2">
           <span>
-            {scheduleLabel(task.schedule)} ·{" "}
+            {scheduleLabel(task.schedule, timeZone, task.nextRunAt)} ·{" "}
             {!task.enabled ? (
               t("Paused")
             ) : isWebhook ? (
@@ -1373,6 +1387,7 @@ function ScheduledTaskEditorForm({
   const liveTask = tasksQuery.data
     ? (tasksQuery.data.tasks.find((entry) => entry.id === draft.editingId) ?? null)
     : task;
+  const fixedTimeZone = scheduleTimeZoneLabel(tasksQuery.data?.timeZone);
   const selectedProjectId = draft.projectId || projects[0]?.id || "";
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const instanceEntries = providerInstanceEntriesFor(
@@ -1843,7 +1858,7 @@ function ScheduledTaskEditorForm({
                   onChange={(filters) => setDraft((current) => ({ ...current, filters }))}
                 />
                 <Field
-                  label={t("Replay key")}
+                  label={t("Duplicate request key")}
                   hint="template, optional"
                   htmlFor="scheduled-task-replay-key"
                 >
@@ -1893,7 +1908,7 @@ function ScheduledTaskEditorForm({
                 </Field>
                 <p className="text-xs text-muted-foreground">
                   {t(
-                    "Replay keys suppress repeat deliveries for 7 days. Coalescing runs the latest payload once when the window from the first delivery closes. Empty keys run normally.",
+                    "Requests with the same key run only once within 7 days. Coalescing runs the latest payload once when the window from the first delivery closes. Empty keys run normally.",
                   )}
                 </p>
                 <div className="flex items-center justify-between gap-4">
@@ -1994,6 +2009,9 @@ function ScheduledTaskEditorForm({
                       }
                     />
                   </div>
+                  {fixedTimeZone ? (
+                    <span className="text-xs text-muted-foreground">{fixedTimeZone}</span>
+                  ) : null}
                   <span className="text-xs text-muted-foreground">{t("on")}</span>
                 </div>
                 <ToggleGroup

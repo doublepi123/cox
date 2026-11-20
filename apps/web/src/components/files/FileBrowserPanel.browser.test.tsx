@@ -46,6 +46,35 @@ function findTreeRow(path: string): HTMLElement | null {
 }
 
 describe("FileBrowserPanel", () => {
+  it("focuses file search with the platform Find shortcut from the tree", async () => {
+    await using _screen = await render(
+      <FileBrowserPanel
+        environmentId={EnvironmentId.make("env-files")}
+        cwd="/repo-find-shortcut"
+        projectName="repo"
+        selectedPath={null}
+        selectedPathRevealId={0}
+        onOpenFile={() => {}}
+        workspaceMutationId={null}
+      />,
+      { router: false },
+    );
+    await vi.waitFor(() => expect(findTreeRow("README.md")).not.toBeNull());
+    const row = findTreeRow("README.md")!;
+    row.focus();
+    row.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "f",
+        ctrlKey: true,
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
+    await expect.element(page.getByRole("searchbox", { name: "Search repo files" })).toHaveFocus();
+  });
+
   for (const userScrolled of [false, true]) {
     it(`keeps ${userScrolled ? "the user's scroll position" : "the revealed row in view"} after a restored folder listing arrives`, async () => {
       const cwd = userScrolled ? "/repo-reveal-user-scroll" : "/repo-reveal-follow";

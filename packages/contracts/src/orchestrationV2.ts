@@ -1200,6 +1200,9 @@ function kindUnionWithFallback<
 }
 
 const PendingBackgroundTaskFields = {
+  command: Schema.optional(Schema.String),
+  itemId: Schema.optional(TurnItemId),
+  sourceThreadId: Schema.optional(ThreadId),
   taskId: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   /** The subagent task that started this work and waits on it. */
@@ -1399,6 +1402,21 @@ export function latestProviderTurnForAttempt<
     if (latest === undefined || turn.ordinal > latest.ordinal) latest = turn;
   }
   return latest;
+}
+
+/** A queued provider thread reserves a seat for the next run; it does not own the thread yet. */
+export function isQueuedProviderThreadPlaceholder(
+  providerThread: Pick<
+    OrchestrationV2ProviderThread,
+    "status" | "firstRunOrdinal" | "nativeThreadRef" | "providerSessionId"
+  >,
+): boolean {
+  return (
+    providerThread.status === "not_loaded" &&
+    providerThread.firstRunOrdinal === null &&
+    providerThread.nativeThreadRef === null &&
+    providerThread.providerSessionId === null
+  );
 }
 
 export const OrchestrationV2RuntimeRequest = Schema.Struct({

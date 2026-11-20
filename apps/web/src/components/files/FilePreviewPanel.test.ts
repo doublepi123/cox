@@ -5,7 +5,7 @@ import { ProjectReadFileError } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { remapFileCommentAnnotations } from "./fileCommentAnnotations";
+import { promptFileCommentEntries, remapFileCommentAnnotations } from "./fileCommentAnnotations";
 import {
   filePreviewReadErrorMessage,
   isMarkdownPreviewFile,
@@ -28,6 +28,17 @@ describe("file preview read errors", () => {
 });
 
 describe("file comment annotations", () => {
+  it("retains drafts and the comments still in the composer", () => {
+    const entries = [
+      { id: "sent", kind: "comment" },
+      { id: "draft", kind: "draft" },
+      { id: "kept", kind: "comment" },
+    ] as const;
+    const annotations = entries.map((entry) => ({ ...entry, startLine: 3, endLine: 3, text: "" }));
+    expect(
+      promptFileCommentEntries(annotations, new Set(["kept"])).map((entry) => entry.id),
+    ).toEqual(["draft", "kept"]);
+  });
   it("keeps an annotation range attached when Pierre remaps its anchor line", () => {
     expect(
       remapFileCommentAnnotations([
@@ -389,6 +400,29 @@ describe("document preview contents", () => {
       if (gap === 2) expect(result.sheets[0]!.rows[3]).toEqual(["", "", "Last"]);
     },
   );
+
+  const approved = "<text:p>Approved <text:span>now</text:span></text:p>";
+  const approvedRow = `<tr>${"<td><p>Approved <span>now</span></p></td>".repeat(2)}</tr>`;
+  it.each([
+    [
+      "expands",
+      `<table:table-row>${`<table:table-cell>${approved}</table:table-cell>`.repeat(2)}</table:table-row><table:table-row table:number-rows-repeated="2"><table:table-cell table:number-columns-repeated="2">${approved}</table:table-cell></table:table-row>`,
+      approvedRow.repeat(3),
+    ],
+    [
+      "bounds",
+      '<table:table-row table:number-rows-repeated="999999999"><table:table-cell table:number-columns-repeated="999999999"><text:p>x</text:p></table:table-cell></table:table-row>',
+      `<tr>${"<td><p>x</p></td>".repeat(50)}</tr>`.repeat(500),
+    ],
+  ])("%s repeated ODT table rows and cells", async (_, rows, html) => {
+    const archive = new JSZip().file(
+      "content.xml",
+      `<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text><table:table><table:table-column table:number-columns-repeated="2"/>${rows}</table:table></office:text></office:body></office:document-content>`,
+    );
+    const result = await openDocument(archive, "odt");
+    if (result.type !== "document") throw new Error("Expected document");
+    expect(result.pages[0]!.html).toBe(`<table>${html}</table>`);
+  });
 
   it.each(["odt", "odp"] as const)("reads %s text and rejects XML entities", async (kind) => {
     const archive = new JSZip().file(

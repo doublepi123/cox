@@ -12,6 +12,7 @@ import {
   type FileManagerRevealKind,
   type LaunchEditorInput,
 } from "@t3tools/contracts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
@@ -142,6 +143,8 @@ function parseTargetPathAndPosition(target: string): Option.Option<TargetPathAnd
 function resolveCommandEditorArgs(
   editor: (typeof EDITORS)[number],
   target: string,
+  isDirectory: boolean,
+  projectRoot: string | undefined,
 ): ReadonlyArray<string> {
   const parsedTarget = parseTargetPathAndPosition(target);
 
@@ -149,11 +152,14 @@ function resolveCommandEditorArgs(
     case "direct-path":
       return [target];
     case "goto":
+      if (isDirectory) return ["--new-window", target];
       return Option.isSome(parsedTarget) ? ["--goto", target] : [target];
     case "line-column":
       return Option.match(parsedTarget, {
         onNone: () => [target],
         onSome: ({ path, line, column }) => [
+          // Only positioned targets get the root: a folder target would open as a second project.
+          ...(projectRoot === undefined ? [] : [projectRoot]),
           "--line",
           line,
           // JetBrains IDEs count `--column` from 0; targets count columns from 1.
@@ -493,11 +499,21 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
         baseArgs: "baseArgs" in editorDef ? editorDef.baseArgs : [],
       }),
     );
+    const fileSystem = yield* FileSystem.FileSystem;
+    const isDirectory =
+      editorDef.launchStyle === "goto" &&
+      (yield* fileSystem.stat(input.cwd).pipe(
+        Effect.map((info) => info.type === "Directory"),
+        Effect.orElseSucceed(() => false),
+      ));
     return {
       editor: editorDef.id,
       target: input.cwd,
       command,
-      args: [...baseArgs, ...resolveCommandEditorArgs(editorDef, input.cwd)],
+      args: [
+        ...baseArgs,
+        ...resolveCommandEditorArgs(editorDef, input.cwd, isDirectory, input.projectRoot),
+      ],
     };
   }
 
@@ -660,7 +676,8 @@ const tryRevealLinuxItem = Effect.fn("externalLauncher.tryRevealLinuxItem")(
 const launchEditor = Effect.fn("externalLauncher.launchEditor")(function* (
   input: LaunchEditorInput,
 ) {
-  const launch = yield* resolveEditorLaunch(input);
+  const cwd = expandHomePath(input.cwd, yield* HostProcess.HomeDirectory);
+  const launch = yield* resolveEditorLaunch({ ...input, cwd });
   if (
     input.editor === "file-manager" &&
     input.reveal === true &&

@@ -21,12 +21,13 @@ function composerCommandMenuPositionsEqual(
 export function ComposerCommandMenuLayer(props: {
   anchor: HTMLElement | null;
   children: ReactNode;
+  canOverflowTop?: boolean;
 }) {
+  const { anchor, canOverflowTop = false } = props;
   const [position, setPosition] = useState<ComposerCommandMenuPosition | null>(null);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- positions the menu from the composer's DOM rect, tracking window resize, scroll and ancestor resizes
   useLayoutEffect(() => {
-    const anchor = props.anchor;
     if (!anchor) return;
 
     const updatePosition = () => {
@@ -47,10 +48,14 @@ export function ComposerCommandMenuLayer(props: {
         return;
       }
       const composerOverlap = rootFontSizePx + 1;
+      const spaceAbove = rect.top + composerOverlap;
+      const bottom = window.innerHeight - spaceAbove;
+      const floorHeight = Math.max(96, spaceAbove - 24);
+      const maxHeight = canOverflowTop ? floorHeight : Math.min(floorHeight, window.innerHeight);
       const next = {
-        bottom: window.innerHeight - rect.top - composerOverlap,
+        bottom: canOverflowTop ? bottom : Math.min(bottom, window.innerHeight - maxHeight),
         left: rect.left + drawerInset,
-        maxHeight: Math.max(96, rect.top - 24 + composerOverlap),
+        maxHeight,
         width,
       };
       setPosition((current) =>
@@ -73,9 +78,9 @@ export function ComposerCommandMenuLayer(props: {
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [props.anchor]);
+  }, [anchor, canOverflowTop]);
 
-  if (!props.anchor || !position) return null;
+  if (!anchor || !position) return null;
 
   return createPortal(
     <div

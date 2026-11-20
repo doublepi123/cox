@@ -188,6 +188,12 @@ describe("decideThreadResume", () => {
     expect(snapshot.latestLocalTurnOrdinal).toBe(80);
   });
 
+  it("stops serializing replay items after the wire budget is exceeded", () => {
+    const items = ["x".repeat(THREAD_RESUME_MAX_REPLAY_ENCODED_BYTES), "trailing item"];
+    const firstItemBytes = Buffer.byteLength(JSON.stringify(items[0]), "utf8");
+    expect(threadReplayEncodedBytes(items)).toBe(firstItemBytes);
+  });
+
   it("rejects a 10 MiB raw replay even when its projected form fits the wire budget", () => {
     const item = {
       id: TurnItemId.make("large-dynamic-tool"),

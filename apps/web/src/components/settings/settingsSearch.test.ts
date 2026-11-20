@@ -152,6 +152,11 @@ describe("searchSettings", () => {
   });
 
   it("keeps catalog result ids unique", () => {
+    expect(searchSettings("fallback model")[0]).toMatchObject({
+      id: "fallback-model",
+      to: "/settings/threads",
+      environmentOnly: true,
+    });
     const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
   });

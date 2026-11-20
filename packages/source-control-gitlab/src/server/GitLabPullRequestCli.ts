@@ -319,6 +319,8 @@ const DIFF_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const DIFF_TIMEOUT_MS = 60_000;
 const isVcsProcessExitError = Schema.is(VcsProcessExitError);
 const DIFF_FILE_MAX_OUTPUT_BYTES = 1024 * 1024;
+// REST list rows carry full descriptions, so a page can pass the 1 MB default output cap.
+const MERGE_REQUEST_LIST_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 export interface GitLabDiscussionThreads {
   readonly threads: ReadonlyArray<PullRequestReviewThread>;
@@ -945,9 +947,11 @@ export const make = Effect.gen(function* () {
         ...filterParams(input),
         ["order_by", "updated_at"],
         ["sort", "desc"],
+        ["with_labels_details", "true"],
         ["per_page", String(perPage)],
         ["page", String(input.page)],
       ])}`,
+      maxOutputBytes: MERGE_REQUEST_LIST_MAX_OUTPUT_BYTES,
     }).pipe(
       Effect.flatMap((result) => {
         const raw = result.stdout.trim();
@@ -1652,7 +1656,11 @@ export const make = Effect.gen(function* () {
       query: LABEL_PERMISSION_GRAPHQL_QUERY,
       variables: { fullPath: input.repository, iid: String(input.number) },
       decode: decodeLabelPermissionJson,
-    }).pipe(Effect.catchIf(isOptionalReadFailure, () => Effect.succeed(false)));
+    }).pipe(
+      Effect.catchIf(isOptionalReadFailure, () =>
+        Effect.succeed({ viewerCanEditLabels: false, labels: null }),
+      ),
+    );
 
   const sourceBranch = (input: {
     readonly cwd: string;
@@ -1948,17 +1956,22 @@ export const make = Effect.gen(function* () {
 
     getMergeRequestDetail: Effect.fn("GitLabPullRequestCli.getMergeRequestDetail")(
       function* (input) {
-        const [read, viewerCanEditLabels] = yield* Effect.all(
+        const [read, labelDetails] = yield* Effect.all(
           [mergeRequestDetail(input), labelPermission(input)],
           { concurrency: 2 },
         );
+        const labelsByName = new Map(labelDetails.labels?.map((label) => [label.name, label]));
+        const labeled = {
+          ...read,
+          viewerCanEditLabels: labelDetails.viewerCanEditLabels,
+          labels: read.labels.map((label) => labelsByName.get(label.name) ?? label),
+        };
         const detail =
-          read.state === "open"
-            ? input.maintainerEdits === false || read.maintainerCanModify === undefined
-              ? { ...read, viewerCanEditLabels }
+          labeled.state === "open"
+            ? input.maintainerEdits === false || labeled.maintainerCanModify === undefined
+              ? labeled
               : {
-                  ...read,
-                  viewerCanEditLabels,
+                  ...labeled,
                   viewerCanEditMaintainerEdits: yield* orWhenUnanswered(
                     graphqlRead({
                       cwd: input.cwd,
@@ -1972,8 +1985,7 @@ export const make = Effect.gen(function* () {
                   ),
                 }
             : {
-                ...read,
-                viewerCanEditLabels,
+                ...labeled,
                 viewerCanDeleteBranch: yield* orWhenUnanswered(
                   sourceBranch(input).pipe(Effect.map((source) => source?.canDelete === true)),
                   false,

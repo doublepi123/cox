@@ -469,6 +469,7 @@ interface PiPromptSend {
 interface PiThreadState {
   providerThread: OrchestrationV2ProviderThread;
   activeTurn: ActivePiTurn | null;
+  readonly supersededSessionFiles: Set<string>;
   todoSnapshot?: PiTodoSnapshot;
   todoPublished?: boolean;
   todoPublishedSignature?: string;
@@ -590,6 +591,11 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             }),
         ),
       );
+      if (host.trackAgent !== undefined) {
+        yield* Effect.acquireRelease(Effect.sync(host.trackAgent), (release) =>
+          Effect.sync(release),
+        );
+      }
       // Detached children can keep stdout open after Pi exits.
       if (scopeUnit !== undefined) {
         yield* connection.exited.pipe(
@@ -2208,6 +2214,19 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         }
       });
 
+      const adoptLiveSessionFile = (state: PiThreadState, stateData: unknown) => {
+        const sessionFile = recordString(stateData, "sessionFile");
+        const previousFile = state.providerThread.nativeThreadRef?.nativeId;
+        if (sessionFile === undefined || sessionFile === previousFile) return;
+        if (previousFile != null) state.supersededSessionFiles.add(previousFile);
+        state.supersededSessionFiles.delete(sessionFile);
+        state.providerThread = {
+          ...state.providerThread,
+          nativeThreadRef: providerRef(sessionFile),
+        };
+        lastNativeThreadId = sessionFile;
+      };
+
       const scheduleSettleProbe = (
         turn: ActivePiTurn,
         settleAfterAgentActivity = false,
@@ -2368,6 +2387,12 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           case "message_update": {
             if (turn === null) return;
             turn.sawAgentActivity = true;
+            // Pi sends auto_retry_end only after the message ends; streamed output is recovery.
+            if (turn.activeProviderRetry !== null) {
+              const recoveredAt = yield* DateTime.now;
+              yield* emitProviderRetry(turn, turn.activeProviderRetry, "completed", recoveredAt);
+              turn.activeProviderRetry = null;
+            }
             yield* reportLiveUsage(turn, event["usage"]);
             const delta = event["assistantMessageEvent"];
             const deltaType = recordString(delta, "type");
@@ -2595,7 +2620,12 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           }
           case "agent_settled": {
             if (turn?.interrupted === true) {
-              if (state !== null) yield* finalizeTurn(state);
+              if (state === null) return;
+              const liveState = yield* request({ type: "get_state" }, 2_000).pipe(
+                Effect.orElseSucceed(() => undefined),
+              );
+              adoptLiveSessionFile(state, liveState);
+              yield* finalizeTurn(state);
               return;
             }
             if (turn !== null) {
@@ -2676,10 +2706,11 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               yield* scheduleSettleProbe(responseTurn, true);
             }
             if (event["success"] === true) {
+              const disposition = recordString(recordField(event, "data"), "disposition");
               if (
                 pendingPrompt?.messageId !== undefined &&
                 responseTurn !== null &&
-                recordString(recordField(event, "data"), "disposition") === "queued"
+                disposition === "queued"
               ) {
                 responseTurn.unreadSteers.push(pendingPrompt.messageId);
                 yield* emitSteerStatus(responseTurn, pendingPrompt.messageId, "pending");
@@ -2688,7 +2719,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               if (
                 pendingPrompt?.kind === "turn_start" &&
                 responseTurn !== null &&
-                ((responseTurn.promptMayBeCommandOnly && !responseTurn.sawAgentActivity) ||
+                (((responseTurn.promptMayBeCommandOnly || disposition === "handled") &&
+                  !responseTurn.sawAgentActivity) ||
                   (responseTurn.adoptedWake &&
                     (responseTurn.settleWhenIdle || responseTurn.promptMayBeCommandOnly)))
               ) {
@@ -2778,7 +2810,9 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             }
             if (settleProbeIsClean(data)) {
               turn.settleWhenIdle = false;
-              if (state !== null) yield* finalizeTurn(state);
+              if (state === null) return;
+              adoptLiveSessionFile(state, data);
+              yield* finalizeTurn(state);
               return;
             }
             if (recordField(data, "isCompacting") === true) return;
@@ -2894,6 +2928,85 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         }
       });
 
+      const forkSessionIntoCwd = Effect.fnUntraced(function* (
+        sourceFile: string,
+        boundary: PiForkBoundary,
+        createdAt: DateTime.Utc,
+      ) {
+        // CLI --fork uses Pi's own session format and sets the destination cwd. RPC
+        // switch_session/clone alone would retain the source cwd.
+        const forkLaunch = buildLaunch({
+          launchArgs: resolvedLaunchArgs.args,
+          environment: sessionEnvironment,
+          mcpSession: undefined,
+          extensionPath: undefined,
+          shortLived: true,
+          disableExtensions: true,
+          disableTools: true,
+        });
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            const forkConnection = yield* connect({
+              command: options.settings.binaryPath || options.runtime?.label.toLowerCase() || "pi",
+              args: [...forkLaunch.args, "--fork", sourceFile],
+              cwd,
+              env: forkLaunch.env,
+            });
+            yield* Stream.fromQueue(forkConnection.events).pipe(
+              Stream.runDrain,
+              Effect.ignore,
+              Effect.forkScoped,
+            );
+            const beforeEntry =
+              boundary.type === "nothing"
+                ? null
+                : yield* piForkEntry(
+                    boundary,
+                    createdAt,
+                    forkConnection.request({ type: "get_entries" }),
+                  );
+            if (beforeEntry !== null) {
+              const result = yield* forkConnection.request({
+                type: "fork",
+                entryId: beforeEntry,
+              });
+              if (recordField(result, "cancelled") === true) {
+                return yield* protocolError("A Pi extension cancelled the session fork");
+              }
+            }
+            const state = yield* forkConnection.request({ type: "get_state" });
+            const file = recordString(state, "sessionFile");
+            if (file === undefined || file === sourceFile) {
+              return yield* protocolError("Pi fork did not create a distinct session file");
+            }
+            return file;
+          }),
+        ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+      });
+
+      const decodeSessionHeader = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+      const sessionFileInCwd = Effect.fnUntraced(function* (
+        sessionFile: string,
+        createdAt: DateTime.Utc,
+      ) {
+        const header = yield* fileSystem.stream(sessionFile).pipe(
+          Stream.decodeText(),
+          Stream.splitLines,
+          Stream.runHead,
+          Effect.map(Option.getOrUndefined),
+          Effect.orElseSucceed(() => undefined),
+        );
+        const sessionCwd = recordString(Option.getOrUndefined(decodeSessionHeader(header)), "cwd");
+        if (sessionCwd === undefined || sessionCwd === cwd) return sessionFile;
+        const realCwd = yield* fileSystem.realPath(cwd).pipe(Effect.orElseSucceed(() => cwd));
+        if (sessionCwd === realCwd) return sessionFile;
+        return yield* forkSessionIntoCwd(sessionFile, { type: "nothing" }, createdAt);
+      });
+
+      const isLiveSessionOf = (state: PiThreadState, nativeId: string | null | undefined) =>
+        nativeId === state.providerThread.nativeThreadRef?.nativeId ||
+        (nativeId != null && state.supersededSessionFiles.has(nativeId));
+
       const registerThread = Effect.fnUntraced(function* (
         threadInput: ProviderAdapter.ProviderAdapterV2EnsureThreadInput,
         publish = true,
@@ -2935,8 +3048,11 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           baselineThinking = null;
           contextWindow = null;
           const result = yield* lifecycleRequest(
-            resumeId != null
-              ? { type: "switch_session", sessionPath: resumeId }
+            resumeId != null && existing !== undefined
+              ? {
+                  type: "switch_session",
+                  sessionPath: yield* sessionFileInCwd(resumeId, existing.createdAt),
+                }
               : { type: "new_session" },
           );
           if (recordField(result, "cancelled") === true) {
@@ -3015,7 +3131,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 createdAt,
                 updatedAt: createdAt,
               };
-        threadState = { providerThread, activeTurn: null };
+        threadState = { providerThread, activeTurn: null, supersededSessionFiles: new Set() };
         if (options.runtime?.todo !== undefined) yield* refreshTodoSnapshot(threadState);
         if (options.runtime?.nativeSubagents !== undefined)
           yield* refreshNativeSubagents(threadState);
@@ -3035,6 +3151,16 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
 
       const applySelection = Effect.fnUntraced(function* (modelSelection: ModelSelection) {
         const thinking = getModelSelectionStringOptionValue(modelSelection, "thinking");
+        const modelCached =
+          modelSelection.model !== PI_INHERIT_MODEL_SLUG && modelSelection.model === appliedModel;
+        let modelDrifted = false;
+        if (modelCached || (thinking !== undefined && thinking === appliedThinking)) {
+          const state = yield* request({ type: "get_state" });
+          const stateModel = recordField(state, "model");
+          const piModel = `${recordString(stateModel, "provider")}/${recordString(stateModel, "id")}`;
+          modelDrifted = modelCached && piModel !== appliedModel;
+          appliedThinking = recordString(state, "thinkingLevel") ?? null;
+        }
         if (modelSelection.model === PI_INHERIT_MODEL_SLUG) {
           if (appliedModel !== null && baselineModel !== null) {
             const restoredModel = yield* request({ type: "set_model", ...baselineModel });
@@ -3057,7 +3183,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             yield* request({ type: "set_thinking_level", level: baselineThinking });
             appliedThinking = baselineThinking;
           }
-        } else if (modelSelection.model !== appliedModel) {
+        } else if (modelDrifted || modelSelection.model !== appliedModel) {
           if (findReportedPiModel(modelSelection.model, discoveredModels) === undefined) {
             yield* discoverModels();
           }
@@ -3208,10 +3334,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 reason: "previous_turn_active",
               });
             }
-            if (
-              state.providerThread.nativeThreadRef?.nativeId !==
-              turnInput.providerThread.nativeThreadRef?.nativeId
-            ) {
+            if (!isLiveSessionOf(state, turnInput.providerThread.nativeThreadRef?.nativeId)) {
               return yield* protocolError("Pi turn requested for a different native session");
             }
             yield* applyRuntimePolicy(turnInput.runtimePolicy);
@@ -3294,8 +3417,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 closed ||
                 stopRequested ||
                 rollbackBarrier !== null ||
-                state.providerThread.nativeThreadRef?.nativeId !==
-                  turnInput.providerThread.nativeThreadRef?.nativeId
+                !isLiveSessionOf(state, turnInput.providerThread.nativeThreadRef?.nativeId)
               ) {
                 return yield* protocolError("Pi turn ownership changed before it could start");
               }
@@ -3304,7 +3426,10 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 return yield* protocolError("Pi native wake belongs to a different app thread");
               }
               pendingWake = null;
-              state.providerThread = turnInput.providerThread;
+              state.providerThread = {
+                ...turnInput.providerThread,
+                nativeThreadRef: state.providerThread.nativeThreadRef,
+              };
               state.activeTurn = activeTurn;
               activeTurn.adoptedWake = wake !== null && !continuation;
               if (compactCommand !== null) {
@@ -3465,11 +3590,19 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 yield* clearNativeQueue(turn);
                 yield* request({ type: "abort" }, 2_000).pipe(Effect.ignore);
               }
-              // Read rollback tree refs before termination breaks requests; the permit lets in-flight capture finish.
+              // Read session identity and rollback refs before termination.
               yield* sessionEventPermit.withPermits(1)(
                 Effect.gen(function* () {
-                  if (threadState?.activeTurn === turn && turn.stopTreeRefs === undefined) {
-                    turn.stopTreeRefs = yield* captureTurnTreeRefs(2_000);
+                  const state = threadState;
+                  if (state?.activeTurn === turn) {
+                    turn.settleProbeGeneration += 1;
+                    const liveState = yield* request({ type: "get_state" }, 2_000).pipe(
+                      Effect.orElseSucceed(() => undefined),
+                    );
+                    adoptLiveSessionFile(state, liveState);
+                    if (turn.stopTreeRefs === undefined) {
+                      turn.stopTreeRefs = yield* captureTurnTreeRefs(2_000);
+                    }
                   }
                   yield* connection.terminate;
                 }),
@@ -3799,56 +3932,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                     target: { type: "provider_turn", providerTurn: target },
                     providerThreadTurns: sourceTurns,
                   });
-            // CLI --fork uses Pi's own session format and sets the destination cwd. RPC
-            // switch_session/clone alone would retain the source cwd.
-            const forkLaunch = buildLaunch({
-              launchArgs: resolvedLaunchArgs.args,
-              environment: sessionEnvironment,
-              mcpSession: undefined,
-              extensionPath: undefined,
-              shortLived: true,
-              disableExtensions: true,
-              disableTools: true,
-            });
-            const nativeId = yield* Effect.scoped(
-              Effect.gen(function* () {
-                const forkConnection = yield* connect({
-                  command:
-                    options.settings.binaryPath || options.runtime?.label.toLowerCase() || "pi",
-                  args: [...forkLaunch.args, "--fork", sourceFile],
-                  cwd,
-                  env: forkLaunch.env,
-                });
-                yield* Stream.fromQueue(forkConnection.events).pipe(
-                  Stream.runDrain,
-                  Effect.ignore,
-                  Effect.forkScoped,
-                );
-                const beforeEntry =
-                  boundary.type === "nothing"
-                    ? null
-                    : yield* piForkEntry(
-                        boundary,
-                        source.createdAt,
-                        forkConnection.request({ type: "get_entries" }),
-                      );
-                if (beforeEntry !== null) {
-                  const result = yield* forkConnection.request({
-                    type: "fork",
-                    entryId: beforeEntry,
-                  });
-                  if (recordField(result, "cancelled") === true) {
-                    return yield* protocolError("A Pi extension cancelled the session fork");
-                  }
-                }
-                const state = yield* forkConnection.request({ type: "get_state" });
-                const file = recordString(state, "sessionFile");
-                if (file === undefined || file === sourceFile) {
-                  return yield* protocolError("Pi fork did not create a distinct session file");
-                }
-                return file;
-              }),
-            ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+            const nativeId = yield* forkSessionIntoCwd(sourceFile, boundary, source.createdAt);
             const now = yield* DateTime.now;
             return yield* registerThread(
               {
@@ -4119,10 +4203,11 @@ function piQuestion(
   const detail = [recordString(event, "message"), recordString(event, "placeholder")].find(
     (text) => text !== undefined && text.trim().length > 0,
   );
+  const questionTitle = title.trim() ? title : "Question";
   return {
     id: questionId,
-    header: detail === undefined ? "Question" : title,
-    question: detail ?? title,
+    header: detail === undefined ? "Question" : questionTitle,
+    question: detail ?? questionTitle,
     ...(method === "editor" ? { initialAnswer: recordString(event, "prefill") ?? "" } : {}),
     options,
   };

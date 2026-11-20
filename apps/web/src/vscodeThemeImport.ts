@@ -1,3 +1,5 @@
+import { parse, type ParseError } from "jsonc-parser";
+
 import {
   createVividThemeColors,
   getStandardThemeColors,
@@ -131,6 +133,18 @@ export function isVsCodeThemeFile(value: unknown): boolean {
   const hasWorkbenchColors =
     isRecord(value.colors) && Object.keys(value.colors).some((key) => key.includes("."));
   return hasWorkbenchColors || Array.isArray(value.tokenColors);
+}
+
+export function parseThemeImport(source: string): ThemeDefinition {
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch (error) {
+    const errors: ParseError[] = [];
+    value = parse(source, errors, { allowTrailingComma: true });
+    if (errors.length > 0 || !isVsCodeThemeFile(value)) throw error;
+  }
+  return isVsCodeThemeFile(value) ? parseVsCodeThemeFile(value) : parseThemeFile(value);
 }
 
 function resolveAppearance(value: Record<string, unknown>, canvas: VsCodeRgb): ThemeAppearance {

@@ -1,3 +1,11 @@
+import {
+  formatFilePathPosition,
+  parseFileUrlHref,
+  resolvePathLinkTarget,
+  splitFilePathPosition,
+} from "@t3tools/shared/fileLinks";
+import { safeDecodeURIComponent } from "@t3tools/shared/markdownLinks";
+import { stripSlashPrefixedWindowsDrive } from "@t3tools/shared/path";
 import { isMacPlatform } from "./lib/utils";
 
 export type TerminalLinkKind = "url" | "path";
@@ -42,26 +50,29 @@ const TRAILING_PATH_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
 const REQUEST_ROUTE_PATTERN =
   /(?:^|[\s"'`])(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE|proxying)\s+["'`]?(?:\/|[A-Za-z0-9_-]+\/)[^\s?]*\?\S*/g;
 
+const SCP_REMOTE_PATTERN = /(?<![\w.@-])[\w.-]+@[\w.-]+:[^\s"'`<>]+/gu;
+
 function trimClosingDelimiters(value: string, kind: TerminalLinkKind): string {
-  let output = value.replace(
+  const output = value.replace(
     kind === "path" ? TRAILING_PATH_PUNCTUATION_PATTERN : TRAILING_PUNCTUATION_PATTERN,
     "",
   );
   if (output.length === 0) return output;
 
+  let end = output.length;
   const trimUnbalanced = (open: string, close: string) => {
-    while (output.endsWith(close)) {
-      const opens = output.split(open).length - 1;
-      const closes = output.split(close).length - 1;
-      if (opens >= closes) return;
-      output = output.slice(0, -1);
+    if (output[end - 1] !== close) return;
+    let excess = output.split(close).length - output.split(open).length;
+    while (excess > 0 && output[end - 1] === close) {
+      end -= 1;
+      excess -= 1;
     }
   };
 
   trimUnbalanced("(", ")");
   trimUnbalanced("[", "]");
   trimUnbalanced("{", "}");
-  return output;
+  return output.slice(0, end);
 }
 
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
@@ -114,6 +125,10 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
     start: match.index,
     end: match.index + match[0].length,
   }));
+  const remoteTails = Array.from(line.matchAll(SCP_REMOTE_PATTERN), (match) => ({
+    start: match.index + match[0].indexOf(":") + 1,
+    end: match.index + match[0].length,
+  }));
   const urlMatches = collectMatches(line, "url", URL_PATTERN, promptMatches);
   const quotedMatches = collectMatches(line, "path", QUOTED_FILE_PATH_PATTERN, [
     ...promptMatches,
@@ -126,13 +141,28 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
   ]);
   return [...promptMatches, ...urlMatches, ...quotedMatches, ...pathMatches]
     .filter(
-      (match) => match.kind === "url" || !requestRoutes.some((route) => overlaps(match, route)),
+      (match) =>
+        match.kind === "url" ||
+        (!requestRoutes.some((route) => overlaps(match, route)) &&
+          !remoteTails.some((tail) => match.start >= tail.start && match.end <= tail.end)),
     )
     .toSorted((a, b) => a.start - b.start);
 }
 
 export function isTerminalUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
+}
+
+/** Explicit OSC 8 targets may be `file://` URIs; everything else is a path relative to `cwd`. */
+export function resolveTerminalLinkTarget(text: string, cwd: string): string {
+  const fileUrl = /^file:\/\//iu.test(text) ? parseFileUrlHref(text) : null;
+  if (!fileUrl) return resolvePathLinkTarget(text, cwd);
+  return formatFilePathPosition(
+    splitFilePathPosition(
+      stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(fileUrl.path)),
+      fileUrl.hash,
+    ),
+  );
 }
 
 export function collectWrappedTerminalLinkLine(

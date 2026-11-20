@@ -1,5 +1,6 @@
 import { useTranslation } from "../../i18n";
 import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
+import { markdownProseDirection, textDirection } from "~/textDirection";
 import { memo, use, useEffect, useEffectEvent, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -185,8 +186,19 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     return null;
   }
 
+  const direction = markdownProseDirection(
+    prompt.questions
+      .flatMap(({ header, question, options }) => [
+        header,
+        question,
+        ...options.flatMap(({ label, description }) => [label, description ?? ""]),
+      ])
+      .join(" "),
+  );
+
   return (
     <Collapsible
+      dir={direction}
       open={!isCollapsed}
       onOpenChange={(open) => {
         setCollapsedQuestionId(open ? null : activeQuestion.id);
@@ -203,13 +215,17 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         <ComposerBanner.Content>
           <span
             className={cn("min-w-0 truncate text-muted-foreground", isCollapsed && "max-w-1/2")}
+            dir={textDirection(activeQuestion.header)}
           >
             {activeQuestion.header}
           </span>
           {isCollapsed ? (
             <>
               <ComposerBanner.Separator />
-              <span className="min-w-0 flex-1 truncate text-secondary-label">
+              <span
+                className="min-w-0 flex-1 truncate text-secondary-label text-start"
+                dir={markdownProseDirection(activeQuestion.question)}
+              >
                 {activeQuestion.question}
               </span>
             </>
@@ -249,9 +265,10 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           <ComposerBanner.Body className="ps-6 pe-4 pb-1 wrap-anywhere sm:ps-5.5">
             <ChatMarkdown
               text={activeQuestion.question}
+              lineBreaks
               cwd={cwd}
               threadRef={threadRef}
-              className="pt-2 text-foreground/85"
+              className="pt-2 text-foreground/85 text-start"
             />
             {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
             <div className="-ms-2 mt-1.5 sm:-ms-1.5">
@@ -263,7 +280,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 const isSelected =
                   isOptimisticallySelected || draftSelectedOptions?.[index] === true;
                 const className = cn(
-                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-left max-sm:min-h-11 sm:ps-1.5 pointer-coarse:py-3 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
+                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-start max-sm:min-h-11 sm:ps-1.5 pointer-coarse:py-3 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
                   isSelected ? "text-foreground" : "text-foreground/70 hover:bg-muted/30",
                   (disabled || isResponding) && "opacity-50 cursor-not-allowed",
                   !disabled && !isResponding && "cursor-pointer",
@@ -273,15 +290,22 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   <>
                     <span className="pointer-events-none flex h-5 shrink-0 items-center">
                       {activeQuestion.multiSelect ? (
-                        <CheckboxMark checked={isSelected} />
+                        <CheckboxMark checked={isSelected} variant="contrast" />
                       ) : (
                         <OptionRadio checked={isSelected} />
                       )}
                     </span>
                     <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                      <span className="text-sm font-medium">{option.label}</span>
+                      <span className="text-sm font-medium" dir={textDirection(option.label)}>
+                        {option.label}
+                      </span>
                       {option.description && option.description !== option.label ? (
-                        <span className="text-secondary-label text-2xs">{option.description}</span>
+                        <span
+                          className="text-secondary-label text-2xs"
+                          dir={textDirection(option.description)}
+                        >
+                          {option.description}
+                        </span>
                       ) : null}
                     </div>
                     {index < 9 ? (
@@ -321,7 +345,7 @@ function OptionRadio({ checked }: { checked: boolean }) {
     <span
       aria-hidden
       className={cn(
-        "relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-input bg-background not-dark:bg-clip-padding sm:size-4 dark:bg-input/32",
+        "relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-foreground/55 bg-background not-dark:bg-clip-padding sm:size-4 dark:bg-input/32",
         checked ? "shadow-none" : "shadow-xs/5",
       )}
     >

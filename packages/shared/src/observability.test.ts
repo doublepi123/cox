@@ -13,9 +13,12 @@ import * as Ref from "effect/Ref";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
+import { cast } from "effect/Function";
+import type { OtlpTracer } from "effect/observability";
 
 import {
   causeErrorTag,
+  decodeOtlpTraceRecords,
   compactTraceAttributes,
   errorTag,
   makeLocalFileTracer,
@@ -554,6 +557,57 @@ describe("observability", () => {
         }),
       ),
     );
+  });
+});
+
+describe("decodeOtlpTraceRecords", () => {
+  it("decodes spans when OTLP/JSON omits unset and empty fields", () => {
+    const payload = cast<unknown, OtlpTracer.TraceData>({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "trace-1",
+                  spanId: "span-1",
+                  name: "browser.request",
+                  startTimeUnixNano: "1000000",
+                  endTimeUnixNano: "3000000",
+                  attributes: [{ key: "tags", value: { arrayValue: {} } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(decodeOtlpTraceRecords(payload)).toEqual([
+      {
+        type: "otlp-span",
+        name: "browser.request",
+        traceId: "trace-1",
+        spanId: "span-1",
+        sampled: true,
+        kind: "internal",
+        startTimeUnixNano: "1000000",
+        endTimeUnixNano: "3000000",
+        durationMs: 2,
+        attributes: { tags: [] },
+        resourceAttributes: {},
+        scope: { attributes: {} },
+        events: [],
+        links: [],
+        status: { code: "0" },
+      },
+    ]);
+  });
+
+  it("ignores OTLP resource spans without scope spans", () => {
+    const payload = cast<unknown, OtlpTracer.TraceData>({ resourceSpans: [{}] });
+
+    expect(decodeOtlpTraceRecords(payload)).toEqual([]);
   });
 });
 

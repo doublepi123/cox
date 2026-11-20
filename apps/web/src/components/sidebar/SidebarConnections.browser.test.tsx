@@ -6,7 +6,8 @@ import { SidebarConnections } from "./SidebarConnections";
 import { SidebarProvider } from "../ui/sidebar";
 import { ToastProvider, toastManager } from "../ui/toast";
 
-vi.mock(import("../../state/environments"), () => ({
+vi.mock(import("../../state/environments"), async (importOriginal) => ({
+  ...(await importOriginal()),
   usePrimaryEnvironment: () => ({ label: "Build server" }) as never,
 }));
 

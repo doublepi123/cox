@@ -1,8 +1,22 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { throws } from "node:assert/strict";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { DesktopConnectionStore } from "./connections.ts";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, renameSync: vi.fn(fs.renameSync) };
+});
 
 const homes: string[] = [];
 function home(): string {
@@ -107,6 +121,28 @@ describe("desktop connection persistence", () => {
     rmSync(file, { recursive: true });
     store.setOpenInNewWindow(false);
     expect(new DesktopConnectionStore(directory).snapshot().openInNewWindow).toBe(false);
+  });
+
+  it("removes the temporary file without replacing saved settings when rename fails", () => {
+    const directory = home();
+    const store = new DesktopConnectionStore(directory, null);
+    const profile = store.saveRemote(inspection, {});
+    const file = join(directory, "connections.json");
+    const saved = readFileSync(file, "utf8");
+    const renameError = new Error("Settings rename failed");
+    vi.mocked(renameSync).mockImplementationOnce((temporary) => {
+      expect(JSON.parse(readFileSync(temporary, "utf8"))).toMatchObject({ openInNewWindow: false });
+      throw renameError;
+    });
+
+    throws(
+      () => store.setOpenInNewWindow(false),
+      (error) => error === renameError,
+    );
+
+    expect(readFileSync(file, "utf8")).toBe(saved);
+    expect(store.snapshot()).toEqual({ active: null, profiles: [profile], openInNewWindow: true });
+    expect(readdirSync(directory)).toEqual(["connections.json"]);
   });
 
   it("rolls back a saved profile when persistence fails", () => {

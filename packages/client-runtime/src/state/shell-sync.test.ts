@@ -7,6 +7,7 @@ import {
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -26,6 +27,7 @@ import {
 } from "../connection/model.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import * as Persistence from "../platform/persistence.ts";
+import type { EnvironmentRpcStreamFailure } from "../rpc/client.ts";
 import * as RpcSession from "../rpc/session.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import { type EnvironmentShellState, makeEnvironmentShellState } from "./shell.ts";
@@ -814,6 +816,106 @@ describe("environment shell synchronization", () => {
       const state = yield* SubscriptionRef.get(shellState);
       expect(Option.getOrThrow(state.snapshot).snapshotSequence).toBe(4);
       expect(Option.getOrThrow(state.snapshot).projects[0]?.title).toBe("Server reset");
+    }),
+  );
+
+  it.effect("resumes thread row updates after a shell stream defect without reconnecting", () =>
+    Effect.gen(function* () {
+      const method = ORCHESTRATION_V2_WS_METHODS.subscribeShell;
+      type SubscribeInput = Parameters<WsRpcProtocolClient[typeof method]>[0];
+      const subscriptions = yield* Queue.unbounded<{
+        readonly input: SubscribeInput;
+        readonly events: Queue.Queue<OrchestrationV2ShellStreamItem>;
+      }>();
+      const subscribeShell = (
+        input: SubscribeInput,
+      ): Stream.Stream<
+        OrchestrationV2ShellStreamItem,
+        EnvironmentRpcStreamFailure<typeof method>
+      > =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
+            yield* Queue.offer(subscriptions, { input, events });
+            return Stream.fromQueue(events);
+          }),
+        );
+      const activeSession = session({ [method]: subscribeShell } as WsRpcProtocolClient);
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make(Option.some(activeSession)),
+        prepared: yield* SubscriptionRef.make(Option.some(PREPARED)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+      });
+      const cache = Persistence.EnvironmentCacheStore.of({
+        loadShell: () => Effect.succeedSome(LIVE_SHELL_SNAPSHOT),
+        saveShell: () => Effect.void,
+        loadThread: () => Effect.succeedNone,
+        saveThread: () => Effect.void,
+        removeThread: () => Effect.void,
+        loadServerConfig: () => Effect.succeedNone,
+        saveServerConfig: () => Effect.void,
+        loadVcsRefs: () => Effect.succeedNone,
+        saveVcsRefs: () => Effect.void,
+        removeVcsRefs: () => Effect.void,
+        clearVcsRefs: () => Effect.void,
+        clear: () => Effect.void,
+      });
+      const shellState = yield* makeEnvironmentShellState().pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.provideService(Persistence.EnvironmentCacheStore, cache),
+        Effect.provideService(ShellSnapshotLoader.ShellSnapshotLoader, {
+          load: () => Effect.succeedNone,
+        }),
+      );
+      const liveAt = (sequence: number) =>
+        SubscriptionRef.changes(shellState).pipe(
+          Stream.filter(
+            (state) =>
+              state.status === "live" &&
+              Option.getOrNull(state.snapshot)?.snapshotSequence === sequence,
+          ),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+      const row = (sequence: number, status: "completed" | "running") => ({
+        kind: "thread.updated" as const,
+        sequence,
+        location: "active" as const,
+        thread: { ...v2ThreadShell, status },
+      });
+
+      const sequence = LIVE_SHELL_SNAPSHOT.snapshotSequence + 1;
+      const first = yield* Queue.take(subscriptions);
+      yield* Queue.offerAll(first.events, [row(sequence, "completed"), { kind: "synchronized" }]);
+      const before = yield* liveAt(sequence);
+      expect(Option.getOrThrow(before.snapshot).threads).toContainEqual(
+        row(sequence, "completed").thread,
+      );
+
+      yield* Queue.failCause(first.events, Cause.die(new Error("shell invariant failed")));
+      yield* TestClock.adjust("249 millis");
+      expect(yield* Queue.poll(subscriptions)).toEqual(Option.none());
+      yield* TestClock.adjust("1 millis");
+      const resumed = yield* Queue.poll(subscriptions);
+      expect(
+        Option.map(resumed, ({ input }) => input.afterSequence),
+        "shell should resubscribe from the last applied sequence after 250 ms",
+      ).toEqual(Option.some(sequence));
+      expect(Option.getOrNull(yield* SubscriptionRef.get(supervisor.session))).toBe(activeSession);
+
+      yield* Queue.offerAll(Option.getOrThrow(resumed).events, [
+        row(sequence + 1, "running"),
+        { kind: "synchronized" },
+      ]);
+      const recovered = yield* liveAt(sequence + 1);
+      expect(Option.getOrThrow(recovered.snapshot).threads).toContainEqual(
+        row(sequence + 1, "running").thread,
+      );
+      expect(recovered.error).toEqual(Option.none());
     }),
   );
 

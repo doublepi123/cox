@@ -3,6 +3,7 @@ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EnvironmentId,
@@ -21,11 +22,14 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
-import { HttpBody, HttpClient, HttpClientRequest, HttpRouter } from "effect/http";
+import { HttpBody, HttpClient, HttpClientRequest, HttpRouter, HttpServer } from "effect/http";
+import * as NetAddress from "effect/net/NetAddress";
 
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
 import * as ServerConfig from "../config.ts";
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as DocumentText from "../provider/DocumentText.ts";
 import * as ServerHttp from "../http.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
@@ -41,6 +45,104 @@ import { PreviewToolkit } from "./toolkits/preview/tools.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
 
 const environmentId = EnvironmentId.make("environment-mcp-test");
+
+it.effect("gives outside clients an upload URL on the origin their request reached", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const token = "outsideClientToken";
+      const scope: McpInvocationContext.McpInvocationScope = {
+        environmentId,
+        requestNamespace: `client:${token}`,
+        thread: undefined,
+        client: { sessionId: token, label: "Hosted agent", access: "full-access" },
+        capabilities: new Set(["orchestration"]),
+        issuedAt: 1,
+      };
+      const serverLayer = McpHttpServer.layerAttachmentToolkit.pipe(
+        Layer.provideMerge(
+          McpHttpServer.layerMcpTransport.pipe(Layer.provide(ServerSettings.layerTest())),
+        ),
+        Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+        Layer.provide(
+          Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            resolve: () => Effect.undefined,
+          }),
+        ),
+        Layer.provide(
+          Layer.succeed(McpHttpServer.McpClientAuthenticator, {
+            authenticate: (request) =>
+              Effect.succeed(
+                request.headers.authorization === `Bearer ${token}` ? scope : undefined,
+              ),
+          }),
+        ),
+        Layer.provide(
+          ServerSecretStore.layer.pipe(
+            Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-upload-" })),
+            Layer.provideMerge(DocumentText.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          ),
+        ),
+      );
+      yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
+        Layer.build,
+      );
+      const httpClient = yield* HttpClient.HttpClient;
+      const prepareUpload = (proxyHeaders: Record<string, string>) =>
+        Effect.gen(function* () {
+          const headers = {
+            accept: "application/json, text/event-stream",
+            authorization: `Bearer ${token}`,
+            ...proxyHeaders,
+          };
+          const initialize = yield* httpClient.post("/mcp", {
+            headers,
+            body: HttpBody.text(
+              `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}`,
+              "application/json",
+            ),
+          });
+          const response = yield* httpClient.post("/mcp", {
+            headers: {
+              ...headers,
+              "mcp-session-id": initialize.headers["mcp-session-id"]!,
+              "mcp-protocol-version": "2025-06-18",
+            },
+            body: HttpBody.text(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                id: 2,
+                method: "tools/call",
+                params: {
+                  name: "cox_attachment_prepare_upload",
+                  arguments: {
+                    upload: {
+                      type: "image",
+                      name: "shot.png",
+                      mimeType: "image/png",
+                      sizeBytes: 6,
+                    },
+                  },
+                },
+              }),
+              "application/json",
+            ),
+          });
+          const body = (yield* response.json) as {
+            result: { structuredContent: { uploadUrl: string } };
+          };
+          return body.result.structuredContent;
+        });
+
+      const direct = yield* prepareUpload({});
+      const { address } = yield* HttpServer.HttpServer;
+      if (!NetAddress.isInetAddress(address)) throw new Error("Expected a TCP test server");
+      expect(new URL(direct.uploadUrl).origin).toBe(`http://127.0.0.1:${address.port}`);
+
+      expect(new URL(direct.uploadUrl).pathname).toMatch(/^\/api\/attachments\/upload\//);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
 const threadId = ThreadId.make("thread-mcp-test");
 const alternateTabId = PreviewTabId.make("tab-mcp-alternate");
 const decodeJsonText = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
@@ -679,14 +781,19 @@ it.effect("keeps the snapshot text under the agent's output ceiling", () =>
 );
 
 // regression: #10501 keep preview snapshots usable by the agent
-it.effect("bounds the snapshot text even when nothing but logs and the title are large", () =>
+it.effect.each([
+  { character: "x", repeats: 70_000, titleLength: 2_049, logLength: 501 },
+  { character: "😀", repeats: 35_000, titleLength: 2_048, logLength: 500 },
+])("bounds oversized snapshot titles and logs containing $character", (input) =>
   Effect.scoped(
     Effect.gen(function* () {
       const oversized = {
         ...snapshotResult,
-        title: "t".repeat(70_000),
+        title: `t${input.character.repeat(input.repeats)}`,
         interactiveElements: [],
-        consoleEntries: [{ level: "log", text: "x".repeat(70_000), timestamp: "t" }],
+        consoleEntries: [
+          { level: "log", text: `x${input.character.repeat(input.repeats)}`, timestamp: "t" },
+        ],
       };
       yield* serveSnapshots("mcp-bounded-logs-client", oversized);
 
@@ -701,8 +808,10 @@ it.effect("bounds the snapshot text even when nothing but logs and the title are
         readonly title: string;
         readonly consoleEntries: ReadonlyArray<{ readonly text: string }>;
       };
-      expect(parsed.title.length).toBe(2_049);
-      expect(parsed.consoleEntries[0]?.text.length).toBe(501);
+      expect(parsed.title.isWellFormed()).toBe(true);
+      expect(parsed.title.length).toBe(input.titleLength);
+      expect(parsed.consoleEntries[0]?.text.isWellFormed()).toBe(true);
+      expect(parsed.consoleEntries[0]?.text.length).toBe(input.logLength);
       const notice = snapshot.content[2];
       const noticeText = notice?.type === "text" ? notice.text : "";
       expect(noticeText).toContain("url or title after 2048 characters");
@@ -794,6 +903,30 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
           "application/json",
         ),
       });
+      const discovery = yield* httpClient.post("/mcp", {
+        headers: {
+          accept: "application/json, text/event-stream",
+          "mcp-method": "server/discover",
+          "mcp-protocol-version": "2026-07-28",
+        },
+        body: HttpBody.jsonUnsafe({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "server/discover",
+          params: {
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientCapabilities": {},
+              "io.modelcontextprotocol/clientInfo": { name: "mcp-test", version: "1.0.0" },
+            },
+          },
+        }),
+      });
+      expect(discovery.status).toBe(200);
+      expect(yield* discovery.json).toMatchObject({
+        result: { supportedVersions: expect.arrayContaining(["2026-07-28", "2025-06-18"]) },
+      });
+
       const sessionId = initializeResponse.headers["mcp-session-id"];
       expect(initializeResponse.status).toBe(200);
       expect(sessionId).not.toBeNull();

@@ -7,6 +7,7 @@ import {
   ContextTransferId,
   ProviderDriverKind,
   ProviderInstanceId,
+  ProviderThreadId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -17,31 +18,34 @@ import { deriveLatestContextWindowSnapshot, latestProviderTurnTokenUsage } from 
 const decodeTokenUsage = Schema.decodeSync(OrchestrationV2ProviderTurnTokenUsage);
 
 describe("V2 context window presentation", () => {
-  it("uses retained compaction token data when available", () => {
-    const snapshot = deriveLatestContextWindowSnapshot([
-      {
-        item: {
-          id: "compaction-1" as never,
-          threadId: "thread-1" as never,
-          runId: null,
-          nodeId: null,
-          providerThreadId: null,
-          providerTurnId: null,
-          nativeItemRef: null,
-          parentItemId: null,
-          ordinal: 1,
-          status: "completed",
-          title: null,
-          startedAt: null,
-          completedAt: null,
-          updatedAt: DateTime.makeUnsafe("2026-06-20T00:00:00.000Z"),
-          type: "compaction",
-          driver: null,
-          beforeTokenCount: 10_000,
-          afterTokenCount: 2_000,
+  it("prefers a completed compaction over stale turn usage", () => {
+    const snapshot = deriveLatestContextWindowSnapshot(
+      [
+        {
+          item: {
+            id: "compaction-1" as never,
+            threadId: "thread-1" as never,
+            runId: null,
+            nodeId: null,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 1,
+            status: "completed",
+            title: null,
+            startedAt: null,
+            completedAt: null,
+            updatedAt: DateTime.makeUnsafe("2026-06-20T00:00:00.000Z"),
+            type: "compaction",
+            driver: null,
+            beforeTokenCount: 10_000,
+            afterTokenCount: 2_000,
+          },
         },
-      },
-    ]);
+      ],
+      { usedTokens: 10_000, maxTokens: 20_000, updatedAt: "2026-06-19T23:55:00.000Z" },
+    );
     expect(snapshot?.usedTokens).toBe(2_000);
     expect(snapshot?.totalProcessedTokens).toBe(10_000);
   });
@@ -73,14 +77,29 @@ describe("live provider-turn usage (#8144)", () => {
 describe("latestProviderTurnTokenUsage", () => {
   it("picks the newest report, not the last turn in snapshot order", () => {
     const usage = (usedTokens: number, updatedAt: string) => ({
+      providerThreadId: ProviderThreadId.make("current"),
       tokenUsage: { usedTokens, updatedAt },
     });
     const latest = latestProviderTurnTokenUsage([
       usage(300_000, "2026-06-20T12:00:00.000Z"),
-      {},
+      { providerThreadId: ProviderThreadId.make("current") },
       usage(90_000, "2026-06-20T09:00:00.000Z"),
     ]);
     expect(latest?.usedTokens).toBe(300_000);
+  });
+
+  it("ignores usage from the retired provider thread", () => {
+    const active = ProviderThreadId.make("current");
+    const retired = ProviderThreadId.make("retired");
+    const projection = makeThreadProjectionFixture();
+    const snapshot = {
+      ...projection,
+      thread: { ...projection.thread, activeProviderThreadId: active },
+    };
+    const usage = { usedTokens: 300_000, updatedAt: "2026-06-20T12:00:00.000Z" };
+    expect(
+      latestProviderTurnTokenUsage([{ providerThreadId: retired, tokenUsage: usage }], snapshot),
+    ).toBeNull();
   });
 
   const sourceUsage = {
@@ -140,13 +159,19 @@ describe("latestProviderTurnTokenUsage", () => {
 
   it("replaces inherited usage with the fork's own report", () => {
     const tokenUsage = { usedTokens: 42_000, updatedAt: "2026-10-19T12:10:00.000Z" };
-    expect(latestProviderTurnTokenUsage([{ tokenUsage }], forkProjection())).toEqual(tokenUsage);
+    expect(
+      latestProviderTurnTokenUsage(
+        [{ providerThreadId: ProviderThreadId.make("current"), tokenUsage }],
+        forkProjection(),
+      ),
+    ).toEqual(tokenUsage);
   });
 
   it.each([0, 42_000])(
     "prefers target provider-thread usage of %d tokens over inherited usage",
     (usedTokens) => {
       const providerThread = {
+        id: ProviderThreadId.make("current"),
         contextUsage: {
           usedTokens,
           maxTokens: 200_000,
