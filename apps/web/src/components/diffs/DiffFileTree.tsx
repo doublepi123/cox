@@ -1,8 +1,8 @@
 import { useTranslation } from "../../i18n";
 import type { GitStatusEntry } from "@pierre/trees";
-import { FileTree, useFileTree, useFileTreeSelector } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useTheme } from "~/hooks/useTheme";
@@ -93,8 +93,24 @@ export function DiffFileTree({
     sort: ordering.sort,
     unsafeCSS: PIERRE_TREE_UNSAFE_CSS,
   });
-  const allDirectoriesExpanded = useFileTreeSelector(model, (currentModel) =>
-    areAllDirectoriesExpanded(currentModel, directoryPaths),
+  const subscribeToExpansion = useStableCallback((listener: () => void) => {
+    let queued = false;
+    let active = true;
+    const unsubscribe = model.subscribe(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (active) listener();
+      });
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  });
+  const allDirectoriesExpanded = useSyncExternalStore(subscribeToExpansion, () =>
+    areAllDirectoriesExpanded(model, directoryPaths),
   );
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes the icon set into the imperative Pierre file tree model
