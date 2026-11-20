@@ -960,6 +960,8 @@ interface ActiveCursorTurn {
   readonly reasoning: ActiveCursorTextStream;
   /** The user text this run sent, before runtime instructions; absent for /compress. */
   readonly prompt: string | undefined;
+  readonly runtimeInstructions: string | undefined;
+  compacted: boolean;
   interrupted: boolean;
   finalized: boolean;
   /** The agent's latest turn ended and no new work has started since. */
@@ -1039,10 +1041,12 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         const told = yield* Ref.make<{
           readonly agent: string;
           readonly orchestration: boolean;
+          readonly runtime: string | undefined;
         } | null>(null);
         const interruptedPrompt = yield* Ref.make<{
           readonly agent: string;
           readonly text: string;
+          readonly runtimeInstructions: string | undefined;
         } | null>(null);
         const warnedUnsupportedSandbox = yield* Ref.make(false);
         const activeTurn = yield* Ref.make<ActiveCursorTurn | null>(null);
@@ -2251,6 +2255,21 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               yield* completeAssistant(context);
               yield* completeReasoning(context);
               return;
+            case "summary-completed":
+              if (update.failed !== true) {
+                context.compacted = true;
+                yield* Ref.set(told, {
+                  agent: context.run.agentId,
+                  orchestration: false,
+                  runtime: undefined,
+                });
+                yield* Ref.update(interruptedPrompt, (current) =>
+                  current?.agent === context.run.agentId
+                    ? { ...current, runtimeInstructions: undefined }
+                    : current,
+                );
+              }
+              return;
             case "shell-output-delta": {
               const shell = Array.from(context.tools.values())
                 .toReversed()
@@ -2430,10 +2449,22 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   threadDisposition,
                 },
           );
+          if (input.context.runtimeInstructions !== undefined) {
+            const deliveredRuntime =
+              input.status === "completed" && !input.context.compacted
+                ? input.context.runtimeInstructions
+                : undefined;
+            yield* Ref.update(told, (current) =>
+              current?.agent === input.context.run.agentId
+                ? { ...current, runtime: deliveredRuntime }
+                : current,
+            );
+          }
           if (input.status === "interrupted" && input.context.prompt !== undefined) {
             yield* Ref.set(interruptedPrompt, {
               agent: input.context.run.agentId,
               text: input.context.prompt,
+              runtimeInstructions: input.context.compacted ? undefined : input.context.runtimeInstructions,
             });
           }
           yield* Ref.update(activeTurn, (current) =>
@@ -2527,12 +2558,15 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         const resolveUserMessage = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           mcpServers: Record<string, McpServerConfig> | undefined,
-          delivered: { readonly orchestration: boolean },
+          delivered: {
+            readonly orchestration: boolean;
+            readonly runtime: string | undefined;
+          },
           interrupted: string | undefined,
         ) {
           const rawText = turnInput.message.text;
           if (rawText.trim() === "/compress" && turnInput.message.attachments.length === 0) {
-            return { message: "/compress", prompt: undefined };
+            return { message: "/compress", prompt: undefined, runtimeInstructions: undefined };
           }
           if (hasCursorSkillMention(rawText) && cursorSkillNames === undefined) {
             const skills = yield* discoverCursorSkills(
@@ -2600,7 +2634,17 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               detail: "Cursor turn requires non-empty text or attachments.",
             });
           }
-          const text = `${userText}\n\n${buildRuntimeInstructions({ harness: "Cursor", model: turnInput.modelSelection.model })}`;
+          const runtimeInstructions = buildRuntimeInstructions({
+            harness: "Cursor",
+            model: turnInput.modelSelection.model,
+          });
+          // Resend only on a new/compacted/rewound conversation or when the model changes.
+          const sendRuntimeInstructions = delivered.runtime !== runtimeInstructions;
+          const text = sendRuntimeInstructions
+            ? userText.length === 0
+              ? runtimeInstructions
+              : `${userText}\n\n${runtimeInstructions}`
+            : userText;
           return {
             message:
               images.length === 0
@@ -2610,6 +2654,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                     images,
                   } satisfies SDKUserMessage),
             prompt: userText,
+            runtimeInstructions: sendRuntimeInstructions ? runtimeInstructions : undefined,
           };
         });
 
@@ -2638,9 +2683,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             const delivered =
               known?.agent === agent.nativeThreadId
                 ? known
-                : { orchestration: turnInput.runOrdinal > 1 };
+                : { orchestration: turnInput.runOrdinal > 1, runtime: undefined };
             const interrupted = yield* Ref.get(interruptedPrompt);
-            const { message, prompt } = yield* resolveUserMessage(
+            const { message, prompt, runtimeInstructions } = yield* resolveUserMessage(
               turnInput,
               mcpServers,
               delivered,
@@ -2677,6 +2722,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             yield* Ref.set(told, {
               agent: agent.nativeThreadId,
               orchestration: !compacted && (delivered.orchestration || mcpServers !== undefined),
+              runtime: compacted ? undefined : delivered.runtime,
             });
             if (!compacted) {
               yield* Ref.set(interruptedPrompt, null);
@@ -2706,6 +2752,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 nextSegment: 0,
               },
               prompt,
+              runtimeInstructions,
+              compacted,
               interrupted: false,
               finalized: false,
               turnEnded: false,

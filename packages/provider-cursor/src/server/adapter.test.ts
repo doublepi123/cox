@@ -733,6 +733,8 @@ describe("CursorAdapterV2", () => {
       const fileSystem = yield* FileSystem.FileSystem;
       const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cursor-v2-local-" });
       const sentMessages: Array<string> = [];
+      let nextRunStatus: "finished" | "error" = "finished";
+      let nextSummaryCompleted: { readonly failed?: boolean } | undefined;
       const instanceId = ProviderInstanceId.make("cursor");
       const threadId = ThreadId.make("cursor-local-thread");
       const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
@@ -770,15 +772,28 @@ describe("CursorAdapterV2", () => {
                     typeof input.message === "string" ? input.message : input.message.text,
                   );
                   const runId = `native-cursor-run-${sentMessages.length}`;
+                  const status = nextRunStatus;
+                  const summaryCompleted = nextSummaryCompleted;
+                  nextRunStatus = "finished";
+                  nextSummaryCompleted = undefined;
                   return {
                     agentId: "native-cursor-local",
                     runId,
-                    wait: Effect.succeed({
-                      id: runId,
-                      requestId: `native-request-${sentMessages.length}`,
-                      status: "finished" as const,
-                      model: { id: "composer-2.5" },
-                      durationMs: 1,
+                    wait: Effect.gen(function* () {
+                      if (summaryCompleted !== undefined) {
+                        yield* input.onDelta!({
+                          type: "summary-completed",
+                          ...summaryCompleted,
+                        }).pipe(Effect.orDie);
+                      }
+                      return {
+                        id: runId,
+                        requestId: `native-request-${sentMessages.length}`,
+                        status,
+                        ...(status === "error" ? { error: { message: "transient failure" } } : {}),
+                        model: { id: input.options?.model?.id ?? "composer-2.5" },
+                        durationMs: 1,
+                      };
                     }),
                     cancel: Effect.void,
                   };
@@ -823,12 +838,24 @@ describe("CursorAdapterV2", () => {
         deletedAt: null,
       };
       let runOrdinal = 4;
-      const send = Effect.fnUntraced(function* (compact = false) {
+      const send = Effect.fnUntraced(function* (
+        compact = false,
+        _nativeThreadHasTurns?: boolean,
+        options?: {
+          readonly model?: string;
+          readonly status?: "finished" | "error";
+          readonly summaryCompleted?: { readonly failed?: boolean };
+        },
+      ) {
         runOrdinal += 1;
+        nextRunStatus = options?.status ?? "finished";
+        nextSummaryCompleted = options?.summaryCompleted;
+        const turnModelSelection =
+          options?.model === undefined ? modelSelection : { instanceId, model: options.model };
         const turnInput = {
           threadId,
           providerThread,
-          modelSelection,
+          modelSelection: turnModelSelection,
           runtimePolicy,
           runId: RunId.make(`cursor-local-run-${runOrdinal}`),
           runOrdinal,
@@ -852,13 +879,35 @@ describe("CursorAdapterV2", () => {
         return sentMessages.at(-1)!;
       });
       yield* registerMcp();
-      assert.notInclude(yield* send(), "## Cox orchestration");
-      assert.notInclude(yield* send(), "## Cox orchestration");
+      const first = yield* send();
+      assert.notInclude(first, "## Cox orchestration");
+      assert.include(first, "<runtime_info>");
+      const second = yield* send();
+      assert.notInclude(second, "## Cox orchestration");
+      assert.notInclude(second, "<runtime_info>");
       yield* send(true);
       const afterCompaction = yield* send();
       assert.include(afterCompaction, "## Cox orchestration");
+      assert.include(afterCompaction, "<runtime_info>");
       assert.notInclude(afterCompaction, "device_open");
-      assert.notInclude(yield* send(), "## Cox orchestration");
+      assert.notInclude(yield* send(), "<runtime_info>");
+
+      const model = "gemini-4-neon";
+      assert.include(yield* send(false, undefined, { model, status: "error" }), "as gemini-4-neon");
+      assert.include(yield* send(), "as composer-2.5");
+      assert.notInclude(yield* send(false, undefined, { status: "error" }), "<runtime_info>");
+      assert.notInclude(yield* send(), "<runtime_info>");
+      assert.include(yield* send(false, undefined, { model, status: "error" }), "as gemini-4-neon");
+      assert.include(yield* send(false, undefined, { model }), "as gemini-4-neon");
+      assert.notInclude(
+        yield* send(false, undefined, { model, summaryCompleted: { failed: true } }),
+        "<runtime_info>",
+      );
+      assert.notInclude(yield* send(false, undefined, { model, summaryCompleted: {} }), "<runtime_info>");
+      const afterAutomaticCompaction = yield* send(false, undefined, { model });
+      assert.include(afterAutomaticCompaction, "## Cox orchestration");
+      assert.include(afterAutomaticCompaction, "as gemini-4-neon");
+      assert.notInclude(yield* send(false, undefined, { model }), "<runtime_info>");
     }).pipe(
       Effect.scoped,
       Effect.provide(
@@ -873,6 +922,7 @@ describe("CursorAdapterV2", () => {
       const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cursor-v2-steer-" });
       const sentMessages: Array<string> = [];
       const runEnds: Array<Deferred.Deferred<"finished" | "cancelled">> = [];
+      const runDeltas: Array<(update: InteractionUpdate) => Effect.Effect<void>> = [];
       const instanceId = ProviderInstanceId.make("cursor");
       const threadId = ThreadId.make("cursor-steer-thread");
       const modelSelection = { instanceId, model: "composer-2.5" };
@@ -900,6 +950,7 @@ describe("CursorAdapterV2", () => {
                   const runId = `native-cursor-run-${sentMessages.length}`;
                   const ended = yield* Deferred.make<"finished" | "cancelled">();
                   runEnds.push(ended);
+                  runDeltas.push((update) => input.onDelta!(update).pipe(Effect.orDie));
                   return {
                     agentId: "native-cursor-steer",
                     runId,
@@ -995,6 +1046,11 @@ describe("CursorAdapterV2", () => {
         steered,
         firstPrompt,
         "the interrupted prompt is missing from the run that replaces it",
+      );
+      assert.include(
+        steered,
+        "<runtime_info>",
+        "an interrupted first run did not deliver runtime instructions",
       );
 
       yield* Deferred.succeed(runEnds[1]!, "finished");
