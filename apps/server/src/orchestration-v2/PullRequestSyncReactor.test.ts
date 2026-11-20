@@ -1614,6 +1614,12 @@ describe("PullRequestSyncReactor", () => {
       linked: [124],
     },
     {
+      name: "the GitHub CLI new alias",
+      input: "gh pr new --fill",
+      output: "https://github.com/owner/repository/pull/124\n",
+      linked: [124],
+    },
+    {
       name: "a Codex shell wrapper after a push",
       input: '/bin/zsh -lc "git push -u origin feature 2>&1 | tail -2 && gh pr create --fill"',
       output: [
