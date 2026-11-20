@@ -1,0 +1,88 @@
+# Cursor upstream ports, November 2026
+
+Cox `@cursor/sdk` moved from 1.0.38 to 1.4.2 in `packages/provider-cursor` and `apps/server`.
+1.4.2 typechecks against the adapter. `onDelta` may now emit `model-call-completed`; the interaction switch already ignores unknown update types.
+The upstream `patches/@cursor__sdk@1.3.1.patch` rewrites the 1.3.1 bundle (grouped grep converter and a private resume hook) and does not apply to 1.4.2. It was not carried.
+SDK 1.4.2 itself includes the 1.0.39 MCP-config fix, the 1.3.2 pnpm platform-package and Max Mode persistence fix, and the 1.4.1 nested-subagent fix.
+
+Reviewed upstream `packages/provider-cursor` commits from 2026-11-01 through 2026-11-17 (48), plus the later November Cursor commits called out for Max Mode, rewind, and account models.
+No version bump and no release. Model services, OpenAI protocol parsing, OMO, mobile safe area, and Connection Manager were not changed.
+
+## Adapted
+
+| Commit | What landed in Cox |
+| --- | --- |
+| [2248ca8db9](https://github.com/pingdotgg/t3code/commit/2248ca8db9) | A follow-up while Cursor is still running is injected into that run. Ordinary steering no longer cancels the run and starts another one. An explicit restart is still available. |
+| [c8a601c0df](https://github.com/pingdotgg/t3code/commit/c8a601c0df) | `/compress` calls the SDK `summarize()` instead of sending that word as a user message. |
+| [57e92b0b98](https://github.com/pingdotgg/t3code/commit/57e92b0b98) | A Max Mode tier is marked `maxMode` from the latest Cursor catalog, so it keeps working after Cursor changes the model. |
+
+## SDK behavior gained without an upstream commit
+
+- Passing `mcpServers` for one turn no longer drops MCP servers from the Cursor config file (1.0.39).
+- pnpm can resolve the platform package, and a saved Max Mode setting is kept (1.3.2).
+- Nested subagents no longer spawn without a bound (1.4.1).
+- `model-call-completed` deltas are ignored by the existing default branch, so a new update type cannot crash the turn.
+
+## Skipped
+
+| Commit | Upstream change | Why it stayed out |
+| --- | --- | --- |
+| [428d365932](https://github.com/pingdotgg/t3code/commit/428d365932) | feat(server): configurable usage history retention (#28111) | Usage history retention is a server setting Cox does not share. The commit is not a Cursor session fix. |
+| [b4e47a5a62](https://github.com/pingdotgg/t3code/commit/b4e47a5a62) | fix(providers): enforce approval and settings boundaries (#37826) | Approval and settings boundaries span every provider. Cox already has its own permission policy. |
+| [0f0c1ca196](https://github.com/pingdotgg/t3code/commit/0f0c1ca196) | fix(server): usage mapped onto a Pi, Cursor or Antigravity model prices at that model's rate (#32219) | Usage price mapping for Pi, Cursor, and Antigravity is Cox's model-gateway pricing, which stays Cox-owned. |
+| [64a481c2af](https://github.com/pingdotgg/t3code/commit/64a481c2af) | fix(cursor): text generation retries without the sandbox when send rejects it (#34844) | Text generation already retries a rejected sandbox in Cox's textGeneration path; the upstream hunk does not match that function. |
+| [4c9a87309d](https://github.com/pingdotgg/t3code/commit/4c9a87309d) | fix(cursor): an aborted Cursor SDK stall no longer stops the server (#23354) | Cox's CursorSdk loader does not have the stall watcher this commit stops from killing the process. |
+| [0b308312d5](https://github.com/pingdotgg/t3code/commit/0b308312d5) | fix(cursor): resume stopped turns with Cursor's native resume action (#36918) | Native resume of a stopped turn needs Agent.resume(), which SDK 1.4.2 does not expose. The 1.3.1 bundle patch that added it does not apply to 1.4.2. |
+| [d3217c75f2](https://github.com/pingdotgg/t3code/commit/d3217c75f2) | fix(provider-cursor): advertise manual compaction (#31203) | Manual compaction is covered by sending /compress through agent.summarize(). The separate capability flag in this commit is not a second behavior. |
+| [1c01db02b3](https://github.com/pingdotgg/t3code/commit/1c01db02b3) | fix(cursor): stream Task subagent work into child threads live (#30539) | Live Task subagent streaming depends on Cursor child-thread projection Cox's adapter does not share. |
+| [77c9e70555](https://github.com/pingdotgg/t3code/commit/77c9e70555) | fix(cursor): preserve recognized transport failure diagnostics (#30631) | Transport failure diagnostics are classified in Cox's CursorTransportFailure, which is not the upstream matcher. |
+| [8871c265a2](https://github.com/pingdotgg/t3code/commit/8871c265a2) | fix(cursor): shell commands that exit non-zero are recorded as failed (#29785) | Non-zero shell exits are recorded by Cox's tool-call mapper, which does not match this hunk. |
+| [34a7c0d85d](https://github.com/pingdotgg/t3code/commit/34a7c0d85d) | fix(cursor): preserve catalog aliases in model discovery (#36752) | Catalog aliases are already folded in cursorSdkModelSelection via model.aliases. This commit's discovery path is a different function. |
+| [6be1bd6472](https://github.com/pingdotgg/t3code/commit/6be1bd6472) | perf(cursor): long command output streams without copying its tail per chunk (#26934) | Long command output already keeps a bounded tail in the adapter. The upstream chunk copier is not that buffer. |
+| [c165587702](https://github.com/pingdotgg/t3code/commit/c165587702) | fix(provider-cursor): Cursor threads report token usage and context fill (#36323) | Token usage and context fill are read from turn-ended usage. This commit's context-usage store API is not on Cox's session. |
+| [497aac20f7](https://github.com/pingdotgg/t3code/commit/497aac20f7) | fix(server): include Cursor team usage in account history (#36237) | Cursor team usage in account history is a usage-page subsystem. This commit does not apply onto Cox's account reader. |
+| [d3ef7e8e52](https://github.com/pingdotgg/t3code/commit/d3ef7e8e52) | fix(cursor): send the catalog's default model parameters on every Cursor run (#28722) | Default model parameters are already filled in cursorSdkModelSelection, including the Fast default. The upstream default set is a different list. |
+| [ee645553a9](https://github.com/pingdotgg/t3code/commit/ee645553a9) | test: drop Effect.scoped wrappers that @effect/vitest already applies (#35993) | Test-only removal of Effect.scoped wrappers. |
+| [cc97303381](https://github.com/pingdotgg/t3code/commit/cc97303381) | fix(cursor): mcp.json servers using ${workspaceFolder} now start (#24505) | mcp.json ${workspaceFolder} expansion is done by the SDK when settingSources include project. Cox already passes those sources. |
+| [de77e61281](https://github.com/pingdotgg/t3code/commit/de77e61281) | fix(provider): make readiness probe timeouts configurable (#33275) | Readiness probe timeouts are Cox's provider maintenance settings, not this shared timeout flag. |
+| [39ab6a2d2f](https://github.com/pingdotgg/t3code/commit/39ab6a2d2f) | fix(cursor): honor HTTP/1.1 transport for proxy networks (#25338) | HTTP/1.1 transport selection is not a switch in Cox's Cursor client. |
+| [56c4e20fff](https://github.com/pingdotgg/t3code/commit/56c4e20fff) | fix(cursor): user-invoked skills hidden from the model reach the Cursor prompt (#34999) | Hidden user-invoked skills are filtered in Cox's discoverCursorSkills. This commit's prompt rewrite is a different function. |
+| [db04d3abe9](https://github.com/pingdotgg/t3code/commit/db04d3abe9) | fix(server): subagent threads get short ids agents can quote back (#34877) | Short subagent ids are an orchestration id scheme, not a Cursor adapter change. |
+| [4e0b52806b](https://github.com/pingdotgg/t3code/commit/4e0b52806b) | fix(cursor): agent shell commands stream their output while they run (#34843) | Shell output already streams through shell-output-delta. The upstream incremental buffer is not Cox's command_output.delta path. |
+| [a18a458f25](https://github.com/pingdotgg/t3code/commit/a18a458f25) | fix(cursor): resume moved threads from their original session store (#34794) | Moved-thread session stores are not a Cox workspace move. The original store path is not that lookup. |
+| [8c15be97dd](https://github.com/pingdotgg/t3code/commit/8c15be97dd) | fix(cursor): recover restarted threads with older runs (#24540) | Recovering older runs after restart needs the checkpoint store API this commit adds. Cox's open path does not have it. |
+| [489fa8c052](https://github.com/pingdotgg/t3code/commit/489fa8c052) | fix(cursor): hide duplicate pooled usage limits (#34421) | Duplicate pooled usage meters are rendered by Cox's usage page, which is not this Cursor usage normalizer. |
+| [f28dc8ee94](https://github.com/pingdotgg/t3code/commit/f28dc8ee94) | fix(cursor): unified usage plans show one meter (#34506) | Unified usage plans are a usage-page meter. Cox's usage UI is separate. |
+| [bd5ed4dac8](https://github.com/pingdotgg/t3code/commit/bd5ed4dac8) | fix(provider-cursor): Cursor sign-in shows why it failed (#25938) | Cursor sign-in errors already surface through cursorSdkFailureMessage. This commit's login dialog copy is a different screen. |
+| [80d8623fc3](https://github.com/pingdotgg/t3code/commit/80d8623fc3) | fix(cursor): retry a timed-out catalog read before reporting an error (#34553) | Catalog read retry is inside the SDK client Cox calls once. The upstream retry loop is not that call. |
+| [1a3fbee6c2](https://github.com/pingdotgg/t3code/commit/1a3fbee6c2) | fix(cursor): Cursor no longer adds attribution when cli-config turns it off (#26908) | Attribution is controlled by the SDK cli-config. Cox does not set that flag in its agent options. |
+| [e2a781477a](https://github.com/pingdotgg/t3code/commit/e2a781477a) | fix(usage): Grok and Cursor usage limits show pace and the even-spend line (#21897) | Usage pace and the even-spend line are the usage page. Cox did not take that chart. |
+| [d313b2aff3](https://github.com/pingdotgg/t3code/commit/d313b2aff3) | fix(cursor): a steer keeps the prompt it interrupted (#32583) | A steer that is not accepted still fails the steer and keeps the message for a follow-up through the existing steer error path. The upstream prompt-replay on interrupt is the old restart path. |
+| [53bcb9af7a](https://github.com/pingdotgg/t3code/commit/53bcb9af7a) | perf(cursor): improve account usage scanning (#33636) | Account usage scanning performance is Cox's account reader, which does not share this scan. |
+| [4c3a9d5818](https://github.com/pingdotgg/t3code/commit/4c3a9d5818) | fix(cursor): use the SDK account for usage data (#32448) | Usage data already comes from the signed-in SDK account in Cox's status probe. |
+| [c76f94e16a](https://github.com/pingdotgg/t3code/commit/c76f94e16a) | perf(cursor): stop tracing the per-event account usage hash (#31017) | Per-event account usage hashing is not traced in Cox's Cursor event pump. |
+| [298cb24140](https://github.com/pingdotgg/t3code/commit/298cb24140) | refactor: errors are Schema.TaggedError, not Data.TaggedError or native Error (#31216) | Error class refactor across the repo. Not a Cursor behavior change. |
+| [5a906583fe](https://github.com/pingdotgg/t3code/commit/5a906583fe) | refactor: Effect.try calls map failures to typed errors (#31217) | Effect.try typing refactor. Not a Cursor behavior change. |
+| [4b87a45770](https://github.com/pingdotgg/t3code/commit/4b87a45770) | build: run Effect rules on mobile and lock in clean suggestion rules (#31111) | Build and lint rule change. Not a Cursor behavior change. |
+| [95e53a54db](https://github.com/pingdotgg/t3code/commit/95e53a54db) | build: typecheck with tsrs and Effect's rules through @effect/tsgo (#31028) | Typecheck toolchain change. Not a Cursor behavior change. |
+| [d51bc58f5e](https://github.com/pingdotgg/t3code/commit/d51bc58f5e) | fix(tools): show images from MCP and OpenCode outputs (#30389) | Images from MCP and OpenCode outputs are not the Cursor adapter. |
+| [47057a3cac](https://github.com/pingdotgg/t3code/commit/47057a3cac) | fix(cursor): Cursor text generation names usage-limit failures (#29748) | Usage-limit text generation failures are already named by isCursorUsageLimitError. This commit's text-generation mapper is a different function. |
+| [30767c22b5](https://github.com/pingdotgg/t3code/commit/30767c22b5) | fix(cursor): supporting files no longer hide sibling skills (#23326) | Sibling skills next to supporting files are discovered by Cox's skill walker, which is not this filter. |
+| [727a502816](https://github.com/pingdotgg/t3code/commit/727a502816) | fix(cursor): a write-after-end in the Cursor SDK no longer stops the server (#27703) | A write-after-end in the SDK is handled inside the SDK stream. Cox's pump does not have the listener this commit guards. |
+| [57cd05904d](https://github.com/pingdotgg/t3code/commit/57cd05904d) | chore(deps): upgrade Effect to 4.1.2 and alchemy to beta.85 (#26833) | Effect 4.1.2 upgrade. Cox stays on its current Effect version. |
+| [af00cf73e1](https://github.com/pingdotgg/t3code/commit/af00cf73e1) | fix(cursor): show Cursor usage after signing in with Cursor (#29419) | Usage after Cursor sign-in is already loaded by the status probe. |
+| [3fd2b855c5](https://github.com/pingdotgg/t3code/commit/3fd2b855c5) | perf(cursor): load the agent SDK only when needed (#28718) | The SDK is already required from the Cursor package, not loaded at server startup. |
+| [0bc95fcdea](https://github.com/pingdotgg/t3code/commit/0bc95fcdea) | feat(dev): add startup profiling for cold-start diagnosis (#28566) | Dev startup profiling is not shipped. |
+| [13ecf5b22e](https://github.com/pingdotgg/t3code/commit/13ecf5b22e) | feat(cursor): edit earlier messages by rewinding the Cursor agent (#38262) | Rewinding an earlier message needs a public agent rewind API. SDK 1.4.2 does not export one, and the 1.3.1 dist patch cannot be applied to that bundle. |
+| [106a1e03b7](https://github.com/pingdotgg/t3code/commit/106a1e03b7) | fix(cursor): models added to the account run in workspaces that already ran Cursor (#39246) | Models added to an account after a workspace has run are refreshed inside the 1.3.1 SDK patch. 1.4.2's bundle is different, and Cox keeps the last successful catalog for Max Mode instead of patching the SDK. |
+| [e26a76af86](https://github.com/pingdotgg/t3code/commit/e26a76af86) | fix(provider-cursor): retry invalid text generation once (#26056) | Retrying an invalid text-generation request once is a different send loop from Cox's textGeneration.ts. The hunk does not apply. |
+
+## Regressions from 0.2.15
+
+- ACP compaction: a cleared summary is `null`. The test expected the old draft to remain as `undefined`. The test now expects `null`.
+- Provider sessions: `interruptWhen` turned a finished event queue into a failure, so a provider that stopped was not closed. The pump now uses `haltWhen`, which stops cleanly when the session scope closes, and the stop still closes the session.
+- Provider switch: a delivered handoff was no longer pending, so a resume fallback left it on the old thread. That exclusion was removed. A resume fallback can deliver the older handoff onto the new thread again.
+
+## Verification
+
+provider-cursor typecheck and 116 tests passed. Cursor replay fixtures for live steering and explicit restart passed. `node scripts/cursor-sdk-smoke.cjs` prewarmed with sandbox on and off. `scripts/lib/cli-external-packages.ts` already externalizes the runtime packages `@cursor/sdk` 1.4.2 depends on (`@bufbuild/protobuf`, `@connectrpc/connect`, `@connectrpc/connect-web`, `@statsig/js-client`, `zod`).

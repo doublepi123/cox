@@ -1,5 +1,7 @@
 # Upstream port status
 
+Cursor SDK 1.4.2 and the November Cursor adapter pass: [docs/upstream-ports-cursor-2026-11.md](docs/upstream-ports-cursor-2026-11.md).
+
 Latest follow-up: [November 20 review](docs/upstream-ports-2026-11-20.md), comparing
 246 commits `455a60aa3ceb..4d5bf2d5579f` and adapting 42 for Cox at `c641ee23d350`.
 No version bump.
