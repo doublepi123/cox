@@ -711,14 +711,13 @@ export const layer: Layer.Layer<
       });
       const { isCurrentAttemptInStatus } = runControls;
 
-      // A side chat shares its parent's worktree; the turn that gets its context asks before acting.
+      const { sideChat, parentThreadId } = projection.thread.lineage;
+      const permissionsThread =
+        sideChat === true && parentThreadId !== null
+          ? (yield* projectionStore.getThreadRecords(parentThreadId, [])).thread
+          : projection.thread;
       const resolvedRuntimePolicy = yield* runtimePolicy.resolve({
-        thread:
-          projection.thread.lineage.sideChat === true &&
-          (sideChatHandoff !== undefined ||
-            !projection.runs.some((previous) => previous.ordinal < run.ordinal))
-            ? { ...projection.thread, runtimeMode: "approval-required" }
-            : projection.thread,
+        thread: { ...projection.thread, runtimeMode: permissionsThread.runtimeMode },
         modelSelection: run.modelSelection,
       });
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;

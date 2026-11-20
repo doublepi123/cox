@@ -19,6 +19,7 @@ import {
   ThreadId,
   ProjectId,
   type OrchestrationV2ThreadProjection,
+  type RuntimeMode,
   OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -301,6 +302,8 @@ function makeLocalCommandHarness(input: {
    */
   readonly sideChat?: {
     readonly contextRun: "current" | "failed" | "cancelled" | "delivered";
+    readonly parentRuntimeMode?: RuntimeMode;
+    readonly storedRuntimeMode?: RuntimeMode;
     readonly nativeForkFrom?: "idle" | "busy";
     readonly switchedProvider?: boolean;
   };
@@ -491,7 +494,11 @@ function makeLocalCommandHarness(input: {
   };
   const parentRecords = {
     ...projection,
-    thread: { ...projection.thread, id: parentThreadId },
+    thread: {
+      ...projection.thread,
+      id: parentThreadId,
+      runtimeMode: input.sideChat?.parentRuntimeMode ?? "full-access",
+    },
     runs: [
       {
         ...run,
@@ -527,7 +534,7 @@ function makeLocalCommandHarness(input: {
       ...projection,
       thread: {
         ...projection.thread,
-        runtimeMode: "full-access",
+        runtimeMode: input.sideChat.storedRuntimeMode ?? "approval-required",
         lineage: {
           parentThreadId,
           relationshipToParent: "fork",
@@ -1305,19 +1312,25 @@ effectIt.effect(
 );
 
 effectIt.effect.each([
-  { contextRun: "current", runtimeMode: "approval-required", context: "SIDE_CHAT_CONTEXT" },
-  { contextRun: "failed", runtimeMode: "approval-required", context: "SIDE_CHAT_CONTEXT" },
-  { contextRun: "cancelled", runtimeMode: "approval-required", context: "SIDE_CHAT_CONTEXT" },
+  { contextRun: "current", parentRuntimeMode: "full-access", context: "SIDE_CHAT_CONTEXT" },
+  { contextRun: "failed", parentRuntimeMode: "full-access", context: "SIDE_CHAT_CONTEXT" },
+  { contextRun: "cancelled", parentRuntimeMode: "auto-accept-edits", context: "SIDE_CHAT_CONTEXT" },
   {
     contextRun: "failed",
     switchedProvider: true,
-    runtimeMode: "approval-required",
+    parentRuntimeMode: "full-access",
     context: "SIDE_CHAT_CONTEXT",
   },
-  { contextRun: "delivered", runtimeMode: "full-access", context: "" },
+  { contextRun: "delivered", parentRuntimeMode: "full-access", context: "" },
+  {
+    contextRun: "delivered",
+    parentRuntimeMode: "approval-required",
+    storedRuntimeMode: "full-access",
+    context: "",
+  },
 ] as const)(
-  "sends side chat context inline once, for the first turn that reaches the provider: %j",
-  ({ runtimeMode, context, ...sideChat }) =>
+  "uses the parent's permissions and sends side chat context only when needed: %j",
+  ({ context, ...sideChat }) =>
     Effect.gen(function* () {
       const harness = makeLocalCommandHarness({
         text: "What is the main thread doing?",
@@ -1326,9 +1339,10 @@ effectIt.effect.each([
 
       yield* harness.start;
 
-      // The turn that delivers the context is clamped; a later one follows the thread's mode.
       expect(harness.open).toHaveBeenCalledWith(
-        expect.objectContaining({ runtimePolicy: expect.objectContaining({ runtimeMode }) }),
+        expect.objectContaining({
+          runtimePolicy: expect.objectContaining({ runtimeMode: sideChat.parentRuntimeMode }),
+        }),
       );
       expect(harness.startTurn.mock.calls.map(([turn]) => turn.message.text)).toEqual([
         withInlineContext(context, "What is the main thread doing?"),
