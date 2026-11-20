@@ -153,6 +153,39 @@ layer("GitLabCli.layer", (it) => {
     }),
   );
 
+  it.effect("classifies expired OAuth grants as authentication failures", () =>
+    Effect.gen(function* () {
+      const stderr = "oauth2: invalid_grant: refresh token has expired";
+      mockedRun.mockImplementation((input) => {
+        const failureKind = input.classifyFailure?.(stderr) ?? undefined;
+        return Effect.fail(
+          new VcsProcessExitError({
+            operation: input.operation,
+            command: input.command,
+            cwd: input.cwd,
+            exitCode: 1,
+            detail: stderr,
+            ...(failureKind === undefined ? {} : { failureKind }),
+          }),
+        );
+      });
+
+      const error = yield* Effect.gen(function* () {
+        const glab = yield* GitLabCli.GitLabCli;
+        return yield* glab.execute({ cwd: "/repo", args: ["auth", "status"] });
+      }).pipe(Effect.flip);
+
+      assert.strictEqual(error._tag, "GitLabCliAuthenticationError");
+      expect(error.cause).toMatchObject({ failureKind: "authentication" });
+      const classifyFailure = mockedRun.mock.calls.at(-1)?.[0].classifyFailure;
+      assert.strictEqual(
+        classifyFailure?.("Please run `glab auth login` to authenticate."),
+        "authentication",
+      );
+      assert.strictEqual(classifyFailure?.("GET 404 project not found"), "not-found");
+    }),
+  );
+
   it.effect("surfaces a friendly error when the merge request is not found", () =>
     Effect.gen(function* () {
       const cause = new VcsProcessExitError({

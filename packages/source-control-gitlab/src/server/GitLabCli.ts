@@ -414,7 +414,9 @@ function parseRepositoryPath(repository: string): {
 // glab prints a missing project or merge request as a bare 404.
 const classifyGlabFailure = (stderr: string): VcsProcessExitFailureKind | null => {
   const normalized = stderr.toLowerCase();
-  if (normalized.includes("glab auth login")) return "authentication";
+  if (normalized.includes("glab auth login") || normalized.includes("invalid_grant")) {
+    return "authentication";
+  }
   if (normalized.includes("not found") || normalized.includes("404")) return "not-found";
   return null;
 };
