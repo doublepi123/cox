@@ -769,6 +769,26 @@ it.layer(
     }),
   );
 
+  it.effect("reports the full process name in terminal activity", () =>
+    Effect.gen(function* () {
+      const { manager, getEvents } = yield* createManager(5, {
+        subprocessPollIntervalMs: 1_000,
+        processKillGraceMs: 0,
+        processTable: Effect.succeed([
+          { pid: 9000, ppid: 1, name: "bash" },
+          { pid: 200, ppid: 9000, name: "Cox Sleep QA" },
+        ]),
+      }).pipe(Effect.provide(layerWithHostPlatform("linux")));
+      yield* manager.open(openInput());
+      yield* TestClock.adjust("1 second");
+
+      expect((yield* getEvents).find((event) => event.type === "activity")).toMatchObject({
+        label: "Cox Sleep QA",
+        hasRunningSubprocess: true,
+      });
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   // Answers process-table queries after `queryDuration`, honoring the caller's
   // timeout the way ProcessRunner's `timedOutResult` mode does.
   const slowProcessTable = (
