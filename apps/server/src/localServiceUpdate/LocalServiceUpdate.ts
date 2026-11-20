@@ -28,11 +28,11 @@ import {
 import {
   launchLocalServiceUpdate,
   localServiceReceiptState,
-  renderLocalServiceDropIn,
   prepareLocalServiceUpdate,
   readLocalServiceReceipt,
   type LocalServiceUpdatePlan,
 } from "./operation.ts";
+import { renderLocalServiceDropIn } from "./systemd.ts";
 
 const decodePackageManifest = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String })),

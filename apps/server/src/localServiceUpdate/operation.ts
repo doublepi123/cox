@@ -13,6 +13,7 @@ import {
   localServiceUpdateHelper,
   updateEnvironment,
 } from "./ownership.ts";
+import { verifyLocalServiceSystemdUpdate } from "./systemd.ts";
 
 export interface LocalServiceUpdatePlan {
   readonly schema: 1;
@@ -186,13 +187,6 @@ async function waitForVersion(plan: LocalServiceUpdatePlan, version: string): Pr
   throw new Error(`Cox ${version} did not become healthy after restart.`);
 }
 
-export function renderLocalServiceDropIn(args: readonly string[]): string {
-  const command = args.map((arg) =>
-    JSON.stringify(arg.replaceAll("%", "%%").replaceAll("$", () => "$$")),
-  );
-  return "[Service]\nExecStart=\nExecStart=" + command.join(" ") + "\n";
-}
-
 async function readDropIn(path: string): Promise<string | null> {
   try {
     if (!(await lstat(path)).isFile())
@@ -262,15 +256,7 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
     await writeDropIn(plan.dropIn, plan.nextUnit);
     replacementStarted = true;
     await run("systemctl", ["--user", "daemon-reload"]);
-    const dropIns = await run("systemctl", [
-      "--user",
-      "show",
-      "--property=DropInPaths",
-      "--value",
-      plan.serviceUnit,
-    ]);
-    if (!dropIns.trim().split(/\s+/).includes(plan.dropIn))
-      throw new Error("The systemd user manager did not load the Cox update override.");
+    await verifyLocalServiceSystemdUpdate(plan);
     await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
     await waitForVersion(plan, plan.targetVersion);
     await writeJson(receiptPath, receipt("healthy", null));
