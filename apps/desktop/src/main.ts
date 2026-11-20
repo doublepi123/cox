@@ -109,6 +109,7 @@ let connectionsPageUrl: string | undefined;
 let connectionsOwner: BrowserWindow | undefined;
 let openConnectionManager: (() => Promise<void>) | undefined;
 let openRequestedInstance: ((id: string) => void) | undefined;
+let presentExistingSurface: (() => void) | undefined;
 const remoteWindows = new Map<BrowserWindow, RemoteConnectionProfile>();
 const readyWindows = new Set<number>();
 let backend: BackendProcess | undefined;
@@ -1029,6 +1030,41 @@ async function start() {
   }
 
   const presentedWindows = new WeakSet<BrowserWindow>();
+  const instanceFocusOrder: BrowserWindow[] = [];
+  function noteInstanceFocus(target: BrowserWindow) {
+    const index = instanceFocusOrder.indexOf(target);
+    if (index >= 0) instanceFocusOrder.splice(index, 1);
+    instanceFocusOrder.push(target);
+  }
+  function restorableInstances() {
+    return [...windowInstances.keys()].filter(
+      (target) => !target.isDestroyed() && (target.isVisible() || target.isMinimized()),
+    );
+  }
+  function presentOpenSurface() {
+    const open = restorableInstances();
+    if (open.length > 0) {
+      let target = open[open.length - 1]!;
+      for (let index = instanceFocusOrder.length - 1; index >= 0; index--) {
+        const candidate = instanceFocusOrder[index];
+        if (candidate && open.includes(candidate)) {
+          target = candidate;
+          break;
+        }
+      }
+      if (target.isMinimized()) target.restore();
+      target.show();
+      target.focus();
+      return;
+    }
+    if (connectionsWindow && !connectionsWindow.isDestroyed()) {
+      if (connectionsWindow.isMinimized()) connectionsWindow.restore();
+      connectionsWindow.show();
+      connectionsWindow.focus();
+      return;
+    }
+    void openConnectionManager?.();
+  }
   function presentInstanceWindow(
     target: BrowserWindow,
     instanceId: string,
@@ -1052,6 +1088,7 @@ async function start() {
         event.preventDefault();
         apply(typeof title === "string" ? title : undefined);
       });
+      if (windowInstances.has(target)) target.on("focus", () => noteInstanceFocus(target));
     }
     if (process.platform !== "win32") return;
     target.setAppDetails({
@@ -2329,6 +2366,7 @@ async function start() {
     );
   }
   openRequestedInstance = focusInstance;
+  presentExistingSurface = presentOpenSurface;
   const active = connectionStore.snapshot().active;
   if (active?.kind === "remote") await connectRemote({ id: active.profileId });
   else if (active?.kind === "local") await startLocal();
@@ -2350,9 +2388,13 @@ if (
       Array.isArray(argv) ? argv.filter((item) => typeof item === "string") : [],
     );
     if (id && openRequestedInstance) openRequestedInstance(id);
+    else if (presentExistingSurface) presentExistingSurface();
     else showWindow();
   });
-  app.on("activate", showWindow);
+  app.on("activate", () => {
+    if (presentExistingSurface) presentExistingSurface();
+    else showWindow();
+  });
   app.on("before-quit", (event) => {
     if (approvedQuit) {
       void closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);

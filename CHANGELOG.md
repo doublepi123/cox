@@ -5,6 +5,8 @@
 - Desktop windows are titled by instance, with the instance name before Cox,
   and the page title can no longer rename them all back to Cox. On Windows each
   instance gets its own taskbar group and pin.
+- Clicking the Dock icon or launching Cox again focuses an open instance
+  window. The connection list opens only when no instance window is open.
 
 ## Desktop 0.2.31 — 2026-11-20
 

@@ -132,6 +132,7 @@ class TestWindow extends EventEmitter {
   }
   focus() {
     fixture.focused = this;
+    this.emit("focus");
   }
   getSize() {
     return [this.options.width, this.options.height];
@@ -1260,19 +1261,64 @@ describe("desktop connection manager windows", () => {
     expect(fixture.quit).not.toHaveBeenCalled();
   });
 
-  it("does not quit with satellite windows alive and reopens Connections on activation", async () => {
+  it("activates the most recently focused instance without restoring a closed one", async () => {
+    await start();
+    const connections = manager();
+    for (const [name, origin] of [
+      ["Office", inspection.origin],
+      ["Lab", "https://lab.example.com"],
+    ] as const) {
+      fixture.inspect.mockResolvedValueOnce({
+        ...inspection,
+        origin,
+        environmentId: "environment-" + name,
+        label: name,
+      });
+      await invoke("cox:connections-connect", connections, {
+        name,
+        origin,
+        openInNewWindow: true,
+      });
+    }
+    const [office, lab] = satellites() as [TestWindow, TestWindow];
+    office.focus();
+    connections.hide();
+    fixture.events.emit("activate");
+    expect(fixture.focused).toBe(office);
+    expect(connections.visible).toBe(false);
+    expect(manager()).toBe(connections);
+    lab.close();
+    office.minimized = true;
+    office.visible = false;
+    fixture.events.emit("second-instance");
+    expect(office.visible).toBe(true);
+    expect(office.minimized).toBe(false);
+    expect(fixture.focused).toBe(office);
+    expect(lab.destroyed).toBe(true);
+    expect(connections.visible).toBe(false);
+    expect(fixture.launchBackend).not.toHaveBeenCalled();
+  });
+
+  it("focuses an open instance on activation instead of opening Connections", async () => {
     await start();
     const target = manager();
     await invoke("cox:connections-connect", target, {
       origin: inspection.origin,
       openInNewWindow: true,
     });
+    const remote = satellites()[0]!;
     target.close();
     expect(fixture.quit).not.toHaveBeenCalled();
+    remote.minimized = true;
+    remote.visible = false;
     fixture.events.emit("activate");
-    await fixture.started;
-    expect(manager()).not.toBe(target);
+    fixture.events.emit("second-instance");
+    expect(remote.minimized).toBe(false);
+    expect(remote.visible).toBe(true);
+    expect(fixture.focused).toBe(remote);
     expect(primary().visible).toBe(false);
+    expect(fixture.windows.filter((value) => !value.destroyed)).toEqual([primary(), remote]);
+    expect(fixture.launchBackend).not.toHaveBeenCalled();
   });
 
   it("continues using the retained manager after its original remote owner has closed", async () => {
@@ -1608,7 +1654,13 @@ describe("desktop connection manager windows", () => {
     expect(remote.webContents.getURL()).toBe(inspection.origin);
     expect(JSON.parse(fixture.files.get(connectionsFile)!).active).toEqual({ kind: "local" });
     expect(fixture.quit).not.toHaveBeenCalled();
+    const connections = manager();
+    connections.close();
     fixture.events.emit("activate");
+    expect(fixture.focused).toBe(remote);
+    expect(remote.visible).toBe(true);
+    expect(connections.destroyed).toBe(true);
+    expect(fixture.windows.filter((value) => !value.destroyed)).toEqual([remote]);
     expect(fixture.launchBackend).toHaveBeenCalledOnce();
     expect(
       fixture.windows.filter(
