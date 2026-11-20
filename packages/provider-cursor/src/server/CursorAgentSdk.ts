@@ -5,6 +5,7 @@ import type {
   RunResult,
   SDKUserMessage,
   SendOptions,
+  SteerAckOutcome,
 } from "@cursor/sdk";
 import {
   type OrchestrationV2ProviderSession,
@@ -89,6 +90,8 @@ export interface CursorAgentSdkSendInput<Error> {
   readonly message: string | SDKUserMessage;
   readonly options?: Omit<SendOptions, "onDelta">;
   readonly onDelta?: (update: InteractionUpdate) => Effect.Effect<void, Error>;
+  /** Runs `agent.summarize()` instead, which takes no message or options. */
+  readonly summarize?: boolean;
 }
 
 export interface CursorAgentSdkRun {
@@ -96,6 +99,7 @@ export interface CursorAgentSdkRun {
   readonly agentId: string;
   readonly wait: Effect.Effect<RunResult, CursorAgentSdkRunnerError>;
   readonly cancel: Effect.Effect<void, CursorAgentSdkRunnerError>;
+  readonly steer?: (text: string) => Effect.Effect<SteerAckOutcome, CursorAgentSdkRunnerError>;
 }
 
 export interface CursorAgentSdkSession {
@@ -206,6 +210,24 @@ export type CursorAgentSdkProtocolLogEvent =
       readonly payload: {
         readonly type: "run.cancel";
         readonly runId: string;
+      };
+    }
+  | {
+      readonly direction: "outgoing";
+      readonly stage: "decoded";
+      readonly payload: {
+        readonly type: "run.steer";
+        readonly runId: string;
+        readonly text: string;
+      };
+    }
+  | {
+      readonly direction: "incoming";
+      readonly stage: "decoded";
+      readonly payload: {
+        readonly type: "run.steered";
+        readonly runId: string;
+        readonly outcome: SteerAckOutcome;
       };
     }
   | {
@@ -467,8 +489,9 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
 
           const startRun = () =>
             Effect.tryPromise({
-              try: () =>
-                agent.send(sendInput.message, {
+              try: () => {
+                if (sendInput.summarize === true) return agent.summarize();
+                return agent.send(sendInput.message, {
                   ...sendInput.options,
                   onDelta: async ({ update }) => {
                     if (!callbacksReady) {
@@ -477,7 +500,8 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
                     }
                     await dispatchUpdate(update);
                   },
-                }),
+                });
+              },
               catch: (cause) => runnerError(cause, "run.start"),
             });
           const run = yield* startRun().pipe(
@@ -551,6 +575,27 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
                     result,
                   },
                 }),
+              ),
+            ),
+            steer: Effect.fn("CursorAgentSdkRun.steer")((text: string) =>
+              log({
+                direction: "outgoing",
+                stage: "decoded",
+                payload: { type: "run.steer", runId: run.id, text },
+              }).pipe(
+                Effect.andThen(
+                  Effect.tryPromise({
+                    try: () => run.steer?.(text) ?? Promise.resolve("revert_to_followup" as const),
+                    catch: (cause) => runnerError(cause, "run.steer"),
+                  }),
+                ),
+                Effect.tap((outcome) =>
+                  log({
+                    direction: "incoming",
+                    stage: "decoded",
+                    payload: { type: "run.steered", runId: run.id, outcome },
+                  }),
+                ),
               ),
             ),
             cancel: log({

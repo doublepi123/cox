@@ -14,6 +14,7 @@ import type { CursorSettings } from "../settings.ts";
 
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import { cursorSdkModelSelection } from "./sdkModel.ts";
+import { cursorRememberedSdkModels } from "./status.ts";
 import type { CursorAuth } from "./auth.ts";
 import * as CursorAgentSdk from "./CursorAgentSdk.ts";
 import * as CursorSdk from "./CursorSdk.ts";
@@ -109,7 +110,11 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       const agentOptions = {
         apiKey,
         mode: "plan",
-        model: cursorSdkModelSelection(modelSelection, getModels?.() ?? []),
+        model: cursorSdkModelSelection(
+          modelSelection,
+          getModels?.() ?? [],
+          cursorRememberedSdkModels(),
+        ),
         local: {
           cwd,
           store,

@@ -306,11 +306,12 @@ export function makeCursorAgentSdkReplayRunner(
           );
         }
         if (entry.type === "expect_outbound") {
+          const frameType = Reflect.get(entry.frame, "type");
           const expectedCancel = {
             type: "run.cancel",
             runId,
           };
-          if (!sameFrame(entry.frame, expectedCancel)) {
+          if (frameType !== "run.steer" && !sameFrame(entry.frame, expectedCancel)) {
             return yield* recordFailure(
               new CursorReplayFrameMismatchError({
                 scenario: transcript.scenario,
@@ -441,6 +442,18 @@ export function makeCursorAgentSdkReplayRunner(
                         }),
                       catch: (cause) => replayRunnerError(transcript, cause, "replay.run.cancel"),
                     }),
+                    steer: (text) =>
+                      Effect.try({
+                        try: () => {
+                          assertOutbound({
+                            type: "run.steer",
+                            runId: started.runId,
+                            text,
+                          });
+                          return consumeInbound("run.steered").outcome;
+                        },
+                        catch: (cause) => replayRunnerError(transcript, cause, "replay.run.steer"),
+                      }),
                   };
                   return run;
                 },

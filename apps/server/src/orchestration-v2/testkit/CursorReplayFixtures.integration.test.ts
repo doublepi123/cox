@@ -2,6 +2,7 @@ import { describe, it } from "@effect/vitest";
 
 import { CursorOrchestratorReplayHarness } from "../Adapters/CursorAdapterV2.testkit.ts";
 import { messageRestartInput } from "./fixtures/message_steering/input.ts";
+import { assertCursorRestartSteeringOutput } from "./fixtures/message_steering/cursor_output.ts";
 import {
   findReplayFixture,
   itRunsReplayFixtures,
@@ -21,7 +22,14 @@ describe("Cursor replay fixtures", () => {
       runReplayFixture({
         fixtureName: "message_steering",
         buildInput: messageRestartInput,
-        driver: cursorSteeringProvider,
+        driver: {
+          ...cursorSteeringProvider,
+          transcriptFile: new URL(
+            "./fixtures/message_steering/cursor_restart_transcript.ndjson",
+            import.meta.url,
+          ),
+          assertOutput: assertCursorRestartSteeringOutput,
+        },
         harness: CursorOrchestratorReplayHarness,
       }),
     );

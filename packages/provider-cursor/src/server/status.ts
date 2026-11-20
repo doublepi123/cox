@@ -87,6 +87,12 @@ function toTitleCaseWords(value: string): string {
   return parts.join(" ");
 }
 
+let rememberedCursorSdkModels: ReadonlyArray<SDKModel> = [];
+
+export function cursorRememberedSdkModels(): ReadonlyArray<SDKModel> {
+  return rememberedCursorSdkModels;
+}
+
 function cursorSdkDefaultParameterValue(model: SDKModel, parameterId: string): string | undefined {
   return model.variants
     ?.find((variant) => variant.isDefault)
@@ -339,6 +345,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
   }
 
   const snapshot = catalogResult.success.value;
+  rememberedCursorSdkModels = snapshot.models;
   const discoveredModels = buildCursorDiscoveredModelsFromSdk(snapshot.models);
   return buildCursorProviderSnapshot({
     checkedAt,

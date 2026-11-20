@@ -15,6 +15,32 @@ import {
   projectionFor,
 } from "../shared.ts";
 
+export function assertCursorRestartSteeringOutput(
+  result: OrchestratorV2ScenarioResult,
+  transcript: ProviderReplayTranscript,
+) {
+  assert.equal(transcript.provider, "cursor");
+  assertBaseProjection({ result, transcript, runCount: 1, runStatuses: ["completed"] });
+  const projection = projectionFor(result, transcript.scenario);
+  assertSemanticProjectionIntegrity(projection);
+  assertUserMessagesInclude(projection, [
+    MESSAGE_STEERING_INITIAL_PROMPT,
+    MESSAGE_STEERING_STEER_PROMPT,
+  ]);
+  assertAssistantTextIncludes(projection, "steering fixture observed");
+  assert.deepEqual(
+    projection.attempts.map((attempt) => [attempt.reason, attempt.status]),
+    [
+      ["initial", "superseded"],
+      ["steering_restart", "completed"],
+    ],
+  );
+  assert.deepEqual(
+    projection.providerTurns.map((turn) => turn.status),
+    ["interrupted", "completed"],
+  );
+}
+
 export function assertCursorMessageSteeringOutput(
   result: OrchestratorV2ScenarioResult,
   transcript: ProviderReplayTranscript,
@@ -36,17 +62,14 @@ export function assertCursorMessageSteeringOutput(
   assert.lengthOf(projection.runs, 1, "steering must preserve the app run");
   assert.deepEqual(
     projection.attempts.map((attempt) => [attempt.reason, attempt.status]),
-    [
-      ["initial", "superseded"],
-      ["steering_restart", "completed"],
-    ],
+    [["initial", "completed"]],
   );
   assert.deepEqual(
     projection.providerTurns.map((turn) => turn.status),
-    ["interrupted", "completed"],
+    ["completed"],
   );
-  assert.equal(projection.runs[0]?.activeAttemptId, projection.attempts[1]?.id);
-  assert.equal(projection.runs[0]?.rootNodeId, projection.attempts[1]?.rootNodeId);
+  assert.equal(projection.runs[0]?.activeAttemptId, projection.attempts[0]?.id);
+  assert.equal(projection.runs[0]?.rootNodeId, projection.attempts[0]?.rootNodeId);
   assert.isFalse(
     projection.turnItems.some(
       (item) => item.type === "run_interrupt_request" || item.type === "run_interrupt_result",
