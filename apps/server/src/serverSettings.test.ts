@@ -45,6 +45,7 @@ const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 const decodeServerSettingsJson = Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings));
 const decodeServerSettingsPatch = Schema.decodeUnknownEffect(ServerSettingsPatch);
 const decodeModelService = Schema.decodeSync(ModelServiceConfig);
+const isModelServiceError = Schema.is(ModelServiceError);
 
 const layerServerSettings = () =>
   ServerSettingsModule.layer.pipe(
@@ -395,7 +396,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           });
           const beforeImport = yield* fs.readFileString(config.settingsPath);
           const rejected = yield* Effect.flip(settings.updateSettings(patch));
-          if (!Schema.is(ModelServiceError)(rejected.cause)) throw rejected;
+          if (!isModelServiceError(rejected.cause)) throw rejected;
           assert.include(rejected.cause.detail, "The model service changed");
           assert.strictEqual(yield* fs.readFileString(config.settingsPath), beforeImport);
           return;
