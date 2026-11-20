@@ -35,6 +35,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     private var webTopToSafe: NSLayoutConstraint?
     private var webTopToFallback: NSLayoutConstraint?
     private var webBottomToKeyboard: NSLayoutConstraint?
+    private var workspaceScrollObservations: [NSKeyValueObservation] = []
     private var publishedSafeArea = ""
     private var pageFailed = false
     private var revealFallback = false
@@ -89,6 +90,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         webTopToFallback?.isActive = false
         let keyboardVisible = webBottomToKeyboard?.isActive == true
         webBottomToKeyboard?.isActive = false
+        workspaceScrollObservations.removeAll()
         workspace?.removeFromSuperview()
         workspace = webView
         webView.removeFromSuperview()
@@ -116,6 +118,15 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         bottomToKeyboard.isActive = keyboardVisible
+        let scrollView = webView.scrollView
+        workspaceScrollObservations = [
+            scrollView.observe(\.contentSize) { [weak self] _, _ in
+                self?.constrainKeyboardScrollOffset()
+            },
+            scrollView.observe(\.contentOffset) { [weak self] _, _ in
+                self?.constrainKeyboardScrollOffset()
+            },
+        ]
         updateFallback()
         publishSafeArea()
     }
@@ -133,7 +144,21 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        constrainKeyboardScrollOffset()
         publishSafeArea()
+    }
+
+    private func constrainKeyboardScrollOffset() {
+        guard webBottomToKeyboard?.isActive == true, let workspace,
+              workspace.frame.maxY <= view.keyboardLayoutGuide.layoutFrame.minY + 1 else { return }
+        let scrollView = workspace.scrollView
+        guard scrollView.contentSize.height > 0,
+              !scrollView.isDragging, !scrollView.isDecelerating else { return }
+        let insets = scrollView.contentInset
+        let bottomOffset = max(-insets.top, scrollView.contentSize.height - scrollView.bounds.height + insets.bottom)
+        if scrollView.contentOffset.y > bottomOffset + 1 {
+            scrollView.contentOffset.y = bottomOffset
+        }
     }
 
     private func publishSafeArea() {
