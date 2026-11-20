@@ -1,0 +1,161 @@
+{
+  "source": "0102f07afb01c06881ec7525338cafe3013c2a96",
+  "upstreamHead": "d26066000d31146070a94a178e2cebe5513bb279",
+  "expectedFork": "79f1fadfc6020b820d541ca4691d2feebb15dd1b",
+  "mergeBase": "79f1fadfc6020b820d541ca4691d2feebb15dd1b",
+  "gitRange": "79f1fadfc6020b820d541ca4691d2feebb15dd1b..d26066000d31146070a94a178e2cebe5513bb279",
+  "commands": [
+    "git merge-base 0102f07afb01c06881ec7525338cafe3013c2a96 d26066000d31146070a94a178e2cebe5513bb279",
+    "git rev-list --reverse --topo-order 79f1fadfc6020b820d541ca4691d2feebb15dd1b..d26066000d31146070a94a178e2cebe5513bb279",
+    "git rev-list --count --merges 79f1fadfc6020b820d541ca4691d2feebb15dd1b..d26066000d31146070a94a178e2cebe5513bb279"
+  ],
+  "orderedSha256": "c204eedc81883a5e2403dbef41c75f0bb82eed3e2c9fbc0a0ee1a4d6f9b1a604",
+  "ledgerSha256": "3b850b3c55a270a44498c7960a2cc3c4d08eec9bc959d7bc0f5eff91fd5190e7",
+  "commits": 3911,
+  "mergeCommits": 0,
+  "ledgerRows": 3911,
+  "uniqueLedgerShas": 3911,
+  "missing": [],
+  "extra": [],
+  "duplicate": 0,
+  "orderMatches": true,
+  "statusTotals": {
+    "excluded": 1725,
+    "implemented-verified": 629,
+    "equivalent": 1448,
+    "ported": 36,
+    "superseded": 68,
+    "implemented-unverified": 4,
+    "deferred": 1
+  },
+  "verificationOutstanding": [
+    "c8a601c0dfa5c7626e51e06d727076f6b840a005",
+    "8a38c637069ff8c70f925dfc52220363f482944d",
+    "1ea523608b4fdcf3794fdcdf01c376faac21f594",
+    "6a8f022b451f0d678c8da2ecee0042987e80d2d9",
+    "f82162f0336c226ae1f2927f781a0fb660869a51"
+  ],
+  "originalPatchSha256": "fc46ca64fba87ddc7444a5e57c5d4a47c37f5d79b62b8f88e6370786400ddcd2",
+  "originalHunks": [
+    {
+      "path": "apps/server/src/localServiceUpdate/LocalServiceUpdate.ts",
+      "matches": [
+        {
+          "sha256": "192abd46082273450582ec1d49698b87d4ef1ab7f5b48df13a0cbd7be41a71d6",
+          "matched": true
+        },
+        {
+          "sha256": "6eb63fda2d32c3fb1eb872201bfb795ca97eb8ff12616dbce8c9ea4c626093e2",
+          "matched": true
+        },
+        {
+          "sha256": "627ff69f53c38b8b1625b3c994b3189c606e5c39fe1a06fef4bdbc5cbd8b4cad",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "path": "apps/server/src/localServiceUpdate/ownership.test.ts",
+      "matches": [
+        {
+          "sha256": "1601619a5af618c354f86af24fa12e81bb9d2ba83d38db291126de7ee0e9ba7d",
+          "matched": true
+        },
+        {
+          "sha256": "36c59880c5fbd6031ef85db44bb99dc94a875f9819cbaf09abad0512cea19335",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "path": "apps/server/src/modelServices/discovery.test.ts",
+      "matches": [
+        {
+          "sha256": "eae2c3757f63d51f4e5f63c695dd9529078abc05c09969800faebfffd3aa285c",
+          "matched": true
+        },
+        {
+          "sha256": "41e341bd46243568c3cab7d30c1607e10a895b7cfd072c4caf8babeb27b539d1",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "path": "apps/server/src/modelServices/discovery.ts",
+      "matches": [
+        {
+          "sha256": "93c1ac07253e41f4b17306b7ac9532a22b3d0a4c43952daa10e192ec2d49c60f",
+          "matched": true
+        },
+        {
+          "sha256": "3f138f1a18f1853f53e0fe44c8480e905fd91cb7a8c110c302799c1c5c998607",
+          "matched": true
+        },
+        {
+          "sha256": "399bc434c13da008646817e286e80fd53dbcd72e33e2c4407ff05c7e5c8000fd",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/settings/ModelServicesSettingsPanel.browser.test.tsx",
+      "matches": [
+        {
+          "sha256": "4586567bed015897b0a209bd5aa661c94675f7f78df0add91eb66d0b47441b6f",
+          "matched": true
+        },
+        {
+          "sha256": "507d7400cf476eddab195ba4466a7e754974c1084f7ed14fafe7e7af0d43c7ef",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/settings/ModelServicesSettingsPanel.tsx",
+      "matches": [
+        {
+          "sha256": "e3ee9e21d284878275b491091ce22341649d8ff2e6ebc5b2043b65d7cb9d74bd",
+          "matched": true
+        },
+        {
+          "sha256": "3e501bcfa34ae4334073c383b739ce24d9fb471e28b0290172233076253accfa",
+          "matched": true
+        },
+        {
+          "sha256": "648d9f733c49fe126c94512252a301efa9655d21c2f891a6a9295359df5cec30",
+          "matched": true
+        },
+        {
+          "sha256": "15273f9990453786381f4a1c76bea41b29ea51576872f1e79d059e131f82fc22",
+          "matched": true
+        },
+        {
+          "sha256": "d1c7f617c531db998857eced1379ca97ec47ce5d1f7136358bfa8e3563af7b7c",
+          "matched": true
+        },
+        {
+          "sha256": "6161b6adb67045aa4c10b25c067de49b3bb64c08d4fd5904d125f66e8fd6d913",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/ui/alert-dialog.tsx",
+      "matches": [
+        {
+          "sha256": "55580629178547e2186126fc2ba2b456a8e3118e0d23f8e80ab1e77e1f7612f5",
+          "matched": true
+        }
+      ]
+    }
+  ],
+  "localPortMapSha256": "e08331bb4e9ddffdeb1061fa6e16a35304beb4c79ad216b49eecac316c1fd8fa",
+  "localPortMapVerification": {
+    "rows": 36,
+    "allUpstreamInPinnedRange": true,
+    "allCoxReachableFrom": "eb502c4c60c65b5f3f8de16164f6014e851b1898",
+    "subjectsMatchGit": true,
+    "correctedReversedRows": 36,
+    "correctedSubjectCells": 0
+  }
+}

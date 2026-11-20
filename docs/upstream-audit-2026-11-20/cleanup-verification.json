@@ -1,0 +1,51 @@
+{
+  "directory": "/tmp/cox-upstream-audit-K0VB8D",
+  "checkedLoopbackPorts": [
+    48731,
+    58731
+  ],
+  "listenerOutput": "",
+  "registeredAuditWorktrees": [],
+  "runningExecutablesFromAuditDirectory": [],
+  "downloadedVendorArtifacts": [
+    {
+      "path": "/tmp/cox-upstream-audit-K0VB8D/cursor-sdk-1.2.0.tgz",
+      "sha256": "5480c208fe177f90a5d6c47da9d9e240d183e381aa19b3b772e5adfd3d4c81c4",
+      "registryIntegrity": "sha512-Nqm2U0zTWrYEDCv3Rdwsfa1gYZWsg+JnY+I2F8BwWSAr3FNo0TZWwyHWoWngZgriF1w02fJ4gjJWaul9zysvgQ=="
+    },
+    {
+      "path": "/tmp/cox-upstream-audit-K0VB8D/grok-1.0.89/grok-linux-x64-native",
+      "sha256": "a3dface51d9bdc71fd121e0481dd02d9b46a721f7a6b892f756480e9666eba1f"
+    }
+  ],
+  "retainedEvidence": [
+    "entry-verification.json",
+    "entry-evidence-index.tsv",
+    "/tmp/cox-upstream-audit-K0VB8D/grok-native-capability-result.md",
+    "/tmp/cox-upstream-audit-K0VB8D/cursor-native-port-result.md",
+    "/tmp/cox-upstream-audit-K0VB8D/windows-terminal-summary.log"
+  ],
+  "removed": [
+    "/tmp/cox-upstream-audit-K0VB8D/cursor-sdk-1.2.0.tgz",
+    "/tmp/cox-upstream-audit-K0VB8D/grok-1.0.89"
+  ],
+  "handoffRecheck": {
+    "checkedHead": "eb502c4c60c65b5f3f8de16164f6014e851b1898",
+    "vendorArtifactsAbsent": [
+      "/tmp/cox-upstream-audit-K0VB8D/cursor-sdk-1.2.0.tgz",
+      "/tmp/cox-upstream-audit-K0VB8D/grok-1.0.89"
+    ],
+    "matchedOriginalHunks": 19,
+    "artifactSha256": {
+      "README.md": "667b4c5c88e03204af427e80de4f99bf69cfdc5c5886ff1bc3ec755f6c53ef2c",
+      "batch-gate-verification.json": "7a6915e8686090dcb116cd9362a687b7ac8cf86a0c1242afe9d19a791c119bbc",
+      "commits.tsv": "3b850b3c55a270a44498c7960a2cc3c4d08eec9bc959d7bc0f5eff91fd5190e7",
+      "entry-evidence-index.tsv": "7908f3031f5ee5c9dcd564cd5ce4d4dc4a38c8e5d2834ed860d26988449d9f1a",
+      "entry-verification.json": "3fbcbca9f570026edcec9864c2ca8f9cb5798c39102fabebb525f3678b2121ec",
+      "historical-receipt-recovery.json": "bf368eb1e015dfa5b2cc1cb38ce9f20fbbb716a839a411cbc3100c7c076ff603",
+      "local-ports.tsv": "e08331bb4e9ddffdeb1061fa6e16a35304beb4c79ad216b49eecac316c1fd8fa",
+      "range-verification.json": "2a1aadae32ed757309d2656ff8143ca7a2e2e5bb979ea8df9c4f0de69a4fb764",
+      "upstream-shas.txt": "c204eedc81883a5e2403dbef41c75f0bb82eed3e2c9fbc0a0ee1a4d6f9b1a604"
+    }
+  }
+}

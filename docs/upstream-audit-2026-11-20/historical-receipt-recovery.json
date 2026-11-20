@@ -1,0 +1,1310 @@
+{
+  "inputs": 55,
+  "outputRows": 55,
+  "exactCoverage": true,
+  "artifacts": [
+    {
+      "file": "entry-receipt-recovery-first.tsv",
+      "sha256": "9e44490e25c55dbe6ee5b4e96747a013afa85c02c1704f47bfca96ca3fe2242c",
+      "bytes": 19351
+    },
+    {
+      "file": "entry-receipt-recovery-second.tsv",
+      "sha256": "62572b24c5c669d8e604ebc77fbf9891a18edaf0daee66535423c7958ca3609f",
+      "bytes": 14830
+    }
+  ],
+  "scope": "Recovered citations and explicit gaps. A cited batch output alone does not prove an earlier failure and later pass for the same entry.",
+  "retests": [
+    {
+      "file": "historical-failure-retest-plan.json",
+      "sha256": "217553bda4300830dfc7e52e5b5dffdea8480e5bfc9f34236f4394e357846aeb",
+      "bytes": 14210
+    },
+    {
+      "file": "historical-failure-retest-SERVER.log",
+      "sha256": "f64966811185e8d33383f1a0699afd4356ae36662c1fd1a631d308159a2be3af",
+      "bytes": 630
+    },
+    {
+      "file": "historical-failure-retest-WEB.log",
+      "sha256": "6334385b58f8151607d6d199cff68e0b0351b6d65ed9cf17cae902429c2ae90b",
+      "bytes": 15959
+    },
+    {
+      "file": "historical-sidebar-drag-retest.log",
+      "sha256": "5bfa54f8a59545d723ecca7dda5453c64edf015efe3aff6550a75f279dae3da1",
+      "bytes": 3712
+    }
+  ],
+  "verifiedCurrentResults": {
+    "serverExactTitlePassed": 13,
+    "webExactTitleInitiallyPassed": 4,
+    "webInitialFailure": "Sidebar.drag timeout: folder locator did not match the current button role.",
+    "sidebarRetestPassed": 1,
+    "sidebarUpstreamSha": "44e894ffd72ed50cbd7996f21a2825a5240db7d5"
+  },
+  "exactHistoricalTests": [
+    {
+      "sha": "1436c4571fa0030ec114cbfa3ad7d62f07b642a3",
+      "entry": "Reconnect to the primary environment after six failures while still offline",
+      "before": {
+        "file": "quick-primary-offline-red-TEST.log",
+        "sha256": "e725b8915f603f468b8ba75de34d20589728d68601b04078f540318000337f18",
+        "bytes": 1234
+      },
+      "after": {
+        "file": "historical-exact-offline.log",
+        "sha256": "ab213f8a213af938089d4c20148e091a3430030fc5d664430bbf45f5d8ca66be",
+        "bytes": 341
+      },
+      "passed": 1,
+      "preEditRegistrationVerified": false
+    },
+    {
+      "sha": "b779d400777c8366cce13456a305054b2cca42cd",
+      "entry": "Prefer zeditor in a later Linux fallback directory",
+      "before": {
+        "file": "quick-zed-red-TEST.log",
+        "sha256": "ea8de7bb145c2a4a686905f48374af1eac739da2b8a9b2155763cb99f0ee8b7f",
+        "bytes": 2751
+      },
+      "after": {
+        "file": "historical-exact-zed.log",
+        "sha256": "28cc510b495670d0d648899697c168d061ebbc0925ab6a1e56a6c701a2a0a17d",
+        "bytes": 341
+      },
+      "passed": 1,
+      "preEditRegistrationVerified": false
+    },
+    {
+      "sha": "1ba934798f81d5d0d7852b9bbedb19b221704e07",
+      "entry": "Preserve Windows Markdown path separators and decode references once",
+      "before": {
+        "file": "quick-windows-link-red-TEST.log",
+        "sha256": "a586095a44dbad3080f5436cbfaeed758377d9b97d5f6fd5de338d6250b06026",
+        "bytes": 2830
+      },
+      "after": {
+        "file": "historical-exact-windows-links.log",
+        "sha256": "21fa33d0b28cec2323b520edec1084706a40781a50c1bd368eb0119dfda8bdb6",
+        "bytes": 333
+      },
+      "passed": 4,
+      "preEditRegistrationVerified": false
+    }
+  ],
+  "archivedPairCandidates": {
+    "scope": "Filename pairs with explicit failures and successful suite counts. SHA mentions and suite exits are pointers to the individual scenario, not proof of exact matching assertions.",
+    "entries": [
+      {
+        "red": "acp-command-inventory-red.log",
+        "failedEntries": [
+          " FAIL  src/provider/AcpRegistryProbe.test.ts > ACP Registry probe > keeps late slash commands and skills from a configuration probe",
+          " FAIL  src/provider/AcpRegistryProbe.test.ts > ACP Registry probe > keeps late slash commands and skills from a live session update",
+          "      Tests  2 failed | 11 skipped (13)"
+        ],
+        "green": [
+          {
+            "file": "acp-command-inventory-green.log",
+            "exits": [
+              "      Tests  13 passed (13)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "7171fdd7716b05dc1b4be40c26ac78e8bb35f80c"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            17
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            25
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            33
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            41
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            49
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            57
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            65
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            73
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            81
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            89
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            97
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            105
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            113
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-acp-command-inventory.md",
+            121
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "acp-session-allow-red-b.log",
+        "failedEntries": [
+          " FAIL  src/orchestration-v2/Adapters/AcpAdapterV2.test.ts > AcpAdapterV2 > maps acceptForSession to allow-once without granting execute access for an unknown permission",
+          "      Tests  1 failed | 1 passed | 104 skipped (106)"
+        ],
+        "green": [
+          {
+            "file": "acp-session-allow-green.log",
+            "exits": [
+              "      Tests  4 passed | 102 skipped (106)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "21e4f980ca375dee6ac6305c0c021e7f08e8deb4"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "agent-history-cap-red-b.log",
+        "failedEntries": [
+          " FAIL  src/project/AgentSessionImporter.test.ts > shows how much history an imported transcript left out",
+          "      Tests  1 failed | 3 skipped (4)"
+        ],
+        "green": [
+          {
+            "file": "agent-history-cap-green.log",
+            "exits": [
+              "      Tests  67 passed (67)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "5cc1985491f1cd5f184f92608396e03a60aaa714"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "agent-history-cap-red.log",
+        "failedEntries": [
+          " FAIL  src/project/AgentSessionImporter.test.ts > shows how much history an imported transcript left out",
+          "      Tests  1 failed | 3 skipped (4)"
+        ],
+        "green": [
+          {
+            "file": "agent-history-cap-green.log",
+            "exits": [
+              "      Tests  67 passed (67)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "5cc1985491f1cd5f184f92608396e03a60aaa714"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "background-wait-red.log",
+        "failedEntries": [
+          " FAIL  src/orchestration-v2/ThreadManagementService.test.ts > marks background work awaited on the thread's active provider thread with state no-match",
+          "      Tests  1 failed | 4 passed | 25 skipped (30)"
+        ],
+        "green": [
+          {
+            "file": "background-wait-green.log",
+            "exits": [
+              "      Tests  49 passed (49)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "613d1ac4f9a965e5f51b5821a1a34069e25153fd"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "branch-rename-totals-red.log",
+        "failedEntries": [
+          " FAIL  src/vcs/GitVcsDriverCore.test.ts > GitVcsDriver core integration > review diff previews > uses HEAD for Changes totals if the branch was renamed during status",
+          "      Tests  1 failed | 245 skipped (246)"
+        ],
+        "green": [
+          {
+            "file": "branch-rename-totals-green.log",
+            "exits": [
+              "      Tests  246 passed (246)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "92dee2053c22bc7ef38e793617f359a9f47456ca"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "claude-electron-env-red.log",
+        "failedEntries": [
+          " FAIL  src/provider/Drivers/ClaudeHome.test.ts > ClaudeHome > Claude home resolution > strips inherited Claude session variables and Electron run-as-Node from spawned environment",
+          "      Tests  1 failed | 4 skipped (5)"
+        ],
+        "green": [
+          {
+            "file": "claude-electron-env-green.log",
+            "exits": [
+              "      Tests  5 passed (5)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "6016aac5c23b34f7d73833f4332b5de16cc03aac"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "codex-port-discovery-red.log",
+        "failedEntries": [
+          " FAIL  src/orchestration-v2/Adapters/CodexAdapterV2.test.ts > discovers a tagged shell listener after the startup scan goes idle and releases tracking on close",
+          "      Tests  1 failed | 149 skipped (150)"
+        ],
+        "green": [
+          {
+            "file": "codex-port-discovery-green-final.log",
+            "exits": [
+              "      Tests  189 passed (189)"
+            ]
+          },
+          {
+            "file": "codex-port-discovery-green.log",
+            "exits": [
+              "      Tests  189 passed (189)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "b7add5a06d81061bb49b778d8e5420a89ff05383"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            12
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            13
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            14
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            15
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            16
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            17
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-codex-port-discovery.md",
+            20
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "draft-instance-model-red.log",
+        "failedEntries": [
+          " FAIL  |unit| src/modelSelection.test.ts > instance-scoped model selection > keeps a default instance draft model off a custom instance of the same driver",
+          "      Tests  1 failed | 38 skipped (39)"
+        ],
+        "green": [
+          {
+            "file": "draft-instance-model-green.log",
+            "exits": [
+              "      Tests  118 passed (118)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "1ad78611baa8f47e1e0a36358e13e1ceacf6b2fb"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "external-edit-red.log",
+        "failedEntries": [
+          " FAIL  src/state/projectCommands.test.ts > saved file overlays > shows external update after a successful refresh follows a failed post-save read",
+          " FAIL  src/state/projectCommands.test.ts > saved file overlays > shows old after a successful refresh follows a failed post-save read",
+          "      Tests  2 failed | 4 skipped (6)"
+        ],
+        "green": [
+          {
+            "file": "external-edit-green.log",
+            "exits": [
+              "      Tests  38 passed (38)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [],
+        "shaMentionsInReceipt": [
+          "bd9ff7eb2a3bff5a12ea442af9d1d7af900ff2f2",
+          "55e379bb96d8cb1223d9faa453e9ed6f04f2c2f7",
+          "0fe71da30bcc6e3ead8d5ad83c7b3f168a2322b7",
+          "8cb551a3cec68767054b67b790b8293ac1e7859a",
+          "f255158370ebd7509f92903589ad0abd6ebe40ec",
+          "d530ef339b29a4644bb3d087d053ba17a51ae9a2"
+        ],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            11
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            15
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            16
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            17
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            18
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            19
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            20
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            21
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            22
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            23
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            24
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            25
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            26
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-external-edit-reload.md",
+            28
+          ],
+          [
+            "/tmp/ulw-20261120-031451.r9vt0J.md",
+            412
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "install-browser-data-dir-red.log",
+        "failedEntries": [
+          " FAIL  src/htmlRender/HtmlRender.test.ts > HtmlRender > names the configured data directory in browser setup advice",
+          " FAIL  src/preview/ServerBrowser.test.ts > names the configured data directory in browser setup advice from preview_open",
+          "      Tests  2 failed | 61 skipped (63)"
+        ],
+        "green": [
+          {
+            "file": "install-browser-data-dir-green-final.log",
+            "exits": [
+              "      Tests  89 passed | 4 skipped (93)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "e91595ba0a1a52623bd96a3f63a625c9e14c91a6"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            10
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            11
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            12
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            13
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            14
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            15
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            16
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            19
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-install-browser-data-dir.md",
+            28
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "legacy-db-unlock-red.log",
+        "failedEntries": [
+          " FAIL  src/persistence/DatabaseMaintenance.test.ts > DatabaseMaintenance > reports and deletes only the database from before 0.1.0",
+          "      Tests  1 failed | 2 skipped (3)"
+        ],
+        "green": [
+          {
+            "file": "legacy-db-unlock-green.log",
+            "exits": [
+              "      Tests  3 passed (3)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "1d626d02d95f9a2343553f6498037ee82290d304"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "login-shell-timeout-red.log",
+        "failedEntries": [
+          " FAIL  src/shell.test.ts > readEnvironmentFromLoginShell > force-stops a timed out login shell probe",
+          "      Tests  1 failed | 56 skipped (57)"
+        ],
+        "green": [
+          {
+            "file": "login-shell-timeout-green.log",
+            "exits": [
+              "      Tests  55 passed | 2 skipped (57)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "123e5ba065130767c1b06d5265597abae6282a8e"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "mcp-snapshot-unicode-red.log",
+        "failedEntries": [
+          " FAIL  src/mcp/McpHttpServer.test.ts > bounds oversized snapshot titles and logs containing 😀",
+          "      Tests  1 failed | 1 passed | 24 skipped (26)"
+        ],
+        "green": [
+          {
+            "file": "mcp-snapshot-unicode-green.log",
+            "exits": [
+              "      Tests  26 passed (26)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "5bdc2afc230370ee225b75c21671f26e2560cdc2"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-mcp-snapshot-unicode.md",
+            3
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "muse-child-id-red.log",
+        "failedEntries": [
+          " FAIL  src/server/adapter.test.ts > MuseAdapterV2 > tracks a running Muse subagent under the native id published on its turn item",
+          "      Tests  1 failed | 48 skipped (49)"
+        ],
+        "green": [
+          {
+            "file": "muse-child-id-green.log",
+            "exits": [
+              "      Tests  49 passed (49)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "b4ae3c8f9cc1d742f1f744d7b0fbfb7c1d2efcf3"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "pr-checkout-cache-red.log",
+        "failedEntries": [
+          " FAIL  src/state/vcs.test.ts > cached VCS refs > invalidates persisted refs when ref-affecting commands settle",
+          "      Tests  1 failed | 10 skipped (11)"
+        ],
+        "green": [
+          {
+            "file": "pr-checkout-cache-green.log",
+            "exits": [
+              "      Tests  11 passed (11)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "4494faa27053feb67d5469d1e034bfd13da8a389"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "pr-clone-host-server-red.log",
+        "failedEntries": [
+          " FAIL  src/git/GitManager.test.ts > GitManager > fetches and tracks the fork in local mode over https for https://github.enterprise.test/owner/ba…",
+          " FAIL  src/git/GitManager.test.ts > GitManager > fetches and tracks the fork in local mode over ssh for https://github.enterprise.test/owner/ba…",
+          " FAIL  src/git/GitManager.test.ts > GitManager > fetches and tracks the fork in worktree mode over https for https://github.enterprise.test/owner/ba…",
+          " FAIL  src/git/GitManager.test.ts > GitManager > fetches and tracks the fork in worktree mode over ssh for https://github.enterprise.test/owner/ba…",
+          "      Tests  4 failed | 4 passed | 114 skipped (122)"
+        ],
+        "green": [
+          {
+            "file": "pr-clone-host-server-green.log",
+            "exits": [
+              "      Tests  122 passed (122)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-clone-host.md",
+            13
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-clone-host.md",
+            16
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "pr-refresh-coalescing-red.log",
+        "failedEntries": [
+          " FAIL  src/orchestration-v2/ThreadPullRequestService.test.ts > ThreadPullRequestServiceV2 reads > coalesces turn-end branch refreshes while no client is connected",
+          "      Tests  1 failed | 10 skipped (11)"
+        ],
+        "green": [
+          {
+            "file": "pr-refresh-coalescing-green-final.log",
+            "exits": [
+              "      Tests  84 passed (84)"
+            ]
+          },
+          {
+            "file": "pr-refresh-coalescing-green.log",
+            "exits": [
+              "      Tests  84 passed (84)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "f8fbc199ae14cd6c034407baca476e3a419257f6"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            15
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            16
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            17
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            18
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            19
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            20
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            23
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-pr-refresh-coalescing.md",
+            25
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "pr-route-red.log",
+        "failedEntries": [
+          " FAIL  |unit| src/components/pullRequest/pullRequestsRouteSearch.test.ts > pull requests route search > drops a numeric author from the matched route",
+          " FAIL  |unit| src/components/pullRequest/pullRequestsRouteSearch.test.ts > pull requests route search > drops a numeric labels from the matched route",
+          "      Tests  2 failed | 2 passed (4)"
+        ],
+        "green": [
+          {
+            "file": "pr-route-green.log",
+            "exits": [
+              "      Tests  4 passed (4)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [],
+        "shaMentionsInReceipt": [
+          "167d41c09449d2e7554d663bae78646a4ff300fb"
+        ],
+        "receiptLines": [
+          [
+            "/tmp/ulw-20261120-031451.r9vt0J.md",
+            370
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "pr-stack-failure-red.log",
+        "failedEntries": [
+          " FAIL  |browser (chromium)| src/components/pullRequest/PullRequestStackMenu.browser.test.tsx > Merge stack refused with The stack head moved. Refresh the stack… shows The stack head moved. Refresh the stack…",
+          " FAIL  |browser (chromium)| src/components/pullRequest/PullRequestStackMenu.browser.test.tsx > Rebase stack refused with The stack head moved. Refresh the stack… shows The stack head moved. Refresh the stack…",
+          " FAIL  |browser (chromium)| src/components/pullRequest/PullRequestStackMenu.browser.test.tsx > Rebase stack refused with GitHub CLI command failed. shows The host refused the rebase. A rebase s…",
+          "      Tests  3 failed (3)"
+        ],
+        "green": [
+          {
+            "file": "pr-stack-failure-green.log",
+            "exits": [
+              "      Tests  3 passed (3)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "665351fc391dab0105bf2653d96bd164f878a4c3"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "project-page-red.log",
+        "failedEntries": [
+          " FAIL  src/project/ProjectService.test.ts > hydrates only the active projects on the requested page",
+          "      Tests  1 failed | 14 skipped (15)"
+        ],
+        "green": [
+          {
+            "file": "project-page-green.log",
+            "exits": [
+              "      Tests  15 passed (15)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "b65a64b6fa148ff63a4b59dbe16649433f4a4577"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "project-safecrlf-red.log",
+        "failedEntries": [
+          " FAIL  src/project/ManagedProjectFolders.test.ts > starts a named project as a committed repository, and suffixes a taken name",
+          "      Tests  1 failed | 13 skipped (14)"
+        ],
+        "green": [
+          {
+            "file": "project-safecrlf-green.log",
+            "exits": [
+              "      Tests  14 passed (14)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "9f7b2ee93ccbcd96533840d7f5e0c458314b8cb1"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "quick-primary-offline-red-TEST.log",
+        "failedEntries": [
+          " FAIL  src/connection/supervisor.test.ts > EnvironmentSupervisor > reconnects to the primary environment after six failures while still offline",
+          "      Tests  1 failed | 40 skipped (41)"
+        ],
+        "green": [
+          {
+            "file": "quick-primary-offline-green-TEST.log",
+            "exits": [
+              "      Tests  57 passed (57)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "quick-windows-link-red-TEST.log",
+        "failedEntries": [
+          " FAIL  src/markdownWindowsPaths.test.ts > preserves separators and decodes references once in C:\\R&D folder\\.t3\\shot.png",
+          " FAIL  src/markdownWindowsPaths.test.ts > preserves separators and decodes references once in C:\\R&amp;D folder\\.t3\\shot.png",
+          " FAIL  src/markdownWindowsPaths.test.ts > preserves separators and decodes references once in C:\\work\\&amp;lt;\\.t3\\shot.png",
+          "      Tests  3 failed | 15 passed (18)"
+        ],
+        "green": [
+          {
+            "file": "quick-windows-link-green-TEST.log",
+            "exits": [
+              "      Tests  18 passed (18)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "1ba934798f81d5d0d7852b9bbedb19b221704e07"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "quick-zed-red-TEST.log",
+        "failedEntries": [
+          " FAIL  src/process/externalLauncher.test.ts > prefers zeditor in a later Linux fallback directory",
+          "      Tests  1 failed | 25 skipped (26)"
+        ],
+        "green": [
+          {
+            "file": "quick-zed-green-TEST.log",
+            "exits": [
+              "      Tests  26 passed (26)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "b779d400777c8366cce13456a305054b2cca42cd"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "quick-zone-search-red.log",
+        "failedEntries": [
+          " FAIL  |unit| src/timestampFormat.test.ts > formats the time and date in the current system time zone",
+          " FAIL  |unit| src/state/queries.filesystem.test.ts > hides the previous checkout's entries until the new target is ready",
+          "      Tests  2 failed | 7 passed (9)"
+        ],
+        "green": [
+          {
+            "file": "quick-zone-search-green.log",
+            "exits": [
+              "      Tests  9 passed (9)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "4ce60c162b400b374b12be0450777ab316bb0046",
+          "d775f6bff14ffcb2b841c128a3a7a4867780194e"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "replay-budget-red.log",
+        "failedEntries": [
+          " FAIL  src/orchestration-v2/ThreadStream.test.ts > decideThreadResume > stops serializing replay items after the wire budget is exceeded",
+          "      Tests  1 failed | 7 skipped (8)"
+        ],
+        "green": [
+          {
+            "file": "replay-budget-green.log",
+            "exits": [
+              "      Tests  19 passed (19)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "a2a1f2b50f0188e66c353fe7a7e23469cce0491b"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "settle-idle-red.log",
+        "failedEntries": [
+          " FAIL  src/orchestration-v2/ThreadSettlementService.test.ts > ThreadSettlementServiceV2 worker > keeps recent branchless threads to one settings read per sweep",
+          "      Tests  1 failed | 33 skipped (34)"
+        ],
+        "green": [
+          {
+            "file": "settle-idle-green.log",
+            "exits": [
+              "      Tests  39 passed (39)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "dabab454aeca0f6b58fee0f86f01da286843a901",
+          "b7add5a06d81061bb49b778d8e5420a89ff05383",
+          "e91595ba0a1a52623bd96a3f63a625c9e14c91a6",
+          "8ca8fddbeba83937b28ef6585de03e98e6e70f97",
+          "b8fb45eb4ccab968051cd41f04ca7f3785bd4469",
+          "7171fdd7716b05dc1b4be40c26ac78e8bb35f80c",
+          "f8fbc199ae14cd6c034407baca476e3a419257f6"
+        ],
+        "shaMentionsInReceipt": [
+          "dabab454aeca0f6b58fee0f86f01da286843a901",
+          "e91595ba0a1a52623bd96a3f63a625c9e14c91a6",
+          "ee265cc53999dbc8f16b75398088780f85f4d166",
+          "8ca8fddbeba83937b28ef6585de03e98e6e70f97",
+          "b7add5a06d81061bb49b778d8e5420a89ff05383",
+          "7171fdd7716b05dc1b4be40c26ac78e8bb35f80c",
+          "f8fbc199ae14cd6c034407baca476e3a419257f6",
+          "b8fb45eb4ccab968051cd41f04ca7f3785bd4469"
+        ],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-runtime-c-verified.md",
+            18
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            22
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            28
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            34
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            40
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            46
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            52
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            58
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            64
+          ],
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-settle-idle-precheck.md",
+            70
+          ],
+          [
+            "/tmp/ulw-20261120-031451.r9vt0J.md",
+            406
+          ]
+        ],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "shell-debug-trap-red.log",
+        "failedEntries": [
+          " FAIL  src/shell.test.ts > readEnvironmentFromLoginShell > ignores capture markers printed by a Bash DEBUG trap",
+          "      Tests  1 failed | 57 skipped (58)"
+        ],
+        "green": [
+          {
+            "file": "shell-debug-trap-green.log",
+            "exits": [
+              "      Tests  56 passed | 2 skipped (58)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "ba4d01cf7f78b29f2fb3a5be019e7ea8562ee692"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "sparse-review-red.log",
+        "failedEntries": [
+          " FAIL  src/vcs/GitVcsDriverCore.test.ts > GitVcsDriver core integration > review diff previews > reviews files outside the sparse checkout without changing the checkout",
+          "      Tests  1 failed | 246 skipped (247)"
+        ],
+        "green": [
+          {
+            "file": "sparse-review-green.log",
+            "exits": [
+              "      Tests  40 passed | 207 skipped (247)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "54223c32e07ffd356e6a48246fa8a33b0fbde087"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "theme-jsonc-red.log",
+        "failedEntries": [
+          " FAIL  |browser (chromium)| src/components/settings/ThemeImportDialog.browser.test.tsx > imports a VS Code JSONC theme via paste",
+          " FAIL  |browser (chromium)| src/components/settings/ThemeImportDialog.browser.test.tsx > imports a VS Code JSONC theme via batch",
+          "      Tests  2 failed | 3 skipped (5)"
+        ],
+        "green": [
+          {
+            "file": "theme-jsonc-green.log",
+            "exits": [
+              "      Tests  23 passed (23)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "ef6e05e3560a8641dd477dcfc68c0e731f42c762"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "thread-navigation-red.log",
+        "failedEntries": [
+          " FAIL  |browser (chromium)| src/components/ComposerPromptEditorTiptap.input.browser.test.tsx > leaves Command-arrow thread navigation bindings to the app on macOS",
+          " FAIL  |browser (chromium)| src/components/ThreadTerminalDrawer.browser.test.tsx > hands thread navigation shortcuts from a focused terminal back to the app",
+          "      Tests  2 failed | 117 skipped (119)"
+        ],
+        "green": [
+          {
+            "file": "thread-navigation-green.log",
+            "exits": [
+              "      Tests  119 passed (119)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "8a38c637069ff8c70f925dfc52220363f482944d"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [],
+        "sameEntryConfirmed": false
+      },
+      {
+        "red": "worktree-leftover-red.log",
+        "failedEntries": [
+          " FAIL  src/vcs/GitVcsDriverCore.test.ts > GitVcsDriver core integration > worktree operations > creates worktrees under the configured worktrees directory",
+          "      Tests  1 failed | 246 skipped (247)"
+        ],
+        "green": [
+          {
+            "file": "worktree-leftover-green.log",
+            "exits": [
+              "      Tests  31 passed | 216 skipped (247)"
+            ]
+          }
+        ],
+        "ledgerEvidenceMatches": [
+          "e6a8b483890da0a42b46da626647456819b5267d"
+        ],
+        "shaMentionsInReceipt": [],
+        "receiptLines": [
+          [
+            "/tmp/cox-upstream-audit-K0VB8D/port-preview-navigation-cleanup.md",
+            44
+          ]
+        ],
+        "sameEntryConfirmed": false
+      }
+    ]
+  },
+  "sameTestFilePassed": {
+    "scope": "Red names the assertion. Green lists the same test file with a passing suite or focused run. The suite line alone leaves individual test identity unresolved when tests were skipped.",
+    "rows": []
+  },
+  "pairedByRecordedCommand": {
+    "scope": "Green log prints the command, and that command explicitly requests the file named by the red assertion. Unfiltered green runs with zero skips cover the full file.",
+    "rows": [
+      {
+        "red": "acp-command-inventory-red.log",
+        "green": "acp-command-inventory-green.log",
+        "command": "$ vp test run src/provider/AcpRegistryProbe.test.ts",
+        "passed": "Tests  13 passed (13)",
+        "matchedRedAssertions": [
+          {
+            "path": "src/provider/AcpRegistryProbe.test.ts",
+            "test": "ACP Registry probe > keeps late slash commands and skills from a configuration probe"
+          },
+          {
+            "path": "src/provider/AcpRegistryProbe.test.ts",
+            "test": "ACP Registry probe > keeps late slash commands and skills from a live session update"
+          }
+        ],
+        "fullSuite": true,
+        "shaCandidates": [
+          "7171fdd7716b05dc1b4be40c26ac78e8bb35f80c"
+        ]
+      },
+      {
+        "red": "codex-port-discovery-red.log",
+        "green": "codex-port-discovery-green-final.log",
+        "command": "$ vp test run src/orchestration-v2/Adapters/CodexAdapterV2.test.ts src/preview/PortScanner.test.ts src/preview/Manager.test.ts",
+        "passed": "Tests  189 passed (189)",
+        "matchedRedAssertions": [
+          {
+            "path": "src/orchestration-v2/Adapters/CodexAdapterV2.test.ts",
+            "test": "discovers a tagged shell listener after the startup scan goes idle and releases tracking on close"
+          }
+        ],
+        "fullSuite": true,
+        "shaCandidates": [
+          "b7add5a06d81061bb49b778d8e5420a89ff05383"
+        ]
+      },
+      {
+        "red": "codex-port-discovery-red.log",
+        "green": "codex-port-discovery-green.log",
+        "command": "$ vp test run src/orchestration-v2/Adapters/CodexAdapterV2.test.ts src/preview/PortScanner.test.ts src/preview/Manager.test.ts",
+        "passed": "Tests  189 passed (189)",
+        "matchedRedAssertions": [
+          {
+            "path": "src/orchestration-v2/Adapters/CodexAdapterV2.test.ts",
+            "test": "discovers a tagged shell listener after the startup scan goes idle and releases tracking on close"
+          }
+        ],
+        "fullSuite": true,
+        "shaCandidates": [
+          "b7add5a06d81061bb49b778d8e5420a89ff05383"
+        ]
+      },
+      {
+        "red": "install-browser-data-dir-red.log",
+        "green": "install-browser-data-dir-green-final.log",
+        "command": "$ vp test run src/htmlRender/HtmlRender.test.ts src/preview/ServerBrowser.test.ts src/preview/ServerBrowserContexts.test.ts src/preview/ServerBrowserStream.test.ts src/preview/PreviewBrowserHost.test.ts src/cli/invocation.test.ts",
+        "passed": "Tests  89 passed | 4 skipped (93)",
+        "matchedRedAssertions": [
+          {
+            "path": "src/htmlRender/HtmlRender.test.ts",
+            "test": "HtmlRender > names the configured data directory in browser setup advice"
+          },
+          {
+            "path": "src/preview/ServerBrowser.test.ts",
+            "test": "names the configured data directory in browser setup advice from preview_open"
+          }
+        ],
+        "fullSuite": false,
+        "shaCandidates": [
+          "e91595ba0a1a52623bd96a3f63a625c9e14c91a6"
+        ]
+      },
+      {
+        "red": "pr-clone-host-server-red.log",
+        "green": "pr-clone-host-server-green.log",
+        "command": "$ vp test run src/git/GitManager.test.ts",
+        "passed": "Tests  122 passed (122)",
+        "matchedRedAssertions": [
+          {
+            "path": "src/git/GitManager.test.ts",
+            "test": "GitManager > fetches and tracks the fork in local mode over https for https://github.enterprise.test/owner/ba…"
+          },
+          {
+            "path": "src/git/GitManager.test.ts",
+            "test": "GitManager > fetches and tracks the fork in local mode over ssh for https://github.enterprise.test/owner/ba…"
+          },
+          {
+            "path": "src/git/GitManager.test.ts",
+            "test": "GitManager > fetches and tracks the fork in worktree mode over https for https://github.enterprise.test/owner/ba…"
+          },
+          {
+            "path": "src/git/GitManager.test.ts",
+            "test": "GitManager > fetches and tracks the fork in worktree mode over ssh for https://github.enterprise.test/owner/ba…"
+          }
+        ],
+        "fullSuite": true,
+        "shaCandidates": []
+      },
+      {
+        "red": "settle-idle-red.log",
+        "green": "settle-idle-green.log",
+        "command": "$ vp test run src/orchestration-v2/ThreadSettlementService.test.ts src/orchestration-v2/ProjectionSettlement.test.ts",
+        "passed": "Tests  39 passed (39)",
+        "matchedRedAssertions": [
+          {
+            "path": "src/orchestration-v2/ThreadSettlementService.test.ts",
+            "test": "ThreadSettlementServiceV2 worker > keeps recent branchless threads to one settings read per sweep"
+          }
+        ],
+        "fullSuite": true,
+        "shaCandidates": [
+          "dabab454aeca0f6b58fee0f86f01da286843a901",
+          "b7add5a06d81061bb49b778d8e5420a89ff05383",
+          "e91595ba0a1a52623bd96a3f63a625c9e14c91a6",
+          "8ca8fddbeba83937b28ef6585de03e98e6e70f97",
+          "b8fb45eb4ccab968051cd41f04ca7f3785bd4469",
+          "7171fdd7716b05dc1b4be40c26ac78e8bb35f80c",
+          "f8fbc199ae14cd6c034407baca476e3a419257f6",
+          "ee265cc53999dbc8f16b75398088780f85f4d166"
+        ]
+      }
+    ]
+  },
+  "earlyIndependentDirectoryChecks": [
+    {
+      "sha": "9f9eaff56ebbbc980d28a88083bdfd1fafe7a0a0",
+      "entry": "delegate_task wait defaults to four minutes and an explicit timeout overrides it",
+      "plan": {
+        "file": "/tmp/ulw-20261120-031451.r9vt0J.md",
+        "line": 159,
+        "sha256": "5727112fa554b3173ffc8d506e2ce2fc1e142dfb893f79108ea287f07cf395ac"
+      },
+      "red": {
+        "file": "/tmp/tmp.cuRk8dcY1q/mcp-wait-red.log",
+        "sha256": "6c047106279c427fb4fedfe28a10838b38647b4cdf6878d3c11078aa351aac3c"
+      },
+      "green": {
+        "file": "/tmp/tmp.cuRk8dcY1q/mcp-wait-green.log",
+        "sha256": "c6a53b45a9abbd34d44517d8afed4079b59e9492f83aea6d6dcf382f0f610844",
+        "suiteTests": 40
+      }
+    },
+    {
+      "sha": "20f45bf23ed6d9bfbf7aa7eab7a946d2e2eaad7c",
+      "entry": "loads only user monitor notifications for delegated progress",
+      "plan": {
+        "file": "/tmp/ulw-20261120-031451.r9vt0J.md",
+        "line": 167,
+        "sha256": "8eb9d005f9142a59cdcd0aba54f690a092b7f41ea03fe4eee2fa4e0201466857"
+      },
+      "red": {
+        "file": "/tmp/tmp.cuRk8dcY1q/monitor-history-red.log",
+        "sha256": "1589276ef26b13a89433699af43f489a448a808d39a1b25b14745162608f0e3d"
+      },
+      "green": {
+        "file": "/tmp/tmp.cuRk8dcY1q/monitor-history-final.log",
+        "sha256": "a4e48399719ebdb7cd3b0bfb10dc774fb84a6ee9a64999d823c3e9ffe2a74e41",
+        "suiteTests": 81
+      }
+    },
+    {
+      "sha": "bfd37b774bc3402e2980f08e21381f96b4ba43ab",
+      "entry": "acknowledges connecting work in queued with message message-queued: true",
+      "plan": {
+        "file": "/tmp/ulw-20261120-031451.r9vt0J.md",
+        "line": 175,
+        "sha256": "48651327661a7d9161dbcddf9aac98fc515b8ee5f94084a95cb8ae7125bdc08d"
+      },
+      "red": {
+        "file": "/tmp/tmp.cuRk8dcY1q/queued-ack-red.log",
+        "sha256": "9edeba70b1e2d4381127ae5562aae29047918dfb21ca95b1a1e4fbbfeba2359b"
+      },
+      "green": {
+        "file": "/tmp/tmp.cuRk8dcY1q/queued-ack-green.log",
+        "sha256": "fb321984418f5a973ac8aada8e2108c2497dce81503a75775d6bac964f85d529",
+        "suiteTests": 46
+      }
+    }
+  ]
+}

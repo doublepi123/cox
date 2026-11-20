@@ -22,6 +22,17 @@
 - Not published. The packaged macOS smoke closed the window and then expected
   the next launch to start the saved local connection.
 
+## 0.2.20 — 2026-11-20
+
+- Bring over selected fixes for thread navigation, queued edits, file previews,
+  terminal reconnects, and source control workflows from the T3 fork audit.
+- Let scheduled tasks use a fixed local time in a named time zone.
+- Preserve Git submodule state in checkpoints and reclaim abandoned local update
+  backup staging directories.
+
+The [T3 fork audit ledger](docs/upstream-audit-2026-11-20/README.md) records the
+upstream commits and their verification status.
+
 ## 0.2.19 — 2026-11-20
 
 - Update the Cursor agent SDK to 1.4.2. A turn that passes its own MCP servers

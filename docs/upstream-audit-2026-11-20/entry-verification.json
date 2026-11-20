@@ -1,0 +1,867 @@
+{
+  "head": "eb502c4c60c65b5f3f8de16164f6014e851b1898",
+  "proofDirectory": "/tmp/cox-upstream-audit-K0VB8D",
+  "notes": "/tmp/ulw-20261120-031451.r9vt0J.md",
+  "archivedGates": [
+    {
+      "name": "audit-backup-staging-summary.log",
+      "sha256": "8baafbeacab39f672d5ab2e69c3ac4c2fee1bc194019031345e74845825624e9"
+    },
+    {
+      "name": "audit-backup-staging-TYPE.log",
+      "sha256": "fcf33cb5d0778f952b42e41dccd801e495e2c12466742bd9a635abb1e0a63420"
+    },
+    {
+      "name": "audit-backup-staging-BUILD.log",
+      "sha256": "4885be2440362c8956d12265381ca99a7968ceecc7aed1376348d0bb173c3138"
+    }
+  ],
+  "gateExits": [
+    "SERVER=0",
+    "TYPE=0",
+    "BUILD=0",
+    "DIFF=0"
+  ],
+  "trackedAndUntrackedPathsInspected": 904,
+  "pathsNewerThanGate": [],
+  "productConnectionFilesReviewed": [
+    "apps/desktop/src/connections.ts",
+    "packages/client-runtime/src/connection/supervisor.ts"
+  ],
+  "scopeEvidence": "Reviewed changes in desktop connection storage and client connection supervisor. These paths modify local preferences and retries for existing connection targets. File-name review is limited to named infrastructure paths.",
+  "entryEvidence": [
+    {
+      "sha": "ec6020e884b843221c4b8b9a0b9549dc21452c68",
+      "entry": "POST JSON to the isolated scheduled-task webhook using the body.issue.labels[] exists filter. A 120001-character prompt stops before provider dispatch.",
+      "criterion": "HTTP 202 for object, null and empty arrays. Object reaches the prompt-length gate and both controls are filtered.",
+      "before": [
+        "qa/webhook-before.json",
+        [
+          [
+            202,
+            "filtered"
+          ],
+          [
+            202,
+            "filtered"
+          ],
+          [
+            202,
+            "filtered"
+          ]
+        ]
+      ],
+      "after": [
+        "qa/webhook-after.json",
+        [
+          [
+            202,
+            "prompt_too_long"
+          ],
+          [
+            202,
+            "filtered"
+          ],
+          [
+            202,
+            "filtered"
+          ]
+        ]
+      ],
+      "passed": true
+    },
+    {
+      "sha": "1c86881dd5aa845c125957bf2a7c87013819d639",
+      "entry": "Open Changes for 600 modified files in 600 folders. Show file tree, collapse all folders, expand all folders.",
+      "criterion": "Both toggles work, child rows are visible and the longest task is lower than the baseline.",
+      "before": [
+        "qa/diff-baseline.json",
+        155
+      ],
+      "after": [
+        "qa/diff-after.json",
+        62,
+        "qa/diff-expansion-desktop.png",
+        "qa/diff-expansion-phone.png"
+      ],
+      "passed": true,
+      "scope": "Numeric long-task assertion evaluated here. Visual observations are in the archived notebook."
+    },
+    {
+      "sha": "f05cd350d255c37525af11d5a2fb04c7e4a98617",
+      "entry": "Expand the 8000-entry z-performance folder in Files and wait for file-0000.ts to be visible.",
+      "criterion": "The same folder expands and the baseline 119 ms long task is absent.",
+      "before": [
+        "qa/perf-baseline.json",
+        119
+      ],
+      "after": [
+        "qa/perf-after.json",
+        0,
+        "qa/phone-large-folder.png"
+      ],
+      "passed": true,
+      "scope": "Numeric long-task assertion evaluated here. Visual observations are in the archived notebook."
+    },
+    {
+      "sha": "207faa28c645b1d1a63205e080c2ac2c98d7b31b",
+      "entry": "Open two PTYs and run Cox QA Long in term-2. Observe activity over WebSocket and in the UI.",
+      "criterion": "Full label while the command runs and Terminal 2 after exit.",
+      "before": null,
+      "after": [
+        "qa/terminal-long-metadata.json",
+        "qa/terminal-label-live.png"
+      ],
+      "passed": true,
+      "scope": "After-only physical PTY evidence. No pre-change PTY capture in these artifacts."
+    }
+  ],
+  "additionalEntries": [
+    {
+      "sha": "8a38c637069ff8c70f925dfc52220363f482944d",
+      "mode": "Chromium, MacIntel simulated for Tiptap and Ghostty surface instrumented for terminal",
+      "before": "thread-navigation-red.log",
+      "after": "thread-navigation-green.log",
+      "criterion": "Both navigation shortcuts leave their local handlers when accepted; unmatched context and Ctrl+C remain with the terminal.",
+      "beforeFailures": 2,
+      "afterPassedTests": 119,
+      "nativeMacOSVerified": false
+    },
+    {
+      "sha": "bfd37b774bc3402e2980f08e21381f96b4ba43ab",
+      "mode": "Chromium with runtime projection and command fixture",
+      "before": null,
+      "after": "queued-edit-compaction-run.log",
+      "criterion": [
+        "Before acknowledgement the update is disabled.",
+        "A queued projection that still has the old message keeps the update disabled.",
+        "A queued projection with the new message enables the update and submits exactly one edit with the edited text."
+      ],
+      "afterPassedTests": 64,
+      "nativeProviderVerified": false
+    },
+    {
+      "sha": "c8a601c0dfa5c7626e51e06d727076f6b840a005",
+      "mode": "SDK package and native Linux sandbox smoke, deterministic runner/adapter replay",
+      "currentPass": 36,
+      "nativeSummarize": false,
+      "installedSdkSmoke": [
+        [
+          "Sandboxing helper for Everysphere shell-exec",
+          "",
+          "Usage: cursorsandbox [OPTIONS] [COMMAND]...",
+          ""
+        ],
+        [
+          "function function"
+        ]
+      ],
+      "summary": "continued-audit-summary.log"
+    },
+    {
+      "sha": "6a8f022b451f0d678c8da2ecee0042987e80d2d9",
+      "mode": "Actual patched WindowsPtyAgent JavaScript prototype with controlled timers and sockets",
+      "before": "windows-terminal-red.log",
+      "beforeFailures": 3,
+      "after": "windows-terminal-PTY.log",
+      "afterPass": 3,
+      "adjacentPass": 17,
+      "linuxNativeOutput": {
+        "exitCode": 0,
+        "output": "cox-pty-audit"
+      },
+      "windowsConptyVerified": false
+    }
+  ],
+  "additionalArtifactHashes": [
+    {
+      "file": "thread-navigation-preflight.json",
+      "sha256": "e2c89037e3e49f34e830be121dcb0d5471bd951c8989d1aa7a783f3031e7c2da",
+      "bytes": 507
+    },
+    {
+      "file": "thread-navigation-red.log",
+      "sha256": "0a73524d7fc1156db064b1728c1f02afcaf2536bd46eea2bda6d24b1a80c72e0",
+      "bytes": 6033
+    },
+    {
+      "file": "thread-navigation-green.log",
+      "sha256": "e7667f52980624fa417f7bcbc82c9878801327657fe54994e901e5f0c38b2fa8",
+      "bytes": 4080
+    },
+    {
+      "file": "queued-edit-compaction-preflight.json",
+      "sha256": "6465a18a65118c38fef2c15cf07368b64cc80554a55d1208ea8c2c0450fd9c9d",
+      "bytes": 828
+    },
+    {
+      "file": "queued-edit-compaction-run.log",
+      "sha256": "12698acd2fbe2afd148dac33e592b66e9bbec66642e46ddd75d5e5623f5ebb84",
+      "bytes": 3921
+    },
+    {
+      "file": "queued-edit-compaction-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "grok-native-capability-result.md",
+      "sha256": "1a57437945974fda1590aa6e24be93bc15b94687392d3d382146889d523c60c8",
+      "bytes": 4269
+    },
+    {
+      "file": "cursor-sdk-1.2.0.tgz",
+      "sha256": "5480c208fe177f90a5d6c47da9d9e240d183e381aa19b3b772e5adfd3d4c81c4",
+      "bytes": 4733793
+    },
+    {
+      "file": "continued-audit-summary.log",
+      "sha256": "e82b4ef231f494f8692b0200a23a57ad3ec0244dba030525c723fabeec26ce48",
+      "bytes": 38
+    },
+    {
+      "file": "continued-audit-CURSOR.log",
+      "sha256": "5197fed0dfda4de9bf95048ba7eb126c9a785e1a51ea38713f83bb834ad342cd",
+      "bytes": 329
+    },
+    {
+      "file": "windows-terminal-preflight.json",
+      "sha256": "c9b7453a49965765fddf87003d8a058534064a2ce0c409f66d94535905e6d3e6",
+      "bytes": 593
+    },
+    {
+      "file": "windows-terminal-red.log",
+      "sha256": "69f049e32d7858b56a2de792d2b803e421433ce9098b10a406243e2c855c8f6b",
+      "bytes": 2507
+    },
+    {
+      "file": "windows-terminal-summary.log",
+      "sha256": "2976ac136fb4105c5a46547575e7e5ac44b2fc83f500438cc5774bf0d80dcaed",
+      "bytes": 38
+    },
+    {
+      "file": "windows-terminal-PTY.log",
+      "sha256": "5e84b6fa723416b55b514c11d34438d10c1aebe290dbef3e458ba0fe063c5ecd",
+      "bytes": 326
+    },
+    {
+      "file": "windows-terminal-adjacent.log",
+      "sha256": "e759488b06066033f6280803d5573ddf2a721b7b2d9463e27d54e01d74dd3d5f",
+      "bytes": 330
+    },
+    {
+      "file": "windows-terminal-linux-native.log",
+      "sha256": "6c9b0795ee1398cd1cbbb86539576cff502f25cea7541f666b656cf593833b4f",
+      "bytes": 40
+    },
+    {
+      "file": "windows-terminal-TYPE.log",
+      "sha256": "154def1b9e3ac81245e791aa9108c87ca15c7bc393ba2ab4125c0329c738dcc8",
+      "bytes": 3684
+    },
+    {
+      "file": "windows-terminal-BUILD.log",
+      "sha256": "c86aa84f77898ebc46323ae5bde1d3d8907a037214c7e6e809f36c57036b40b5",
+      "bytes": 124804
+    },
+    {
+      "file": "cursor-native-port-result.md",
+      "sha256": "0a7fb72cd969d5c9b0020c728ed2fc8ecc9cbafed2285a9db4b242d3a68cfca1",
+      "bytes": 4497
+    }
+  ],
+  "latestGate": {
+    "source": "windows-terminal-summary.log",
+    "exitLines": [
+      "INSTALL=0",
+      "PTY=0",
+      "TYPE=0",
+      "BUILD=0",
+      "DIFF=0"
+    ],
+    "focusedTests": {
+      "windowsPrototype": 3,
+      "terminalAdjacent": 17,
+      "cursorReplay": 36,
+      "keyboardBrowser": 119,
+      "queuedEditAndLogic": 64
+    }
+  },
+  "visualGeometryReceipts": [
+    {
+      "prefix": "43d445b408fb",
+      "entry": "Workspace file picker opens portrait-qa.webm, recorded with intrinsic size 100 by 220.",
+      "before": [
+        "portrait-video-before.png"
+      ],
+      "after": [
+        "portrait-video-desktop.png",
+        "portrait-video-phone.png"
+      ],
+      "criterion": "Displayed width/height differs from 100/220 by less than 0.02 after the fix.",
+      "baseline": [
+        251,
+        141.1875
+      ],
+      "desktop": [
+        100,
+        220
+      ],
+      "phone": [
+        100,
+        220
+      ],
+      "sha": "43d445b408fb0f612f17388fdc8cdbd2f2e1f24c",
+      "artifacts": [
+        {
+          "file": "qa/portrait-video-before.png",
+          "width": 1440,
+          "height": 900,
+          "sha256": "ee8fd0cc1ccf0d2806b726931ee92d1f3343bf9a0ea5500017c5faefca0a7621"
+        },
+        {
+          "file": "qa/portrait-video-desktop.png",
+          "width": 1440,
+          "height": 900,
+          "sha256": "431af7b696ad5f5addb79b150c4bb9b8f3893280dfb06daed89d9ac7b5dc9142"
+        },
+        {
+          "file": "qa/portrait-video-phone.png",
+          "width": 1170,
+          "height": 2532,
+          "sha256": "854736cd596bd8dd581c3310e5a0fb621d0939ef1e9997643a61bc5491ac3755"
+        }
+      ]
+    },
+    {
+      "prefix": "854247e2420a",
+      "entry": "Open vector-qa.md, show rendered Markdown, and open Preview QA diagram.",
+      "before": [
+        "vector-before.png"
+      ],
+      "after": [
+        "vector-desktop.png",
+        "vector-phone.png"
+      ],
+      "criterion": "The SVG fills available space at its original 600:240 ratio in each viewport.",
+      "baseline": [
+        300,
+        120
+      ],
+      "desktop": [
+        1228.796875,
+        491.515625
+      ],
+      "phone": [
+        358.796875,
+        143.515625
+      ],
+      "sha": "854247e2420a13d4e4dd2c649e60671f0bfb9631",
+      "artifacts": [
+        {
+          "file": "qa/vector-before.png",
+          "width": 1440,
+          "height": 900,
+          "sha256": "7c2daf5069ce16531d508bbfb9d3bcdcca8ddbd3d01affd488c4f0398a27ed79"
+        },
+        {
+          "file": "qa/vector-desktop.png",
+          "width": 1440,
+          "height": 900,
+          "sha256": "c2ab892628eb08eaca4fade18f43329dc329eae58c5653767af40c0c773f5514"
+        },
+        {
+          "file": "qa/vector-phone.png",
+          "width": 1170,
+          "height": 2532,
+          "sha256": "8494269b3a551295264f0036bb1c094593de4d5df67ff98ab2eb8c20a0b75fed"
+        }
+      ]
+    }
+  ],
+  "historicalReceiptAnchors": [
+    {
+      "sha": "20f45bf23ed6d9bfbf7aa7eab7a946d2e2eaad7c",
+      "localCoxSha": "d43ae515365bfd81a4d34011006fb4bd212d9c41",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 167,
+          "lineSha256": "8eb9d005f9142a59cdcd0aba54f690a092b7f41ea03fe4eee2fa4e0201466857"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 173,
+          "lineSha256": "0c34b26a09a828fadcbb174a40069f14c76d6af703be5fc36000a4f5e6be4533"
+        }
+      ]
+    },
+    {
+      "sha": "9f9eaff56ebbbc980d28a88083bdfd1fafe7a0a0",
+      "localCoxSha": "778d0b17a3c570a2794ecbd87369803ab505c5ce",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 159,
+          "lineSha256": "5727112fa554b3173ffc8d506e2ce2fc1e142dfb893f79108ea287f07cf395ac"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 161,
+          "lineSha256": "8c033ce85fe59e9e5b26c505d752dbbd61d64e2249b42f6a57b83b947d25f12c"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 165,
+          "lineSha256": "6fcaa4debb6cb5f565a80a08efbc8dc0b7759a6b1d161a657649235d9faddb20"
+        }
+      ]
+    },
+    {
+      "sha": "253acdeaf91b2270d5098f0d583c0e743cde454d",
+      "localCoxSha": "f2bce538061cc1f0967f5614940ba7bfd7e4949a",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 147,
+          "lineSha256": "772d90453792ce32a7ca694fc973c473a02a621ad61aedf8bbe047b72833d05a"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 153,
+          "lineSha256": "6b77debb49aaf3bf686d620b1e057939b298f7ed35298459eaee8618722f467c"
+        }
+      ]
+    },
+    {
+      "sha": "85133dc57818cbd971d3adf91f83980a83e65ec6",
+      "localCoxSha": "7bee1ead1bd9306eaedd9c25b318ef0e9d17f099",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 191,
+          "lineSha256": "1facb29c0cf5c20bc3dcb5cb2716379726f8785fca67a202bd1ec86860f0dada"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 205,
+          "lineSha256": "39a9404b9baf78f9b45cf813b7b41298b9fd63c79efbe823831051d055305e4a"
+        }
+      ]
+    },
+    {
+      "sha": "f9dd7216c0f81904adde0ce6fc6d338ea0342fd8",
+      "localCoxSha": "e0009a2ab490be6b49ea570035547f12803f75ee",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 306,
+          "lineSha256": "a71381b56c73ac878693ee7e07488238fa2ba12368af5610973ca58330efce7f"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 322,
+          "lineSha256": "888e9f1b909a25f8dc408489e0a06cd5c5e7927ea4319a169ea1a6218ff66b88"
+        }
+      ]
+    },
+    {
+      "sha": "c3303fb7dce9fc7432ec91bd13783690252898f2",
+      "localCoxSha": "d416ec478084f1725e59bdf4f3769792fc6894f9",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 249,
+          "lineSha256": "a012c14889b55903a3081b4f8a8eace260ca9dd287882fdcc7a2cd7e23ee455d"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 251,
+          "lineSha256": "ccb505428aa1eaee274d7ef853c21075639168717d4b1b83d168d979aca138d7"
+        }
+      ]
+    },
+    {
+      "sha": "b5ced43833576c3208d070f8a3a5d68e87f6481a",
+      "localCoxSha": "1421ad6f41eea56423d4527da2ec5c26cbd2be36",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-visited-migration.md",
+          "line": 3,
+          "lineSha256": "4bfad37d7fb07b7672f2bab2628bd345c871137544f70f48c37e189ddbac887e"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 306,
+          "lineSha256": "a71381b56c73ac878693ee7e07488238fa2ba12368af5610973ca58330efce7f"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 324,
+          "lineSha256": "6d00ccb1273b2fe941870ffe436786c4e27ff52ce50f571b28d06d94a81cb47c"
+        }
+      ]
+    },
+    {
+      "sha": "c018660572d1dbe326ef0e72d3f14dd69fb7c41f",
+      "localCoxSha": "a54f7d768fe7f2bf647df92e408d7c6e3a35b1a4",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-csv-truncation.md",
+          "line": 3,
+          "lineSha256": "a1c18584809acaa6943c94d5e5052e64d7e3989872d8a835df42e558647ff888"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 350,
+          "lineSha256": "b77fbf160846589c8fe1a8fda38d002d5714ab65b51398f4931d9a160b5a076c"
+        }
+      ]
+    },
+    {
+      "sha": "84ad7aef6a70a52f3ebf2829ab0f09b9a6d1c33c",
+      "localCoxSha": "be773fb238dae09104b877dfbfd59c48bf000772",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 268,
+          "lineSha256": "ef1620e354cad02ff95e20551f97f61c53fa58492b222dbf1fc0cb2e62bc4d06"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 291,
+          "lineSha256": "7083ee92bb1103f4f3130f1a1ffd33146db7b8bd622d8baa4af45dd8e358630b"
+        }
+      ]
+    },
+    {
+      "sha": "88483a5cf05669c4fec976c3b87e0d80e12d27a3",
+      "localCoxSha": "ebeb26f97d9fad8ab1ea59db0d0ad928f3d36773",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 360,
+          "lineSha256": "a19c063114e93b6b8ae733817b1976e306b913621949cdbae2a06696d67e4fbf"
+        }
+      ]
+    },
+    {
+      "sha": "7c511b3d28b8814131dd255c2de1d1cf1aab3adb",
+      "localCoxSha": "bba1f1ab8871c19b5a71cc8132057e8c5eb2db08",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-log-rotation-names.md",
+          "line": 5,
+          "lineSha256": "12f8b09169d2a186d7109bef55f7f1954dcc621280f69f2b0ad66e6e0cb3800a"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 356,
+          "lineSha256": "08594f99d912b190cc764aca4db8834de0011f604c416319952ad0d4df92f668"
+        }
+      ]
+    },
+    {
+      "sha": "3f695422ae21be7ce8537eb86c3abb63bfd94e03",
+      "localCoxSha": "4d2f0bb9d361a13b4c74947ef3b93d5adca0fd57",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 306,
+          "lineSha256": "a71381b56c73ac878693ee7e07488238fa2ba12368af5610973ca58330efce7f"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 326,
+          "lineSha256": "80b709a64df43fae33f900938b92d2188439dce217aa1990e5a7db850fa11ef2"
+        }
+      ]
+    },
+    {
+      "sha": "5349ecb06c19340836b0c3ae86ae4808ad88bfb9",
+      "localCoxSha": "6ae991dc390cf62e90965b8f8c9f5502d5499600",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-gitcafe-merge-state.md",
+          "line": 3,
+          "lineSha256": "fda731be3a121952355cf806c93bdceec351fada34b7781e1201767947831cc6"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 320,
+          "lineSha256": "7358aa8ac652263f4e33f7c307bfed6b13ba440912b149eb41d67416a88e3371"
+        }
+      ]
+    },
+    {
+      "sha": "35af84977d0ee55c13c3b81c3f8d5427279c6de2",
+      "localCoxSha": "a37d3959040ed48141685c26d81660a2d3bb262c",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 268,
+          "lineSha256": "ef1620e354cad02ff95e20551f97f61c53fa58492b222dbf1fc0cb2e62bc4d06"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 287,
+          "lineSha256": "4b8277109ae5c94996ac9d31932ea9880f2c22f0feeef11c0e6075f43ac6aa85"
+        }
+      ]
+    },
+    {
+      "sha": "1b6336d237d7c800dd5c620d96627f2a9c71140c",
+      "localCoxSha": "65beda52ee6fc2a4f87a582eaa8119d41ae04ea2",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 354,
+          "lineSha256": "16282b27305d9e172ad00d5a27cc3433960daa9731e82053503f4bce3eba6586"
+        }
+      ]
+    },
+    {
+      "sha": "20e92ffe022fe7813c854eeb68195ffa8e04850f",
+      "localCoxSha": "dda051535f49b45f0e0a3094e19f5699893766e3",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 127,
+          "lineSha256": "b34cc360253522bd9d7883ab90677f94f99f708b5161d99351fed804e795f6e0"
+        }
+      ]
+    },
+    {
+      "sha": "d0c7147a8e1a382fc3bdf7cab291614623b31edb",
+      "localCoxSha": "5e8053190ab3155b98cfc89a221793133f97045d",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-pi-rewind-resume.md",
+          "line": 3,
+          "lineSha256": "136486794d21bad7e889f75dbb7e22a4a8bff6f14c39bbbf86ed899c25bd8a49"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 362,
+          "lineSha256": "17c38cf49e8085dc4114d4d9f5d67a916940f6ee88fa8cd4a4db40187a3b696d"
+        }
+      ]
+    },
+    {
+      "sha": "7a7b8d7ad2083e887128d2e1370fc00a4d00f9af",
+      "localCoxSha": "9d83a1e371989ad9405e1791515b62bae0282fb4",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 318,
+          "lineSha256": "e9d6576736885d1c1f01a680bc70b1a3fba2be5522431f5bf18077b0b163560f"
+        }
+      ]
+    },
+    {
+      "sha": "168bcd630cae9b6b08166ea3b5a3e42ee12070a5",
+      "localCoxSha": "34d64006ca91b438050f697e4e578611bfbaaba0",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 271,
+          "lineSha256": "f88fc16c64d8d2ab7c60cffbe9dcdd6e204873a5391d03a2413d7c14d3a4a6e4"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 273,
+          "lineSha256": "f1728c55902d266816883984f413ec9e1a72b02fb688cb1619ed5691b8296340"
+        }
+      ]
+    },
+    {
+      "sha": "31a108c195f6f720c1d3232e3fb0ae9ef1e66554",
+      "localCoxSha": "238985b08064d593181c894fac82b1a04ab7e938",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-space-shortcut.md",
+          "line": 3,
+          "lineSha256": "55795a945dc32459faf957c8bfb77ca40ac1dd1c86e21e2db0d08a4e0612b8ac"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 352,
+          "lineSha256": "d18c1675ee8bca87193f704368d5b0791d98bd86f8a89e533ee4f8f60c3ef19b"
+        }
+      ]
+    },
+    {
+      "sha": "6b2591b252b46d1128e8ed4dd0538d15975fb285",
+      "localCoxSha": "41e36c0349dd5bc74d071173509645465d4d05fa",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 316,
+          "lineSha256": "6e6589e228c3add17c9e8ea05752a156a43f9d71e25f78cbe4d8abe1c74d33ea"
+        }
+      ]
+    },
+    {
+      "sha": "f10a5029f5b14b3949ca807bdd9576a7cdaa1152",
+      "localCoxSha": "62f3b4f5d9ed837f15dfc319d421be8c6d3c6d89",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 62,
+          "lineSha256": "46de6644be1d2c69b679d4d2ff4b433c91d3b5bd17b2d66693a95a1ef6258b64"
+        }
+      ]
+    },
+    {
+      "sha": "4947db07d319df031028338e71128b5e8ff45b1f",
+      "localCoxSha": "38adae43d3975d05fc8659b8199cd5bcd352b645",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 268,
+          "lineSha256": "ef1620e354cad02ff95e20551f97f61c53fa58492b222dbf1fc0cb2e62bc4d06"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 289,
+          "lineSha256": "81ed25d4868fd0be2faf6b00810a01156027d17f324c50e55895b8f04a4df306"
+        }
+      ]
+    },
+    {
+      "sha": "167d41c09449d2e7554d663bae78646a4ff300fb",
+      "localCoxSha": "eb502c4c60c65b5f3f8de16164f6014e851b1898",
+      "anchors": [
+        {
+          "path": "/tmp/cox-upstream-audit-K0VB8D/port-markdown-path-work.md",
+          "line": 3,
+          "lineSha256": "d28dd71221dfa1e85bac0f0d6ea06259a5137992dea901483faa8264f71d39a0"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 370,
+          "lineSha256": "4c1cabec22c48f61970cc0434f5487c4c662c6532069dc2fca64a341c891a55c"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 372,
+          "lineSha256": "462c05f60d5f4a616e5faeb4dbede94779840339bb6a091c9bdbd658dff52e47"
+        }
+      ]
+    },
+    {
+      "sha": "18188ba0b81a5db804ea26757eca85bd084d6b97",
+      "localCoxSha": "00ea399825c97e5eb009b155c3e5e55b2f3a1d67",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 358,
+          "lineSha256": "6a5b935d75edd207771b813bd0e788575f80fc1327faa49f2c282eda7ea73cca"
+        }
+      ]
+    },
+    {
+      "sha": "14978e35a57b47c86eade9a2b3efa313396f0f57",
+      "localCoxSha": "eeee12b83c50eb2d95c4fa637a5262880e281104",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 279,
+          "lineSha256": "c1f9b73dea3764f185612c558e73c9117a4da7bbafcdace88f049be95c6f27e2"
+        },
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 283,
+          "lineSha256": "510168c627c560b1ab003d1180c6b90482894e8c839e35d08f8843ae84399de8"
+        }
+      ]
+    },
+    {
+      "sha": "5f69cac5c91c85860dd3d2c471bdac6efa70241e",
+      "localCoxSha": null,
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 275,
+          "lineSha256": "64e89820e970a1959b3b5aa08985ba9281af380c123ecf0019498c535a3a599b"
+        }
+      ]
+    },
+    {
+      "sha": "bee9eb593939fb89c6aa6c5f308556ca1deb4b5d",
+      "localCoxSha": "294a19b07791bb43182e19bd2efed7eec7175e6f",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 297,
+          "lineSha256": "139166363ee9d7234731ae404a6d99437e1d976df9ef8cb263e9a891c73988ac"
+        }
+      ]
+    },
+    {
+      "sha": "3ea709e8bd95ac784dc711ff68fac62bccedb0c4",
+      "localCoxSha": "5d86e62fd98f0cafa7bd359290034f6c376196eb",
+      "anchors": [
+        {
+          "path": "/tmp/ulw-20261120-031451.r9vt0J.md",
+          "line": 129,
+          "lineSha256": "a76b0f9f5de59208a3cffa76724b259d17a04bea8c06f1d9c625c1997b741679"
+        }
+      ]
+    }
+  ],
+  "handoff": {
+    "entryIndexRows": 669,
+    "entryEvidenceCounts": {
+      "batch-references": 572,
+      "paired-entry-capture": 3,
+      "ledger-reference-only": 52,
+      "paired-historical-test": 6,
+      "paired-ui-geometry-capture": 2,
+      "historical-receipt-reference": 27,
+      "after-only-entry-capture": 1,
+      "paired-fixture-native-unverified": 3,
+      "paired-historical-suite": 2,
+      "platform-unverified": 1
+    },
+    "historicalRecovery": "historical-receipt-recovery.json",
+    "artifacts": [
+      {
+        "file": "audit-handoff-web-tsc-summary.log",
+        "sha256": "237f6070e2c377d507ac80074795999c49d5f86b77555121a79377c2b1aea6c2"
+      },
+      {
+        "file": "historical-failure-retest-SERVER.log",
+        "sha256": "f64966811185e8d33383f1a0699afd4356ae36662c1fd1a631d308159a2be3af"
+      },
+      {
+        "file": "historical-failure-retest-WEB.log",
+        "sha256": "6334385b58f8151607d6d199cff68e0b0351b6d65ed9cf17cae902429c2ae90b"
+      },
+      {
+        "file": "historical-sidebar-drag-retest.log",
+        "sha256": "5bfa54f8a59545d723ecca7dda5453c64edf015efe3aff6550a75f279dae3da1"
+      },
+      {
+        "file": "historical-exact-summary.log",
+        "sha256": "a42c73fb3a7cfacf206cdfa42342581f1a8fb0ce41c63cd2b93e723aa67bd081"
+      }
+    ],
+    "focusedRetests": {
+      "serverPassed": 13,
+      "webInitiallyPassed": 4,
+      "sidebarDragPassedAfterRoleLocatorCorrection": 1,
+      "historicalExactPassed": 6
+    },
+    "webTypeScriptExit": 0,
+    "originalDiffHunksPreserved": 19,
+    "platformOrProviderOutstanding": [
+      "c8a601c0dfa5c7626e51e06d727076f6b840a005",
+      "8a38c637069ff8c70f925dfc52220363f482944d",
+      "1ea523608b4fdcf3794fdcdf01c376faac21f594",
+      "6a8f022b451f0d678c8da2ecee0042987e80d2d9",
+      "f82162f0336c226ae1f2927f781a0fb660869a51"
+    ],
+    "strictPerShaAcceptanceEstablished": false
+  }
+}
