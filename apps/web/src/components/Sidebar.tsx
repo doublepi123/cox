@@ -3131,7 +3131,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                   <SettingsIcon className="size-3.5" />
                                 </Button>
                               </span>
-                            ) : null}
+                            ) : (
+                              <span aria-hidden className="ml-auto size-7 shrink-0 sm:size-6" />
+                            )}
                           </ComboboxItem>
                         );
                       }}
