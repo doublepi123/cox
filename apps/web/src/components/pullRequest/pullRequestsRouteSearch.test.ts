@@ -32,6 +32,10 @@ describe("pull requests route search", () => {
     expect(matchedSearch("/pull-requests?q=true")?.q).toBeUndefined();
   });
 
+  it.each(["author", "labels"])("drops a numeric %s from the matched route", (key) => {
+    expect(matchedSearch(`/pull-requests?${key}=4089`)?.[key]).toBeUndefined();
+  });
+
   it("keeps a q that is text, including quoted digits", () => {
     expect(matchedSearch("/pull-requests?q=fix")?.q).toBe("fix");
     expect(matchedSearch("/pull-requests?q=%224089%22")?.q).toBe("4089");
