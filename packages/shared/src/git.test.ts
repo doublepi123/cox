@@ -53,6 +53,21 @@ describe("normalizeGitRemoteUrl", () => {
     expect(normalizeGitRemoteUrl("ssh://git@github.com/T3Tools/T3Code")).toBe(
       "github.com/t3tools/t3code",
     );
+    expect(normalizeGitRemoteUrl("https://github.com/T3Tools/T3Code.git?view=compact")).toBe(
+      "github.com/t3tools/t3code",
+    );
+    expect(normalizeGitRemoteUrl("https://github.com/T3Tools/T3Code.git#section")).toBe(
+      "github.com/t3tools/t3code",
+    );
+    expect(normalizeGitRemoteUrl("ssh://git@code.example.test/owner/repo.git.git")).toBe(
+      normalizeGitRemoteUrl("git@code.example.test:owner/repo.git.git"),
+    );
+    expect(normalizeGitRemoteUrl("./repositories/repo.git?literal=path")).toBe(
+      "./repositories/repo.git?literal=path",
+    );
+    expect(normalizeGitRemoteUrl("git@code.example.test:owner/repo.git?literal=scp")).toBe(
+      "code.example.test/owner/repo.git?literal=scp",
+    );
   });
 
   it("preserves nested group paths for providers like GitLab", () => {
