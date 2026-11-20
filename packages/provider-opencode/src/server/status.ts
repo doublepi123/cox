@@ -171,6 +171,10 @@ const logDiscoveryFailure = Effect.fnUntraced(function* (input: {
   ).pipe(Effect.annotateLogs(attributes));
 });
 
+function reasoningVariantLabel(value: string): string {
+  return value === "xhigh" ? "Extra High" : titleCaseSlug(value);
+}
+
 function titleCaseSlug(value: string): string {
   const segments: Array<string> = [];
   for (const segment of value.split(/[-_/]+/)) {
@@ -239,8 +243,8 @@ function openCodeCapabilitiesForModel(input: {
   const defaultVariant = inferDefaultVariant(input.providerID, variantValues);
   const variantOptions = variantValues.map((value) =>
     defaultVariant === value
-      ? { id: value, label: titleCaseSlug(value), isDefault: true as const }
-      : { id: value, label: titleCaseSlug(value) },
+      ? { id: value, label: reasoningVariantLabel(value), isDefault: true as const }
+      : { id: value, label: reasoningVariantLabel(value) },
   );
   const primaryAgents = input.agents.filter(
     (agent) => !agent.hidden && (agent.mode === "primary" || agent.mode === "all"),
@@ -595,7 +599,7 @@ function openCode2ModelCapabilities(model: OpenCode2Model): ModelCapabilities {
               type: "select",
               options: variants.map((id) => ({
                 id,
-                label: titleCaseSlug(id),
+                label: reasoningVariantLabel(id),
                 ...(id === defaultVariant ? { isDefault: true } : {}),
               })),
               ...(defaultVariant === undefined ? {} : { currentValue: defaultVariant }),

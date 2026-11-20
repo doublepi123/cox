@@ -11,4 +11,5 @@ it("matches both Greek sigma forms without changing source offsets", () => {
   expect(findThreadSearchOccurrences("ΟΣ ος οσ", "Σ")).toEqual([1, 4, 7]);
   expect(findThreadSearchOccurrences("ΟΣ ος οσ", "ς")).toEqual([1, 4, 7]);
   expect(findThreadSearchOccurrences("İ ΟΣ", "Σ")).toEqual([3]);
+  expect(findThreadSearchOccurrences("İstanbul", "i")).toEqual([0]);
 });
