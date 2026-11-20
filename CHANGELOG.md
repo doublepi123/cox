@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.2.18 — 2026-11-20
+
+- Update the Cursor agent SDK to 1.4.2. A turn that passes its own MCP servers
+  keeps the servers from Cursor's config, a saved Max Mode setting stays on,
+  and nested subagents stop spawning without a bound.
+- Send a follow-up into the Cursor run that is already going. Restarting that
+  run remains available when you ask for it. `/compress` asks Cursor to
+  summarize the conversation.
+- A Max Mode tier still runs after Cursor changes the model list. A shell
+  command that exits non-zero is recorded as failed, and a transport failure
+  shows the diagnostic Cursor returned.
+- After a Cursor turn is interrupted, the next message includes the request
+  that left Cursor's history. Commit messages and titles retry without the
+  sandbox when Cursor rejects sandboxing at send time.
+
 ## 0.2.17 — 2026-11-20
 
 - Allow systemd user service updates when the home directory is a symlink. Before restarting, verify the effective startup command and report any drop-in files that override it.
