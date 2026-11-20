@@ -1755,6 +1755,9 @@ describe("OrchestratorMcpService provider resolution", () => {
       Effect.gen(function* () {
         const tasks = yield* Ref.make<ReadonlyArray<unknown>>([]);
         const waitStarted = yield* Queue.unbounded<void>();
+        const siblingUpdateDelivered = yield* Queue.unbounded<void>();
+        const readCount = yield* Ref.make(0);
+        const readCountAtSubscription = yield* Ref.make(0);
         const nextTask = yield* Ref.make(0);
         const delegatedTask = (id: NodeId) => ({
           id,
@@ -1780,12 +1783,42 @@ describe("OrchestratorMcpService provider resolution", () => {
           NodeServices.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             hasReceipt: () => Effect.succeed(false),
-            getThreadRecords: (threadId) =>
+            getThreadRecords: (threadId, _sections, filter) =>
               threadId === parentThreadId
-                ? Ref.get(tasks).pipe(Effect.map((current) => parentProjection(current)))
+                ? Ref.get(tasks).pipe(
+                    Effect.map((current) => parentProjection(current)),
+                    Effect.tap(() =>
+                      filter?.subagentIds === undefined
+                        ? Effect.void
+                        : Ref.update(readCount, (n) => n + 1),
+                    ),
+                  )
                 : Effect.succeed(childProjection),
             getThreadEventSequence: () => Queue.offer(waitStarted, undefined).pipe(Effect.as(0)),
-            streamStoredEventsFrom: () => Stream.never,
+            streamStoredEventsFrom: (input) =>
+              input?.threadId === parentThreadId && input.eventType === "subagent.updated"
+                ? Stream.fromEffect(
+                    Ref.get(readCount).pipe(
+                      Effect.flatMap((count) => Ref.set(readCountAtSubscription, count)),
+                      Effect.as({
+                        sequence: 1,
+                        commandId: null,
+                        event: {
+                          threadId: parentThreadId,
+                          type: "subagent.updated",
+                          payload: delegatedTask(NodeId.make("node:mcp-busy-sibling")),
+                        },
+                      } as never),
+                    ),
+                  ).pipe(
+                    Stream.concat(
+                      Stream.fromEffect(Queue.offer(siblingUpdateDelivered, undefined)).pipe(
+                        Stream.drain,
+                      ),
+                    ),
+                    Stream.concat(Stream.never),
+                  )
+                : Stream.never,
             delegatedTaskResultPending: () => Effect.succeed(false),
             dispatch: (command) =>
               command.type === "delegated_task.request"
@@ -1826,6 +1859,8 @@ describe("OrchestratorMcpService provider resolution", () => {
             .delegateTask(scope, { task: "Hold open.", mode: "wait" })
             .pipe(Effect.forkChild);
           yield* Queue.take(waitStarted);
+          yield* Queue.take(siblingUpdateDelivered);
+          assert.equal(yield* Ref.get(readCount), yield* Ref.get(readCountAtSubscription));
           yield* TestClock.adjust(Duration.seconds(241));
           const defaultExit = defaultWait.pollUnsafe();
           assert.isDefined(
