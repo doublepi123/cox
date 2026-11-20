@@ -1013,11 +1013,7 @@ async function start() {
         supportsSettingsWindow = false;
         startingBackend = false;
       }
-      if (connectionStore.snapshot().active?.kind === "local") connectionStore.setActive(null);
     } else {
-      const active = connectionStore.snapshot().active;
-      if (active?.kind === "remote" && active.profileId === result.instance.id)
-        connectionStore.setActive(null);
       const closesPrimaryRemote = activeRemoteProfile?.id === result.instance.id;
       if (closesPrimaryRemote) activeRemoteProfile = undefined;
       if (closesPrimaryRemote && connectionMode === "remote") {

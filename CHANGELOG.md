@@ -2,12 +2,19 @@
 
 ## Unreleased
 
-## Desktop 0.2.30 — 2026-11-20
+## Desktop 0.2.31 — 2026-11-20
 
 - Closing a desktop connection window disconnects that instance and stops
   processes that belong only to it. Other connection windows keep their tasks
   and terminals. macOS leaves Cox in the Dock and does not restore the closed
   window; Windows returns to Connections instead of quitting every window.
+  Quitting Cox and opening it again still restores the saved connection with a
+  new local backend.
+
+## Desktop 0.2.30 — 2026-11-20
+
+- Not published. The packaged macOS smoke closed the window and then expected
+  the next launch to start the saved local connection.
 
 ## 0.2.19 — 2026-11-20
 

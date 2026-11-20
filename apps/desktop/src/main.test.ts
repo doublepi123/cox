@@ -1599,7 +1599,7 @@ describe("desktop connection manager windows", () => {
     expect(fixture.backendConstructed).toBe(1);
     expect(remote.destroyed).toBe(false);
     expect(remote.webContents.getURL()).toBe(inspection.origin);
-    expect(JSON.parse(fixture.files.get(connectionsFile)!).active).toBeNull();
+    expect(JSON.parse(fixture.files.get(connectionsFile)!).active).toEqual({ kind: "local" });
     expect(fixture.quit).not.toHaveBeenCalled();
     fixture.events.emit("activate");
     expect(fixture.launchBackend).toHaveBeenCalledOnce();
