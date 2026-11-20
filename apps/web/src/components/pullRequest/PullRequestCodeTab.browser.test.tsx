@@ -9,7 +9,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
 
-const { diffAtom, pagedDiffAtom } = await vi.hoisted(async () => {
+const { diffAtom, pagedDiffAtom, orderDiffAtom } = await vi.hoisted(async () => {
   const { AsyncResult, Atom } = await import("effect/reactivity");
   const filePatch = (path: string) =>
     [
@@ -44,13 +44,33 @@ const { diffAtom, pagedDiffAtom } = await vi.hoisted(async () => {
     // An environment query whose refetch returns equal content hands back the previous value
     // itself, so a refresh publishes a new result around the very same page.
     diffAtom: Atom.make(() => AsyncResult.success(firstPage)),
+    orderDiffAtom: Atom.make(() =>
+      AsyncResult.success({
+        patch: [
+          "src/c.browser.test.tsx",
+          "src/b.test.ts",
+          "src/a.logic.test.ts",
+          "src/c.tsx",
+          "src/b.ts",
+          "src/a.logic.ts",
+        ]
+          .map(filePatch)
+          .join(""),
+        truncated: false,
+        nextCursor: null,
+      }),
+    ),
     pagedDiffAtom: Atom.family((cursor: string) =>
       Atom.make(() => AsyncResult.success(pages[cursor]!)),
     ),
   };
 });
 
-const mocks = vi.hoisted(() => ({ paged: false, diffCommits: [] as Array<string | undefined> }));
+const mocks = vi.hoisted(() => ({
+  paged: false,
+  orderFixture: false,
+  diffCommits: [] as Array<string | undefined>,
+}));
 
 vi.mock(import("~/state/use-atom-command"), async (original) => ({
   ...(await original()),
@@ -64,7 +84,11 @@ vi.mock(import("~/state/pullRequests"), async (original) => {
       ...actual.pullRequestEnvironment,
       diff: (({ input }: { input: { cursor?: string; commit?: string } }) => {
         mocks.diffCommits.push(input.commit);
-        return mocks.paged ? pagedDiffAtom(input.cursor ?? "first") : diffAtom;
+        return mocks.orderFixture
+          ? orderDiffAtom
+          : mocks.paged
+            ? pagedDiffAtom(input.cursor ?? "first")
+            : diffAtom;
       }) as never,
     },
   };
@@ -146,6 +170,32 @@ const tab = (
     revealRequest={revealRequest}
   />
 );
+
+it("keeps tests in source order when a source basename contains a dot", async () => {
+  setup({ paged: false });
+  mocks.orderFixture = true;
+  using _restore = {
+    [Symbol.dispose]: () => {
+      mocks.orderFixture = false;
+    },
+  };
+  const container = document.createElement("div");
+  container.className = "flex h-[700px] w-[900px]";
+  await using screen = await render(tab(0), { container });
+  await screen.getByRole("button", { name: "Show file tree" }).click();
+  try {
+    await vi.waitFor(() => {
+      const tree = container.querySelector('[aria-label="Pull request #1 files"]');
+      const paths = Array.from(
+        tree?.shadowRoot?.querySelectorAll("[data-item-path]") ?? [],
+        (row) => row.getAttribute("data-item-path"),
+      ).filter((path) => path?.includes(".test."));
+      expect(paths).toEqual(["src/a.logic.test.ts", "src/b.test.ts", "src/c.browser.test.tsx"]);
+    });
+  } finally {
+    await screen.getByRole("button", { name: "Hide file tree" }).click();
+  }
+});
 
 it("keeps the diff after a refresh that brings back the same page", async () => {
   setup({ paged: false });

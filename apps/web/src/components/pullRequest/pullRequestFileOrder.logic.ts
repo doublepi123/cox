@@ -117,8 +117,16 @@ function orderByImports(
   return ordered;
 }
 
-function testedBaseName(path: string): string {
-  return (path.split("/").at(-1) ?? "").replace(/\.(?:test|spec)\..*$/, "").replace(/\.[^.]+$/, "");
+function testedSourcePosition(path: string, sourcePositions: ReadonlyMap<string, number>): number {
+  let name = (path.split("/").at(-1) ?? "").replace(/\.(?:test|spec)\..*$/, "");
+  while (name.length > 0) {
+    const position = sourcePositions.get(name);
+    if (position !== undefined) return position;
+    const dot = name.lastIndexOf(".");
+    if (dot <= 0) break;
+    name = name.slice(0, dot);
+  }
+  return Number.MAX_SAFE_INTEGER;
 }
 
 export function orderDiffFiles(
@@ -159,8 +167,8 @@ export function orderDiffFiles(
   const orderedTests = [...byPath.keys()]
     .filter((path) => tiers.get(path) === "test")
     .sort((left, right) => {
-      const leftPosition = sourcePositions.get(testedBaseName(left)) ?? Number.MAX_SAFE_INTEGER;
-      const rightPosition = sourcePositions.get(testedBaseName(right)) ?? Number.MAX_SAFE_INTEGER;
+      const leftPosition = testedSourcePosition(left, sourcePositions);
+      const rightPosition = testedSourcePosition(right, sourcePositions);
       return leftPosition - rightPosition || left.localeCompare(right);
     });
 
