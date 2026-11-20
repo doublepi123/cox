@@ -1134,7 +1134,19 @@ export function OmoDagPanel(props: {
 }) {
   const thread = useQuietThreadProjection(scopeThreadRef(props.environmentId, props.threadId));
   const providers = useEnvironmentProviders().get(props.environmentId) ?? EMPTY_PROVIDERS;
-  const runs = deriveOmoDagRuns(thread?.projection.subagents ?? []);
+  const runs = deriveOmoDagRuns(thread?.projection.subagents ?? []).map((run) => {
+    const provider = providers.find((candidate) => candidate.instanceId === run.providerInstanceId);
+    if (!provider || provider.models.length === 0) return run;
+
+    const modelNames = new Map(provider.models.map((model) => [model.slug, model.name]));
+    return {
+      ...run,
+      nodes: run.nodes.map((node) => {
+        const name = node.model === undefined ? undefined : modelNames.get(node.model);
+        return name === undefined ? node : { ...node, model: name };
+      }),
+    };
+  });
   if (runs.length === 0) return null;
   return (
     <OmoDagRunsPanel

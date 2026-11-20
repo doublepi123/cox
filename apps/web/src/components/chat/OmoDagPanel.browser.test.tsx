@@ -32,6 +32,8 @@ import { OmoDagPanel } from "./OmoDagPanel";
 const environmentId = EnvironmentId.make("environment");
 const threadId = ThreadId.make("parent");
 const providerInstanceId = ProviderInstanceId.make("omo-native");
+const lunaSlug = "cox/cox-ms-b48d2c000c6f9eeadb1d336603fcde9bc3bc55214850cf8c";
+const solSlug = "cox/cox-ms-48dfba02b993a68da066093e5a8c3bc99cc0e4a8234efe20";
 const omoProvider = Schema.decodeSync(ServerProvider)({
   instanceId: providerInstanceId,
   driver: "omo",
@@ -42,7 +44,10 @@ const omoProvider = Schema.decodeSync(ServerProvider)({
   status: "ready",
   auth: { status: "authenticated" },
   checkedAt: "2026-11-01T00:00:00.000Z",
-  models: [],
+  models: [
+    { slug: lunaSlug, name: "GPT-6 Luna", isCustom: false, capabilities: null },
+    { slug: solSlug, name: "GPT-6.1 Sol", isCustom: false, capabilities: null },
+  ],
 });
 
 const longLabel =
@@ -80,7 +85,7 @@ function graph(
         prompt: "Design the graph",
         state: "paused",
         attempt: 2,
-        model: "service/design-model",
+        model: solSlug,
         progress: "Paused at design review",
       },
       {
@@ -90,6 +95,7 @@ function graph(
         state: "running",
         attempt: 1,
         taskId: "task-build",
+        model: solSlug,
       },
       {
         id: "pending",
@@ -230,7 +236,7 @@ it("renders real dependencies, waves, run metadata and links only for available 
       childThreadId: ThreadId.make("child-research"),
     }),
     nativeTask("task-build", {
-      model: "service/actual-build-model",
+      model: lunaSlug,
       progress: "Resolved native progress",
       childThreadId: ThreadId.make("child-build"),
     }),
@@ -273,7 +279,16 @@ it("renders real dependencies, waves, run metadata and links only for available 
     .element(screen.getByRole("button", { name: `Select graph node ${longLabel}` }))
     .toHaveAttribute("aria-pressed", "false");
   expect(screen.container.querySelectorAll("a")).toHaveLength(2);
-  expect(screen.container.textContent).toContain("service/actual-build-model");
+  await expect
+    .element(
+      screen.getByRole("link", { name: "Open graph node Build" }).getByText("GPT-6 Luna", {
+        exact: true,
+      }),
+    )
+    .toBeVisible();
+  expect(screen.container.querySelector("[data-omo-dag-details]")?.textContent).toContain(
+    "GPT-6 Luna",
+  );
   expect(screen.container.textContent).toContain("Resolved native progress");
   expect(screen.container.textContent).toContain("graph/research-model");
 
@@ -287,7 +302,7 @@ it("renders real dependencies, waves, run metadata and links only for available 
   await act(() => setLanguagePreference("zh"));
   await expect.element(screen.getByRole("heading", { name: "依赖图" })).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "列表视图" })).toBeVisible();
-  expect(screen.container.textContent).toContain("service/actual-build-model");
+  expect(screen.container.textContent).toContain("GPT-6 Luna");
   expect(screen.container.textContent).toContain("Raw native error\n/path/to/file.ts:9");
   await screen.getByRole("link", { name: "打开图节点：Research" }).click();
   expect(screen.router?.state.location.pathname).toBe("/environment/child-research");
@@ -529,6 +544,9 @@ it("defaults a 390px phone to waves and opens a full-screen graph with one tap",
     .element(screen.getByRole("button", { name: "List view" }))
     .toHaveAttribute("aria-pressed", "true");
   await expect.element(screen.getByText("Depends on Design, Build", { exact: true })).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Select graph node Design" }).element().textContent,
+  ).toContain("GPT-6.1 Sol");
   const graphToggle = screen.getByRole("button", { name: "Graph view" });
   expect(graphToggle.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
 
