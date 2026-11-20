@@ -306,12 +306,23 @@ export function makeCursorAgentSdkReplayRunner(
           );
         }
         if (entry.type === "expect_outbound") {
-          const frameType = Reflect.get(entry.frame, "type");
+          const frame = entry.frame;
+          if (typeof frame !== "object" || frame === null) {
+            return yield* recordFailure(
+              new CursorReplayFrameMismatchError({
+                scenario: transcript.scenario,
+                cursor,
+                expected: { type: "run.cancel", runId },
+                actual: frame,
+              }),
+            );
+          }
+          const frameType = Reflect.get(frame, "type");
           const expectedCancel = {
             type: "run.cancel",
             runId,
           };
-          if (frameType !== "run.steer" && !sameFrame(entry.frame, expectedCancel)) {
+          if (frameType !== "run.steer" && !sameFrame(frame, expectedCancel)) {
             return yield* recordFailure(
               new CursorReplayFrameMismatchError({
                 scenario: transcript.scenario,
