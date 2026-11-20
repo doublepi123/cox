@@ -14,8 +14,11 @@ import * as GitHubChangeRequestTemplate from "./gitHubChangeRequestTemplate.ts";
 
 const TEMPLATE_DIRECTORIES = [
   ".github/PULL_REQUEST_TEMPLATE",
+  ".github/pull_request_template",
   "PULL_REQUEST_TEMPLATE",
+  "pull_request_template",
   "docs/PULL_REQUEST_TEMPLATE",
+  "docs/pull_request_template",
 ] as const;
 
 const layerPrTemplateDetectionTest = Layer.merge(
