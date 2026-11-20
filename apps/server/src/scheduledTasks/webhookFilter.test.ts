@@ -37,6 +37,12 @@ describe("findFailedWebhookFilter", () => {
     );
   });
 
+  it("matches exists when a wildcard resolves to an object", () => {
+    assert.isNull(
+      findFailedWebhookFilter([{ path: "body.issue.labels[]", op: "exists" }], issueComment),
+    );
+  });
+
   it("fails notEquals on a wildcard path when any element equals the value", () => {
     assert.deepEqual(
       findFailedWebhookFilter(
