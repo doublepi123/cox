@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.16 — 2026-11-20
+
+- Show model names in OMO task graphs instead of internal gateway identifiers.
+- Import selected models from connections with an API key or custom headers.
+  A preview still expires when the connection changes after fetching models.
+
 ## 0.2.15 — 2026-11-20
 
 - A full disk no longer leaves a run stuck in Preparing. Closing a terminal
