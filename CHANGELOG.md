@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.2.15 — 2026-11-20
+
+- A full disk no longer leaves a run stuck in Preparing. Closing a terminal
+  stops the background jobs it started, and a machine without swap stops
+  stalling every agent for hours.
+- Whole-word search no longer misses files. Find in Thread matches a dotted
+  capital I, and a match inside a wide table scrolls into view.
+- A thread that finished while you were away opens at the end. PDF pages stay
+  visible while the panel is resized. Ctrl+B reaches a focused terminal, and
+  the terminal button reopens the drawer after the last terminal closed.
+- Signed preview URLs stay out of request logs. A `gh` credential lookup no
+  longer leaves a dbus daemon behind, and a provider status check stops after
+  8 MB of output.
+- A Codex goal turn stays paused after a restart. An image an ACP agent reads
+  shows a preview, and a failed thread stays Failed while background work is
+  still running.
+
 ## 0.2.14 — 2026-11-19
 
 - Group sidebar threads by project and show folder rows on two lines by default.
