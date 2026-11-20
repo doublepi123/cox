@@ -3,6 +3,7 @@ import {
   buildExpiredTerminalContextToastCopy,
   mergeDirectPreviewAnnotation,
   planComposerTurn,
+  restorePlanFollowUpComposer,
   snapshotComposerSend,
   withMessageContext,
   deriveAvailableRevertTurnCounts,
@@ -1132,6 +1133,62 @@ describe("planComposerTurn", () => {
       turnDispatchMode: "queue",
       shouldQueueBehindActiveRun: true,
     });
+  });
+});
+
+describe("restorePlanFollowUpComposer", () => {
+  it.each([
+    {
+      name: "restores the original draft while its route is current and the composer stayed empty",
+      draft: "",
+      refs: "",
+      routeIsCurrent: true,
+      expected: { draft: "Tighten step 2", refs: "Tighten step 2", cursor: "Tighten step 2" },
+    },
+    {
+      name: "preserves newer typed content while the follow-up is in flight",
+      draft: "Next idea",
+      refs: "Next idea",
+      routeIsCurrent: true,
+      expected: { draft: "Next idea", refs: "Next idea", cursor: null },
+    },
+    {
+      name: "does not update another route's live refs after navigation",
+      draft: "",
+      refs: "Other thread",
+      routeIsCurrent: false,
+      expected: { draft: "Tighten step 2", refs: "Other thread", cursor: null },
+    },
+  ])("$name", ({ draft, refs, routeIsCurrent, expected }) => {
+    const composer = { draft, refs, cursor: null as string | null };
+    restorePlanFollowUpComposer({
+      snapshot: {
+        prompt: "Tighten step 2",
+        terminalContexts: [],
+        reviewComments: [],
+        previewAnnotations: [],
+        threadContexts: [],
+        environmentContexts: [],
+      },
+      draftHasUserContent: composer.draft.trim().length > 0,
+      routeIsCurrent,
+      writeComposerRefs: (snapshot) => {
+        composer.refs = snapshot.prompt;
+      },
+      writePrompt: (prompt) => {
+        composer.draft = prompt;
+      },
+      writeTerminalContexts: () => undefined,
+      writeReviewComments: () => undefined,
+      writePreviewAnnotations: () => undefined,
+      writeThreadContexts: () => undefined,
+      writeEnvironmentContexts: () => undefined,
+      resetCursor: ({ prompt }) => {
+        composer.cursor = prompt;
+      },
+    });
+
+    expect(composer).toEqual(expected);
   });
 });
 

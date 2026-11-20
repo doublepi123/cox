@@ -1151,6 +1151,9 @@ export interface PlanFollowUpComposerSnapshot {
 
 export function restorePlanFollowUpComposer(input: {
   readonly snapshot: PlanFollowUpComposerSnapshot;
+  readonly draftHasUserContent: boolean;
+  readonly routeIsCurrent: boolean;
+  readonly writeComposerRefs: (snapshot: PlanFollowUpComposerSnapshot) => void;
   readonly writePrompt: (prompt: string) => void;
   readonly writeTerminalContexts: (contexts: ReadonlyArray<TerminalContextDraft>) => void;
   readonly writeReviewComments: (comments: ReadonlyArray<ReviewCommentContext>) => void;
@@ -1163,12 +1166,15 @@ export function restorePlanFollowUpComposer(input: {
     detectTrigger: boolean;
   }) => void;
 }): void {
+  if (input.draftHasUserContent) return;
+  if (input.routeIsCurrent) input.writeComposerRefs(input.snapshot);
   input.writePrompt(input.snapshot.prompt);
   input.writeTerminalContexts(input.snapshot.terminalContexts);
   input.writeReviewComments(input.snapshot.reviewComments);
   input.writePreviewAnnotations(input.snapshot.previewAnnotations);
   input.writeThreadContexts(input.snapshot.threadContexts);
   input.writeEnvironmentContexts(input.snapshot.environmentContexts);
+  if (!input.routeIsCurrent) return;
   input.resetCursor({
     cursor: collapseExpandedComposerCursor(input.snapshot.prompt, input.snapshot.prompt.length),
     prompt: input.snapshot.prompt,
