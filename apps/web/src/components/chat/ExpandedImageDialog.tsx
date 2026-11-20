@@ -26,6 +26,8 @@ import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { expandedImageKey } from "./ExpandedImagePreview";
 import { registerThreadOverlay } from "./threadOverlayRetention";
+import { mediaReferenceFileName } from "@t3tools/client-runtime/media-reference";
+import { mediaMimeType, mediaMimeTypeFromExtension } from "@t3tools/shared/mediaPreview";
 
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
@@ -40,6 +42,18 @@ function ExpandedMediaFailure({ children }: { children: ReactNode }) {
     <div role="alert" className={EXPANDED_MEDIA_STATE_CLASS_NAME}>
       {children}
     </div>
+  );
+}
+
+function itemMimeType(item: ExpandedImageItem): string | undefined {
+  if (item.mimeType) return item.mimeType;
+  const reference = item.actionsSource?.reference;
+  const fileName = reference && mediaReferenceFileName(reference);
+  const extension = fileName?.slice(fileName.lastIndexOf("."));
+  return (
+    (extension && mediaMimeTypeFromExtension(extension)) ||
+    mediaMimeType(item.src ?? "") ||
+    undefined
   );
 }
 
@@ -228,7 +242,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 key={`${index}:${item.src}`}
                 src={item.src}
                 name={item.name}
-                mimeType={item.mimeType}
+                mimeType={itemMimeType(item)}
                 onError={() => setFailedImageSrc(item.src)}
               />
             )}

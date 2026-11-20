@@ -17,6 +17,55 @@ const snapShotSource: SnapShotSource = {
 };
 
 describe("ExpandedImageDialog", () => {
+  it("fits a workspace SVG to the viewer without enlarging the next raster image", async () => {
+    const src = URL.createObjectURL(
+      new Blob(
+        [
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 240"><rect width="600" height="240"/></svg>',
+        ],
+        { type: "image/svg+xml" },
+      ),
+    );
+    using _url = { [Symbol.dispose]: () => URL.revokeObjectURL(src) };
+    await using screen = await render(
+      <ExpandedImageDialog
+        preview={{
+          images: [
+            {
+              src,
+              name: "Diagram",
+              actionsSource: {
+                kind: "image",
+                src,
+                name: "Diagram",
+                reference: { kind: "file", path: "/workspace/diagram#2.svg" },
+              },
+            },
+            { src: PIXEL, name: "Pixel" },
+          ],
+          index: 0,
+        }}
+        onClose={() => {}}
+      />,
+      { router: false },
+    );
+    const diagram = screen.getByRole("img", { name: "Diagram", exact: true });
+    await vi.waitFor(() => {
+      const image = diagram.element();
+      if (!(image instanceof HTMLImageElement)) throw new Error("Diagram image is missing");
+      expect(image.naturalWidth).toBe(300);
+      expect(image.getBoundingClientRect().width).toBeGreaterThan(image.naturalWidth);
+    });
+    await userEvent.keyboard("{ArrowRight}");
+    const pixel = screen.getByRole("img", { name: "Pixel", exact: true });
+    await vi.waitFor(() => {
+      const image = pixel.element();
+      if (!(image instanceof HTMLImageElement)) throw new Error("Raster image is missing");
+      expect(image.naturalWidth).toBe(1);
+      expect(image.getBoundingClientRect().width).toBe(1);
+    });
+  });
+
   it("Escape closes a popup opened inside the dialog before the dialog", async () => {
     const onClose = vi.fn();
     await using screen = await render(
