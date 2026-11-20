@@ -193,6 +193,33 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     ).toBe(false);
   });
 
+  it.each([
+    ["queued", "message-queued", true],
+    ["queued", "message-before-send", false],
+    ["preparing", "message-queued", false],
+    ["starting", "message-queued", false],
+  ] as const)(
+    "acknowledges connecting work in %s with message %s: %s",
+    (status, messageId, acknowledged) => {
+      const localDispatch = createLocalDispatchSnapshot(
+        makeThread({ latestRun: completedTurn, runtime: readySession }),
+        { latestUserMessageId: MessageId.make("message-before-send") },
+      );
+      expect(
+        hasServerAcknowledgedLocalDispatch({
+          localDispatch,
+          phase: "connecting",
+          latestRun: completedTurn,
+          latestUserMessageId: MessageId.make(messageId),
+          runtime: { ...readySession, status },
+          hasPendingApproval: false,
+          hasPendingUserInput: false,
+          threadError: null,
+        }),
+      ).toBe(acknowledged);
+    },
+  );
+
   it("waits for the matching running turn before acknowledging", () => {
     const localDispatch = createLocalDispatchSnapshot(
       makeThread({ latestRun: completedTurn, runtime: readySession }),

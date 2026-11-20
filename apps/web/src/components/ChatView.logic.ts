@@ -1071,14 +1071,14 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
     return true;
   }
+  const latestUserMessageChanged =
+    input.localDispatch.latestUserMessageId !== (input.latestUserMessageId ?? null);
   if (input.phase === "connecting" || derivePhase(input.runtime ?? null) === "connecting") {
-    return false;
+    return input.runtime?.status === "queued" && latestUserMessageChanged;
   }
 
   const latestRun = input.latestRun ?? null;
   const runtime = input.runtime ?? null;
-  const latestUserMessageChanged =
-    input.localDispatch.latestUserMessageId !== (input.latestUserMessageId ?? null);
   const latestRunChanged =
     input.localDispatch.latestRunId !== (latestRun?.runId ?? null) ||
     input.localDispatch.latestRunRequestedAt !== (latestRun?.requestedAt ?? null) ||
