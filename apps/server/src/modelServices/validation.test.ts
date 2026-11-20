@@ -135,7 +135,7 @@ describe("OMO model service validation", () => {
     expect(current.modelServices[serviceId]?.revision).toBe(service.revision);
     const error = Effect.runSync(
       Effect.flip(
-        resolveModelServiceImport(current, {
+        resolveModelServiceImport(current, current, {
           modelServiceImport: {
             serviceId,
             fingerprint: Effect.runSync(modelServiceFingerprint(service)),
@@ -149,8 +149,9 @@ describe("OMO model service validation", () => {
   });
 
   it("applies a matching import against the current service configuration", () => {
+    const current = settings();
     const resolved = Effect.runSync(
-      resolveModelServiceImport(settings(), {
+      resolveModelServiceImport(current, current, {
         modelServiceImport: {
           serviceId,
           fingerprint: Effect.runSync(modelServiceFingerprint(service)),

@@ -130,15 +130,20 @@ export const modelServiceFingerprint = Effect.fn("modelServiceFingerprint")(func
 }, Effect.provide(NodeCrypto.layer));
 
 export function resolveModelServiceImport(
-  settings: ServerSettings,
+  persistedSettings: ServerSettings,
+  materializedSettings: ServerSettings,
   patch: ServerSettingsPatch,
 ): Effect.Effect<ServerSettingsPatch, ModelServiceError> {
   return Effect.gen(function* () {
     const input = patch.modelServiceImport;
     if (!input) return patch;
-    const service = settings.modelServices[input.serviceId];
-    const fingerprint = service ? yield* modelServiceFingerprint(service) : undefined;
-    if (!service || fingerprint !== input.fingerprint)
+    const service = persistedSettings.modelServices[input.serviceId];
+    const fingerprintSource = materializedSettings.modelServices[input.serviceId];
+    if (
+      !service ||
+      !fingerprintSource ||
+      (yield* modelServiceFingerprint(fingerprintSource)) !== input.fingerprint
+    )
       return yield* new ModelServiceError({
         detail: "The model service changed. Close this dialog and fetch the models again.",
       });

@@ -270,7 +270,8 @@ const applyModelServiceSettingsPatch = Effect.fn("applyModelServiceSettingsPatch
   settingsPath: string,
   materialize: (settings: ServerSettings) => Effect.Effect<ServerSettings, ServerSettingsError>,
 ) {
-  const resolvedPatch = yield* resolveModelServiceImport(current, patch).pipe(
+  const fingerprintSettings = patch.modelServiceImport ? yield* materialize(current) : current;
+  const resolvedPatch = yield* resolveModelServiceImport(current, fingerprintSettings, patch).pipe(
     Effect.mapError(
       (cause) => new ServerSettingsError({ settingsPath, operation: "normalize", cause }),
     ),

@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
   ModelSelection,
+  ModelServiceError,
   ModelServiceId,
   ModelServiceConfig,
   ProjectId,
@@ -28,10 +29,13 @@ import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import { sourceControlHostSecretName } from "./sourceControl/sourceControlHostSecrets.ts";
 import * as ServerConfig from "./config.ts";
+import { discoverModelService } from "./modelServices/discovery.ts";
 import * as SqlitePersistence from "./persistence/Sqlite.ts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as ServerSettingsModule from "./serverSettings.ts";
@@ -320,6 +324,109 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         assert.equal(cleared.modelServices[id]?.apiKey, "");
         assert.deepEqual(cleared.modelServices[id]?.headers, {});
       }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
+  );
+
+  it.effect.each([
+    { label: "API key only", apiKey: "catalog-test-key", header: "", rotateKey: false },
+    { label: "request header only", apiKey: "", header: "catalog-test-header", rotateKey: false },
+    {
+      label: "both credentials",
+      apiKey: "catalog-test-key",
+      header: "catalog-test-header",
+      rotateKey: false,
+    },
+    {
+      label: "rotated API key",
+      apiKey: "catalog-test-key",
+      header: "catalog-test-header",
+      rotateKey: true,
+    },
+  ])(
+    "checks a model catalog preview with $label against persisted settings",
+    ({ apiKey, header, rotateKey }) =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsModule.ServerSettingsService;
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const serviceId = ModelServiceId.make("catalog-import");
+        const headers = header ? { "x-tenant": header } : {};
+        const connection = decodeModelService({
+          name: "Import catalog",
+          baseUrl: "https://catalog.test",
+          protocol: "anthropic-messages",
+          ...(apiKey ? { apiKey } : {}),
+          headers,
+        });
+        const saved = yield* settings.updateSettings({
+          modelServices: { [serviceId]: connection },
+        });
+        const http = HttpClient.make((request) =>
+          Effect.sync(() => {
+            assert.strictEqual(request.method, "GET");
+            assert.strictEqual(request.url, "https://catalog.test/v1/models");
+            assert.strictEqual(request.headers["x-api-key"], apiKey || undefined);
+            assert.strictEqual(request.headers["x-tenant"], header || undefined);
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json({ data: [{ id: "first" }, { id: "second" }] }),
+            );
+          }),
+        );
+        const preview = yield* discoverModelService({ serviceId, preview: true }).pipe(
+          Effect.provideService(HttpClient.HttpClient, http),
+        );
+        assert.deepEqual(
+          preview.models.map((model) => model.id),
+          ["first", "second"],
+        );
+        const patch = {
+          modelServiceImport: {
+            serviceId,
+            fingerprint: preview.fingerprint,
+            models: preview.models.filter((model) => model.id === "second"),
+            discoveredAt: preview.discoveredAt,
+          },
+        };
+        if (rotateKey) {
+          const current = saved.modelServices[serviceId];
+          assert.isDefined(current);
+          yield* settings.updateSettings({
+            modelServices: { [serviceId]: { ...current, apiKey: "catalog-rotated-key" } },
+          });
+          const beforeImport = yield* fs.readFileString(config.settingsPath);
+          const rejected = yield* Effect.flip(settings.updateSettings(patch));
+          if (!Schema.is(ModelServiceError)(rejected.cause)) throw rejected;
+          assert.include(rejected.cause.detail, "The model service changed");
+          assert.strictEqual(yield* fs.readFileString(config.settingsPath), beforeImport);
+          return;
+        }
+
+        const before = (yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        )).modelServices[serviceId];
+        yield* settings.updateSettings(patch);
+        const raw = yield* fs.readFileString(config.settingsPath);
+        const persisted = (yield* decodeServerSettingsJson(raw)).modelServices[serviceId];
+        assert.deepEqual(
+          persisted?.models.map((model) => model.id),
+          ["second"],
+        );
+        assert.strictEqual(persisted?.discoveredAt, preview.discoveredAt);
+        assert.strictEqual(persisted?.apiKey, before?.apiKey);
+        assert.deepEqual(persisted?.headers, before?.headers);
+        assert.notInclude(raw, "catalog-test-key");
+        assert.notInclude(raw, "catalog-test-header");
+
+        const reloaded = yield* ServerSettingsModule.ServerSettingsService.pipe(
+          Effect.flatMap((settings) => settings.getSettings),
+          Effect.provide(
+            Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
+          ),
+        );
+        assert.strictEqual(reloaded.modelServices[serviceId]?.apiKey, apiKey || undefined);
+        assert.deepEqual(reloaded.modelServices[serviceId]?.headers, headers);
+        assert.deepEqual(reloaded.modelServices[serviceId]?.models, persisted?.models);
+      }).pipe(Effect.provide(layerServerSettings())),
   );
 
   it.effect("serializes concurrent model preference edits without cancelling duplicate adds", () =>
