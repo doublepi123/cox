@@ -7,9 +7,11 @@ export function useLocalServiceUpdate(enabled: boolean, statusRefreshMs?: number
   const [pending, setPending] = useState<"" | "check" | "download" | "apply" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const serviceVersion = useRef<string | null>(null);
 
-  const request = useCallback(async (action = "", signal?: AbortSignal) => {
-    const response = await fetch(`/api/local-service-update${action ? `/${action}` : ""}`, {
+  const request = useCallback(async (action = "", signal?: AbortSignal, backupDatabase = false) => {
+    const path = action ? `/api/local-service-update/${action}` : "/api/local-service-update";
+    const response = await fetch(backupDatabase ? `${path}?backupDatabase=true` : path, {
       method: action ? "POST" : "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -22,6 +24,13 @@ export function useLocalServiceUpdate(enabled: boolean, statusRefreshMs?: number
           translateCurrent("Update request failed ({status}).", { status: response.status }),
       );
     if (!signal?.aborted) {
+      const previousVersion = serviceVersion.current;
+      if (previousVersion === null || body.status === "idle") {
+        serviceVersion.current = body.currentVersion;
+        if (previousVersion !== null && body.currentVersion !== previousVersion) {
+          window.location.reload();
+        }
+      }
       setError(null);
       setState(body);
     }
@@ -67,13 +76,13 @@ export function useLocalServiceUpdate(enabled: boolean, statusRefreshMs?: number
     };
   }, [enabled, request, refreshMs]);
 
-  const execute = async (action: "" | "check" | "download" | "apply") => {
+  const execute = async (action: "" | "check" | "download" | "apply", backupDatabase = false) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setPending(action);
     setError(null);
     try {
-      await request(action);
+      await request(action, undefined, backupDatabase);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -87,7 +96,7 @@ export function useLocalServiceUpdate(enabled: boolean, statusRefreshMs?: number
     error,
     reload: () => execute(""),
     check: () => execute("check"),
-    download: () => execute("download"),
+    download: (backupDatabase = false) => execute("download", backupDatabase),
     apply: () => execute("apply"),
   };
 }

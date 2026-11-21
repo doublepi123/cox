@@ -201,8 +201,11 @@ export const zh = {
   "Download update": "下载更新",
   "Downloading and verifying Cox. Current tasks will not be interrupted.":
     "正在下载并校验 Cox，不会中断当前任务。",
-  "Cox {version} is downloaded and backed up. Restart to finish updating.":
-    "Cox {version} 已下载并完成备份，重启后即可完成更新。",
+  "Cox {version} is ready. Restart to finish updating.":
+    "Cox {version} 已就绪，重启后即可完成更新。",
+  "Back up the database before this update": "本次更新前备份数据库",
+  "Preparing the update and saving backups…": "正在准备更新并保存备份…",
+  "A settings backup is kept before restart.": "重启前会保留设置备份。",
   "Restarting Cox. This page will reconnect when it is ready.":
     "正在重启 Cox，就绪后页面会重新连接。",
   "A database and settings backup is kept before restart.": "重启前会保留数据库和设置备份。",

@@ -647,6 +647,7 @@ class EnvironmentLocalServiceUpdatesHttpApi extends HttpApiGroup.make("localServ
   )
   .add(
     HttpApiEndpoint.post("download", "/api/local-service-update/download", {
+      query: Schema.Struct({ backupDatabase: Schema.optionalKey(Schema.Literal("true")) }),
       success: LocalServiceUpdateState,
       error: [EnvironmentScopeRequiredError, EnvironmentInternalError],
     }).middleware(EnvironmentAuthenticatedAuth),

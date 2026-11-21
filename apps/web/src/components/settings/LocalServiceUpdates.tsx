@@ -8,6 +8,7 @@ import { localServiceUpdateSupported } from "./localServiceUpdateSupport";
 import { useTranslation } from "../../i18n";
 import { DesktopUpdateProgress } from "../DesktopUpdateProgress";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -28,6 +29,7 @@ export function LocalServiceUpdates() {
   const permitted = useEnvironmentScope(environmentId, AuthEnvironmentMaintainScope);
   const updates = useLocalServiceUpdate(supported && permitted);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [backupDatabase, setBackupDatabase] = useState(false);
   const state = updates.state;
   if (!supported || !permitted) return null;
   if (state?.supported === false) return null;
@@ -47,18 +49,22 @@ export function LocalServiceUpdates() {
       </SettingsSection>
     ) : null;
   const busy = updates.busy || ["checking", "downloading", "restarting"].includes(state.status);
+  const canDownload =
+    !state.checkOnly && (state.status === "available" || state.status === "error");
   const description = updates.error
     ? t(updates.error)
     : state.status === "checking"
       ? t("Checking for updates…")
       : state.status === "downloading"
-        ? t("Downloading and verifying Cox. Current tasks will not be interrupted.")
+        ? state.progress
+          ? t("Downloading and verifying Cox. Current tasks will not be interrupted.")
+          : t("Preparing the update and saving backups…")
         : state.status === "restarting"
           ? t("Restarting Cox. This page will reconnect when it is ready.")
           : state.status === "ready"
             ? state.message !== null
               ? t(state.message)
-              : t("Cox {version} is downloaded and backed up. Restart to finish updating.", {
+              : t("Cox {version} is ready. Restart to finish updating.", {
                   version: state.latestVersion ?? "",
                 })
             : state.status === "available"
@@ -80,8 +86,8 @@ export function LocalServiceUpdates() {
             <Button size="sm" disabled={busy} onClick={() => setConfirmOpen(true)}>
               {t("Restart and update")}
             </Button>
-          ) : !state.checkOnly && (state.status === "available" || state.status === "error") ? (
-            <Button size="sm" disabled={busy} onClick={() => void updates.download()}>
+          ) : canDownload ? (
+            <Button size="sm" disabled={busy} onClick={() => void updates.download(backupDatabase)}>
               {t(state.status === "error" ? "Retry" : "Download update")}
             </Button>
           ) : (
@@ -89,7 +95,10 @@ export function LocalServiceUpdates() {
               size="sm"
               variant="outline"
               disabled={busy}
-              onClick={() => void updates.check()}
+              onClick={() => {
+                setBackupDatabase(false);
+                void updates.check();
+              }}
             >
               {t(state.status === "checking" ? "Checking for updates…" : "Check for updates")}
             </Button>
@@ -102,10 +111,23 @@ export function LocalServiceUpdates() {
             <code className="break-words">npm install --global @doublepi123/cox@latest</code>
           </p>
         ) : null}
+        {canDownload ? (
+          <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-sm">
+            <Checkbox
+              aria-label={t("Back up the database before this update")}
+              checked={backupDatabase}
+              disabled={busy}
+              onCheckedChange={setBackupDatabase}
+            />
+            {t("Back up the database before this update")}
+          </label>
+        ) : null}
         {state.progress ? <DesktopUpdateProgress progress={state.progress} /> : null}
         {state.backup ? (
           <p className="text-xs text-muted-foreground">
-            {t("A database and settings backup is kept before restart.")}
+            {state.backup.database
+              ? t("A database and settings backup is kept before restart.")
+              : t("A settings backup is kept before restart.")}
           </p>
         ) : null}
       </SettingsRow>

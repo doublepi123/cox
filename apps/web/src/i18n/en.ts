@@ -226,8 +226,11 @@ export const en = {
   "Download update": "Download update",
   "Downloading and verifying Cox. Current tasks will not be interrupted.":
     "Downloading and verifying Cox. Current tasks will not be interrupted.",
-  "Cox {version} is downloaded and backed up. Restart to finish updating.":
-    "Cox {version} is downloaded and backed up. Restart to finish updating.",
+  "Cox {version} is ready. Restart to finish updating.":
+    "Cox {version} is ready. Restart to finish updating.",
+  "Back up the database before this update": "Back up the database before this update",
+  "Preparing the update and saving backups…": "Preparing the update and saving backups…",
+  "A settings backup is kept before restart.": "A settings backup is kept before restart.",
   "Restarting Cox. This page will reconnect when it is ready.":
     "Restarting Cox. This page will reconnect when it is ready.",
   "A database and settings backup is kept before restart.":

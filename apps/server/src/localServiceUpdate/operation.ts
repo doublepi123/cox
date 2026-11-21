@@ -13,6 +13,7 @@ import {
   localServiceUpdateHelper,
   updateEnvironment,
 } from "./ownership.ts";
+
 import { verifyLocalServiceSystemdUpdate } from "./systemd.ts";
 
 export interface LocalServiceUpdatePlan {
@@ -27,6 +28,7 @@ export interface LocalServiceUpdatePlan {
   readonly baseDir: string;
   readonly stateDir: string;
   readonly databasePath: string;
+  readonly backupDatabase?: boolean;
   readonly runtimeStatePath: string;
   readonly environmentId: string;
   readonly operation: string;
@@ -39,7 +41,7 @@ export interface LocalServiceUpdateReceipt {
   readonly status: "activating" | "healthy" | "rolled-back" | "recovery-failed";
   readonly message: string | null;
   readonly backupDirectory: string;
-  readonly databaseBackup: string;
+  readonly databaseBackup: string | null;
 }
 
 export function localServiceReceiptState(
@@ -105,7 +107,7 @@ export async function readLocalServiceReceipt(
       !("backupDirectory" in value) ||
       typeof value.backupDirectory !== "string" ||
       !("databaseBackup" in value) ||
-      typeof value.databaseBackup !== "string"
+      (value.databaseBackup !== null && typeof value.databaseBackup !== "string")
     )
       throw new Error("Invalid Cox update receipt.");
     return value as LocalServiceUpdateReceipt;
@@ -143,11 +145,13 @@ export async function prepareLocalServiceUpdate(plan: LocalServiceUpdatePlan): P
   const staging = join(plan.operation, `backup.staging-${process.pid}`);
   await mkdir(staging, { mode: 0o700 });
   try {
-    const database = new DatabaseSync(plan.databasePath, { readOnly: true });
-    try {
-      await backup(database, join(staging, "statev2.sqlite"));
-    } finally {
-      database.close();
+    if (plan.backupDatabase !== false) {
+      const database = new DatabaseSync(plan.databasePath, { readOnly: true });
+      try {
+        await backup(database, join(staging, "statev2.sqlite"));
+      } finally {
+        database.close();
+      }
     }
     for (const name of ["settings.json", "client-settings.json", "keybindings.json"]) {
       try {
@@ -244,6 +248,8 @@ async function writeDropIn(path: string, contents: string | null): Promise<void>
 export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): Promise<void> {
   const receiptPath = join(plan.operation, "receipt.json");
   const backupDirectory = join(plan.operation, "backup");
+  const databaseBackup =
+    plan.backupDatabase === false ? null : join(backupDirectory, "statev2.sqlite");
   const receipt = (
     status: LocalServiceUpdateReceipt["status"],
     message: string | null,
@@ -253,7 +259,7 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
     status,
     message,
     backupDirectory,
-    databaseBackup: join(backupDirectory, "statev2.sqlite"),
+    databaseBackup,
   });
   await writeJson(receiptPath, receipt("activating", null));
   await writeJson(
@@ -272,7 +278,7 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
       )
     )
       throw new Error("The staged Cox entrypoint is invalid.");
-    if (!(await lstat(join(plan.operation, "backup", "statev2.sqlite"))).isFile())
+    if (databaseBackup !== null && !(await lstat(databaseBackup)).isFile())
       throw new Error("The Cox database backup is missing.");
     await assertLocalServiceMainPid(plan.serviceUnit, plan.pid);
     previous = await readDropIn(plan.dropIn);

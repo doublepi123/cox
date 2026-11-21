@@ -16,6 +16,7 @@ const Plan = Schema.Struct({
   baseDir: Schema.String,
   stateDir: Schema.String,
   databasePath: Schema.String,
+  backupDatabase: Schema.optionalKey(Schema.Boolean),
   runtimeStatePath: Schema.String,
   environmentId: Schema.String,
   operation: Schema.String,

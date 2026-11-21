@@ -130,38 +130,65 @@ describe("local service update settings", () => {
     mocks.permitted = true;
   });
 
-  it("shows download progress before the download request finishes", async () => {
-    using _timers = fakeTimers();
-    mocks.useRealHook = true;
-    using _realHook = {
-      [Symbol.dispose]: () => {
-        mocks.useRealHook = false;
-      },
-    };
-    const available = { ...mocks.state, status: "available" as const, latestVersion: "0.2.0" };
-    let finishDownload: (result: Response) => void = () => {
-      throw new Error("Download request has not started.");
-    };
-    const download = new Promise<Response>((resolve) => {
-      finishDownload = resolve;
-    });
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response(available))
-      .mockReturnValueOnce(download)
-      .mockResolvedValue(response({ ...available, status: "downloading" }));
-    using _fetch = stubGlobal("fetch", fetchMock);
-    await using screen = await render(<LocalServiceUpdates />);
-    await screen.getByRole("button", { name: "Download update" }).click();
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
-    await expect
-      .element(
-        screen.getByText("Downloading and verifying Cox. Current tasks will not be interrupted."),
-      )
-      .toBeVisible();
-    await act(async () => finishDownload(response({ ...available, status: "ready" })));
-    await expect.element(screen.getByRole("button", { name: "Restart and update" })).toBeEnabled();
-  });
+  it.each([false, true])(
+    "prepares the selected backup and shows download progress (opt-in: %s)",
+    async (optIn) => {
+      using _timers = fakeTimers();
+      mocks.useRealHook = true;
+      using _realHook = {
+        [Symbol.dispose]: () => {
+          mocks.useRealHook = false;
+        },
+      };
+      const available = { ...mocks.state, status: "available" as const, latestVersion: "0.2.0" };
+      let finishDownload: (result: Response) => void = () => {
+        throw new Error("Download request has not started.");
+      };
+      const download = new Promise<Response>((resolve) => {
+        finishDownload = resolve;
+      });
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(available))
+        .mockReturnValueOnce(download)
+        .mockResolvedValue(
+          response({
+            ...available,
+            status: "downloading",
+            progress: {
+              phase: "installing",
+              transferredBytes: 0,
+              totalBytes: null,
+              bytesPerSecond: null,
+              remainingSeconds: null,
+            },
+          }),
+        );
+      using _fetch = stubGlobal("fetch", fetchMock);
+      await using screen = await render(<LocalServiceUpdates />);
+      const checkbox = screen.getByRole("checkbox", {
+        name: "Back up the database before this update",
+      });
+      await expect.element(checkbox).not.toBeChecked();
+      if (optIn) await checkbox.click();
+      await screen.getByRole("button", { name: "Download update" }).click();
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        optIn
+          ? "/api/local-service-update/download?backupDatabase=true"
+          : "/api/local-service-update/download",
+      );
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      await expect
+        .element(
+          screen.getByText("Downloading and verifying Cox. Current tasks will not be interrupted."),
+        )
+        .toBeVisible();
+      await act(async () => finishDownload(response({ ...available, status: "ready" })));
+      await expect
+        .element(screen.getByRole("button", { name: "Restart and update" }))
+        .toBeEnabled();
+    },
+  );
 
   it("polls after apply, clears a transient restart error and stops when healthy", async () => {
     using _timers = fakeTimers();
@@ -197,6 +224,56 @@ describe("local service update settings", () => {
     fetchMock.mockClear();
     await act(() => vi.advanceTimersByTimeAsync(2_000));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reloads the page once the new service version reports a healthy restart", async () => {
+    using _timers = fakeTimers();
+    mocks.useRealHook = true;
+    using _realHook = {
+      [Symbol.dispose]: () => {
+        mocks.useRealHook = false;
+      },
+    };
+    const controller = new AbortController();
+    using _listener = { [Symbol.dispose]: () => controller.abort() };
+    const reload = vi.fn();
+    window.navigation.addEventListener(
+      "navigate",
+      (event) => {
+        if (event.navigationType !== "reload") return;
+        event.preventDefault();
+        reload();
+      },
+      { signal: controller.signal },
+    );
+    const ready = {
+      ...mocks.state,
+      currentVersion: "0.1.58",
+      latestVersion: "0.2.0",
+      status: "ready" as const,
+    };
+    const starting = { ...ready, status: "restarting" as const };
+    const replacement = { ...starting, currentVersion: "0.2.0" };
+    using _fetch = stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(ready))
+        .mockResolvedValueOnce(response(starting))
+        .mockResolvedValueOnce(response(replacement))
+        .mockResolvedValue(response({ ...replacement, status: "idle", latestVersion: null })),
+    );
+    await using screen = await render(<LocalServiceUpdates />);
+    await screen.getByRole("button", { name: "Restart and update", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Restart and update" }).click();
+    await expect
+      .element(screen.getByText("Restarting Cox. This page will reconnect when it is ready."))
+      .toBeVisible();
+
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(reload).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it("clears a transient polling error observed from an initially restarting service", async () => {

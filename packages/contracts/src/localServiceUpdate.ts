@@ -23,7 +23,7 @@ export const LocalServiceUpdateState = Schema.Struct({
   backup: Schema.NullOr(
     Schema.Struct({
       directory: Schema.String,
-      database: Schema.String,
+      database: Schema.NullOr(Schema.String),
     }),
   ),
 });

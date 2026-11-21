@@ -61,7 +61,9 @@ export const layer = HttpApiBuilder.group(
     return handlers
       .handle("state", handle("state", updates.state))
       .handle("check", handle("check", updates.check))
-      .handle("download", handle("download", updates.download))
+      .handle("download", ({ query }) =>
+        handle("download", updates.download(query.backupDatabase === "true"))(),
+      )
       .handle("apply", handle("apply", updates.apply));
   }),
 );

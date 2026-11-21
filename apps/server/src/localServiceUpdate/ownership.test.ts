@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -37,6 +37,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   detectOwnership: vi.fn<typeof Ownership.detectLocalServiceUpdateOwnership>(),
+  assertMainPid: vi.fn<typeof Ownership.assertLocalServiceMainPid>(),
   supportsNpm: vi.fn<typeof Ownership.supportsNpmCoxUpdates>(),
   fetchRelease: vi.fn<typeof Release.fetchLocalServiceRelease>(),
   installRelease: vi.fn<typeof Release.installLocalServiceRelease>(),
@@ -48,6 +49,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./ownership.ts", async (importOriginal) => ({
   ...(await importOriginal()),
   detectLocalServiceUpdateOwnership: mocks.detectOwnership,
+  assertLocalServiceMainPid: mocks.assertMainPid,
   supportsNpmCoxUpdates: mocks.supportsNpm,
 }));
 vi.mock("./release.ts", async (importOriginal) => ({
@@ -227,7 +229,7 @@ describe("local service update boundaries", () => {
       status: "available",
       latestVersion: "99.0.0",
     });
-    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+    expect(await harness.runtime.runPromise(harness.service.download())).toMatchObject({
       checkOnly: true,
       status: "available",
       backup: null,
@@ -346,7 +348,7 @@ describe("local service update transaction", () => {
       status: "available",
       latestVersion: "99.0.0",
     });
-    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+    expect(await harness.runtime.runPromise(harness.service.download())).toMatchObject({
       status: "ready",
       latestVersion: "99.0.0",
     });
@@ -386,7 +388,7 @@ describe("local service update transaction", () => {
         yield* sql`INSERT INTO orchestration_v2_projection_runs (thread_id, status) VALUES ('thread-1', 'running')`;
       });
       if (phase === "download") await harness.runtime.runPromise(startTurn);
-      expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+      expect(await harness.runtime.runPromise(harness.service.download())).toMatchObject({
         status: "ready",
         message: null,
       });
@@ -406,10 +408,24 @@ describe("local service update transaction", () => {
     },
   );
 
+  it("prepares updates with a settings backup and skips the database snapshot by default", async () => {
+    await using harness = await makeService();
+    const config = await harness.runtime.runPromise(ServerConfig.ServerConfig);
+    await writeFile(join(config.stateDir, "settings.json"), '{"theme":"dark"}');
+
+    const update = await harness.runtime.runPromise(harness.service.download());
+
+    expect(update.status).toBe("ready");
+    expect(update.backup?.database).toBeNull();
+    const directory = update.backup?.directory ?? "";
+    expect(await readFile(join(directory, "settings.json"), "utf8")).toContain("dark");
+    await expect(stat(join(directory, "statev2.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("returns a launch failure and allows a fresh apply retry", async () => {
     await using harness = await makeService();
     await harness.runtime.runPromise(harness.service.state);
-    expect(await harness.runtime.runPromise(harness.service.download)).toMatchObject({
+    expect(await harness.runtime.runPromise(harness.service.download())).toMatchObject({
       status: "ready",
     });
     mocks.launchUpdate.mockRejectedValueOnce(new Error("launch denied"));
@@ -465,6 +481,25 @@ describe("local service update transaction", () => {
     expect(await readFile(join(plan.baseDir, "local-service-update", "unit"), "utf8")).toBe(
       "original unit\n",
     );
+  });
+
+  it("accepts a settings-only backup at activation and retains the rollback receipt", async () => {
+    const plan = {
+      ...(await makeActivationPlan("#!/usr/bin/env node\n", false)),
+      backupDatabase: false,
+    };
+    mocks.assertMainPid.mockRejectedValueOnce(new Error("Cox service PID changed"));
+
+    await Operation.activateLocalServiceUpdate(plan);
+
+    expect(
+      await Operation.readLocalServiceReceipt(join(plan.operation, "receipt.json")),
+    ).toMatchObject({
+      status: "rolled-back",
+      message: expect.stringContaining("Cox service PID changed"),
+      databaseBackup: null,
+    });
+    expect(await readFile(plan.dropIn, "utf8")).toBe("original unit\n");
   });
 
   it("backs up a consistent live SQLite database and static settings before handoff", async () => {
