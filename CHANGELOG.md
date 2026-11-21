@@ -2,13 +2,18 @@
 
 ## Unreleased
 
-## Desktop 0.2.33 — 2026-11-21
+## Desktop 0.2.34 — 2026-11-21
 
 - Desktop windows are titled by instance, with the instance name before Cox,
   and the page title can no longer rename them all back to Cox. On Windows each
   instance gets its own taskbar group and pin.
 - Clicking the Dock icon or launching Cox again focuses an open instance
   window. The connection list opens only when no instance window is open.
+
+## Desktop 0.2.33 — 2026-11-21
+
+- Not published. Packaged smoke still timed out waiting for DevTools after the
+  launch wait was raised to 120 seconds.
 
 ## Desktop 0.2.32 — 2026-11-21
 

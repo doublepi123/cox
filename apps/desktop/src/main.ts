@@ -94,13 +94,6 @@ const home = app.isPackaged
   : join(root, ".cox", "desktop-dev");
 mkdirSync(join(home, "browser"), { recursive: true, mode: 0o700 });
 app.setPath("userData", join(home, "browser"));
-if (process.versions.electron) {
-  try {
-    clearStaleGpuCaches(join(home, "browser"), process.versions.electron);
-  } catch (error) {
-    process.stderr.write(`Could not clear stale GPU caches: ${String(error)}\n`);
-  }
-}
 app.setAppLogsPath(join(home, "logs"));
 app.setName("Cox");
 
@@ -852,6 +845,13 @@ function signInToGateway(partition: string, serverOrigin: string): Promise<void>
 }
 
 async function start() {
+  if (process.versions.electron) {
+    try {
+      clearStaleGpuCaches(app.getPath("userData"), process.versions.electron);
+    } catch (error) {
+      process.stderr.write(`Could not clear stale GPU caches: ${String(error)}\n`);
+    }
+  }
   const transactionId = app.commandLine.getSwitchValue("cox-update-transaction");
   if (app.isPackaged && process.platform === "darwin" && transactionId) {
     macUpdateLaunch = await loadMacUpdateLaunch(
