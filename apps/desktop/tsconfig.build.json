@@ -6,6 +6,10 @@
     "outDir": "dist",
     "sourceMap": true
   },
-  "include": ["src", "../../packages/shared/src/remoteServerAdmission.ts"],
+  "include": [
+    "src",
+    "../../packages/shared/src/remoteServerAdmission.ts",
+    "../../packages/shared/src/databaseMigrationLog.ts"
+  ],
   "exclude": ["src/**/*.test.ts"]
 }

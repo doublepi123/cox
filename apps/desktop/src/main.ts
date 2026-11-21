@@ -14,17 +14,15 @@ import { dirname, join, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
-  clipboard,
   dialog,
   ipcMain,
   Menu,
-  nativeImage,
   net,
   screen,
   session,
   shell,
 } from "electron";
-import type { Event, IpcMainEvent } from "electron";
+import type { Event, IpcMainEvent, NativeImage } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";
 import { ClientUpdates } from "./client-updates.ts";
@@ -114,6 +112,10 @@ let connectionsOwner: BrowserWindow | undefined;
 let openConnectionManager: (() => Promise<void>) | undefined;
 let openRequestedInstance: ((id: string) => void) | undefined;
 let presentExistingSurface: (() => void) | undefined;
+let writeClipboardText: (value: string) => void = () => {};
+let overlayImage: (bitmap: Buffer) => NativeImage = () => {
+  throw new Error("Desktop images are unavailable.");
+};
 const remoteWindows = new Map<BrowserWindow, RemoteConnectionProfile>();
 const readyWindows = new Set<number>();
 let backend: BackendProcess | undefined;
@@ -483,7 +485,7 @@ function createDesktopWindow(
       return;
     }
     Menu.buildFromTemplate([
-      { label: text("Copy Email Address"), click: () => clipboard.writeText(address) },
+      { label: text("Copy Email Address"), click: () => writeClipboardText(address) },
     ]).popup({ window: target });
   });
   let rendererReload: ReturnType<typeof setTimeout> | undefined;
@@ -845,6 +847,10 @@ function signInToGateway(partition: string, serverOrigin: string): Promise<void>
 }
 
 async function start() {
+  const electron = await import("electron");
+  writeClipboardText = (value) => electron.clipboard.writeText(value);
+  overlayImage = (bitmap) =>
+    electron.nativeImage.createFromBitmap(bitmap, { width: 16, height: 16 });
   if (process.versions.electron) {
     try {
       clearStaleGpuCaches(app.getPath("userData"), process.versions.electron);
@@ -1150,13 +1156,7 @@ async function start() {
       }),
       relaunchDisplayName: name,
     });
-    target.setOverlayIcon(
-      nativeImage.createFromBitmap(accentBitmap(instanceAccent(instanceId)), {
-        width: 16,
-        height: 16,
-      }),
-      name,
-    );
+    target.setOverlayIcon(overlayImage(accentBitmap(instanceAccent(instanceId))), name);
   }
 
   function focusInstance(id: string) {

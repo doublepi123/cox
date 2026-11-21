@@ -37,8 +37,8 @@ try {
         });
       } else {
         emitted = contents.replaceAll(
-          /(["'])@t3tools\/shared\/remoteServerAdmission\1/g,
-          '"./_shared/remoteServerAdmission.js"',
+          /(["'])@t3tools\/shared\/(remoteServerAdmission|databaseMigrationLog)\1/g,
+          '"./_shared/$2.js"',
         );
       }
       await mkdir(dirname(output), { recursive: true });
