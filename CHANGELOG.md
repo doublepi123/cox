@@ -22,6 +22,12 @@
 - Not published. The packaged macOS smoke closed the window and then expected
   the next launch to start the saved local connection.
 
+## 0.2.22 — 2026-11-21
+
+- Skip the database backup by default when preparing a Cox service update. Keep
+  the settings backup and offer a database backup for that update.
+- Reload the current page after the updated Cox service passes its health check.
+
 ## 0.2.21 — 2026-11-20
 
 - Keep explicit clears of ACP compaction summaries and errors when applying
