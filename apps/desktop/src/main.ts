@@ -78,6 +78,8 @@ import {
 } from "./instance-title.ts";
 import { clearStaleGpuCaches } from "./gpu-cache.ts";
 
+if (process.versions.electron) process.stderr.write("cox: boot\n");
+
 function systemLocale() {
   return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
 }
@@ -2435,6 +2437,7 @@ async function start() {
   if (requested) focusInstance(requested);
 }
 
+if (process.versions.electron) process.stderr.write("cox: single-instance\n");
 if (
   (process.platform === "darwin" &&
     app.isPackaged &&
@@ -2463,9 +2466,13 @@ if (
     event.preventDefault();
     void requestQuit();
   });
+  if (process.versions.electron) process.stderr.write("cox: waiting for ready\n");
   void app
     .whenReady()
-    .then(start)
+    .then(() => {
+      if (process.versions.electron) process.stderr.write("cox: ready\n");
+      return start();
+    })
     .catch(async (error: unknown) => {
       if (macUpdateLaunch && !macUpdateLaunch.acknowledged) await macUpdateLaunch.fail();
       else if (!approvedQuit)

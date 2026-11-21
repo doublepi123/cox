@@ -40,7 +40,7 @@ const environment: Record<string, string> = Object.fromEntries(
 const application = await _electron.launch({
   executablePath: executable,
   env: environment,
-  timeout: 30_000,
+  timeout: 120_000,
   args: [
     ...(process.platform === "linux" ? ["--no-sandbox"] : []),
     ...(clientOnly ? [] : ["--offline"]),
@@ -453,7 +453,7 @@ try {
     const offline = await _electron.launch({
       executablePath: executable,
       env: environment,
-      timeout: 30_000,
+      timeout: 120_000,
       args: ["--offline", ...(process.platform === "linux" ? ["--no-sandbox"] : [])],
     });
     const offlineProcess = offline.process();
