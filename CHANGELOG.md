@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## Desktop 0.2.32 — 2026-11-21
+
 - Desktop windows are titled by instance, with the instance name before Cox,
   and the page title can no longer rename them all back to Cox. On Windows each
   instance gets its own taskbar group and pin.
