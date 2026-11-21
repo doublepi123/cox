@@ -25,16 +25,24 @@ enum WorkspaceViewportLock {
 }
 
 final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    enum PageState { case loading, ready, failed, interrupted }
     let profile: WorkspaceProfile
     let webView: WKWebView
     var policy = WorkspacePolicy()
     var isActive = false
-    weak var presenter: UIViewController?
+    weak var presenter: WorkspaceViewController?
+    private(set) var pageState = PageState.loading {
+        didSet { updatePresentation() }
+    }
+    var webSwitcherMounted = false {
+        didSet { updatePresentation() }
+    }
     var onLauncher: ((String) -> Void)?
     var onLocation: ((String) -> Void)?
     let logger = Logger(subsystem: "dev.doublepi.cox.mobile", category: "workspace")
     let exports = WorkspaceExports()
     private var currentNavigation: WKNavigation?
+    private var recoveryURL: URL?
     private var gatewayResponse = false
     private var disposed = false
 
@@ -90,6 +98,17 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
         currentNavigation = nil
     }
 
+    func resumeInterruptedContent() {
+        guard isActive, pageState == .interrupted,
+              presenter?.viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive else { return }
+        pageState = .loading
+        webView.load(URLRequest(url: recoveryURL ?? profile.startURL, cachePolicy: .reloadIgnoringLocalCacheData))
+    }
+
+    private func updatePresentation() {
+        if isActive { presenter?.updatePage(self) }
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard !disposed, let url = action.request.url else {
@@ -127,7 +146,7 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         currentNavigation = navigation
-        (presenter as? WorkspaceViewController)?.noteMainFrameStarted()
+        webSwitcherMounted = false
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
@@ -156,8 +175,10 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        guard !disposed, navigation === currentNavigation, !gatewayResponse,
-              let url = webView.url, profile.matches(url), !profile.isGateway(url) else { return }
+        guard !disposed, let navigation, navigation === currentNavigation else { return }
+        pageState = .ready
+        guard !gatewayResponse, let url = webView.url, profile.matches(url), !profile.isGateway(url) else { return }
+        recoveryURL = url
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             logger.error("workspace.bridge_randomness_failed")
@@ -170,25 +191,32 @@ final class WorkspaceSession: NSObject, WKNavigationDelegate, WKScriptMessageHan
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard navigation === currentNavigation else { return }
-        (presenter as? WorkspaceViewController)?.noteMainFrameSettled()
+        guard let navigation, navigation === currentNavigation else { return }
+        updatePresentation()
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        detach(gateway: false)
+        guard !disposed else { return }
+        if let url = webView.url, profile.matches(url), !profile.isGateway(url) { recoveryURL = url }
+        currentNavigation = nil
+        let canResume = pageState == .ready
+        pageState = canResume ? .interrupted : .failed
+        webSwitcherMounted = false
+        detach(gateway: profile.gatewayLogin || policy.phase == .gatewayHandoff)
         logger.error("workspace.renderer_terminated")
+        resumeInterruptedContent()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) {
-        guard navigation === currentNavigation else { return }
-        (presenter as? WorkspaceViewController)?.noteMainFrameFailed()
+        guard let navigation, navigation === currentNavigation else { return }
+        pageState = .failed
         detach(gateway: policy.phase == .gatewayHandoff)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        guard navigation === currentNavigation else { return }
-        (presenter as? WorkspaceViewController)?.noteMainFrameFailed()
+        guard let navigation, navigation === currentNavigation else { return }
+        pageState = .failed
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction,

@@ -30,6 +30,7 @@ enum WorkspaceSafeAreaBootstrap {
 final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelegate {
     var onLauncher: ((String) -> Void)?
     private let fallback = UIButton(type: .system)
+    private let placeholder = UIContentUnavailableView(configuration: .loading())
     private let edgeBack = UIScreenEdgePanGestureRecognizer()
     private weak var workspace: WKWebView?
     private var webTopToSafe: NSLayoutConstraint?
@@ -37,22 +38,14 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
     private var webBottomToKeyboard: NSLayoutConstraint?
     private var workspaceScrollObservations: [NSKeyValueObservation] = []
     private var publishedSafeArea = ""
-    private var pageFailed = false
-    private var revealFallback = false
-    private var revealItem: DispatchWorkItem?
-    var webSwitcherMounted = false {
-        didSet {
-            if webSwitcherMounted {
-                revealItem?.cancel()
-                revealFallback = false
-                pageFailed = false
-            }
-            updateFallback()
-        }
-    }
+    private weak var session: WorkspaceSession?
+    private var isChinese: Bool { Locale.preferredLanguages.first?.hasPrefix("zh") == true }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(sceneDidActivate(_:)), name: UIScene.didActivateNotification, object: nil
+        )
         for name in [UIResponder.keyboardWillShowNotification, UIResponder.keyboardDidHideNotification] {
             NotificationCenter.default.addObserver(
                 self, selector: #selector(updateKeyboardLayout(_:)), name: name, object: nil
@@ -61,30 +54,41 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         UserDefaults.standard.removeObject(forKey: "cox.workspace.serversPill.dockRight")
         UserDefaults.standard.removeObject(forKey: "cox.workspace.serversPill.yFraction")
         view.backgroundColor = Self.canvasColor(for: traitCollection)
-        let isZh = Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") == true
         var configuration = UIButton.Configuration.plain()
-        configuration.title = isZh ? "返回" : "Back"
+        configuration.title = isChinese ? "连接管理" : "Connection Manager"
         configuration.baseForegroundColor = .label
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
         configuration.background.backgroundColor = .secondarySystemBackground
         configuration.background.cornerRadius = 8
         fallback.configuration = configuration
-        fallback.accessibilityLabel = isZh ? "连接管理" : "Connection Manager"
         fallback.translatesAutoresizingMaskIntoConstraints = false
         fallback.isHidden = true
         fallback.addTarget(self, action: #selector(leaveWorkspace), for: .touchUpInside)
         view.addSubview(fallback)
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(placeholder, belowSubview: fallback)
         NSLayoutConstraint.activate([
             fallback.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
             fallback.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            fallback.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            placeholder.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            placeholder.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            placeholder.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            placeholder.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
         ])
         edgeBack.edges = .left
         edgeBack.delegate = self
         edgeBack.addTarget(self, action: #selector(edgeBackFired))
     }
 
-    func display(_ webView: WKWebView) {
+    func display(_ session: WorkspaceSession) {
         loadViewIfNeeded()
+        let webView = session.webView
+        self.session = session
+        if workspace === webView {
+            updatePage(session)
+            return
+        }
         edgeBack.view?.removeGestureRecognizer(edgeBack)
         webTopToSafe?.isActive = false
         webTopToFallback?.isActive = false
@@ -94,16 +98,12 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         workspace?.removeFromSuperview()
         workspace = webView
         webView.removeFromSuperview()
-        view.insertSubview(webView, belowSubview: fallback)
+        view.insertSubview(webView, belowSubview: placeholder)
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.addGestureRecognizer(edgeBack)
-        webView.isOpaque = false
         webView.backgroundColor = Self.canvasColor(for: traitCollection)
         webView.scrollView.backgroundColor = webView.backgroundColor
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        let painted = webView.url != nil && !webView.isLoading
-        webView.alpha = painted ? 1 : 0
-        if painted { webView.isOpaque = true }
         let topSafe = webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         let topFallback = webView.topAnchor.constraint(equalTo: fallback.bottomAnchor, constant: 6)
         webTopToSafe = topSafe
@@ -127,8 +127,7 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
                 self?.constrainKeyboardScrollOffset()
             },
         ]
-        updateFallback()
-        publishSafeArea()
+        updatePage(session)
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -178,70 +177,41 @@ final class WorkspaceViewController: UIViewController, UIGestureRecognizerDelega
         }
     }
 
-    func noteMainFrameStarted() {
-        publishedSafeArea = ""
-        pageFailed = false
-        revealFallback = false
-        revealItem?.cancel()
-        if webSwitcherMounted {
-            webSwitcherMounted = false
-        } else {
-            updateFallback()
-        }
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        session?.resumeInterruptedContent()
     }
 
-    func noteMainFrameSettled() {
+    @objc private func sceneDidActivate(_ notification: Notification) {
+        guard let scene = viewIfLoaded?.window?.windowScene, notification.object as? UIScene === scene else { return }
+        session?.resumeInterruptedContent()
+    }
+
+    func updatePage(_ session: WorkspaceSession) {
+        guard self.session === session, let workspace, workspace === session.webView else { return }
+        let ready = session.pageState == .ready
+        let showFallback = !ready || !session.webSwitcherMounted
+        fallback.isHidden = !showFallback
+        webTopToSafe?.isActive = !showFallback
+        webTopToFallback?.isActive = showFallback
+        placeholder.isHidden = ready
+        workspace.isHidden = !ready
+        if !ready {
+            let failed = session.pageState == .failed
+            var configuration: UIContentUnavailableConfiguration = failed ? .empty() : .loading()
+            configuration.text = failed
+                ? (isChinese ? "无法打开工作区" : "Workspace unavailable")
+                : (isChinese ? "正在连接工作区" : "Opening workspace")
+            placeholder.configuration = configuration
+        }
         publishedSafeArea = ""
         publishSafeArea()
-        revealWorkspaceContent()
-        guard !pageFailed else { return }
-        scheduleFallbackReveal()
-    }
-
-    func noteMainFrameFailed() {
-        revealItem?.cancel()
-        pageFailed = true
-        revealFallback = true
-        revealWorkspaceContent()
-        updateFallback()
-    }
-
-    private func revealWorkspaceContent() {
-        guard let workspace, workspace.alpha < 1 else { return }
-        if UIAccessibility.isReduceMotionEnabled {
-            workspace.alpha = 1
-            workspace.isOpaque = true
-            return
-        }
-        UIView.animate(withDuration: 0.18, delay: 0, options: .curveEaseOut) {
-            workspace.alpha = 1
-        } completion: { _ in
-            workspace.isOpaque = true
-        }
     }
 
     private static func canvasColor(for traits: UITraitCollection) -> UIColor {
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 7 / 255, green: 9 / 255, blue: 8 / 255, alpha: 1)
             : UIColor(red: 245 / 255, green: 247 / 255, blue: 243 / 255, alpha: 1)
-    }
-
-    private func scheduleFallbackReveal() {
-        revealItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.webSwitcherMounted else { return }
-            self.revealFallback = true
-            self.updateFallback()
-        }
-        revealItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
-    }
-
-    private func updateFallback() {
-        let show = pageFailed || (revealFallback && !webSwitcherMounted)
-        fallback.isHidden = !show
-        webTopToSafe?.isActive = !show
-        webTopToFallback?.isActive = show
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {

@@ -85,9 +85,7 @@ extension WorkspaceSession {
         case .openServerSwitcher:
             onLauncher?("openServerSwitcher")
         case .setServerSwitcherProvided(let provided):
-            guard let workspace = presenter as? WorkspaceViewController else { return }
-            workspace.webSwitcherMounted = provided
-            if !provided { workspace.noteMainFrameSettled() }
+            webSwitcherMounted = provided
         case .openConnectionManager:
             onLauncher?("openConnectionManager")
         case .hapticSelection:

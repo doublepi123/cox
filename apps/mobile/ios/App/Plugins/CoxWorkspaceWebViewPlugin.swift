@@ -21,6 +21,8 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
     private var deleting: Set<UUID> = []
     private var preparing: [UUID: UUID] = [:]
     private var host: WorkspaceViewController?
+    private var transitioning = false
+    private var pendingReturn: String?
     private let logger = Logger(subsystem: "dev.doublepi.cox.mobile", category: "workspace")
 
     public override func load() {
@@ -75,6 +77,7 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public func openWorkspace(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return call.reject("Workspace unavailable.") }
+            guard !self.transitioning else { return call.reject("Workspace is switching.") }
             guard let id = call.getString("profileId").flatMap(WorkspaceProfile.validID),
                   let input = call.getString("origin"),
                   let origin = WorkspaceProfile.canonicalOrigin(
@@ -89,16 +92,17 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
                 lastThreadPath: call.getString("lastThreadPath"),
                 gatewayLogin: call.getBool("gatewayLogin") == true
             )
+            self.preparing.removeAll()
             if let existing = self.sessions[id],
                existing.profile.origin != origin ||
                 existing.profile.allowInsecureHttp != profile.allowInsecureHttp ||
                 existing.profile.label != profile.label ||
-                existing.profile.serverCount != profile.serverCount {
+                existing.profile.serverCount != profile.serverCount ||
+                existing.pageState == .failed {
                 self.dispose(id)
             }
             if let session = self.sessions[id] {
-                self.show(session)
-                call.resolve()
+                self.show(session, call: call)
                 return
             }
             self.prepare(profile, call: call)
@@ -115,17 +119,15 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
             forIdentifier: "cox-transport-\(profile.allowInsecureHttp)",
             encodedContentRuleList: rules
         ) { [weak self] rules, error in
-            guard let self, let rules, error == nil else {
+            guard let self else {
                 return call.reject("Could not enforce workspace transport policy.")
             }
-            guard self.preparing[profile.id] == ticket, !self.deleting.contains(profile.id) else {
+            guard self.preparing[profile.id] == ticket, !self.deleting.contains(profile.id), !self.transitioning else {
                 return call.reject("Workspace open was superseded.")
             }
             self.preparing.removeValue(forKey: profile.id)
-            if let session = self.sessions[profile.id] {
-                self.show(session)
-                call.resolve()
-                return
+            guard let rules, error == nil else {
+                return call.reject("Could not enforce workspace transport policy.")
             }
             while self.recent.count >= 2 { self.dispose(self.recent[0]) }
             let configuration = WKWebViewConfiguration()
@@ -140,30 +142,48 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             }
             self.sessions[profile.id] = session
-            self.show(session)
-            session.webView.load(URLRequest(url: profile.startURL, cachePolicy: .reloadIgnoringLocalCacheData))
-            call.resolve()
+            self.show(session, call: call)
         }
     }
 
-    private func show(_ session: WorkspaceSession) {
-        for entry in sessions.values { entry.isActive = false }
+    private func show(_ session: WorkspaceSession, call: CAPPluginCall) {
+        guard let presenter = bridge?.viewController, presenter.viewIfLoaded?.window != nil,
+              presenter.presentedViewController === host else {
+            return call.reject("Workspace unavailable.")
+        }
+        if let active, let previous = sessions[active], previous !== session {
+            previous.isActive = false
+            previous.presenter = nil
+            previous.exports.presenter = nil
+        }
         active = session.profile.id
         recent.removeAll { $0 == session.profile.id }
         recent.append(session.profile.id)
-        let controller: WorkspaceViewController
-        if let host { controller = host }
-        else {
-            controller = WorkspaceViewController()
+        let controller = host ?? WorkspaceViewController()
+        session.presenter = controller
+        session.isActive = true
+        controller.display(session)
+        if session.webView.url == nil && !session.webView.isLoading {
+            session.webView.load(URLRequest(url: session.profile.startURL, cachePolicy: .reloadIgnoringLocalCacheData))
+        }
+        if host == nil {
             controller.onLauncher = { [weak self] event in self?.returnToLauncher(event) }
             controller.modalPresentationStyle = .overFullScreen
             controller.modalTransitionStyle = .crossDissolve
             host = controller
-            bridge?.viewController?.present(controller, animated: !UIAccessibility.isReduceMotionEnabled)
+            transitioning = true
+            presenter.present(controller, animated: !UIAccessibility.isReduceMotionEnabled) { [weak self] in
+                self?.transitioning = false
+                call.resolve()
+                if let self, let event = self.pendingReturn {
+                    self.pendingReturn = nil
+                    self.returnToLauncher(event)
+                }
+            }
+        } else {
+            session.resumeInterruptedContent()
+            call.resolve()
         }
-        session.presenter = controller
-        session.isActive = true
-        controller.display(session.webView)
     }
 
     private func dispose(_ id: UUID) {
@@ -177,11 +197,25 @@ public final class CoxWorkspaceWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func returnToLauncher(_ event: String) {
-        for session in sessions.values { session.isActive = false }
+        preparing.removeAll()
+        guard let host else { return }
+        if transitioning {
+            if active != nil { pendingReturn = event }
+            return
+        }
+        if let id = active, let session = sessions[id] {
+            session.isActive = false
+            session.presenter = nil
+            session.exports.presenter = nil
+            if session.pageState == .loading || session.pageState == .failed { dispose(id) }
+        }
         active = nil
-        host?.dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
-        host = nil
-        notifyListeners(event, data: [:])
+        transitioning = true
+        host.dismiss(animated: !UIAccessibility.isReduceMotionEnabled) { [weak self] in
+            self?.host = nil
+            self?.transitioning = false
+            self?.notifyListeners(event, data: [:])
+        }
     }
 
     @objc public func closeWorkspace(_ call: CAPPluginCall) {
