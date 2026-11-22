@@ -9,26 +9,42 @@ export const COMPUTER_ENGINE_RELEASE = "v5.1.81";
 const repository = "https://github.com/code-yeongyu/oh-my-openagent/releases/download";
 const engineName = "senpi-desktop-engine";
 
+export type ComputerEngineArch = "arm64" | "x64";
+
+export function computerEngineFile(platform: NodeJS.Platform) {
+  return platform === "win32" ? `${engineName}.exe` : engineName;
+}
+
+export function computerEngineAsset(platform: NodeJS.Platform, arch: ComputerEngineArch) {
+  return `${engineName}-${platform}-${arch}${platform === "win32" ? ".exe" : ""}`;
+}
+
+export function computerStopChord(platform: NodeJS.Platform) {
+  return platform === "darwin" ? "ctrl+alt+cmd+escape" : "ctrl+alt+shift+escape";
+}
+
 export function engineCachePaths(
   home: string,
   version: string,
-  arch: string,
-  _development: boolean,
+  platform: NodeJS.Platform,
+  arch: ComputerEngineArch,
 ) {
-  const host = `darwin-${arch}`;
+  const host = `${platform}-${arch}`;
+  const file = computerEngineFile(platform);
   return [
-    join(home, "computer-engine", version, host, engineName),
-    join(homedir(), ".omo", "cache", engineName, version, host, engineName),
+    join(home, "computer-engine", version, host, file),
+    join(homedir(), ".omo", "cache", engineName, version, host, file),
   ];
 }
 
 export async function acquireComputerEngine(
   destination: string,
-  arch: "arm64" | "x64",
+  platform: NodeJS.Platform,
+  arch: ComputerEngineArch,
 ): Promise<string> {
   const directory = dirname(destination);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const asset = `${engineName}-darwin-${arch}`;
+  const asset = computerEngineAsset(platform, arch);
   const base = `${repository}/${COMPUTER_ENGINE_RELEASE}`;
   const [binary, checksums] = await Promise.all([
     fetch(`${base}/${asset}`).then(async (response) => {
@@ -91,8 +107,11 @@ export class EngineClient {
   private readonly listeners = new Set<(method: string, params: unknown) => void>();
   private readonly closeListeners = new Set<(error: Error) => void>();
   private closed = false;
-  constructor(path: string) {
-    this.child = spawn(path, ["--stdio"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  constructor(path: string, args: readonly string[] = []) {
+    this.child = spawn(path, [...args, "--stdio"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
     const lines = createInterface({ input: this.child.stdout! });
     lines.on("line", (line) => {
       let message: unknown;
@@ -193,8 +212,9 @@ export class EngineClient {
 
 export async function openEngine(
   path: string,
+  args: readonly string[] = [],
 ): Promise<{ client: EngineClient; resumeToken: string; capabilities: Record<string, unknown> }> {
-  const client = new EngineClient(path);
+  const client = new EngineClient(path, args);
   try {
     const hello = await client.request<{ abi: string; protocolVersion: string }>("engine.hello");
     if (hello.abi !== "senpi-desktop/1" || hello.protocolVersion !== "1")
@@ -202,7 +222,7 @@ export async function openEngine(
     const opened = await client.request<{
       resumeToken: string;
       capabilities: Record<string, unknown>;
-    }>("session.open", {});
+    }>("session.open", { showCursor: false });
     return { client, ...opened };
   } catch (error) {
     await client.close();

@@ -95,7 +95,19 @@ export function createDesktopMenuTemplate(
       }
     : {
         label: text("File"),
-        submenu: [settings, connections, { type: "separator" }, { role: "quit" }],
+        submenu: [
+          settings,
+          connections,
+          { type: "separator" },
+          ...(platform === "win32"
+            ? [
+                { label: text("Computer Control…"), click: actions.openComputerUse },
+                { label: text("Stop Computer Control"), click: actions.stopComputerControl },
+                { type: "separator" as const },
+              ]
+            : []),
+          { role: "quit" },
+        ],
       };
   return localizeDesktopMenu(
     [

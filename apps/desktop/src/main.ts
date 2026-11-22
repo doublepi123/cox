@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  appendFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -11,7 +12,18 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, screen, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  net,
+  powerMonitor,
+  screen,
+  session,
+  shell,
+} from "electron";
 import type { Event, IpcMainEvent, NativeImage } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";
@@ -47,6 +59,7 @@ import { desktopConnectionError, desktopText } from "./native-text.ts";
 import {
   acquireComputerEngine,
   COMPUTER_ENGINE_RELEASE,
+  computerStopChord,
   engineCachePaths,
   findEngine,
   openEngine,
@@ -950,8 +963,9 @@ async function start() {
   const appExecutable = process.platform === "darwin" ? (app.getPath?.("exe") ?? "") : "";
   const appBundleIndex = appExecutable.indexOf(".app");
   const computerAppPath = appBundleIndex >= 0 ? appExecutable.slice(0, appBundleIndex + 4) : null;
+  const computerSupported = process.platform === "darwin" || process.platform === "win32";
   let computerState: DesktopComputerUseState = initialComputerState(
-    process.platform === "darwin",
+    computerSupported,
     computerUseEnabled,
     "missing",
     {
@@ -1041,7 +1055,7 @@ async function start() {
       if (launchInputDenied === false && permissions.input === "denied") launchInputDenied = true;
       const refreshedPermissions = permissions;
       computerState = initialComputerState(
-        process.platform === "darwin",
+        computerSupported,
         computerUseEnabled,
         "ready",
         refreshedPermissions,
@@ -1052,9 +1066,19 @@ async function start() {
       computerState = {
         ...computerState,
         restartRequired:
-          (launchScreen === "denied" && refreshedPermissions.screenRecording === "granted") ||
-          (launchInputDenied && refreshedPermissions.input === "granted"),
+          process.platform === "darwin" &&
+          ((launchScreen === "denied" && refreshedPermissions.screenRecording === "granted") ||
+            (launchInputDenied && refreshedPermissions.input === "granted")),
       };
+    } else if (process.platform !== "darwin") {
+      computerState = initialComputerState(
+        computerSupported,
+        computerUseEnabled,
+        computerState.engine,
+        { screenRecording: "unknown", accessibility: "unknown", input: "unknown" },
+        computerState.appPath,
+        computerState.macosVersion,
+      );
     } else {
       const screenStatus = systemPreferences?.getMediaAccessStatus("screen") ?? "unknown";
       const accessibility = systemPreferences?.isTrustedAccessibilityClient(false) ?? false;
@@ -1070,7 +1094,7 @@ async function start() {
       };
       computerState = {
         ...initialComputerState(
-          process.platform === "darwin",
+          computerSupported,
           computerUseEnabled,
           computerState.engine,
           permissions,
@@ -1103,18 +1127,10 @@ async function start() {
       };
       publishComputerState();
       try {
-        const paths = engineCachePaths(
-          home,
-          COMPUTER_ENGINE_RELEASE,
-          process.arch === "arm64" ? "arm64" : "x64",
-          !app.isPackaged,
-        );
+        const engineArch = process.arch === "arm64" ? "arm64" : "x64";
+        const paths = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, process.platform, engineArch);
         let binary = await findEngine(paths);
-        if (!binary)
-          binary = await acquireComputerEngine(
-            paths[0]!,
-            process.arch === "arm64" ? "arm64" : "x64",
-          );
+        if (!binary) binary = await acquireComputerEngine(paths[0]!, process.platform, engineArch);
         computerEngine = await openEngine(binary);
         computerEngine.client.onClose((error) => {
           computerState = {
@@ -1126,7 +1142,7 @@ async function start() {
           publishComputerState();
         });
         await computerEngine.client
-          .request("stopPath.start", { chord: "ctrl+alt+cmd+escape" })
+          .request("stopPath.start", { chord: computerStopChord(process.platform) })
           .catch((error: unknown) => {
             process.stderr.write(
               `Computer control stop shortcut is unavailable: ${String(error)}\n`,
@@ -1171,6 +1187,17 @@ async function start() {
               });
           },
           refreshState: refreshComputerState,
+          userIdleMs: () => powerMonitor.getSystemIdleTime() * 1000,
+          trace: (entry) => {
+            const tracePath = join(dirname(logPath), "computer-trace.jsonl");
+            try {
+              if (existsSync(tracePath) && statSync(tracePath).size > 5_000_000)
+                renameSync(tracePath, tracePath + ".1");
+              appendFileSync(tracePath, JSON.stringify(entry) + "\n", { mode: 0o600 });
+            } catch (error) {
+              process.stderr.write(`Computer control trace failed: ${String(error)}\n`);
+            }
+          },
         });
         await refreshComputerState();
       } catch (error) {
@@ -1194,16 +1221,12 @@ async function start() {
     ],
   ] as const)
     ipcMain.handle(channel, (event) => {
-      if (!isTrustedLocalSender(event) || process.platform !== "darwin")
+      if (!isTrustedLocalSender(event) || !computerSupported)
         throw new Error("Untrusted computer control request.");
       return action();
     });
   ipcMain.handle("cox:computer-use-enabled", (event, enabled: unknown) => {
-    if (
-      !isTrustedLocalSender(event) ||
-      process.platform !== "darwin" ||
-      typeof enabled !== "boolean"
-    )
+    if (!isTrustedLocalSender(event) || !computerSupported || typeof enabled !== "boolean")
       throw new Error("Invalid computer control request.");
     return enableComputerUse(enabled);
   });

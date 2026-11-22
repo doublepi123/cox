@@ -94,6 +94,7 @@ describe("native application menu placement", () => {
     expect(fileItems.map((item) => item.click).filter(Boolean)).toEqual([
       actions.openSettings,
       actions.openConnections,
+      ...(platform === "win32" ? [actions.openComputerUse, actions.stopComputerControl] : []),
     ]);
     expect(helpItems.map((item) => item.click).filter(Boolean)).toEqual([
       actions.checkUpdates,
@@ -109,7 +110,10 @@ describe("native application menu placement", () => {
       const actions = menuActions();
       const items = flatten(createDesktopMenuTemplate(platform, "en-US", actions));
       expect(items.some((item) => item.click === actions.openComputerUse)).toBe(
-        platform === "darwin",
+        platform !== "linux",
+      );
+      expect(items.some((item) => item.click === actions.stopComputerControl)).toBe(
+        platform !== "linux",
       );
       const check = items.filter((item) => item.id === "cox-check-updates");
       const automatic = items.filter((item) => item.id === "cox-automatic-updates");

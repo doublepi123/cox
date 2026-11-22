@@ -54,7 +54,7 @@ const bridge: DesktopShellBridge = process.argv.includes("--cox-remote=true")
   ? shellBridge
   : {
       ...shellBridge,
-      ...(process.platform === "darwin"
+      ...(process.platform === "darwin" || process.platform === "win32"
         ? {
             onComputerUse: (listener: (state: DesktopComputerUseState) => void) => {
               const handler = (_event: Electron.IpcRendererEvent, state: DesktopComputerUseState) =>
@@ -66,10 +66,14 @@ const bridge: DesktopShellBridge = process.argv.includes("--cox-remote=true")
             setComputerUseEnabled: (enabled: boolean) =>
               ipcRenderer.invoke("cox:computer-use-enabled", enabled),
             recheckComputerUse: () => ipcRenderer.invoke("cox:computer-use-recheck"),
+            resumeComputerUse: () => ipcRenderer.invoke("cox:computer-use-resume"),
+          }
+        : {}),
+      ...(process.platform === "darwin"
+        ? {
             openComputerUseSettings: (permission: DesktopComputerPermission) =>
               ipcRenderer.invoke("cox:computer-use-settings", permission),
             restartForComputerUse: () => ipcRenderer.invoke("cox:computer-use-restart"),
-            resumeComputerUse: () => ipcRenderer.invoke("cox:computer-use-resume"),
           }
         : {}),
       checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
