@@ -231,32 +231,26 @@ export class BackendProcess {
     child: ChildProcess,
     signal: AbortSignal,
   ): Promise<void> {
-    let contents: string;
+    const path = join(this.options.homeDirectory, "userdata", "server-runtime.json");
     while (true) {
       signal.throwIfAborted();
       if (this.stopping || child.exitCode !== null || child.signalCode !== null)
         throw new Error("The local backend stopped during startup.");
       try {
-        contents = await readFile(
-          join(this.options.homeDirectory, "userdata", "server-runtime.json"),
-          { encoding: "utf8", signal },
-        );
-        break;
+        const state: unknown = JSON.parse(await readFile(path, { encoding: "utf8", signal }));
+        if (
+          typeof state === "object" &&
+          state !== null &&
+          "pid" in state &&
+          state.pid === child.pid &&
+          "origin" in state &&
+          state.origin === origin
+        )
+          break;
       } catch (error) {
         if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-        await delay(25, undefined, { signal });
       }
-    }
-    const state: unknown = JSON.parse(contents);
-    if (
-      typeof state !== "object" ||
-      state === null ||
-      !("pid" in state) ||
-      state.pid !== child.pid ||
-      !("origin" in state) ||
-      state.origin !== origin
-    ) {
-      throw new Error("The local backend did not publish its own loopback address.");
+      await delay(25, undefined, { signal });
     }
     const response = await fetch(`${origin}/api/auth/session`, {
       signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),

@@ -37,19 +37,23 @@ process.on('SIGINT', () => {
 server.listen(0, '127.0.0.1', () => {
   const origin = 'http://127.0.0.1:' + server.address().port;
   mkdirSync(join(home, 'userdata'), { recursive: true });
-  const publish = () => {
+  const publish = (pid = process.pid, reportedOrigin = origin) => {
     const target = join(home, 'userdata', 'server-runtime.json');
     const staged = target + '.tmp';
-    writeFileSync(staged, mode === 'malformed-state' ? '{' : JSON.stringify({ pid: ['wrong-owner', 'late-wrong-owner'].includes(mode) ? 1 : process.pid, origin }));
+    writeFileSync(staged, mode === 'malformed-state' ? '{' : JSON.stringify({ pid, origin: reportedOrigin }));
     renameSync(staged, target);
   };
-  if (!['late-state', 'late-wrong-owner', 'missing-state'].includes(mode)) publish();
+  if (['stale-state', 'wrong-owner'].includes(mode)) publish(1);
+  else if (mode === 'wrong-origin') publish(process.pid, origin.replace('127.0.0.1', '127.0.0.2'));
+  else if (!['late-state', 'late-wrong-owner', 'missing-state'].includes(mode)) publish();
   if (mode === 'computer-ipc') setTimeout(() => process.send?.({ type: 'cox:computer-request', id: 'req', threadId: 'thread', threadTitle: 'Title', environmentId: 'env', agent: 'Agent', action: { kind: 'status' } }), 50);
   if (mode === 'timeout') { console.log('FIXTURE_WAITING'); return; }
   const announce = () => {
-  process.stdout.write('Local UR');
-  process.stdout.write('L: ' + origin + '\\n');
-  if (['late-state', 'late-wrong-owner'].includes(mode)) setTimeout(publish, 100);
+    process.stdout.write('Local UR');
+    process.stdout.write('L: ' + origin + '\\n');
+    if (mode === 'late-state') setTimeout(publish, 100);
+    if (mode === 'late-wrong-owner') setTimeout(() => publish(1), 100);
+    if (mode === 'stale-state') setTimeout(publish, 300);
   };
   if (mode === 'migrating') {
     process.stdout.write('Running database migra');
@@ -66,7 +70,7 @@ const preload = join(import.meta.dirname, "backend-parent.ts");
 
 async function createBackend(
   mode = "normal",
-  onComputerRequest?: BackendOptions["onComputerRequest"],
+  options?: Pick<BackendOptions, "onComputerRequest" | "startupTimeoutMs">,
 ) {
   const home = await mkdtemp(join(tmpdir(), "cox-desktop-test-"));
   cleanups.unshift(() => rm(home, { recursive: true, force: true }));
@@ -81,7 +85,7 @@ async function createBackend(
     homeDirectory: home,
     cwd: home,
     environment: { ...process.env, FIXTURE_MODE: mode },
-    ...(onComputerRequest ? { onComputerRequest } : {}),
+    ...options,
     computerAvailability: { enabled: true, ready: false, missing: ["input"] },
     onLog,
     onUnexpectedExit,
@@ -114,12 +118,14 @@ describe("desktop backend supervisor", () => {
   });
 
   it("round-trips computer requests and publishes availability through IPC", async () => {
-    const { backend, home } = await createBackend("computer-ipc", async (request) => ({
-      type: "cox:computer-reply",
-      id: request.id,
-      ok: true,
-      result: { threadId: request.threadId },
-    }));
+    const { backend, home } = await createBackend("computer-ipc", {
+      onComputerRequest: async (request) => ({
+        type: "cox:computer-reply",
+        id: request.id,
+        ok: true,
+        result: { threadId: request.threadId },
+      }),
+    });
     const observed = new Set<string>();
     const received = Promise.withResolvers<void>();
     const watcher = watch(home, (_event, filename) => {
@@ -156,11 +162,6 @@ describe("desktop backend supervisor", () => {
     expect(onUnexpectedExit).not.toHaveBeenCalled();
   });
 
-  it("rejects a runtime descriptor owned by another process", async () => {
-    const { backend } = await createBackend("wrong-owner");
-    await expect(backend.start()).rejects.toThrow("did not publish its own loopback address");
-  });
-
   it("waits for its runtime descriptor after the address is logged", async () => {
     const { backend, home } = await createBackend("late-state");
     const origin = await backend.start();
@@ -171,10 +172,30 @@ describe("desktop backend supervisor", () => {
     expect((await fetch(`${origin}/api/auth/session`)).status).toBe(200);
   });
 
-  it("still rejects another owner after waiting for publication", async () => {
-    const { backend } = await createBackend("late-wrong-owner");
-    await expect(backend.start()).rejects.toThrow("did not publish its own loopback address");
+  it("replaces a stale runtime descriptor before checking backend readiness", async () => {
+    const { backend, home } = await createBackend("stale-state");
+    const origin = await backend.start();
+    const state: unknown = JSON.parse(
+      await readFile(join(home, "userdata", "server-runtime.json"), "utf8"),
+    );
+    expect(state).toMatchObject({ origin });
+    expect(state).not.toMatchObject({ pid: 1 });
+    expect((await fetch(`${origin}/api/auth/session`)).status).toBe(200);
   });
+
+  it.each(["wrong-owner", "wrong-origin", "late-wrong-owner"])(
+    "times out without probing a mismatched runtime descriptor (%s)",
+    async (mode) => {
+      const { backend } = await createBackend(mode, { startupTimeoutMs: 1_500 });
+      const fetch = vi.spyOn(globalThis, "fetch");
+      try {
+        await expect(backend.start()).rejects.toThrow("did not become ready within 1.5 seconds");
+        expect(fetch).not.toHaveBeenCalled();
+      } finally {
+        fetch.mockRestore();
+      }
+    },
+  );
 
   it("does not retry a malformed runtime descriptor", async () => {
     const { backend } = await createBackend("malformed-state");
