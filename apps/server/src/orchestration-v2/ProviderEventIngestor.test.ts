@@ -265,7 +265,19 @@ it.effect("refreshes the failing instance snapshot after a committed usage_limit
         },
         snapshot: {
           refreshUsage: Deferred.succeed(refreshed, undefined).pipe(Effect.asVoid),
-          getSnapshot: Effect.die("unused"),
+          getSnapshot: Effect.succeed({
+            instanceId: ProviderInstanceId.make("cursor-work"),
+            driver: ProviderDriverKind.make("cursor"),
+            enabled: true,
+            installed: true,
+            version: null,
+            status: "ready",
+            auth: { status: "authenticated" },
+            checkedAt: "2026-04-10T00:00:00.000Z",
+            models: [],
+            slashCommands: [],
+            skills: [],
+          }),
           refresh: Effect.die("unused"),
           resolveMaintenance: () => Effect.die("unused"),
           applyUsageLimits: () => Effect.die("unused"),
@@ -322,8 +334,8 @@ it.effect("refreshes the failing instance snapshot after a committed usage_limit
           assert.equal(stored.length, 1);
           if (failureClass === "validation_error") assert.deepEqual(lookups, []);
         }
-        assert.deepEqual(lookups, [instance.instanceId]);
         yield* Deferred.await(refreshed);
+        assert.deepEqual(lookups, [instance.instanceId, instance.instanceId]);
       }).pipe(Effect.provide(makeLayerTest(layerTestEventSink, instances)));
     }),
   ),
