@@ -25,6 +25,7 @@ import * as CliError from "effect/cli/CliError";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
+import { isServerOwnershipHeld } from "../serverOwnership.ts";
 const portFlag = Flag.Int("port").pipe(
   Flag.withSchema(PortSchema),
   Flag.withDescription("Port for the HTTP/WebSocket server."),
@@ -276,7 +277,9 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
       Option.isSome(runtime) &&
       runtime.value.pid > 0 &&
       runtime.value.pid !== process.pid &&
-      isProcessAlive(runtime.value.pid)
+      isProcessAlive(runtime.value.pid) &&
+      (runtime.value.ownerId === undefined ||
+        isServerOwnershipHeld(derivedPaths.serverRuntimeStatePath))
     ) {
       return yield* new CliError.UserError({
         cause: `A Cox server is already running for ${baseDir} (pid ${runtime.value.pid}, ${runtime.value.origin}). Connect to that server, stop it before starting another, or use a different --base-dir.`,

@@ -12,6 +12,10 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveBaseDir } from "../os-jank.ts";
 import { DEFAULT_PORT } from "../config.ts";
 import {
+  makePersistedServerRuntimeState,
+  persistServerRuntimeState,
+} from "../serverRuntimeState.ts";
+import {
   resolveServerConfig,
   resolveCliAuthConfig,
   validateListenHost,
@@ -42,6 +46,44 @@ const resolveWithEnv = (env: Record<string, string>, overrides: Partial<CliServe
   });
 
 it.layer(NodeServices.layer)("local CLI configuration", (it) => {
+  it.effect.each([undefined, "stale-owner"])(
+    "only permits a reused PID from a lock-aware runtime record (%s)",
+    (ownerId) =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cox-stale-runtime-" });
+        const state = yield* makePersistedServerRuntimeState({
+          config: { host: "127.0.0.1", devUrl: undefined },
+          port: 4773,
+        });
+        yield* persistServerRuntimeState({
+          path: path.join(baseDir, "userdata", "server-runtime.json"),
+          state: { ...state, pid: process.ppid, ...(ownerId === undefined ? {} : { ownerId }) },
+        });
+        const result = yield* resolveServerConfig(flags(baseDir), Option.none(), {
+          rejectRunningServer: true,
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+              NetService.layer,
+            ),
+          ),
+          Effect.result,
+        );
+        if (ownerId === undefined) {
+          expect(result._tag).toBe("Failure");
+          if (result._tag === "Failure")
+            expect(result.failure.message).toContain("A Cox server is already running");
+        } else {
+          expect(result._tag).toBe("Success");
+          expect(
+            yield* fileSystem.exists(path.join(baseDir, "userdata", "server-owner.sqlite")),
+          ).toBe(false);
+        }
+      }),
+  );
   it.effect("uses the Cox port without sharing the upstream default", () =>
     Effect.sync(() => {
       expect(DEFAULT_PORT).toBe(4773);
