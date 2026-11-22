@@ -648,6 +648,20 @@ const runCleanupTest = <A, E>(
   >,
 ) => effect.pipe(Effect.provide(cleanupTestLayer), Effect.scoped);
 
+it.live("removes a worktree whose ignored folder holds a gitfile pointing nowhere", () =>
+  runCleanupTest(
+    Effect.gen(function* () {
+      const { service, fs, worktree } = yield* cleanupFixture();
+      // Packages such as conda-forge's `referencing` ship a test suite's dangling gitlink.
+      yield* fs.makeDirectory(`${worktree}/dist/suite`, { recursive: true });
+      yield* fs.writeFileString(`${worktree}/dist/suite/.git`, "gitdir: ../.git/modules/x\n");
+      const [entry] = (yield* service.runNow).entries;
+      expect(entry).toMatchObject({ outcome: "removed" });
+      expect(yield* fs.exists(worktree)).toBe(false);
+    }),
+  ),
+);
+
 const submoduleCleanupFixture = () =>
   Effect.gen(function* () {
     const fixture = yield* cleanupFixture();
