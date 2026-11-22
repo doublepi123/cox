@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.2.31 — 2026-11-23
+
+- Port the November 23 T3 batch: 72 of 86 upstream commits ported and 3
+  already covered by Cox; see `docs/upstream-audit-2026-11-23`.
+- Chat Markdown renders through static islands with one shared tooltip, so long
+  conversations render faster. Math still renders with KaTeX in chat and in
+  response images.
+- Pasting from Word inserts text instead of an image, a paste with text and a
+  picture keeps both, and sends wait for image uploads to finish.
+- A new thread's first message and a queued send-now or steer survive a
+  dropped connection, and idle connections behind a reverse proxy no longer
+  drop every 60 seconds.
+- Fixes for checkpoints, conversation rewind, delegated tasks, slash commands
+  with pending context, ACP mode changes and handshakes, and Claude, Codex,
+  Cursor, OpenCode, Pi and Antigravity sessions.
+- Fixes for Word and RTF attachments, GitHub and GitLab pull requests, the
+  sidebar, scheduled task and project action editors, keybindings and
+  filesystem browsing.
+
 ## Desktop 0.2.40 — 2026-11-23
 
 - Computer control now works on Windows. Settings → Labs shows a Windows setup
