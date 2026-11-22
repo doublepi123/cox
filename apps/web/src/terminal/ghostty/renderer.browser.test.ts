@@ -142,3 +142,23 @@ it("paints a focused block cursor without revealing concealed text or hiding vis
   ).toBe(true);
   expect(draw(false, true)[(18 * 12 + 5) * 4]).toBe(8);
 });
+
+it.each([1.25, 2.2])("fills Powerline slants at %sx device scale", (scale) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(30 * scale);
+  canvas.height = Math.ceil(20 * scale);
+  const context = canvas.getContext("2d")!;
+  context.scale(scale, scale);
+  const darkAt = (x: number, y: number) =>
+    context.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data[0]! < 128;
+  for (const [text, filled, empty] of [
+    ["\ue0b8", [11, 18], [19, 2]],
+    ["\ue0ba", [19, 18], [11, 2]],
+    ["\ue0bc", [11, 2], [19, 18]],
+    ["\ue0be", [19, 2], [11, 18]],
+  ] as const) {
+    renderTestRow([blank, { ...blank, text }, blank], context);
+    expect(darkAt(filled[0], filled[1])).toBe(true);
+    expect(darkAt(empty[0], empty[1])).toBe(false);
+  }
+});
