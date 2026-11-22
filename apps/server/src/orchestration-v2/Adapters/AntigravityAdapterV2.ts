@@ -20,6 +20,7 @@ import type { AntigravityAuth } from "../../provider/AntigravityAuth.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
   antigravityPermissionMode,
+  antigravityPermissionDisposition,
   applyAntigravityAcpModelSelection,
   buildAntigravityPrompt,
   type AntigravityAcpRuntimeInput,
@@ -227,6 +228,7 @@ export function makeAntigravityAcpAdapterFlavor(
         }),
     },
     approvalOptions: antigravityApprovalOptions,
+    permissionDisposition: antigravityPermissionDisposition,
     extractPermissionQuestion: (request) => {
       const question = extractAntigravityUserInputQuestion(request);
       if (question === undefined) return undefined;

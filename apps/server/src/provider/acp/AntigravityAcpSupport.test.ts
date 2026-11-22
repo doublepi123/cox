@@ -15,6 +15,7 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import {
   antigravityClientInfo,
+  antigravityPermissionDisposition,
   applyAntigravityAcpModelSelection,
   buildAntigravityPrompt,
 } from "./AntigravityAcpSupport.ts";
@@ -26,6 +27,49 @@ describe("antigravityClientInfo", () => {
   );
   it.each(["1.5.1", "1.5.2", "1.6.0", "2.0.0", " 1.5.1 "])("identifies Cox to %s", (version) =>
     expect(antigravityClientInfo(version)).toMatchObject({ name: "cox", title: "Cox" }),
+  );
+});
+
+describe("Antigravity MCP approvals", () => {
+  it.each(["auto", "auto-accept-edits"] as const)(
+    "runs only server-qualified Cox MCP calls unasked in %s",
+    (runtimeMode) => {
+      const policy = { runtimeMode, cwd: "/workspace" };
+      const request = (
+        title: string,
+        rawInput?: Record<string, unknown>,
+      ): EffectAcpSchema.RequestPermissionRequest => ({
+        sessionId: "session-1",
+        toolCall: { toolCallId: "call-1", title, kind: "execute", rawInput },
+        options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+      });
+      for (const coxCall of [
+        request("Run mcp_cox_cox_thread_list?"),
+        request("MCP Tool delegate_task", { ServerName: "cox", ToolName: "delegate_task" }),
+      ]) {
+        expect(antigravityPermissionDisposition(policy, coxCall)).toBe("allow");
+        expect(
+          antigravityPermissionDisposition({ ...policy, approvalPolicy: "on-request" }, coxCall),
+        ).toBe("ask");
+        expect(
+          antigravityPermissionDisposition(
+            { ...policy, sandboxPolicy: { type: "readOnly" } },
+            coxCall,
+          ),
+        ).toBe("deny");
+      }
+      for (const otherCall of [
+        // Names no server, so another MCP server's tool of the same name looks identical.
+        request("Running preview_status"),
+        request("Run mcp_github_create_issue"),
+        request("MCP Tool preview_status", { ServerName: "other", ToolName: "preview_status" }),
+        request("Run mcp_cox_preview_status", {
+          CommandLine: "Run mcp_cox_preview_status",
+        }),
+      ]) {
+        expect(antigravityPermissionDisposition(policy, otherCall)).toBe("ask");
+      }
+    },
   );
 });
 
