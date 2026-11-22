@@ -23,7 +23,7 @@ function isAzureHostname(hostname: string): boolean {
 }
 
 const CHANGE_REQUEST_REFERENCE =
-  /^https:\/\/(?:dev\.azure\.com\/[^/\s]+\/[^/\s]+|[^/\s]+\.visualstudio\.com\/[^/\s]+)\/_git\/[^/\s]+\/pullrequest\/(\d+)(?:[/?#].*)?$/i;
+  /^https:\/\/(?:dev\.azure\.com\/[^/\s]+(?:\/[^/\s]+)?|[^/\s]+\.visualstudio\.com(?:\/DefaultCollection)?(?:\/[^/\s]+)?)\/_git\/[^/\s]+\/pullrequest\/(\d+)(?:[/?#].*)?$/i;
 
 /**
  * Azure alone addresses one repository under two names that share no part: `ssh.dev.azure.com` and
