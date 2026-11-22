@@ -84,7 +84,13 @@ describe("resolveProjectSettings", () => {
       defaultThreadEnvMode: "local" as const,
     };
     const unfolded = resolveProjectSettings(
-      { ...DEFAULT_SERVER_SETTINGS, projectSettingsFolded: false },
+      {
+        ...DEFAULT_SERVER_SETTINGS,
+        providerInstances: {
+          [ProviderInstanceId.make("codex")]: { driver: ProviderDriverKind.make("codex") },
+        },
+        projectSettingsFolded: false,
+      },
       projectId,
       project,
     );
@@ -157,6 +163,12 @@ describe("resolveProjectSettings", () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,
       textGenerationModelSelection: createModelSelection(codex, "gpt-5"),
+      providerInstances: {
+        [codex]: { driver: ProviderDriverKind.make("codex") },
+        [ProviderInstanceId.make("claudeAgent")]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+        },
+      },
       projectSettingsOverrides: {
         [projectId]: { providerInstances: { [codex]: { enabled: false } } },
       },
