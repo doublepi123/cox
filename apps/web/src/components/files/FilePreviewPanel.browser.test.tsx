@@ -291,129 +291,125 @@ describe("source file scroll", () => {
       endLine: 250,
       anchorStaysMounted: false,
     },
-  ])(
-    "$label",
-    async ({ startLine, endLine, anchorStaysMounted }) => {
-      using _settings = setup();
-      localStorage.setItem("t3code.renderMarkdown", "false");
-      const style = document.createElement("style");
-      style.textContent = appCss;
-      document.head.append(style);
-      using _style = { [Symbol.dispose]: () => style.remove() };
-      await preloadHighlighter({ themes: Object.values(DEFAULT_THEMES), langs: ["markdown"] });
+  ])("$label", async ({ startLine, endLine, anchorStaysMounted }) => {
+    using _settings = setup();
+    localStorage.setItem("t3code.renderMarkdown", "false");
+    const style = document.createElement("style");
+    style.textContent = appCss;
+    document.head.append(style);
+    using _style = { [Symbol.dispose]: () => style.remove() };
+    await preloadHighlighter({ themes: Object.values(DEFAULT_THEMES), langs: ["markdown"] });
 
-      const lines = Array.from({ length: 400 }, (_, index) => `line ${index + 1} markdown content`);
-      const contents = `${lines.join("\n")}\n`;
-      state.file = {
-        relativePath: "notes.md",
-        contents,
-        byteLength: contents.length,
-        truncated: false,
-      };
+    const lines = Array.from({ length: 400 }, (_, index) => `line ${index + 1} markdown content`);
+    const contents = `${lines.join("\n")}\n`;
+    state.file = {
+      relativePath: "notes.md",
+      contents,
+      byteLength: contents.length,
+      truncated: false,
+    };
 
-      await using screen = await render(
-        <div style={{ width: 560, height: 400, display: "flex", flexDirection: "column" }}>
-          {filePreview("notes.md")}
-        </div>,
-      );
+    await using screen = await render(
+      <div style={{ width: 560, height: 400, display: "flex", flexDirection: "column" }}>
+        {filePreview("notes.md")}
+      </div>,
+    );
 
-      const root = screen.container.querySelector("diffs-container")!.shadowRoot!;
-      const scroller = screen.container.querySelector<HTMLElement>(".file-preview-virtualizer")!;
-      const row = (line: number) => root.querySelector<HTMLElement>('[data-line="' + line + '"]');
-      const rowBox = (line: number) => {
-        const box = row(line)?.getBoundingClientRect();
-        expect(box).toBeDefined();
-        const viewport = scroller.getBoundingClientRect();
-        expect(box!.height).toBeGreaterThan(0);
-        expect(box!.top).toBeGreaterThanOrEqual(viewport.top);
-        expect(box!.bottom).toBeLessThanOrEqual(viewport.bottom);
-        return box!;
-      };
-      const wait = { timeout: 5000 };
-      const content = await vi.waitFor(() => {
-        const editable = root.querySelector<HTMLElement>('[data-content][contenteditable="true"]');
-        expect(editable).not.toBeNull();
-        return editable!;
-      }, wait);
-      const lineHeight = await vi.waitFor(() => rowBox(5).height, wait);
-      const scrollTo = (line: number) => {
-        scroller.scrollTop = (line - 1) * lineHeight - scroller.clientHeight / 2;
-      };
-      scrollTo(startLine);
-      await vi.waitFor(() => rowBox(startLine), wait);
-      const mountedRows = () => root.querySelectorAll<HTMLElement>("[data-line]");
-      const firstMounted = mountedRows()[0];
-      const goingUp = endLine < startLine;
-      const rowText = (element: HTMLElement) => element.querySelector("span")!.firstChild!;
+    const root = screen.container.querySelector("diffs-container")!.shadowRoot!;
+    const scroller = screen.container.querySelector<HTMLElement>(".file-preview-virtualizer")!;
+    const row = (line: number) => root.querySelector<HTMLElement>('[data-line="' + line + '"]');
+    const rowBox = (line: number) => {
+      const box = row(line)?.getBoundingClientRect();
+      expect(box).toBeDefined();
+      const viewport = scroller.getBoundingClientRect();
+      expect(box!.height).toBeGreaterThan(0);
+      expect(box!.top).toBeGreaterThanOrEqual(viewport.top);
+      expect(box!.bottom).toBeLessThanOrEqual(viewport.bottom);
+      return box!;
+    };
+    const wait = { timeout: 5000 };
+    const content = await vi.waitFor(() => {
+      const editable = root.querySelector<HTMLElement>('[data-content][contenteditable="true"]');
+      expect(editable).not.toBeNull();
+      return editable!;
+    }, wait);
+    const lineHeight = await vi.waitFor(() => rowBox(5).height, wait);
+    const scrollTo = (line: number) => {
+      scroller.scrollTop = (line - 1) * lineHeight - scroller.clientHeight / 2;
+    };
+    scrollTo(startLine);
+    await vi.waitFor(() => rowBox(startLine), wait);
+    const mountedRows = () => root.querySelectorAll<HTMLElement>("[data-line]");
+    const firstMounted = mountedRows()[0];
+    const goingUp = endLine < startLine;
+    const rowText = (element: HTMLElement) => element.querySelector("span")!.firstChild!;
 
-      const copied = () => {
-        const clipboardData = new DataTransfer();
-        const handled = !content.dispatchEvent(
-          new ClipboardEvent("copy", {
-            clipboardData,
-            bubbles: true,
-            cancelable: true,
-            composed: true,
-          }),
-        );
-        return handled ? clipboardData.getData("text/plain") : null;
-      };
-      const selection = document.getSelection()!;
-      const start = row(startLine)!;
-      const startNode = rowText(start);
-      const startOffset = goingUp ? startNode.textContent!.length : 0;
-      content.focus({ preventScroll: true });
-      await vi.waitFor(() => expect(root.activeElement).toBe(content), wait);
-      start.dispatchEvent(
-        new PointerEvent("pointerdown", {
+    const copied = () => {
+      const clipboardData = new DataTransfer();
+      const handled = !content.dispatchEvent(
+        new ClipboardEvent("copy", {
+          clipboardData,
           bubbles: true,
+          cancelable: true,
           composed: true,
-          pointerType: "mouse",
-          buttons: 1,
         }),
       );
-      try {
-        selection.collapse(startNode, startOffset);
-        document.dispatchEvent(new Event("selectionchange"));
-        const neighbor = row(startLine + (goingUp ? -1 : 1))!;
-        selection.extend(rowText(neighbor), goingUp ? 0 : neighbor.textContent!.length);
-        await vi.waitFor(
-          () => expect(root.querySelector("[data-selection-range]")).not.toBeNull(),
-          wait,
-        );
+      return handled ? clipboardData.getData("text/plain") : null;
+    };
+    const selection = document.getSelection()!;
+    const start = row(startLine)!;
+    const startNode = rowText(start);
+    const startOffset = goingUp ? startNode.textContent!.length : 0;
+    content.focus({ preventScroll: true });
+    await vi.waitFor(() => expect(root.activeElement).toBe(content), wait);
+    start.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        composed: true,
+        pointerType: "mouse",
+        buttons: 1,
+      }),
+    );
+    try {
+      selection.collapse(startNode, startOffset);
+      document.dispatchEvent(new Event("selectionchange"));
+      const neighbor = row(startLine + (goingUp ? -1 : 1))!;
+      selection.extend(rowText(neighbor), goingUp ? 0 : neighbor.textContent!.length);
+      await vi.waitFor(
+        () => expect(root.querySelector("[data-selection-range]")).not.toBeNull(),
+        wait,
+      );
 
-        scrollTo(endLine);
-        await vi.waitFor(() => {
-          expect(mountedRows()[0]).not.toBe(firstMounted);
-          expect(row(startLine) !== null).toBe(anchorStaysMounted);
-          rowBox(endLine);
-        }, wait);
-        const rows = mountedRows();
-        const anchor = row(startLine) ?? (goingUp ? rows[rows.length - 1]! : rows[0]!);
-        const end = row(endLine)!;
-        selection.setBaseAndExtent(
-          rowText(anchor),
-          goingUp ? anchor.textContent!.length : 0,
-          rowText(end),
-          goingUp ? 0 : end.textContent!.length,
-        );
-        await vi.waitFor(() => {
-          const text = copied();
-          expect(text).toContain(lines[startLine - 1]);
-          expect(text).toContain(lines[endLine - 1]);
-        }, wait);
-      } finally {
-        document.body.dispatchEvent(
-          new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }),
-        );
-      }
+      scrollTo(endLine);
+      await vi.waitFor(() => {
+        expect(mountedRows()[0]).not.toBe(firstMounted);
+        expect(row(startLine) !== null).toBe(anchorStaysMounted);
+        rowBox(endLine);
+      }, wait);
+      const rows = mountedRows();
+      const anchor = row(startLine) ?? (goingUp ? rows[rows.length - 1]! : rows[0]!);
+      const end = row(endLine)!;
+      selection.setBaseAndExtent(
+        rowText(anchor),
+        goingUp ? anchor.textContent!.length : 0,
+        rowText(end),
+        goingUp ? 0 : end.textContent!.length,
+      );
+      await vi.waitFor(() => {
+        const text = copied();
+        expect(text).toContain(lines[startLine - 1]);
+        expect(text).toContain(lines[endLine - 1]);
+      }, wait);
+    } finally {
+      document.body.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }),
+      );
+    }
 
-      expect(root.querySelector("[data-selection-range]")).not.toBeNull();
-      expect(copied()).toContain(lines[startLine - 1]);
-      expect(copied()).toContain(lines[endLine - 1]);
-    },
-    20_000,
-  );
+    expect(root.querySelector("[data-selection-range]")).not.toBeNull();
+    expect(copied()).toContain(lines[startLine - 1]);
+    expect(copied()).toContain(lines[endLine - 1]);
+  });
 
   it("scrolls a find match below many wrapped lines into view", async () => {
     using _settings = setup();
@@ -479,7 +475,7 @@ describe("source file scroll", () => {
       expect(box.top).toBeGreaterThanOrEqual(viewport.top);
       expect(box.bottom).toBeLessThanOrEqual(viewport.bottom);
     }, wait);
-  }, 20_000);
+  });
 });
 
 describe("rendered Markdown task saves", () => {
