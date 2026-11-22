@@ -3144,6 +3144,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       return { remoteName, branchName, publishes: true, upstream: null };
     }
 
+    const localRemote = yield* readConfigValue(cwd, `branch.${branch}.remote`);
+    if (localRemote === ".") {
+      const remoteName = yield* resolvePushRemoteName(cwd, branch);
+      if (!remoteName || remoteName === ".") return null;
+      const branchName = yield* resolvePublishBranchName(cwd, branch);
+      const upstreamRef = yield* readCurrentUpstreamRef(cwd);
+      return {
+        remoteName,
+        branchName,
+        publishes: true,
+        upstream: upstreamRef === null ? null : { remoteName: ".", branchName: upstreamRef, upstreamRef },
+      };
+    }
+
     const upstream = yield* resolveCurrentUpstream(cwd).pipe(Effect.orElseSucceed(() => null));
     if (!upstream) return null;
     // Differently named upstreams are bases, not publish targets; pushing HEAD there would write features to shared branches.
@@ -3243,7 +3257,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     if (
       hasNoLocalDelta &&
       details.hasUpstream &&
-      (!destination || (yield* pushesOnlyToFetchUrl(cwd, destination.remoteName)))
+      (!destination ||
+        (destination.upstream?.remoteName !== "." &&
+          (yield* pushesOnlyToFetchUrl(cwd, destination.remoteName))))
     ) {
       return {
         status: "skipped_up_to_date" as const,
@@ -3312,7 +3328,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           yield* writeConfigValue({
             cwd,
             key: `branch.${branch}.t3-merge-base-ref`,
-            value: `refs/remotes/${upstream.upstreamRef}`,
+            value: upstream.remoteName === "."
+              ? `refs/heads/${upstream.upstreamRef}`
+              : `refs/remotes/${upstream.upstreamRef}`,
           });
         }
       }
