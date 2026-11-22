@@ -3044,8 +3044,7 @@ export const layerWsRpc = (
             Effect.flatMap((removed) =>
               removed ? Effect.void : gitWorkflow.removeWorktree(input),
             ),
-            Effect.tap(() => refreshGitStatus(input.cwd)),
-            // Subscribers of the removed checkout learn it is no longer a repository.
+            // The client refreshes project status after deletion. Notify subscribers to the removed checkout.
             Effect.tap(() =>
               vcsStatusBroadcaster
                 .refreshLocalStatus(input.path)
