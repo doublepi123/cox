@@ -339,20 +339,25 @@ describe("source file scroll", () => {
 
       const scroller = screen.container.querySelector<HTMLElement>(".file-preview-virtualizer")!;
       if (initialScrollLine !== null) {
+        await vi.waitFor(() => expect(scroller.scrollHeight).toBeGreaterThan(5000));
         if (direction === "up") {
-          await vi.waitFor(() => expect(scroller.scrollHeight).toBeGreaterThan(5000));
           scroller.scrollTop = scroller.scrollHeight;
           await vi.waitFor(() =>
             expect(
               [...rows()].some((row) => row.getAttribute("data-line") === String(startLine)),
             ).toBe(true),
           );
+        } else {
+          scroller.scrollTop = ((initialScrollLine - 1) / lines.length) * scroller.scrollHeight;
         }
-        const target = [...rows()].find(
-          (row) => row.getAttribute("data-line") === String(initialScrollLine),
-        );
-        expect(target).toBeDefined();
-        target!.scrollIntoView({ block: direction === "up" ? "end" : "start" });
+        const target = await vi.waitFor(() => {
+          const row = [...rows()].find(
+            (candidate) => candidate.getAttribute("data-line") === String(initialScrollLine),
+          );
+          expect(row).toBeDefined();
+          return row!;
+        });
+        target.scrollIntoView({ block: direction === "up" ? "end" : "start" });
         await vi.waitFor(() => expect(scroller.scrollTop).toBeGreaterThan(0));
       }
 
