@@ -879,11 +879,86 @@ index 6e7b486a02..5b7290f181 100644
  		connectedCallback() {
  			const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
 diff --git a/dist/editor/editor.js b/dist/editor/editor.js
-index bf17cea32f..671e77b8cd 100644
+index bf17cea32f..9e7e77b8cd 100644
 --- a/dist/editor/editor.js
 +++ b/dist/editor/editor.js
-@@ -1903,7 +1903,11 @@ var Editor = class {
- 			changedDocumentLines: this.#isDiff && !didLineCountChange ? getChangedDocumentLines(textDocument, change) : void 0,
+@@ -125,4 +125,5 @@ var Editor = class {
+ 	#selectionStart;
++	#dragAnchorUnmounted = false;
+ 	#deletedSelectionText = "";
+ 	#reservedSelections;
+ 	#initSelections;
+@@ -958,5 +959,9 @@ var Editor = class {
+ 		const finishMouseSelection = (event) => {
+ 			if (event.pointerType !== "mouse") return;
+ 			const refocusEditor = this.#isGutterMouseDown;
++			const primarySelection = this.#isContentMouseDown ? this.#selections?.at(-1) : void 0;
++			const renderRange = this.#renderRange;
++			const selectionLeavesRenderRange = primarySelection !== void 0 && renderRange !== void 0 && (primarySelection.start.line < renderRange.startingLine || primarySelection.end.line >= renderRange.startingLine + renderRange.totalLines);
+ 			this.#resetSelectionGesture();
++			if (selectionLeavesRenderRange) this.#suppressNativeSelectionSync = true;
+ 			if (refocusEditor) this.#focus();
+@@ -974,6 +979,7 @@ var Editor = class {
+ 				let composedRange;
+ 				if (typeof selectionRaw.getComposedRanges === "function") composedRange = selectionRaw.getComposedRanges({ shadowRoots: [shadowRoot] })?.[0];
+ 				else composedRange = getShadowRootRange(shadowRoot);
+ 				if (composedRange === void 0 || !this.#rangeBelongsToEditor(composedRange)) return;
+-				const selection = convertSelection(composedRange, 0);
++				let selection = convertSelection(composedRange, 0);
++				if (this.#isContentMouseDown && !this.#shiftKeyPressed && this.#selectionStart !== void 0) selection = this.#resolveMouseDragSelection(composedRange, selection);
+ 				if (selection === void 0) return;
+@@ -1018,5 +1022,46 @@ var Editor = class {
+ 		this.#altColumnDrag = void 0;
+ 		this.#shiftKeyPressed = false;
+ 		this.#selectionStart = void 0;
+ 		this.#reservedSelections = void 0;
+ 	}
++	#resolveMouseDragSelection(composedRange, selection) {
++		const selectionStart = this.#selectionStart;
++		if (selectionStart === void 0) return selection;
++		const renderRange = this.#renderRange;
++		if (renderRange !== void 0 && (selectionStart.start.line < renderRange.startingLine || selectionStart.end.line >= renderRange.startingLine + renderRange.totalLines)) this.#dragAnchorUnmounted = true;
++		if (!this.#dragAnchorUnmounted) return selection;
++		let focus;
++		if (selection !== void 0) {
++			const direction = window.getSelection()?.direction;
++			if (direction === "backward") focus = selection.start;
++			else if (direction === "forward") focus = selection.end;
++			else focus = renderRange !== void 0 && selectionStart.end.line >= renderRange.startingLine + renderRange.totalLines ? selection.start : selection.end;
++		} else {
++			const startPos = convertSelection({
++				startContainer: composedRange.startContainer,
++				startOffset: composedRange.startOffset,
++				endContainer: composedRange.startContainer,
++				endOffset: composedRange.startOffset
++			}, 0)?.start;
++			const endPos = convertSelection({
++				startContainer: composedRange.endContainer,
++				startOffset: composedRange.endOffset,
++				endContainer: composedRange.endContainer,
++				endOffset: composedRange.endOffset
++			}, 0)?.end;
++			if (startPos !== void 0 && endPos === void 0) focus = startPos;
++			else if (endPos !== void 0 && startPos === void 0) focus = endPos;
++			else return;
++		}
++		if (comparePosition(focus, selectionStart.start) < 0) return {
++			start: focus,
++			end: selectionStart.end,
++			direction: -1
++		};
++		if (comparePosition(focus, selectionStart.end) > 0) return {
++			start: selectionStart.start,
++			end: focus,
++			direction: 1
++		};
++		return { ...selectionStart };
++	}
+ 	#replaceSelectEventListeners(disposes) {
+@@ -1083,1 +1128,2 @@ var Editor = class {
+ 				this.#selectionStart = void 0;
++				this.#dragAnchorUnmounted = false;
++				if (isAltColumnDrag) {
  			documentLineCount: textDocument.lineCount
  		});
 -		if (didLineCountChange) applyDocumentChange(textDocument, newLineAnnotations, shouldUpdateBuffer);
