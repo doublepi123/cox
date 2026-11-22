@@ -4,6 +4,7 @@ import { assert, it } from "@effect/vitest";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import {
   EnvironmentId,
+  MessageId,
   type ModelSelection,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
@@ -13,6 +14,8 @@ import {
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2Subagent,
+  type OrchestrationV2RestartCancelledBackgroundWork,
+  type OrchestrationV2TurnItem,
   type Project,
   ProjectId,
   ProviderDriverKind,
@@ -48,6 +51,7 @@ import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
+import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -680,6 +684,7 @@ function layerTest(input: {
   return Layer.mergeAll(
     layerTestStores,
     layerConfiguredEventSink,
+    EffectOutbox.layer.pipe(Layer.provide(layerTestDatabase)),
     IdAllocator.layer,
     layerConfiguredMcpRegistry,
     McpProviderSessions.layer,
@@ -3380,6 +3385,134 @@ it.effect("ProviderSessionManagerV2 keeps the roster of a runtime whose tasks ca
       ),
     );
   }),
+);
+
+// regression: #40147 a provider process exit lost settled runs' background work with no note or wake
+it.effect.each(["stream failure", "detach"] as const)(
+  "ProviderSessionManagerV2 notes and wakes the run whose background work a %s cancels",
+  (release) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const effect = Effect.gen(function* () {
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const { threadId, providerSessionId, providerThreads } =
+          yield* openSessionWithBackgroundCommand("provider-session-manager-exit-note");
+        const now = yield* DateTime.now;
+        const runId = idAllocator.derive.run({ threadId, ordinal: 1 });
+        const rootNodeId = idAllocator.derive.rootNode({ runId });
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "run.created",
+              threadId,
+              runId,
+              nodeId: rootNodeId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              payload: {
+                id: runId,
+                threadId,
+                ordinal: 1,
+                providerInstanceId: modelSelection.instanceId,
+                modelSelection,
+                providerThreadId: providerThreads[0]!.id,
+                userMessageId: MessageId.make("message:provider-session-manager-exit-note"),
+                rootNodeId,
+                activeAttemptId: null,
+                status: "completed",
+                requestedAt: now,
+                startedAt: now,
+                completedAt: now,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+          ],
+        });
+        const toolId = TurnItemId.make("provider-exit-live-tool");
+        const tool = {
+          id: toolId,
+          threadId,
+          runId,
+          nodeId: null,
+          providerThreadId: providerThreads[0]!.id,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 10,
+          type: "dynamic_tool",
+          toolName: "mcp__cox__cox_worktree_handoff",
+          input: {},
+          status: "running",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+        } satisfies OrchestrationV2TurnItem;
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "turn-item.updated",
+              threadId,
+              runId,
+              occurredAt: now,
+              payload: tool,
+            },
+          ],
+        });
+        const afterSequence = yield* eventSink.latestSequence({ threadId });
+        const expectedWork: ReadonlyArray<OrchestrationV2RestartCancelledBackgroundWork> = [
+          {
+            kind: "shell",
+            label: "python3 -m http.server (id dev-server)",
+            id: "dev-server",
+          },
+          {
+            kind: "task",
+            label: "mcp__cox__cox_worktree_handoff",
+            id: toolId,
+          },
+        ];
+        const continuation = outbox.get(`effect:restart-continuation:${runId}`);
+        if (release === "detach") {
+          yield* manager.detach({ providerSessionId, threadId, detail: "Workspace changed." });
+          assert.isTrue(Option.isNone(yield* continuation));
+        } else {
+          yield* Queue.end((yield* Ref.get(state)).eventQueues.get(String(providerSessionId))!);
+          yield* eventSink.stream({ threadId, afterSequence }).pipe(
+            Stream.filter(
+              ({ event }) =>
+                event.type === "run.background-work-cancelled" &&
+                event.payload.restartCancelledBackgroundWork.length === expectedWork.length,
+            ),
+            Stream.take(1),
+            Stream.runDrain,
+          );
+          assert.deepStrictEqual(Option.getOrUndefined(yield* continuation)?.request, {
+            type: "provider-runtime.continue",
+            sourceRunId: runId,
+            cause: "provider_exit",
+          });
+        }
+        const { runs } = yield* projectionStore.getThreadRecords(threadId, ["runs"]);
+        assert.deepStrictEqual(
+          runs.find((run) => run.id === runId)?.restartCancelledBackgroundWork,
+          release === "detach" ? undefined : expectedWork,
+        );
+      });
+
+      yield* effect.pipe(
+        Effect.provide(
+          layerTest({ state, idleTimeoutMs: 60_000, capabilities: ExclusiveCapabilities }),
+        ),
+      );
+    }),
 );
 
 // regression: #19355 settled and idle-released threads stayed Waiting

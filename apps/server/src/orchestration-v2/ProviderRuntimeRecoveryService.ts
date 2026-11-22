@@ -1,4 +1,3 @@
-import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   CommandId,
@@ -35,6 +34,7 @@ import {
   cancelledRosterTaskWork,
   cancelledTurnItemWork,
   mergeRestartCancelledBackgroundWork,
+  latestStartedRun,
   neverStarted,
 } from "./RestartBackgroundNote.ts";
 
@@ -158,23 +158,6 @@ const cancelledItem = (
   item.type === "secret_request" && item.secretStatus === "pending"
     ? { ...item, status: "cancelled", secretStatus: "cancelled", completedAt: now, updatedAt: now }
     : { ...item, status: "cancelled", completedAt: now, updatedAt: now };
-
-function latestStartedRun(
-  projection: ProjectionStore.ProjectionRuntimeRecoveryState,
-  providerThreadId: ProviderThreadId,
-) {
-  return projection.runs.reduce<OrchestrationV2ThreadProjection["runs"][number] | undefined>(
-    (latest, run) =>
-      run.providerThreadId === providerThreadId &&
-      run.status !== "queued" &&
-      run.status !== "rolled_back" &&
-      !neverStarted(run) &&
-      (latest === undefined || runRanAfter(run, latest))
-        ? run
-        : latest,
-    undefined,
-  );
-}
 
 export const make = Effect.gen(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
@@ -779,7 +762,7 @@ export const make = Effect.gen(function* () {
         });
       }
       for (const [providerThreadId, work] of cancelledBackgroundWork) {
-        const noteRun = latestStartedRun(projection, providerThreadId);
+        const noteRun = latestStartedRun(projection.runs, providerThreadId);
         if (noteRun === undefined) continue;
         // Use a separate event; stale run snapshots can overwrite intervening lifecycle changes.
         events.push({
