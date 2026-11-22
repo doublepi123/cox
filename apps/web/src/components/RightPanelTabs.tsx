@@ -123,6 +123,7 @@ export interface RightPanelTabsProps {
   onCloseAllSurfaces: () => void;
   onMoveSurface?: (surfaceId: string, toIndex: number) => void;
   onCopyFilePath: (relativePath: string) => void;
+  onDuplicateBrowser?: (surface: RightPanelSurface) => void;
   onAddBrowser: () => void;
   /** Keep separate from the DOM click handler so a MouseEvent cannot become a profile id. */
   onAddBrowserInProfile: (profileId: string) => void;
@@ -190,6 +191,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
 type TabContextMenuAction =
   | "rename"
   | "copy-path"
+  | "duplicate"
   | "close"
   | "close-others"
   | "close-to-right"
@@ -1029,6 +1031,13 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     const surfaceIndex = props.surfaces.findIndex((entry) => entry.id === surface.id);
     if (surfaceIndex < 0) return;
     const items: ContextMenuItem<TabContextMenuAction>[] = [];
+    if (surface.kind === "preview") {
+      items.push({
+        id: "duplicate",
+        label: t("Duplicate"),
+        disabled: !props.browserAvailable || !surface.resourceId || !props.onDuplicateBrowser,
+      });
+    }
     if (surface.kind === "file" && surface.attachment === undefined) {
       items.push({ id: "copy-path", label: t("Copy path") });
     }
@@ -1059,6 +1068,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         if (surface.kind === "file" && surface.attachment === undefined) {
           props.onCopyFilePath(surface.relativePath);
         }
+        break;
+      case "duplicate":
+        props.onDuplicateBrowser?.(surface);
         break;
       case "close":
         props.onCloseSurface(surface);
