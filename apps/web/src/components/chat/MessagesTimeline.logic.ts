@@ -1027,8 +1027,9 @@ function failedTimelineRunIds(
 function itemizedFailedRunIds(
   entries: ReadonlyArray<TimelineEntry>,
   failedRunIds: ReadonlySet<RunId>,
+  usageLimitRunId: RunId | null,
 ) {
-  const usageLimited = new Set<RunId>();
+  const usageLimited = new Set<RunId>(usageLimitRunId === null ? [] : [usageLimitRunId]);
   const otherFailures = new Set<RunId>();
   for (const entry of entries) {
     const item = timelineEntryFailedItem(entry);
@@ -1574,6 +1575,7 @@ export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   pendingApprovalRequestIds?: ReadonlySet<RuntimeRequestId>;
   latestRun?: TimelineLatestRun | null;
+  usageLimitRunId?: RunId | null;
   runningRunId?: RunId | null;
   expandedRunIds?: ReadonlySet<RunId>;
   expandedAttemptIds?: ReadonlySet<RunAttemptId>;
@@ -1623,7 +1625,11 @@ export function deriveMessagesTimelineRows(input: {
   const nextRows: MessagesTimelineRow[] = [];
   const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(timelineEntries);
   const failedRunIds = failedTimelineRunIds(timelineEntries, input.latestRun ?? null);
-  const itemizedRunIds = itemizedFailedRunIds(timelineEntries, failedRunIds);
+  const itemizedRunIds = itemizedFailedRunIds(
+    timelineEntries,
+    failedRunIds,
+    input.usageLimitRunId ?? null,
+  );
   const liveSubagentEntryIds = liveSubagentCardEntryIds(timelineEntries);
   const completeSupersededReplyIds = completeSupersededReplyEntryIds(timelineEntries);
   const supersededFoldsByAnchorEntryId = deriveSupersededAttemptFolds(

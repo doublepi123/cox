@@ -3368,6 +3368,12 @@ export default function ChatView(props: ChatViewProps) {
                 listRef={legendListRef}
                 runs={serverProjection?.runs ?? []}
                 latestRun={activeActivityRun}
+                usageLimitRunId={
+                  serverRuntime?.status === "failed" &&
+                  serverRuntime.lastErrorClass === "usage_limit"
+                    ? (serverLatestRun?.runId ?? null)
+                    : null
+                }
                 announcedRun={announcedRun(activeActivityRun, serverProjection?.runs ?? [])}
                 detailBehindShell={isDetailBehindShell(
                   activeLatestRun,
