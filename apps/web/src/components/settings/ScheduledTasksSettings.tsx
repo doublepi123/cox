@@ -1520,6 +1520,7 @@ function ScheduledTaskEditorForm({
       schedule,
       projectId: selectedProjectId as ProjectId,
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
+      ...(draft.threadId === "" && task?.threadId != null ? { unbindThread: true } : {}),
       ...(offersThreadModes ? { threadMode: draft.threadMode } : {}),
       workspaceStrategy,
       modelSelection,

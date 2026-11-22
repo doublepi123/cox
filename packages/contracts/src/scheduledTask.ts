@@ -259,7 +259,7 @@ export const ScheduledTaskUpsertInput = Schema.Struct({
   schedule: ScheduledTaskUpsertSchedule,
   projectId: ProjectId,
   threadId: Schema.optional(Schema.NullOr(ThreadId)),
-
+  unbindThread: Schema.optional(Schema.Boolean),
   threadMode: Schema.optional(ScheduledTaskThreadMode),
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
   modelSelection: ModelSelection,
