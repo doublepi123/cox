@@ -494,11 +494,27 @@ describe("document preview contents", () => {
     if (result.type !== "document") throw new Error("Expected document");
     expect(result.pages[0]!.html).toContain(kind === "odt" ? "Field notes" : "Launch plan");
     if (kind === "odt") {
-      const index = '<text:table-of-content><text:table-of-content-source><text:index-title-template><text:p>Index</text:p></text:index-title-template><text:table-of-content-entry-template><text:p>Entry</text:p></text:table-of-content-entry-template></text:table-of-content-source><text:index-body><text:index-title><text:p>Index</text:p></text:index-title><text:p>Field notes</text:p></text:index-body></text:table-of-content>';
-      archive.file("content.xml", `<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text><text:p>Field notes</text:p>${index}</office:text></office:body></office:document-content>`);
+      const indexes = [
+        "table-of-content",
+        "illustration-index",
+        "table-index",
+        "object-index",
+        "user-index",
+        "alphabetical-index",
+        "bibliography",
+      ].map(
+        (name) =>
+          `<text:${name}><text:${name}-source><text:index-title-template>Index</text:index-title-template><text:${name}-entry-template><text:index-entry-text/><text:index-entry-span>: </text:index-entry-span><text:index-entry-page-number/></text:${name}-entry-template></text:${name}-source><text:index-body><text:index-title><text:p>Index</text:p></text:index-title><text:p>Field notes: 1</text:p></text:index-body></text:${name}>`,
+      );
+      archive.file(
+        "content.xml",
+        `<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text><text:p>Field notes</text:p>${indexes.join("")}</office:text></office:body></office:document-content>`,
+      );
       const indexed = await openDocument(archive, kind);
       if (indexed.type !== "document") throw new Error("Expected document");
-      expect(indexed.pages[0]!.html).toBe("<p>Field notes</p><p>Index</p><p>Field notes</p>");
+      expect(indexed.pages[0]!.html).toBe(
+        "<p>Field notes</p>" + "<p>Index</p><p>Field notes: 1</p>".repeat(indexes.length),
+      );
     }
     archive.file(
       "content.xml",
