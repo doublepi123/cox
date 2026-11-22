@@ -1310,7 +1310,14 @@ const make = Effect.gen(function* () {
     ): Effect.fn.Return<void, PlatformError | ServerSettingsError> {
       for (const name of yield* fs.readDirectory(directory)) {
         const target = path.join(directory, name);
-        if ((yield* fs.realPath(target)) !== target || !inside(realRoot, target)) continue;
+        if (!inside(realRoot, target)) continue;
+        const realTarget = yield* fs.realPath(target).pipe(
+          Effect.catchIf(
+            (error) => error.reason._tag === "NotFound",
+            () => Effect.succeed(null),
+          ),
+        );
+        if (realTarget !== target) continue;
         const stat = yield* fs.stat(target);
         if (stat.type === "Directory" && rotatedLogs) {
           yield* visit(target);
