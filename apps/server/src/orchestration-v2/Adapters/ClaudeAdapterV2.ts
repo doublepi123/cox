@@ -5870,7 +5870,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             taskId,
           );
 
-        const pendingWakeTaskSnapshots = new Map<string, ReadonlyArray<OrchestrationV2PendingBackgroundTask>>();
+        const pendingWakeTaskSnapshots = new Map<
+          string,
+          ReadonlyArray<OrchestrationV2PendingBackgroundTask>
+        >();
 
         // Untraced with roster emission: this runs for each streamed roster update.
         const owedWakeTasksForNativeThread = Effect.fnUntraced(function* (nativeThreadId: string) {

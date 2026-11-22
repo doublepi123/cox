@@ -252,7 +252,9 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   const drafts = props.draftIds.flatMap((draftId) => {
     const session = draftThreadsByThreadKey[draftId];
     const composer =
-      draftId === props.routeDraftId ? props.routeDraftComposer : (draftsByThreadKey[draftId] ?? null);
+      draftId === props.routeDraftId
+        ? props.routeDraftComposer
+        : (draftsByThreadKey[draftId] ?? null);
     return session ? [{ draftId, session, composer }] : [];
   });
   if (drafts.length === 0) {

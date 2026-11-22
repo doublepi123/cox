@@ -1016,7 +1016,8 @@ export const revertThreadCheckpoint = Effect.fn("EnvironmentCommands.revertThrea
       );
     if (
       checkpoint === undefined ||
-      (checkpoint.status !== "ready" && !(input.restoreFiles === false && checkpoint.status !== "stale"))
+      (checkpoint.status !== "ready" &&
+        !(input.restoreFiles === false && checkpoint.status !== "stale"))
     ) {
       const target =
         input.checkpointId === undefined

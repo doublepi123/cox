@@ -306,7 +306,11 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                         method: tag,
                         input,
                       });
-                      const stream = mapStream(session, input, Stream.suspend(() => method(input))).pipe(
+                      const stream = mapStream(
+                        session,
+                        input,
+                        Stream.suspend(() => method(input)),
+                      ).pipe(
                         Stream.onFirst(() =>
                           Effect.sync(() => {
                             expectedFailureRetries = 0;

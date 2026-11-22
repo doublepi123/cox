@@ -268,7 +268,10 @@ describe("V2 session presentation", () => {
           },
         };
       });
-    const checkpoint = (ordinal: number, status: "ready" | "stale" | "missing" | "error" = "ready") => ({
+    const checkpoint = (
+      ordinal: number,
+      status: "ready" | "stale" | "missing" | "error" = "ready",
+    ) => ({
       runId: runId(ordinal),
       checkpointTurnCount: ordinal,
       checkpointRef: `checkpoint-${ordinal}` as never,

@@ -13045,8 +13045,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             item.type === "run_interrupt_request" &&
             item.providerTurnId !== null,
         );
-      if (stopped && terminalStatus === "completed")
-        outcome = terminalStatus = "interrupted";
+      if (stopped && terminalStatus === "completed") outcome = terminalStatus = "interrupted";
       const existingResultTransfer = parentProjection.contextTransfers.find(
         (transfer) =>
           transfer.type === "subagent_result" &&

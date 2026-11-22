@@ -8,7 +8,11 @@ import {
 } from "@t3tools/provider-acp-registry/testing";
 import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
 import { AcpRegistryCatalog } from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
-import { decodeAcpReplayTranscript, makeAcpReplayCompletenessAssertion, makeAcpReplayRuntime } from "./AcpAdapterV2.testkit.ts";
+import {
+  decodeAcpReplayTranscript,
+  makeAcpReplayCompletenessAssertion,
+  makeAcpReplayRuntime,
+} from "./AcpAdapterV2.testkit.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

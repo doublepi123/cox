@@ -1360,10 +1360,10 @@ export const layer: Layer.Layer<
                   : input.event.type === "thread_model_selection.updated"
                     ? threadCommands.withLock(input.event.threadId, effect)
                     : input.event.type === "subagent.updated" &&
-                      input.event.driver === "omo" &&
-                      input.event.subagent.origin === "provider_native"
-                    ? threadCommands.withLock(omoChildThreadId(input.event.subagent), effect)
-                    : effect,
+                        input.event.driver === "omo" &&
+                        input.event.subagent.origin === "provider_native"
+                      ? threadCommands.withLock(omoChildThreadId(input.event.subagent), effect)
+                      : effect,
             ),
         ),
     });

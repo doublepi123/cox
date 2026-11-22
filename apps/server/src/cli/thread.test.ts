@@ -41,7 +41,10 @@ it.effect("list includes delegated threads across pages and still leaves out sub
       ],
     });
     const threads = yield* listProjectThreads(tools, projectId);
-    assert.deepStrictEqual(threads.map((thread) => thread.threadId), ["root", "delegated"]);
+    assert.deepStrictEqual(
+      threads.map((thread) => thread.threadId),
+      ["root", "delegated"],
+    );
     assert.deepStrictEqual(
       calls,
       [0, 2].map((cursor) => ({

@@ -605,7 +605,12 @@ const exitWhileIdle = (options: {
           creationSource: "web",
         });
         yield* worker.drain();
-        yield* Fiber.join(running).pipe(Effect.timeoutOrElse({ duration: '8 seconds', orElse: () => Effect.die('Missing running event') }));
+        yield* Fiber.join(running).pipe(
+          Effect.timeoutOrElse({
+            duration: "8 seconds",
+            orElse: () => Effect.die("Missing running event"),
+          }),
+        );
         const firstProcess = processes[0]!;
         const rostered = yield* watch(
           (event) =>
@@ -622,7 +627,12 @@ const exitWhileIdle = (options: {
             session_id: sessionId,
           }),
         );
-        yield* Fiber.join(rostered).pipe(Effect.timeoutOrElse({ duration: '8 seconds', orElse: () => Effect.die('Missing rostered event') }));
+        yield* Fiber.join(rostered).pipe(
+          Effect.timeoutOrElse({
+            duration: "8 seconds",
+            orElse: () => Effect.die("Missing rostered event"),
+          }),
+        );
         if (awaited) {
           const records = yield* orchestrator.getThreadRecords(threadId, ["providerThreads"]);
           const providerThread = records.providerThreads[0]!;
@@ -640,7 +650,12 @@ const exitWhileIdle = (options: {
             taskIds: [taskId],
             awaited: true,
           });
-          yield* Fiber.join(awaitedRoster).pipe(Effect.timeoutOrElse({ duration: '8 seconds', orElse: () => Effect.die('Missing awaitedRoster event') }));
+          yield* Fiber.join(awaitedRoster).pipe(
+            Effect.timeoutOrElse({
+              duration: "8 seconds",
+              orElse: () => Effect.die("Missing awaitedRoster event"),
+            }),
+          );
         }
         const settled = yield* watch(
           (event) =>
@@ -648,7 +663,12 @@ const exitWhileIdle = (options: {
             (event.payload.status === "waiting" || event.payload.status === "completed"),
         );
         yield* Queue.offer(firstProcess, result("waiting-on-sleep", false));
-        yield* Fiber.join(settled).pipe(Effect.timeoutOrElse({ duration: '8 seconds', orElse: () => Effect.die('Missing settled event') }));
+        yield* Fiber.join(settled).pipe(
+          Effect.timeoutOrElse({
+            duration: "8 seconds",
+            orElse: () => Effect.die("Missing settled event"),
+          }),
+        );
         yield* worker.drain();
         const beforeExit = yield* orchestrator.getThreadProjection(threadId);
         const firstRun = beforeExit.runs[0]!;
@@ -699,7 +719,12 @@ const exitWhileIdle = (options: {
         }
         // The CLI exits while the thread is idle, after its last frames; the T3 server keeps running.
         yield* Queue.end(firstProcess);
-        yield* Fiber.join(recorded).pipe(Effect.timeoutOrElse({ duration: '8 seconds', orElse: () => Effect.die('Missing recorded event') }));
+        yield* Fiber.join(recorded).pipe(
+          Effect.timeoutOrElse({
+            duration: "8 seconds",
+            orElse: () => Effect.die("Missing recorded event"),
+          }),
+        );
         yield* worker.drain();
 
         const afterExit = yield* orchestrator.getThreadProjection(threadId);
@@ -717,7 +742,12 @@ const exitWhileIdle = (options: {
           "only awaited work wakes the agent without a user message",
         );
         if (!awaited) return;
-        yield* Fiber.join(woken).pipe(Effect.timeoutOrElse({ duration: '8 seconds', orElse: () => Effect.die('Missing woken event') }));
+        yield* Fiber.join(woken).pipe(
+          Effect.timeoutOrElse({
+            duration: "8 seconds",
+            orElse: () => Effect.die("Missing woken event"),
+          }),
+        );
         yield* worker.drain();
         const afterWake = yield* orchestrator.getThreadProjection(threadId);
         assert.lengthOf(

@@ -1017,7 +1017,12 @@ export const layerWithOptions = (
       // Like restart recovery: an unexpected exit records the work it cancelled on the run that
       // started it and wakes that run, so the agent restarts awaited work instead of waiting on it.
       const writeReleasedWorkNote = Effect.fn("ProviderSessionManager.writeReleasedWorkNote")(
-        function* (released: Pick<ReleasedBackgroundTasks, "threadId" | "providerSessionId" | "providerThreadId" | "lostTasks" | "lostItems">) {
+        function* (
+          released: Pick<
+            ReleasedBackgroundTasks,
+            "threadId" | "providerSessionId" | "providerThreadId" | "lostTasks" | "lostItems"
+          >,
+        ) {
           const { threadId, providerSessionId, lostTasks, lostItems } = released;
           if (lostTasks.length === 0 && lostItems.length === 0) return;
           const { runs, turnItems } = yield* projectionStore.getThreadRecords(

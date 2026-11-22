@@ -456,7 +456,6 @@ it("readThread does not attribute the /compact Cox sends before a stale send to 
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
 
-
 it("readThread pages cut-off text without splitting an emoji across pages", async () => {
   const text = "a😀bc";
   const itemId = TurnItemId.make("turn-item-mcp-reasoning");

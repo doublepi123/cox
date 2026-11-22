@@ -288,7 +288,8 @@ const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPers
     removeItem: (name) => {
       const images = draftImagePayloads(readStoredComposerDraftState());
       composerDraftBaseStorage.removeItem(name);
-      for (const id of images.keys()) composerDraftBaseStorage.removeItem(composerDraftImageKey(id));
+      for (const id of images.keys())
+        composerDraftBaseStorage.removeItem(composerDraftImageKey(id));
       composerDraftLoadedState = null;
       composerDraftLastWrite = null;
     },

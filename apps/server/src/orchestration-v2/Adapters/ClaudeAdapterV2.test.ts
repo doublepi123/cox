@@ -8663,7 +8663,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
-
   const zeroUsage = {
     input_tokens: 0,
     output_tokens: 0,

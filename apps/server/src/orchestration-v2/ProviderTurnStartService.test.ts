@@ -788,11 +788,12 @@ function makeLocalCommandHarness(input: {
     driver: providerThread.driver,
     resumeThread: () =>
       Effect.fail(
-        input.resumeFailure ?? new ProviderAdapter.ProviderAdapterEventStreamError({
-          driver: providerThread.driver,
-          providerSessionId,
-          cause: "native thread is gone",
-        }),
+        input.resumeFailure ??
+          new ProviderAdapter.ProviderAdapterEventStreamError({
+            driver: providerThread.driver,
+            providerSessionId,
+            cause: "native thread is gone",
+          }),
       ),
     ensureThread: fallbackEnsureThread,
   };

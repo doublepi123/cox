@@ -1813,9 +1813,7 @@ it.effect("SQL shells read a subagent family and a worktree's threads", () =>
     );
     // A path, ASCII or not, names a few threads; scanning every thread parses every payload.
     const sql = yield* SqlClient.SqlClient;
-    const threadQueries = statements.filter((statement) =>
-      statement.includes("AS worktree_path"),
-    );
+    const threadQueries = statements.filter((statement) => statement.includes("AS worktree_path"));
     assert.lengthOf(threadQueries, 2);
     for (const threadQuery of threadQueries) {
       const threadPlan = (yield* sql.unsafe<{ readonly detail: string }>(

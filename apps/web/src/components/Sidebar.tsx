@@ -255,7 +255,12 @@ import {
   type SidebarProviderEntry,
   type SidebarSweepAction,
 } from "./sidebar/SidebarThreadRow";
-import { draftTerminalLabel, SidebarDraftBlock, useDraftTerminalLabels, useSidebarDrafts } from "./sidebar/SidebarDraftBlock";
+import {
+  draftTerminalLabel,
+  SidebarDraftBlock,
+  useDraftTerminalLabels,
+  useSidebarDrafts,
+} from "./sidebar/SidebarDraftBlock";
 import { useWorkingShelf } from "./sidebar/useWorkingShelf";
 import {
   SidebarProjectFolderHeader,

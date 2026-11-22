@@ -92,7 +92,10 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
-import { DEFERRED_COMMAND_MESSAGE_CONDITION, JAVASCRIPT_TRIM_WHITESPACE } from "./deferredCommandMessage.ts";
+import {
+  DEFERRED_COMMAND_MESSAGE_CONDITION,
+  JAVASCRIPT_TRIM_WHITESPACE,
+} from "./deferredCommandMessage.ts";
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
@@ -4615,8 +4618,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       },
       Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
     );
-
-
 
     const getTurnStartContext: ProjectionStoreV2Shape["getTurnStartContext"] = (threadId, runId) =>
       sql

@@ -1588,8 +1588,7 @@ const make = Effect.gen(function* () {
       omitSettledSubagents: true,
     });
     const open = subagents.filter(
-      (task) =>
-        task.origin === "app_owned" && task.childThreadId !== null,
+      (task) => task.origin === "app_owned" && task.childThreadId !== null,
     );
     const listed = open
       .slice(0, MAX_LISTED_TASKS)

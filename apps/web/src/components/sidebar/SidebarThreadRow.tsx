@@ -816,7 +816,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
     : thread.modelSelection.model;
 
-
   const detailsTooltip = (
     <SidebarThreadTooltip
       thread={thread}
