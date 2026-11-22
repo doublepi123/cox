@@ -16,6 +16,8 @@ import {
   type OrchestrationV2LimitRecovery,
   type RunId,
   type OrchestrationV2ProviderSession,
+  type ProviderOptionDescriptor,
+  type ServerProvider,
   type ServerProviderModel,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ThreadProjection,
@@ -26,7 +28,12 @@ import {
   backgroundWorkHoldsCompletion,
   derivePendingBackgroundWork,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
-import { getProviderOptionCurrentLabel, getProviderOptionStatedValue } from "@t3tools/shared/model";
+import {
+  getModelSelectionStringOptionValue,
+  getProviderOptionCurrentLabel,
+  getProviderOptionStatedValue,
+  resolveSelectableModel,
+} from "@t3tools/shared/model";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
 
@@ -225,11 +232,21 @@ export function formatModelSelectionEffort(
 ): string | null {
   const caps = models.find((model) => model.slug === selection.model)?.capabilities;
   if (!caps) return null;
-  for (const id of REASONING_EFFORT_OPTION_IDS) {
-    const descriptor = caps.optionDescriptors?.find((candidate) => candidate.id === id);
-    if (descriptor?.type !== "select") continue;
-    const value = getProviderOptionStatedValue(id, selection, reportedSelection);
-    if (value === undefined && id !== "variant") continue;
+  const selectDescriptors = (caps.optionDescriptors ?? []).filter(
+    (candidate) => candidate.type === "select",
+  );
+  const reasoningDescriptors = [
+    ...selectDescriptors.filter((candidate) => candidate.role === "reasoning"),
+    ...REASONING_EFFORT_OPTION_IDS.flatMap((id) => {
+      const descriptor = selectDescriptors.find(
+        (candidate) => candidate.id === id && candidate.role !== "reasoning",
+      );
+      return descriptor ? [descriptor] : [];
+    }),
+  ];
+  for (const descriptor of reasoningDescriptors) {
+    const value = getProviderOptionStatedValue(descriptor.id, selection, reportedSelection);
+    if (value === undefined && descriptor.id !== "variant") continue;
     if (typeof value === "boolean") continue;
     // Bypass picker normalization so an obsolete choice cannot become a catalog default.
     const label = getProviderOptionCurrentLabel(
@@ -240,6 +257,42 @@ export function formatModelSelectionEffort(
     if (label) return label;
   }
   return null;
+}
+
+/** A reported model the picker catalog does not know, such as `claude-opus-5[1m]`, keeps its raw effort. */
+export function formatSubagentEffort(input: {
+  readonly modelSlug: string | null;
+  readonly modelSelection: ModelSelection | undefined;
+  readonly provider: Pick<ServerProvider, "driver" | "models"> | undefined;
+}): string | null {
+  const { modelSlug, modelSelection: selection, provider } = input;
+  if (!provider || !selection || !modelSlug) return null;
+  const selectionSlug =
+    resolveSelectableModel(provider.driver, selection.model, provider.models) ??
+    selection.model.trim();
+  if (selectionSlug !== modelSlug) return null;
+  if (provider.models.some((model) => model.slug === modelSlug)) {
+    return formatModelSelectionEffort({ ...selection, model: modelSlug }, provider.models);
+  }
+  return readSelectedEffortValue(selection);
+}
+
+/** The raw saved effort, preferring the option the model marks as its reasoning control. */
+export function readSelectedEffortValue(
+  selection: ModelSelection | undefined,
+  descriptors: ReadonlyArray<ProviderOptionDescriptor> = [],
+): string | null {
+  const ids = [
+    ...descriptors.flatMap((descriptor) =>
+      descriptor.type === "select" && descriptor.role === "reasoning" ? [descriptor.id] : [],
+    ),
+    ...REASONING_EFFORT_OPTION_IDS,
+  ];
+  return (
+    ids
+      .map((id) => getModelSelectionStringOptionValue(selection, id))
+      .find(Boolean) ?? null
+  );
 }
 
 const SUBAGENT_STATUS_LABELS: Record<OrchestrationV2ExecutionNode["status"], string> = {
