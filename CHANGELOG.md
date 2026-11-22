@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## Desktop 0.2.37 — 2026-11-22
+## Desktop 0.2.38 — 2026-11-22
 
 - Computer control (experimental, macOS) moves to Settings → Labs. Turning it on
   opens a permission guide for Screen Recording, Accessibility and Input
@@ -14,6 +14,12 @@
   of each operation, and links back to the thread. Its Stop button, the
   Stop Computer Control menu item and Control+Option+Command+Escape all stop
   input until you resume it.
+
+## Desktop 0.2.37 — 2026-11-22
+
+- Not published. The packaged app hung at startup because the backend
+  supervisor imported a workspace package that the app does not include, and
+  the Windows tests could not start the fake computer engine.
 
 ## 0.2.29 — 2026-11-22
 
