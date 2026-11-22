@@ -262,8 +262,8 @@ import {
   useThreadUpdatedAt,
   useThreadLastVisitedAt,
   useQuietThreadVisibleTurnItems,
-  useThreadStatus,
   useThreadError,
+  useThreadStatus,
   useThreadHistory,
   useQuietThreadShell,
   useThreadCheckpointSummaries,
@@ -520,6 +520,7 @@ export default function ChatView(props: ChatViewProps) {
     detailExists: serverProjection !== null,
     shellExists: serverThread !== null,
     status: threadStatus,
+    hasError: threadStreamError !== null,
   });
   const threadDetailLoading = threadSyncPhase === "loading";
   // Held back briefly, so a quick sync does not flash a status line at the end of the timeline.

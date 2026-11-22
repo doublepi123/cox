@@ -648,6 +648,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     }
 
     if (item.kind === "snapshot") {
+      yield* Ref.set(forceSnapshot, false);
       yield* SubscriptionRef.set(lastSequence, item.snapshotSequence);
       const hasProgressiveHistory =
         item.historyCursor !== undefined ||
@@ -957,6 +958,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   // may have missed events, so those show sync progress until confirmed.
   const resumingLive = yield* Ref.make(initialState.status === "live");
   const resubscribes = yield* Queue.unbounded<void>();
+  // A resumed replay that dies (an event this client cannot decode) dies the same
+  // way from the same cursor, so later attempts reload the full snapshot until one applies.
+  const resuming = yield* Ref.make(false);
+  const forceSnapshot = yield* Ref.make(false);
   const markSynchronizing = Effect.gen(function* () {
     if (yield* Ref.get(resumingLive)) return;
     yield* SubscriptionRef.update(state, (current) =>
@@ -1057,7 +1062,8 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         }
 
         const sequence = yield* SubscriptionRef.get(lastSequence);
-        const canResume = Option.isSome(current.data);
+        const canResume = Option.isSome(current.data) && !(yield* Ref.get(forceSnapshot));
+        yield* Ref.set(resuming, canResume);
         const acceptBoundedSnapshot = yield* Ref.get(acceptsBoundedSocketSnapshots);
 
         return {
@@ -1076,10 +1082,16 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         };
       }),
       {
-        onDefect: (cause) =>
-          Cause.hasDies(cause)
-            ? backOffAfterDefect.pipe(Effect.andThen(Queue.offer(resubscribes, undefined)))
-            : setStreamError("Could not synchronize the thread."),
+        onDefect: Effect.fn("EnvironmentThreadState.onDefect")(function* (cause) {
+          if (!Cause.hasDies(cause)) return yield* setStreamError("Could not synchronize the thread.");
+          yield* Ref.set(forceSnapshot, true);
+          if (yield* Ref.getAndSet(resuming, false)) {
+            yield* Queue.offer(resubscribes, undefined);
+            return;
+          }
+          yield* backOffAfterDefect;
+          yield* Queue.offer(resubscribes, undefined);
+        }),
         onExpectedFailure: (cause) => setStreamError(formatThreadError(cause)),
         retryExpectedFailureAfter: THREAD_SUBSCRIPTION_RETRY_DELAY,
         resubscribe: Stream.merge(foregroundResubscriptions, Stream.fromQueue(resubscribes)),
@@ -1102,6 +1114,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               environmentId,
               threadId,
             }).pipe(
+              Effect.andThen(Ref.set(forceSnapshot, true)),
               Effect.andThen(backOffAfterDefect),
               Effect.andThen(Effect.suspend(followThread)),
             ),
