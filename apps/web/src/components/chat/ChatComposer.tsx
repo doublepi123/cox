@@ -200,6 +200,7 @@ import {
   ComposerQueuedAttachmentRow,
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
+import { Button } from "../ui/button";
 import { ComposerPrimaryActions, StopGenerationButton } from "./ComposerPrimaryActions";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -274,7 +275,9 @@ import { useComposerStash } from "./useComposerStash";
 import { useComposerContextImport } from "./useComposerContextImport";
 import { useComposerAttachmentIntake } from "./useComposerAttachmentIntake";
 import {
+  cancelHeldComposerSend,
   countPreparingComposerImages,
+  useComposerSendHeld,
   usePreparingComposerImages,
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
@@ -705,6 +708,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerEnvironmentContexts = composerDraft.environmentContexts;
   const standaloneImages = standaloneComposerImages(composerImages, composerPreviewAnnotations);
   const preparingComposerImages = usePreparingComposerImages(attachmentTargetKey);
+  const composerSendHeld = useComposerSendHeld(attachmentTargetKey);
   const nonPersistedComposerImageIds = attachmentDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const openPrLink = useOpenPrLink(routeThreadRef);
@@ -1194,18 +1198,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const showResumeAction =
     canResume && !composerDraftHasUserContent(composerDraft) && !isEditingQueuedMessage;
   const collapsedComposerPrimaryActionDisabled =
+    composerSendHeld ||
     phase === "running" ||
     isSendBusy ||
     isSendDisabled ||
     noProviderAvailable ||
     projectSelectionRequired ||
     environmentUnavailable !== null ||
-    (!composerSendState.hasSendableContent && !showResumeAction);
-  const collapsedComposerPrimaryActionLabel = showResumeAction
-    ? t("Resume thread")
-    : props.resumeCompactionTokens !== null && !props.keepFullHistory
-      ? t("Open composer to compact and send")
-      : t("Send message");
+    (!composerSendState.hasSendableContent &&
+      preparingComposerImages.length === 0 &&
+      !showResumeAction);
+  const collapsedComposerPrimaryActionLabel = composerSendHeld
+    ? t("Sending when ready")
+    : showResumeAction
+      ? t("Resume thread")
+      : props.resumeCompactionTokens !== null && !props.keepFullHistory
+        ? t("Open composer to compact and send")
+        : t("Send message");
   const showCollapsedComposerStopAction =
     canInterrupt && !composerSendState.hasSendableContent && !isEditingQueuedMessage;
   const showMobilePendingAnswerActions =
@@ -1978,7 +1987,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (activePendingProgress) {
       return activePendingProgress.isLastQuestion && Boolean(activePendingResolvedAnswers);
     }
-    return showPlanFollowUpPrompt || composerSendState.hasSendableContent;
+    return (
+      showPlanFollowUpPrompt ||
+      composerSendState.hasSendableContent ||
+      preparingComposerImages.length > 0
+    );
   };
   const submitComposer = (
     event?: {
@@ -1995,16 +2008,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       event?.preventDefault();
       return false;
     }
-    // A send while a pasted image is still compressing would strand that image:
-    // the turn snapshot wouldn't include it, and it would surface in the *next*
-    // draft instead.
-    if (activeThreadId && countPreparingComposerImages(attachmentTargetKey) > 0) {
+    if (
+      composerSendHeld ||
+      (activePendingProgress && countPreparingComposerImages(attachmentTargetKey) > 0)
+    ) {
       event?.preventDefault();
-      toastManager.add({
-        type: "info",
-        title: "Still compressing a pasted image.",
-        description: "Send again once its thumbnail appears.",
-      });
       return false;
     }
     if (pendingDraftWork.has(attachmentTargetKey)) {
@@ -2020,7 +2028,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       prompt: promptRef.current,
       supportsImages: selectedProviderModels.find((model) => model.slug === selectedModel)
         ?.capabilities?.supportsImages,
-      imageCount: composerImagesRef.current.length,
+      imageCount:
+        composerImagesRef.current.length + countPreparingComposerImages(attachmentTargetKey),
       submissionTarget: activePendingProgress ? "pending-user-input" : "provider-turn",
       event,
       onSend: (sendEvent) => {
@@ -3057,6 +3066,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   return (
     <form
       ref={composerFormRef}
+      onKeyDownCapture={(event) => {
+        if (event.key !== "Escape" || event.nativeEvent.isComposing || !composerSendHeld) return;
+        event.preventDefault();
+        event.stopPropagation();
+        cancelHeldComposerSend(attachmentTargetKey);
+      }}
       onSubmit={submitComposerStable}
       onFocusCapture={(event) => {
         const activeElement = event.target;
@@ -3109,6 +3124,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     >
       <ComposerBanner.Dock>
         <ComposerBanner.Column>
+          {composerSendHeld && (
+            <div
+              role="status"
+              className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+            >
+              <span>
+                {t(
+                  preparingComposerImages.length > 1
+                    ? "Sending once images are ready"
+                    : "Sending once image is ready",
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => cancelHeldComposerSend(attachmentTargetKey)}
+              >
+                {t("Cancel send")}
+              </Button>
+            </div>
+          )}
           <ComposerBannerStack items={shelfItems} />
           {showComposerTopDrawer ? (
             <ComposerBanner.Attachment>
@@ -3200,6 +3236,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     data-chat-composer-transition-actions="true"
                     className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
                     disabled={collapsedComposerPrimaryActionDisabled}
+                    aria-busy={composerSendHeld || undefined}
                     aria-label={collapsedComposerPrimaryActionLabel}
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={(event) => {
@@ -3507,6 +3544,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     promptHasText={prompt.trim().length > 0}
                     isSendBusy={isSendBusy}
+                    isSendHeld={composerSendHeld}
                     sendDisabledReason={sendDisabledReason}
                     isEnvironmentUnavailable={
                       environmentUnavailable !== null ||
@@ -3514,7 +3552,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       projectSelectionRequired
                     }
                     isPreparingWorktree={isPreparingWorktree}
-                    hasSendableContent={composerSendState.hasSendableContent}
+                    hasSendableContent={
+                      composerSendState.hasSendableContent || preparingComposerImages.length > 0
+                    }
                     canResume={showResumeAction}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
                     isEditingQueuedMessage={isEditingQueuedMessage}

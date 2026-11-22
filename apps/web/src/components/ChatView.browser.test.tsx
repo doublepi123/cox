@@ -34,6 +34,18 @@ const threadStreamFailure = vi.hoisted(() => ({
   delivered: new Set<string>(),
 }));
 
+const compression = vi.hoisted(() => ({ gate: null as Promise<void> | null }));
+vi.mock(import("~/lib/imageCompression"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    prepareImageForAttachment: async (...args) => {
+      await compression.gate;
+      return actual.prepareImageForAttachment(...args);
+    },
+  };
+});
+
 const rejectSend = vi.hoisted(() => ({ pending: null as (() => void) | null, enabled: false }));
 
 const sendGate = vi.hoisted(() => ({
@@ -157,6 +169,7 @@ installFakeEnvironment([
   threadWithHistory("thread-stream-cached", 1),
   threadWithHistory("thread-send-destination", 1),
   threadWithHistory("thread-rejected-send", 1),
+  threadWithHistory("thread-held-image-send", 1),
 ]);
 
 const returningUserSettings = () =>
@@ -339,4 +352,47 @@ it("a send finishing after navigation leaves the open thread's composer alone", 
     useComposerDraftStore.getState().getComposerDraft(scopeThreadRef(ENVIRONMENT_ID, destination))
       ?.prompt,
   ).toBe("destination draft");
+});
+
+it("holds Enter while an image compresses and cancels on edit or Escape", async () => {
+  returningUserSettings();
+  let finishCompression!: () => void;
+  compression.gate = new Promise<void>((resolve) => {
+    finishCompression = resolve;
+  });
+  using _compression = {
+    [Symbol.dispose]: () => {
+      compression.gate = null;
+      finishCompression();
+    },
+  };
+  await using _app = await mountThread(ThreadId.make("thread-held-image-send"));
+  const editor = page.getByTestId("composer-editor");
+  await expect.element(editor).toBeVisible();
+  await expect.element(page.getByText("Answer 0 for thread-held-image-send.")).toBeVisible();
+  await userEvent.click(editor);
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
+  const clipboardData = new DataTransfer();
+  clipboardData.items.add(new File([png], "shot.png", { type: "image/png" }));
+  editor
+    .element()
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+  await userEvent.keyboard("check image{Enter}");
+  const waiting = page.getByText("Sending once image is ready");
+  await expect.element(waiting).toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Sending when ready" }))
+    .toHaveAttribute("aria-busy", "true");
+  await userEvent.keyboard(" now");
+  await expect.element(waiting).not.toBeInTheDocument();
+  await expect.element(editor).toHaveTextContent("check image now");
+  await userEvent.keyboard("{Enter}");
+  await expect.element(waiting).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(waiting).not.toBeInTheDocument();
 });

@@ -49,6 +49,8 @@ import { type RefObject, useRef } from "react";
 import { serializeComposerImages } from "./composerImagePersistence";
 import {
   addPreparingComposerImages,
+  cancelHeldComposerSend,
+  joinPreparedImagesToDraft,
   isPreparingComposerImage,
   movedPreparingImageThread,
   removePreparingComposerImages,
@@ -307,16 +309,19 @@ export function useComposerAttachmentIntake(input: {
       }));
     const store = useComposerDraftStore.getState();
     const rejectedNames: string[] = [];
-    const storedImageIds = new Set(
-      movedThread
-        ? store.addImages(movedThread, nextImages, {
-            onCapacityExceeded: ({ name }) => rejectedNames.push(name),
-          })
-        : nextImages.length === 1 && nextImages[0]
-          ? addComposerImage(nextImages[0])
-          : nextImages.length > 1
-            ? addComposerImagesToDraft(nextImages)
-            : [],
+    const storedImageIds = joinPreparedImagesToDraft(
+      () =>
+        new Set(
+          movedThread
+            ? store.addImages(movedThread, nextImages, {
+                onCapacityExceeded: ({ name }) => rejectedNames.push(name),
+              })
+            : nextImages.length === 1 && nextImages[0]
+              ? addComposerImage(nextImages[0])
+              : nextImages.length > 1
+                ? addComposerImagesToDraft(nextImages)
+                : [],
+        ),
     );
     const stillPreparingIds = removePreparingComposerImages(
       completionKey,
@@ -332,10 +337,12 @@ export function useComposerAttachmentIntake(input: {
     }
     if (storedImages.length > 0 && imageAttachmentsGetChips && !movedThread) {
       insertedAny =
-        insertAttachmentReferences(
-          storedImages.map(imageContextReference),
-          undefined,
-          pendingInsertion,
+        joinPreparedImagesToDraft(() =>
+          insertAttachmentReferences(
+            storedImages.map(imageContextReference),
+            undefined,
+            pendingInsertion,
+          ),
         ) || insertedAny;
     }
     // Only failures are reported here. Success must not pass `null`: by
@@ -351,7 +358,10 @@ export function useComposerAttachmentIntake(input: {
         `${rejectedNames.join(", ")} could not be restored: the composer is at its ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}-attachment limit.`,
       );
     }
-    if (errors.length > 0) setThreadError(threadId, errors.join("\n"));
+    if (errors.length > 0) {
+      cancelHeldComposerSend(completionKey);
+      setThreadError(threadId, errors.join("\n"));
+    }
     if (movedThread && storedImages.length > 0) {
       const serialized = await serializeComposerImages(storedImages, []);
       await store.appendPersistedAttachments(movedThread, storedImages, serialized);
@@ -360,7 +370,11 @@ export function useComposerAttachmentIntake(input: {
   };
 
   const removeComposerImage = (imageId: string) => {
-    if (removePreparingComposerImages(attachmentTargetKey, new Set([imageId])).size > 0) {
+    if (
+      removePreparingComposerImages(attachmentTargetKey, new Set([imageId]), {
+        cancelSubmission: true,
+      }).size > 0
+    ) {
       // Its compression finishes in the background and is dropped.
       if (questionAttachmentTarget)
         changeQuestionAttachmentPreparation(questionAttachmentTarget, -1);

@@ -266,6 +266,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
+  isSendHeld?: boolean | undefined;
   sendDisabledReason: string | null;
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
@@ -310,6 +311,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
+        isSendHeld={props.isSendHeld}
         sendDisabledReason={props.sendDisabledReason}
         isEnvironmentUnavailable={props.isEnvironmentUnavailable}
         isPreparingWorktree={props.isPreparingWorktree}

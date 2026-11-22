@@ -129,7 +129,8 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import type { UnifiedSettings } from "@t3tools/contracts";
 import type { Dispatch } from "react";
-import type { ComposerThreadTarget } from "../../composerDraftStore";
+import { composerTargetKey, type ComposerThreadTarget } from "../../composerDraftStore";
+import { countPreparingComposerImages, holdComposerSend } from "./preparingComposerImages";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import type { SessionPhase } from "../../types";
 import type { DraftSessionState } from "../../composerDraftStore";
@@ -414,12 +415,13 @@ export function useComposerSend(input: ComposerSendInput) {
     e?.preventDefault();
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
-    const promptAtSend = promptRef.current;
+    let promptAtSend = promptRef.current;
     if (
       usageLimitsOffered &&
       usageLimitsKey !== null &&
       !directAnnotation &&
       !draftHasNonPromptContent(composerDraftTarget) &&
+      countPreparingComposerImages(composerTargetKey(composerDraftTarget)) === 0 &&
       isUsageLimitsCommand(promptRef.current)
     ) {
       if (openUsageLimits()) {
@@ -481,7 +483,25 @@ export function useComposerSend(input: ComposerSendInput) {
       });
       return;
     }
-    const sendCtx = composerRef.current?.getSendContext();
+    let sendCtx = composerRef.current?.getSendContext();
+    const heldForImages = directAnnotation ? null : holdComposerSend(composerDraftTarget);
+    if (heldForImages) {
+      if ((await heldForImages).status === "cancelled") return;
+      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      if (!draft || !sendCtx) return;
+      promptAtSend = draft.prompt;
+      sendCtx = {
+        ...sendCtx,
+        prompt: draft.prompt,
+        images: draft.images,
+        files: draft.files,
+        terminalContexts: draft.terminalContexts,
+        previewAnnotations: draft.previewAnnotations,
+        reviewComments: draft.reviewComments,
+        threadContexts: draft.threadContexts,
+        environmentContexts: draft.environmentContexts,
+      };
+    }
     // `/side` beats an open question and a plan follow-up, which would send the text to main.
     const sideChatCommand =
       sendCtx && !directAnnotation && !queuedRunEdit.isEditing
@@ -937,7 +957,10 @@ export function useComposerSend(input: ComposerSendInput) {
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
-    if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
+    if (
+      currentRouteThreadKeyRef.current === routeThreadKey &&
+      composerRef.current?.validateProviderInput(outgoingMessageText) === false
+    ) {
       return;
     }
 

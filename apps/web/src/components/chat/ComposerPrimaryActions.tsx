@@ -46,6 +46,7 @@ interface ComposerPrimaryActionsProps {
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
+  isSendHeld?: boolean | undefined;
   sendDisabledReason: string | null;
   isEnvironmentUnavailable: boolean;
   isPreparingWorktree: boolean;
@@ -144,6 +145,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   showPlanFollowUpPrompt,
   promptHasText,
   isSendBusy,
+  isSendHeld = false,
   sendDisabledReason,
   isEnvironmentUnavailable,
   isPreparingWorktree,
@@ -322,16 +324,18 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           : isRunning
             ? "Steer message"
             : "Submit message";
-  const submitStatus = isEnvironmentUnavailable
-    ? "Environment disconnected"
-    : (sendDisabledReason ??
-      (isPreparingWorktree
-        ? "Preparing worktree"
-        : isSendBusy
-          ? isEditingQueuedMessage
-            ? "Updating queued message"
-            : "Submitting message"
-          : null));
+  const submitStatus = isSendHeld
+    ? "Sending when ready"
+    : isEnvironmentUnavailable
+      ? "Environment disconnected"
+      : (sendDisabledReason ??
+        (isPreparingWorktree
+          ? "Preparing worktree"
+          : isSendBusy
+            ? isEditingQueuedMessage
+              ? "Updating queued message"
+              : "Submitting message"
+            : null));
   const submitTooltip =
     submitStatus ??
     (compactsBeforeSend
@@ -361,11 +365,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       {...pointerFocusProps}
       onClick={showResume ? onResume : onSubmitMessage}
       disabled={
+        isSendHeld ||
         isSendBusy ||
         isSendDisabled ||
         isEnvironmentUnavailable ||
         (!hasSendableContent && !showResume)
       }
+      aria-busy={isSendHeld || isSendBusy || undefined}
       aria-label={t(submitStatus ?? submitLabel)}
     >
       {stageBackdropVariant ? (
@@ -373,7 +379,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <StageBackdropButtonArt variant={stageBackdropVariant} />
         </span>
       ) : null}
-      {isSendBusy ? (
+      {isSendHeld || isSendBusy ? (
         <Spinner size="sm" aria-hidden="true" />
       ) : showResume ? (
         <PlayIcon className="size-4 fill-current" aria-hidden="true" />

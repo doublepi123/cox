@@ -1,6 +1,112 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
+import {
+  composerTargetKey,
+  type ComposerThreadTarget,
+  type ComposerThreadDraftState,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
+
+function draftContentChanged(
+  before: ComposerThreadDraftState | null,
+  after: ComposerThreadDraftState | null,
+) {
+  if (before === after) return false;
+  if (!before || !after) return true;
+  const sameIds = (left: ReadonlyArray<{ id: string }>, right: ReadonlyArray<{ id: string }>) =>
+    left.length === right.length && left.every((item, index) => item.id === right[index]?.id);
+  return (
+    before.prompt !== after.prompt ||
+    !sameIds(before.images, after.images) ||
+    !sameIds(before.files, after.files) ||
+    before.terminalContexts !== after.terminalContexts ||
+    before.previewAnnotations !== after.previewAnnotations ||
+    before.reviewComments !== after.reviewComments ||
+    before.threadContexts !== after.threadContexts ||
+    before.environmentContexts !== after.environmentContexts
+  );
+}
+
+export type HeldComposerSendResult =
+  | { readonly status: "ready" }
+  | { readonly status: "cancelled" };
+
+const heldSends = new Map<string, (result: HeldComposerSendResult) => void>();
+const useHeldSendStore = create<{ readonly targetKeys: Readonly<Record<string, true>> }>(() => ({
+  targetKeys: {},
+}));
+let preparedImagesJoiningDraft = false;
+
+/** Whether a send from the target's draft is waiting on its images to finish preparing. */
+export function useComposerSendHeld(targetKey: string): boolean {
+  return useHeldSendStore((state) => state.targetKeys[targetKey] === true);
+}
+
+export function cancelHeldComposerSend(targetKey: string): void {
+  heldSends.get(targetKey)?.({ status: "cancelled" });
+}
+
+/** Inserts finished images into the draft without counting as an edit to a held send. */
+export function joinPreparedImagesToDraft<T>(insert: () => T): T {
+  preparedImagesJoiningDraft = true;
+  try {
+    return insert();
+  } finally {
+    preparedImagesJoiningDraft = false;
+  }
+}
+
+/**
+ * Holds a send made while the draft still has images compressing. Resolves ready once they join
+ * the draft, or cancelled if the draft is edited or the send cancelled. Null means nothing needs
+ * to wait. Lives outside the composer so leaving the thread still completes the send.
+ */
+export function holdComposerSend(
+  draftTarget: ComposerThreadTarget,
+): Promise<HeldComposerSendResult> | null {
+  const targetKey = composerTargetKey(draftTarget);
+  if (countPreparingComposerImages(targetKey) === 0) return null;
+  if (heldSends.has(targetKey)) return Promise.resolve({ status: "cancelled" });
+  return new Promise((resolve) => {
+    let draft = useComposerDraftStore.getState().getComposerDraft(draftTarget);
+    const settle = (result: HeldComposerSendResult) => {
+      if (heldSends.get(targetKey) !== settle) return;
+      heldSends.delete(targetKey);
+      stopWatchingImages();
+      stopWatchingDraft();
+      useHeldSendStore.setState((state) => {
+        const targetKeys = { ...state.targetKeys };
+        delete targetKeys[targetKey];
+        return { targetKeys };
+      });
+      resolve(result);
+    };
+    heldSends.set(targetKey, settle);
+    const stopWatchingImages = usePreparingComposerImageStore.subscribe((state) => {
+      if (state.byTargetKey[targetKey]) return;
+      // Let joinPreparedImagesToDraft finish inserting compressed images in this tick first.
+      queueMicrotask(() => settle({ status: "ready" }));
+    });
+    const stopWatchingDraft = useComposerDraftStore.subscribe((state) => {
+      const next = state.getComposerDraft(draftTarget);
+      if (
+        !preparedImagesJoiningDraft &&
+        (draftContentChanged(draft, next) ||
+          draft?.modelSelectionByProvider !== next?.modelSelectionByProvider ||
+          draft?.activeProvider !== next?.activeProvider ||
+          draft?.runtimeMode !== next?.runtimeMode ||
+          draft?.interactionMode !== next?.interactionMode)
+      ) {
+        settle({ status: "cancelled" });
+      }
+      draft = next;
+    });
+    useHeldSendStore.setState((state) => ({
+      targetKeys: { ...state.targetKeys, [targetKey]: true },
+    }));
+  });
+}
 
 export interface PreparingComposerImage {
   readonly id: string;
@@ -11,6 +117,7 @@ export interface PreparingComposerImage {
 
 /** Drops every image still preparing for the target, so its compression result is discarded. */
 export function cancelPreparingComposerImages(targetKey: string): void {
+  cancelHeldComposerSend(targetKey);
   if (!usePreparingComposerImageStore.getState().byTargetKey[targetKey]) return;
   usePreparingComposerImageStore.setState((state) => {
     const byTargetKey = { ...state.byTargetKey };
@@ -69,6 +176,7 @@ export function addPreparingComposerImages(
   targetKey: string,
   images: ReadonlyArray<PreparingComposerImage>,
 ): void {
+  if (images.length > 0) cancelHeldComposerSend(targetKey);
   usePreparingComposerImageStore.setState((state) => ({
     byTargetKey: {
       ...state.byTargetKey,
@@ -89,6 +197,7 @@ export function isPreparingComposerImage(targetKey: string, imageId: string): bo
 export function removePreparingComposerImages(
   targetKey: string,
   imageIds: ReadonlySet<string>,
+  options?: { readonly cancelSubmission?: boolean },
 ): ReadonlySet<string> {
   const current =
     usePreparingComposerImageStore.getState().byTargetKey[targetKey] ?? NO_PREPARING_IMAGES;
@@ -96,6 +205,7 @@ export function removePreparingComposerImages(
     current.filter((image) => imageIds.has(image.id)).map((image) => image.id),
   );
   if (removed.size === 0) return removed;
+  if (options?.cancelSubmission) cancelHeldComposerSend(targetKey);
   usePreparingComposerImageStore.setState((state) => {
     const remaining = (state.byTargetKey[targetKey] ?? NO_PREPARING_IMAGES).filter(
       (image) => !removed.has(image.id),
