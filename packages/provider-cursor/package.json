@@ -38,6 +38,10 @@
     "./server/CursorSdk": {
       "types": "./src/server/CursorSdk.ts",
       "import": "./src/server/CursorSdk.ts"
+    },
+    "./server/skills": {
+      "types": "./src/server/skills.ts",
+      "import": "./src/server/skills.ts"
     }
   },
   "scripts": {

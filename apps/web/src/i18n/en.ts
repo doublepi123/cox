@@ -1087,6 +1087,30 @@ export const en = {
     "Optional ACP authentication method ID. By default, the first agent-managed method is selected.",
   "Path to the fx binary. All fx instances on this machine share its fx login.":
     "Path to the fx binary. All fx instances on this machine share its fx login.",
+  "Preparing Cursor CLI setup…": "Preparing Cursor CLI setup…",
+  "Installing Cursor CLI…": "Installing Cursor CLI…",
+  "Cursor CLI {version} is installed.": "Cursor CLI {version} is installed.",
+  "Install the official Cursor CLI to run Cursor agents over ACP.":
+    "Install the official Cursor CLI to run Cursor agents over ACP.",
+  "Cursor CLI setup": "Cursor CLI setup",
+  "Cursor CLI": "Cursor CLI",
+  "Enable Cursor CLI": "Enable Cursor CLI",
+  "Install Cursor CLI": "Install Cursor CLI",
+  "Update Cursor CLI": "Update Cursor CLI",
+  "Uses the custom Cursor CLI binary path below.": "Uses the custom Cursor CLI binary path below.",
+  "Using your existing Cursor CLI.": "Using your existing Cursor CLI.",
+  "Cox installs Cursor CLI in its own tools directory.":
+    "Cox installs Cursor CLI in its own tools directory.",
+  "This instance uses CURSOR_API_KEY. Remove it from the provider environment to sign in with a Cursor account.":
+    "This instance uses CURSOR_API_KEY. Remove it from the provider environment to sign in with a Cursor account.",
+  "Path to the Cursor CLI binary. Leave empty to use cursor-agent on PATH.":
+    "Path to the Cursor CLI binary. Leave empty to use cursor-agent on PATH.",
+  "Optional Cursor API endpoint passed to the CLI with --endpoint.":
+    "Optional Cursor API endpoint passed to the CLI with --endpoint.",
+  "Optional. Overrides the Cursor CLI login for this provider.":
+    "Optional. Overrides the Cursor CLI login for this provider.",
+  "Could not install Cursor CLI. Check your connection and disk space, then retry.":
+    "Could not install Cursor CLI. Check your connection and disk space, then retry.",
   "Path to the Grok CLI binary.": "Path to the Grok CLI binary.",
   "Path to the Muse Code binary on this environment. Sign in with muse login on that host.":
     "Path to the Muse Code binary on this environment. Sign in with muse login on that host.",
