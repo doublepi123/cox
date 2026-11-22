@@ -332,8 +332,12 @@ test("website works under a project subpath on desktop and phones without contac
       true,
     );
     assert.equal(
-      await page.locator(".hero .button-primary").getAttribute("href"),
+      await page.locator('.hero a:has([data-i18n="hero.download"])').getAttribute("href"),
       "https://github.com/doublepi123/co_code/releases",
+    );
+    assert.equal(
+      await page.locator('.hero a:has([data-i18n="hero.ios"])').getAttribute("href"),
+      "https://github.com/doublepi123/co_code/releases?q=%22CoCode+iOS%22",
     );
     const cocodeTheme = page.locator("[data-theme-toggle]");
     await cocodeTheme.click();

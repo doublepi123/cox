@@ -141,9 +141,9 @@ export const messages = {
     "feature.terminal.worktree": "工作树",
     "mobile.title": "离开桌前，驾驶舱​仍在掌心",
     "mobile.description":
-      "用 Cox Mobile 或手机浏览器直连自己的服务器。想把 Cox 和智能体都装在 Android 手机上，可以用 CoCode。",
+      "用 Cox Mobile 或手机浏览器直连自己的服务器。想把 Cox 和智能体都装在 Android 手机或 iPhone 上，可以用 CoCode。",
     "mobile.download": "下载 Cox Mobile",
-    "mobile.cocodeCta": "探索 CoCode 安卓版",
+    "mobile.cocodeCta": "探索 CoCode（Android / iOS）",
     "mobile.platforms": "iOS 17+（IPA）· Android 8+（APK）",
     "mobile.feature1.title": "多台服务器，各自保存登录状态",
     "mobile.feature1.description":
@@ -185,10 +185,12 @@ export const messages = {
     "mobile.matrix.coxWhere": "你的电脑、家庭服务器或云主机",
     "mobile.matrix.coxFit":
       "连接多台服务器，独立保存会话。配合 Bark、Telegram 或 Ntfy 接收后台提醒。",
-    "mobile.matrix.cocodePlatform": "Android 8.0+ 独立应用（可与 Cox Mobile 同机并存）",
-    "mobile.matrix.cocodeWhere": "手机本地的 Alpine Linux + PRoot，也可连接远程 Cox",
+    "mobile.matrix.cocodePlatform":
+      "Android 8.0+ 与 iOS / iPadOS 27+ 独立应用（iOS 需自行签名，可与 Cox Mobile 同机并存）",
+    "mobile.matrix.cocodeWhere":
+      "手机本地的 Alpine Linux（Android 用 PRoot，iOS 用 Kernarium 虚拟机）",
     "mobile.matrix.cocodeFit":
-      "不需要电脑或 root 权限。与 Cox Mobile 同时安装时，两款应用的数据各自独立。",
+      "不需要电脑、root 或越狱。与 Cox Mobile 同时安装时，两款应用的数据各自独立。",
     "mobile.matrix.pwaName": "手机浏览器 / PWA",
     "mobile.matrix.pwaPlatform": "现代 iOS / iPadOS 与 Android 浏览器",
     "mobile.matrix.pwaWhere": "你部署的 HTTPS Cox 服务器",
@@ -212,9 +214,9 @@ export const messages = {
     "desktop.feature3.title": "HTTPS 与 Cloudflare Access 远程连接",
     "desktop.feature3.description":
       "连接自建 Cox 服务器要求 HTTPS 与密码，兼容 Cloudflare Access 身份验证。每个服务器拥有独立浏览器配置，可同时连接与单独断开。",
-    "desktop.mobile": "在 Android 手机本地运行 CoCode",
+    "desktop.mobile": "在手机本地运行 CoCode（Android / iOS）",
     "desktop.mobileDescription":
-      "无需电脑与 root，通过 Alpine Linux + PRoot 在手机上本地运行 Cox 与智能体；可与 Cox Mobile 远程版同机共存。",
+      "无需电脑、root 或越狱，在 Android 手机或 iPhone 上本地运行 Cox 与智能体；可与 Cox Mobile 远程版同机共存。",
     "local.title": "本地控制面，不是云端托管",
     "local.description":
       "Cox 服务运行在你的电脑或自建主机上，默认只监听 127.0.0.1。项目、对话、凭据与检查点留在本地数据目录，上游密钥由本地网关保管，桌面与移动端均直连你的实例。",
@@ -417,9 +419,9 @@ export const messages = {
     "feature.terminal.worktree": "Worktree",
     "mobile.title": "Away from your desk. Still in the cockpit.",
     "mobile.description":
-      "Connect directly to your server with Cox Mobile or a mobile browser. To run Cox and agents on an Android phone itself, use CoCode.",
+      "Connect directly to your server with Cox Mobile or a mobile browser. To run Cox and agents on an Android phone or iPhone itself, use CoCode.",
     "mobile.download": "Download Cox Mobile",
-    "mobile.cocodeCta": "Explore CoCode for Android",
+    "mobile.cocodeCta": "Explore CoCode for Android and iOS",
     "mobile.platforms": "iOS 17+ (IPA) · Android 8+ (APK)",
     "mobile.feature1.title": "Separate sessions for each server",
     "mobile.feature1.description":
@@ -464,10 +466,11 @@ export const messages = {
     "mobile.matrix.coxFit":
       "Keep sessions separate across servers. Use Bark, Telegram, or Ntfy for background alerts.",
     "mobile.matrix.cocodePlatform":
-      "Android 8.0+ standalone app (installs side by side with Cox Mobile)",
-    "mobile.matrix.cocodeWhere": "Alpine Linux + PRoot on the phone, with remote Cox access too",
+      "Android 8.0+ and iOS / iPadOS 27+ standalone app (sign the iOS build yourself; installs side by side with Cox Mobile)",
+    "mobile.matrix.cocodeWhere":
+      "Alpine Linux on the phone (PRoot on Android, a Kernarium virtual machine on iOS)",
     "mobile.matrix.cocodeFit":
-      "Run Cox without a computer or root access. CoCode and Cox Mobile keep their app data separate.",
+      "Run Cox without a computer, root, or a jailbreak. CoCode and Cox Mobile keep their app data separate.",
     "mobile.matrix.pwaName": "Mobile Browser / PWA",
     "mobile.matrix.pwaPlatform": "Modern iOS / iPadOS and Android browsers",
     "mobile.matrix.pwaWhere": "Your HTTPS Cox server",
@@ -492,9 +495,9 @@ export const messages = {
     "desktop.feature3.title": "HTTPS and Cloudflare Access remote servers",
     "desktop.feature3.description":
       "Connect to self-hosted Cox servers over HTTPS with a password and optional Cloudflare Access SSO. Each server stays in an isolated profile and disconnects independently.",
-    "desktop.mobile": "Run CoCode locally on Android",
+    "desktop.mobile": "Run CoCode locally on Android or iOS",
     "desktop.mobileDescription":
-      "Run Cox and coding agents on an Android phone inside Alpine Linux + PRoot without a computer or root, side by side with Cox Mobile.",
+      "Run Cox and coding agents on an Android phone or iPhone without a computer, root, or a jailbreak, side by side with Cox Mobile.",
     "local.title": "A local control plane, not a hosted service",
     "local.description":
       "Cox runs on your computer or self-hosted server and listens on 127.0.0.1 by default. Projects, threads, credentials, and checkpoints stay in your local data directory while desktop and mobile clients connect directly.",
