@@ -2,6 +2,8 @@ import { ScheduledTaskWebhookOrigin } from "./scheduledTasks/ScheduledTaskServic
 import { validateDevUrl, validateListenHost } from "./cli/config.ts";
 import { isRemoteReachableHost } from "./auth/utils.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as AssetSigner from "./assets/AssetSigner.ts";
+import * as WorkspacePreviewRevisions from "./assets/WorkspacePreviewRevisions.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
@@ -609,6 +611,9 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   Layer.provideMerge(CodexManagedTokenBroker.layer),
   Layer.provideMerge(layerServerEnvironment),
   Layer.provideMerge(layerAuth),
+  Layer.provideMerge(
+    Layer.mergeAll(AssetSigner.layer, WorkspacePreviewRevisions.layer),
+  ),
   Layer.provideMerge(ServerSecretStore.layer),
 );
 
