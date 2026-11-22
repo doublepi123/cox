@@ -92,6 +92,19 @@ function resolveThreadProviderSession(projection: Projection): ProviderSession |
   );
 }
 
+function supportsSteering(turns: OrchestrationV2ProviderCapabilities["turns"]): boolean {
+  return (
+    turns.supportsActiveSteering ||
+    (turns.supportsInterrupt && turns.supportsSteeringByInterruptRestart)
+  );
+}
+
+export function threadCanSteer(projection: Projection | null, isCompacting: boolean): boolean {
+  if (isCompacting) return false;
+  const turns = projection && resolveThreadProviderSession(projection)?.capabilities.turns;
+  return !turns || supportsSteering(turns);
+}
+
 export function threadSupportsProviderHandoff(projection: Projection | null | undefined): boolean {
   if (projection == null) return false;
   const session = resolveThreadProviderSession(projection);
@@ -173,9 +186,7 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
       projection.thread.deletedAt == null,
     canPromoteToSteer:
       promoteSkipsCompaction ||
-      (hasSteerableProviderTurn &&
-        (capabilities?.supportsActiveSteering === true ||
-          capabilities?.supportsSteeringByInterruptRestart === true)),
+      (hasSteerableProviderTurn && capabilities !== undefined && supportsSteering(capabilities)),
     promoteSkipsCompaction,
   };
 }

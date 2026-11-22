@@ -150,6 +150,7 @@ function MobileChatComposerFixture() {
           sendDisabledReason={null}
           isPreparingWorktree={false}
           isCompacting={false}
+          canSteer={false}
           bannerItems={[]}
           resumeCompactionTokens={null}
           keepFullHistory={false}

@@ -95,6 +95,7 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   getUserQueuedThreadRuns,
+  threadCanSteer,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
@@ -3534,6 +3535,7 @@ export default function ChatView(props: ChatViewProps) {
                                 }
                                 phase={phase}
                                 isCompacting={isCompacting}
+                                canSteer={threadCanSteer(serverProjection, isCompacting)}
                                 canInterrupt={canInterruptRunningThread}
                                 isSendBusy={
                                   (isSendBusy && !sendQueuesBehindSetup) ||
