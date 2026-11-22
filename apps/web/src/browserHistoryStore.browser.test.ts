@@ -169,24 +169,28 @@ async function openHistoryDocument(
   { withoutIndexedDB = false } = {},
 ) {
   const source = new URL(import.meta.url);
-  source.pathname = source.pathname.replace(/\.browser\.test\.ts$/, ".ts");
+  source.pathname = source.pathname.replace(/Store\.browser\.test\.ts$/, "State.ts");
   source.search = "";
   const frame = document.createElement("iframe");
   disposables.defer(() => frame.remove());
   frame.srcdoc = `${withoutIndexedDB ? '<script>Object.defineProperty(window, "indexedDB", { value: { open() { throw new Error("blocked"); } } });</script>' : ""}
     <script type="module">
-      import { useBrowserHistoryStore } from ${JSON.stringify(source.href)};
-      window.historyStore = useBrowserHistoryStore;
+      import { createBrowserHistoryStore } from ${JSON.stringify(source.href)};
+      const { store, ready } = createBrowserHistoryStore();
+      window.historyStore = { store, ready };
     </script>`;
   await new Promise<void>((resolve) => {
     frame.onload = () => resolve();
     document.body.append(frame);
   });
   const store = (
-    frame.contentWindow as (Window & { historyStore?: typeof useBrowserHistoryStore }) | null
+    frame.contentWindow as
+      | (Window & { historyStore?: { store: typeof useBrowserHistoryStore; ready: Promise<void> } })
+      | null
   )?.historyStore;
   if (!store) throw new Error("The history document did not load.");
-  return store;
+  await store.ready;
+  return store.store;
 }
 
 function deleteHistoryDatabase() {
@@ -212,15 +216,21 @@ it("moves the legacy snapshot into the shared database", async () => {
   try {
     using documents = new DisposableStack();
     const first = await openHistoryDocument(documents);
-    await vi.waitFor(() => expect(first.getState().byProjectKey).toEqual({ a: [page] }));
+    expect(first.getState().byProjectKey).toEqual({ a: [page] });
     expect(localStorage.getItem(storageKey)).toBeNull();
+    const saved = new Promise<ReturnType<typeof first.getState>["byProjectKey"]>((resolve) => {
+      const unsubscribe = first.subscribe((state, previous) => {
+        if (state.byProjectKey === previous.byProjectKey) return;
+        unsubscribe();
+        resolve(state.byProjectKey);
+      });
+      documents.defer(unsubscribe);
+    });
     first.getState().recordVisit("b", otherEntry.url, otherEntry.lastVisitedAt);
-    await vi.waitFor(() => expect(first.getState().byProjectKey.b).toEqual([otherEntry]));
+    expect((await saved).b).toEqual([otherEntry]);
 
     const reopened = await openHistoryDocument(documents);
-    await vi.waitFor(() =>
-      expect(reopened.getState().byProjectKey).toEqual({ a: [page], b: [otherEntry] }),
-    );
+    expect(reopened.getState().byProjectKey).toEqual({ a: [page], b: [otherEntry] });
   } finally {
     await resetHistoryFixture();
   }
