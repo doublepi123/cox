@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import { pullRequestSyncKey } from "../../../pullRequest/pullRequestSyncKey.ts";
 import { sourceControlDefinitions } from "../../../sourceControl/sourceControlDefinitions.ts";
@@ -37,7 +38,6 @@ import {
   PullRequestUrlUnavailableError,
   PullRequestUnlinkFailedError,
   PullRequestListFailedError,
-  PullRequestNotOpenError,
   type PullRequestTargetInput,
   PullRequestWatchFailedError,
   PullRequestWatchFromSubagentError,
@@ -275,8 +275,26 @@ const make = Effect.gen(function* () {
       return yield* new PullRequestWatchFromSubagentError();
     }
     const before = watchedLink(thread);
-    if (watching && before?.snapshot?.state === "merged") {
-      return yield* new PullRequestNotOpenError({ state: "merged" });
+    const wasWatching = before?.watch !== undefined;
+    const alreadyEnded = (state: "merged" | "closed") => ({
+      ...target,
+      watching: false,
+      wasWatching,
+      state,
+      next: `This PR is already ${state}, so there is nothing to watch. Report that and end your turn.`,
+    });
+    if (watching && before?.snapshot?.state === "merged") return alreadyEnded("merged");
+    if (watching && !wasWatching) {
+      const pullRequests = yield* PullRequestService.PullRequestService;
+      const detail = yield* pullRequests
+        .detail({ projectId: thread.projectId, ...target, allowStale: false })
+        .pipe(
+          Effect.catchTag("PullRequestOperationError", () => Effect.undefined),
+          Effect.mapError((cause) => new PullRequestWatchFailedError({ cause })),
+        );
+      if (detail?.state === "merged" || detail?.state === "closed") {
+        return alreadyEnded(detail.state);
+      }
     }
     yield* engine
       .dispatch({
@@ -297,7 +315,7 @@ const make = Effect.gen(function* () {
       number: target.number,
       url: target.url,
       watching: watchedLink(after)?.watch !== undefined,
-      wasWatching: before?.watch !== undefined,
+      wasWatching,
     };
   });
 

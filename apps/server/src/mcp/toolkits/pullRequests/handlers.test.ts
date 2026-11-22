@@ -26,6 +26,7 @@ import {
   v2PullRequestThread,
 } from "../../../orchestration-v2/testkit/pullRequestFixtures.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -174,6 +175,12 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       getShell: () => Effect.succeed(Option.fromNullishOr(project)),
       listShells: () => Effect.succeed(options.projects ?? (project ? [project] : [])),
     }),
+    Layer.mock(PullRequestService.PullRequestService)({
+      detail: () =>
+        Effect.fail(
+          new PullRequestOperationError({ operation: "detail", detail: "Unavailable in fixture" }),
+        ),
+    }),
     Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({
       get: () => Effect.succeed(NO_GUIDE),
       generate: (input) =>
@@ -299,7 +306,7 @@ describe("pull request toolkit handlers", () => {
     }),
   );
 
-  it.effect("refuses to watch a merged pull request and stops an existing watch", () =>
+  it.effect("reports an already merged pull request and stops an existing watch", () =>
     Effect.gen(function* () {
       const watch = {
         startedAt: "2026-08-20T00:00:00.000Z",
@@ -320,10 +327,12 @@ describe("pull request toolkit handlers", () => {
           makeLink(3, { headBranch: "watched", watch }),
         ]),
       });
-      const error = yield* harness
-        .call("watch_pull_request", { repository: "t3tools/t3code", number: 1 })
-        .pipe(Effect.flip);
-      expect(error).toMatchObject({ _tag: "PullRequestNotOpenError", state: "merged" });
+      const result = yield* harness.call("watch_pull_request", {
+        repository: "t3tools/t3code",
+        number: 1,
+      });
+      expect(result).toMatchObject({ state: "merged", watching: false, wasWatching: false });
+      expect(result.next).toContain("already merged");
       expect(
         yield* harness.call("unwatch_pull_request", { repository: "t3tools/t3code", number: 3 }),
       ).toMatchObject({ wasWatching: true });
