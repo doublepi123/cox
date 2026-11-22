@@ -372,6 +372,7 @@ export const layer: Layer.Layer<
               runId: run.id,
               providerThread: loaded.providerThread,
               providerTurnId: loaded.providerTurn.id,
+              ...(ownership === undefined ? {} : { nonInterrupting: true }),
               message: {
                 messageId: message.id,
                 text: projectComposerContextForProvider({

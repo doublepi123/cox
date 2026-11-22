@@ -518,6 +518,7 @@ export interface ProviderAdapterV2TurnInput {
 }
 
 export interface ProviderAdapterV2SteerInput {
+  readonly nonInterrupting?: boolean;
   readonly threadId: ThreadId;
   readonly runId: RunId;
   readonly providerThread: OrchestrationV2ProviderThread;

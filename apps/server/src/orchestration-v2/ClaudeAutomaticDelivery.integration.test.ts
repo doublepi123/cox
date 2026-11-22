@@ -406,7 +406,9 @@ it.effect.each(deliveries)(
           const explicitSteer =
             delivery === "user steering" || delivery === "promoted queued message";
           assert.equal(batchAbort.signal.aborted, explicitSteer);
-          assert.equal(offers.length, explicitSteer ? 2 : 1);
+          const queuesBehindActiveTurn = delivery === "scheduled message";
+          assert.lengthOf(offers, queuesBehindActiveTurn ? 1 : 2);
+          if (delivery === "child completion") assert.equal(offers[1]?.priority, "next");
           const finished = yield* watch(
             (event) =>
               event.type === "run.updated" &&
@@ -417,12 +419,17 @@ it.effect.each(deliveries)(
           for (const id of statusIds)
             yield* Queue.offer(sdkMessages, toolResult(id, batchAbort.signal.aborted));
           if (explicitSteer) yield* Queue.offer(sdkMessages, result("aborted", true));
-          yield* Queue.offer(sdkMessages, result("completed", false));
+          yield* Queue.offer(
+            sdkMessages,
+            delivery === "child completion"
+              ? frame({ ...result("completed", false), user_message_uuid: offers[1]!.uuid })
+              : result("completed", false),
+          );
           yield* Fiber.join(finished);
           yield* worker.drain();
           yield* orchestrator.resumeQueuedRuns;
           yield* worker.drain();
-          if (!explicitSteer) {
+          if (queuesBehindActiveTurn) {
             const queued = (yield* orchestrator.getThreadProjection(threadId)).runs[1]!;
             const noticeFinished = yield* watch(
               (event) =>
@@ -430,18 +437,9 @@ it.effect.each(deliveries)(
                 event.payload.id === queued.id &&
                 event.payload.status === "waiting",
             );
-            const delivered =
-              delivery === "child completion"
-                ? yield* watch(
-                    (event) =>
-                      event.type === "subagent.updated" &&
-                      event.payload.completionDelivery?.state === "delivered",
-                  )
-                : null;
             yield* Queue.offer(sdkMessages, result("notice-completed", false));
             yield* Fiber.join(noticeFinished);
             yield* worker.drain();
-            if (delivered !== null) yield* Fiber.join(delivered);
           }
           const after = yield* orchestrator.getThreadProjection(threadId);
           const reads = after.turnItems.filter((item) =>
@@ -458,17 +456,19 @@ it.effect.each(deliveries)(
             offers.filter((offer) => offer.priority === "now").length,
             explicitSteer ? 1 : 0,
           );
-          if (!explicitSteer) {
-            assert.equal(after.runs.length, 2);
-            if (delivery === "child completion") {
-              assert.equal(after.messages.filter((message) => message.id === messageId).length, 1);
-              assert.equal(after.subagents[0]?.completionDelivery?.state, "delivered");
-            } else {
-              assert.equal(
-                after.messages.filter((message) => message.scheduledTaskId !== undefined).length,
-                1,
-              );
-            }
+          if (delivery === "child completion") {
+            assert.lengthOf(after.runs, 1);
+            assert.deepEqual(
+              after.messages.filter((message) => message.id === messageId).map((message) => message.runId),
+              [parent.id],
+            );
+            assert.equal(after.subagents[0]?.completionDelivery?.state, "delivered");
+          } else if (queuesBehindActiveTurn) {
+            assert.lengthOf(after.runs, 2);
+            assert.equal(
+              after.messages.filter((message) => message.scheduledTaskId !== undefined).length,
+              1,
+            );
           }
           yield* orchestrator.recoverDelegatedTasks;
           yield* orchestrator.resumeQueuedRuns;

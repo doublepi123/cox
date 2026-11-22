@@ -428,6 +428,7 @@ export const ClaudeProviderCapabilitiesV2 = {
     supportsInterrupt: true,
     supportsActiveSteering: true,
     activeSteeringInterruptsTools: true,
+    supportsNonInterruptingSteering: true,
     supportsSteeringByInterruptRestart: false,
     supportsQueuedMessages: true,
     terminalStatusQuality: "strong",
@@ -12060,7 +12061,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   .promptEffort,
               ),
               attachments: turnInput.message.attachments,
-              priority: "now",
+              priority: turnInput.nonInterrupting ? "next" : "now",
               attachmentsDir,
               fileSystem,
               pdfReservation,
@@ -12069,7 +12070,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
               Effect.provideService(Path.Path, path),
             );
-            yield* backgroundForegroundSubagents(existing, backgroundDeadline);
+            if (!turnInput.nonInterrupting) {
+              yield* backgroundForegroundSubagents(existing, backgroundDeadline);
+            }
             // The turn can end while the moves are answered. A steer offered
             // then would start a new turn the orchestrator never asked for, so
             // the steer fails and the orchestrator starts the follow-up turn.
