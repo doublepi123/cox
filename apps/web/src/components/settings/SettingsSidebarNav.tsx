@@ -420,7 +420,7 @@ export function SettingsSidebarNav({
                                       aria-selected={isActive}
                                       aria-current={isActive ? "page" : undefined}
                                       isActive={isActive}
-                                      className="text-sidebar-foreground"
+
                                       onClick={() => handleSectionClick(to)}
                                     >
                                       <Icon />

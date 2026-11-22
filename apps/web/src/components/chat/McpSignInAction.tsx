@@ -125,7 +125,7 @@ export function McpSignInAction({
           if (!open) close();
         }}
       >
-        <DialogPopup className="max-w-lg">
+        <DialogPopup>
           <DialogHeader>
             <DialogTitle>{gt("Sign in to {server}", { server })}</DialogTitle>
             <DialogDescription>

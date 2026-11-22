@@ -159,7 +159,7 @@ function ComboboxPopup({
   alignOffset?: ComboboxPrimitive.Positioner.Props["alignOffset"];
   side?: ComboboxPrimitive.Positioner.Props["side"];
   anchor?: ComboboxPrimitive.Positioner.Props["anchor"];
-  width?: "sm" | "md" | "lg" | "diff" | "sidebar";
+  width?: "sm" | "md" | "lg" | "xl" | "diff" | "sidebar";
   column?: boolean;
 }) {
   const { chipsRef, multiple } = React.use(ComboboxContext);
@@ -182,6 +182,7 @@ function ComboboxPopup({
             width === "sm" && "w-56",
             width === "md" && "w-72 overflow-hidden",
             width === "lg" && "w-80",
+            width === "xl" && "w-96",
             width === "diff" && "w-72 min-w-0 max-w-[calc(100vw-1rem)] overflow-hidden",
             width === "sidebar" && "max-w-[min(18rem,var(--available-width))] overflow-hidden",
             column && "flex flex-col",

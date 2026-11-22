@@ -1134,12 +1134,12 @@ function NewKeybindingCommandSelect({
     >
       <ComboboxTrigger
         aria-label={t("Command")}
-        render={<SelectButton size="sm" />}
-        className={cn(fill && "w-full", className)}
+        render={<SelectButton size="sm" fill={fill} />}
+        className={className}
       >
         {draft.commandDraft ? t(commandLabel(draft.commandDraft)) : t("Command")}
       </ComboboxTrigger>
-      <ComboboxPopup aria-label={t("Command")} className="w-96">
+      <ComboboxPopup aria-label={t("Command")} width="xl">
         <ComboboxSearchInput autoFocus placeholder={t("Search")} aria-label={t("Search")} />
         <ComboboxEmpty>{t("No results found.")}</ComboboxEmpty>
         <ComboboxList>

@@ -61,7 +61,9 @@ export function ThreadChipHoverCard(props: {
       {shell?.branch ? (
         <div className="flex min-w-0 items-center gap-2">
           <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
-          <MiddleTruncate value={shell.branch} className="flex" />
+          <div className="flex min-w-0">
+            <MiddleTruncate value={shell.branch} />
+          </div>
         </div>
       ) : null}
       {provider && modelLabel ? (

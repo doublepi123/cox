@@ -1075,7 +1075,7 @@ export default function DiffPanel({
                 }}
               >
                 <DropdownMenuSubTrigger>{t("Commits")}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="max-h-80 max-w-96">
+                <DropdownMenuSubContent width="history" limit="history">
                   <DropdownMenuRadioGroup
                     value={selectedCommitValue}
                     onValueChange={selectScopeValue}
@@ -1086,7 +1086,7 @@ export default function DiffPanel({
                         <div
                           key={commit.sha}
                           className={cn(
-                            "flex items-center rounded-sm hover:bg-accent has-data-highlighted:bg-accent has-focus-visible:bg-accent [&_[data-checked]]:bg-transparent [&_[data-highlighted]]:bg-transparent",
+                            "flex items-center rounded-sm hover:bg-accent has-data-highlighted:bg-accent has-focus-visible:bg-accent [&_[data-checked]]:bg-transparent [&_[data-highlighted]]:bg-transparent [&_[role=menuitemradio]]:min-w-0 [&_[role=menuitemradio]]:flex-1",
                             selectedCommitSha === commit.sha && "bg-foreground/[0.08]",
                           )}
                         >
@@ -1094,7 +1094,6 @@ export default function DiffPanel({
                             <TooltipTrigger
                               render={
                                 <DropdownMenuRadioItem
-                                  className="min-w-0 flex-1"
                                   value={`commit:${commit.sha}`}
                                   closeOnClick
                                 />
@@ -1107,9 +1106,7 @@ export default function DiffPanel({
                                 </span>
                               </span>
                             </TooltipTrigger>
-                            <TooltipPopup side="right" className="max-w-80">
-                              {commit.subject}
-                            </TooltipPopup>
+                            <TooltipPopup side="right">{commit.subject}</TooltipPopup>
                           </Tooltip>
                           {commitUrl ? (
                             <DropdownMenuItem
@@ -1166,17 +1163,18 @@ export default function DiffPanel({
         </DropdownMenu>
         {isGitSelection && gitRepositories.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button size="xs" variant="ghost-muted" />}
-              className="min-w-14 max-w-48 shrink"
-              aria-label={t("Repository: {name}", {
-                name: gitRepository?.name ?? threadFolderName,
-              })}
-            >
-              <span className="truncate">{gitRepository?.name ?? threadFolderName}</span>
-              <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-80 max-w-72">
+            <div className="min-w-14 max-w-48 shrink">
+              <DropdownMenuTrigger
+                render={<Button size="xs" variant="ghost-muted" fill />}
+                aria-label={t("Repository: {name}", {
+                  name: gitRepository?.name ?? threadFolderName,
+                })}
+              >
+                <span className="truncate">{gitRepository?.name ?? threadFolderName}</span>
+                <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+              </DropdownMenuTrigger>
+            </div>
+            <DropdownMenuContent align="start" limit="history" width="repository">
               <DropdownMenuRadioGroup
                 value={gitRepository?.repositoryPath ?? THREAD_FOLDER}
                 onValueChange={selectGitRepository}
@@ -1201,17 +1199,18 @@ export default function DiffPanel({
         )}
         {repositorySections.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button size="xs" variant="ghost-muted" />}
-              className="min-w-14 max-w-48 shrink"
-              aria-label={t("Repository: {name}", {
-                name: selectedSection?.name ?? t("All repositories"),
-              })}
-            >
-              <span className="truncate">{selectedSection?.name ?? t("All repositories")}</span>
-              <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-80 max-w-72">
+            <div className="min-w-14 max-w-48 shrink">
+              <DropdownMenuTrigger
+                render={<Button size="xs" variant="ghost-muted" fill />}
+                aria-label={t("Repository: {name}", {
+                  name: selectedSection?.name ?? t("All repositories"),
+                })}
+              >
+                <span className="truncate">{selectedSection?.name ?? t("All repositories")}</span>
+                <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+              </DropdownMenuTrigger>
+            </div>
+            <DropdownMenuContent align="start" limit="history" width="repository">
               <DropdownMenuRadioGroup
                 value={selectedSection?.key ?? ALL_REPOSITORIES}
                 onValueChange={selectRepository}

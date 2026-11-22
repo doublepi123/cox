@@ -72,12 +72,14 @@ function SelectTrigger({
 function SelectButton({
   className,
   size = "default",
+  fill = false,
   children,
   render,
   ...props
-}: useRender.ComponentProps<"button"> & Pick<VariantProps<typeof selectTriggerVariants>, "size">) {
+}: useRender.ComponentProps<"button"> &
+  Pick<VariantProps<typeof selectTriggerVariants>, "size"> & { fill?: boolean }) {
   const defaultProps = {
-    className: cn(selectTriggerVariants({ size }), className),
+    className: cn(selectTriggerVariants({ size }), fill && "w-full", className),
     "data-slot": "select-trigger",
     type: render ? undefined : ("button" as const),
   };

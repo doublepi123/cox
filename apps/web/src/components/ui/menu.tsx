@@ -37,7 +37,15 @@ function MenuPopup({
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
   keepMounted?: boolean;
-  width?: "default" | "content" | "anchor" | "compact" | "relationships" | "diff" | "history";
+  width?:
+    | "default"
+    | "content"
+    | "anchor"
+    | "compact"
+    | "relationships"
+    | "diff"
+    | "history"
+    | "repository";
   limit?: "history";
 }) {
   return (
@@ -62,6 +70,7 @@ function MenuPopup({
             width === "relationships" && "min-w-60 max-w-(--available-width)",
             width === "diff" && "max-w-[min(28rem,calc(100vw-2rem))]",
             width === "history" && "max-w-96",
+            width === "repository" && "max-w-[min(18rem,calc(100vw-2rem))]",
             className,
           )}
           data-slot="menu-popup"
@@ -388,7 +397,15 @@ function MenuSubPopup({
   align?: MenuPrimitive.Positioner.Props["align"];
   sideOffset?: MenuPrimitive.Positioner.Props["sideOffset"];
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
-  width?: "default" | "content" | "anchor" | "compact" | "relationships" | "diff" | "history";
+  width?:
+    | "default"
+    | "content"
+    | "anchor"
+    | "compact"
+    | "relationships"
+    | "diff"
+    | "history"
+    | "repository";
   limit?: "history";
 }) {
   const defaultAlignOffset = align !== "center" ? -5 : undefined;
