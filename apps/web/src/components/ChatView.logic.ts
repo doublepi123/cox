@@ -1651,3 +1651,19 @@ export function deriveWorkspaceMutationId(
     ? null
     : JSON.stringify([itemId, latestCheckpointCompletedAt]);
 }
+
+export function resolveThreadErrorBanner(input: {
+  readonly isServerThread: boolean;
+  readonly localServerError: string | null;
+  readonly localDraftError: string | null;
+  readonly runtimeError: string | null;
+  readonly streamError: string | null;
+}) {
+  const error = input.isServerThread
+    ? (input.localServerError ?? input.runtimeError ?? input.streamError)
+    : input.localDraftError;
+  return {
+    error,
+    runtimeError: input.isServerThread && error === input.runtimeError ? input.runtimeError : null,
+  };
+}

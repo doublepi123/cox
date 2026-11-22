@@ -1,3 +1,4 @@
+import { resolveThreadErrorBanner } from "./ChatView.logic";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { useTranslation } from "../i18n";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
@@ -922,10 +923,14 @@ export default function ChatView(props: ChatViewProps) {
           threadId: parentSubagentThreadRef.threadId,
           title: parentSubagentThread?.title ?? "Parent thread",
         };
-  const threadError = isServerThread
-    ? (localServerError ?? serverRuntime?.lastError ?? threadStreamError ?? null)
-    : localDraftError;
-  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
+  const { error: threadError, runtimeError: sessionError } = resolveThreadErrorBanner({
+    isServerThread,
+    localServerError,
+    localDraftError,
+    runtimeError: serverRuntime?.lastError ?? null,
+    streamError: threadStreamError ?? null,
+  });
+  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, sessionError);
   const visibleThreadError = shouldShowThreadErrorBanner(
     routeThreadKey,
     threadError,
@@ -935,7 +940,7 @@ export default function ChatView(props: ChatViewProps) {
     : null;
   const [, setThreadErrorBannerDismissTick] = useState(0);
   const threadErrorIsServerRuntimeError =
-    localServerError === null && visibleThreadError === serverRuntime?.lastError;
+    sessionError !== null && visibleThreadError === sessionError;
   const defaultRuntimeMode = resolveProjectSettings(settings, activeThread?.projectId ?? null)
     .settings.defaultRuntimeMode;
   const runtimeMode =

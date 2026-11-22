@@ -1,3 +1,4 @@
+import { resolveThreadErrorBanner } from "./ChatView.logic";
 import { rewindToMessage } from "./chat/chatViewSend";
 import * as session from "../state/session";
 import {
@@ -1456,4 +1457,16 @@ describe("deriveWorkspaceMutationId", () => {
       null,
     );
   });
+});
+
+it.each([
+  [{ localServerError: "E" }, "E", null],
+  [{ isServerThread: false, localDraftError: "E", runtimeError: "E" }, "E", null],
+  [{ localServerError: "E", runtimeError: "E" }, "E", "E"],
+  [{ localServerError: "local", runtimeError: "runtime" }, "local", null],
+  [{ streamError: "stream" }, "stream", null],
+  [{ runtimeError: "E" }, "E", "E"],
+] as const)("session dismissals apply only to runtime failures: %j", (changes, error, runtimeError) => {
+  const initial = { isServerThread: true, localServerError: null, localDraftError: null, runtimeError: null, streamError: null };
+  expect(resolveThreadErrorBanner({ ...initial, ...changes })).toEqual({ error, runtimeError });
 });
