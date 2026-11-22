@@ -206,13 +206,17 @@ const scanFolders = Effect.fn("WorkspaceFolders.scan")(function* (
       return Effect.gen(function* () {
         if (yield* ownsHistory(folderPath)) return [{ path: folderPath, name: boundedName(name) }];
         if (yield* exists(path.join(folderPath, ".git"))) return [];
-        const nested = yield* Effect.filter(yield* childFolders(folderPath), ownsHistory, {
-          concurrency: DETECTION_CONCURRENCY,
-        });
-        return nested.map((nestedPath) => ({
-          path: nestedPath,
-          name: boundedName(path.basename(nestedPath)),
-        }));
+        const nested = yield* Effect.forEach(
+          yield* childFolders(folderPath),
+          (nestedPath) =>
+            ownsHistory(nestedPath).pipe(
+              Effect.map((owns) =>
+                owns ? [{ path: nestedPath, name: boundedName(path.basename(nestedPath)) }] : [],
+              ),
+            ),
+          { concurrency: DETECTION_CONCURRENCY },
+        );
+        return nested.flat();
       });
     },
     { concurrency: DETECTION_CONCURRENCY },
@@ -288,7 +292,7 @@ export const discoverFolders = Effect.fn("WorkspaceFolders.discover")(function* 
         .pipe(Effect.orElseSucceed(() => "")),
     )?.ignoreRepositories ?? []
   ).map((entry) => path.resolve(root, entry));
-  const inside = yield* Effect.filter(
+  const inside = yield* Effect.forEach(
     scan.value.folders.filter(
       (folder) =>
         folder.isGitRepository &&
@@ -298,13 +302,15 @@ export const discoverFolders = Effect.fn("WorkspaceFolders.discover")(function* 
     // worktree a workspace file lists follows another repository.
     (folder) =>
       Effect.all([realPath(folder.path), ownsHistory(folder.path)]).pipe(
-        Effect.map(
-          ([real, owns]) => owns && real !== realRoot && isWithinRoot(path, real, realRoot),
+        Effect.map(([real, owns]) =>
+          owns && real !== realRoot && isWithinRoot(path, real, realRoot)
+            ? [{ path: folder.path, name: folder.name, discovered: true }]
+            : [],
         ),
       ),
     { concurrency: DETECTION_CONCURRENCY },
   );
-  return inside.map((folder) => ({ path: folder.path, name: folder.name, discovered: true }));
+  return inside.flat();
 });
 
 /**
