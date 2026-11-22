@@ -125,7 +125,8 @@ import {
   fileAttachmentCapabilityBlockReason,
   fileAttachmentStagingLimit,
   isPreviewableComposerVideo,
-  isImageOnlyClipboardHtml,
+  clipboardHtmlImageContent,
+  imagesToAttachBesidePastedText,
   shouldHandleComposerAttachmentPaste,
 } from "./composerAttachmentFiles";
 import {
@@ -2491,17 +2492,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const { files, folders } = splitTransferredFiles(event.clipboardData);
     const plainText = event.clipboardData.getData("text/plain");
     const bypassAutoAttachment = consumePasteAsTextShortcut(pasteAsTextShortcutUntilRef);
+    const pastedContext = (readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0;
+    const canAttachFiles = !pastedContext && activeThreadId !== null && files.length > 0;
+    const htmlImageContent =
+      canAttachFiles && plainText.length > 0
+        ? clipboardHtmlImageContent(event.clipboardData.getData("text/html"))
+        : "none";
     if (
       folders.length > 0 ||
-      (activeThreadId &&
-        files.length > 0 &&
+      (canAttachFiles &&
         shouldHandleComposerAttachmentPaste({
           files,
           plainText,
           bypassAutoAttachment,
-          htmlIsOnlyImage:
-            plainText.length > 0 &&
-            isImageOnlyClipboardHtml(event.clipboardData.getData("text/html")),
+          htmlIsOnlyImage: htmlImageContent === "only-image",
         }))
     ) {
       event.preventDefault();
@@ -2512,7 +2516,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
-    if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
+    if (pastedContext) return;
+    const imagesBesideText = imagesToAttachBesidePastedText({
+      files,
+      plainText,
+      bypassAutoAttachment,
+      htmlHasImageAndText: htmlImageContent === "image-and-text",
+    });
+    if (imagesBesideText.length > 0) void addComposerAttachments(imagesBesideText);
     if (!foldPastedText(plainText, bypassAutoAttachment)) {
       return;
     }
