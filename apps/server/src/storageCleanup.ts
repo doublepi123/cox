@@ -1271,7 +1271,7 @@ const make = Effect.gen(function* () {
           if (!eligible && settings.worktreeOnMerge && thread.branch !== null) {
             const pullRequest = yield* gitManager.branchPullRequest(
               { cwd: worktreePath, branch: thread.branch },
-              { refresh: true },
+              { refresh: true, includeHeadRepository: true },
             );
             eligible = storageCleanupPullRequestMerged(pullRequest, {
               branch: thread.branch,
