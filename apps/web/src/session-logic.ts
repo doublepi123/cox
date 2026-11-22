@@ -1097,10 +1097,10 @@ export function deriveRevertTurnCountByUserMessageId(input: {
   readonly availableRevertTurnCounts?: ReadonlySet<number> | undefined;
   readonly unsettledRunId?: RunId | null;
 }): Map<ChatMessage["id"], number> {
-  const readyTurnCountByRunId = new Map<RunId, number>();
+  const rewindableTurnCountByRunId = new Map<RunId, number>();
   for (const checkpoint of input.checkpoints) {
-    if (checkpoint.status === "ready") {
-      readyTurnCountByRunId.set(checkpoint.runId, checkpoint.checkpointTurnCount);
+    if (checkpoint.status !== "stale") {
+      rewindableTurnCountByRunId.set(checkpoint.runId, checkpoint.checkpointTurnCount);
     }
   }
   const targetByRunId = new Map<RunId, number | undefined>();
@@ -1126,7 +1126,7 @@ export function deriveRevertTurnCountByUserMessageId(input: {
           ? input.threadStartCheckpointReady
             ? 0
             : undefined
-          : readyTurnCountByRunId.get(previousRunId),
+          : rewindableTurnCountByRunId.get(previousRunId),
       );
       previousRunId = runId;
     }
@@ -1157,7 +1157,7 @@ export function findRevertCheckpoint(
   return projection.checkpoints.findLast(
     (checkpoint) =>
       !repositoryScopeIds.has(checkpoint.scopeId) &&
-      checkpoint.status === "ready" &&
+      checkpoint.status !== "stale" &&
       (turnCount === 0
         ? checkpoint.ordinalWithinScope === 0 && checkpoint.appRunOrdinal === null
         : checkpoint.appRunOrdinal === turnCount),
