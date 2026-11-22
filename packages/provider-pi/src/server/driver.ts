@@ -2,7 +2,7 @@
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -60,7 +60,7 @@ export type PiDriverEnv =
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | ProviderLatestVersions.ProviderLatestVersions
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | Path.Path;
 
 const withInstanceIdentity =

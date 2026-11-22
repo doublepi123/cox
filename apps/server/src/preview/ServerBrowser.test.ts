@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeEvents from "node:events";
 import * as NodeVM from "node:vm";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Playwright download mocks perform real file operations outside the Effect runtime.
@@ -406,7 +407,7 @@ const dependencies = (fixture?: { readonly executable: string; readonly baseDir:
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), fixture?.baseDir ?? { prefix: "t3-server-browser-" }),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 const layer = ServerBrowser.layer.pipe(Layer.provideMerge(dependencies()));
 const ready = Effect.gen(function* () {
@@ -496,7 +497,7 @@ it.live("names the configured data directory in browser setup advice from previe
         ? `browser setup "--base-dir" "${baseDir}"`
         : `browser setup --base-dir '${baseDir}'`,
     );
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.live("preview_open reports its navigation timeout instead of the request budget", () =>

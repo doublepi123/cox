@@ -1,3 +1,4 @@
+import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Queue from "effect/Queue";
 import * as Tracer from "effect/Tracer";
@@ -151,7 +152,7 @@ it.effect("hydrates only the active projects on the requested page", () =>
       }),
     );
     yield* sql`INSERT INTO projection_projects ${sql.insert(
-      Array.from({ length: 4 }, (_, index) => ({
+      Arr.makeBy(4, (index) => ({
         project_id: `page:${index}`,
         title: `Project ${index}`,
         workspace_root: `/work/page-${index}`,

@@ -22,7 +22,7 @@ import {
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
@@ -242,7 +242,7 @@ export class ModelServiceGateway extends Context.Service<
 export const make = Effect.gen(function* () {
   const settings = yield* Settings.ServerSettingsService;
   const config = yield* ServerConfig.ServerConfig;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const http = yield* HttpClient.HttpClient;
@@ -387,7 +387,7 @@ export const make = Effect.gen(function* () {
             .toSorted()
             .join(",");
           const token =
-            prior?.routeProtocols === routeProtocols ? prior.token : yield* crypto.randomUUIDv4();
+            prior?.routeProtocols === routeProtocols ? prior.token : yield* crypto.uuidV4();
           const native = record(instance.config);
           const protocol = modelServiceAgentProtocol(instance.driver, service);
           const multiProtocol =
@@ -941,7 +941,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
-    const requestId = yield* crypto.randomUUIDv4();
+    const requestId = yield* crypto.uuidV4();
     const tracking = lifecycle.request(
       sessionId ? ProviderSessionId.make(sessionId) : undefined,
       requestId,

@@ -14,7 +14,7 @@ import { parseGenericCliVersion } from "@t3tools/provider-core/server/snapshotPr
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 import { parseSemver } from "@t3tools/shared/semver";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -36,7 +36,7 @@ export const makeOpenCodeInstallation = Effect.fn("makeOpenCodeInstallation")(fu
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const scope = yield* Scope.Scope;
   const commandCache = yield* CommandResolutionCache;
@@ -249,7 +249,7 @@ export const makeOpenCodeInstallation = Effect.fn("makeOpenCodeInstallation")(fu
             "install",
             "OpenCode already uses a local installation. Update it with its existing installation method.",
           );
-        const id = yield* crypto.randomUUIDv4();
+        const id = yield* crypto.uuidV4();
         yield* SubscriptionRef.update(state, (value): ProviderInstallState => ({
           ...value,
           operationId: id,

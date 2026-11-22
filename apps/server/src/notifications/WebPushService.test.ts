@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import dns from "node:dns";
 import { once } from "node:events";
 
@@ -54,7 +55,7 @@ const withService = <A>(
         Effect.provide(
           SecretStore.layer.pipe(
             Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "web-push-service-" })),
-            Layer.provide(NodeServices.layer),
+            Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ),
       ),

@@ -14,7 +14,7 @@ import {
 import * as Cache from "effect/Cache";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -281,9 +281,9 @@ export class CheckpointServiceV2 extends Context.Service<
 >()("cox/orchestration-v2/CheckpointService/CheckpointServiceV2") {}
 
 const scopeRef = Effect.fnUntraced(function* (scopeId: CheckpointScopeId, name: string) {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* Digest.Digest;
   const digest = yield* crypto
-    .digest("SHA-256", new TextEncoder().encode(scopeId))
+    .digest(Digest.sha256, new TextEncoder().encode(scopeId))
     .pipe(Effect.orDie);
   const scopeKey = Hex.encode(digest).slice(0, 32);
   return CheckpointRef.make(`${CHECKPOINT_REFS_PREFIX}/${Base64Url.encode(scopeKey)}/${name}`);
@@ -368,7 +368,7 @@ export const layer: Layer.Layer<
   CheckpointServiceV2,
   never,
   | CheckpointStore.CheckpointStore
-  | Crypto.Crypto
+  | Digest.Digest
   | IdAllocator.IdAllocatorV2
   | WorkspaceFolders.WorkspaceFolders
   | FileSystem.FileSystem
@@ -380,9 +380,9 @@ export const layer: Layer.Layer<
     const workspaceFolders = yield* WorkspaceFolders.WorkspaceFolders;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* Digest.Digest;
     const checkpointRefFor = (input: Parameters<typeof checkpointRefForScopeOrdinal>[0]) =>
-      checkpointRefForScopeOrdinal(input).pipe(Effect.provideService(Crypto.Crypto, crypto));
+      checkpointRefForScopeOrdinal(input).pipe(Effect.provideService(Digest.Digest, crypto));
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const workspaceLocks = yield* KeyedLock.make<string>();
     const withWorkspaceLock = <A, E, R>(cwd: string, effect: Effect.Effect<A, E, R>) =>
@@ -854,7 +854,7 @@ export const layer: Layer.Layer<
                   ...(excludePaths === undefined ? {} : { excludePaths }),
                 };
                 const preRewindRef = yield* scopeRef(target.scope.id, "pre-rewind").pipe(
-                  Effect.provideService(Crypto.Crypto, crypto),
+                  Effect.provideService(Digest.Digest, crypto),
                 );
                 // One an earlier failed rewind left is still the only copy of how the folder was.
                 const kept = yield* checkpointStore.hasCheckpointRef({

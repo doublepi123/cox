@@ -4,7 +4,7 @@ import {
   type ProviderInstanceId,
 } from "@t3tools/contracts";
 import type { AcpRegistrySettings } from "../settings.ts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -62,7 +62,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
 }) {
   const catalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const pty = yield* Effect.serviceOption(PtyAdapter.PtyAdapter);
   const coordinator = yield* Effect.serviceOption(
     AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator,
@@ -103,7 +103,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
             Layer.provide(
               Layer.mergeAll(
                 Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
-                Layer.succeed(Crypto.Crypto, crypto),
+                Layer.succeed(SecureRandom.SecureRandom, crypto),
               ),
             ),
           ),

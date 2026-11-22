@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { NotificationWebhookChannel, ServerSettings } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
@@ -24,7 +25,7 @@ const dependencies = Settings.layer.pipe(
   Layer.provideMerge(Secrets.layer),
   Layer.provideMerge(Sqlite.layerMemory),
   Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "notification-settings-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 it("persists and reloads the public origin while retaining channels and their vaulted secrets", async () => {

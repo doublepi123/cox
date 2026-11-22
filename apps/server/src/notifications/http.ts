@@ -1,3 +1,4 @@
+import { requestUrl } from "../requestUrl.ts";
 import {
   AuthOrchestrationOperateScope,
   EnvironmentHttpApi,
@@ -54,7 +55,7 @@ const toRegisteredSubscription = (stored: StoredMobilePushSubscription) => ({
 });
 
 const ownServerPort = (request: HttpServerRequest.HttpServerRequest): number => {
-  const url = HttpServerRequest.toURL(request);
+  const url = requestUrl(request);
   if (Option.isNone(url)) return 443;
   if (url.value.port !== "") return Number(url.value.port);
   return url.value.protocol === "https:" ? 443 : 80;
@@ -192,7 +193,7 @@ export const layer = HttpApiBuilder.group(
             ),
           );
           const request = yield* HttpServerRequest.HttpServerRequest;
-          const origin = HttpServerRequest.toURL(request);
+          const origin = requestUrl(request);
           const baseOrigin =
             settings.notifications.publicBaseUrl ??
             (Option.isSome(origin) ? origin.value.origin : undefined);

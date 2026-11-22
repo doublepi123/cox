@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { VapidPublicKeyResponse } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -29,7 +30,7 @@ const plaintext = Buffer.from("When I grow up, I want to be a watermelon");
 const secretLayer = () =>
   SecretStore.layer.pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "web-push-crypto-" })),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 const hmac = (key: Uint8Array, value: Uint8Array) =>
   createHmac("sha256", key).update(value).digest();
@@ -115,7 +116,7 @@ describe("VAPID identity", () => {
         }).pipe(
           Effect.provide(
             ServerConfig.layerTest(process.cwd(), { prefix: "web-push-concurrent-" }).pipe(
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
             ),
           ),
         ),

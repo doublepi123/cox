@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { PullRequestUnavailableError, SourceControlProviderKind } from "@t3tools/contracts";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
 import { createOrchestrationV2TurnItemVisibility } from "@t3tools/shared/orchestrationV2Timeline";
@@ -92,7 +93,7 @@ import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 const layerPlatformTest = Layer.merge(
-  NodeServices.layer,
+  Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
   Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
     resolveLink: () => Effect.die("unused title link"),
   }),
@@ -1076,7 +1077,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
             (yield* outbox.listByCommandId(commandId)).map((effect) => effect.request.type),
             ["provider-thread.rollback"],
           );
-          const path = yield* Path.Path.pipe(Effect.provide(NodeServices.layer));
+          const path = yield* Path.Path.pipe(
+            Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          );
           yield* orchestrator.dispatch({
             type: "thread.create",
             createdBy: "user",
@@ -3486,7 +3489,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         const reactor = yield* PullRequestWatchReactor.make.pipe(
           Effect.provide(
             Layer.mergeAll(
-              NodeServices.layer,
+              Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
               Layer.mock(PullRequestService.PullRequestService)({
                 detail: () =>
                   reason === "unreachable"
@@ -3565,7 +3568,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
       let headSha = "ad70160aaa";
       const host = Layer.mergeAll(
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
         Layer.mock(PullRequestService.PullRequestService)({
           detail: () =>
             Effect.sync(() => ({
@@ -3670,7 +3673,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         const owed = requiredStatus === "success" ? ["test"] : ["lint"];
         let remainingStatus: "pending" | "success" = "pending";
         const host = Layer.mergeAll(
-          NodeServices.layer,
+          Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
           Layer.mock(PullRequestService.PullRequestService)({
             detail: () =>
               Effect.sync(() => ({
@@ -3818,7 +3821,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         DateTime.add(DateTime.makeUnsafe(started.startedAt), { seconds: 1 }),
       );
       const host = Layer.mergeAll(
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
         Layer.mock(PullRequestService.PullRequestService)({
           detail: () =>
             Effect.sync(() => ({
@@ -3916,7 +3919,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       let headSha = "6074dd48ff";
       let checks: PullRequestDetail["checks"] = [];
       const host = Layer.mergeAll(
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
         Layer.mock(PullRequestService.PullRequestService)({
           detail: () =>
             Effect.sync(() => ({
@@ -4019,7 +4022,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const headSha = "6074dd48ff";
       let checks: PullRequestDetail["checks"] = [];
       const host = Layer.mergeAll(
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
         Layer.mock(PullRequestService.PullRequestService)({
           detail: () =>
             Effect.sync(() => ({
@@ -4133,7 +4136,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
         let reads = 0;
         const host = Layer.mergeAll(
-          NodeServices.layer,
+          Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
           Layer.mock(PullRequestService.PullRequestService)({
             // The host reports the same fingerprint throughout, so only the deadline can prompt a read.
             watchFingerprint: () =>
@@ -4356,7 +4359,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const reactor = yield* PullRequestWatchReactor.make.pipe(
         Effect.provide(
           Layer.mergeAll(
-            NodeServices.layer,
+            Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
             Layer.mock(PullRequestService.PullRequestService)({
               detail: () => Effect.succeed(detail),
               activity: () =>
@@ -4504,7 +4507,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           .pipe(Effect.map(({ messages }) => messages.map((message) => message.text).join("\n")));
       const read22 = yield* Deferred.make<void>();
       const host = Layer.mergeAll(
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
         Layer.mock(PullRequestService.PullRequestService)({
           watchFingerprint: (input) =>
             input.number === 21
@@ -8287,7 +8290,7 @@ const layerScratchPromotionTest = ScratchThreadPromotion.layer.pipe(
       namedProjectsRoot: "/projects",
     }),
   ),
-  Layer.provide(NodeServices.layer),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   Layer.provideMerge(layerProjectDeletionTest),
 );
 

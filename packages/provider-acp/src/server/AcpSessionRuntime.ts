@@ -6,7 +6,7 @@ import * as NodePath from "node:path";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1246,9 +1246,9 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
 ): Effect.fn.Return<
   AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > {
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const hostPlatform = yield* HostProcess.Platform;
   const runtimeScope = yield* Scope.fork(yield* Scope.Scope);
@@ -1256,7 +1256,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
   const modeStateRef = yield* Ref.make<AcpSessionModeState | undefined>(undefined);
   const toolCallsRef = yield* Ref.make(new Map<string, AcpToolCallTrackedState>());
   const shownToolCallIds = new Set<string>();
-  const assistantItemRuntimeId = yield* crypto.randomUUIDv4().pipe(
+  const assistantItemRuntimeId = yield* random.uuidV4().pipe(
     Effect.mapError(
       (cause) =>
         new EffectAcpErrors.AcpTransportError({
@@ -2749,7 +2749,7 @@ export const layer = (
 ): Layer.Layer<
   AcpSessionRuntime,
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > => Layer.effect(AcpSessionRuntime, make(options));
 
 function sessionConfigOptionsFromSetup(

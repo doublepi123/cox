@@ -1,7 +1,7 @@
 // allow: SIZE_OK — single-file Effect repository module, matching the persistence-layer idiom
 // (AuthSessions.ts) and this todo's pinned deliverable file.
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
@@ -188,7 +188,7 @@ function toPersistenceSqlOrDecodeError(
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const subscriptionSelectColumns = sql`
     s.id,
@@ -365,7 +365,7 @@ export const make = Effect.gen(function* () {
   const upsertSubscription: NotificationSubscriptionRepository["Service"]["upsertSubscription"] = (
     input,
   ) =>
-    crypto.randomUUIDv4().pipe(
+    crypto.uuidV4().pipe(
       Effect.orDie,
       Effect.flatMap((id) => upsertRow({ id: PushSubscriptionId.make(id), ...input })),
       Effect.flatMap(toStoredSubscription),

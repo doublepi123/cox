@@ -418,7 +418,7 @@ const buildRegistryOverSnapshot = Effect.fn("buildRegistryOverSnapshot")(functio
 
 const layerTestNodeServices = Layer.mergeAll(
   ProviderLatestVersions.layer,
-  NodeServices.layer,
+  Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
   Layer.mock(CodexManagedTokenBroker.CodexManagedTokenBroker)({
     endpoint: Effect.succeed("unused-private-pipe"),
   }),
@@ -435,7 +435,7 @@ const layerTestNodeServices = Layer.mergeAll(
     Effect.gen(function* () {
       return yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped();
     }),
-  ).pipe(Layer.provide(NodeServices.layer)),
+  ).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.layer(
@@ -1255,7 +1255,7 @@ it.layer(
             Effect.provide(
               ServerConfig.layerTest(process.cwd(), {
                 prefix: "t3-pi-model-cache-",
-              }).pipe(Layer.provideMerge(NodeServices.layer)),
+              }).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
             ),
           ),
       );
@@ -1439,7 +1439,7 @@ it.layer(
           Effect.provide(
             ServerConfig.layerTest(process.cwd(), {
               prefix: "t3-codex-retired-model-cache-",
-            }).pipe(Layer.provideMerge(NodeServices.layer)),
+            }).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
           ),
         ),
       );
@@ -1780,7 +1780,7 @@ it.layer(
                   prefix: "t3-provider-registry-model-cache-",
                 }),
               ),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
             ),
           ),
         );
@@ -1859,7 +1859,7 @@ it.layer(
                   prefix: "t3-provider-registry-shared-workspace-scan-",
                 }),
               ),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
             ),
           ).pipe(Scope.provide(scope));
 
@@ -2046,7 +2046,7 @@ it.layer(
                 prefix: "t3-provider-registry-unhealthy-workspace-",
               }),
             ),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -2167,7 +2167,7 @@ it.layer(
                 prefix: "t3-provider-registry-shared-refresh-",
               }),
             ),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -2291,7 +2291,7 @@ it.layer(
                   prefix: "t3-provider-registry-retired-refresh-",
                 }),
               ),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
             ),
           ).pipe(Scope.provide(scope));
 
@@ -2432,7 +2432,7 @@ it.layer(
                 prefix: "t3-provider-registry-retired-stream-",
               }),
             ),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -2565,7 +2565,7 @@ it.layer(
                 prefix: "t3-provider-registry-enriched-refresh-",
               }),
             ),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -2691,7 +2691,7 @@ it.layer(
               }),
             ),
             Layer.provideMerge(layerBackgroundPolicyAlwaysRun),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -2819,7 +2819,7 @@ it.layer(
                   prefix: "t3-provider-registry-opencode-authoritative-persist-",
                 }),
               ),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
             ),
           ).pipe(Scope.provide(scope));
 
@@ -2924,7 +2924,7 @@ it.layer(
               }),
             ),
             Layer.provideMerge(layerBackgroundPolicyAlwaysRun),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -3078,7 +3078,7 @@ it.layer(
               return beforeSpawn.pipe(Effect.andThen(spawner.spawn(command)));
             }),
           ),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           Layer.provideMerge(layerBackgroundPolicyAlwaysRun),
         );
         const runtimeServices = yield* Layer.build(layerProviderRegistry).pipe(
@@ -3183,7 +3183,7 @@ it.layer(
           Layer.provideMerge(
             OpenCodeRuntime.layer.pipe(Layer.provide(OpenCodeServerLedger.layerTest)),
           ),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           Layer.provideMerge(layerBackgroundPolicyAlwaysRun),
         );
         const runtimeServices = yield* Layer.build(layerProviderRegistry).pipe(

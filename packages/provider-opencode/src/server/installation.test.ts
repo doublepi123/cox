@@ -1,3 +1,5 @@
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -42,11 +44,12 @@ const makeHarness = Effect.fn("OpenCodeInstallation.test.harness")(function* (
   const spawner = ChildProcessSpawner.make((command) =>
     Effect.gen(function* () {
       if (command._tag !== "StandardCommand") return yield* Effect.die("Unexpected pipeline");
-      calls.push(command.args);
-      const install = command.args[0] === "install";
+      calls.push(command.args.map(String));
+      const script = command.args.map(String)[0];
+      const install = script === "install";
       if (install) yield* Deferred.succeed(downloading, undefined);
-      if (command.args[0]?.endsWith("postinstall.mjs")) {
-        const home = path.dirname(command.args[0]);
+      if (script?.endsWith("postinstall.mjs")) {
+        const home = path.dirname(script);
         yield* fs.makeDirectory(path.join(home, "bin"), { recursive: true });
         yield* fs.writeFileString(path.join(home, "bin", "opencode.exe"), "new-native-binary");
       }
@@ -61,7 +64,7 @@ const makeHarness = Effect.fn("OpenCodeInstallation.test.harness")(function* (
         unref: Effect.succeed(Effect.void),
         stdin: Sink.drain,
         stdout:
-          command.args[0] === "--version"
+          script === "--version"
             ? Stream.encodeText(Stream.make(options.version ?? "opencode v2.2.5\n"))
             : Stream.empty,
         stderr: Stream.empty,
@@ -107,7 +110,7 @@ const makeHarness = Effect.fn("OpenCodeInstallation.test.harness")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("OpenCode installation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("OpenCode installation", (it) => {
   it.effect(
     "prefers an existing CLI on PATH and discovers managed installations after restart",
     () =>

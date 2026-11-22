@@ -11,7 +11,7 @@ import {
 } from "@t3tools/shared/shell";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -35,7 +35,7 @@ export const makeGrokInstallation = Effect.fn("makeGrokInstallation")(function* 
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const scope = yield* Scope.Scope;
   const platform = yield* HostProcess.Platform;
@@ -222,7 +222,7 @@ export const makeGrokInstallation = Effect.fn("makeGrokInstallation")(function* 
           );
         if (!(yield* options.canStart))
           return yield* error("install", "Finish or cancel Grok sign-in before installing.");
-        const id = yield* crypto.randomUUIDv4();
+        const id = yield* crypto.uuidV4();
         yield* SubscriptionRef.update(state, (current): ProviderInstallState => ({
           ...current,
           operationId: id,

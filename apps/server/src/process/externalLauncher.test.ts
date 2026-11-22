@@ -128,8 +128,8 @@ it.effect.skipIf(windowsHost)("opens a home-relative directory with a colon in i
     );
     assert.deepEqual(
       calls
-        .filter((call) => call.args.some((arg) => arg.startsWith(project)))
-        .map((call) => call.args),
+        .filter((call) => call.args.map(String).some((arg) => arg.startsWith(project)))
+        .map((call) => call.args.map(String)),
       [
         ["--new-window", project],
         ["--goto", path.join(project, "test.ts:3:7")],
@@ -294,7 +294,7 @@ it.effect("launches an installed editor with platform-safe arguments", () =>
         '^"C:\\workspace^ with^ spaces\\src\\index.ts:12:4^"',
       ].join(" "),
     );
-    assert.deepEqual(spawned.args, []);
+    assert.deepEqual(spawned.args.map(String), []);
     assert.equal(spawned.options.shell, true);
     assert.equal(spawned.options.detached, true);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
@@ -347,7 +347,9 @@ it.effect.skipIf(windowsHost)(
       assert.ok(spawned);
       assert.equal(spawned.command, "powershell.exe");
       assert.equal(spawned.options.detached, true);
-      const encodedCommand = spawned.args[spawned.args.length - 1] ?? "";
+      const encodedCommand = String(
+        spawned.args.map(String)[spawned.args.map(String).length - 1] ?? "",
+      );
       const decodedCommand = Buffer.from(encodedCommand, "base64").toString("utf16le");
       assert.equal(
         decodedCommand,
@@ -431,7 +433,7 @@ for (const wsl of [false, true]) {
 
         const reveal = spawnedCommands.find((command) => command.command === "gdbus");
         assert.ok(reveal);
-        assert.deepEqual(reveal.args, [
+        assert.deepEqual(reveal.args.map(String), [
           "call",
           "--session",
           "--dest",
@@ -486,7 +488,7 @@ for (const cwd of ["/workspace with spaces/", "/workspace with spaces/file.ts:12
         );
         assert.ok(spawned);
         assert.equal(spawned.command, executable);
-        assert.deepEqual(spawned.args, [cwd]);
+        assert.deepEqual(spawned.args.map(String), [cwd]);
         assert.equal(spawned.options.shell, false);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
@@ -546,7 +548,7 @@ for (const { layout, pathNames, fallbackNames, expected } of [
         spawned.command,
         expected === "fallback" ? path.join(fallbackDir, "zeditor") : expected,
       );
-      assert.deepEqual(spawned.args, ["/workspace"]);
+      assert.deepEqual(spawned.args.map(String), ["/workspace"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 }
@@ -631,7 +633,7 @@ it.effect.each([
 
       assert.ok(spawned);
       assert.equal(spawned.command, executable);
-      assert.deepEqual(spawned.args, [
+      assert.deepEqual(spawned.args.map(String), [
         "/workspace with spaces",
         "--line",
         "12",
@@ -911,7 +913,7 @@ it.effect("starts a Windows command shim for unicode paths with cmd metacharacte
     assert.isTrue(Exit.isSuccess(exit));
     assert.ok(spawned);
     assert.equal(spawned.options.shell, true);
-    assert.deepEqual(spawned.args, []);
+    assert.deepEqual(spawned.args.map(String), []);
     assert.isTrue(
       spawned.command.endsWith(
         ' ^"--goto^" ^"C:\\Users\\jö\\R^&D^ ^(100^%^)\\naïve^ ^^file^!.ts:3:7^"',

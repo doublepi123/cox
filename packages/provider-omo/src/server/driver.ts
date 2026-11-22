@@ -1,6 +1,6 @@
 import type { ServerProvider } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -33,7 +33,7 @@ const decodeOmoSettings = Schema.decodeSync(OmoSettings);
 
 export type OmoDriverEnv =
   | OmoAdapterEnv
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | Path.Path
   | FileSystem.FileSystem
   | ChildProcessSpawner.ChildProcessSpawner

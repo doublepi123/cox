@@ -13,7 +13,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { parseGenericCliVersion } from "@t3tools/provider-core/server/snapshotProbe";
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -34,7 +34,7 @@ export const makeClaudeInstallation = Effect.fn("makeClaudeInstallation")(functi
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const scope = yield* Scope.Scope;
   const commandCache = yield* CommandResolutionCache;
@@ -233,7 +233,7 @@ export const makeClaudeInstallation = Effect.fn("makeClaudeInstallation")(functi
             "install",
             "Clear the custom binary path before installing Claude Code in Cox.",
           );
-        const id = yield* crypto.randomUUIDv4();
+        const id = yield* crypto.uuidV4();
         yield* SubscriptionRef.update(state, (value): ProviderInstallState => ({
           ...value,
           operationId: id,

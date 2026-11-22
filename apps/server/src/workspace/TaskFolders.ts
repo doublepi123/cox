@@ -16,7 +16,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Hex from "effect/encoding/Hex";
@@ -225,7 +225,7 @@ export const layoutAnchor = (
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const digest = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const config = yield* ServerConfig.ServerConfig;
   const settings = yield* ServerSettings.ServerSettingsService;
   const projects = yield* ProjectStore.ProjectStoreV2;
@@ -638,7 +638,7 @@ const make = Effect.gen(function* () {
       });
     }
     const hash = yield* digest.digest(
-      "SHA-256",
+      Digest.sha256,
       new TextEncoder().encode(`${taskPlan.projectId}\0${taskPlan.anchor}\0${branch}`),
     );
     // UTF-8 bytes bound UTF-16 length too, leaving room for files on Windows.

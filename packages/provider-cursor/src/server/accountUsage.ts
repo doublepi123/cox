@@ -1,5 +1,5 @@
 import type { UsageRecord } from "@t3tools/provider-core/server/usage";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Hex from "effect/encoding/Hex";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -83,11 +83,11 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
   credentialSource: CursorCredentialSource,
   sinceMs: number,
   endDate: number,
-): Effect.fn.Return<CursorAccountUsageReadResult, never, Crypto.Crypto | HttpClient.HttpClient> {
+): Effect.fn.Return<CursorAccountUsageReadResult, never, Digest.Digest | HttpClient.HttpClient> {
   const httpClient = yield* HttpClient.HttpClient;
-  const digest = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const accountHash = (value: string) =>
-    digest.digest("SHA-256", textEncoder.encode(value)).pipe(Effect.map(Hex.encode));
+    digest.digest(Digest.sha256, textEncoder.encode(value)).pipe(Effect.map(Hex.encode));
   const credential = yield* Effect.result(exchangeCursorApiKey(credentialSource.apiKey));
   if (Result.isFailure(credential)) {
     return {

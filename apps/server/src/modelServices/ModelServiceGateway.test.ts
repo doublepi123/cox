@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as Context from "effect/Context";
@@ -128,7 +129,7 @@ const service = decodeService({
 const layer = Layer.mergeAll(
   ServerSettingsService.layerTest({ modelServices: { [serviceId]: service } }),
   ServerConfig.layerTest(process.cwd(), { prefix: "cox-model-gateway-test-" }),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 const record = (value: unknown): Record<string, unknown> => value as Record<string, unknown>;
 const recoveryInput = (id: string) => ({
   threadId: ThreadId.make("recovery-thread"),

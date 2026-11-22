@@ -43,7 +43,7 @@ function processHandle(input: {
 
 function piProbeSpawner(version: string) {
   return ChildProcessSpawner.make((command) => {
-    const args = ChildProcess.isStandardCommand(command) ? command.args : [];
+    const args = ChildProcess.isStandardCommand(command) ? command.args.map(String) : [];
     return Effect.succeed(
       args.includes("--version")
         ? processHandle({ stdout: `pi ${version}\n` })
@@ -94,7 +94,7 @@ const piDiscoverySpawner = (
       }),
     );
     return ChildProcessSpawner.make((command) => {
-      const args = ChildProcess.isStandardCommand(command) ? command.args : [];
+      const args = ChildProcess.isStandardCommand(command) ? command.args.map(String) : [];
       if (args.includes("--version")) {
         return Effect.succeed(processHandle({ stdout: `pi ${options.version ?? "0.84.3"}\n` }));
       }

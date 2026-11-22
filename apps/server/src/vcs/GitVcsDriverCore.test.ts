@@ -1,3 +1,5 @@
+import * as Redacted from "effect/Redacted";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics nodeBuiltinImport:off - realpathSync.native resolves Windows 8.3 short names, which the Effect realPath does not.
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
@@ -58,7 +60,7 @@ const layerServerConfig = ServerConfig.layerTest(process.cwd(), {
 });
 const layerTest = GitVcsDriver.layer.pipe(
   Layer.provideMerge(layerServerConfig),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const makeNonRepositoryHandle = () =>
@@ -110,7 +112,8 @@ const makeDriverReleasingLock = (
     const spawner = ChildProcessSpawner.make((command) =>
       Effect.gen(function* () {
         const handle = yield* delegate.spawn(command);
-        if (!ChildProcess.isStandardCommand(command) || !matches(command.args)) return handle;
+        if (!ChildProcess.isStandardCommand(command) || !matches(command.args.map(String)))
+          return handle;
         return ChildProcessSpawner.makeHandle({
           ...handle,
           exitCode: handle.exitCode.pipe(
@@ -141,7 +144,7 @@ it.effect("runs background Git in its own lane so user commands never queue behi
       Effect.gen(function* () {
         yield* Queue.offer(
           starts,
-          ChildProcess.isStandardCommand(command) ? String(command.args[0]) : "",
+          ChildProcess.isStandardCommand(command) ? String(command.args.map(String)[0]) : "",
         );
         return ChildProcessSpawner.makeHandle({
           ...makeSuccessfulHandle("ok"),
@@ -179,7 +182,7 @@ it.effect("runs background Git in its own lane so user commands never queue behi
     yield* Deferred.succeed(gate, undefined);
     assert.equal((yield* Fiber.join(background)).length, 12);
     assert.equal((yield* Fiber.join(foreground)).length, 4);
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 describe("Git output collection", () => {
@@ -231,7 +234,13 @@ describe("Git output collection", () => {
       assert.deepEqual(withCallbacks, expected);
       assert.deepEqual(stdoutLines, ["a\\b\0雪", "last "]);
       assert.deepEqual(stderrLines, ["Receiving é", "Updating 雪", "done"]);
-    }).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+    }).pipe(
+      Effect.provide(
+        layerServerConfig.pipe(
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
+    ),
   );
 
   it.effect("caps output without line callbacks", () =>
@@ -251,7 +260,13 @@ describe("Git output collection", () => {
       const error = yield* driver.execute(input).pipe(Effect.flip);
       assert.equal(error.outputLength, 4);
       assert.include(error.detail, "exceeded 3 bytes");
-    }).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+    }).pipe(
+      Effect.provide(
+        layerServerConfig.pipe(
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
+    ),
   );
 });
 
@@ -407,8 +422,11 @@ it.effect.each([
             if (!ChildProcess.isStandardCommand(command)) {
               return yield* Effect.die("expected a standard Git command");
             }
-            spawnedArgs.push(command.args);
-            if (invalidationFailure !== "none" && command.args.includes("--git-common-dir")) {
+            spawnedArgs.push(command.args.map(String));
+            if (
+              invalidationFailure !== "none" &&
+              command.args.map(String).includes("--git-common-dir")
+            ) {
               if (invalidationFailure === "non-repository") return makeNonRepositoryHandle();
               return ChildProcessSpawner.makeHandle({
                 ...makeNonRepositoryHandle(),
@@ -500,7 +518,7 @@ it.effect.each(["branch", "detached", "nested", "aliased-root", "aliased-nested"
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawnedArgs: Array<ReadonlyArray<string>> = [];
         const spawner = ChildProcessSpawner.make((command) => {
-          if (ChildProcess.isStandardCommand(command)) spawnedArgs.push(command.args);
+          if (ChildProcess.isStandardCommand(command)) spawnedArgs.push(command.args.map(String));
           return delegate.spawn(command);
         });
         const driver = yield* makeGitVcsDriverCore().pipe(
@@ -567,7 +585,7 @@ it.effect.each(["bare", "unborn"] as const)(
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawnedArgs: Array<ReadonlyArray<string>> = [];
         const spawner = ChildProcessSpawner.make((command) => {
-          if (ChildProcess.isStandardCommand(command)) spawnedArgs.push(command.args);
+          if (ChildProcess.isStandardCommand(command)) spawnedArgs.push(command.args.map(String));
           return delegate.spawn(
             state === "bare" ? ChildProcess.setEnv(command, { GIT_DIR: cwd }) : command,
           );
@@ -766,7 +784,7 @@ it.effect("resolves a branch's base once while its refs and branch config are un
       const spawner = ChildProcessSpawner.make((command) => {
         if (!ChildProcess.isStandardCommand(command)) return delegate.spawn(command);
         spawnedArgs.push(command.args.map(String));
-        return failRemoteLookup && command.args.includes("remote")
+        return failRemoteLookup && command.args.map(String).includes("remote")
           ? Effect.fail(
               PlatformError.systemError({
                 _tag: "Unknown",
@@ -980,7 +998,7 @@ it.effect(
             if (
               !holdDiscovery ||
               !ChildProcess.isStandardCommand(command) ||
-              !command.args.includes("--git-common-dir")
+              !command.args.map(String).includes("--git-common-dir")
             )
               return handle;
             holdDiscovery = false;
@@ -1038,7 +1056,7 @@ it.effect("invalidates cached metadata after interrupted worktree creation", () 
           if (
             !holdDiscovery ||
             !ChildProcess.isStandardCommand(command) ||
-            !command.args.includes("--git-common-dir")
+            !command.args.map(String).includes("--git-common-dir")
           )
             return handle;
           holdDiscovery = false;
@@ -1111,9 +1129,9 @@ describe("pullCurrentBranch", () => {
           const handle = yield* delegate.spawn(command);
           const isPull =
             ChildProcess.isStandardCommand(command) &&
-            command.args.includes("pull") &&
-            command.args.includes("--ff-only");
-          if (isPull) onPull?.(command.args);
+            command.args.map(String).includes("pull") &&
+            command.args.map(String).includes("--ff-only");
+          if (isPull) onPull?.(command.args.map(String));
           return isPull
             ? ChildProcessSpawner.makeHandle({
                 ...handle,
@@ -1165,7 +1183,7 @@ describe("pullCurrentBranch", () => {
             if (
               !held &&
               ChildProcess.isStandardCommand(command) &&
-              command.args.includes("fetch") &&
+              command.args.map(String).includes("fetch") &&
               String(command.options.cwd) === targetPath
             ) {
               held = true;
@@ -1316,7 +1334,10 @@ describe("pullCurrentBranch", () => {
         const spawner = ChildProcessSpawner.make((command) =>
           Effect.gen(function* () {
             const handle = yield* delegate.spawn(command);
-            if (!ChildProcess.isStandardCommand(command) || !command.args.includes("pull")) {
+            if (
+              !ChildProcess.isStandardCommand(command) ||
+              !command.args.map(String).includes("pull")
+            ) {
               return handle;
             }
             pulls += 1;
@@ -1364,7 +1385,13 @@ describe("pullCurrentBranch", () => {
             assert.equal(yield* git(cwd, ["rev-parse", "HEAD"]), remoteHead);
           }).pipe(Effect.provideService(GitVcsDriver.GitVcsDriver, driver));
         }),
-      ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+      ).pipe(
+        Effect.provide(
+          layerServerConfig.pipe(
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          ),
+        ),
+      ),
   );
 
   it.effect("still fails a pull that Git rejects, whatever its output size", () =>
@@ -1386,7 +1413,13 @@ describe("pullCurrentBranch", () => {
           assert.lengthOf(pulls, 1);
         }).pipe(Effect.provideService(GitVcsDriver.GitVcsDriver, driver));
       }),
-    ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+    ).pipe(
+      Effect.provide(
+        layerServerConfig.pipe(
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
+    ),
   );
 });
 
@@ -1423,7 +1456,13 @@ it.effect("a refreshed ref list reads the current branch and repository paths on
       assert.equal(spawnedArgs.filter((args) => args[0] === "symbolic-ref").length, 1);
       assert.equal(spawnedArgs.filter((args) => args[0] === "rev-parse").length, 1);
     }),
-  ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect.each(["a Cox branch creation", "an external worktree addition"] as const)(
@@ -1441,11 +1480,12 @@ it.effect.each(["a Cox branch creation", "an external worktree addition"] as con
               return yield* Effect.die("expected a standard Git command");
             }
             const isWorktreeScan =
-              command.args.includes("worktree") && command.args.includes("--porcelain");
+              command.args.map(String).includes("worktree") &&
+              command.args.map(String).includes("--porcelain");
             const isRefScan =
-              command.args.includes("for-each-ref") &&
-              command.args.includes("refs/heads") &&
-              command.args.includes("refs/remotes");
+              command.args.map(String).includes("for-each-ref") &&
+              command.args.map(String).includes("refs/heads") &&
+              command.args.map(String).includes("refs/remotes");
             if (!isRefScan && (!isWorktreeScan || mutation === "a Cox branch creation")) {
               return yield* delegate.spawn(command);
             }
@@ -1493,7 +1533,13 @@ it.effect.each(["a Cox branch creation", "an external worktree addition"] as con
           yield* Fiber.join(inFlight);
         }
       }),
-    ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+    ).pipe(
+      Effect.provide(
+        layerServerConfig.pipe(
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
+    ),
 );
 
 it.effect("invalidates a ref snapshot when a mutation fails after changing Git", () =>
@@ -1505,7 +1551,10 @@ it.effect("invalidates a ref snapshot when a mutation fails after changing Git",
           if (!ChildProcess.isStandardCommand(command)) {
             return yield* Effect.die("expected a standard Git command");
           }
-          if (command.args[0] === "branch" && command.args.at(-1) === "feature/partial-failure") {
+          if (
+            command.args.map(String)[0] === "branch" &&
+            command.args.map(String).at(-1) === "feature/partial-failure"
+          ) {
             const handle = yield* delegate.spawn(command);
             yield* handle.exitCode;
             return makeNonRepositoryHandle();
@@ -1525,7 +1574,13 @@ it.effect("invalidates a ref snapshot when a mutation fails after changing Git",
       const refs = yield* driver.listRefs({ cwd });
       assert.isTrue(refs.refs.some((ref) => ref.name === "feature/partial-failure"));
     }),
-  ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("commits selected literal paths with Git 2.24", () =>
@@ -1536,10 +1591,10 @@ it.effect("commits selected literal paths with Git 2.24", () =>
       const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
       const spawner = ChildProcessSpawner.make((command) => {
         if (!ChildProcess.isStandardCommand(command)) return delegate.spawn(command);
-        if (command.args.at(-1) === "version") {
+        if (command.args.map(String).at(-1) === "version") {
           return Effect.succeed(makeSuccessfulHandle("git version 2.24.4\n"));
         }
-        if (command.args.includes("--pathspec-from-file=-")) {
+        if (command.args.map(String).includes("--pathspec-from-file=-")) {
           return Effect.succeed(makeFailedHandle("error: unknown option pathspec-from-file"));
         }
         return delegate.spawn(command);
@@ -1564,8 +1619,8 @@ it.effect("keeps cached branch occupancy when Git cannot rescan worktrees", () =
       const spawner = ChildProcessSpawner.make((command) =>
         failWorktreeScan &&
         ChildProcess.isStandardCommand(command) &&
-        command.args.includes("worktree") &&
-        command.args.includes("--porcelain")
+        command.args.map(String).includes("worktree") &&
+        command.args.map(String).includes("--porcelain")
           ? Effect.fail(
               PlatformError.systemError({
                 _tag: "Unknown",
@@ -1629,9 +1684,11 @@ it.effect("marks the current branch when worktree metadata is unavailable", () =
             return yield* Effect.die("expected a standard Git command");
           }
           const isWorktreeRoot =
-            command.args.includes("rev-parse") && command.args.includes("--show-toplevel");
+            command.args.map(String).includes("rev-parse") &&
+            command.args.map(String).includes("--show-toplevel");
           const isWorktreeList =
-            command.args.includes("worktree") && command.args.includes("--porcelain");
+            command.args.map(String).includes("worktree") &&
+            command.args.map(String).includes("--porcelain");
           if (isWorktreeRoot || isWorktreeList) {
             return makeNonRepositoryHandle();
           }
@@ -1651,7 +1708,13 @@ it.effect("marks the current branch when worktree metadata is unavailable", () =
       assert.isTrue(refs.isRepo);
       assert.isTrue(refs.refs.find((ref) => ref.name === initialBranch)?.current);
     }),
-  ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("ignores worktree metadata for directories that no longer exist", () =>
@@ -1665,7 +1728,8 @@ it.effect("ignores worktree metadata for directories that no longer exist", () =
             return yield* Effect.die("expected a standard Git command");
           }
           const isWorktreeList =
-            command.args.includes("worktree") && command.args.includes("--porcelain");
+            command.args.map(String).includes("worktree") &&
+            command.args.map(String).includes("--porcelain");
           if (isWorktreeList) {
             return makeSuccessfulHandle(
               `worktree ${missingWorktreePath}\0HEAD deadbeef\0branch refs/heads/stale-worktree\0\0`,
@@ -1687,7 +1751,13 @@ it.effect("ignores worktree metadata for directories that no longer exist", () =
 
       assert.equal(refs.refs.find((ref) => ref.name === "stale-worktree")?.worktreePath, null);
     }),
-  ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("reads worktrees from git that rejects worktree list -z", () =>
@@ -1700,7 +1770,10 @@ it.effect("reads worktrees from git that rejects worktree list -z", () =>
           if (!ChildProcess.isStandardCommand(command)) {
             return yield* Effect.die("expected a standard Git command");
           }
-          if (command.args.includes("worktree") && command.args.includes("-z")) {
+          if (
+            command.args.map(String).includes("worktree") &&
+            command.args.map(String).includes("-z")
+          ) {
             return ChildProcessSpawner.makeHandle({
               pid: ChildProcessSpawner.ProcessId(1),
               exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(129)),
@@ -1738,7 +1811,13 @@ it.effect("reads worktrees from git that rejects worktree list -z", () =>
         worktreePath,
       );
     }),
-  ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("does not report a separate git dir as the worktree of its branch", () =>
@@ -1849,8 +1928,8 @@ it.effect.each([
       Effect.gen(function* () {
         if (!ChildProcess.isStandardCommand(command))
           return yield* Effect.die("expected Git command");
-        if (command.args[0] !== "fetch") return makeNonRepositoryHandle();
-        assert.deepEqual(command.args, ["fetch", "--quiet", "--", "origin"]);
+        if (command.args.map(String)[0] !== "fetch") return makeNonRepositoryHandle();
+        assert.deepEqual(command.args.map(String), ["fetch", "--quiet", "--", "origin"]);
         assert.equal(command.options.env?.LANGUAGE, "C");
         assert.equal(command.options.env?.GIT_TERMINAL_PROMPT, "0");
         yield* Ref.update(attempts, (count) => count + 1);
@@ -1883,7 +1962,13 @@ it.effect.each([
     assert.notProperty(error, "stderr");
     assert.notProperty(error, "args");
     assert.equal(yield* Ref.get(attempts), "attempts" in scenario ? scenario.attempts : 1);
-  }).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  }).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("retries a fetch that lost a ref update to another Git process", () =>
@@ -1893,7 +1978,7 @@ it.effect("retries a fetch that lost a ref update to another Git process", () =>
       Effect.gen(function* () {
         if (!ChildProcess.isStandardCommand(command))
           return yield* Effect.die("expected Git command");
-        if (command.args[0] !== "fetch") return makeNonRepositoryHandle();
+        if (command.args.map(String)[0] !== "fetch") return makeNonRepositoryHandle();
         const attempt = yield* Ref.updateAndGet(attempts, (count) => count + 1);
         if (attempt > 1) return makeSuccessfulHandle("");
         return ChildProcessSpawner.makeHandle({
@@ -1913,7 +1998,13 @@ it.effect("retries a fetch that lost a ref update to another Git process", () =>
     const cwd = yield* makeTmpDir();
     yield* driver.fetchRemote({ cwd, remoteName: "origin", refName: "main" });
     assert.equal(yield* Ref.get(attempts), 2);
-  }).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  }).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("does not fetch for status when the branch tracks a local branch", () =>
@@ -1922,7 +2013,7 @@ it.effect("does not fetch for status when the branch tracks a local branch", () 
       const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fetches: Array<ReadonlyArray<string>> = [];
       const spawner = ChildProcessSpawner.make((command) => {
-        if (ChildProcess.isStandardCommand(command) && command.args.includes("fetch")) {
+        if (ChildProcess.isStandardCommand(command) && command.args.map(String).includes("fetch")) {
           fetches.push(command.args.map(String));
         }
         return delegate.spawn(command);
@@ -1954,7 +2045,7 @@ it.effect("lets a worktree checkout that is still working run past five minutes"
       Effect.gen(function* () {
         if (!ChildProcess.isStandardCommand(command))
           return yield* Effect.die("expected Git command");
-        if (!command.args.includes("worktree")) return makeSuccessfulHandle("");
+        if (!command.args.map(String).includes("worktree")) return makeSuccessfulHandle("");
         yield* Deferred.succeed(checkoutStarted, undefined);
         return ChildProcessSpawner.makeHandle({
           ...makeSuccessfulHandle(""),
@@ -1991,7 +2082,13 @@ it.effect("lets a worktree checkout that is still working run past five minutes"
     const result = yield* Fiber.join(creation);
     assert.equal(result.worktree.path, worktreePath);
     assert.equal(result.worktree.refName, "cox/slow-checkout");
-  }).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+  }).pipe(
+    Effect.provide(
+      layerServerConfig.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 describe("rejected git refs", () => {
@@ -2011,7 +2108,7 @@ describe("rejected git refs", () => {
       Layer.provide(layerServerConfig),
       Layer.provideMerge(
         Layer.merge(
-          NodeServices.layer,
+          Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
           Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
         ),
       ),
@@ -2306,11 +2403,12 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           const spawner = ChildProcessSpawner.make((command) => {
             if (
               ChildProcess.isStandardCommand(command) &&
-              (command.args.includes("worktree") ||
-                command.args[0] === "branch" ||
-                command.args[0] === "checkout")
+              (command.args.map(String).includes("worktree") ||
+                command.args.map(String)[0] === "branch" ||
+                command.args.map(String)[0] === "checkout")
             ) {
-              locales.push(command.options.env?.LANGUAGE);
+              const language = command.options.env?.LANGUAGE;
+              locales.push(Redacted.isRedacted(language) ? Redacted.value(language) : language);
             }
             return delegate.spawn(command);
           });
@@ -2790,7 +2888,10 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
           let listings = 0;
           const spawner = ChildProcessSpawner.make((command) => {
-            if (ChildProcess.isStandardCommand(command) && command.args.includes("--others")) {
+            if (
+              ChildProcess.isStandardCommand(command) &&
+              command.args.map(String).includes("--others")
+            ) {
               listings++;
             }
             return delegate.spawn(command);
@@ -2859,10 +2960,16 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawner = ChildProcessSpawner.make((command) => {
           if (ChildProcess.isStandardCommand(command)) {
-            if (command.args.includes("--numstat") && command.args.includes(mergeBase)) {
+            if (
+              command.args.map(String).includes("--numstat") &&
+              command.args.map(String).includes(mergeBase)
+            ) {
               return Effect.succeed(makeSuccessfulHandle(stats));
             }
-            if (command.args.includes("ls-files") && command.args.includes("--others")) {
+            if (
+              command.args.map(String).includes("ls-files") &&
+              command.args.map(String).includes("--others")
+            ) {
               return Effect.succeed(makeSuccessfulHandle(readLargeUntracked ? untracked : ""));
             }
           }
@@ -2910,7 +3017,10 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
           const spawner = ChildProcessSpawner.make((command) =>
             Effect.gen(function* () {
-              if (ChildProcess.isStandardCommand(command) && command.args.includes("--others")) {
+              if (
+                ChildProcess.isStandardCommand(command) &&
+                command.args.map(String).includes("--others")
+              ) {
                 assert.equal(
                   ++untrackedReads,
                   1,
@@ -2975,7 +3085,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         yield* writeTextFile(cwd, "README.md", "changed\n");
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawner = ChildProcessSpawner.make((command) =>
-          ChildProcess.isStandardCommand(command) && command.args.includes("--patch")
+          ChildProcess.isStandardCommand(command) && command.args.map(String).includes("--patch")
             ? Effect.succeed(makeNonRepositoryHandle())
             : delegate.spawn(command),
         );
@@ -3218,7 +3328,8 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           if (!ChildProcess.isStandardCommand(command)) {
             return Effect.die("expected a standard Git command");
           }
-          return command.args[0] === "ls-files" && command.args[1] === "--others"
+          return command.args.map(String)[0] === "ls-files" &&
+            command.args.map(String)[1] === "--others"
             ? Effect.succeed(makeNonRepositoryHandle())
             : delegate.spawn(command);
         });
@@ -3816,8 +3927,8 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           Effect.gen(function* () {
             if (
               ChildProcess.isStandardCommand(command) &&
-              command.args[0] === "config" &&
-              command.args.some((arg) => arg.startsWith("branch.feature/temporary."))
+              command.args.map(String)[0] === "config" &&
+              command.args.map(String).some((arg) => arg.startsWith("branch.feature/temporary."))
             ) {
               if (!(yield* Ref.getAndSet(claimed, true))) {
                 const result = yield* git(cwd, ["branch", "-m", "feature/named"]).pipe(
@@ -4273,13 +4384,19 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawner = ChildProcessSpawner.make((command) =>
           Effect.suspend(() => {
-            if (ChildProcess.isStandardCommand(command) && command.args.includes("--others")) {
+            if (
+              ChildProcess.isStandardCommand(command) &&
+              command.args.map(String).includes("--others")
+            ) {
               untrackedScans++;
             }
             if (
               !ChildProcess.isStandardCommand(command) ||
-              !(command.args.includes("diff") && command.args.includes("--numstat")) ||
-              command.args.includes("HEAD")
+              !(
+                command.args.map(String).includes("diff") &&
+                command.args.map(String).includes("--numstat")
+              ) ||
+              command.args.map(String).includes("HEAD")
             ) {
               return delegate.spawn(command);
             }
@@ -5376,7 +5493,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const countingSpawner = ChildProcessSpawner.make((command) =>
           Effect.gen(function* () {
-            const args = ChildProcess.isStandardCommand(command) ? command.args : [];
+            const args = ChildProcess.isStandardCommand(command) ? command.args.map(String) : [];
             const writesConfig =
               (args.includes("worktree") && args.includes("add") && args.includes("-b")) ||
               (args[0] === "branch" &&
@@ -5960,7 +6077,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
           const spawner = ChildProcessSpawner.make((command) =>
             ChildProcess.isStandardCommand(command) &&
-            command.args.join(" ").includes("worktree remove")
+            command.args.map(String).join(" ").includes("worktree remove")
               ? Effect.succeed(makeSuccessfulHandle(""))
               : delegate.spawn(command),
           );
@@ -6290,8 +6407,8 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
           const spawner = ChildProcessSpawner.make((command) =>
             ChildProcess.isStandardCommand(command) &&
-            command.args[0] === "remote" &&
-            command.args[1] === "-v"
+            command.args.map(String)[0] === "remote" &&
+            command.args.map(String)[1] === "-v"
               ? Effect.succeed(makeSuccessfulHandle(listing.stdout.replace(/\r?\n/g, lineEnding)))
               : delegate.spawn(command),
           );
@@ -6334,7 +6451,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawner = ChildProcessSpawner.make((command) =>
           Effect.gen(function* () {
-            const args = ChildProcess.isStandardCommand(command) ? command.args : [];
+            const args = ChildProcess.isStandardCommand(command) ? command.args.map(String) : [];
             if (args[0] === "remote" && args[1] === "-v") {
               listings += 1;
               if (listings === 2) yield* Deferred.succeed(bothListed, undefined);
@@ -7870,7 +7987,7 @@ describe("Windows long path configuration", () => {
   ) {
     const layer = GitVcsDriver.layer.pipe(
       Layer.provide(layerServerConfig),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provide(Layer.succeed(HostProcess.Platform, platform)),
     );
     return yield* Effect.gen(function* () {

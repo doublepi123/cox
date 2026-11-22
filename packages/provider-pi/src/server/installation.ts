@@ -14,7 +14,7 @@ import { parseGenericCliVersion } from "@t3tools/provider-core/server/snapshotPr
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -52,7 +52,7 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
   };
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const scope = yield* Scope.Scope;
   const commandCache = yield* CommandResolutionCache;
@@ -218,7 +218,7 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
     }));
     const stagedBinary = path.join(staging, "node_modules", ".bin", path.basename(executablePath));
     yield* verify(stagedBinary, stagedBinary);
-    const id = yield* crypto.randomUUIDv4();
+    const id = yield* crypto.uuidV4();
     const release = path.join(directory, "releases", id);
     yield* fs.makeDirectory(path.dirname(release), { recursive: true });
     return yield* Effect.uninterruptibleMask((restore) =>
@@ -294,7 +294,7 @@ export const makePiInstallation = Effect.fn("makePiInstallation")(function* (opt
             "install",
             `Clear the custom binary path before installing ${runtime.label} in Cox.`,
           );
-        const id = yield* crypto.randomUUIDv4();
+        const id = yield* crypto.uuidV4();
         yield* SubscriptionRef.update(state, (value): ProviderInstallState => ({
           ...value,
           operationId: id,

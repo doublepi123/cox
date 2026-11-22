@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -132,7 +133,7 @@ describe("webhook secret persistence", () => {
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "cox-webhook-secrets-" })),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
     await Effect.runPromise(
       Effect.gen(function* () {

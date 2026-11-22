@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics nodeBuiltinImport:off
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -177,8 +178,10 @@ async function makeService(initialReceipt?: LocalServiceUpdateReceipt, managed =
       : null,
   );
   const dependencies = Layer.mergeAll(
-    ServerConfig.layerTest(process.cwd(), directory).pipe(Layer.provide(NodeServices.layer)),
-    NodeServices.layer,
+    ServerConfig.layerTest(process.cwd(), directory).pipe(
+      Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    ),
+    Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
     NodeSqliteClient.layer({ filename: ":memory:" }),
     Layer.mock(ServerEnvironment.ServerEnvironment)({
       getEnvironmentId: Effect.succeed(EnvironmentId.make("test-environment")),

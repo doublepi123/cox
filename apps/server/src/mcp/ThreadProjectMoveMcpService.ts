@@ -5,7 +5,7 @@ import {
   type ThreadProjectMoveMcpResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -28,7 +28,7 @@ export class ThreadProjectMoveMcpService extends Context.Service<
 export const layer = Layer.effect(
   ThreadProjectMoveMcpService,
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const threads = yield* ThreadManagement.ThreadManagementService;
     const projects = yield* Projects.ProjectService;
 
@@ -73,7 +73,7 @@ export const layer = Layer.effect(
           message: "continuationPrompt is only supported when moving the calling agent's thread.",
         });
       }
-      const requestKey = input.clientRequestId ?? (yield* crypto.randomUUIDv4().pipe(Effect.orDie));
+      const requestKey = input.clientRequestId ?? (yield* crypto.uuidV4());
       const commandId = CommandId.make(
         [
           "command",

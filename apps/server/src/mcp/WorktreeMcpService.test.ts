@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "@effect/vitest";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
@@ -334,6 +335,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
           refreshStatus,
         } satisfies Partial<VcsStatusBroadcaster.VcsStatusBroadcaster["Service"]>),
         NodeServices.layer,
+        NodeCrypto.layer,
       ),
     ),
   );
@@ -460,7 +462,7 @@ describe("cox_worktree_handoff", () => {
       Effect.provide(
         GitVcsDriver.layer.pipe(
           Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "handoff-remote-git-" })),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),

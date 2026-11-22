@@ -1,3 +1,6 @@
+import * as Redacted from "effect/Redacted";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -111,7 +114,7 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
             command.command.replaceAll("^", "").matchAll(/"([^"]*)"|(\S+)/g),
             (match) => match[1] ?? match[2]!,
           )
-        : [command.command, ...command.args];
+        : [command.command, ...command.args.map(String)];
       const [binary, ...args] = parts;
       calls.push(args);
       const installing = args[0] === "install";
@@ -139,7 +142,15 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
       let failed = false;
       if (args[0] === "--version") {
         const resolved = yield* resolveCommandPath(binary!, {
-          env: command.options.env ?? environment,
+          env:
+            command.options.env === undefined
+              ? environment
+              : Object.fromEntries(
+                  Object.entries(command.options.env).map(([key, value]) => [
+                    key,
+                    Redacted.isRedacted(value) ? Redacted.value(value) : value,
+                  ]),
+                ),
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fs),
           Effect.provideService(Path.Path, path),
@@ -274,7 +285,7 @@ const makeHarness = Effect.fn("PiInstallation.test.harness")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("Pi installation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Pi installation", (it) => {
   for (const omo of [false, true]) {
     for (const pathKey of ["PATH", "Path"] as const) {
       it.effect(`prefers managed ${omo ? "OMO" : "Pi"} over an existing ${pathKey} command`, () =>

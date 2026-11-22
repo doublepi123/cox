@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@t3tools/shared/Net";
 import { expect, it } from "@effect/vitest";
@@ -9,7 +10,12 @@ import { Command } from "effect/cli";
 import { authCommand } from "./auth.ts";
 
 const run = Command.runWith(authCommand, { version: "0.0.0" });
-const services = Layer.mergeAll(NodeServices.layer, NetService.layer, TestConsole.layer);
+const services = Layer.mergeAll(
+  NodeServices.layer,
+  NodeCrypto.layer,
+  NetService.layer,
+  TestConsole.layer,
+);
 
 it.effect("exposes only bearer session management in auth help", () =>
   Effect.gen(function* () {

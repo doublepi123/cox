@@ -302,7 +302,7 @@ it.effect("accepts an agent call through the registered MCP tool", () => {
     Effect.provide(
       McpHttpServer.toolkitRegistration(ThreadToolkit, Handlers.layer).pipe(
         Layer.provide(Move.layer.pipe(Layer.provide(test.layer))),
-        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
         Layer.provide(test.layer),
       ),
     ),
@@ -342,7 +342,7 @@ it.effect(
       Effect.provide(
         McpHttpServer.toolkitRegistration(ThreadToolkit, Handlers.layer).pipe(
           Layer.provide(Move.layer.pipe(Layer.provide(test.layer))),
-          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
           Layer.provide(test.layer),
         ),
       ),

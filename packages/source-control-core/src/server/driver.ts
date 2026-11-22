@@ -5,7 +5,8 @@ import type {
   SourceControlSignInPrompt,
   SourceControlSignInResult,
 } from "@t3tools/contracts";
-import type * as Crypto from "effect/Crypto";
+import type * as Digest from "effect/crypto/Digest";
+import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import type { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
@@ -76,7 +77,8 @@ export type SourceControlDriverServices =
   | SourceControlRateLimit.SourceControlRateLimit
   | HttpClient.HttpClient
   | FileSystem.FileSystem
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
+  | Digest.Digest
   | FeatureFlags.FeatureFlags;
 
 export interface SourceControlDriver {

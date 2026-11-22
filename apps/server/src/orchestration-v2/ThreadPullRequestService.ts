@@ -10,7 +10,7 @@ import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -107,7 +107,7 @@ export const make = Effect.gen(function* () {
   const git = yield* GitManager.GitManager;
   const pullRequests = yield* PullRequestService.PullRequestService;
   const repositoryIdentities = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
@@ -186,7 +186,7 @@ export const make = Effect.gen(function* () {
           ) {
             return;
           }
-          const uuid = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+          const uuid = yield* random.uuidV4().pipe(Effect.orDie);
           yield* orchestrator.dispatch({
             type: "thread.pull-request.link",
             commandId: CommandId.make(`server:thread-repository-pull-request:${thread.id}:${uuid}`),
@@ -389,7 +389,7 @@ export const make = Effect.gen(function* () {
                 if (!projectWorkspaceMatchesSnapshot(currentProject, project.workspaceRoot)) {
                   return failBackfill([thread]);
                 }
-                const uuid = yield* crypto.randomUUIDv4();
+                const uuid = yield* random.uuidV4();
                 yield* orchestrator.dispatch({
                   type: "thread.pull-request.sync",
                   commandId: CommandId.make(`server:thread-pull-request:${thread.id}:${uuid}`),

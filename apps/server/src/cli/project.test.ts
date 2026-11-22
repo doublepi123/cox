@@ -99,7 +99,7 @@ const withProjectService = <A, E>(
       Layer.provideMerge(WorkspacePaths.layer),
       Layer.provideMerge(ServerSettings.layer.pipe(Layer.provide(ServerSecretStore.layer))),
       Layer.provideMerge(SqlitePersistence.layerConfig),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provide(ServerConfig.layer(config)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
     );
@@ -146,7 +146,7 @@ it.effect(
         { path: NodePath.join(workspaceRoot, "api"), name: "api", discovered: true },
         { path: shared, name: NodePath.basename(shared) },
       ]);
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect.each(["snapshot", "mutation"] as const)(
@@ -206,7 +206,7 @@ it.effect.each(["snapshot", "mutation"] as const)(
       assert.equal(snapshotRequests, 2);
       assert.equal(mutations, 1);
       assert.deepEqual((yield* readProjects(baseDir)).projects, []);
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped),
 );
 
 const makeProjectLookupFixture = Effect.fn("ProjectCliTest.makeProjectLookupFixture")(function* () {
@@ -288,7 +288,7 @@ const makeThreadPersistenceLayer = Effect.fn("ProjectCliTest.makeThreadPersisten
       EventStore.layer,
     ).pipe(
       Layer.provideMerge(SqlitePersistence.layerConfig),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provide(ServerConfig.layer(config)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
     );
@@ -362,104 +362,112 @@ const readNativeThreadState = Effect.fn("ProjectCliTest.readNativeThreadState")(
   }).pipe(Effect.provide(layer));
 });
 
-it.layer(NodeServices.layer)("project deletion with native V2 threads", (it) => {
-  it.effect.each([
-    { label: "an active thread", archived: false, missing: false },
-    {
-      label: "an archived thread after its workspace disappears",
-      archived: true,
-      missing: true,
-    },
-  ])("rejects unforced removal of a project with $label", ({ archived, missing }) =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
-      const threadId = ThreadId.make("project-cli-preserved-thread");
-      yield* seedNativeThreads(baseDir, [{ id: threadId, projectId: project.id, archived }]);
-      const before = yield* readNativeThreadState(baseDir, threadId);
-      if (missing) yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
-
-      const error = yield* runCli([
-        "project",
-        "remove",
-        missing ? workspaceRoot : project.id,
-        "--base-dir",
-        baseDir,
-      ]).pipe(
-        Effect.match({
-          onFailure: (error) => error,
-          onSuccess: () => assert.fail("Removing a nonempty project must require --force."),
-        }),
-      );
-
-      assert.include(error.message, "not empty");
-      assert.deepEqual(
-        (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
-        [project.id],
-      );
-      assert.deepEqual(yield* readNativeThreadState(baseDir, threadId), before);
-      assert.equal(yield* fs.exists(workspaceRoot), !missing);
-    }),
-  );
-
-  it.effect.each(["present", "missing"] as const)(
-    "force-removes active and archived V2 threads with the workspace %s, preserving unrelated projects",
-    (workspace) =>
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "project deletion with native V2 threads",
+  (it) => {
+    it.effect.each([
+      { label: "an active thread", archived: false, missing: false },
+      {
+        label: "an archived thread after its workspace disappears",
+        archived: true,
+        missing: true,
+      },
+    ])("rejects unforced removal of a project with $label", ({ archived, missing }) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
-        const otherWorkspace = `${workspaceRoot}-other`;
-        yield* fs.makeDirectory(otherWorkspace);
-        yield* runCli(["project", "add", otherWorkspace, "--base-dir", baseDir]);
-        const otherProject = (yield* readProjects(baseDir)).projects.find(
-          (entry) => entry.workspaceRoot === otherWorkspace,
-        );
-        assert.isDefined(otherProject);
-        const activeId = ThreadId.make("project-cli-deleted-active");
-        const archivedId = ThreadId.make("project-cli-deleted-archived");
-        const unrelatedId = ThreadId.make("project-cli-unrelated-thread");
-        yield* seedNativeThreads(baseDir, [
-          { id: activeId, projectId: project.id, archived: false },
-          { id: archivedId, projectId: project.id, archived: true },
-          { id: unrelatedId, projectId: otherProject!.id, archived: false },
-        ]);
-        const unrelatedBefore = yield* readNativeThreadState(baseDir, unrelatedId);
-        if (workspace === "missing") {
-          yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
-        }
+        const threadId = ThreadId.make("project-cli-preserved-thread");
+        yield* seedNativeThreads(baseDir, [{ id: threadId, projectId: project.id, archived }]);
+        const before = yield* readNativeThreadState(baseDir, threadId);
+        if (missing) yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
 
-        yield* runCli([
+        const error = yield* runCli([
           "project",
           "remove",
-          workspace === "missing" ? workspaceRoot : project.id,
-          "--force",
+          missing ? workspaceRoot : project.id,
           "--base-dir",
           baseDir,
-        ]);
+        ]).pipe(
+          Effect.match({
+            onFailure: (error) => error,
+            onSuccess: () => assert.fail("Removing a nonempty project must require --force."),
+          }),
+        );
 
+        assert.include(error.message, "not empty");
         assert.deepEqual(
           (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
-          [otherProject!.id],
+          [project.id],
         );
-        for (const threadId of [activeId, archivedId]) {
-          const state = yield* readNativeThreadState(baseDir, threadId);
-          assert.isNotNull(state.thread.deletedAt);
-          assert.lengthOf(
-            state.events.filter((record) => record.event.type === "thread.deleted"),
-            1,
-          );
-        }
-        assert.deepEqual(yield* readNativeThreadState(baseDir, unrelatedId), unrelatedBefore);
-        assert.equal(yield* fs.exists(workspaceRoot), workspace === "present");
-        assert.isTrue(yield* fs.exists(otherWorkspace));
+        assert.deepEqual(yield* readNativeThreadState(baseDir, threadId), before);
+        assert.equal(yield* fs.exists(workspaceRoot), !missing);
       }),
-  );
-});
+    );
 
-it.layer(NodeServices.layer)("project lookup with unavailable workspaces", (it) => {
-  it.effect.each(["id", "stored path", "relative path", "path with a trailing separator"] as const)(
-    "removes an empty project by %s after its directory is gone",
-    (identifier) =>
+    it.effect.each(["present", "missing"] as const)(
+      "force-removes active and archived V2 threads with the workspace %s, preserving unrelated projects",
+      (workspace) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
+          const otherWorkspace = `${workspaceRoot}-other`;
+          yield* fs.makeDirectory(otherWorkspace);
+          yield* runCli(["project", "add", otherWorkspace, "--base-dir", baseDir]);
+          const otherProject = (yield* readProjects(baseDir)).projects.find(
+            (entry) => entry.workspaceRoot === otherWorkspace,
+          );
+          assert.isDefined(otherProject);
+          const activeId = ThreadId.make("project-cli-deleted-active");
+          const archivedId = ThreadId.make("project-cli-deleted-archived");
+          const unrelatedId = ThreadId.make("project-cli-unrelated-thread");
+          yield* seedNativeThreads(baseDir, [
+            { id: activeId, projectId: project.id, archived: false },
+            { id: archivedId, projectId: project.id, archived: true },
+            { id: unrelatedId, projectId: otherProject!.id, archived: false },
+          ]);
+          const unrelatedBefore = yield* readNativeThreadState(baseDir, unrelatedId);
+          if (workspace === "missing") {
+            yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
+          }
+
+          yield* runCli([
+            "project",
+            "remove",
+            workspace === "missing" ? workspaceRoot : project.id,
+            "--force",
+            "--base-dir",
+            baseDir,
+          ]);
+
+          assert.deepEqual(
+            (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
+            [otherProject!.id],
+          );
+          for (const threadId of [activeId, archivedId]) {
+            const state = yield* readNativeThreadState(baseDir, threadId);
+            assert.isNotNull(state.thread.deletedAt);
+            assert.lengthOf(
+              state.events.filter((record) => record.event.type === "thread.deleted"),
+              1,
+            );
+          }
+          assert.deepEqual(yield* readNativeThreadState(baseDir, unrelatedId), unrelatedBefore);
+          assert.equal(yield* fs.exists(workspaceRoot), workspace === "present");
+          assert.isTrue(yield* fs.exists(otherWorkspace));
+        }),
+    );
+  },
+);
+
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "project lookup with unavailable workspaces",
+  (it) => {
+    it.effect.each([
+      "id",
+      "stored path",
+      "relative path",
+      "path with a trailing separator",
+    ] as const)("removes an empty project by %s after its directory is gone", (identifier) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
@@ -474,65 +482,68 @@ it.layer(NodeServices.layer)("project lookup with unavailable workspaces", (it) 
         assert.deepEqual((yield* readProjects(baseDir)).projects, []);
         assert.isFalse(yield* fs.exists(workspaceRoot));
       }),
-  );
+    );
 
-  it.effect("does not resolve another environment's project ID in an empty database", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
-      yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
-      const replacementDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-v2-project-empty-" });
-      const error = yield* runCli([
-        "project",
-        "remove",
-        project.id,
-        "--force",
-        "--base-dir",
-        replacementDir,
-      ]).pipe(Effect.flip);
-      assert.include(error.message, "No active project found");
-      assert.deepEqual(
-        (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
-        [project.id],
-      );
-      assert.deepEqual((yield* readProjects(replacementDir)).projects, []);
-    }),
-  );
+    it.effect("does not resolve another environment's project ID in an empty database", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
+        yield* fs.rename(workspaceRoot, `${workspaceRoot}-removed`);
+        const replacementDir = yield* fs.makeTempDirectoryScoped({
+          prefix: "t3-v2-project-empty-",
+        });
+        const error = yield* runCli([
+          "project",
+          "remove",
+          project.id,
+          "--force",
+          "--base-dir",
+          replacementDir,
+        ]).pipe(Effect.flip);
+        assert.include(error.message, "No active project found");
+        assert.deepEqual(
+          (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
+          [project.id],
+        );
+        assert.deepEqual((yield* readProjects(replacementDir)).projects, []);
+      }),
+    );
 
-  it.effect("normalizes existing paths without conflating separately registered symlinks", () =>
-    Effect.gen(function* () {
-      const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
-      yield* runCli([
-        "project",
-        "rename",
-        `${workspaceRoot}${NodePath.sep}.`,
-        "Normalized",
-        "--base-dir",
-        baseDir,
-      ]);
-      assert.equal((yield* readProjects(baseDir)).projects[0]?.title, "Normalized");
-      const aliasPath = `${workspaceRoot}-alias`;
-      NodeFS.symlinkSync(workspaceRoot, aliasPath, "junction");
-      const unknownAlias = yield* runCli([
-        "project",
-        "remove",
-        aliasPath,
-        "--base-dir",
-        baseDir,
-      ]).pipe(Effect.flip);
-      assert.include(unknownAlias.message, "No active project found");
-      yield* runCli(["project", "add", aliasPath, "--base-dir", baseDir]);
-      const added = (yield* readProjects(baseDir)).projects;
-      assert.equal(added.length, 2);
-      const aliasProject = added.find((entry) => entry.workspaceRoot === aliasPath);
-      assert.isDefined(aliasProject);
-      assert.notEqual(aliasProject?.id, project.id);
-      yield* runCli(["project", "remove", `${aliasPath}${NodePath.sep}.`, "--base-dir", baseDir]);
-      assert.deepEqual(
-        (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
-        [project.id],
-      );
-      assert.isTrue(NodeFS.existsSync(workspaceRoot));
-    }),
-  );
-});
+    it.effect("normalizes existing paths without conflating separately registered symlinks", () =>
+      Effect.gen(function* () {
+        const { baseDir, workspaceRoot, project } = yield* makeProjectLookupFixture();
+        yield* runCli([
+          "project",
+          "rename",
+          `${workspaceRoot}${NodePath.sep}.`,
+          "Normalized",
+          "--base-dir",
+          baseDir,
+        ]);
+        assert.equal((yield* readProjects(baseDir)).projects[0]?.title, "Normalized");
+        const aliasPath = `${workspaceRoot}-alias`;
+        NodeFS.symlinkSync(workspaceRoot, aliasPath, "junction");
+        const unknownAlias = yield* runCli([
+          "project",
+          "remove",
+          aliasPath,
+          "--base-dir",
+          baseDir,
+        ]).pipe(Effect.flip);
+        assert.include(unknownAlias.message, "No active project found");
+        yield* runCli(["project", "add", aliasPath, "--base-dir", baseDir]);
+        const added = (yield* readProjects(baseDir)).projects;
+        assert.equal(added.length, 2);
+        const aliasProject = added.find((entry) => entry.workspaceRoot === aliasPath);
+        assert.isDefined(aliasProject);
+        assert.notEqual(aliasProject?.id, project.id);
+        yield* runCli(["project", "remove", `${aliasPath}${NodePath.sep}.`, "--base-dir", baseDir]);
+        assert.deepEqual(
+          (yield* readProjects(baseDir)).projects.map((entry) => entry.id),
+          [project.id],
+        );
+        assert.isTrue(NodeFS.existsSync(workspaceRoot));
+      }),
+    );
+  },
+);

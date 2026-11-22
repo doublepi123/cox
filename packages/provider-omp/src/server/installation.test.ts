@@ -1,3 +1,6 @@
+import * as Redacted from "effect/Redacted";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -92,7 +95,7 @@ const makeHarness = Effect.fn("OmpInstallation.test.harness")(function* (
             command.command.replaceAll("^", "").matchAll(/"([^"]*)"|(\S+)/g),
             (match) => match[1] ?? match[2]!,
           )
-        : [command.command, ...command.args];
+        : [command.command, ...command.args.map(String)];
       const [binary, ...args] = parts;
       calls.push(args);
       const installing = args[0] === "install";
@@ -126,7 +129,15 @@ const makeHarness = Effect.fn("OmpInstallation.test.harness")(function* (
       let missing = false;
       if (args[0] === "--version") {
         const resolved = yield* resolveCommandPath(binary!, {
-          env: command.options.env ?? environment,
+          env:
+            command.options.env === undefined
+              ? environment
+              : Object.fromEntries(
+                  Object.entries(command.options.env).map(([key, value]) => [
+                    key,
+                    Redacted.isRedacted(value) ? Redacted.value(value) : value,
+                  ]),
+                ),
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fs),
           Effect.provideService(Path.Path, path),
@@ -214,7 +225,7 @@ const makeHarness = Effect.fn("OmpInstallation.test.harness")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("Omp installation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Omp installation", (it) => {
   it.effect(
     "stages the managed Bun runtime and installs the pinned omp package when Bun is absent",
     () =>

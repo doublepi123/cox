@@ -14,7 +14,7 @@ import {
   resolveCommandPath,
   resolveSpawnCommand,
 } from "@t3tools/shared/shell";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -54,7 +54,7 @@ export const makeOmpInstallation = Effect.fn("makeOmpInstallation")(function* (o
   const platform = yield* HostProcess.Platform;
   const architecture = yield* HostProcess.Architecture;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const scope = yield* Scope.Scope;
   const instanceDirectory = path.join(
     options.baseDir,
@@ -246,7 +246,7 @@ export const makeOmpInstallation = Effect.fn("makeOmpInstallation")(function* (o
       Effect.gen(function* () {
         if (options.binaryPath && options.binaryPath !== "omp") return yield* installation.start;
         if (running && !running.fiber.pollUnsafe()) return yield* SubscriptionRef.get(state);
-        const id = yield* crypto.randomUUIDv4();
+        const id = yield* crypto.uuidV4();
         yield* SubscriptionRef.update(state, (value): ProviderInstallState => ({
           ...value,
           operationId: id,

@@ -1,3 +1,5 @@
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { ProviderInstanceId, type ProviderAuthState } from "@t3tools/contracts";
@@ -111,7 +113,7 @@ const harness = Effect.fn("GrokAuth.test.harness")(function* (
   return { controller, phase, finish, interrupted, calls, refreshed: () => refreshed };
 });
 
-it.layer(NodeServices.layer)("Grok device login", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Grok device login", (it) => {
   it.effect("waits for CLI verification, refreshes account state and supports sign-out", () =>
     Effect.gen(function* () {
       const h = yield* harness();

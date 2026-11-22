@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { authScopeResponse, AuthStandardClientScopes } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
@@ -70,7 +71,7 @@ const request = (
     source: { socket: { remoteAddress: peer } },
   }) as unknown as AuthRequest;
 
-it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("EnvironmentAuth.layer", (it) => {
   it.effect("establishes a local browser session without credentials", () =>
     Effect.gen(function* () {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;

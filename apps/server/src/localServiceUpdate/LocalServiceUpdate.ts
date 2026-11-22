@@ -1,7 +1,7 @@
 import type { LocalServiceUpdateState } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -89,7 +89,9 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
     | undefined;
   const directory = path.join(config.baseDir, "local-service-update");
   const receiptPath = path.join(directory, "receipt.json");
-  const run = Effect.runPromiseWith(yield* Effect.context<FileSystem.FileSystem | Crypto.Crypto>());
+  const run = Effect.runPromiseWith(
+    yield* Effect.context<FileSystem.FileSystem | SecureRandom.SecureRandom>(),
+  );
 
   const state: Effect.Effect<LocalServiceUpdateState> = Effect.gen(function* () {
     if (!ownership) return current;
@@ -241,7 +243,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
           Effect.map(
             Effect.all([
               Clock.currentTimeMillis,
-              Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4())),
+              SecureRandom.SecureRandom.pipe(Effect.flatMap((crypto) => crypto.uuidV4())),
             ]),
             ([time, id]) => `${time}-${id}`,
           ),

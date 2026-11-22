@@ -1,7 +1,8 @@
+import { requestUrl } from "../requestUrl.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -72,7 +73,7 @@ import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolki
 import { MCP_HTTP_PATH } from "../httpCors.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
-  HttpServerRequest.toURL(request).pipe(
+  requestUrl(request).pipe(
     Option.map((url) => `${url.origin}/.well-known/oauth-protected-resource/mcp`),
   );
 
@@ -204,7 +205,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     if (limited === undefined) return invalidModeLimit;
     const origin =
       limited.client?.webOrigin ??
-      Option.getOrUndefined(Option.map(HttpServerRequest.toURL(request), (url) => url.origin));
+      Option.getOrUndefined(Option.map(requestUrl(request), (url) => url.origin));
     return { ...limited, origin };
   });
   return Effect.fnUntraced(function* (httpEffect) {
@@ -393,8 +394,8 @@ const saveScreenshot = Effect.fn("McpHttpServer.saveScreenshot")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const millis = yield* Clock.currentTimeMillis;
-  const crypto = yield* Crypto.Crypto;
-  const unique = (yield* crypto.randomUUIDv4().pipe(Effect.orDie)).slice(0, 8);
+  const crypto = yield* SecureRandom.SecureRandom;
+  const unique = (yield* crypto.uuidV4()).slice(0, 8);
   const fileName = `browser-screenshot-${screenshotSiteSlug(pageUrl)}-${millis.toString(36)}-${unique}.png`;
   const screenshotPath = path.join(config.browserArtifactsDir, fileName);
   yield* fileSystem.makeDirectory(config.browserArtifactsDir, { recursive: true }).pipe(
@@ -458,7 +459,7 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const saveServices = yield* Effect.context<
-    ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path | Crypto.Crypto
+    ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path | SecureRandom.SecureRandom
   >();
   const built = yield* decodeAsAdvertised(PreviewSnapshotToolkit);
   const tool = PreviewSnapshotTool;
@@ -727,9 +728,14 @@ const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(funct
   const built = yield* decodeAsAdvertised(HtmlPreviewToolkit);
   yield* registerImageTool(
     HtmlPreviewTool,
-    (payload) =>
+    ({ path, html, width, appearance }) =>
       built
-        .handle("html_preview", payload)
+        .handle("html_preview", {
+          ...(path === undefined ? {} : { path }),
+          ...(html === undefined ? {} : { html }),
+          ...(width === undefined ? {} : { width }),
+          ...(appearance === undefined ? {} : { appearance }),
+        })
         .pipe(Stream.unwrap, Stream.run(Sink.last()), Effect.flatMap(Effect.fromOption)),
     (effect) =>
       effect.pipe(
@@ -1008,31 +1014,36 @@ const withAdvertisedSchemas = Effect.fn("McpHttpServer.withAdvertisedSchemas")(f
   return yield* registration.pipe(Effect.provideService(McpServer.McpServer, advertisingServer));
 });
 
-/**
- * `McpServer.toolkit` asks for every service its tools declare when it
- * registers them, but the auth middleware provides `McpInvocationContext` to
- * each request instead. Registration must not get one: the services it
- * captures would replace the request's.
- */
+const provideRegistrationServices = <Services>() =>
+  McpServer.middleware<{ provides: Services }>()(
+    Effect.map(
+      Effect.context<Services>(),
+      (services) => (effect) =>
+        Effect.updateContext(effect, (request: Context.Context<never>) =>
+          Context.merge(services, request),
+        ),
+    ),
+  );
+
 export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, RX>(
   toolkit: Toolkit.Toolkit<Tools>,
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
-) => {
-  const registration = Layer.effectDiscard(
+) =>
+  Layer.effectDiscard(
     withToolAnalytics(
       withToolSpans(
         withAdvertisedSchemas(toolkit, McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
       ),
     ),
-  ).pipe(Layer.provide(McpServer.McpServer.layer));
-  // @effect-diagnostics-next-line unsafeEffectTypeAssertion:off - the auth middleware provides it per request.
-  const registered = registration as Layer.Layer<
-    never,
-    never,
-    Exclude<Layer.Services<typeof registration>, McpInvocationContext.McpInvocationContext>
-  >;
-  return registered.pipe(Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)));
-};
+  ).pipe(
+    Layer.provide(
+      provideRegistrationServices<
+        Exclude<Tool.Requirements<Tools[keyof Tools]>, McpInvocationContext.McpInvocationContext>
+      >().layer,
+    ),
+    Layer.provide(McpServer.McpServer.layer),
+    Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)),
+  );
 
 const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, EX, RX>(
   register: Effect.Effect<A, E, R>,
@@ -1098,13 +1109,30 @@ export const layerPullRequestsToolkit = toolkitRegistration(
   PullRequestsHandlers.layer,
 );
 
-export const layerMcpTransport = McpServer.layerHttp({
-  name: "Cox",
-  version: packageJson.version,
-  path: MCP_HTTP_PATH,
-  protocols: [McpProtocol.v2025_06_18, McpProtocol.v2026_07_28],
-  allowSessionTermination: true,
-}).pipe(Layer.provide(layerMcpAuthMiddleware));
+export const layerInProcessMcpServer = McpServer.middleware<{
+  provides: McpInvocationContext.McpInvocationContext;
+}>()(
+  (effect) =>
+    Effect.flatMap(
+      Effect.serviceOption(McpInvocationContext.McpInvocationContext),
+      Option.match({
+        onNone: () => Effect.die("Provide McpInvocationContext around the in-process MCP call."),
+        onSome: (scope) =>
+          Effect.provideService(effect, McpInvocationContext.McpInvocationContext, scope),
+      }),
+    ),
+  { global: true },
+).pipe(Layer.provideMerge(McpServer.McpServer.layer));
+
+export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
+  McpServer.layerHttp({
+    name: "Cox",
+    version: packageJson.version,
+    path: MCP_HTTP_PATH,
+    protocols: [McpProtocol.v2025_06_18, McpProtocol.v2026_07_28],
+    allowSessionTermination: true,
+    registrations,
+  }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
 /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
 export const layerTools = Layer.mergeAll(
@@ -1120,4 +1148,4 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerTools.pipe(Layer.provideMerge(layerMcpTransport));
+export const layer = layerMcpTransport(layerTools);

@@ -20,12 +20,12 @@ allowBuilds:
   utf-8-validate: false
 catalog:
   "@legendapp/list": 3.3.5
-  "@effect/atom-react": 4.0.5
-  "@effect/graphql-generator": 4.0.5
-  "@effect/openapi-generator": 4.0.5
-  "@effect/platform-node": 4.0.5
-  "@effect/platform-node-shared": 4.0.5
-  "@effect/vitest": 4.0.5
+  "@effect/atom-react": 4.1.5
+  "@effect/graphql-generator": 4.1.5
+  "@effect/openapi-generator": 4.1.5
+  "@effect/platform-node": 4.1.5
+  "@effect/platform-node-shared": 4.1.5
+  "@effect/vitest": 4.1.5
   "@noble/curves": 1.9.1
   "@noble/hashes": 1.8.0
   "@pierre/diffs": 1.6.1
@@ -37,7 +37,7 @@ catalog:
   "@types/react": ~19.3.0
   "@types/react-dom": ~19.3.0
   "@types/ws": 8.18.2
-  effect: 4.0.5
+  effect: 4.1.5
   jose: 6.2.2
   lightningcss: 1.33.0
   react: 19.3.0
@@ -64,13 +64,13 @@ catalog:
   unified: 11.0.5
 minimumReleaseAgeExclude:
   - "@tsc-rs/*"
-  - "@effect/atom-react@4.0.5"
-  - "@effect/graphql-generator@4.0.5"
-  - "@effect/openapi-generator@4.0.5"
-  - "@effect/platform-node-shared@4.0.5"
-  - "@effect/platform-node@4.0.5"
-  - "@effect/vitest@4.0.5"
-  - effect@4.0.5
+  - "@effect/atom-react@4.1.5"
+  - "@effect/graphql-generator@4.1.5"
+  - "@effect/openapi-generator@4.1.5"
+  - "@effect/platform-node-shared@4.1.5"
+  - "@effect/platform-node@4.1.5"
+  - "@effect/vitest@4.1.5"
+  - effect@4.1.5
   - "@anthropic-ai/claude-agent-sdk@0.3.276"
   - "@shadcn/lint@0.1.5"
   - cn@0.3.2
@@ -139,7 +139,7 @@ patchedDependencies:
   micromark-extension-gfm-table@2.1.1: patches/micromark-extension-gfm-table@2.1.1.patch
   micromark@4.0.2: patches/micromark@4.0.2.patch
   mdast-util-to-hast@13.2.1: patches/mdast-util-to-hast@13.2.1.patch
-  "@effect/vitest@4.0.5": patches/@effect__vitest@4.0.5.patch
+  "@effect/vitest@4.1.5": patches/@effect__vitest@4.1.5.patch
   "@ff-labs/fff-node@0.11.0": patches/@ff-labs__fff-node@0.11.0.patch
   "@pierre/diffs@1.6.1": patches/@pierre%2Fdiffs@1.6.1.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch

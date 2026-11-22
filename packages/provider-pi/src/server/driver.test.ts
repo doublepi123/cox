@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { DEFAULT_SERVER_SETTINGS, ProviderInstanceId } from "@t3tools/contracts";
@@ -32,7 +33,7 @@ const layerTest = Layer.mergeAll(
     HttpClient.HttpClient,
     HttpClient.make(() => Effect.die("Unexpected HTTP")),
   ),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const decodeRequest = Schema.decodeSync(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
@@ -54,7 +55,7 @@ const makePiSpawner = Effect.fnUntraced(function* (
       assert.isTrue(ChildProcess.isStandardCommand(command));
       if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die("Unexpected pipeline");
       launches.push(command);
-      const version = command.args.includes("--version");
+      const version = command.args.map(String).includes("--version");
       const stdout = yield* Queue.unbounded<Uint8Array>();
       const cwd = command.options.cwd;
       return ChildProcessSpawner.makeHandle({
@@ -140,7 +141,7 @@ it.layer(layerTest)("PiDriver workspace discovery", (it) => {
         canAuthenticate: false,
         documentationUrl: "https://pi.dev",
       });
-      const launch = launches.find((command) => command.args.includes("--mode"));
+      const launch = launches.find((command) => command.args.map(String).includes("--mode"));
       assert.isDefined(launch);
       assert.includeMembers(
         [...launch!.args],

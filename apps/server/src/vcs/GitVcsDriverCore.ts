@@ -2,7 +2,8 @@ import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -969,7 +970,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const { worktreesDir } = yield* ServerConfig.ServerConfig;
   const isServerInternalPath = yield* makeIsServerInternalPath;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const hostPlatform = yield* HostProcess.Platform;
   const serviceScope = yield* Effect.scope;
   const statusFetches = new Map<string, Fiber.Fiber<void, GitCommandError>>();
@@ -2158,7 +2160,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       if (effectiveConfig.exitCode !== 0 || effectiveConfig.stdoutTruncated) return null;
       const configHash = Hex.encode(
-        yield* crypto.digest("SHA-256", new TextEncoder().encode(effectiveConfig.stdout)),
+        yield* digester.digest(Digest.sha256, new TextEncoder().encode(effectiveConfig.stdout)),
       );
       const statToken = (target: string) =>
         fileSystem.stat(target).pipe(
@@ -4215,7 +4217,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const cwd = repository.worktreeRoot;
     const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
+      digester.digest(Digest.sha256, new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
         Effect.map(Hex.encode),
         Effect.mapError(
           (cause) =>
@@ -5123,8 +5125,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         });
       }
       const identity = `${yield* readGitCommonDir(input.cwd)}\0${targetBranch}`;
-      const hash = yield* crypto
-        .digest("SHA-256", new TextEncoder().encode(identity))
+      const hash = yield* digester
+        .digest(Digest.sha256, new TextEncoder().encode(identity))
         .pipe(Effect.orDie);
       let prefix = "";
       for (const character of targetBranch.replace(/\//g, "-")) {

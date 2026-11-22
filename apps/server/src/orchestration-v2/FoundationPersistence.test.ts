@@ -1,3 +1,4 @@
+import * as Arr from "effect/Array";
 import * as NodeSqlite from "node:sqlite";
 import * as LocalServiceUpdate from "../localServiceUpdate/LocalServiceUpdate.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -783,7 +784,9 @@ it.effect.each([false, true])("groups shutdown commits with rollback=%s", (fail)
       const end = span.end.bind(span);
       span.end = (time, exit) => {
         end(time, exit);
-        commits += span.events.filter(([name]) => name === "effect.sql.transaction.commit").length;
+        if (span.attributes.get("db.operation.name") === "COMMIT" && Exit.isSuccess(exit)) {
+          commits += 1;
+        }
       };
       return span;
     },
@@ -1901,9 +1904,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         rows.push(eventRow(++ordinal, { commandId: exactPageCommandId }));
       }
       const inserted = yield* Effect.forEach(
-        Array.from({ length: Math.ceil(rows.length / 400) }, (_, chunk) =>
-          rows.slice(chunk * 400, (chunk + 1) * 400),
-        ),
+        Arr.chunksOf(rows, 400),
         (chunk) =>
           sql<{
             readonly sequence: number;

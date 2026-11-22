@@ -1,3 +1,4 @@
+import { requestUrl } from "../requestUrl.ts";
 import {
   AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
@@ -19,7 +20,7 @@ import {
   mcpClientScopes,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -450,7 +451,7 @@ export const make = Effect.gen(function* () {
   const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
   const sessions = yield* SessionStore.SessionStore;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* Digest.Digest;
   const descriptor = yield* policy.getDescriptor();
   const config = yield* ServerConfig.ServerConfig;
   const passwordAuth = yield* resolvePasswordAuth(config);
@@ -532,7 +533,7 @@ export const make = Effect.gen(function* () {
             expectedAccessToken: dpopToken,
           }).pipe(
             Effect.provideService(ServerSecretStore.ServerSecretStore, secretStore),
-            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(Digest.Digest, crypto),
             Effect.as(session),
           );
         }
@@ -753,10 +754,10 @@ export const make = Effect.gen(function* () {
 
   const authenticateWebSocketUpgrade: EnvironmentAuth["Service"]["authenticateWebSocketUpgrade"] =
     Effect.fn("EnvironmentAuth.authenticateWebSocketUpgrade")(function* (request, use) {
-      const requestUrl = HttpServerRequest.toURL(request);
-      if (Option.isSome(requestUrl)) {
+      const url = requestUrl(request);
+      if (Option.isSome(url)) {
         const query = yield* decodeWebSocketUpgradeQuery(
-          Object.fromEntries(requestUrl.value.searchParams),
+          Object.fromEntries(url.value.searchParams),
         ).pipe(Effect.orDie);
         const websocketTicket = query.wsTicket && Redacted.value(query.wsTicket);
         if (websocketTicket && websocketTicket.trim().length > 0) {
@@ -786,7 +787,7 @@ export const make = Effect.gen(function* () {
               expectedAccessToken: websocketTicket,
             }).pipe(
               Effect.provideService(ServerSecretStore.ServerSecretStore, secretStore),
-              Effect.provideService(Crypto.Crypto, crypto),
+              Effect.provideService(Digest.Digest, crypto),
             );
           }
           return {

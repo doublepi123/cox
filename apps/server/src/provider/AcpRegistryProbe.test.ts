@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
@@ -451,11 +452,13 @@ describe("ACP Registry probe", () => {
         Effect.provide(
           Layer.mergeAll(
             catalog,
-            NodeServices.layer,
+            Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
             AcpRegistryRuntimeCoordinator.layer,
             IdAllocator.layer,
             McpProviderSessions.layer,
-            TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer)),
+            TestProviderHost.layer().pipe(
+              Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+            ),
           ),
         ),
         Effect.scoped,
@@ -536,7 +539,7 @@ describe("ACP Registry probe", () => {
       yield* logoutAcpRegistry(input);
     }).pipe(
       Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Effect.scoped,
     );
   });
@@ -597,7 +600,7 @@ await import(pathToFileURL(agentPath).href);
         { id: "session-projection-cache", disabled: true },
       ]);
       expect(yield* fs.exists(probeDirectory)).toBe(false);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it("distinguishes authentication failures from generic probe failures", () => {

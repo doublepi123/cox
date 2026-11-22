@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -106,7 +107,7 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
     `;
   });
 
-it.layer(NodeServices.layer)("server settings", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings", (it) => {
   it.effect.each(["openai-chat", "openai-responses"] as const)(
     "persists service protocol changes to %s while preserving OMO selections",
     (protocol) =>

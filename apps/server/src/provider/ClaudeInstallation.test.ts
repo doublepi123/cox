@@ -1,3 +1,5 @@
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -41,11 +43,13 @@ const makeHarness = Effect.fn("ClaudeInstallation.test.harness")(function* (
   const spawner = ChildProcessSpawner.make((command) =>
     Effect.gen(function* () {
       if (command._tag !== "StandardCommand") return yield* Effect.die("Unexpected pipeline");
-      calls.push(command.args);
-      const install = command.args[0] === "install";
+      const args = command.args.map(String);
+      calls.push(args);
+      const [script] = args;
+      const install = script === "install";
       if (install) yield* Deferred.succeed(downloading, undefined);
-      if (command.args[0]?.endsWith("install.cjs")) {
-        const home = path.dirname(command.args[0]);
+      if (script?.endsWith("install.cjs")) {
+        const home = path.dirname(script);
         yield* fs.makeDirectory(path.join(home, "bin"), { recursive: true });
         yield* fs.writeFileString(path.join(home, "bin", "claude.exe"), "new-native-binary");
       }
@@ -60,7 +64,7 @@ const makeHarness = Effect.fn("ClaudeInstallation.test.harness")(function* (
         unref: Effect.succeed(Effect.void),
         stdin: Sink.drain,
         stdout:
-          command.args[0] === "--version"
+          command.args.map(String)[0] === "--version"
             ? Stream.encodeText(
                 Stream.make(
                   options.invalidVersion ? "invalid version\n" : "2.1.317 (Claude Code)\n",
@@ -109,7 +113,7 @@ const makeHarness = Effect.fn("ClaudeInstallation.test.harness")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("Claude installation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Claude installation", (it) => {
   it.effect(
     "prefers an existing CLI on PATH and discovers managed installations after restart",
     () =>

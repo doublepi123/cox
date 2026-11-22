@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics nodeBuiltinImport:off - Injects a real file replacement during the native SQLite transaction.
 import * as NodeFS from "node:fs";
 import * as NodeSqlite from "node:sqlite";
@@ -28,7 +29,7 @@ describe("server ownership", () => {
       }),
     ),
     Layer.succeed(HostProcess.Environment, {}),
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
   const makeState = ServerRuntimeState.makePersistedServerRuntimeState({
     config: { host: undefined, devUrl: undefined },
     port: 4773,

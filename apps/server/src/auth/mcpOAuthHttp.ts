@@ -6,7 +6,7 @@ import {
   mcpClientScopes,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -61,9 +61,9 @@ export const layer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const oauth = yield* McpOAuth.McpOAuth;
     const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* Digest.Digest;
     const scriptDigest = yield* crypto
-      .digest("SHA-256", new TextEncoder().encode(consentScript))
+      .digest(Digest.sha256, new TextEncoder().encode(consentScript))
       .pipe(Effect.orDie);
     const pageHeaders = {
       ...PAGE_HEADERS,

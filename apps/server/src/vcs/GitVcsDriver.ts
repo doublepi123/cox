@@ -1,7 +1,7 @@
 import * as NodeBuffer from "node:buffer";
 
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -622,7 +622,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const vcsProcess = yield* VcsProcess.VcsProcess;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const hostPlatform = yield* HostProcess.Platform;
   const isInsideWorkTree: VcsDriver.VcsDriver["Service"]["isInsideWorkTree"] = (cwd) =>
     gitCommand(
@@ -1145,7 +1145,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         lastMove !== undefined && lastMove.to === head
           ? `${lastMove.at} ${headMoves.filter((move) => move.at === lastMove.at).length}`
           : undefined;
-      const indexId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const indexId = yield* crypto.uuidV4();
       const tempIndexPath = path.join(gitCommonDir, `t3-checkpoint-index-${indexId}`);
       const commitEnv: NodeJS.ProcessEnv = {
         GIT_INDEX_FILE: tempIndexPath,

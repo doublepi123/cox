@@ -1,7 +1,7 @@
-import * as Crypto from "effect/Crypto";
-import * as PlatformError from "effect/PlatformError";
+import type * as Effect from "effect/Effect";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Socket from "effect/socket/Socket";
 import * as PrimaryEnvironmentHttpClient from "../environments/primary/httpClient";
@@ -28,29 +28,9 @@ export function __setPrimaryHttpRunnerForTests(runner?: PrimaryHttpEffectRunner)
   primaryHttpRunner = runner ?? livePrimaryHttpRunner;
 }
 
-const layerCrypto = Layer.succeed(
-  Crypto.Crypto,
-  Crypto.make({
-    randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
-    digest: (algorithm, data) =>
-      Effect.tryPromise({
-        try: async () =>
-          new Uint8Array(await globalThis.crypto.subtle.digest(algorithm, new Uint8Array(data))),
-        catch: (cause) =>
-          new PlatformError.PlatformError(
-            new PlatformError.SystemError({
-              _tag: "Unknown",
-              module: "Crypto",
-              method: "digest",
-              cause,
-            }),
-          ),
-      }),
-  }),
-);
-
 export const layer = Layer.mergeAll(
-  layerCrypto,
+  Digest.layerWebCrypto,
+  SecureRandom.layerWebCrypto,
   PrimaryEnvironmentHttpLayer.layer,
   Socket.layerWebSocketConstructorGlobal,
 );

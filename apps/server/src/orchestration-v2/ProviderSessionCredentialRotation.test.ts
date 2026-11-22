@@ -1,3 +1,5 @@
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { DEFAULT_MODEL_SERVICE_RECOVERY, ModelServiceId, ThreadId } from "@t3tools/contracts";
@@ -141,7 +143,7 @@ describe("ProviderSessionManager credential rotation", () => {
         assert.strictEqual(peerReopened, peerRuntime);
         assert.equal(peerMetrics.openCount, 1);
         assert.equal(peerMetrics.closeCount, 0);
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect(
@@ -249,7 +251,7 @@ describe("ProviderSessionManager credential rotation", () => {
         assert.equal(metrics.openCount, 2);
         assert.equal(metrics.closeCount, 1);
         assert.notEqual(metrics.tokensAtOpen[1], token1);
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect(
@@ -322,7 +324,7 @@ describe("ProviderSessionManager credential rotation", () => {
         assert.notStrictEqual(runtimeB, runtimeA);
         assert.equal(h.metricsFor(INSTANCE_MAIN).openCount, 2);
         assert.equal(h.upstreamHits.at(-1)?.url, "https://service-b.example/v1/chat/completions");
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect(
@@ -382,6 +384,6 @@ describe("ProviderSessionManager credential rotation", () => {
         assert.deepEqual(metrics.turnCreationSources, ["web", "server", "provider"]);
         assert.deepEqual(metrics.turnGatewayStatuses, [200, 200, 200]);
         assert.equal(h.upstreamHits.at(-1)?.url, "https://service-b.example/v1/chat/completions");
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

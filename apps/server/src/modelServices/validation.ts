@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Hex from "effect/encoding/Hex";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
@@ -123,9 +123,9 @@ function canonicalJson(value: unknown): string {
 export const modelServiceFingerprint = Effect.fn("modelServiceFingerprint")(function* (
   service: ModelServiceConfig,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* Digest.Digest;
   return yield* crypto
-    .digest("SHA-256", new TextEncoder().encode(canonicalJson(service)))
+    .digest(Digest.sha256, new TextEncoder().encode(canonicalJson(service)))
     .pipe(Effect.map(Hex.encode), Effect.orDie);
 }, Effect.provide(NodeCrypto.layer));
 

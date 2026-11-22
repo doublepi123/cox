@@ -1,8 +1,9 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentHttpApi } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
@@ -49,11 +50,11 @@ const layerRoutes = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) 
     Layer.provide(layerServerConfig(overrides)),
     Layer.provideMerge(
       HttpPlatform.layer.pipe(
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         Layer.provideMerge(Etag.layerWeak),
       ),
     ),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -71,8 +72,8 @@ const postJson = (path: string, body: unknown, headers?: Readonly<Record<string,
 
 it.effect.each(["DPoP", "dpop", "dPoP"])("challenges a refused %s request with DPoP", (scheme) =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
-    const requestContext = Context.make(Crypto.Crypto, crypto);
+    const crypto = yield* SecureRandom.SecureRandom;
+    const requestContext = Context.make(SecureRandom.SecureRandom, crypto);
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes(), { disableLogger: true })),
       (web) =>
@@ -92,13 +93,13 @@ it.effect.each(["DPoP", "dpop", "dPoP"])("challenges a refused %s request with D
         }),
       (web) => Effect.promise(() => web.dispose()),
     );
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("creates isolated local sessions, checks origin, and sets safe cookies", () =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
-    const requestContext = Context.make(Crypto.Crypto, crypto);
+    const crypto = yield* SecureRandom.SecureRandom;
+    const requestContext = Context.make(SecureRandom.SecureRandom, crypto);
     return yield* Effect.acquireUseRelease(
       Effect.sync(() =>
         HttpRouter.toWebHandler(layerRoutes(), {
@@ -173,13 +174,13 @@ it.effect("creates isolated local sessions, checks origin, and sets safe cookies
         }),
       (web) => Effect.promise(() => web.dispose()),
     );
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("returns 429 with Retry-After while password attempts are throttled", () =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
-    const requestContext = Context.make(Crypto.Crypto, crypto);
+    const crypto = yield* SecureRandom.SecureRandom;
+    const requestContext = Context.make(SecureRandom.SecureRandom, crypto);
     return yield* Effect.acquireUseRelease(
       Effect.sync(() =>
         HttpRouter.toWebHandler(layerRoutes({ authPassword: Redacted.make("correct-password") }), {
@@ -215,5 +216,5 @@ it.effect("returns 429 with Retry-After while password attempts are throttled", 
         }),
       (web) => Effect.promise(() => web.dispose()),
     );
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );

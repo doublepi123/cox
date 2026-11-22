@@ -1,3 +1,5 @@
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -38,11 +40,12 @@ const makeHarness = Effect.fn("GrokInstallation.test.harness")(function* (
   const spawner = ChildProcessSpawner.make((command) =>
     Effect.gen(function* () {
       if (command._tag !== "StandardCommand") return yield* Effect.die("Unexpected pipeline");
-      calls.push(command.args);
-      const install = command.args[0] === "install";
+      calls.push(command.args.map(String));
+      const script = command.args.map(String)[0];
+      const install = script === "install";
       if (install) yield* Deferred.succeed(downloading, undefined);
-      if (command.args[0]?.endsWith("postinstall.js")) {
-        const home = command.options.env!.GROK_HOME!;
+      if (script?.endsWith("postinstall.js")) {
+        const home = String(command.options.env!.GROK_HOME!);
         yield* fs.makeDirectory(path.join(home, "bin"), { recursive: true });
         yield* fs.writeFileString(
           path.join(home, "bin", platform === "win32" ? "grok.exe" : "grok"),
@@ -60,7 +63,7 @@ const makeHarness = Effect.fn("GrokInstallation.test.harness")(function* (
         unref: Effect.succeed(Effect.void),
         stdin: Sink.drain,
         stdout:
-          command.args[0] === "--version"
+          script === "--version"
             ? Stream.encodeText(Stream.make("grok 1.2.3 (test)\n"))
             : Stream.empty,
         stderr: Stream.empty,
@@ -99,7 +102,7 @@ const makeHarness = Effect.fn("GrokInstallation.test.harness")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("Grok installation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Grok installation", (it) => {
   it.effect("installs and verifies a native CLI inside Cox without modifying Grok's home", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

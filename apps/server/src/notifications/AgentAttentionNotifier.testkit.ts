@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -192,6 +193,6 @@ export const layers = (
     Layer.provideMerge(dependencies),
     Layer.provideMerge(Sqlite.layerConfig),
     Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "attention-notifier-" })),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 };

@@ -46,7 +46,7 @@ import {
 import { FILE_HEADERS_ONLY, formatPatch, structuredPatch } from "diff";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -370,7 +370,7 @@ export interface AcpAdapterV2Flavor {
   ) => Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
   >;
   readonly customModels?: ReadonlyArray<string>;
   readonly alwaysSetModel?: boolean;
@@ -1609,7 +1609,7 @@ function shouldPersistToolUpdate(
 export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
   options: AcpAdapterV2Options,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const agentScope = yield* AgentScope;
@@ -6845,7 +6845,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const mcpBridge = yield* makeAcpMcpOverAcpBridge({
             endpoint: mcpContext.endpoint,
             authorization: mcpContext.authorization,
-            allocateConnectionId: crypto.randomUUIDv4().pipe(Effect.orDie),
+            allocateConnectionId: random.uuidV4(),
           });
           yield* Scope.addFinalizer(scope, mcpBridge.dispose);
           return mcpBridge;
@@ -6871,7 +6871,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             )
             .pipe(
               Effect.provideService(Scope.Scope, runtimeScope),
-              Effect.provideService(Crypto.Crypto, crypto),
+              Effect.provideService(SecureRandom.SecureRandom, random),
               Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
               Effect.provideService(AgentScope, agentScope),
               Effect.provideService(AgentScopeThreadId, threadId ?? undefined),
@@ -6955,7 +6955,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               )
               .pipe(
                 Effect.provideService(Scope.Scope, replacementScope),
-                Effect.provideService(Crypto.Crypto, crypto),
+                Effect.provideService(SecureRandom.SecureRandom, random),
                 Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
                 Effect.provideService(AgentScope, agentScope),
                 Effect.provideService(AgentScopeThreadId, threadId ?? undefined),

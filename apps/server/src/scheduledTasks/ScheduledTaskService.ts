@@ -28,7 +28,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -410,7 +410,7 @@ export const layer = Layer.effect(
   ScheduledTaskService,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
     const serviceScope = yield* Effect.scope;
@@ -1372,7 +1372,7 @@ export const layer = Layer.effect(
       const uuid =
         input.commandId === undefined
           ? yield* crypto
-              .randomUUIDv4()
+              .uuidV4()
               .pipe(
                 Effect.mapError((cause) =>
                   taskError("Could not generate schedule task id.", { cause }),
@@ -2098,7 +2098,7 @@ export const layer = Layer.effect(
       const deliveryId = ScheduledTaskWebhookDeliveryId.make(
         "delivery:" +
           (yield* crypto
-            .randomUUIDv4()
+            .uuidV4()
             .pipe(
               Effect.mapError((cause) => taskError("Could not generate delivery id.", { cause })),
             )),

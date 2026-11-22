@@ -4,7 +4,7 @@ import type { ProviderUsageScan } from "@t3tools/provider-core/server/usage";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
@@ -56,7 +56,7 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const host = yield* ProviderHost.ProviderHost;
   const accountReader = yield* CursorAccountReader.CursorAccountReader;
-  const digest = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
 
   const cachePath = path.join(host.paths.stateDir, CURSOR_ACCOUNT_CACHE_FILE_NAME);
   const caches = new Map<string, CursorAccountCache>();
@@ -189,7 +189,7 @@ const make = Effect.gen(function* () {
     awaitRefresh: boolean,
   ) {
     yield* ensureLoaded;
-    const credentialKey = `api-key:${Hex.encode(yield* digest.digest("SHA-256", new TextEncoder().encode(credential.apiKey)).pipe(Effect.orDie))}`;
+    const credentialKey = `api-key:${Hex.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(credential.apiKey)).pipe(Effect.orDie))}`;
     const nowMs = yield* Clock.currentTimeMillis;
     const recentFailure = failures.get(credentialKey);
     let refreshing = false;

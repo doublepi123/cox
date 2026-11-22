@@ -117,7 +117,7 @@ const layerRoutes = (
       }),
     ),
     Layer.provide(layerConfig),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
   const layerSessions = SessionStore.layer.pipe(
     Layer.tap((sessions) =>
@@ -126,7 +126,7 @@ const layerRoutes = (
       }),
     ),
     Layer.provideMerge(layerSqlite),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provide(layerClock),
   );
   const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
@@ -154,11 +154,11 @@ const layerRoutes = (
     Layer.provideMerge(layerSettings),
     Layer.provideMerge(
       HttpPlatform.layer.pipe(
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         Layer.provideMerge(Etag.layerWeak),
       ),
     ),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provide(layerClock),
   );
 };
@@ -413,7 +413,7 @@ describe("notification HTTP routes", () => {
           (webhook) => Effect.promise(() => webhook[Symbol.asyncDispose]()),
         ),
       (push) => Effect.promise(() => push[Symbol.asyncDispose]()),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("reflects the webPushEnabled setting in the VAPID key response", () =>
@@ -431,7 +431,7 @@ describe("notification HTTP routes", () => {
         }),
       "http://127.0.0.1:9/hook",
       false,
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("requires authentication and the app's own origin", () =>
@@ -460,7 +460,7 @@ describe("notification HTTP routes", () => {
           _tag: "EnvironmentAuthInvalidError",
         });
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("rejects sessions without the orchestration operate scope", () =>
@@ -485,7 +485,7 @@ describe("notification HTTP routes", () => {
           requiredScope: "orchestration:operate",
         });
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("deletes subscriptions only for the owning session", () =>
@@ -549,7 +549,7 @@ describe("notification HTTP routes", () => {
         );
         expect(repeatedDelete.status).toBe(404);
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("rate limits test dispatches to five per minute and recovers after the window", () =>
@@ -578,7 +578,7 @@ describe("notification HTTP routes", () => {
         );
         expect(recovered.status).toBe(400);
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("enforces the push endpoint transport policy at registration", () =>
@@ -625,7 +625,7 @@ describe("notification HTTP routes", () => {
           expect(response.status).toBe(200);
         }
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("rejects SSRF destinations before persisting subscriptions", () =>
@@ -690,6 +690,6 @@ describe("notification HTTP routes", () => {
         );
         expect(unknownSubscription.status).toBe(400);
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

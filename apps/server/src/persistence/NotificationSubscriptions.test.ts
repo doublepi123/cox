@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -52,7 +52,10 @@ const layerPerTest = () =>
     Layer.provideMerge(NodeCrypto.layer),
   );
 
-type TestServices = SqlClient.SqlClient | NotificationSubscriptionRepository | Crypto.Crypto;
+type TestServices =
+  | SqlClient.SqlClient
+  | NotificationSubscriptionRepository
+  | SecureRandom.SecureRandom;
 
 const testEffect = <A, E>(name: string, body: () => Effect.Effect<A, E, TestServices>) =>
   it.effect(name, () => body().pipe(Effect.provide(layerPerTest())));

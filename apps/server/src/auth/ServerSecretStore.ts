@@ -1,5 +1,5 @@
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -163,7 +163,7 @@ export class ServerSecretStore extends Context.Service<
 
 /** @public */
 export const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig.ServerConfig;
@@ -212,7 +212,7 @@ export const make = Effect.gen(function* () {
     );
 
   const writeSecret = (name: string, secretPath: string, value: Uint8Array) => {
-    return crypto.randomUUIDv4().pipe(
+    return crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new SecretStoreTemporaryPathError({
@@ -255,7 +255,7 @@ export const make = Effect.gen(function* () {
     );
 
   const createSecret = (name: string, secretPath: string, value: Uint8Array) => {
-    return crypto.randomUUIDv4().pipe(
+    return crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new SecretStoreTemporaryPathError({

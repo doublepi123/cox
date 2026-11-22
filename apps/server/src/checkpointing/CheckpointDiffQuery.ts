@@ -1,3 +1,4 @@
+import * as Digest from "effect/crypto/Digest";
 import {
   CHECKPOINT_DIFF_TRUNCATED_MARKER,
   type CheckpointRef,
@@ -10,7 +11,6 @@ import {
   type ThreadTurnRepositoryDiff,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -119,7 +119,7 @@ function repositoryDiffRange(
 export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* Digest.Digest;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
@@ -401,7 +401,7 @@ export const make = Effect.gen(function* () {
             : yield* checkpointRefForScopeOrdinal({
                 scopeId: firstScope.id,
                 ordinalWithinScope: 0,
-              }).pipe(Effect.provideService(Crypto.Crypto, crypto))
+              }).pipe(Effect.provideService(Digest.Digest, crypto))
           : (
               parentCheckpoint ??
               readyCheckpoints.find(

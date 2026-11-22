@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import type { ServerProvider } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -42,7 +42,7 @@ const decodeOmpSettings = Schema.decodeSync(OmpSettings);
 
 export type OmpDriverEnv =
   | OmpAdapterEnv
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | Path.Path
   | FileSystem.FileSystem
   | ChildProcessSpawner.ChildProcessSpawner
