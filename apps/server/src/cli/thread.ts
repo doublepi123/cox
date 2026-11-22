@@ -615,6 +615,24 @@ const decodeThreadId = (value: string) =>
     Effect.mapError(() => new ThreadUsageError({ detail: `'${value}' is not a thread id.` })),
   );
 
+export const listProjectThreads = Effect.fn("cli.thread.listProjectThreads")(function* (
+  tools: ThreadTools,
+  projectId: ProjectId,
+) {
+  const threads: Array<OrchestratorMcpThreadListItem> = [];
+  let cursor: number | null = 0;
+  while (cursor !== null) {
+    const page: OrchestratorMcpThreadListResult = yield* tools.call(
+      "cox_thread_list",
+      { projectId: projectId, includeSubagents: true, limit: 100, cursor },
+      OrchestratorMcpThreadListResult,
+    );
+    threads.push(...page.threads.filter((thread) => thread.relationshipToParent !== "subagent"));
+    cursor = page.nextCursor;
+  }
+  return threads;
+});
+
 const threadListCommand = Command.make("list", {
   ...projectLocationFlags,
   project: Flag.String("project").pipe(
@@ -629,17 +647,7 @@ const threadListCommand = Command.make("list", {
       flags,
       Effect.fn("cli.thread.list")(function* (tools) {
         const project = yield* resolveProject(tools, flags.project);
-        const threads: Array<OrchestratorMcpThreadListItem> = [];
-        let cursor: number | null = 0;
-        while (cursor !== null) {
-          const page: OrchestratorMcpThreadListResult = yield* tools.call(
-            "cox_thread_list",
-            { projectId: project.id, includeSubagents: false, limit: 100, cursor },
-            OrchestratorMcpThreadListResult,
-          );
-          threads.push(...page.threads);
-          cursor = page.nextCursor;
-        }
+        const threads = yield* listProjectThreads(tools, project.id);
         if (flags.json) {
           return yield* printJson(threads);
         }

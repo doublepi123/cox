@@ -1,8 +1,14 @@
 import { assert, it } from "@effect/vitest";
-import { RunId, ThreadId } from "@t3tools/contracts";
+import { ProjectId, RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { latestRunError, readLatestMessages, type ThreadTools, waitForRun } from "./thread.ts";
+import {
+  latestRunError,
+  listProjectThreads,
+  readLatestMessages,
+  type ThreadTools,
+  waitForRun,
+} from "./thread.ts";
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
@@ -17,6 +23,33 @@ const scriptedTools = (script: Record<string, Array<unknown>>) => {
   }) as ThreadTools["call"];
   return { tools: { call } satisfies ThreadTools, calls };
 };
+
+it.effect("list includes delegated threads across pages and still leaves out subagents", () =>
+  Effect.gen(function* () {
+    const projectId = ProjectId.make("project-1");
+    const root = { threadId: "root", relationshipToParent: null };
+    const subagent = { threadId: "child", relationshipToParent: "subagent" };
+    const delegated = {
+      threadId: "delegated",
+      relationshipToParent: null,
+      delegatedFrom: { environmentId: "env-1", threadId: "remote", title: "Remote" },
+    };
+    const { tools, calls } = scriptedTools({
+      cox_thread_list: [
+        { threads: [root, subagent], nextCursor: 2 },
+        { threads: [delegated], nextCursor: null },
+      ],
+    });
+    assert.deepStrictEqual(yield* listProjectThreads(tools, projectId), [root, delegated]);
+    assert.deepStrictEqual(
+      calls,
+      [0, 2].map((cursor) => ({
+        tool: "cox_thread_list",
+        args: { projectId, cursor, includeSubagents: true, limit: 100 },
+      })),
+    );
+  }),
+);
 
 it.effect("--wait follows the sent run to its continuation's terminal status", () =>
   Effect.gen(function* () {
