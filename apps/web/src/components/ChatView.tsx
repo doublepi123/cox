@@ -1302,6 +1302,10 @@ export default function ChatView(props: ChatViewProps) {
   const conversationProviderStatus =
     providerStatuses.find((status) => status.instanceId === activeRuntime?.providerInstanceId) ??
     activeProviderStatus;
+  const activeProviderSession =
+    serverProjection?.providerSessions.findLast(
+      (session) => session.providerInstanceId === conversationProviderStatus?.instanceId,
+    ) ?? null;
   const supportsConversationRollback =
     canOperateThread &&
     conversationProviderStatus !== null &&
@@ -3253,6 +3257,9 @@ export default function ChatView(props: ChatViewProps) {
               onOpenThread={onOpenRelatedThreadStable}
               rightPanelOpen={inlineRightPanelOwnsTitleBar}
               onNewThreadInProject={handleNewThreadInActiveProjectStable}
+              computerControlAgentSupported={
+                activeProviderSession?.capabilities.tools.supportsMcpTools === true
+              }
               {...(activeDraftLogicalProjectKey
                 ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
                 : {})}

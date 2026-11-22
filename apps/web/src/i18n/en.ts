@@ -212,6 +212,51 @@ export const en = {
   "Restart and reclaim": "Restart and reclaim",
   "Restarting…": "Restarting…",
   Reclaim: "Reclaim",
+  "Computer control": "Computer control",
+  "Allow Cox to see the screen and control this Mac with a compatible agent.":
+    "Allow Cox to see the screen and control this Mac with a compatible agent.",
+  "Ready to use computer control": "Ready to use computer control",
+  "Enabled, waiting for permission": "Enabled, waiting for permission",
+  "Missing: {permissions}": "Missing: {permissions}",
+  "Set up permissions": "Set up permissions",
+  "Computer control was stopped": "Computer control was stopped",
+  "Set up computer control": "Set up computer control",
+  "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.":
+    "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.",
+  "Set up later": "Set up later",
+  "Re-check": "Re-check",
+  Granted: "Granted",
+  Missing: "Missing",
+  "Open System Settings": "Open System Settings",
+  "Open System Settings for {permission}": "Open System Settings for {permission}",
+  "Screen Recording": "Screen Recording",
+  Accessibility: "Accessibility",
+  "Input Monitoring": "Input Monitoring",
+  "Lets Cox see the screen and window content.": "Lets Cox see the screen and window content.",
+  "Lets Cox read interface elements and operate windows, including sending clicks and keys.":
+    "Lets Cox read interface elements and operate windows, including sending clicks and keys.",
+  "On macOS 15+, open Privacy & Security → Input Monitoring. Input control uses the Accessibility grant; Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
+    "On macOS 15+, open Privacy & Security → Input Monitoring. Input control uses the Accessibility grant; Input Monitoring lets Control+Option+Command+Escape stop input from any app.",
+  "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
+    "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.",
+  "Authorize {appName} for {permission}": "Authorize {appName} for {permission}",
+  "macOS requires quitting and reopening Cox for the grant to take effect.":
+    "macOS requires quitting and reopening Cox for the grant to take effect.",
+  "Restart Cox": "Restart Cox",
+  "Computer control engine is missing.": "Computer control engine is missing.",
+  "Downloading the computer control engine…": "Downloading the computer control engine…",
+  "Computer control engine error": "Computer control engine error",
+  "Computer control ready": "Computer control ready",
+  "Computer control waiting for permission": "Computer control waiting for permission",
+  "Agent does not support computer control": "Agent does not support computer control",
+  "Computer control stopped": "Computer control stopped",
+  "Computer control is ready for this agent.": "Computer control is ready for this agent.",
+  "Missing permissions: {permissions}": "Missing permissions: {permissions}",
+  "This agent cannot use computer control. Choose an agent with MCP tool support.":
+    "This agent cannot use computer control. Choose an agent with MCP tool support.",
+  "Computer control was stopped. Resume it in Labs settings.":
+    "Computer control was stopped. Resume it in Labs settings.",
+  "Open computer control settings": "Open computer control settings",
   "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.":
     "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.",
   "Suggest next prompt": "Suggest next prompt",

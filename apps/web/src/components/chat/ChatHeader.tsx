@@ -11,7 +11,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, MonitorIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   memo,
   useEffect,
@@ -41,6 +42,13 @@ import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
+import { useDesktopComputerUse } from "../../hooks/useDesktopComputerUse";
+import {
+  DESKTOP_COMPUTER_PERMISSION_LABELS,
+  desktopComputerControlIndicatorState,
+  missingDesktopComputerPermissions,
+  type DesktopComputerControlIndicatorState,
+} from "../../lib/desktopComputerUse";
 import { MobileBranchOverflowTrigger } from "../BranchToolbar";
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -58,6 +66,7 @@ interface ChatHeaderProps {
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
   onFindInThread?: ((threadRef: ScopedThreadRef) => void) | undefined;
+  computerControlAgentSupported?: boolean | undefined;
 }
 function resolveRenameCommit(input: { readonly title: string; readonly originalTitle: string }):
   | {
@@ -75,6 +84,13 @@ function resolveRenameCommit(input: { readonly title: string; readonly originalT
   if (trimmed === input.originalTitle) return { action: "noop" };
   return { action: "commit", title: trimmed };
 }
+const COMPUTER_CONTROL_INDICATOR_LABELS: Record<DesktopComputerControlIndicatorState, string> = {
+  ready: "Computer control ready",
+  waiting: "Computer control waiting for permission",
+  unsupported: "Agent does not support computer control",
+  stopped: "Computer control stopped",
+};
+
 // Delay the input-swallowing native menu through the double-click rename interval.
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
@@ -89,8 +105,11 @@ export const ChatHeader = memo(function ChatHeader({
   onNewThreadInProject,
   onOpenProjectSettings,
   onFindInThread,
+  computerControlAgentSupported = false,
 }: ChatHeaderProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const computer = useDesktopComputerUse();
   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
@@ -274,6 +293,27 @@ export const ChatHeader = memo(function ChatHeader({
       setRenaming(null);
     }
   };
+  const computerControlState = desktopComputerControlIndicatorState(
+    computer.state,
+    computerControlAgentSupported,
+  );
+  const computerControlLabel = computerControlState
+    ? t(COMPUTER_CONTROL_INDICATOR_LABELS[computerControlState])
+    : null;
+  const computerControlTooltip =
+    computerControlState === "waiting" && computer.state
+      ? `${computerControlLabel}\n${t("Missing permissions: {permissions}", {
+          permissions: missingDesktopComputerPermissions(computer.state)
+            .map((permission) => t(DESKTOP_COMPUTER_PERMISSION_LABELS[permission]))
+            .join(", "),
+        })}`
+      : computerControlState === "ready"
+        ? t("Computer control is ready for this agent.")
+        : computerControlState === "unsupported"
+          ? t("This agent cannot use computer control. Choose an agent with MCP tool support.")
+          : computerControlState === "stopped"
+            ? t("Computer control was stopped. Resume it in Labs settings.")
+            : computerControlLabel;
   return (
     <div
       ref={breadcrumbContainerRef}
@@ -433,6 +473,45 @@ export const ChatHeader = memo(function ChatHeader({
           <MobileBranchOverflowTrigger />
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {computerControlState && computerControlLabel && window.coxDesktop?.platform === "darwin" ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge
+                size="control"
+                variant={
+                  computerControlState === "ready"
+                    ? "success"
+                    : computerControlState === "waiting"
+                      ? "warning"
+                      : computerControlState === "stopped"
+                        ? "error"
+                        : "secondary"
+                }
+                render={
+                  <button
+                    type="button"
+                    aria-label={`${t("Open computer control settings")}: ${computerControlLabel}`}
+                    onClick={() => {
+                      if (window.coxDesktop?.openSettings) {
+                        void window.coxDesktop.openSettings("/settings/labs");
+                      } else {
+                        void navigate({ to: "/settings/labs" });
+                      }
+                    }}
+                  />
+                }
+              />
+            }
+          >
+            <MonitorIcon aria-hidden />
+            <span className="max-sm:hidden">{t("Computer control")}</span>
+          </TooltipTrigger>
+          <TooltipPopup side="bottom" align="end" textFormat="pre">
+            {computerControlTooltip}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
     </div>
   );
 });

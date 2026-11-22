@@ -3965,6 +3965,51 @@ export const zh = {
   "Restart and reclaim": "重启并回收",
   "Restarting…": "正在重启…",
   Reclaim: "回收",
+  "Computer control": "电脑操控",
+  "Allow Cox to see the screen and control this Mac with a compatible agent.":
+    "允许 Cox 使用兼容的 Agent 查看屏幕并操控这台 Mac。",
+  "Ready to use computer control": "可以使用电脑操控",
+  "Enabled, waiting for permission": "已启用，待授权",
+  "Missing: {permissions}": "缺少：{permissions}",
+  "Set up permissions": "设置权限",
+  "Computer control was stopped": "电脑操控已停止",
+  "Set up computer control": "设置电脑操控",
+  "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.":
+    "在 macOS“隐私与安全性”中授权 {appName}。也可以稍后完成这些权限设置。",
+  "Set up later": "稍后设置",
+  "Re-check": "重新检查",
+  Granted: "已授权",
+  Missing: "未授权",
+  "Open System Settings": "打开系统设置",
+  "Open System Settings for {permission}": "打开{permission}的系统设置",
+  "Screen Recording": "屏幕录制",
+  Accessibility: "辅助功能",
+  "Input Monitoring": "输入监控",
+  "Lets Cox see the screen and window content.": "允许 Cox 查看屏幕和窗口内容。",
+  "Lets Cox read interface elements and operate windows, including sending clicks and keys.":
+    "允许 Cox 读取界面元素并操作窗口，包括发送点击和按键。",
+  "On macOS 15+, open Privacy & Security → Input Monitoring. Input control uses the Accessibility grant; Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
+    "macOS 15 或更高版本中，打开“隐私与安全性 → 输入监控”。输入控制使用辅助功能授权；输入监控允许 Control+Option+Command+Escape 全局停止任何 App 的输入。",
+  "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
+    "输入控制使用辅助功能授权。输入监控允许 Control+Option+Command+Escape 全局停止任何 App 的输入。",
+  "Authorize {appName} for {permission}": "为 {appName} 授予{permission}权限",
+  "macOS requires quitting and reopening Cox for the grant to take effect.":
+    "macOS 需要退出并重新打开 Cox，授权才会生效。",
+  "Restart Cox": "重新启动 Cox",
+  "Computer control engine is missing.": "电脑操控引擎缺失。",
+  "Downloading the computer control engine…": "正在下载电脑操控引擎…",
+  "Computer control engine error": "电脑操控引擎错误",
+  "Computer control ready": "电脑操控就绪",
+  "Computer control waiting for permission": "电脑操控待授权",
+  "Agent does not support computer control": "当前 Agent 不支持电脑操控",
+  "Computer control stopped": "电脑操控已停止",
+  "Computer control is ready for this agent.": "当前 Agent 可以使用电脑操控。",
+  "Missing permissions: {permissions}": "缺少权限：{permissions}",
+  "This agent cannot use computer control. Choose an agent with MCP tool support.":
+    "当前 Agent 无法使用电脑操控。请选择支持 MCP 工具的 Agent。",
+  "Computer control was stopped. Resume it in Labs settings.":
+    "电脑操控已停止。请在实验室设置中继续。",
+  "Open computer control settings": "打开电脑操控设置",
   "Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each suggestion makes an extra model request. Requires a compatible provider version.":
     "Claude 或 Codex 回合结束后，在空白输入框中显示预测的下一条消息。按 Tab 使用。每条建议都会发起一次额外的模型请求。需要兼容的提供商版本。",
   "Suggest next prompt": "建议下一条提示词",

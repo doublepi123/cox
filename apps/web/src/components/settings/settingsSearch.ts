@@ -455,6 +455,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta claude codex next message suggestion predicted prompt tab"],
   },
   {
+    id: "computer-control",
+    title: "Computer control",
+    to: "/settings/labs",
+    macOnly: true,
+    searchTerms: [
+      "macos computer use screen recording accessibility input monitoring permissions clicks keys 电脑操控 屏幕录制 辅助功能 输入监控",
+    ],
+  },
+  {
     id: "auto-settle-inactive-threads",
     title: "Auto-settle inactive threads",
     to: "/settings/threads",

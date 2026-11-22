@@ -6,12 +6,14 @@ import { Switch } from "../ui/switch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { LegacyFeaturesSection } from "./SettingsPanels";
+import { ComputerControlSettingsSection } from "./ComputerControlSettingsSection";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
 export function LabsSettingsPanel() {
   const { t: translateUi } = useTranslation();
   return (
     <SettingsPageContainer>
+      <ComputerControlSettingsSection />
       <SettingsSection id="beta" title={translateUi("Beta")}>
         <BoringSidebarRow />
         <BoringSidebarMultilineRow />
