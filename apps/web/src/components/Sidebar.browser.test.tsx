@@ -166,10 +166,17 @@ describe("sidebar numbered jumps", () => {
     const draftRow = screen.getByTestId("sidebar-draft-row");
     await expect.element(draftRow).toBeInTheDocument();
     await expect.element(screen.getByText("Thread 0").first()).toBeInTheDocument();
-    await userEvent.keyboard("{Control>}");
-    await expect.element(draftRow.getByText("Ctrl+1")).toBeVisible();
-    await expect.element(screen.getByText("Ctrl+2")).toBeVisible();
-    await userEvent.keyboard("{/Control}");
+    {
+      using _timers = fakeTimers();
+      try {
+        await userEvent.keyboard("{Control>}");
+        await act(() => vi.advanceTimersByTime(THREAD_JUMP_HINT_SHOW_DELAY_MS));
+        await expect.element(draftRow.getByText("Ctrl+1")).toBeVisible();
+        await expect.element(screen.getByText("Ctrl+2")).toBeVisible();
+      } finally {
+        await userEvent.keyboard("{/Control}");
+      }
+    }
 
     // Previous thread from the open thread steps up to the draft above it.
     await userEvent.keyboard("{Control>}{Shift>}{BracketLeft}{/Shift}{/Control}");
@@ -178,7 +185,9 @@ describe("sidebar numbered jumps", () => {
     );
     await userEvent.keyboard("{Control>}2{/Control}");
     await vi.waitFor(() =>
-      expect(screen.router!.state.location.pathname).not.toBe(`/draft/${draftId}`),
+      expect(screen.router!.state.location.pathname).toBe(
+        `/${threadRef.environmentId}/${threadRef.threadId}`,
+      ),
     );
     await userEvent.keyboard("{Control>}1{/Control}");
     await vi.waitFor(() =>
@@ -238,11 +247,14 @@ describe("sidebar render isolation", () => {
     using _timers = fakeTimers();
     const modifier = isMacPlatform(navigator.platform) ? "Meta" : "Control";
     const beforeShortcut = rowRenders();
-    await userEvent.keyboard(`{${modifier}>}`);
-    await act(() => useTerminalUiStateStore.getState().setTerminalOpen(routeThreadRef, true));
-    await act(() => terminalInput.focus());
-    await userEvent.keyboard(`{/${modifier}}`);
-    await act(() => terminalInput.blur());
+    try {
+      await userEvent.keyboard(`{${modifier}>}`);
+      await act(() => useTerminalUiStateStore.getState().setTerminalOpen(routeThreadRef, true));
+      await act(() => terminalInput.focus());
+    } finally {
+      await userEvent.keyboard(`{/${modifier}}`);
+      await act(() => terminalInput.blur());
+    }
     expect(
       rowRenders() - beforeShortcut,
       "thread rows re-rendered while opening the terminal with a quick Mod shortcut",
@@ -255,11 +267,15 @@ describe("sidebar render isolation", () => {
         .map(([props]) => props.jumpLabel)
         .filter((label) => label !== null);
     const beforeHold = rowRenders();
-    await userEvent.keyboard(`{${modifier}>}`);
-    await act(() => vi.advanceTimersByTime(THREAD_JUMP_HINT_SHOW_DELAY_MS));
-    expect(jumpLabelsSince(beforeHold), "holding Mod showed no jump hints").toHaveLength(2);
-    const beforeRelease = rowRenders();
-    await userEvent.keyboard(`{/${modifier}}`);
+    let beforeRelease = beforeHold;
+    try {
+      await userEvent.keyboard(`{${modifier}>}`);
+      await act(() => vi.advanceTimersByTime(THREAD_JUMP_HINT_SHOW_DELAY_MS));
+      expect(jumpLabelsSince(beforeHold), "holding Mod showed no jump hints").toHaveLength(2);
+      beforeRelease = rowRenders();
+    } finally {
+      await userEvent.keyboard(`{/${modifier}}`);
+    }
     expect(rowRenders()).toBeGreaterThan(beforeRelease);
     expect(jumpLabelsSince(beforeRelease)).toEqual([]);
   });
