@@ -15,13 +15,18 @@
   Stop Computer Control menu item and Control+Option+Command+Escape all stop
   input until you resume it.
 
-## 0.2.28 — 2026-11-22
+## 0.2.29 — 2026-11-22
 
 - Agents that use Cox MCP tools (OMO, Codex, Claude, Pi and others) get the same
   computer control tools when Cox Desktop has it enabled. Each operation belongs
   to its thread; stopping or closing a thread drops its pending input, and a
   missing macOS permission is reported by name with the way to fix it.
 - OMO no longer loads its own computer control component in Cox.
+
+## 0.2.28 — 2026-11-22
+
+- Not published to npm. The publish workflow's test run hit a race in the new
+  desktop IPC test; 0.2.29 carries the same changes with the test fixed.
 
 ## 0.2.27 — 2026-11-22
 
