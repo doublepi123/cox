@@ -1,3 +1,9 @@
+declare module "@tanstack/react-router" {
+  interface HistoryState {
+    reopenedViewId?: string;
+  }
+}
+
 import { useAtomValue } from "@effect/atom-react";
 import {
   scopeProjectRef,
@@ -5,7 +11,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { linkOptions, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { useClosedViewStore } from "../closedViewStore";
@@ -45,6 +51,7 @@ const isGlobalPullRequests = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
 export function ReopenClosedViewShortcut() {
   const navigate = useNavigate();
+  const router = useRouter();
   const params = useParams({ strict: false });
   const target = resolveThreadRouteTarget(params);
   const draft = useComposerDraftStore((state) =>
@@ -66,7 +73,9 @@ export function ReopenClosedViewShortcut() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const openPreview = useAtomCommand(previewEnvironment.open);
   const pending = useRef(Promise.resolve());
-  const reopenNext = useEffectEvent(async () => {
+  type ReopenNavigation = { location: typeof router.history.location };
+  const reopenNavigation = useRef<ReopenNavigation | null>(null);
+  const reopenNext = useEffectEvent(async (request: ReopenNavigation) => {
     const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
     const drafts = useComposerDraftStore.getState();
     const panelsByThread = useRightPanelStore.getState().byThreadKey;
@@ -108,25 +117,56 @@ export function ReopenClosedViewShortcut() {
       return;
     }
     useClosedViewStore.getState().remove(restore.id);
+    if (router.history.location !== request.location) return;
+
+    let destination;
     if (globalPullRequests) {
       const selected = selectSelectedRightPanelSurface(
         useRightPanelStore.getState().byThreadKey,
         ref,
       );
-      await navigate({
+      destination = linkOptions({
         to: "/pull-requests",
         search: (previous) => pullRequestsSearchForRestore(previous, selected),
       });
     } else {
       const draftId = thread === null ? drafts.getDraftIdByRef(ref) : null;
-      if (draftId !== null)
-        await navigate({ to: "/draft/$draftId", params: buildDraftThreadRouteParams(draftId) });
-      else await navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(ref) });
+      destination =
+        draftId !== null
+          ? linkOptions({ to: "/draft/$draftId", params: buildDraftThreadRouteParams(draftId) })
+          : linkOptions({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(ref) });
     }
+
+    const { history } = router;
+    if (router.buildLocation(destination).publicHref === history.location.href) {
+      const { reopenedViewId } = history.location.state;
+      await navigate({ ...destination, state: reopenedViewId ? { reopenedViewId } : {} });
+      return;
+    }
+
+    // An allowing blocker can defer the commit. Only the reopen's first history hop extends the queue.
+    const unsubscribe = history.subscribe(({ location, action }) => {
+      if (location === request.location) return;
+      unsubscribe();
+      if (action.type === "PUSH" && location.state.reopenedViewId === restore.id) {
+        request.location = location;
+      }
+    });
+    try {
+      await navigate({ ...destination, state: { reopenedViewId: restore.id } });
+    } catch (error) {
+      unsubscribe();
+      throw error;
+    }
+    unsubscribe();
   });
   const enqueueReopen = useEffectEvent(() => {
+    const location = router.history.location;
+    const previous = reopenNavigation.current;
+    const request = previous?.location === location ? previous : { location };
+    reopenNavigation.current = request;
     pending.current = pending.current
-      .then(() => reopenNext())
+      .then(() => reopenNext(request))
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
