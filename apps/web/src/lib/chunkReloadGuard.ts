@@ -19,3 +19,15 @@ export function reloadOnceForChunkLoadError(
   reload();
   return true;
 }
+
+export const chunkLoadState = { reloadScheduled: false };
+
+// Registered from the entry before main loads, so main-chunk and route-chunk failures share one decision.
+export function handleChunkLoadErrors() {
+  window.addEventListener("vite:preloadError", (event) => {
+    if (reloadOnceForChunkLoadError()) {
+      chunkLoadState.reloadScheduled = true;
+      event.preventDefault();
+    }
+  });
+}

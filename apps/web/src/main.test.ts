@@ -21,8 +21,8 @@ async function bootThenFailLazyChunk(sessionStorage: Map<string, string>) {
   vi.stubGlobal("window", page);
   vi.stubGlobal("document", { getElementById: () => ({}) });
   try {
-    const { startup } = await import("./main");
-    await startup;
+    const { boot } = await import("./bootstrap");
+    await boot;
     page.dispatchEvent(new Event("vite:preloadError", { cancelable: true }));
     return reload;
   } finally {
