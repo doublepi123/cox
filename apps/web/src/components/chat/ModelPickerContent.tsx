@@ -45,7 +45,8 @@ import {
 import { ModelEsque } from "./providerIconUtils";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { registerModelPickerContent } from "../../modelPickerVisibility";
-import { primaryServerKeybindingsAtom } from "../../state/server";
+import { primaryServerKeybindingsAtom, serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
   modelPickerJumpCommandForIndex,
   modelPickerJumpIndexFromCommand,
@@ -201,13 +202,43 @@ function modelJumpLabelsByKey(
   return mapping.size > 0 ? mapping : EMPTY_MODEL_JUMP_LABELS;
 }
 
+function ProviderSetupRetryButton(props: {
+  environmentId: EnvironmentId;
+  instanceId: ProviderInstanceId;
+}) {
+  const { t } = useTranslation();
+  const canRefresh = useAtomValue(
+    serverEnvironment.refreshProviders.permissionAtom(props.environmentId),
+  );
+  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    label: "Refresh provider status",
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  if (!canRefresh) return null;
+  const retry = async () => {
+    setIsRefreshing(true);
+    await refreshProviders({
+      environmentId: props.environmentId,
+      input: { instanceId: props.instanceId },
+    });
+    setIsRefreshing(false);
+  };
+  return (
+    <InlineButton disabled={isRefreshing} onClick={() => void retry()}>
+      {t("Retry")}
+    </InlineButton>
+  );
+}
+
 function ModelPickerProviderNotices({
+  environmentId,
   setupEntries,
   updateRequiredNotices,
   emptyLabel,
   onRequestClose,
   onOpenProviderSetup,
 }: {
+  environmentId: EnvironmentId | null;
   setupEntries: ReadonlyArray<ProviderInstanceEntry>;
   emptyLabel: string;
   updateRequiredNotices: ReadonlyArray<{
@@ -229,7 +260,7 @@ function ModelPickerProviderNotices({
               <p className="line-clamp-3 text-muted-foreground">
                 {getProviderStatusMessage(entry.snapshot)}
               </p>
-              <div className="mt-1">
+              <div className="mt-1 flex flex-wrap gap-x-3">
                 <InlineButton
                   onClick={() => {
                     onRequestClose?.();
@@ -238,6 +269,12 @@ function ModelPickerProviderNotices({
                 >
                   {setupEntries.length > 1 ? `Set up ${entry.displayName}` : "Open provider setup"}
                 </InlineButton>
+                {environmentId !== null ? (
+                  <ProviderSetupRetryButton
+                    environmentId={environmentId}
+                    instanceId={entry.instanceId}
+                  />
+                ) : null}
               </div>
             </div>
           ))}
@@ -1157,6 +1194,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               }}
             />
             <ModelPickerProviderNotices
+              environmentId={props.environmentId}
               setupEntries={providerSetupEntries}
               updateRequiredNotices={updateRequiredNotices}
               emptyLabel={
