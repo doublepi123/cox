@@ -375,6 +375,7 @@ describe("source file scroll", () => {
       document.dispatchEvent(new Event("selectionchange"));
       const neighbor = row(startLine + (goingUp ? -1 : 1))!;
       selection.extend(rowText(neighbor), goingUp ? 0 : neighbor.textContent!.length);
+      document.dispatchEvent(new Event("selectionchange"));
       await vi.waitFor(
         () => expect(root.querySelector("[data-selection-range]")).not.toBeNull(),
         wait,
