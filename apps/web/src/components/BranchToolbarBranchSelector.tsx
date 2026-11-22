@@ -387,11 +387,7 @@ export function BranchToolbarBranchSelector({
       );
       return;
     }
-    startBranchActionTransition(async () => {
-      await action();
-      branchRefState.refresh();
-      branchStatusQuery.refresh();
-    });
+    startBranchActionTransition(action);
   };
 
   const selectBranch = (refName: VcsRef) => {
