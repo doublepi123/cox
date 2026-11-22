@@ -1125,6 +1125,14 @@ export function extractMcpToolCallIdentity(
   if (meta?.is_mcp_tool_call === true && server.length > 0 && tool.length > 0) {
     return { server, tool };
   }
+  // Antigravity reaches MCP tools its context budget left out through call_mcp_tool, an execute
+  // call titled "MCP Tool <tool>" whose rawInput names the server, tool, and arguments.
+  const proxiedServer = typeof rawInput?.ServerName === "string" ? rawInput.ServerName.trim() : "";
+  const proxiedTool = typeof rawInput?.ToolName === "string" ? rawInput.ToolName.trim() : "";
+  if (proxiedServer.length > 0 && proxiedTool.length > 0) {
+    const input = isRecord(rawInput?.Arguments) ? rawInput.Arguments : undefined;
+    return { server: proxiedServer, tool: proxiedTool, ...(input === undefined ? {} : { input }) };
+  }
   const claudeCode = isRecord(meta?.claudeCode) ? meta.claudeCode : undefined;
   const gooseToolCall = isRecord(meta?.goose)
     ? isRecord(meta.goose.toolCall)
