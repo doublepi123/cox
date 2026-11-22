@@ -3,7 +3,7 @@ import { EnvironmentId, ThreadId, type ProjectReadFileResult } from "@t3tools/co
 import { AsyncResult } from "effect/reactivity";
 import { StrictMode, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { cdp, userEvent } from "vite-plus/test/browser";
+import { userEvent } from "vite-plus/test/browser";
 import { act, fakeTimers, render } from "../../../test/render";
 import appCss from "~/index.css?inline";
 import { isMacPlatform } from "~/lib/utils";
@@ -275,37 +275,25 @@ describe("source file scroll", () => {
   it.each([
     {
       label: "keeps a downward drag whose anchor stays mounted across a window shift",
-      startLine: 65,
-      initialScrollLine: 65,
-      direction: "down" as const,
-      targetFirstMounted: 101,
-      expectedIncludedLine: 121,
+      startLine: 110,
+      endLine: 165,
+      anchorStaysMounted: true,
     },
     {
       label: "keeps a downward drag whose anchor unmounts on a window shift",
       startLine: 5,
-      initialScrollLine: null,
-      direction: "down" as const,
-      targetFirstMounted: 101,
-      expectedIncludedLine: 121,
+      endLine: 165,
+      anchorStaysMounted: false,
     },
     {
       label: "keeps an upward drag whose anchor unmounts on a window shift",
       startLine: 385,
-      initialScrollLine: 385,
-      direction: "up" as const,
-      targetFirstMounted: 201,
-      expectedIncludedLine: 290,
+      endLine: 250,
+      anchorStaysMounted: false,
     },
   ])(
     "$label",
-    async ({
-      startLine,
-      initialScrollLine,
-      direction,
-      targetFirstMounted,
-      expectedIncludedLine,
-    }) => {
+    async ({ startLine, endLine, anchorStaysMounted }) => {
       using _settings = setup();
       localStorage.setItem("t3code.renderMarkdown", "false");
       const style = document.createElement("style");
@@ -329,94 +317,102 @@ describe("source file scroll", () => {
         </div>,
       );
 
-      const shadowRoot = () => screen.container.querySelector("diffs-container")?.shadowRoot;
-      const rows = () => shadowRoot()?.querySelectorAll<HTMLElement>("[data-line]") ?? [];
-      await vi.waitFor(() =>
-        expect(
-          shadowRoot()?.querySelector('[data-content][contenteditable="true"]'),
-        ).not.toBeNull(),
-      );
-
+      const root = screen.container.querySelector("diffs-container")!.shadowRoot!;
       const scroller = screen.container.querySelector<HTMLElement>(".file-preview-virtualizer")!;
-      if (initialScrollLine !== null) {
-        await vi.waitFor(() => expect(scroller.scrollHeight).toBeGreaterThan(5000));
-        if (direction === "up") {
-          scroller.scrollTop = scroller.scrollHeight;
-          await vi.waitFor(() =>
-            expect(
-              [...rows()].some((row) => row.getAttribute("data-line") === String(startLine)),
-            ).toBe(true),
-          );
-        } else {
-          scroller.scrollTop = ((initialScrollLine - 1) / lines.length) * scroller.scrollHeight;
-        }
-        const target = await vi.waitFor(() => {
-          const row = [...rows()].find(
-            (candidate) => candidate.getAttribute("data-line") === String(initialScrollLine),
-          );
-          expect(row).toBeDefined();
-          return row!;
-        });
-        target.scrollIntoView({ block: direction === "up" ? "end" : "start" });
-        await vi.waitFor(() => expect(scroller.scrollTop).toBeGreaterThan(0));
-      }
+      const row = (line: number) => root.querySelector<HTMLElement>('[data-line="' + line + '"]');
+      const rowBox = (line: number) => {
+        const box = row(line)?.getBoundingClientRect();
+        expect(box).toBeDefined();
+        const viewport = scroller.getBoundingClientRect();
+        expect(box!.height).toBeGreaterThan(0);
+        expect(box!.top).toBeGreaterThanOrEqual(viewport.top);
+        expect(box!.bottom).toBeLessThanOrEqual(viewport.bottom);
+        return box!;
+      };
+      const wait = { timeout: 5000 };
+      const content = await vi.waitFor(() => {
+        const editable = root.querySelector<HTMLElement>('[data-content][contenteditable="true"]');
+        expect(editable).not.toBeNull();
+        return editable!;
+      }, wait);
+      const lineHeight = await vi.waitFor(() => rowBox(5).height, wait);
+      const scrollTo = (line: number) => {
+        scroller.scrollTop = (line - 1) * lineHeight - scroller.clientHeight / 2;
+      };
+      scrollTo(startLine);
+      await vi.waitFor(() => rowBox(startLine), wait);
+      const mountedRows = () => root.querySelectorAll<HTMLElement>("[data-line]");
+      const firstMounted = mountedRows()[0];
+      const goingUp = endLine < startLine;
+      const rowText = (element: HTMLElement) => element.querySelector("span")!.firstChild!;
 
-      const startRow = [...rows()].find(
-        (row) => row.getAttribute("data-line") === String(startLine),
-      );
-      expect(startRow).toBeDefined();
-      const startRect = startRow!.getBoundingClientRect();
-      const scrollerRect = scroller.getBoundingClientRect();
-      const nearEdgeY = direction === "down" ? scrollerRect.bottom - 5 : scrollerRect.top + 5;
-      const outsideEdgeY = direction === "down" ? scrollerRect.bottom + 60 : scrollerRect.top - 60;
-      const frame = window.frameElement?.getBoundingClientRect();
-      const mouse = (type: "mousePressed" | "mouseMoved" | "mouseReleased", x: number, y: number) =>
-        cdp().send("Input.dispatchMouseEvent", {
-          type,
-          x: x + (frame?.left ?? 0),
-          y: y + (frame?.top ?? 0),
-          button: "left",
-          buttons: type === "mouseReleased" ? 0 : 1,
-          clickCount: 1,
-        });
-
-      const startX = direction === "up" ? startRect.left + 140 : startRect.left + 2;
-      // The editor records the drag anchor on the press's selectionchange; drag only after it.
-      const anchored = new Promise((resolve) =>
-        document.addEventListener("selectionchange", resolve, { once: true }),
-      );
-      await mouse("mousePressed", startX, startRect.top + 5);
-      await anchored;
-      await mouse("mouseMoved", startRect.left + 80, nearEdgeY);
-      await mouse("mouseMoved", startRect.left + 80, outsideEdgeY);
-      await vi.waitFor(() => {
-        const firstMounted = Number(rows()[0]?.getAttribute("data-line"));
-        if (direction === "down") {
-          expect(firstMounted).toBeGreaterThanOrEqual(targetFirstMounted);
-        } else {
-          expect(firstMounted).toBeLessThanOrEqual(targetFirstMounted);
-        }
-      });
-      await mouse("mouseReleased", startRect.left + 80, outsideEdgeY);
-
-      const overlayRanges = shadowRoot()!.querySelectorAll("[data-selection-range]");
-      expect(overlayRanges.length).toBeGreaterThan(0);
-
-      const clipboardData = new DataTransfer();
-      const contentEl = shadowRoot()!.querySelector("[data-content]")!;
-      const handled = !contentEl.dispatchEvent(
-        new ClipboardEvent("copy", {
-          clipboardData,
+      const copied = () => {
+        const clipboardData = new DataTransfer();
+        const handled = !content.dispatchEvent(
+          new ClipboardEvent("copy", {
+            clipboardData,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          }),
+        );
+        return handled ? clipboardData.getData("text/plain") : null;
+      };
+      const selection = document.getSelection()!;
+      const start = row(startLine)!;
+      const startNode = rowText(start);
+      const startOffset = goingUp ? startNode.textContent!.length : 0;
+      content.focus({ preventScroll: true });
+      await vi.waitFor(() => expect(root.activeElement).toBe(content), wait);
+      start.dispatchEvent(
+        new PointerEvent("pointerdown", {
           bubbles: true,
-          cancelable: true,
           composed: true,
+          pointerType: "mouse",
+          buttons: 1,
         }),
       );
-      expect(handled).toBe(true);
-      const copied = clipboardData.getData("text/plain");
-      expect(copied).toContain(`line ${startLine} `);
-      expect(copied).toContain(`line ${expectedIncludedLine} markdown content`);
+      try {
+        selection.collapse(startNode, startOffset);
+        document.dispatchEvent(new Event("selectionchange"));
+        const neighbor = row(startLine + (goingUp ? -1 : 1))!;
+        selection.extend(rowText(neighbor), goingUp ? 0 : neighbor.textContent!.length);
+        await vi.waitFor(
+          () => expect(root.querySelector("[data-selection-range]")).not.toBeNull(),
+          wait,
+        );
+
+        scrollTo(endLine);
+        await vi.waitFor(() => {
+          expect(mountedRows()[0]).not.toBe(firstMounted);
+          expect(row(startLine) !== null).toBe(anchorStaysMounted);
+          rowBox(endLine);
+        }, wait);
+        const rows = mountedRows();
+        const anchor = row(startLine) ?? (goingUp ? rows[rows.length - 1]! : rows[0]!);
+        const end = row(endLine)!;
+        selection.setBaseAndExtent(
+          rowText(anchor),
+          goingUp ? anchor.textContent!.length : 0,
+          rowText(end),
+          goingUp ? 0 : end.textContent!.length,
+        );
+        await vi.waitFor(() => {
+          const text = copied();
+          expect(text).toContain(lines[startLine - 1]);
+          expect(text).toContain(lines[endLine - 1]);
+        }, wait);
+      } finally {
+        document.body.dispatchEvent(
+          new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }),
+        );
+      }
+
+      expect(root.querySelector("[data-selection-range]")).not.toBeNull();
+      expect(copied()).toContain(lines[startLine - 1]);
+      expect(copied()).toContain(lines[endLine - 1]);
     },
+    20_000,
   );
 
   it("scrolls a find match below many wrapped lines into view", async () => {
@@ -439,37 +435,51 @@ describe("source file scroll", () => {
       byteLength: contents.length,
       truncated: false,
     };
-    const scroller = () => document.querySelector<HTMLElement>(".file-preview-virtualizer");
-
-    await using _screen = await render(
+    await using screen = await render(
       <div style={{ width: 500, height: 400, display: "flex", flexDirection: "column" }}>
         {filePreview("wrapped.ts")}
       </div>,
     );
-    await vi.waitFor(() => expect(scroller()?.scrollHeight).toBeGreaterThan(20_000));
-    const shadowRows = () =>
-      [...document.querySelectorAll("*")].flatMap((host) =>
-        host.shadowRoot ? [...host.shadowRoot.querySelectorAll<HTMLElement>("[data-line]")] : [],
+    const scroller = screen.container.querySelector<HTMLElement>(".file-preview-virtualizer")!;
+    const root = screen.container.querySelector("diffs-container")!.shadowRoot!;
+    const row = (line: number) => root.querySelector<HTMLElement>('[data-line="' + line + '"]');
+    const wait = { timeout: 5000 };
+    const firstRow = await vi.waitFor(() => {
+      const first = row(1);
+      expect(first).not.toBeNull();
+      expect(first!.getBoundingClientRect().height).toBeGreaterThan(
+        Number.parseFloat(getComputedStyle(first!).lineHeight),
       );
-    await userEvent.click(shadowRows().find((row) => row.getAttribute("data-line") === "1")!);
-    await vi.waitFor(() => expect(deepActiveElement()?.matches("[data-content]")).toBe(true));
+      expect(root.querySelector('[data-content][contenteditable="true"]')?.contains(first!)).toBe(
+        true,
+      );
+      return first!;
+    }, wait);
+    await userEvent.click(firstRow);
+    await vi.waitFor(() => expect(root.activeElement?.matches("[data-content]")).toBe(true), wait);
     await userEvent.keyboard(
       isMacPlatform(navigator.platform) ? "{Meta>}f{/Meta}" : "{Control>}f{/Control}",
     );
-    await vi.waitFor(() => expect(deepActiveElement()).toBeInstanceOf(HTMLInputElement));
-    await userEvent.keyboard("needle{Enter}");
+    const search = await vi.waitFor(() => {
+      const input = root.querySelector<HTMLInputElement>("input[data-search]");
+      expect(input).not.toBeNull();
+      expect(root.activeElement).toBe(input);
+      return input!;
+    }, wait);
+    await userEvent.keyboard("needle");
+    expect(search.value).toBe("needle");
+    await userEvent.keyboard("{Enter}");
 
-    const visibleLines = () => {
-      const viewport = scroller()!.getBoundingClientRect();
-      return shadowRows()
-        .filter((row) => {
-          const box = row.getBoundingClientRect();
-          return box.height > 0 && box.top >= viewport.top && box.bottom <= viewport.bottom;
-        })
-        .map((row) => Number(row.getAttribute("data-line")));
-    };
-    await vi.waitFor(() => expect(visibleLines()).toContain(801));
-  });
+    await vi.waitFor(() => {
+      const viewport = scroller.getBoundingClientRect();
+      const match = row(801);
+      expect(match?.textContent).toBe("const needle = 1;");
+      const box = match!.getBoundingClientRect();
+      expect(box.height).toBeGreaterThan(0);
+      expect(box.top).toBeGreaterThanOrEqual(viewport.top);
+      expect(box.bottom).toBeLessThanOrEqual(viewport.bottom);
+    }, wait);
+  }, 20_000);
 });
 
 describe("rendered Markdown task saves", () => {

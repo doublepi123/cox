@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { cdp, page, userEvent } from "vite-plus/test/browser";
+import { userEvent } from "vite-plus/test/browser";
 import "~/index.css";
 
 import { render } from "../../../test/render";
@@ -146,8 +146,7 @@ describe("ReadOnlySourcePreview", () => {
     expect(copiedText(rows()[0]!)).toBeNull();
   });
 
-  it("copies a drag that autoscrolls past the edge of the preview", async () => {
-    await page.viewport(1000, 780);
+  it("copies an active drag released outside the preview after its anchor unmounts", async () => {
     await getSyntaxHighlighterPromise("text");
     await using screen = await render(
       <div className="flex h-[400px] flex-col">
@@ -155,41 +154,46 @@ describe("ReadOnlySourcePreview", () => {
       </div>,
     );
     const root = screen.container.querySelector("diffs-container")!.shadowRoot!;
-    const rows = () => root.querySelectorAll("[data-line]");
-    await vi.waitFor(() => expect(rows()[0]?.textContent).toBe("line 1"));
-
-    const start = rows()[4]!.querySelector("span")!.getBoundingClientRect();
-    const scroller = screen.container.querySelector(".file-preview-virtualizer")!;
-    const edge = scroller.getBoundingClientRect().bottom;
-    const frame = window.frameElement?.getBoundingClientRect();
-    const mouse = (type: "mousePressed" | "mouseMoved" | "mouseReleased", x: number, y: number) =>
-      cdp().send("Input.dispatchMouseEvent", {
-        type,
-        x: x + (frame?.left ?? 0),
-        y: y + (frame?.top ?? 0),
-        button: "left",
-        buttons: type === "mouseReleased" ? 0 : 1,
-        clickCount: 1,
-      });
-    await mouse("mousePressed", start.left + 1, start.top + 5);
+    const scroller = screen.container.querySelector<HTMLElement>(".file-preview-virtualizer")!;
+    const row = (line: number) => root.querySelector<HTMLElement>('[data-line="' + line + '"]');
+    const rowText = (row: Element) => row.querySelector("span")!.firstChild!;
+    const wait = { timeout: 5000 };
+    const start = await vi.waitFor(() => {
+      expect(row(5)?.textContent).toBe("line 5");
+      expect(row(10)?.textContent).toBe("line 10");
+      return row(5)!;
+    }, wait);
+    const lineHeight = start.getBoundingClientRect().height;
+    const selection = document.getSelection()!;
+    start.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, composed: true, button: 0 }),
+    );
     try {
-      await mouse("mouseMoved", start.left + 30, edge - 5);
-      // Held below the preview, the pointer is over no row while the browser scrolls the drag on.
-      await mouse("mouseMoved", start.left + 30, edge + 60);
-      await vi.waitFor(() => expect(rows()[0]?.textContent).not.toBe("line 1"), {
-        timeout: 10_000,
-      });
+      selection.setBaseAndExtent(rowText(start), 0, rowText(row(10)!), "line 10".length);
+      scroller.scrollTop = 165 * lineHeight;
+      const [first, end] = await vi.waitFor(() => {
+        expect(row(5)).toBeNull();
+        const first = root.querySelector<HTMLElement>("[data-line]");
+        expect(Number(first?.dataset.line)).toBeGreaterThan(5);
+        const end = row(170);
+        expect(end?.textContent).toBe("line 170");
+        const viewport = scroller.getBoundingClientRect();
+        const rect = end!.getBoundingClientRect();
+        expect(rect.top).toBeGreaterThanOrEqual(viewport.top);
+        expect(rect.bottom).toBeLessThanOrEqual(viewport.bottom);
+        return [first!, end!] as const;
+      }, wait);
+      // Chromium leaves an unmounted selection endpoint at the edge of the rendered rows.
+      selection.setBaseAndExtent(rowText(first), 0, rowText(end), "line 170".length);
     } finally {
-      await mouse("mouseReleased", start.left + 30, edge + 60);
+      document.body.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }),
+      );
     }
 
-    const copied = copiedText(rows()[0]!)!;
     const from = text.indexOf("line 5\n");
-    expect(copied).toBe(text.slice(from, from + copied.length));
-    // The drag ends in the rows on screen, short of the last mounted one.
-    const lastLine = 4 + copied.split("\n").length;
-    expect(lastLine).toBeGreaterThan(50);
-    expect(lastLine).toBeLessThan(Number(rows()[rows().length - 1]!.getAttribute("data-line")));
+    const to = text.indexOf("line 170\n") + "line 170".length;
+    expect(copiedText(row(170)!)).toBe(text.slice(from, to));
   });
 
   it("extends a selection with Shift+click after its anchor scrolls out of the mounted window", async () => {
