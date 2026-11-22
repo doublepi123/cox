@@ -2075,8 +2075,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   });
 
   // The effective config listing covers included, global, system and worktree config. Git writes
-  // packed-refs by rename and each loose ref by a rename in its directory, so those stats change
-  // whenever a ref could. Cost: one git process, plus a stat and listing per refs directory.
+  // packed-refs and each loose ref by rename, so their stats change whenever a ref could.
+  // Directory stats are left out: Git for Windows' no-op fetch touches refs/remotes/<remote>.
   const readBaseBranchInputsStamp = Effect.fn("GitVcsDriverCore.readBaseBranchInputsStamp")(
     function* (cwd: string, gitCommonDir: string) {
       const effectiveConfig = yield* executeGit(
@@ -2109,9 +2109,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         path.join(gitCommonDir, "refs", "heads"),
         path.join(gitCommonDir, "refs", "remotes"),
       ];
+      const looseRefs: string[] = [];
       for (let index = 0; index < directories.length; index++) {
         const directory = directories[index]!;
-        tokens.push(`${directory}=${yield* statToken(directory)}`);
         const entries = yield* fileSystem
           .readDirectory(directory)
           .pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed([])));
@@ -2120,14 +2120,25 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           (name) => {
             const target = path.join(directory, name);
             return fileSystem.stat(target).pipe(
-              Effect.map((info) => (info.type === "Directory" ? target : null)),
+              Effect.map((info) => ({ target, directory: info.type === "Directory" })),
               Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(null)),
             );
           },
           { concurrency: 16 },
         );
-        for (const child of children) if (child !== null) directories.push(child);
+        for (const child of children) {
+          if (child === null) continue;
+          if (child.directory) directories.push(child.target);
+          else looseRefs.push(child.target);
+        }
       }
+      tokens.push(
+        ...(yield* Effect.forEach(
+          looseRefs,
+          (ref) => Effect.map(statToken(ref), (token) => `${ref}=${token}`),
+          { concurrency: 16 },
+        )),
+      );
       tokens.push(configHash);
       return tokens.join("\0");
     },

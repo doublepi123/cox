@@ -745,6 +745,11 @@ it.effect("resolves a branch's base once while its refs and branch config are un
       yield* driver.getReviewDiffPreview({ cwd });
       assert.equal(lookups(), 1);
 
+      // Git for Windows' no-op `fetch --dry-run` touches a refs directory without moving a ref.
+      NodeFS.utimesSync(`${cwd}/.git/refs/heads`, 1_893_456_000, 1_893_456_000);
+      yield* driver.statusDetailsLocal(cwd);
+      assert.equal(lookups(), 0);
+
       yield* git(cwd, ["config", "branch.feature/x.t3-merge-base-ref", "refs/heads/main"]);
       yield* driver.statusDetailsLocal(cwd);
       assert.equal(lookups(), 1);
