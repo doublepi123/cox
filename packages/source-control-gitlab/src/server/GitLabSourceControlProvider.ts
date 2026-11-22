@@ -176,6 +176,7 @@ export const make = Effect.gen(function* () {
       .execute({
         cwd: input.cwd,
         args: ["api", "--hostname", input.url.host, endpoint],
+        callerNamedHost: input.url.host,
         timeoutMs: 3_000,
         maxOutputBytes: 32_000,
       })

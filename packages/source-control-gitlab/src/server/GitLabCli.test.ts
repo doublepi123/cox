@@ -29,6 +29,23 @@ afterEach(() => {
 });
 
 layer("GitLabCli.layer", (it) => {
+  it.effect("keeps ambient tokens off an explicitly named secondary host", () =>
+    Effect.gen(function* () {
+      mockedRun.mockReturnValue(Effect.succeed(processOutput("{}")));
+      const glab = yield* GitLabCli.GitLabCli;
+      yield* glab.execute({
+        cwd: "/repo",
+        args: ["api", "--hostname", "secondary.example.test", "user"],
+        callerNamedHost: "secondary.example.test",
+      });
+      expect(mockedRun).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          env: { GITLAB_TOKEN: "", GITLAB_ACCESS_TOKEN: "", OAUTH_TOKEN: "" },
+        }),
+      );
+    }),
+  );
+
   it.effect("parses merge request view output", () =>
     Effect.gen(function* () {
       mockedRun.mockReturnValueOnce(

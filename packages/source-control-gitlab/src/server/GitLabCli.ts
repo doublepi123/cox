@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -279,6 +280,7 @@ export class GitLabCli extends Context.Service<
     readonly execute: (input: {
       readonly cwd: string;
       readonly host?: string | undefined;
+      readonly callerNamedHost?: string | undefined;
       readonly args: ReadonlyArray<string>;
       readonly timeoutMs?: number;
       /** Keeps sensitive payloads out of argv. */
@@ -433,6 +435,14 @@ const classifyGlabFailure = (stderr: string): VcsProcessExitFailureKind | null =
 /** @public */
 export const make = Effect.gen(function* () {
   const { process } = yield* SourceControlHost.SourceControlHost;
+  const environment = yield* HostProcess.Environment;
+  const normalizeHost = (host: string) =>
+    host
+      .trim()
+      .toLowerCase()
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+      .replace(/\/.*$/, "");
+  const defaultHost = normalizeHost(environment.GITLAB_HOST?.trim() || "gitlab.com");
 
   const run = (
     input: Parameters<GitLabCli["Service"]["execute"]>[0],
@@ -446,6 +456,17 @@ export const make = Effect.gen(function* () {
         cwd: input.cwd,
         // glab may otherwise prefer a different checkout remote.
         ...(input.host === undefined ? {} : { env: { GITLAB_HOST: input.host } }),
+        ...(input.callerNamedHost !== undefined &&
+        normalizeHost(input.callerNamedHost) !== defaultHost
+          ? {
+              env: {
+                ...(input.host === undefined ? {} : { GITLAB_HOST: input.host }),
+                GITLAB_TOKEN: "",
+                GITLAB_ACCESS_TOKEN: "",
+                OAUTH_TOKEN: "",
+              },
+            }
+          : {}),
         classifyFailure: classifyGlabFailure,
         notFoundDetail: "Merge request not found.",
         timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
