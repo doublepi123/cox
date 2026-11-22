@@ -11,7 +11,6 @@ import { filesystemEnvironment } from "../state/filesystem";
 import { useRightPanelStore } from "../rightPanelStore";
 import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
-import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
 
 const deniedVideoEnvironment = EnvironmentId.make("denied-video-environment");
@@ -32,14 +31,14 @@ const { workspaceSearch, filesystemMetadata } = vi.hoisted(() => ({
   filesystemMetadata: vi.fn(),
 }));
 const parsedSources = vi.hoisted(() => [] as string[]);
-vi.mock(import("mdast-util-from-markdown"), async (original) => {
+vi.mock(import("../markdown/wordsHast"), async (original) => {
   const actual = await original();
   return {
     ...actual,
-    fromMarkdown: ((source: string, ...rest: never[]) => {
-      parsedSources.push(String(source));
-      return (actual.fromMarkdown as (...args: unknown[]) => unknown)(source, ...rest);
-    }) as typeof actual.fromMarkdown,
+    wordsHast: (source, options) => {
+      parsedSources.push(source);
+      return actual.wordsHast(source, options);
+    },
   };
 });
 
@@ -218,19 +217,24 @@ it("reuses the parse of a streaming reply's finished blocks when it remounts", a
   expect(parsedSources.filter((source) => source.includes("Finished block"))).toHaveLength(1);
 });
 
-it("reuses the parse of a remounted message that has stable extra plugins", async () => {
+it("reuses the parse of a remounted message that has stable extensions", async () => {
   setup();
-  const parsed = vi.fn();
-  const countingPlugins = [() => () => void parsed()];
-  const message = (
-    <ChatMarkdown cwd="/tmp/project" text="Cached text" extraRemarkPlugins={countingPlugins} />
-  );
+  const extensions = { userMessage: true };
+  const message = <ChatMarkdown cwd="/tmp/project" text="Cached text" extensions={extensions} />;
   {
-    await using _first = await render(message);
+    await using first = await render(
+      <ChatMarkdown cwd="/tmp/project" text="Cached text" extensions={extensions} isStreaming />,
+    );
+    await first.rerender(message);
   }
   await using screen = await render(message);
   await expect.element(screen.getByText("Cached text")).toBeVisible();
-  expect(parsed).toHaveBeenCalledTimes(1);
+  const parses = () => parsedSources.filter((source) => source === "Cached text").length;
+  expect(parses()).toBe(1);
+  await screen.rerender(
+    <ChatMarkdown cwd="/tmp/project" text="Cached text" extensions={{ userMessage: true }} />,
+  );
+  expect(parses()).toBe(2);
 });
 
 describe("ChatMarkdown favicon privacy", () => {
@@ -611,7 +615,7 @@ it("preserves typed list values and the first copied item number", async () => {
     <ChatMarkdown
       cwd={undefined}
       text={"3. First\n5. Second\n6. Third\n\nAfter"}
-      extraRemarkPlugins={CHAT_USER_MARKDOWN_REMARK_PLUGINS}
+      extensions={{ userMessage: true, leadingWhitespace: true }}
     />,
   );
   const list = screen.container.querySelector("ol")!;
@@ -645,4 +649,43 @@ it("stays open while the pointer selects the path, then closes when it leaves", 
 
   await commands.resetPointer();
   await expect.element(path).not.toBeInTheDocument();
+});
+
+describe("ChatMarkdown link tooltips", () => {
+  it("shows each link's address on one shared tooltip as the pointer moves between links", async () => {
+    setup();
+    await using screen = await render(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text="[First](https://example.com/a) and [Second](https://example.org/b)"
+      />,
+    );
+    await userEvent.hover(screen.getByRole("link", { name: /First/ }));
+    await expect.element(page.getByText("https://example.com/a")).toBeVisible();
+    await userEvent.hover(screen.getByRole("link", { name: /Second/ }));
+    await expect.element(page.getByText("https://example.org/b")).toBeVisible();
+    expect(document.querySelectorAll('[data-slot="tooltip-popup"]')).toHaveLength(1);
+  });
+});
+
+describe("ChatMarkdown details", () => {
+  it("opens collapsed details by click, and by keyboard without losing focus", async () => {
+    setup();
+    await using screen = await render(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text={
+          "<details><summary>First</summary>\n\nHidden one\n\n</details>\n\n<details><summary>Second</summary>\n\nHidden two\n\n</details>"
+        }
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "First" }));
+    await expect.element(screen.getByText("Hidden one")).toBeVisible();
+    await userEvent.tab();
+    const second = screen.getByRole("button", { name: "Second" });
+    await expect.element(second).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByText("Hidden two")).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Second" })).toHaveFocus();
+  });
 });

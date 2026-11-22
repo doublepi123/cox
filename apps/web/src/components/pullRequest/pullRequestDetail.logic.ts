@@ -1,6 +1,5 @@
 import { stripInlineContextReferences } from "~/lib/composerContextReferences";
-import type { Nodes as MdastNodes } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
+import { markdownHtmlComments } from "~/markdown/wordsHast";
 import {
   capitalizeTerm,
   sourceControlClients,
@@ -657,25 +656,18 @@ export function pagePullRequestConversationItems(
 function readableBody(raw: string): string | null {
   if (visibleBody(raw) === null) return null;
   const body = raw.replace(/\r\n?/gu, "\n");
-  const cuts: Array<[number, number]> = [];
-  const visit = (node: MdastNodes) => {
-    if (node.type === "html" && node.position?.start.offset !== undefined) {
-      cuts.push([node.position.start.offset, node.position.end.offset ?? body.length]);
-    }
-    if ("children" in node) for (const child of node.children) visit(child);
-  };
-  visit(fromMarkdown(body));
   let readable = "";
   let from = 0;
-  for (const [start, end] of cuts) {
+  for (const { start, end } of markdownHtmlComments(body)) {
+    // A comment opened inside another one ends with it.
+    if (start < from) continue;
     readable += body.slice(from, start);
-    const html = body.slice(start, end).replace(/<!--[\s\S]*?(?:-->|$)/gu, "");
+    // A line that was all comment is dropped rather than left as a blank one.
     const ownLine = /(?:^|\n)[ \t>]*$/u.test(readable) && /^[ \t]*(?:\n|$)/u.test(body.slice(end));
-    if (ownLine && html.trim() === "") {
+    if (ownLine) {
       readable = readable.replace(/[ \t>]*$/u, "");
       from = end + (/^[ \t]*\n/u.exec(body.slice(end))?.[0].length ?? 0);
     } else {
-      readable += html;
       from = end;
     }
   }

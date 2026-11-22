@@ -506,6 +506,18 @@
     "./cliRelease": {
       "types": "./src/cliRelease.ts",
       "import": "./src/cliRelease.ts"
+    },
+    "./markdownHast": {
+      "types": "./src/markdownHast.ts",
+      "import": "./src/markdownHast.ts"
+    },
+    "./assistantInsights": {
+      "types": "./src/assistantInsights.ts",
+      "import": "./src/assistantInsights.ts"
+    },
+    "./threadFindBlockTags": {
+      "types": "./src/threadFindBlockTags.ts",
+      "import": "./src/threadFindBlockTags.ts"
     }
   },
   "scripts": {
@@ -518,6 +530,7 @@
     "@t3tools/contracts": "workspace:*",
     "effect": "catalog:",
     "get-east-asian-width": "^1.6.0",
+    "hast-util-sanitize": "^5.0.2",
     "jose": "catalog:",
     "mdast-util-directive": "catalog:",
     "mdast-util-to-hast": "^13.2.1",
@@ -538,6 +551,7 @@
   "devDependencies": {
     "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
+    "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
     "@types/node": "catalog:",
     "micromark-util-types": "catalog:",

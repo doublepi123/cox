@@ -41,8 +41,8 @@ import {
   type PendingApproval,
   deriveTimelineEntriesFromVisibleTurnItems,
 } from "../../session-logic";
-import { remarkThoughtPreview } from "./TimelineWorkEntryRow.logic";
-import { parseMarkdownWithMath } from "@t3tools/shared/markdownMath";
+import { THOUGHT_PREVIEW_MAX_LENGTH } from "./TimelineWorkEntryRow.logic";
+import { wordsHast } from "~/markdown/wordsHast";
 import { collectThreadFindRanges } from "./threadFindHighlights";
 import { toastManager } from "../ui/toast";
 import type { CitedHistory } from "./citationProcedure";
@@ -1315,20 +1315,22 @@ describe("MessagesTimeline thread find", () => {
 
 describe("compact reasoning math", () => {
   it("keeps formulas while flattening compact reasoning previews", () => {
-    const tree = parseMarkdownWithMath("## Reasoning\n\nUse **norm** $|x|$ and \\[x^2\\]");
-    remarkThoughtPreview("Reasoning")(tree);
-    expect(tree.children.map((node) => node.type)).toEqual([
-      "text",
-      "inlineMath",
-      "text",
-      "inlineMath",
-    ]);
-    expect(tree.children.map((node) => ("value" in node ? node.value : null))).toEqual([
-      "Reasoning Use norm ",
-      "|x|",
-      " and ",
-      "x^2",
-    ]);
+    const tree = wordsHast("## Reasoning\n\nUse **norm** $|x|$ and \\[x^2\\]", {
+      math: true,
+      breaks: false,
+      escapeHtml: false,
+      insights: false,
+      extensions: { preview: { fallback: "Reasoning", maxLength: THOUGHT_PREVIEW_MAX_LENGTH } },
+    });
+    expect(
+      tree.children.map((node) =>
+        node.type === "text"
+          ? node.value
+          : node.type === "element" && node.children[0]?.type === "element"
+            ? String(node.children[0].properties.ariaLabel).trim()
+            : null,
+      ),
+    ).toEqual(["Reasoning Use norm ", "|x|", " and ", "x^2"]);
   });
 });
 

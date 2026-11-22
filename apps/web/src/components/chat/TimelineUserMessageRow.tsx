@@ -74,7 +74,6 @@ import {
   encodeComposerContextFragment,
 } from "@t3tools/shared/composerContextClipboard";
 import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
-import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { cn } from "~/lib/utils";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
@@ -255,6 +254,8 @@ function UserVideoAttachment({
     player
   );
 }
+
+const USER_MESSAGE_MARKDOWN = { userMessage: true, leadingWhitespace: true };
 
 export function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -1220,7 +1221,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       className="text-foreground"
       lineBreaks
       parseRawHtml={false}
-      extraRemarkPlugins={CHAT_USER_MARKDOWN_REMARK_PLUGINS}
+      extensions={USER_MESSAGE_MARKDOWN}
       renderContextReference={props.renderContextReference}
       headingLevelOffset={MESSAGE_HEADING_LEVEL}
     />

@@ -49,8 +49,8 @@ import {
   SimpleWorkEntryRow,
 } from "./TimelineWorkEntryRow";
 import {
-  THINKING_PREVIEW_PLUGINS,
-  THOUGHT_PREVIEW_PLUGINS,
+  THINKING_PREVIEW_MARKDOWN,
+  THOUGHT_PREVIEW_MARKDOWN,
   toolGroupSummaryIconName,
   workEntryIconName,
 } from "./TimelineWorkEntryRow.logic";
@@ -551,7 +551,7 @@ export function LiveWorkEntryTimelineRow({
                 text={thoughtLine}
                 cwd={ctx.markdownCwd}
                 parseRawHtml={false}
-                extraRemarkPlugins={THOUGHT_PREVIEW_PLUGINS}
+                extensions={THOUGHT_PREVIEW_MARKDOWN}
               />
             </span>
           }
@@ -572,7 +572,7 @@ export function LiveWorkEntryTimelineRow({
               text={row.entry.detail ?? label}
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
-              extraRemarkPlugins={row.active ? THINKING_PREVIEW_PLUGINS : THOUGHT_PREVIEW_PLUGINS}
+              extensions={row.active ? THINKING_PREVIEW_MARKDOWN : THOUGHT_PREVIEW_MARKDOWN}
             />
           ) : threadLabel ? (
             <ThreadReadLabel

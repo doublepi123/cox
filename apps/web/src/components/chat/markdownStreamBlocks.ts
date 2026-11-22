@@ -18,7 +18,12 @@ const SETEXT_UNDERLINE_PATTERN =
  * headings with the same slug, whose ids are numbered across the whole text.
  */
 export function splitMarkdownBlocks(text: string): string[] | null {
-  if (text.startsWith("\ufeff") || text.includes("\r") || DOCUMENT_WIDE_SYNTAX.test(text))
+  if (
+    text.startsWith("\ufeff") ||
+    text.includes("\r") ||
+    DOCUMENT_WIDE_SYNTAX.test(text) ||
+    /^ {0,3}`?★ Insight[ \t]+─{3,}/m.test(text)
+  )
     return null;
   const blocks: string[] = [];
   let blockStart = 0;
@@ -42,7 +47,10 @@ export function splitMarkdownBlocks(text: string): string[] | null {
 
   let afterContentLine = false;
   for (const line of text.split("\n")) {
-    const opener = FENCE_PATTERN.exec(line)?.[1];
+    const fenceMatch = FENCE_PATTERN.exec(line);
+    const marker = fenceMatch?.[1];
+    const opener =
+      marker?.[0] === "`" && line.slice(fenceMatch![0].length).includes("`") ? undefined : marker;
     const mayUnderline = afterContentLine;
     afterContentLine = false;
     if (fence !== null) {

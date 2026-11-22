@@ -1,5 +1,5 @@
 import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
-import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
+import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/assistantInsights";
 import { CopyIcon, DownloadIcon, Share2Icon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
