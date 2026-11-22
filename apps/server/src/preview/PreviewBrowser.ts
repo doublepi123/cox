@@ -51,7 +51,6 @@ const ARCHIVES = {
     bytes: 127_876_264,
     sha256: "9655950dfeddf565561cd64cfe8ee716ccd6482fa3798503b632219efc65a71e",
   },
-  },
 } as const;
 
 const chromePlatform = (platform: NodeJS.Platform, arch: NodeJS.Architecture) => {
