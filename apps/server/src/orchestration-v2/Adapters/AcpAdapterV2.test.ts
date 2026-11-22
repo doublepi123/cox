@@ -100,6 +100,10 @@ import {
 
 const DEFAULT_GROK_SETTINGS = Schema.decodeSync(GrokSettings)({});
 const DROID_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "factory-droid" });
+const DROID_LOCAL_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({
+  source: "local",
+  commandPath: "/opt/droid/bin/droid",
+});
 const OPENCODE_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({
   source: "local",
   commandPath: "/usr/local/bin/opencode",
@@ -1724,6 +1728,17 @@ describe("AcpAdapterV2", () => {
   it.live.each([
     {
       scenario: "preserves selected IDs and encodes custom answers",
+      schema: droidSchema,
+      questions: droidQuestions,
+      answers: { question_1: "option_1", question_2: "Markdown" },
+      result: {
+        action: "accept",
+        content: { question_1: "option_1", question_2: "other", question_2_other: "Markdown" },
+      },
+    },
+    {
+      scenario: "extracts the paired form for a local droid command",
+      settings: DROID_LOCAL_SETTINGS,
       schema: droidSchema,
       questions: droidQuestions,
       answers: { question_1: "option_1", question_2: "Markdown" },
