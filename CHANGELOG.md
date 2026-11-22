@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## Desktop 0.2.36 — 2026-11-22
+
+- Add an experimental OMO Computer Use option in the local macOS workspace.
+  It starts disabled and uses OMO Native for window capture, input, and the
+  system-wide stop shortcut.
+
+## 0.2.23 — 2026-11-22
+
+- Recognize OMO computer activity in the work log and enable the native tool
+  only in opted-in macOS sessions owned by Cox Desktop.
+
 ## Desktop 0.2.35 — 2026-11-21
 
 - Desktop windows are titled by instance, with the instance name before Cox,
