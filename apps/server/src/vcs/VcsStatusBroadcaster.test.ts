@@ -115,6 +115,7 @@ function layerTestFor(state: {
   localInvalidationCalls: number;
   remoteInvalidationCalls: number;
   remoteStatusRefreshUpstreamValues?: Array<boolean | undefined>;
+  remoteStatusReusedDetails?: Array<boolean>;
   remoteStatusError?: GitManagerError;
   refSnapshot?: string;
   backgroundWorkEnabled?: boolean;
@@ -148,6 +149,30 @@ function layerTestFor(state: {
             );
           }),
         currentBranch: () => Effect.sync(() => state.currentLocalStatus.refName),
+        upstreamDivergence: () =>
+          Effect.sync(() => {
+            const refName = state.currentLocalStatus.refName;
+            if (!state.currentRemoteStatus?.hasUpstream || refName === null) return null;
+            const { aheadCount, behindCount } =
+              state.currentRemoteStatus;
+            return {
+              refName,
+              aheadCount,
+              behindCount,
+              details: {
+                isRepo: true,
+                hasPrimaryRemote: true,
+                defaultBranch: "main",
+                isDefaultBranch: false,
+                branch: refName,
+                upstreamRef: `origin/${refName}`,
+                hasUpstream: true,
+                aheadCount,
+                behindCount,
+                aheadOfDefaultCount: aheadCount,
+              },
+            };
+          }),
         remoteStatus: (_input, options) =>
           Effect.suspend(() => {
             return (state.beforeRemoteStatus ?? Effect.void).pipe(
@@ -155,6 +180,7 @@ function layerTestFor(state: {
                 Effect.sync(() => {
                   state.remoteStatusCalls += 1;
                   state.remoteStatusRefreshUpstreamValues?.push(options?.refreshUpstream);
+                  state.remoteStatusReusedDetails?.push(options?.statusDetails !== undefined);
                   return state.currentRemoteStatus;
                 }),
               ),
@@ -211,6 +237,27 @@ function layerBackgroundPolicy(shouldRunScopeWork: (scope: BackgroundScope) => b
 }
 
 describe("VcsStatusBroadcaster", () => {
+  it.effect("the turn-end PR lookup reuses the upstream read it follows, once", () => {
+    const state: Parameters<typeof layerTestFor>[0] = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: remoteStatusWithPr,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+      remoteStatusReusedDetails: [],
+    };
+
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      yield* broadcaster.getStatus({ cwd: "/repo" });
+      yield* broadcaster.refreshLocalStatus("/repo");
+      yield* broadcaster.refreshPullRequestStatus("/repo");
+      yield* broadcaster.refreshPullRequestStatus("/repo");
+      assert.deepStrictEqual(state.remoteStatusReusedDetails, [false, true, false]);
+    }).pipe(Effect.provide(layerTestFor(state)));
+  });
+
   it.effect("a remote poll that moves no ref does not re-read local status", () => {
     const state: Parameters<typeof layerTestFor>[0] = {
       currentLocalStatus: baseLocalStatus,
