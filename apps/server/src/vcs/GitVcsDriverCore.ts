@@ -1888,14 +1888,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       : null;
   });
 
-  const resolvePublishBranchName = Effect.fn("resolvePublishBranchName")(function* (
-    cwd: string,
-    branchName: string,
-  ) {
-    const remoteNames = yield* listRemoteNames(cwd).pipe(Effect.orElseSucceed(() => []));
-    const parsedRemoteRef = parseRemoteRefWithRemoteNames(branchName, remoteNames);
-    return parsedRemoteRef?.branchName ?? branchName;
-  });
+  // Only the destination remote's prefix is dropped; alice/fix pushed to origin keeps its full name.
+  const resolvePublishBranchName = (branchName: string, remoteName: string) =>
+    parseRemoteRefWithRemoteNames(branchName, [remoteName])?.branchName ?? branchName;
 
   const readStatusRemotes = (cwd: string, gitCommonDir?: string) =>
     gitCommonDir === undefined ? listRemoteNames(cwd) : Cache.get(statusRemotesCache, gitCommonDir);
@@ -3213,7 +3208,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     if (!hasUpstream) {
       const remoteName = yield* resolvePushRemoteName(cwd, branch);
       if (!remoteName) return null;
-      const branchName = yield* resolvePublishBranchName(cwd, branch);
+      const localRemote = yield* readConfigValue(cwd, `branch.${branch}.remote`);
+      const branchName =
+        localRemote === "." ? branch : resolvePublishBranchName(branch, remoteName);
       return { remoteName, branchName, publishes: true, upstream: null };
     }
 
@@ -3221,7 +3218,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     if (localRemote === ".") {
       const remoteName = yield* resolvePushRemoteName(cwd, branch);
       if (!remoteName || remoteName === ".") return null;
-      const branchName = yield* resolvePublishBranchName(cwd, branch);
+      const branchName = branch;
       const upstreamRef = yield* readCurrentUpstreamRef(cwd);
       return {
         remoteName,
@@ -3249,10 +3246,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const publishRemoteName = yield* resolvePushRemoteName(cwd, branch).pipe(
       Effect.orElseSucceed(() => null),
     );
-    const branchName = yield* resolvePublishBranchName(cwd, branch);
+    const remoteName = publishRemoteName ?? upstream.remoteName;
     return {
-      remoteName: publishRemoteName ?? upstream.remoteName,
-      branchName,
+      remoteName,
+      branchName: resolvePublishBranchName(branch, remoteName),
       publishes: true,
       upstream,
     };
@@ -3311,7 +3308,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const requestedRemoteName = options?.remoteName?.trim() || null;
     if (requestedRemoteName) {
-      const publishBranch = yield* resolvePublishBranchName(cwd, branch);
+      const publishBranch = resolvePublishBranchName(branch, requestedRemoteName);
       yield* executeGitWithStableDiagnostics(
         "GitVcsDriver.pushCurrentBranch.pushWithRequestedRemote",
         cwd,
