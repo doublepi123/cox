@@ -32,11 +32,20 @@ type Snapshot =
     }
   | {
       readonly type: "message.updated";
-      readonly message: { readonly id: string; readonly threadId: string };
+      readonly message: {
+        readonly id: string;
+        readonly threadId: string;
+        readonly streaming: boolean;
+      };
     }
   | {
       readonly type: "turn_item.updated";
-      readonly turnItem: { readonly id: string; readonly threadId: string };
+      readonly turnItem: {
+        readonly id: string;
+        readonly threadId: string;
+        readonly type: string;
+        readonly streaming?: boolean;
+      };
     }
   | {
       readonly type: "plan.updated";
@@ -56,7 +65,12 @@ const snapshotEntity = (event: Snapshot) => {
         : event.type === "turn_item.updated"
           ? event.turnItem
           : event.plan;
-  return { key: `${event.type}:${entity.id}`, threadId: entity.threadId };
+  const replaceable =
+    (event.type === "message.updated" && event.message.streaming) ||
+    (event.type === "turn_item.updated" &&
+      (event.turnItem.type === "assistant_message" || event.turnItem.type === "reasoning") &&
+      event.turnItem.streaming === true);
+  return { key: replaceable ? `${event.type}:${entity.id}` : undefined, threadId: entity.threadId };
 };
 
 /** Who a provider stream writes for; ranks its snapshots against other streams'. */
@@ -85,7 +99,7 @@ interface Job {
   readonly stream: StreamState;
   /** Still in its stream's queue, holding one of the backlog's `MAX_QUEUED` slots. */
   queued: boolean;
-  readonly key: string;
+  readonly key: string | undefined;
   readonly threadId: string;
   readonly queuedAt: number;
   readonly bytes: number;
@@ -117,18 +131,20 @@ interface Batch {
 function coalesce(jobs: ReadonlyArray<Job>): Array<Unit> {
   const firstSeen = new Map<string, number>();
   jobs.forEach((job, index) => {
-    if (!firstSeen.has(job.key)) firstSeen.set(job.key, index);
+    if (job.key !== undefined && !firstSeen.has(job.key)) firstSeen.set(job.key, index);
   });
   const survivor: Array<number> = Array.from({ length: jobs.length }, (_, index) => index);
   const nextOfKey = new Map<string, number>();
   for (let index = jobs.length - 1; index >= 0; index--) {
     const job = jobs[index]!;
+    if (job.key === undefined) continue;
     const next = nextOfKey.get(job.key);
     nextOfKey.set(job.key, index);
     if (next === undefined) continue;
     let replaced = true;
     for (let between = index + 1; replaced && between < next; between++) {
-      if (firstSeen.get(jobs[between]!.key)! > index) replaced = false;
+      const key = jobs[between]!.key;
+      if (key === undefined || firstSeen.get(key)! > index) replaced = false;
     }
     if (replaced) survivor[index] = survivor[next]!;
   }
@@ -177,7 +193,7 @@ export const make = Effect.fn("ProviderCommitBatch.make")(function* (
   const enqueue = Effect.fnUntraced(function* <A, E, R>(
     effect: Effect.Effect<A, E, R>,
     stream: StreamState,
-    entity: { readonly key: string; readonly threadId: string },
+    entity: { readonly key: string | undefined; readonly threadId: string },
     bytes: number,
     skipped: A,
   ) {
