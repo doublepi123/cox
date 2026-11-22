@@ -107,7 +107,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { useEnvironmentQuery } from "../state/query";
+import { useEnvironmentQuery, useEnvironmentQueryRefresh } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
 import { reviewEnvironment } from "../state/review";
@@ -469,7 +469,7 @@ export default function DiffPanel({
   const canRefreshGitDiff = isGitRepo && isGitSelection && activeThread != null && gitCwd != null;
   // Read under the workspace mutation id, so each mutation refetches the diff; the panel stays
   // mounted while hidden, so a mutation made then is already reflected when it shows.
-  const branchDiffPreview = useEnvironmentQuery(
+  const branchDiffPreviewAtom =
     branchDiffPreviewInput && activeThread
       ? revisionedQuery(
           reviewEnvironment.diffPreview({
@@ -478,8 +478,9 @@ export default function DiffPanel({
           }),
           canRefreshGitDiff ? workspaceMutationId : undefined,
         )
-      : null,
-  );
+      : null;
+  const branchDiffPreview = useEnvironmentQuery(branchDiffPreviewAtom);
+  const diffReadIsPending = useEnvironmentQueryRefresh(branchDiffPreviewAtom).isPending;
   const branchCommitsQuery = useEnvironmentQuery(
     visible && isGitRepo && canReadFiles && activeThread && gitCwd
       ? reviewEnvironment.branchCommits({
@@ -726,6 +727,7 @@ export default function DiffPanel({
   useLiveRefresh(
     branchDiffPreview.data !== null && !branchDiffPreview.isPending
       ? () => {
+          if (diffReadIsPending()) return;
           if (Date.now() - branchDiffPreview.dataUpdatedAt < LIVE_REFRESH_MIN_INTERVAL_MS) return;
           refreshBranchDiffPreview();
         }
