@@ -18,13 +18,27 @@ const PERMISSION_NAMES: Record<DesktopComputerPermission, string> = {
   input: "Input Monitoring",
 };
 
+const WINDOWS_CAPABILITY_NAMES: Record<DesktopComputerPermission, string> = {
+  screenRecording: "Screen capture",
+  accessibility: "UI Automation",
+  input: "Input and stop shortcut",
+};
+
 export const COMPUTER_RECOVERY = "Cox Settings → Labs → Computer control";
 
-export const describeMissing = (missing: ReadonlyArray<DesktopComputerPermission>): string =>
-  missing.map((permission) => PERMISSION_NAMES[permission]).join(", ");
+export const describeMissing = (
+  missing: ReadonlyArray<DesktopComputerPermission>,
+  platform: NodeJS.Platform = process.platform,
+): string =>
+  missing
+    .map((permission) =>
+      platform === "win32" ? WINDOWS_CAPABILITY_NAMES[permission] : PERMISSION_NAMES[permission],
+    )
+    .join(", ");
 
 export const replyFailure = (
   reply: Extract<DesktopComputerReply, { readonly ok: false }>,
+  platform: NodeJS.Platform = process.platform,
 ): DesktopComputerToolFailure => {
   const missing = reply.error.missing ?? [];
   const recovery = reply.error.recovery ?? COMPUTER_RECOVERY;
@@ -33,7 +47,9 @@ export const replyFailure = (
     message: [
       reply.error.message,
       missing.length > 0
-        ? `Missing macOS permission: ${describeMissing(missing)}. Ask the user to grant it in ${recovery}.`
+        ? platform === "win32"
+          ? `Not ready on this PC: ${describeMissing(missing, platform)}. Ask the user to check ${recovery}.`
+          : `Missing macOS permission: ${describeMissing(missing, platform)}. Ask the user to grant it in ${recovery}.`
         : undefined,
     ]
       .filter((part) => part !== undefined)

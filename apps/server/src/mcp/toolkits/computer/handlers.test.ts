@@ -186,3 +186,48 @@ it.effect("tools carry the calling thread and report missing permissions with re
     }),
   ),
 );
+
+it("describes computer control gaps in each platform's own terms", () => {
+  const notReady = ComputerHandlers.replyFailure(
+    {
+      type: "cox:computer-reply",
+      id: "r",
+      ok: false,
+      error: { code: "permission", message: "Not ready.", missing: ["input"] },
+    },
+    "win32",
+  );
+  expect(notReady.message).toContain("Not ready on this PC: Input and stop shortcut.");
+  expect(notReady.message).not.toContain("macOS");
+  expect(
+    ComputerHandlers.replyFailure(
+      {
+        type: "cox:computer-reply",
+        id: "r",
+        ok: false,
+        error: { code: "permission", message: "Not ready.", missing: ["input"] },
+      },
+      "darwin",
+    ).message,
+  ).toContain("Missing macOS permission: Input Monitoring.");
+  const elevated = ComputerHandlers.replyFailure(
+    {
+      type: "cox:computer-reply",
+      id: "r",
+      ok: false,
+      error: {
+        code: "permission",
+        message:
+          "The target window belongs to an app running as administrator, and Windows blocks input to it from Cox.",
+        recovery: "Run that app without administrator rights, or start Cox as administrator.",
+      },
+    },
+    "win32",
+  );
+  expect(elevated).toMatchObject({
+    code: "permission",
+    recovery: "Run that app without administrator rights, or start Cox as administrator.",
+  });
+  expect(elevated.missing).toBeUndefined();
+  expect(elevated.message).toContain("administrator");
+});
