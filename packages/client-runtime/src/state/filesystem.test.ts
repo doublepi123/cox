@@ -95,6 +95,16 @@ describe("filesystem read access", () => {
     ).toEqual({ canReadFiles: true, isPending: false, error: null });
   });
 
+  it("browses a bare Windows drive as its root", () => {
+    expect(getFilesystemBrowsePath("D:", "Win32")).toEqual({
+      isBrowsing: true,
+      directoryPath: "D:\\",
+      filterQuery: "",
+      parentPath: null,
+      canBrowseUp: false,
+    });
+  });
+
   it("completes Tab like a shell", () => {
     const entry = (name: string) => ({ name, fullPath: `/Users/me/${name}` });
     expect(getFilesystemBrowseTabCompletion([entry("Creations")], "Creation")).toEqual({
