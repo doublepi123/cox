@@ -74,7 +74,7 @@ import type {
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- the SDK takes a Node ChildProcess for the CLI.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeUtil from "node:util";
-import { parseCliArgs, tokenizeCliArgs } from "@t3tools/shared/cliArgs";
+import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import {
   claudeMcpToolName,
@@ -167,6 +167,7 @@ import {
 } from "../../provider/Drivers/ClaudeSkillDispatch.ts";
 import {
   claudeLaunchArgDirectories,
+  claudeLaunchArgPluginDirectories,
   discoverClaudeSkills,
 } from "../../provider/Drivers/ClaudeSkills.ts";
 import {
@@ -1788,24 +1789,6 @@ const CLAUDE_BACKGROUND_WAIT_INSTRUCTIONS = `
 
 To wait for a background command or Monitor you started (tests, a build), call \`cox_background_wait\` with its task ID before you end your turn. Do not mark work you leave running, or PRs. Cox MCP tools are deferred: load one with ToolSearch before you call it.
 `;
-
-function claudeLaunchArgPluginDirectories(launchArgs?: string): ReadonlyArray<string> {
-  const tokens = tokenizeCliArgs(launchArgs);
-  const directories: string[] = [];
-  for (let index = 0; index < tokens.length && tokens[index] !== "--"; index++) {
-    const token = tokens[index]!;
-    if (!token.startsWith("--") || token.includes("=")) {
-      if (token.startsWith("--plugin-dir=")) directories.push(token.slice("--plugin-dir=".length));
-      continue;
-    }
-    const next = tokens[index + 1];
-    if (next === undefined || next === "--") continue;
-    if (next.startsWith("--") && token !== "--append-system-prompt") continue;
-    if (token === "--plugin-dir") directories.push(next);
-    index++;
-  }
-  return directories;
-}
 
 export function makeClaudeQueryOptions(input: {
   readonly modelSelection: ModelSelection;
