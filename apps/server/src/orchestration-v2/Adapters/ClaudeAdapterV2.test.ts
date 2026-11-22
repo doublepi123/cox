@@ -8186,6 +8186,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     { cooldown: " (reset after 4m 6s) (last error: rate limited)", seconds: 246 },
     { cooldown: "", seconds: 0 },
     { cooldown: " (last error: retry upstream (reset after 1h))", seconds: 0 },
+    {
+      cooldown: " (last error: rate limited) (reset after 2h26m17s)",
+      seconds: 8777,
+      untypedRejection: true,
+    },
   ])("keeps a gateway's reset on a direct 429 with cooldown '$cooldown'", (input) =>
     Effect.gen(function* () {
       const harness = yield* makeWakeHarness;
@@ -8200,9 +8205,18 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           attachments: [],
         }),
       );
-      // An API-key session reports a gateway 429 only as text, with no rate_limit_info.
       const result = `API Error: Request rejected (429) · All credentials for model claude-opus-5-5 are cooling down${input.cooldown}`;
       yield* Queue.offerAll(harness.sdkMessages, [
+        ...(input.untypedRejection
+          ? [
+              claudeSdkFrame({
+                type: "rate_limit_event",
+                rate_limit_info: { status: "rejected", isUsingOverage: false },
+                uuid: "00000000-0000-4000-8000-000000000651",
+                session_id: WAKE_NATIVE_SESSION,
+              }),
+            ]
+          : []),
         makeAssistantErrorFrame({
           uuid: "00000000-0000-4000-8000-000000000654",
           error: "rate_limit",

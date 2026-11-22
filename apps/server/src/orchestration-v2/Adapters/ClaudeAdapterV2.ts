@@ -4243,9 +4243,12 @@ function providerFailureFromResult(
         ? /^API Error: 503 \[[^\]\r\n]+\] \[429\]: \{"type":"error","error":\{"type":"rate_limit_error",[^\r\n]*\} \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
             message.result,
           )
-        : /^API Error: Request rejected \(429\) · All credentials for model [^\s]+ are cooling down \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
+        : (/^API Error: Request rejected \(429\) · All credentials for model [^\s]+ are cooling down \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
             message.result,
-          )
+          ) ??
+          /^API Error: (?:Request rejected \(429\)|Server is temporarily limiting requests \(not your usage limit\)) · All credentials for model [^\s]+ are cooling down \(last error: [^\r\n]*\) \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)$/.exec(
+            message.result,
+          ))
       : null;
   if (gatewayLimit) {
     const seconds =
@@ -10421,7 +10424,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     failureHint,
                     usageLimited,
                   );
-            const resetTimes = Array.from(context.rateLimitResetTimes.values());
+            const resultResetAt =
+              resultFailure?.class === "usage_limit" ? resultFailure.resetAt : null;
+            // An untyped rejection without a reset is the gateway's own 429; its text names the reset.
+            const resetTimes = Array.from(context.rateLimitResetTimes)
+              .filter(
+                ([type, time]) => !(type === "unknown" && time === null && resultResetAt != null),
+              )
+              .map(([, time]) => time);
             const assistantLimit = context.latestAssistantRateLimit;
             if (
               assistantLimit?.type != null &&
@@ -10429,8 +10439,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ) {
               resetTimes.push(assistantLimit.resetAt);
             }
-            if (resultFailure?.class === "usage_limit" && resultFailure.resetAt != null) {
-              resetTimes.push(resultFailure.resetAt);
+            if (resultResetAt != null) {
+              resetTimes.push(resultResetAt);
             }
             const resetAt =
               resetTimes.length > 0 && resetTimes.every((time) => time !== null)
