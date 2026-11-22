@@ -1,3 +1,4 @@
+import { PROVIDER_STOP_REASON_SIGNAL } from "@t3tools/provider-core/server/subagentProjection";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -1310,7 +1311,7 @@ const seedRestartCancelledChild = (input: {
   readonly name: string;
   readonly completionWake: "always" | "settled_only";
   readonly continuationPending: boolean;
-  readonly runStatus?: "cancelled" | "completed";
+  readonly runStatus?: "cancelled" | "completed" | "interrupted";
   readonly lostWork?: OrchestrationV2Run["restartCancelledBackgroundWork"];
   readonly now: DateTime.Utc;
 }) =>
@@ -3401,6 +3402,140 @@ it.layer(layerTest)("delegated tasks across a server restart", (it) => {
       assert.equal(task?.status, "interrupted");
       assert.equal(task?.result, "Child task ended with status interrupted.");
       assert.equal(task?.completionDelivery?.state, "claimed");
+    }),
+  );
+
+  it.effect("recovering a finished child preserves its provider stop reason", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:cancel-finished-parent");
+      const projectId = ProjectId.make("project:cancel-finished-parent");
+      const runId = RunId.make("run:cancel-finished-parent");
+      const rootNodeId = NodeId.make("node:cancel-finished-parent-root");
+      yield* seedParentWithTerminalTask({
+        threadId,
+        projectId,
+        runId,
+        rootNodeId,
+        taskId: NodeId.make("node:cancel-finished-parent-settled"),
+        deliveryState: "delivered",
+        now,
+      });
+      // The child run finished, but its parent row has not been finalized yet.
+      const child = yield* seedRestartCancelledChild({
+        parentThreadId: threadId,
+        projectId,
+        parentRunId: runId,
+        rootNodeId,
+        name: "cancel-finished-child",
+        completionWake: "always",
+        continuationPending: false,
+        runStatus: "completed",
+        now,
+      });
+      const stopReason = "sessionStart hook (user): Plugin guard blocked this session.";
+      yield* eventSink.write({
+        commandId: CommandId.make("command:cancel-finished-child:stop-reason"),
+        events: [
+          {
+            id: EventId.make("event:cancel-finished-child:stop-reason"),
+            type: "turn-item.updated",
+            threadId: child.childThreadId,
+            runId: child.childRunId,
+            nodeId: rootNodeId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: {
+              id: IdAllocator.derive.runSignalTurnItem({
+                runId: child.childRunId,
+                signal: PROVIDER_STOP_REASON_SIGNAL,
+              }),
+              type: "system_notice",
+              threadId: child.childThreadId,
+              runId: child.childRunId,
+              nodeId: rootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 98,
+              status: "completed",
+              title: "Stopped by the provider",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              message: stopReason,
+            },
+          },
+        ],
+      });
+      yield* orchestrator.recoverDelegatedTasks;
+      const task = (yield* orchestrator.getThreadProjection(threadId)).subagents.find(
+        (row) => row.id === child.taskId,
+      );
+      assert.equal(task?.status, "completed");
+      assert.equal(
+        task?.result,
+        `Child task completed without an assistant result.\n\n${stopReason}`,
+      );
+
+      // Codex 0.169 reports a hook-stopped turn as interrupted; its reason is the interrupt result.
+      const interrupted = yield* seedRestartCancelledChild({
+        parentThreadId: threadId,
+        projectId,
+        parentRunId: runId,
+        rootNodeId,
+        name: "cancel-finished-interrupted-child",
+        completionWake: "always",
+        continuationPending: false,
+        runStatus: "interrupted",
+        now,
+      });
+      yield* eventSink.write({
+        commandId: CommandId.make("command:cancel-finished-interrupted-child:result"),
+        events: [
+          {
+            id: EventId.make("event:cancel-finished-interrupted-child:result"),
+            type: "turn-item.updated",
+            threadId: interrupted.childThreadId,
+            runId: interrupted.childRunId,
+            nodeId: rootNodeId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: {
+              id: IdAllocator.derive.runSignalTurnItem({
+                runId: interrupted.childRunId,
+                signal: "interrupt-result",
+              }),
+              type: "run_interrupt_result",
+              threadId: interrupted.childThreadId,
+              runId: interrupted.childRunId,
+              nodeId: rootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 98,
+              status: "interrupted",
+              title: "Interrupted",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              message: stopReason,
+            },
+          },
+        ],
+      });
+      yield* orchestrator.recoverDelegatedTasks;
+      const interruptedTask = (yield* orchestrator.getThreadProjection(threadId)).subagents.find(
+        (row) => row.id === interrupted.taskId,
+      );
+      assert.equal(
+        interruptedTask?.result,
+        `Child task ended with status interrupted.\n\n${stopReason}`,
+      );
     }),
   );
 

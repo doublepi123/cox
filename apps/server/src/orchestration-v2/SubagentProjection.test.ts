@@ -9,6 +9,7 @@ import {
   EventId,
   TurnItemId,
   type OrchestrationV2Run,
+  type OrchestrationV2TurnItem,
   type OrchestrationV2AppThread,
   ProjectId,
   ProviderInstanceId,
@@ -23,11 +24,13 @@ import {
   makeSubagentChildThread,
   delegatedTaskProgress,
   subagentResultForRun,
+  PROVIDER_STOP_REASON_SIGNAL,
   makeSubagentConversationArtifacts,
   endOrphanedNativeSubagent,
   endRunlessRootTurns,
 } from "@t3tools/provider-core/server/subagentProjection";
 
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import { resolveAutoSettlementAt } from "./ThreadSettlementService.ts";
@@ -511,3 +514,74 @@ it.effect("ends a runless root turn's items when its node already ended", () =>
     );
   }),
 );
+
+it("reports a provider's stop reason with and without assistant progress", () => {
+  const { projection, run } = taskFixture();
+  const notice = {
+    id: IdAllocator.derive.runSignalTurnItem({
+      runId: run.id,
+      signal: PROVIDER_STOP_REASON_SIGNAL,
+    }),
+    threadId: parentThreadId,
+    runId: run.id,
+    nodeId: NodeId.make("root"),
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    parentItemId: null,
+    ordinal: 98,
+    status: "completed",
+    title: "Stopped by the provider",
+    startedAt: childCreatedAt,
+    completedAt: childCreatedAt,
+    updatedAt: childCreatedAt,
+    type: "system_notice",
+    message: "sessionStart hook (user): Plugin guard blocked this session.",
+  } satisfies OrchestrationV2TurnItem;
+  assert.equal(
+    subagentResultForRun({ ...projection, turnItems: [notice] }, run).text,
+    `Child task completed without an assistant result.\n\n${notice.message}`,
+  );
+  const progress = makeSubagentConversationArtifacts({
+    messageId: MessageId.make("before-hook-stop"),
+    turnItemId: TurnItemId.make("before-hook-stop"),
+    threadId: parentThreadId,
+    rootNodeId: NodeId.make("root"),
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    role: "assistant",
+    text: "I am checking the remaining files.",
+    ordinal: 1,
+    now: childCreatedAt,
+  });
+  assert.equal(
+    subagentResultForRun(
+      {
+        ...projection,
+        messages: [{ ...progress.message, runId: run.id }],
+        turnItems: [{ ...progress.turnItem, runId: run.id }, notice],
+      },
+      run,
+    ).text,
+    `${progress.message.text}\n\n${notice.message}`,
+  );
+  const interruptResult = {
+    ...notice,
+    id: IdAllocator.derive.runSignalTurnItem({ runId: run.id, signal: "interrupt-result" }),
+    status: "interrupted",
+    title: "Interrupted",
+    type: "run_interrupt_result",
+  } satisfies OrchestrationV2TurnItem;
+  assert.equal(
+    subagentResultForRun(
+      {
+        ...projection,
+        messages: [{ ...progress.message, runId: run.id }],
+        turnItems: [{ ...progress.turnItem, runId: run.id }, interruptResult],
+      },
+      { ...run, status: "interrupted" },
+    ).text,
+    `${progress.message.text}\n\n${notice.message}`,
+  );
+});

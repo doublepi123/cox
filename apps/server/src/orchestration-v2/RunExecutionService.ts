@@ -1,3 +1,4 @@
+import { PROVIDER_STOP_REASON_SIGNAL } from "@t3tools/provider-core/server/subagentProjection";
 import { makeAssistantStreamingFilter } from "./assistantStreaming.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -823,6 +824,41 @@ export const layer: Layer.Layer<
                       reason,
                       completedAt,
                     }),
+                  },
+                ]
+              : []),
+            // Codex reports a hook that stops the turn as completed; keep its reason visible.
+            ...(input.terminal.status === "completed" && input.terminal.reason !== undefined
+              ? [
+                  {
+                    id: yield* allocateEventId(),
+                    type: "turn-item.updated" as const,
+                    threadId: input.run.threadId,
+                    runId: input.run.id,
+                    nodeId: input.rootNode.id,
+                    providerInstanceId: input.run.providerInstanceId,
+                    occurredAt: completedAt,
+                    payload: {
+                      id: idAllocator.derive.runSignalTurnItem({
+                        runId: input.run.id,
+                        signal: PROVIDER_STOP_REASON_SIGNAL,
+                      }),
+                      threadId: input.run.threadId,
+                      runId: input.run.id,
+                      nodeId: input.rootNode.id,
+                      providerThreadId: input.providerThread.id,
+                      providerTurnId: input.rootNode.providerTurnId,
+                      nativeItemRef: null,
+                      parentItemId: null,
+                      ordinal: input.run.ordinal * 100 + 98,
+                      status: "completed" as const,
+                      title: "Stopped by the provider",
+                      startedAt: completedAt,
+                      completedAt,
+                      updatedAt: completedAt,
+                      type: "system_notice" as const,
+                      message: input.terminal.reason,
+                    },
                   },
                 ]
               : []),

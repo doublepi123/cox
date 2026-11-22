@@ -3990,3 +3990,18 @@ it.effect("keeps a failed root's still-running native children live while the ru
     );
   }),
 );
+
+it.effect("keeps a provider's stop reason on a completed run", () =>
+  Effect.gen(function* () {
+    const reason = "sessionStart hook (user): Plugin guard blocked this session.";
+    const { written } = yield* captureRootRunTermination({
+      key: "completed-stop-reason",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: (ids) => Stream.make({ ...rootTerminalEvent(ids, "completed"), reason }),
+    });
+    assert.deepEqual(
+      written.map((item) => (item.type === "system_notice" ? item.message : item.type)),
+      [reason],
+    );
+  }),
+);

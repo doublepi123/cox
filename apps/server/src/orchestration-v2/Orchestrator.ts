@@ -174,6 +174,7 @@ import {
   endOrphanedNativeSubagent,
   endRunlessRootTurns,
   makeSubagentChildThread,
+  SUBAGENT_RESULT_TURN_ITEM_TYPES,
   subagentResultForRun,
   delegatedTaskProgress,
   subagentThreadTitle,
@@ -12870,7 +12871,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           messageRoles: ["assistant"],
           messageRunIds: [childRun.id],
           turnItemRunId: childRun.id,
-          turnItemTypes: ["assistant_message", "error"],
+          turnItemTypes: SUBAGENT_RESULT_TURN_ITEM_TYPES,
         },
       );
       const childProjection = {
