@@ -48,11 +48,9 @@ export function useDesktopComputerUse() {
     const action = window.coxDesktop?.recheckComputerUse;
     if (!action) return null;
     setChecking(true);
-    try {
-      return await execute(() => action());
-    } finally {
-      setChecking(false);
-    }
+    const result = await execute(() => action());
+    setChecking(false);
+    return result;
   }, []);
   useEffect(() => {
     if (!state?.supported) return;
