@@ -5,6 +5,7 @@ import {
   OrchestratorMcpFailure,
   ProjectId,
   type TaskFolderError,
+  type Project as ProjectRecord,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -24,6 +25,7 @@ import * as ServerSettings from "../../../serverSettings.ts";
 import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import * as DateTime from "effect/DateTime";
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
+import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -80,6 +82,31 @@ const access = Effect.gen(function* () {
   yield* readCaller();
   return yield* Project.ProjectService;
 });
+
+/** Settings, not the project record, hold the default model and actions that new threads use. */
+const withSavedProjectSettings = Effect.gen(function* () {
+  const settings = yield* ServerSettings.ServerSettingsService.pipe(
+    Effect.flatMap((service) => service.getSettings),
+    Effect.mapError(unavailable),
+  );
+  return (project: ProjectRecord) => {
+    const resolved = resolveProjectSettings(settings, project.id, project);
+    return {
+      ...project,
+      defaultModelSelection:
+        resolved.sources.defaultModelSelection === "project"
+          ? resolved.settings.defaultModelSelection
+          : null,
+      scripts: resolveProjectScripts(settings, project),
+    };
+  };
+});
+
+// The project is already committed, so a failed Settings read must not report the create as failed.
+const withSavedProjectSettingsAfterCreate = withSavedProjectSettings.pipe(
+  Effect.orElseSucceed(() => (project: ProjectRecord) => project),
+);
+
 export const layer = McpToolAccess.toLayer(ProjectToolkit, {
   cox_thread_launch: McpToolAccess.startsThreads(
     (input) => input,
@@ -279,9 +306,10 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
     Effect.gen(function* () {
       const projects = yield* access;
       // Identities are resolved: linked environments find this side's project by repository.
-      return yield* projects
+      const page = yield* projects
         .listPage({ cursor: input.cursor ?? 0, limit: input.limit ?? 20 })
         .pipe(Effect.mapError(unavailable));
+      return { ...page, projects: page.projects.map(yield* withSavedProjectSettings) };
     }),
   ),
   cox_project_read: McpToolAccess.reads((input) =>
@@ -293,7 +321,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           code: "invalid_request",
           message: "The project was not found.",
         });
-      return result.value;
+      return (yield* withSavedProjectSettings)(result.value);
     }),
   ),
   cox_project_create: McpToolAccess.writesEnvironment(({ workspaceRoot, ...input }) =>
@@ -331,22 +359,24 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             ),
           );
         return {
-          ...project,
+          ...(yield* withSavedProjectSettingsAfterCreate)(project),
           ...(created.commitError === undefined ? {} : { commitError: created.commitError }),
         };
       }
       const commandId = yield* newCommandId();
-      return yield* projects
+      const created = yield* projects
         .create({ ...input, workspaceRoot, commandId, projectId: ProjectId.make(commandId) })
         .pipe(Effect.mapError(projectFailure));
+      return (yield* withSavedProjectSettingsAfterCreate)(created);
     }),
   ),
   cox_project_update: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const projects = yield* Project.ProjectService;
-      return yield* projects
+      const updated = yield* projects
         .update({ ...input, commandId: yield* newCommandId() })
         .pipe(Effect.mapError(projectFailure));
+      return (yield* withSavedProjectSettings)(updated);
     }),
   ),
   cox_project_delete: McpToolAccess.writesEnvironment((input) =>

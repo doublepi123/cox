@@ -49,6 +49,7 @@ const shared = {
 };
 const ProjectListTool = Tool.make("cox_project_list", {
   ...shared,
+  dependencies: [...shared.dependencies, ServerSettings.ServerSettingsService],
   description: "List projects. Pages can shift.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
@@ -64,6 +65,7 @@ const ProjectListTool = Tool.make("cox_project_list", {
   .annotate(Tool.Destructive, false);
 const ProjectReadTool = Tool.make("cox_project_read", {
   ...shared,
+  dependencies: [...shared.dependencies, ServerSettings.ServerSettingsService],
   description: "Read one project: workspace and saved scripts.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
@@ -82,10 +84,15 @@ const ProjectCreateTool = Tool.make("cox_project_create", {
     workspaceRoot: Schema.optional(ProjectCreatePayload.fields.workspaceRoot),
   }),
   success: Schema.Struct({ ...Project.fields, commitError: Schema.optional(Schema.String) }),
-  dependencies: [...shared.dependencies, ManagedProjectFolders.ManagedProjectFolders],
+  dependencies: [
+    ...shared.dependencies,
+    ManagedProjectFolders.ManagedProjectFolders,
+    ServerSettings.ServerSettingsService,
+  ],
 }).annotate(Tool.Destructive, true);
 const ProjectUpdateTool = Tool.make("cox_project_update", {
   ...shared,
+  dependencies: [...shared.dependencies, ServerSettings.ServerSettingsService],
   description: "Update one project's settings. Omitted fields are unchanged.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
