@@ -3181,11 +3181,35 @@ it.effect("ProviderSessionManagerV2 interrupts only running tools from the relea
         { providerThread: providerThreads[0]!, status: "completed" },
         { providerThread: providerThreads[1]!, status: "running" },
       ] as const;
+      const nodeIds = tools.map((_, index) => NodeId.make("release-tool-node-" + index));
       const ids = tools.map((_, index) => TurnItemId.make("release-tool-" + index));
       yield* Effect.forEach(tools, ({ providerThread, status }, index) =>
         Effect.gen(function* () {
           yield* eventSink.write({
             events: [
+              {
+                id: yield* idAllocator.allocate.event({ threadId }),
+                type: "node.updated",
+                threadId,
+                occurredAt: now,
+                payload: {
+                  id: nodeIds[index]!,
+                  threadId,
+                  runId: null,
+                  parentNodeId: null,
+                  rootNodeId: nodeIds[index]!,
+                  kind: "tool_call",
+                  status,
+                  countsForRun: true,
+                  providerThreadId: providerThread.id,
+                  providerTurnId: null,
+                  nativeItemRef: null,
+                  runtimeRequestId: null,
+                  checkpointScopeId: null,
+                  startedAt: now,
+                  completedAt: status === "completed" ? now : null,
+                },
+              },
               {
                 id: yield* idAllocator.allocate.event({ threadId }),
                 type: "turn-item.updated",
@@ -3195,7 +3219,7 @@ it.effect("ProviderSessionManagerV2 interrupts only running tools from the relea
                   id: ids[index]!,
                   threadId,
                   runId: null,
-                  nodeId: null,
+                  nodeId: nodeIds[index]!,
                   providerThreadId: providerThread.id,
                   providerTurnId: null,
                   nativeItemRef: null,
@@ -3216,9 +3240,16 @@ it.effect("ProviderSessionManagerV2 interrupts only running tools from the relea
         }),
       );
       yield* manager.detach({ providerSessionId, threadId, detail: "Thread settled." });
-      const { turnItems } = yield* projectionStore.getThreadRecords(threadId, ["turnItems"]);
+      const { turnItems, nodes } = yield* projectionStore.getThreadRecords(threadId, [
+        "turnItems",
+        "nodes",
+      ]);
       assert.deepStrictEqual(
         ids.map((id) => turnItems.find((item) => item.id === id)?.status),
+        ["interrupted", "completed", "running"],
+      );
+      assert.deepStrictEqual(
+        nodeIds.map((id) => nodes.find((node) => node.id === id)?.status),
         ["interrupted", "completed", "running"],
       );
     }).pipe(
