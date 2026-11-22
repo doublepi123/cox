@@ -1158,7 +1158,7 @@ it.layer(
     }),
   );
 
-  it.effect("strips replayable CSI and DCS traffic while preserving setters", () =>
+  it.effect("strips replayable CSI, DCS and OSC traffic while preserving setters", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
       yield* manager.open(openInput());
@@ -1173,14 +1173,20 @@ it.layer(
       process.emitData("\u001bP+q544e\u001b\\\u001bP1+r544e=1b\u001b\\");
       process.emitData("\u001bP$qm\u0007hidden\u001b\\\u001bP+q544e\u0007hidden\u001b\\");
       process.emitData('\u001b[!p\u001b["p\u001b[4 q\u001b[u');
-      process.emitData("done\n");
+      // Ghostty permits mixed setters and queries, skips LF and empty fields, and runs OSC on CAN.
+      process.emitData("\u001b]4;1;red;2;?\u0007\u001b]0;t\u001b]\n4;1;?;;2;?;3\u0018\u001b]4;3;?");
+      process.emitData("\u001b]0;x\u001b\u001b[?2026$p");
+      process.emitData(`\u001b[${"0".repeat(5000)}`);
+      process.emitData("31mXdone\n");
 
       yield* manager.close({ threadId: "thread-1" });
 
       const reopened = yield* manager.open(openInput());
-      expect(reopened.history.startsWith('prompt \u001b[!p\u001b["p\u001b[4 q\u001b[udone\n')).toBe(
-        true,
-      );
+      expect(reopened.history.startsWith(
+        'prompt \u001b[!p\u001b["p\u001b[4 q\u001b[u' +
+          "\u001b]4;1;red;2;?\u0007\u001b]0;t\u001b\\\u001b]4;3;?\u001b]0;x\u001b" +
+          `\u001b[${"0".repeat(5000)}31mXdone\n`,
+      )).toBe(true);
     }),
   );
 
