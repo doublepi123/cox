@@ -1,4 +1,11 @@
 import type { EnvironmentId } from "@t3tools/contracts";
+import { sideThreadKindOf, sideThreadOpenIntentOf } from "@t3tools/client-runtime/side-thread";
+import { useNavigate } from "@tanstack/react-router";
+import type { MouseEvent } from "react";
+import { useThreadRouteRef } from "../../hooks/useThreadRouteTarget";
+import { openRelatedSideThread } from "../../lib/sideChatPane";
+import { isMacPlatform } from "../../lib/utils";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   formatThreadLink,
   guessThreadLinkRef,
@@ -18,6 +25,8 @@ export function MarkdownThreadLink(props: {
   readonly link: ThreadLink;
   readonly label: string | null;
 }) {
+  const current = useThreadRouteRef();
+  const navigate = useNavigate();
   const candidates = threadLinkCandidates(props.link, props.environmentId);
   const writtenRef = candidates[0]!;
   const written = useThreadShell(writtenRef);
@@ -63,8 +72,22 @@ export function MarkdownThreadLink(props: {
   }
   const ref = resolved?.ref ?? writtenRef;
   const title = resolved?.metadata.title.trim() || props.label || "Untitled thread";
+  const shell = written ?? decoded ?? remote;
+  const onOpen = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 && event.button !== 1) return;
+    event.preventDefault();
+    openRelatedSideThread({
+      thread: shell,
+      threadRef: ref,
+      current,
+      intent: sideThreadOpenIntentOf(event, isMacPlatform(navigator.platform)),
+      navigate: (target) =>
+        void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(target) }),
+    });
+  };
   return (
     <ThreadContextChip
+      {...(sideThreadKindOf(shell) !== null ? { onOpen } : {})}
       record={{ ...ref, title }}
       projectId={resolved?.metadata.projectId ?? null}
       copyMarkdown={formatThreadLink(ref, title)}

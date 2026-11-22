@@ -864,6 +864,31 @@ export function ChatSettingsPanel() {
         </AdvancedSettings>
       </SettingsSection>
 
+      <SettingsSection id="side-threads" title={t("Side threads")}>
+        <SettingsRow
+          title={t("Open subagents and side chats")}
+          description={t("Use a modified click to open the thread in the other place.")}
+          control={
+            <Select
+              value={settings.sideThreadOpenTarget}
+              onValueChange={(value) => {
+                if (value === "panel" || value === "main")
+                  updateSettings({ sideThreadOpenTarget: value });
+              }}
+            >
+              <SelectTrigger size="sm" fit aria-label={t("Open subagents and side chats")}>
+                <SelectValue>
+                  {settings.sideThreadOpenTarget === "panel" ? t("Side panel") : t("Main view")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="panel">{t("Side panel")}</SelectItem>
+                <SelectItem value="main">{t("Main view")}</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+      </SettingsSection>
       <SettingsSection id="follow-ups" title={t("Follow-ups")}>
         <SettingsRow
           {...searchableSetting("follow-up-behavior")}

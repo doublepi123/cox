@@ -1,7 +1,14 @@
 import type { OrchestrationV2ThreadShell, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  resolveSideThreadOpenTarget,
+  sideThreadKindOf,
+  type SideThreadOpenIntent,
+} from "@t3tools/client-runtime/side-thread";
+
+import { getClientSettings } from "../hooks/useSettings";
 
 import type { ToolCallDiffTarget } from "../diffPanelStore";
-import { useRightPanelStore } from "../rightPanelStore";
+import { rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
 
 /** Whether an event started in the side chat pane (`data-side-chat-pane`), which the main chat ignores. */
 export function isInSideChatPane(target: EventTarget | null): boolean {
@@ -18,14 +25,29 @@ export interface SideChatParentPanel {
   readonly runShellCommand: (command: string) => void;
 }
 
-/** Opens `thread` in its tab when it is a side chat of `parentRef`; false for any other thread. */
-export function openSideChatTab(
-  parentRef: ScopedThreadRef,
-  thread: Pick<OrchestrationV2ThreadShell, "id" | "lineage"> | null,
-): boolean {
-  if (thread?.lineage.sideChat !== true || thread.lineage.parentThreadId !== parentRef.threadId) {
-    return false;
+export function openRelatedSideThread(input: {
+  thread:
+    | (Pick<OrchestrationV2ThreadShell, "lineage"> &
+        Partial<Pick<OrchestrationV2ThreadShell, "creationSource">>)
+    | null;
+  threadRef: ScopedThreadRef;
+  current: ScopedThreadRef | null;
+  intent?: SideThreadOpenIntent;
+  navigate: (ref: ScopedThreadRef) => void;
+}) {
+  const host = input.current ? rightPanelHostRef(input.current) : null;
+  const target = resolveSideThreadOpenTarget({
+    preference: getClientSettings().sideThreadOpenTarget,
+    intent: input.intent ?? "primary",
+    panelAvailable:
+      sideThreadKindOf(input.thread) !== null &&
+      host !== null &&
+      host.environmentId === input.threadRef.environmentId &&
+      host.threadId !== input.threadRef.threadId,
+  });
+  if (target === "panel" && host) {
+    useRightPanelStore.getState().openSideChat(host, input.threadRef.threadId);
+  } else {
+    input.navigate(input.threadRef);
   }
-  useRightPanelStore.getState().openSideChat(parentRef, thread.id);
-  return true;
 }

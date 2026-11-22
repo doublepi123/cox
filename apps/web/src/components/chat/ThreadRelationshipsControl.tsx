@@ -78,7 +78,12 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { AgentElapsed } from "./AgentElapsed";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
-import { openSideChatTab } from "../../lib/sideChatPane";
+import { openRelatedSideThread } from "../../lib/sideChatPane";
+import {
+  sideThreadOpenIntentOf,
+  type SideThreadOpenIntent,
+} from "@t3tools/client-runtime/side-thread";
+import { isMacPlatform } from "../../lib/utils";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -537,11 +542,17 @@ export function ThreadRelationshipsPanel(props: {
   }
 
   // Idle children can be omitted from the shell; opening one loads its own detail.
-  const openThread = (threadId: ThreadId) => {
-    if (openSideChatTab(ref, graph.nodes.get(threadId)?.thread ?? null)) return;
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(scopeThreadRef(props.environmentId, threadId)),
+  const openThread = (threadId: ThreadId, intent: SideThreadOpenIntent = "primary") => {
+    openRelatedSideThread({
+      thread: graph.nodes.get(threadId)?.thread ?? null,
+      threadRef: scopeThreadRef(props.environmentId, threadId),
+      current: currentThread?.lineage.parentThreadId === threadId ? null : ref,
+      intent,
+      navigate: (target) =>
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(target),
+        }),
     });
   };
 
@@ -749,7 +760,15 @@ export function ThreadRelationshipsPanel(props: {
               size="sm"
               variant="ghost"
               part={workflowGroup ? "primary" : "row"}
-              onClick={() => openThread(threadId)}
+              onClick={(event) =>
+                openThread(
+                  threadId,
+                  sideThreadOpenIntentOf(event, isMacPlatform(navigator.platform)),
+                )
+              }
+              onAuxClick={(event) => {
+                if (event.button === 1) openThread(threadId, "alternate");
+              }}
             />
           }
         >

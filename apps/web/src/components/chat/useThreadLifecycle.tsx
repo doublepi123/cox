@@ -69,7 +69,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { RunStopPresentation } from "@t3tools/client-runtime/state/thread-execution";
 import { Atom } from "effect/reactivity";
 import { environmentThreadDetails } from "../../state/threads";
-import { openSideChatTab } from "../../lib/sideChatPane";
+import { openRelatedSideThread } from "../../lib/sideChatPane";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
 const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 const NO_RUN_STOP_ATOM = Atom.make<RunStopPresentation | null>(null).pipe(
@@ -455,10 +455,15 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       toastManager.add({ type: "info", title: "This thread is no longer available" });
       return;
     }
-    if (activeThreadRef && openSideChatTab(activeThreadRef, shell)) return;
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(threadRef),
+    openRelatedSideThread({
+      thread: shell,
+      threadRef,
+      current: activeThread?.lineage.parentThreadId === threadId ? null : activeThreadRef,
+      navigate: (target) =>
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(target),
+        }),
     });
   };
   const onOpenRelatedThreadStable = useStableCallback(onOpenRelatedThread);

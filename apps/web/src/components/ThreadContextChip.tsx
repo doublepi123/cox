@@ -2,6 +2,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { ThreadContextRecord, ProjectId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
+import type { MouseEvent } from "react";
 
 import { useProject, useServerConfigs, useThreadShell } from "~/state/entities";
 import { orchestrationEnvironment } from "~/state/orchestration";
@@ -17,6 +18,7 @@ export function ThreadContextChip(props: {
   projectId?: ProjectId | null;
   copyMarkdown?: string;
   unreadable?: boolean;
+  onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const { environmentId, threadId } = props.record;
   const shell = useThreadShell({ environmentId, threadId });
@@ -46,6 +48,8 @@ export function ThreadContextChip(props: {
                 to="/$environmentId/$threadId"
                 params={{ environmentId, threadId }}
                 draggable={false}
+                onClick={props.onOpen}
+                onAuxClick={props.onOpen}
               />
             }
             aria-label={`Thread, ${title}`}

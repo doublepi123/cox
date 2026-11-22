@@ -11,7 +11,9 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import { Trash2Icon, XIcon } from "lucide-react";
+import { Maximize2Icon, Trash2Icon, XIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { useEffect, useState } from "react";
 
 import { ComposerHandleContext } from "../../composerHandleContext";
@@ -40,6 +42,7 @@ export default function SideChatPane(props: {
 }) {
   const { parentRef, threadId } = props;
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const threadRef = scopeThreadRef(parentRef.environmentId, threadId);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the parent panel as host in the panel store
   useEffect(
@@ -48,6 +51,8 @@ export default function SideChatPane(props: {
   );
   const shell = useQuietThreadShell(threadRef);
   const parent = useQuietThreadShell(parentRef);
+  const isOwnSideChat =
+    shell?.lineage.sideChat === true && shell.lineage.parentThreadId === parentRef.threadId;
   const snapshotLoaded = useEnvironmentShellHasSnapshot(parentRef.environmentId);
   const projection = useQuietThreadProjection(shell === null ? null : threadRef)?.projection;
   const canOperate = useEnvironmentScope(parentRef.environmentId, AuthOrchestrationOperateScope);
@@ -128,38 +133,56 @@ export default function SideChatPane(props: {
     <div data-side-chat-pane={threadId} className="flex h-full min-h-0 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-1 pl-3">
         <span className="min-w-0 flex-1 truncate text-xs font-medium">
-          {shell?.title ?? "Side chat"}
+          {shell?.title ?? t("Thread")}
         </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="xs"
-                aria-disabled={bringBackBlockedReason !== null || bringingBack || undefined}
-                onClick={() => void bringBack()}
-              >
-                {t("Bring back")}
-              </Button>
-            }
-          />
-          <TooltipPopup side="bottom">
-            {bringBackBlockedReason ?? "Adds this side chat to the main thread's next message."}
-          </TooltipPopup>
-        </Tooltip>
+        {isOwnSideChat ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    aria-disabled={bringBackBlockedReason !== null || bringingBack || undefined}
+                    onClick={() => void bringBack()}
+                  >
+                    {t("Bring back")}
+                  </Button>
+                }
+              />
+              <TooltipPopup side="bottom">
+                {bringBackBlockedReason ?? "Adds this side chat to the main thread's next message."}
+              </TooltipPopup>
+            </Tooltip>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t("Delete side chat")}
+              disabled={!canOperate || shell === null || deleting}
+              onClick={() => void deleteSideChat()}
+            >
+              <Trash2Icon />
+            </Button>
+          </>
+        ) : null}
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label={t("Delete side chat")}
-          disabled={!canOperate || shell === null || deleting}
-          onClick={() => void deleteSideChat()}
+          aria-label={t("Open in main view")}
+          onClick={() => {
+            useRightPanelStore.getState().closeSurface(parentRef, `side-chat:${threadId}`);
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(threadRef),
+            });
+          }}
         >
-          <Trash2Icon />
+          <Maximize2Icon />
         </Button>
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label={t("Close side chat")}
+          aria-label={t("Close side thread")}
           onClick={props.onClose}
         >
           <XIcon />
@@ -167,7 +190,7 @@ export default function SideChatPane(props: {
       </div>
       {shell === null ? (
         snapshotLoaded ? (
-          <p className="p-3 text-xs text-muted-foreground">{t("This side chat was deleted.")}</p>
+          <p className="p-3 text-xs text-muted-foreground">{t("This thread was deleted.")}</p>
         ) : null
       ) : (
         <BackgroundThreadContext value>

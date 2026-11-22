@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./side-thread": {
+      "types": "./src/sideThread.ts",
+      "default": "./src/sideThread.ts"
+    },
     "./state/model-service-tests": {
       "types": "./src/state/modelServiceTests.ts",
       "default": "./src/state/modelServiceTests.ts"
