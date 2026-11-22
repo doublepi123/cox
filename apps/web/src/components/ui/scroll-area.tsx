@@ -27,6 +27,7 @@ function ScrollArea({
   scrollbarGutter = false,
   hideScrollbars = false,
   chainVerticalScroll = false,
+  observeContent = false,
   radius = "inherit",
   viewportTabIndex,
   sizing = "default",
@@ -39,6 +40,7 @@ function ScrollArea({
   scrollbarGutter?: boolean;
   hideScrollbars?: boolean;
   chainVerticalScroll?: boolean;
+  observeContent?: boolean;
   radius?: "inherit" | "none";
   viewportTabIndex?: number;
   sizing?: "default" | "content" | "flex" | "diagnostics";
@@ -91,7 +93,14 @@ function ScrollArea({
         )}
         data-slot="scroll-area-viewport"
       >
-        {children}
+        {observeContent ? (
+          // Base UI only observes content resizes through Content; minWidth overrides its fit-content default.
+          <ScrollAreaPrimitive.Content style={{ minWidth: 0 }}>
+            {children}
+          </ScrollAreaPrimitive.Content>
+        ) : (
+          children
+        )}
       </ScrollAreaPrimitive.Viewport>
       {!hideScrollbars && (
         <>

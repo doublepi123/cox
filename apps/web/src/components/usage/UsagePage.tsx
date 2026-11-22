@@ -510,7 +510,7 @@ export function UsagePage() {
           <UsageWindowClose />
         </header>
 
-        <ScrollArea sizing="flex">
+        <ScrollArea sizing="flex" observeContent>
           <WorkspacePageContainer width="wide">
             {selectedEnvironments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
