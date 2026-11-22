@@ -107,6 +107,7 @@ overrides:
   "@effect/platform-node-shared": "catalog:"
   "@effect/vitest": "catalog:"
   "@effect/vitest>vitest": "-"
+  "@pierre/diffs>@pierre/highlights": 0.5.1
   "@pierre/diffs>@shikijs/transformers": ^4.2.0
   remark-math>micromark-extension-math: npm:micromark-extension-llm-math@3.1.0
   micromark-extension-gfm-table: 2.1.1

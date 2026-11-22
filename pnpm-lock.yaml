@@ -259,6 +259,7 @@ overrides:
   '@effect/platform-node-shared': 4.0.5
   '@effect/vitest': 4.0.5
   '@effect/vitest>vitest': '-'
+  '@pierre/diffs>@pierre/highlights': 0.5.1
   '@pierre/diffs>@shikijs/transformers': ^4.2.0
   remark-math>micromark-extension-math: npm:micromark-extension-llm-math@3.1.0
   micromark-extension-gfm-table: 2.1.1
@@ -3114,8 +3115,8 @@ packages:
       react-dom:
         optional: true
 
-  '@pierre/highlights@0.2.0':
-    resolution: {integrity: sha512-hTpcOU1EzDAP4bYtEhxmMu2jwMvtkUydRUBUpWMSHTs3dw0IaC3Ld5ansMy18L0GE3b6Vfl2OGkLK+pWWpnBmw==}
+  '@pierre/highlights@0.5.1':
+    resolution: {integrity: sha512-c2WF6sgwgKdxXU6FpWDLWUYHRca/cJy+3QJkWAqYqEAFxqlPf8eSH0ehHcFFjKBmT+9KBl9H7q6z7HMRU7+m6g==}
 
   '@pierre/theme@2.0.0':
     resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
@@ -7754,7 +7755,7 @@ snapshots:
 
   '@pierre/diffs@1.6.1(patch_hash=4645364ddf113e48e8827f3b4966b3b1ff745317011e5a3d904e2d8672dee7dc)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@pierre/highlights': 0.2.0
+      '@pierre/highlights': 0.5.1
       '@pierre/theme': 2.0.0
       '@pierre/theming': 1.0.2(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.5.0)
       diff: 9.0.0
@@ -7767,7 +7768,7 @@ snapshots:
     transitivePeerDependencies:
       - '@shikijs/themes'
 
-  '@pierre/highlights@0.2.0': {}
+  '@pierre/highlights@0.5.1': {}
 
   '@pierre/theme@2.0.0': {}
 
