@@ -1028,9 +1028,22 @@ describe("question answer paths", () => {
           ext: "odp",
           parts: {
             "content.xml":
-              "<office:document><draw:page><text:p>First</text:p></draw:page><draw:page><text:p>Second</text:p></draw:page></office:document>",
+              "<office:document>" +
+              "<draw:page><draw:frame><draw:text-box><text:p>First slide</text:p></draw:text-box></draw:frame>" +
+              "<svg:title>Overview</svg:title>" +
+              "<presentation:notes><draw:frame><draw:text-box><text:p>Speaker only</text:p></draw:text-box></draw:frame></presentation:notes></draw:page>" +
+              "<draw:page><text:p>Second</text:p><presentation:notes><draw:g><draw:page-thumbnail>" +
+              "<svg:title>Slide preview</svg:title><svg:desc>Thumbnail metadata</svg:desc>" +
+              "</draw:page-thumbnail></draw:g></presentation:notes></draw:page>" +
+              "<draw:page><text:p>Third</text:p><presentation:notes><draw:frame><draw:text-box>" +
+              '<table:table><table:table-column/><table:table-row><table:table-cell office:value-type="float" office:value="42"/></table:table-row></table:table>' +
+              "</draw:text-box></draw:frame></presentation:notes></draw:page></office:document>",
           },
-          expected: ["## Slide 1", "First", "## Slide 2", "Second"],
+          expected: [
+            "## Slide 1", "First slide", "Overview", "Notes:\nSpeaker only",
+            "## Slide 2", "Second", "## Slide 3", "Third", "Notes:\n42",
+          ],
+          absent: ["Slide preview", "Thumbnail metadata"],
         },
         {
           ext: "ods",

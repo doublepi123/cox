@@ -73,7 +73,11 @@ function xml(source: string, odfSpaces = false, htmlEntities = false): XmlNode {
     const parent = stack.at(-1)!;
     // Markup-compatibility fallbacks repeat their mc:Choice content, e.g. Word text boxes.
     // Keep one when no Choice carries text, such as a chart with a VML caption.
-    if (node.name === "Fallback" && parent.hasTextChoice) {
+    if (
+      (node.name === "Fallback" && parent.hasTextChoice) ||
+      (odfSpaces && node.name === "page-thumbnail" &&
+        stack.some((ancestor) => ancestor.name === "notes"))
+    ) {
       parent.children.pop();
       return;
     }
@@ -530,8 +534,19 @@ async function* document(path: string, extension: string): AsyncGenerator<TextPa
           yield extension === ".ods"
             ? `\n\n## Sheet: ${part.attrs.name ?? "Untitled"}\n`
             : `\n\n## Slide ${++index}\n`;
-          if (extension === ".ods") yield* table(part);
-          else yield* paragraphs(part);
+          if (extension === ".ods") {
+            yield* table(part);
+            continue;
+          }
+          const notes = children(part).find((child) => child.name === "notes");
+          yield* paragraphs({
+            ...part,
+            children: part.children.filter((child) => child !== notes),
+          });
+          if (notes && hasCellText(notes)) {
+            yield "\nNotes:\n";
+            yield* paragraphs(notes);
+          }
         }
       }
     } else if (extension === ".xlsx") {
