@@ -361,6 +361,7 @@ export interface ProjectionRecordFilter {
   >;
   readonly providerTurnAttemptIds?: ReadonlyArray<RunAttemptId>;
   readonly subagentIds?: ReadonlyArray<NodeId>;
+  readonly subagentChildThreadIds?: ReadonlyArray<ThreadId>;
   readonly subagentRunIds?: ReadonlyArray<RunId>;
   readonly nodeIds?: ReadonlyArray<NodeId>;
   readonly turnItemRequestIds?: ReadonlyArray<RuntimeRequestId>;
@@ -3509,7 +3510,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ),
           (fields !== undefined && !fields.includes("subagents")) ||
           (window === undefined &&
-            (matchesNothing(filter?.subagentIds) || matchesNothing(filter?.subagentRunIds)))
+            (matchesNothing(filter?.subagentIds) ||
+              matchesNothing(filter?.subagentRunIds) ||
+              matchesNothing(filter?.subagentChildThreadIds)))
             ? Effect.succeed([])
             : window === undefined
               ? sql<PayloadRow>`
@@ -3517,6 +3520,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             FROM orchestration_v2_projection_subagents AS subagent
             WHERE ${threadColumn(filter?.subagentIds)} = ${threadId}
               ${filter?.subagentIds === undefined ? sql`` : sql`AND subagent_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentIds)}))`}
+              ${filter?.subagentChildThreadIds === undefined ? sql`` : sql`AND child_thread_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentChildThreadIds)}))`}
               ${filter?.subagentRunIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentRunIds)}))`}
               ${
                 filter?.omitSettledSubagents !== undefined
