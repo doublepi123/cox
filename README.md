@@ -128,6 +128,8 @@ backup and upgrade procedure above.
 
 Local-by-default does not mean offline inference. Agent providers still use their configured model services, and Git integrations can contact your configured repository hosts. Provider authentication and local credential storage are retained.
 
+Threads in the same checkout share its branch. Cox refuses a branch switch there while one of the threads is working. Use a new worktree when a task needs a separate branch and working directory.
+
 ## Interface language
 
 Cox supports Simplified Chinese and English. The initial interface follows supported

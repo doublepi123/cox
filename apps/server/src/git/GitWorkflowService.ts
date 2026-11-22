@@ -38,6 +38,7 @@ export class GitWorkflowService extends Context.Service<
   GitWorkflowService,
   {
     readonly isRepository: (cwd: string) => Effect.Effect<boolean, GitManagerServiceError>;
+    readonly repositoryRoot: (cwd: string) => Effect.Effect<string | null>;
     readonly hasCommit: (input: {
       readonly cwd: string;
       readonly refName: string;
@@ -285,6 +286,12 @@ export const make = Effect.gen(function* () {
       ensureGit(operation, input.cwd).pipe(Effect.andThen(run(input)));
 
   return GitWorkflowService.of({
+    repositoryRoot: Effect.fn("GitWorkflowService.repositoryRoot")(function (cwd) {
+      return registry.detect({ cwd }).pipe(
+        Effect.map((handle) => handle?.repository.rootPath ?? null),
+        Effect.orElseSucceed(() => null),
+      );
+    }),
     isRepository: Effect.fn("GitWorkflowService.isRepository")(function (cwd) {
       return registry.detect({ cwd }).pipe(
         Effect.map((handle) => handle?.kind === "git"),
