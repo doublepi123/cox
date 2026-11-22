@@ -1472,3 +1472,15 @@ describe("an IME composition over a selection with a chip", () => {
     expect(editor.state.selection.toJSON()).toEqual({ type: "text", anchor, head });
   });
 });
+
+it("does not outline the line under a click made with the node-select modifier held", async () => {
+  await using screen = await mountEditor("ship it");
+  const { editor } = screen;
+  const paragraph = editor.view.dom.querySelector("p")!;
+  const mod = isMacPlatform(navigator.platform) ? "Meta" : "Control";
+  await userEvent.keyboard(`{${mod}>}`);
+  await userEvent.click(paragraph);
+  await userEvent.keyboard(`{/${mod}}`);
+  await vi.waitFor(() => expect(document.activeElement).toBe(editor.view.dom));
+  expect(getComputedStyle(paragraph).outlineStyle).toBe("none");
+});

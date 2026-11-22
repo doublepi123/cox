@@ -1,3 +1,4 @@
+import { Paragraph } from "@tiptap/extension-paragraph";
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isProviderSkillUserInvocable } from "@t3tools/client-runtime/providerSkills";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
@@ -808,7 +809,10 @@ function createComposerExtensions(richText: boolean) {
       italic: false,
       bold: false,
       strike: false,
+      paragraph: false,
     }),
+    // Ctrl/Cmd+click would node-select and outline the whole line.
+    Paragraph.extend({ selectable: false }),
     ComposerInputTransactionsExtension,
     ComposerTextDirectionExtension,
     ComposerMentionExtension,

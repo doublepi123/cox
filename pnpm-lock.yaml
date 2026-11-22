@@ -678,6 +678,9 @@ importers:
       '@tiptap/extension-list':
         specifier: ^3.31.3
         version: 3.32.2(@tiptap/core@3.32.2(@tiptap/pm@3.32.2))(@tiptap/pm@3.32.2)
+      '@tiptap/extension-paragraph':
+        specifier: ^3.31.3
+        version: 3.32.2(@tiptap/core@3.32.2(@tiptap/pm@3.32.2))
       '@tiptap/extension-strike':
         specifier: ^3.31.3
         version: 3.32.2(@tiptap/core@3.32.2(@tiptap/pm@3.32.2))
