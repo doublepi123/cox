@@ -20,8 +20,10 @@ import { resolveCommandPath, resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Cache from "effect/Cache";
 import * as Config from "effect/Config";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -455,6 +457,112 @@ const resolvePnpmGlobalLatestVersion = Effect.fn("resolvePnpmGlobalLatestVersion
   return nonEmptyString(listedEntries?.[0]?.dependencies?.[packageName]?.version);
 });
 
+// Provider packages npm may own. Naming all of them costs one npm start, about a second on
+// Windows, the same as naming one, so providers sharing a global prefix share a run.
+const npmProviderPackageNames = new Set<string>();
+const NPM_IGNORED_VARIABLE = /^(?:CLAUDE|ELECTRON_RUN_AS_NODE$)/i;
+type NpmGlobalLatestVersions = ReadonlyMap<string, string | null>;
+const npmGlobalLatestVersionRuns = new Map<
+  string,
+  Deferred.Deferred<Option.Option<NpmGlobalLatestVersions>>
+>();
+
+// Unlike `npm view`, `outdated` applies min-release-age, before and their excludes.
+const runNpmGlobalLatestVersions = Effect.fn("runNpmGlobalLatestVersions")(function* (
+  npmPath: string,
+  npmPrefix: string,
+  env: NodeJS.ProcessEnv,
+  packageName: string,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  // Only installed packages, so a missing one cannot force the `ls` fallback.
+  const others = yield* Effect.filter(
+    Array.from(npmProviderPackageNames).filter((name) => name !== packageName),
+    (name) =>
+      Effect.forEach([path.join(npmPrefix, "lib"), npmPrefix], (root) =>
+        fileSystem
+          .exists(path.join(root, "node_modules", ...name.split("/"), "package.json"))
+          .pipe(Effect.orElseSucceed(() => false)),
+      ).pipe(Effect.map((found) => found.includes(true))),
+  );
+  const packageNames = [packageName, ...others];
+  const versions = new Map<string, string | null>(packageNames.map((name) => [name, null]));
+  const outdated = yield* runProbe(
+    npmPath,
+    ["outdated", "-g", "--prefix", npmPrefix, "--json", ...packageNames],
+    env,
+    // npm outdated exits 1 when updates are available.
+    [0, 1],
+  );
+  const outdatedEntries = outdated ? Option.getOrUndefined(decodePnpmOutdated(outdated)) : undefined;
+  // npm prints failures such as an unreachable registry as `{"error": ...}`, also exiting 1.
+  if (!outdatedEntries || "error" in outdatedEntries) return versions;
+  for (const name of packageNames) {
+    versions.set(name, nonEmptyString(outdatedEntries[name]?.latest));
+  }
+  // An empty result means the installed version is still the eligible release.
+  const current = packageNames.filter((name) => versions.get(name) === null);
+  if (current.length === 0) return versions;
+  const listed = yield* runProbe(
+    npmPath,
+    ["ls", "-g", "--prefix", npmPrefix, "--depth", "0", "--json", ...current],
+    env,
+    // npm ls still prints the tree but exits 1 when other globals have problems.
+    [0, 1],
+  );
+  const listedEntries = listed ? Option.getOrUndefined(decodeNpmGlobalList(listed)) : undefined;
+  for (const name of current) {
+    versions.set(name, nonEmptyString(listedEntries?.dependencies?.[name]?.version));
+  }
+  return versions;
+});
+
+const resolveNpmGlobalLatestVersion = Effect.fn("resolveNpmGlobalLatestVersion")(function* (
+  npmPath: string,
+  packageName: string,
+  npmPrefix: string,
+  env: NodeJS.ProcessEnv,
+): Effect.fn.Return<string | null, never, ProviderMaintenanceResolverServices> {
+  // Claude's driver sets its own variables and drops ELECTRON_RUN_AS_NODE; npm reads neither.
+  const npmEnv = Object.entries(env).filter(([name]) => !NPM_IGNORED_VARIABLE.test(name));
+  const envHash = NodeCrypto.createHash("sha256");
+  for (const [name, value] of npmEnv.toSorted(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+    envHash.update(`${name}\0${value ?? ""}\0`);
+  }
+  const key = [npmPath, npmPrefix, envHash.digest("hex")].join("\0");
+  const versions = yield* Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const running = npmGlobalLatestVersionRuns.get(key);
+      if (running) return { running };
+      const own = Deferred.makeUnsafe<Option.Option<NpmGlobalLatestVersions>>();
+      npmGlobalLatestVersionRuns.set(key, own);
+      return { own };
+    }),
+    (claim) =>
+      claim.own
+        ? runNpmGlobalLatestVersions(npmPath, npmPrefix, env, packageName).pipe(Effect.asSome)
+        : Deferred.await(claim.running),
+    (claim, exit) =>
+      claim.own
+        ? Effect.sync(() => {
+            if (npmGlobalLatestVersionRuns.get(key) === claim.own) {
+              npmGlobalLatestVersionRuns.delete(key);
+            }
+          }).pipe(
+            Effect.andThen(
+              Deferred.succeed(claim.own, Exit.isSuccess(exit) ? exit.value : Option.none()),
+            ),
+          )
+        : Effect.void,
+  );
+  // A run interrupted before answering, or one started before this package was known, retries.
+  if (Option.isSome(versions) && versions.value.has(packageName)) {
+    return versions.value.get(packageName) ?? null;
+  }
+  return yield* resolveNpmGlobalLatestVersion(npmPath, packageName, npmPrefix, env);
+});
+
 const MiseInstall = Schema.Struct({
   install_path: Schema.String,
   requested_version: Schema.optional(Schema.NullOr(Schema.String)),
@@ -739,6 +847,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   // npm proof outranks a containing Homebrew keg; Homebrew Node globals still belong to npm.
   const npmPrefix = yield* resolveNpmGlobalPrefix(context, packageName);
   if (npmPrefix) {
+    npmProviderPackageNames.add(packageName);
     // npm 12 requires script approval to install native binaries; older npm only warns about the flag.
     return makeProviderMaintenanceCapabilities({
       provider: definition.provider,
@@ -891,6 +1000,7 @@ const resolveNpmGlobalPrefix = Effect.fn("resolveNpmGlobalPrefix")(function* (
 export function makePackageManagedProviderMaintenanceResolver(
   definition: PackageManagedProviderMaintenanceDefinition,
 ): ProviderMaintenanceCapabilitiesResolver {
+  npmProviderPackageNames.add(definition.npmPackageName);
   return {
     resolve: (context) => resolvePackageManagedProviderMaintenance(definition, context),
   };
@@ -937,31 +1047,7 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
   const prefix = prefixIndex >= 0 ? update?.args[prefixIndex + 1] : undefined;
   const lookup = (
     prefix
-      ? Effect.gen(function* () {
-          const args = ["-g", "--prefix", prefix];
-          const outdated = yield* runProbe(
-            npmPath,
-            ["outdated", ...args, "--json", packageName],
-            env,
-            [0, 1],
-          );
-          const entries = outdated
-            ? Option.getOrUndefined(decodePnpmOutdated(outdated))
-            : undefined;
-          if (!entries || Object.hasOwn(entries, "error")) return null;
-          const latest = nonEmptyString(entries[packageName]?.latest);
-          if (latest) return latest;
-          const listing = yield* runProbe(
-            npmPath,
-            ["ls", ...args, "--depth", "0", "--json", packageName],
-            env,
-            [0, 1],
-          );
-          const packages = listing
-            ? Option.getOrUndefined(decodeNpmGlobalList(listing))
-            : undefined;
-          return nonEmptyString(packages?.dependencies?.[packageName]?.version);
-        })
+      ? resolveNpmGlobalLatestVersion(npmPath, packageName, prefix, env)
       : runProbe(
           npmPath,
           ["view", "--global", "--json", `${packageName}@latest`, "version"],
