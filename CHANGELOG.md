@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 0.2.25 — 2026-11-22
+
+- Port the November 22 T3 batch: 217 of 351 upstream commits ported and 23
+  already covered by Cox. The other 111 are excluded because Cox lacks the
+  subsystem; see `docs/upstream-audit-2026-11-22` for every commit.
+- A project can cover several repositories, with per-repository worktrees, Git
+  actions, checkpoints and rewind. Existing single-repository projects keep
+  working unchanged.
+- Cursor SDK agents and text generation run out of process. Cursor background
+  commands survive the turn and wake the agent when they exit, and Cursor no
+  longer repeats its runtime instructions on every turn.
+- File previews gain a copy button, clickable PDF links, and RTF, ODT, CSV and
+  spreadsheet fixes. Drag selection in long files no longer breaks across
+  scroll windows.
+- Fewer Git processes for status, branch lists, diffs, push and pull. Branch
+  pickers keep their list when no ref moved, and Changes reads each patch once.
+- Fixes across ACP, Antigravity, Claude, Codex, Grok, OpenCode and Pi
+  sessions, delegated tasks, queued messages and steering, pull request
+  watches, storage cleanup, scheduled tasks, keybindings and attachments.
+- Upgrade Effect to 4.1.5.
+
 ## 0.2.24 — 2026-11-22
 
 - Add a Cursor CLI provider that runs the official `cursor-agent` over ACP,
