@@ -1,7 +1,9 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
@@ -66,7 +68,7 @@ const check = (signedIn: boolean) =>
       { ...process.env, MOCK_CURSOR_SIGNED_IN: signedIn ? "1" : "0" },
       directory,
     );
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 describe("checkCursorCliProviderStatus", () => {
   it.effect("reports a signed-in CLI as ready with its discovered models", () =>
@@ -111,7 +113,7 @@ describe("checkCursorCliProviderStatus", () => {
       const draft = yield* checkCursorCliProviderStatus(settings, process.env, "/");
       assert.equal(draft.installed, false);
       assert.equal(draft.status, "error");
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });
 

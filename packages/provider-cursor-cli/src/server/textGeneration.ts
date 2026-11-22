@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -18,7 +18,7 @@ export const makeCursorCliTextGeneration = Effect.fn("makeCursorCliTextGeneratio
   settings: CursorCliSettings,
   environment: NodeJS.ProcessEnv,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
   const run: TextGenerationOperations.Runner = Effect.fn("CursorCliTextGeneration.run")(
@@ -31,7 +31,7 @@ export const makeCursorCliTextGeneration = Effect.fn("makeCursorCliTextGeneratio
         cwd,
         clientInfo: { name: "cox-git-text", version: "0.0.0" },
       }).pipe(
-        Effect.provideService(Crypto.Crypto, crypto),
+        Effect.provideService(SecureRandom.SecureRandom, random),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
       yield* runtime.handleSessionUpdate((notification) => {

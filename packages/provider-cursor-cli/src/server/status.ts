@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
-import type * as Crypto from "effect/Crypto";
+import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -214,7 +214,7 @@ export const discoverCursorCliModels = Effect.fn("discoverCursorCliModels")(func
 ): Effect.fn.Return<
   CursorCliModelDiscovery,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > {
   const result = yield* Effect.gen(function* () {
     const runtime = yield* makeCursorCliAcpRuntime({
@@ -326,7 +326,7 @@ export const checkCursorCliProviderStatus = Effect.fn("checkCursorCliProviderSta
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   if (!settings.enabled) {

@@ -13,7 +13,7 @@ import {
 } from "@t3tools/shared/shell";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -94,7 +94,7 @@ export const makeCursorCliInstallation = Effect.fn("makeCursorCliInstallation")(
   }) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const crypto = yield* Crypto.Crypto;
+    const random = yield* SecureRandom.SecureRandom;
     const http = yield* HttpClient.HttpClient;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const scope = yield* Scope.Scope;
@@ -211,10 +211,7 @@ export const makeCursorCliInstallation = Effect.fn("makeCursorCliInstallation")(
 
     const activate = Effect.fn("CursorCliInstallation.activate")(function* (version: string) {
       yield* fs.makeDirectory(binDirectory, { recursive: true });
-      const temporary = path.join(
-        binDirectory,
-        `.${executableName}-${yield* crypto.randomUUIDv4()}`,
-      );
+      const temporary = path.join(binDirectory, `.${executableName}-${yield* random.uuidV4()}`);
       const target = path.join(versionsDirectory, version, executableName);
       if (platform === "win32") {
         yield* fs.writeFileString(temporary, `@echo off\r\n"${target}" %*\r\n`);
@@ -377,7 +374,7 @@ export const makeCursorCliInstallation = Effect.fn("makeCursorCliInstallation")(
               "install",
               "Clear the custom binary path before installing Cursor CLI in Cox.",
             );
-          const id = yield* crypto.randomUUIDv4();
+          const id = yield* random.uuidV4();
           yield* SubscriptionRef.update(state, (current): ProviderInstallState => ({
             ...current,
             operationId: id,

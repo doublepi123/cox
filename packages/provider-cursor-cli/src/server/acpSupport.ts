@@ -1,6 +1,6 @@
 import { ProviderDriverKind, type RuntimeMode } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/compat";
-import type * as Crypto from "effect/Crypto";
+import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -91,7 +91,7 @@ export const makeCursorCliAcpRuntime = Effect.fn("makeCursorCliAcpRuntime")(func
 ): Effect.fn.Return<
   AcpSessionRuntime.AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > {
   const { settings, environment, runtimeMode, clientCapabilities, ...runtimeOptions } = input;
   const context = yield* Layer.build(
