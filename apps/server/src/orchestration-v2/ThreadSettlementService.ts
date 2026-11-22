@@ -349,6 +349,8 @@ export const make = Effect.gen(function* () {
           autoSettleKeepPullRequests: currentSettings.sidebarAutoSettleKeepPullRequests,
         });
         if (settledAt === null) return thread;
+        // A terminal still running a program keeps its thread open; a later sweep settles it.
+        if (yield* terminals.hasActiveSubprocess({ threadId: thread.id })) return null;
         const uuid = yield* crypto.randomUUIDv4();
         yield* orchestrator.dispatch({
           type: "thread.auto-settle",
