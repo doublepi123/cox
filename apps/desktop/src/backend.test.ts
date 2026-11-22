@@ -15,8 +15,12 @@ import { join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home-dir') + 1];
 const mode = process.env.FIXTURE_MODE;
 if (mode === 'computer-ipc') process.on('message', message => {
-  if (message?.type === 'cox:computer-reply') writeFileSync(join(home, 'computer-reply'), JSON.stringify(message));
-  if (message?.type === 'cox:computer-availability') writeFileSync(join(home, 'computer-availability'), JSON.stringify(message));
+  const record = (name, value) => {
+    writeFileSync(join(home, name + '.tmp'), JSON.stringify(value));
+    renameSync(join(home, name + '.tmp'), join(home, name));
+  };
+  if (message?.type === 'cox:computer-reply') record('computer-reply', message);
+  if (message?.type === 'cox:computer-availability') record('computer-availability', message);
 });
 writeFileSync(join(home, 'parent-flag'), String(process.env.COX_DESKTOP_PARENT_PID));
 if (mode === 'exit') process.exit(7);
