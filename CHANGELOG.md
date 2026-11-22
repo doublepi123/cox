@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## Desktop 0.2.40 — 2026-11-23
+
+- Computer control now works on Windows. Settings → Labs shows a Windows setup
+  guide for screen capture, UI Automation and the stop shortcut, and
+  Ctrl+Alt+Shift+Esc stops input. Apps running as administrator are refused
+  with a clear message unless Cox also runs as administrator.
+- Background input no longer interrupts what you are doing in another app:
+  Cox waits until you pause before sending it, and the engine's own cursor is
+  no longer shown over your work.
+- A window you approve for foreground control now receives foreground input
+  for the rest of that thread, and the approval no longer fails to raise it.
+- Each input and element action is recorded in `computer-trace.jsonl` in the
+  desktop log folder with its element role and the key window before and
+  after, without page text.
+
+## 0.2.30 — 2026-11-23
+
+- Computer control errors name missing items in the platform's own terms and
+  explain administrator-app refusals on Windows.
+
 ## Desktop 0.2.38 — 2026-11-22
 
 - Computer control (experimental, macOS) moves to Settings → Labs. Turning it on
