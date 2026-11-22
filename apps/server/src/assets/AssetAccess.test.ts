@@ -24,7 +24,6 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClientRequest, HttpClientResponse, HttpServerResponse } from "effect/http";
 import { vi } from "vite-plus/test";
 
-import * as AssetSigner from "./AssetSigner.ts";
 import * as WorkspacePreviewRevisions from "./WorkspacePreviewRevisions.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -123,9 +122,6 @@ const layerTest = Layer.mergeAll(
   ),
   NativeAppIconResolver.layer.pipe(Layer.provide(layerConfig)),
   ServerSecretStore.layer.pipe(Layer.provide(layerConfig)),
-  AssetSigner.layer.pipe(
-    Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(layerConfig))),
-  ),
   WorkspacePreviewRevisions.layer,
 ).pipe(Layer.provideMerge(NodeServices.layer));
 

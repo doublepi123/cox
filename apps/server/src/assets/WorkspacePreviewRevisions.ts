@@ -1,5 +1,5 @@
 import * as Context from "effect/Context";
-import * as SecureRandom from "effect/crypto/SecureRandom";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -39,12 +39,13 @@ export class WorkspacePreviewRevisions extends Context.Service<
     /** Records a file the page requested, found or not, as part of the page. */
     readonly observe: (document: PreviewDocument, relativePath: string) => Effect.Effect<void>;
   }
->()("t3/assets/WorkspacePreviewRevisions") {}
+>()("cox/assets/WorkspacePreviewRevisions") {}
 
 const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   // Tracked files are forgotten on restart, so revisions from an earlier process must not match.
-  const processId = yield* (yield* SecureRandom.SecureRandom).uuidV4();
+  const crypto = yield* Crypto.Crypto;
+  const processId = yield* crypto.randomUUIDv4();
   // Insertion order is recency: the least recently minted document is dropped first.
   const documents = new Map<string, DocumentState>();
   // One counter for all documents, so a document tracked again never repeats a revision.
