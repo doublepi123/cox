@@ -374,7 +374,7 @@ const ListThreadPullRequestsTool = Tool.make("list_thread_pull_requests", {
 
 const WatchPullRequestTool = Tool.make("watch_pull_request", {
   description:
-    "Watch an open PR for this thread, linking it first if needed. Cox wakes you on failed checks, passed required checks, new comments or reviews, or conflicts. Handle old comments first. Only later ones wake you. After this call, end your turn. The watch stays on after each wake, so do not call this again on a wake. A wake is not a merge decision. Check readiness yourself.",
+    "Watch an open PR for this thread, linking it if needed. Cox wakes you on failed checks, passed required checks, new comments or reviews, conflicts, and once on close. Merge ends the watch. Handle old comments first; only new ones wake you. After this call, end your turn. The watch stays on while open, so do not call this again on a wake. Check merge readiness yourself.",
   parameters: PullRequestTargetInput,
   success: WatchPullRequestResult,
   failure: PullRequestToolError,
