@@ -353,6 +353,28 @@ describe("Antigravity tool results", () => {
     expect(JSON.stringify(event.rawPayload)).not.toContain("formatted_output");
   });
 
+  it("keeps truncated command text valid Unicode", () => {
+    const tail = `${"x".repeat(7_982)}build completed\r\n`;
+    const output = `Command output:\nprefix\r\n🚀${tail}`;
+    const expected = `[Earlier output truncated]\n\n${tail}`;
+    const toolCall = normalizeAntigravityToolCall(
+      parseToolUpdate({
+        ...commandCompleted,
+        update: {
+          ...commandCompleted.update,
+          rawInput: { CommandLine: output },
+          rawOutput: { combinedOutput: output, exit_code: 0 },
+        },
+      }).toolCall,
+    );
+    expect(toolCall.command).toBe(expected.trimEnd());
+    expect(toolCall.data).toMatchObject({
+      rawInput: { CommandLine: expected },
+      rawOutput: { combinedOutput: expected },
+      item: { aggregatedOutput: expected },
+    });
+  });
+
   it("removes inline images while preserving valid tool content and the local image path", () => {
     const inlineImage = "inline-image-bytes".repeat(50_000);
     const notification = {

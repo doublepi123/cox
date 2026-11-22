@@ -158,9 +158,14 @@ export function makeAntigravityUserInputResponse(
 }
 
 function boundText(text: string, limit = TOOL_TEXT_LIMIT): string {
-  return text.length <= limit
-    ? text
-    : copyBoundedText(`${TOOL_TEXT_TRUNCATED}${text.slice(-limit)}`);
+  if (
+    text.length <= limit ||
+    (text.length <= limit + TOOL_TEXT_TRUNCATED.length && text.startsWith(TOOL_TEXT_TRUNCATED))
+  ) {
+    return text;
+  }
+  const tail = text.slice(-limit).replace(/^[\uDC00-\uDFFF]/u, "");
+  return copyBoundedText(`${TOOL_TEXT_TRUNCATED}${tail}`);
 }
 
 interface ToolPayloadBudget {
