@@ -34,7 +34,7 @@ it("tells a screen reader which lines were removed and which were added", async 
     ].join("\n"),
   );
   if (parsed?.kind !== "files") throw new Error("Expected file diffs");
-  await using _screen = await render(
+  await using screen = await render(
     <StyledDiffCodeView
       className="h-[600px] w-[800px]"
       items={buildFileDiffEntries(parsed.files).map(({ fileDiff, fileKey, fileVersion }) => ({
@@ -48,6 +48,7 @@ it("tells a screen reader which lines were removed and which were added", async 
     // This viewer fixture does not navigate or read router state.
     { router: false },
   );
+  await expect.element(screen.getByText("export const name = 1;", { exact: true })).toBeVisible();
   await vi.waitFor(async () => {
     const text = await screenReaderText();
     expect(text).toContain("export const name = 1;Removedconst limit = 10;Addedconst limit = 20;");
