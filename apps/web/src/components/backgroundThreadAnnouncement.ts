@@ -1,8 +1,5 @@
 import type { OrchestrationV2RunStatus, RunId } from "@t3tools/contracts";
-import {
-  backgroundWorkHoldsCompletion,
-  monitorHoldsWakeCompletion,
-} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 
 import type { SidebarThreadSummary } from "../types";
 import { runOutcomeText, THREAD_STATUS_TEXT } from "./chat/threadActivityAnnouncement";
@@ -52,7 +49,8 @@ export function resolveBackgroundThreadRunStatus(thread: {
     status === "completed" &&
     (thread.source.latestRunStopRequested === true ||
       backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks) ||
-      monitorHoldsWakeCompletion(thread.source))
+      (thread.source.latestRunBackgroundWake === true &&
+        thread.pendingBackgroundTasks.some((task) => task.kind === "monitor")))
   ) {
     return null;
   }
