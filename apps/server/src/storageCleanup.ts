@@ -1174,8 +1174,6 @@ const make = Effect.gen(function* () {
           }
           return keep("repository or branch changed");
         }
-        const changes = yield* localChangesReason(worktreePath, settings);
-        if (changes !== null) return keep(changes);
         const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
         const owner = yield* git.execute({
           operation: "StorageCleanup.worktreeRepository",
@@ -1285,6 +1283,9 @@ const make = Effect.gen(function* () {
           }
         }
         if (!eligible) return keep(notDueReason);
+        // A full status walks the whole checkout, so only a removable worktree pays for it.
+        const changes = yield* localChangesReason(worktreePath, settings);
+        if (changes !== null) return keep(changes);
         const blocked = yield* blockedSinceCheck();
         if (blocked !== null) return keep(blocked);
         const bytes = yield* measureWorktree(worktreePath);
