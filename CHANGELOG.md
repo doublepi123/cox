@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## Desktop 0.2.37 — 2026-11-22
+
+- Computer control (experimental, macOS) moves to Settings → Labs. Turning it on
+  opens a permission guide for Screen Recording, Accessibility and Input
+  Monitoring with buttons that open each System Settings pane, rechecks when
+  you return, and offers a restart when macOS needs one.
+- Cox Desktop now runs the computer control engine itself. It downloads the
+  official OMO engine on first use and verifies its checksum.
+- A floating window shows the target window, the current step and the state
+  of each operation, and links back to the thread. Its Stop button, the
+  Stop Computer Control menu item and Control+Option+Command+Escape all stop
+  input until you resume it.
+
+## 0.2.28 — 2026-11-22
+
+- Agents that use Cox MCP tools (OMO, Codex, Claude, Pi and others) get the same
+  computer control tools when Cox Desktop has it enabled. Each operation belongs
+  to its thread; stopping or closing a thread drops its pending input, and a
+  missing macOS permission is reported by name with the way to fix it.
+- OMO no longer loads its own computer control component in Cox.
+
 ## 0.2.27 — 2026-11-22
 
 - Let hosts that manage Cox upgrades disable Cox's own update checks with
