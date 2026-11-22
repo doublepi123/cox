@@ -15,11 +15,7 @@ import {
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import {
-  isCommandAvailable,
-  resolveSpawnCommand,
-  withPathDirectoryListings,
-} from "@t3tools/shared/shell";
+import { isCommandAvailable, resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -442,7 +438,7 @@ const resolveBrowserLaunch = Effect.fn("externalLauncher.resolveBrowserLaunch")(
 const resolveAvailableEditors = Effect.fn("externalLauncher.resolveAvailableEditors")(function* () {
   const platform = yield* HostProcess.Platform;
   const env = { ...(yield* readBrowserLaunchEnv), ...(yield* readCommandLookupEnv) };
-  return yield* buildAvailableEditors(platform, env).pipe(withPathDirectoryListings);
+  return yield* buildAvailableEditors(platform, env);
 });
 
 const resolveFileManagerRevealKind = Effect.fn("externalLauncher.resolveFileManagerRevealKind")(
