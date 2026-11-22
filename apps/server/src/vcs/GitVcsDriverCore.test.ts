@@ -6354,6 +6354,17 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           assert.notInclude(context?.stagedSummary ?? "", "b.txt");
           assert.equal(yield* git(repository, ["diff", "--cached", "--name-only"]), "");
 
+          // A selected file staged and then reverted stages to nothing, like git commit --only.
+          const head = yield* git(repository, ["rev-parse", "HEAD"]);
+          yield* writeTextFile(repository, "README.md", "staged\n");
+          yield* git(repository, ["add", "README.md"]);
+          yield* git(repository, ["restore", "--source=HEAD", "--worktree", "--", "README.md"]);
+          const empty = yield* driver
+            .commit(cwd, "Empty", "", { stage: { filePaths: ["README.md"] } })
+            .pipe(Effect.flip);
+          assert.equal(empty._tag, "GitNothingToCommitError");
+          assert.equal(yield* git(repository, ["rev-parse", "HEAD"]), head);
+
           const commit = yield* driver.commit(cwd, "Add a", "", {
             stage: { filePaths: [selected] },
           });
@@ -7419,6 +7430,27 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         assert.equal(
           yield* git(remote, ["--git-dir=.", "log", "-1", "--pretty=%s", "effect-atom"]),
           "Add alias update",
+        );
+      }),
+    );
+
+    it.effect("commits a merge that leaves the tree unchanged", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature"]);
+        yield* writeTextFile(cwd, "feature.txt", "feature\n");
+        yield* git(cwd, ["add", "feature.txt"]);
+        yield* git(cwd, ["commit", "-m", "Feature"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* git(cwd, ["merge", "--no-commit", "-s", "ours", "feature"]);
+        const mainHead = yield* git(cwd, ["rev-parse", "HEAD"]);
+        const featureHead = yield* git(cwd, ["rev-parse", "feature"]);
+        yield* driver.commit(cwd, "Merge feature", "", { stage: {} });
+        assert.equal(
+          yield* git(cwd, ["show", "-s", "--format=%P", "HEAD"]),
+          `${mainHead} ${featureHead}`,
         );
       }),
     );
