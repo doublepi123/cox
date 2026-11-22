@@ -16,20 +16,22 @@ import PdfViewer from "./PdfViewer";
 
 // Page 1 is a short banner whose title is drawn in two runs with a font change, so pdf.js
 // splits it into two text spans. Page 2 is a letter page rotated a quarter turn.
-function twoPagePdf() {
-  const pages = [
+function testPdf(
+  pages: { box: string; rotate: number; text: string; annots?: string }[] = [
     {
       box: "0 0 612 140",
       rotate: 0,
       text: "BT /F1 24 Tf 30 70 Td (Quarter) Tj /F2 24 Tf (ly outlook) Tj ET",
     },
     { box: "0 0 612 792", rotate: 90, text: "BT /F1 24 Tf 30 700 Td (Budget and risks) Tj ET" },
-  ];
+  ],
+) {
+  const fonts = 3 + pages.length * 2;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Count 2 /Kids [3 0 R 5 0 R] >>",
-    ...pages.flatMap(({ box, rotate, text }, index) => [
-      `<< /Type /Page /Parent 2 0 R /MediaBox [${box}] /Rotate ${rotate} /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents ${4 + index * 2} 0 R >>`,
+    `<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] >>`,
+    ...pages.flatMap(({ box, rotate, text, annots = "" }, index) => [
+      `<< /Type /Page /Parent 2 0 R /MediaBox [${box}] /Rotate ${rotate}${annots && ` /Annots [${annots}]`} /Resources << /Font << /F1 ${fonts} 0 R /F2 ${fonts + 1} 0 R >> >> /Contents ${4 + index * 2} 0 R >>`,
       `<< /Length ${text.length} >>\nstream\n${text}\nendstream`,
     ]),
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
@@ -49,7 +51,7 @@ function twoPagePdf() {
 }
 
 it("fits the width, then finds split and rotated text and jumps to its page", async () => {
-  const url = URL.createObjectURL(twoPagePdf());
+  const url = URL.createObjectURL(testPdf());
   try {
     const container = document.createElement("div");
     container.style.cssText = "display:flex;width:500px;height:600px";
@@ -105,6 +107,49 @@ it("fits the width, then finds split and rotated text and jumps to its page", as
 
     await find.fill(" ");
     await expect.element(screen.getByRole("status")).toHaveTextContent("0/0");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+});
+
+it("follows a link to another page and exposes a web link", async () => {
+  const url = URL.createObjectURL(
+    testPdf([
+      {
+        box: "0 0 612 792",
+        rotate: 0,
+        text: "BT /F1 24 Tf 30 700 Td (See p. 2) Tj 0 -60 Td (Website) Tj ET",
+        annots: [
+          "<< /Type /Annot /Subtype /Link /Rect [30 690 200 730] /Border [0 0 0] /Dest [5 0 R /XYZ 0 792 0] >>",
+          "<< /Type /Annot /Subtype /Link /Rect [30 630 200 670] /Border [0 0 0] /A << /S /URI /URI (https://example.com/) >> >>",
+        ].join(" "),
+      },
+      { box: "0 0 612 792", rotate: 0, text: "BT /F1 24 Tf 30 700 Td (Target) Tj ET" },
+    ]),
+  );
+  try {
+    await using screen = await render(
+      <div className="flex h-[300px] w-[320px]">
+        <PdfViewer src={url} title="Linked PDF" />
+      </div>,
+    );
+    await expect.element(screen.getByText("1 / 2 pages")).toBeVisible();
+    const region = screen.getByRole("region", { name: "Linked PDF" }).element();
+    const web = await vi.waitFor(() => {
+      const link = region.querySelector<HTMLAnchorElement>('a[href="https://example.com/"]');
+      expect(link).not.toBeNull();
+      return link!;
+    });
+    expect(getComputedStyle(web).cursor).toBe("pointer");
+    const internal = await vi.waitFor(() => {
+      const link = Array.from(region.querySelectorAll<HTMLAnchorElement>("a")).find(
+        (anchor) => anchor !== web,
+      );
+      expect(link).toBeDefined();
+      return link!;
+    });
+    internal.click();
+    await expect.element(screen.getByText("2 / 2 pages")).toBeVisible();
   } finally {
     URL.revokeObjectURL(url);
   }
