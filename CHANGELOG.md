@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.26 — 2026-11-22
+
+- Cox no longer creates Codex, Claude or any other built-in provider by
+  default, so a machine without those CLIs stops showing provider start
+  errors. Add providers in Settings or during onboarding. Configured
+  providers, and Codex or Claude defaults you already used in threads, keep
+  working after the upgrade.
+- Resetting an added default provider keeps it instead of removing it.
+
 ## 0.2.25 — 2026-11-22
 
 - Port the November 22 T3 batch: 217 of 351 upstream commits ported and 23
