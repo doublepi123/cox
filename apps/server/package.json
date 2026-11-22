@@ -15,7 +15,7 @@
     "dev:built": "vp run dev",
     "build:bundle": "vp pack",
     "start": "node dist/bin.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp run typecheck:cached",
     "test": "vp test run",
     "record:codex-replay": "bun scripts/record-codex-app-server-replay-fixture.ts",
     "record:claude-replay": "bun scripts/record-claude-agent-sdk-replay-fixture.ts",

@@ -15,10 +15,15 @@ export default mergeConfig(
   defineConfig({
     run: {
       tasks: {
-        build: {
+        "build:with-web": {
           command: "node scripts/cli.ts build",
           dependsOn: ["@t3tools/web#build"],
           cache: false,
+        },
+        // A local tsbuildinfo is leftover build state, not a typecheck input.
+        "typecheck:cached": {
+          command: "tsc --noEmit --incremental",
+          cache: { input: [{ auto: true }, "!*.tsbuildinfo"] },
         },
       },
     },
