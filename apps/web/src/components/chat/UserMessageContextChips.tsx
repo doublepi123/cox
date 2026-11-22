@@ -92,7 +92,7 @@ function UserMessageMentionChip(props: {
           </ContextChip>
         }
       />
-      <TooltipPopup>
+      <TooltipPopup interactive>
         <WorkspaceEntryTooltip
           path={props.record.path}
           environmentId={ctx.activeThreadEnvironmentId}

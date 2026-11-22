@@ -303,7 +303,7 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
       <Tooltip>
         <TooltipTrigger render={chip} />
-        <TooltipPopup side="top">
+        <TooltipPopup side="top" interactive>
           <WorkspaceEntryTooltip
             path={path}
             environmentId={actions.environmentId}

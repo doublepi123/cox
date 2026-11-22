@@ -377,7 +377,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
           )
         }
       />
-      <TooltipPopup side="top" variant="code">
+      <TooltipPopup side="top" variant="code" interactive>
         <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />
       </TooltipPopup>
     </Tooltip>
