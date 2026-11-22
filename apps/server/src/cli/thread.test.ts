@@ -2,7 +2,7 @@ import { assert, it } from "@effect/vitest";
 import { RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { readLatestMessages, type ThreadTools, waitForRun } from "./thread.ts";
+import { latestRunError, readLatestMessages, type ThreadTools, waitForRun } from "./thread.ts";
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
@@ -158,5 +158,31 @@ it.effect("show returns a --messages count larger than one call can spread", () 
       messages.map((item) => item.itemId),
       latest(200_000),
     );
+  }),
+);
+
+it.effect("show gives the latest run's last error only when that run did not complete", () =>
+  Effect.gen(function* () {
+    const page = {
+      thread: {},
+      items: [
+        { itemId: "item-0", runId: RunId.make("run-0"), type: "error", text: "earlier run" },
+        { itemId: "item-1", runId, type: "error", text: "first try" },
+        { itemId: "item-2", runId, type: "error", text: "Usage limit reached" },
+      ],
+      nextPosition: null,
+      hasMore: false,
+    };
+    const { tools, calls } = scriptedTools({ cox_thread_read: [page] });
+
+    assert.strictEqual(
+      yield* latestRunError(tools, { threadId, status: "failed", latestRunId: runId }),
+      "Usage limit reached",
+    );
+    assert.deepInclude(calls[0]?.args, { view: "activity" });
+    for (const status of ["completed", "running", "queued", "idle"] as const) {
+      assert.isNull(yield* latestRunError(tools, { threadId, status, latestRunId: runId }), status);
+    }
+    assert.lengthOf(calls, 1);
   }),
 );
