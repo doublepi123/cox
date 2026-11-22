@@ -1,6 +1,6 @@
 {
   "name": "@cox/desktop",
-  "version": "0.2.38",
+  "version": "0.2.39",
   "private": true,
   "description": "Cox desktop client for local and user-operated remote servers",
   "license": "MIT",
