@@ -37,6 +37,22 @@ afterEach(() => {
 });
 
 describe("AzureDevOpsCli.layer", () => {
+  it.effect("creates a draft pull request directly", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("{}")));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      yield* az.createPullRequest({
+        cwd: "/repo",
+        baseBranch: "main",
+        headSelector: "feature",
+        title: "Draft",
+        bodyFile: "/tmp/body.md",
+        draft: true,
+      });
+      assert.deepStrictEqual(mockRun.mock.calls.at(-1)?.[0].args.slice(-2), ["--draft", "true"]);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("parses pull request view output", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
