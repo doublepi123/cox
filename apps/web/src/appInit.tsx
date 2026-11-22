@@ -53,6 +53,8 @@ import {
   startDesktopSettingsNavigation,
 } from "./lib/desktopSettingsNavigation";
 /** Writes appearance settings onto the document, touching only the groups that changed. */
+import { guardDomAgainstPageTranslation } from "./lib/pageTranslationGuard";
+
 function startClientAppearance(): void {
   const root = document.documentElement;
   let applied: ClientSettings | null = null;
@@ -161,6 +163,7 @@ export function startAppServices(): AppRouter {
   startProviderAuthDelivery();
   startClientSettingsSynchronization();
   const router = getRouter(createBrowserHistory());
+  guardDomAgainstPageTranslation();
   startClientAppearance();
   startDocumentTitle();
   startEnvironmentThemeRepaint();
