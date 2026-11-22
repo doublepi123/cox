@@ -722,6 +722,55 @@ describe("composerDraftStore context persistence", () => {
     }
   });
 
+  it("stores draft image payloads outside JSON and restores and removes them with the draft", async () => {
+    const sharedStorage = createMemoryStorage();
+    vi.stubGlobal("localStorage", sharedStorage);
+    vi.stubGlobal("window", Object.assign(new EventTarget(), { localStorage: sharedStorage }));
+    vi.useFakeTimers();
+    vi.resetModules();
+    try {
+      const thisTab = await import("./composerDraftStore");
+      const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("draft-image-storage"));
+      const dataUrl = "data:image/png;base64,AQEBAQ==";
+      const image = makeImage({ id: "draft-image", previewUrl: dataUrl });
+      const store = thisTab.useComposerDraftStore.getState();
+      store.addImages(threadRef, [image]);
+      await store.syncPersistedAttachments(threadRef, [
+        {
+          id: image.id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: image.sizeBytes,
+          dataUrl,
+        },
+      ]);
+      store.setPrompt(threadRef, "Describe this image");
+      await vi.advanceTimersByTimeAsync(300);
+
+      const raw = sharedStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+      expect(raw).toContain("Describe this image");
+      expect(raw).not.toContain(dataUrl);
+
+      vi.resetModules();
+      const reloaded = await import("./composerDraftStore");
+      const otherDraft = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("other-draft"));
+      reloaded.useComposerDraftStore.getState().setPrompt(otherDraft, "Keep this draft");
+      await vi.advanceTimersByTimeAsync(300);
+      const restored = reloaded.useComposerDraftStore.getState().getComposerDraft(threadRef);
+      expect(restored?.persistedAttachments[0]?.dataUrl).toBe(dataUrl);
+      expect(restored?.images[0]?.file.size).toBe(image.sizeBytes);
+
+      reloaded.useComposerDraftStore.getState().clearComposerPromptAndImages(threadRef);
+      await vi.advanceTimersByTimeAsync(300);
+      expect(sharedStorage.getItem("cox:composer-draft-image:draft-image")).toBeNull();
+      expect(sharedStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toContain("Keep this draft");
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  });
+
   it("keeps a draft another tab saved after this tab loaded", async () => {
     const sharedStorage = createMemoryStorage();
     vi.stubGlobal("localStorage", sharedStorage);

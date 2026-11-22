@@ -52,7 +52,6 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import { waitForDraftHeroTransition } from "./components/chat/draftHeroTransition";
-import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { readThreadPreviewState } from "./previewStateStore";
 import {
   readInstanceCustomModels,
@@ -124,10 +123,43 @@ type ComposerPersistState =
 const composerDraftBaseStorage =
   typeof localStorage !== "undefined" ? localStorage : createMemoryStorage();
 
+const composerDraftImageKey = (id: string) => `cox:composer-draft-image:${id}`;
+
+function draftImagePayloads(state: PersistedComposerDraftStoreState | null): Map<string, string> {
+  const images = new Map<string, string>();
+  for (const draft of Object.values(state?.draftsByThreadKey ?? {})) {
+    if (!Array.isArray(draft?.attachments)) continue;
+    for (const image of draft.attachments) images.set(image.id, image.dataUrl);
+  }
+  return images;
+}
+
+function parseComposerDraftStorage(text: string): StorageValue<ComposerPersistState> {
+  return JSON.parse(text, (key, value: unknown) => {
+    if (key !== "attachments" || !Array.isArray(value)) return value;
+    return value.flatMap((image: unknown) => {
+      if (
+        typeof image !== "object" ||
+        image === null ||
+        !("dataUrl" in image) ||
+        image.dataUrl !== null ||
+        !("id" in image) ||
+        typeof image.id !== "string"
+      ) {
+        return [image];
+      }
+      const dataUrl = composerDraftBaseStorage.getItem(composerDraftImageKey(image.id));
+      return typeof dataUrl === "string" ? [{ ...image, dataUrl }] : [];
+    });
+  }) as StorageValue<ComposerPersistState>;
+}
+
 interface ComposerDraftWrite {
   readonly text: string;
   readonly local: PersistedComposerDraftStoreState;
   readonly merged: PersistedComposerDraftStoreState;
+  readonly addedImages: ReadonlyMap<string, string>;
+  readonly removedImages: readonly string[];
 }
 let composerDraftLoadedState: PersistedComposerDraftStoreState | null = null;
 let composerDraftLastWrite: ComposerDraftWrite | null = null;
@@ -138,8 +170,10 @@ function readStoredComposerDraftState(): PersistedComposerDraftStoreState | null
   if (typeof text !== "string") return null;
   if (text === composerDraftLastWrite?.text) return composerDraftLastWrite.merged;
   try {
-    const parsed = JSON.parse(text) as StorageValue<PersistedComposerDraftStoreState>;
-    return parsed.version === COMPOSER_DRAFT_STORAGE_VERSION ? parsed.state : null;
+    const parsed = parseComposerDraftStorage(text);
+    return parsed.version === COMPOSER_DRAFT_STORAGE_VERSION && !("capturedState" in parsed.state)
+      ? parsed.state
+      : null;
   } catch {
     return null;
   }
@@ -199,8 +233,30 @@ function serializeComposerDraftState(value: StorageValue<ComposerPersistState>):
   const baseline = composerDraftLastWrite?.local ?? composerDraftLoadedState;
   const stored = baseline ? readStoredComposerDraftState() : null;
   const merged = stored && baseline ? mergeComposerDraftStates(stored, local, baseline) : local;
-  const text = JSON.stringify({ state: merged, version: value.version });
-  composerDraftPendingWrite = { text, local, merged };
+  const previousImages = draftImagePayloads(stored);
+  const currentImages = draftImagePayloads(merged);
+  const addedImages = new Map<string, string>();
+  const draftsByThreadKey = Object.fromEntries(
+    Object.entries(merged.draftsByThreadKey).map(([threadKey, draft]) => [
+      threadKey,
+      {
+        ...draft,
+        attachments: draft.attachments.map((image) => {
+          const imageKey = composerDraftImageKey(image.id);
+          if (composerDraftBaseStorage.getItem(imageKey) === null) {
+            if (previousImages.get(image.id) === image.dataUrl) return image;
+            addedImages.set(imageKey, image.dataUrl);
+          }
+          return { ...image, dataUrl: null };
+        }),
+      },
+    ]),
+  );
+  const text = JSON.stringify({ state: { ...merged, draftsByThreadKey }, version: value.version });
+  const removedImages = [...previousImages.keys()]
+    .filter((id) => !currentImages.has(id))
+    .map(composerDraftImageKey);
+  composerDraftPendingWrite = { text, local, merged, addedImages, removedImages };
   return text;
 }
 
@@ -208,12 +264,31 @@ const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPers
   {
     getItem: (name) => composerDraftBaseStorage.getItem(name),
     setItem: (name, text) => {
-      composerDraftBaseStorage.setItem(name, text);
-      if (composerDraftPendingWrite?.text === text)
-        composerDraftLastWrite = composerDraftPendingWrite;
+      const pending = composerDraftPendingWrite;
+      if (pending?.text !== text) {
+        composerDraftBaseStorage.setItem(name, text);
+        return;
+      }
+      const writtenImages: string[] = [];
+      try {
+        for (const [key, dataUrl] of pending.addedImages) {
+          composerDraftBaseStorage.setItem(key, dataUrl);
+          writtenImages.push(key);
+        }
+        composerDraftBaseStorage.setItem(name, text);
+      } catch (error) {
+        for (const key of writtenImages) composerDraftBaseStorage.removeItem(key);
+        throw error;
+      }
+      composerDraftLastWrite = pending;
+      if (pending.removedImages.length > 0 && composerDraftBaseStorage.getItem(name) === text) {
+        for (const key of pending.removedImages) composerDraftBaseStorage.removeItem(key);
+      }
     },
     removeItem: (name) => {
+      const images = draftImagePayloads(readStoredComposerDraftState());
       composerDraftBaseStorage.removeItem(name);
+      for (const id of images.keys()) composerDraftBaseStorage.removeItem(composerDraftImageKey(id));
       composerDraftLoadedState = null;
       composerDraftLastWrite = null;
     },
@@ -227,7 +302,7 @@ const composerPersistStorage: PersistStorage<ComposerPersistState> = {
     if (typeof raw !== "string") {
       return null;
     }
-    return JSON.parse(raw) as StorageValue<ComposerPersistState>;
+    return parseComposerDraftStorage(raw);
   },
   setItem: (name, value) => composerDebouncedStorage.setItem(name, value),
   removeItem: (name) => composerDebouncedStorage.removeItem(name),
@@ -405,10 +480,6 @@ const PersistedComposerDraftStoreState = Schema.Struct({
   stickyActiveProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
 });
 type PersistedComposerDraftStoreState = typeof PersistedComposerDraftStoreState.Type;
-const PersistedComposerDraftStoreStorage = Schema.Struct({
-  version: Schema.Number,
-  state: PersistedComposerDraftStoreState,
-});
 export interface ComposerContextAddOptions {
   appendReference?: boolean;
   allowDuplicateReference?: boolean;
@@ -2275,14 +2346,8 @@ function readPersistedAttachmentIdsFromStorage(threadKey: string): string[] {
     return [];
   }
   try {
-    const persisted = getLocalStorageItem(
-      COMPOSER_DRAFT_STORAGE_KEY,
-      PersistedComposerDraftStoreStorage,
-    );
-    if (!persisted || persisted.version !== COMPOSER_DRAFT_STORAGE_VERSION) {
-      return [];
-    }
-    return (persisted.state.draftsByThreadKey[threadKey]?.attachments ?? []).map(
+    const persisted = readStoredComposerDraftState();
+    return (persisted?.draftsByThreadKey[threadKey]?.attachments ?? []).map(
       (attachment) => attachment.id,
     );
   } catch {
