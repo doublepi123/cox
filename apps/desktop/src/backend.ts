@@ -10,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { backendOriginFromOutput } from "./config.ts";
 import { backendInstallerEnvironment } from "./backend-install.ts";
 import { killOwnedProcessTree, stopOwnedProcess } from "./process-tree.ts";
-import {
+import type {
   DesktopComputerReply,
   DesktopComputerRequest,
   DesktopComputerThreadEvent,

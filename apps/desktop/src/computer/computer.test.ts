@@ -46,7 +46,9 @@ describe("desktop computer host", () => {
       ),
     ).toEqual({ screenRecording: "granted", accessibility: "granted", input: "denied" });
   });
-  it("keeps the stop latch until explicit resume", async () => {
+  const posixEngine = it.runIf(process.platform !== "win32");
+
+  posixEngine("keeps the stop latch until explicit resume", async () => {
     const client = await fakeEngine(
       `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:null})+'\\n')});`,
     );
@@ -76,7 +78,7 @@ describe("desktop computer host", () => {
     ).resolves.toBeNull();
     await client.close();
   });
-  it("maps PermissionDenied to missing permissions", async () => {
+  posixEngine("maps PermissionDenied to missing permissions", async () => {
     const client = await fakeEngine(
       `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{code:-32000,message:'permission'}})+'\\n')});`,
     );
@@ -99,7 +101,7 @@ describe("desktop computer host", () => {
     });
     await client.close();
   });
-  it("cancels only the stopped thread's active and queued actions", async () => {
+  posixEngine("cancels only the stopped thread's active and queued actions", async () => {
     const client = await fakeEngine(
       `const rl=require('node:readline').createInterface({input:process.stdin});const timers=new Map();rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='$/cancel'){const timer=timers.get(m.params.id);if(timer){clearTimeout(timer);process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.params.id,error:{code:-32017,message:'cancelled'}})+'\\n')}return}if(m.id!==undefined){const timer=setTimeout(()=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:null})+'\\n'),100);timers.set(m.id,timer)}});`,
     );
