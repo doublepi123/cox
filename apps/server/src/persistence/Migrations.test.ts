@@ -87,6 +87,8 @@ describe("runMigrations", () => {
         [81, "MobilePushAndWebhookNotifications"],
         [82, "ProjectionProjectsTrackedFolders"],
         [83, "TaskFolders"],
+        [84, "WorktreePathKeyIndex"],
+        [85, "DeferredSlashCommandIndex"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`
