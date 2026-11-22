@@ -228,7 +228,10 @@ describe("AddProviderInstanceDialog environment routing", () => {
   it("chooses an unused identity for another account without replacing configured instances", async () => {
     setup();
     settingsHooks.read.mockReturnValue({
-      providerInstances: { codex_2: { driver: "codex", enabled: false } },
+      providerInstances: {
+        codex: { driver: "codex", enabled: true },
+        codex_2: { driver: "codex", enabled: false },
+      },
     });
     await using _screen = await render(dialog());
     await chooseDriver("Codex");
@@ -292,8 +295,8 @@ describe("AddProviderInstanceDialog environment routing", () => {
   });
 
   it.each([
-    ["codex", "Codex", "codex_2", { setupMode: "existing" }],
-    ["claudeAgent", "Claude", "claudeAgent_2", undefined],
+    ["codex", "Codex", "codex", { setupMode: "existing" }],
+    ["claudeAgent", "Claude", "claudeAgent", undefined],
     ["pi", "Pi", "pi", undefined],
     ["opencode", "OpenCode", "opencode", undefined],
   ] as const)(

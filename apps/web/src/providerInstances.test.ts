@@ -144,7 +144,7 @@ describe("applyProviderInstanceSettings", () => {
     expect(entry?.enabled).toBe(false);
   });
 
-  it("uses the driver default for an unconfigured built-in default instance", () => {
+  it("keeps unconfigured built-in default instances disabled", () => {
     const entries = deriveProviderInstanceEntries([
       provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex", enabled: false }),
       provider({ provider: ProviderDriverKind.make("grok"), instanceId: "grok", enabled: true }),
@@ -158,7 +158,7 @@ describe("applyProviderInstanceSettings", () => {
       null,
     );
 
-    expect(codex?.enabled).toBe(true);
+    expect(codex?.enabled).toBe(false);
     expect(grok?.enabled).toBe(false);
   });
 });

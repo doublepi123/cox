@@ -60,12 +60,11 @@ export const deriveProviderInstanceConfigMap = (
     delete merged[instanceId];
   }
 
-  for (const driver of BUILT_IN_DRIVERS) {
-    if (driver.metadata.hasDefaultInstance === false) continue;
-    const instanceId = defaultInstanceIdForDriver(driver.driverKind);
-    if (deletedDefaults.has(instanceId) || instanceId in merged) continue;
-    merged[instanceId] = { driver: driver.driverKind };
-  }
+  const defaultDrivers = new Map(
+    BUILT_IN_DRIVERS.filter((driver) => driver.metadata.hasDefaultInstance !== false).map(
+      (driver) => [defaultInstanceIdForDriver(driver.driverKind), driver.driverKind] as const,
+    ),
+  );
 
   // Probe project-enabled instances even if disabled machine-wide; project threads can still route to them.
   for (const overrides of Object.values(settings.projectSettingsOverrides)) {
@@ -75,7 +74,14 @@ export const deriveProviderInstanceConfigMap = (
       if (projectOverride.enabled !== true) continue;
       const instanceId = rawInstanceId as ProviderInstanceId;
       const existing = merged[instanceId];
-      if (existing === undefined || resolveProviderInstanceEnabled(existing)) continue;
+      if (existing === undefined) {
+        const driver = defaultDrivers.get(instanceId);
+        if (driver !== undefined && !deletedDefaults.has(instanceId)) {
+          merged[instanceId] = { driver, enabled: true };
+        }
+        continue;
+      }
+      if (resolveProviderInstanceEnabled(existing)) continue;
       merged[instanceId] = {
         ...existing,
         enabled: true,

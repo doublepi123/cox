@@ -150,7 +150,6 @@ function providerConfigString(config: unknown, key: string): string | null {
 
 const PROVIDER_SETTINGS = providerClients.definitions.map((definition) => ({
   provider: definition.driverKind,
-  hasDefaultInstance: definition.hasDefaultInstance !== false,
 }));
 
 function configuredString(config: unknown, key: "binaryPath" | "serverUrl"): string {
@@ -732,17 +731,7 @@ export function EnvironmentProviderSettings({
     const defaultInstanceId = defaultInstanceIdForDriver(driver);
     const explicitInstance = settings.providerInstances?.[defaultInstanceId];
     const isDirty = explicitInstance !== undefined;
-    const hasDefaultSlot = providerSettings.hasDefaultInstance || explicitInstance !== undefined;
-    if (
-      hasDefaultSlot &&
-      (driver === "omo" ||
-        driver === "omp" ||
-        driver === "codex" ||
-        driver === "claudeAgent" ||
-        isDirty ||
-        resolveProviderInstanceEnabled(explicitInstance ?? { driver }) ||
-        defaultInstanceId === targetInstanceId)
-    ) {
+    if (isDirty) {
       unorderedRows.push({
         instanceId: defaultInstanceId,
         explicitInstance,

@@ -185,9 +185,16 @@ describe("bound text generation defaults", () => {
     expect(
       resolveTextGenerationModelSelection({
         ...configured,
+        providerInstances: { ...configured.providerInstances, [instanceId]: { driver } },
         textGenerationModelSelection: createModelSelection(instanceId, "my-explicit-native-model"),
       }),
     ).toEqual(createModelSelection(instanceId, "my-explicit-native-model"));
+    expect(
+      resolveTextGenerationModelSelection({
+        ...configured,
+        textGenerationModelSelection: createModelSelection(instanceId, "my-explicit-native-model"),
+      }),
+    ).toEqual(createModelSelection(customId, "gpt-6.1-sol"));
   });
 
   it("does not choose an unavailable, disabled, non-tool or incompatible binding entry", () => {

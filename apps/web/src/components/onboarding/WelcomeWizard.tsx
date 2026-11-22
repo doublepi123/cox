@@ -4,13 +4,17 @@ import type {
   AgentSessionProjectCandidate,
   EnvironmentId,
   ProjectId,
+  ProviderInstanceConfig,
   ProviderInstanceId,
   ScopedProjectRef,
   ServerConfig,
   ServerProvider,
 } from "@t3tools/contracts";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import {
   AgentSessionSource,
   AuthTerminalOperateScope,
@@ -18,6 +22,7 @@ import {
   defaultInstanceIdForDriver,
   AuthOrchestrationOperateScope,
   ProviderDriverKind,
+  providerInstanceConfigEnabledFlag,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -26,6 +31,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "../../appearanceFonts";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { usePersistEnvironmentProviderInstanceMutation } from "../../hooks/useSettings";
 
 import { completeOnboarding } from "../../onboarding/firstRun";
 import {
@@ -61,7 +67,6 @@ import { getProviderSummary } from "../settings/providerStatus";
 import { providerClients } from "../settings/providerDriverMeta";
 import { AddManagedCodexAccountDialog, CodexSetupSection } from "../settings/CodexSetupSection";
 import { readCodexSetupMode } from "../settings/CodexSetupSection.logic";
-import { buildProviderInstanceUpdatePatch } from "../settings/SettingsPanels.logic";
 import { TerminalViewport } from "../ThreadTerminalDrawer";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { T3Wordmark } from "../T3Wordmark";
@@ -284,6 +289,7 @@ function ConnectedAgentsStep({
     autoStart: boolean;
   } | null>(null);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
+  const enableAgent = useEnableOnboardingAgent(environmentId);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- asks the environment to refresh its provider list when the environment changes
   useEffect(() => {
@@ -327,6 +333,7 @@ function ConnectedAgentsStep({
               key={instanceId ?? driver}
               environmentId={environmentId}
               provider={provider}
+              providersLoaded={providers !== null}
               serverConfig={serverConfig}
               createdAccount={instanceId === createdAccount?.instanceId ? createdAccount : null}
               onAutoStartConsumed={() =>
@@ -365,6 +372,25 @@ function ConnectedAgentsStep({
               provider={provider}
               terminalOpen={terminalSession?.driver === driver}
               terminalAvailable={serverConfig !== null && canOperateTerminal}
+              onEnable={
+                serverConfig === null ||
+                providers === null ||
+                (provider !== undefined && getOnboardingProviderState(provider) !== "disabled")
+                  ? undefined
+                  : () => {
+                      const targetId =
+                        provider?.instanceId ??
+                        defaultInstanceIdForDriver(ProviderDriverKind.make(driver));
+                      void enableAgent(
+                        targetId,
+                        enabledInstance(
+                          serverConfig.settings.providerInstances[targetId] ?? {
+                            driver: ProviderDriverKind.make(driver),
+                          },
+                        ),
+                      );
+                    }
+              }
               onOpenTerminal={() => {
                 if (
                   provider === undefined ||
@@ -432,12 +458,14 @@ function OnboardingCodexSetup({
   onAutoStartConsumed,
   environmentId,
   provider,
+  providersLoaded,
   serverConfig,
   terminalOpen,
   onOpenTerminal,
 }: {
   readonly environmentId: EnvironmentId;
   readonly provider: ServerProvider | undefined;
+  readonly providersLoaded: boolean;
   readonly serverConfig: ServerConfig;
   readonly terminalOpen: boolean;
   readonly onOpenTerminal: () => void;
@@ -449,13 +477,14 @@ function OnboardingCodexSetup({
   readonly onAutoStartConsumed: () => void;
 }) {
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
-  const update = useAtomCommand(serverEnvironment.updateSettings, "Codex setup settings");
+  const enableAgent = useEnableOnboardingAgent(environmentId);
   const instanceId =
     createdAccount?.instanceId ??
     provider?.instanceId ??
     defaultInstanceIdForDriver(ProviderDriverKind.make("codex"));
   const settings = serverConfig.settings;
-  const instance = settings.providerInstances[instanceId] ?? {
+  const configured = settings.providerInstances[instanceId];
+  const instance = configured ?? {
     driver: ProviderDriverKind.make("codex"),
     config: createdAccount ? { enabled: true, setupMode: "managed" } : {},
   };
@@ -467,24 +496,13 @@ function OnboardingCodexSetup({
     "setupMode" in instance.config &&
     instance.config.setupMode === "existing";
   const changeMode = (setupMode: "managed" | "existing") => {
-    void update({
-      environmentId,
-      input: {
-        patch: buildProviderInstanceUpdatePatch({
-          settings,
-          instanceId,
-          instance: {
-            ...instance,
-            enabled: true,
-            config: {
-              ...(instance.config !== null && typeof instance.config === "object"
-                ? instance.config
-                : {}),
-              enabled: true,
-              setupMode,
-            },
-          },
-        }),
+    void enableAgent(instanceId, {
+      ...instance,
+      enabled: true,
+      config: {
+        ...(instance.config !== null && typeof instance.config === "object" ? instance.config : {}),
+        enabled: true,
+        setupMode,
       },
     });
   };
@@ -495,6 +513,11 @@ function OnboardingCodexSetup({
       terminalOpen={terminalOpen}
       terminalAvailable={canOperateTerminal}
       onOpenTerminal={onOpenTerminal}
+      onEnable={
+        provider !== undefined && getOnboardingProviderState(provider) === "disabled"
+          ? () => void enableAgent(instanceId, enabledInstance(instance))
+          : undefined
+      }
     />
   ) : (
     <CodexSetupSection
@@ -505,11 +528,38 @@ function OnboardingCodexSetup({
       environmentId={environmentId}
       instanceId={instanceId}
       provider={provider}
+      notAdded={providersLoaded && provider === undefined && configured === undefined}
       mode={mode}
       enabled={provider?.enabled ?? true}
       onModeChange={changeMode}
     />
   );
+}
+
+function enabledInstance(instance: ProviderInstanceConfig): ProviderInstanceConfig {
+  return {
+    ...instance,
+    enabled: true,
+    ...(providerInstanceConfigEnabledFlag(instance.config) === false
+      ? { config: { ...(instance.config as Record<string, unknown>), enabled: true } }
+      : {}),
+  };
+}
+
+function useEnableOnboardingAgent(environmentId: EnvironmentId) {
+  const { t } = useTranslation();
+  const persistProviderInstance = usePersistEnvironmentProviderInstanceMutation(environmentId);
+  return async (instanceId: ProviderInstanceId, instance: ProviderInstanceConfig) => {
+    const result = await persistProviderInstance({ operation: "upsert", instanceId, instance });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      toastManager.add({
+        type: "error",
+        title: t("Could not update provider instance"),
+        description: error instanceof Error ? error.message : t("The settings update failed."),
+      });
+    }
+  };
 }
 
 function AgentCard({
@@ -518,19 +568,22 @@ function AgentCard({
   terminalOpen,
   terminalAvailable,
   onOpenTerminal,
+  onEnable,
 }: {
   readonly driver: OnboardingAgentDriver;
   readonly provider: ServerProvider | undefined;
   readonly terminalOpen: boolean;
   readonly terminalAvailable: boolean;
   readonly onOpenTerminal: () => void;
+  readonly onEnable?: (() => void) | undefined;
 }) {
   const { t, language } = useTranslation();
   const meta = providerClients.get(ProviderDriverKind.make(driver));
   const displayName =
     provider?.displayName || (driver === "claudeAgent" ? "Claude Code" : (meta?.label ?? driver));
   const summary = getProviderSummary(provider, language);
-  const providerState = getOnboardingProviderState(provider);
+  const providerState =
+    provider === undefined && onEnable ? "disabled" : getOnboardingProviderState(provider);
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-4">
@@ -555,7 +608,13 @@ function AgentCard({
         ) : providerState === "checking" ? (
           <span className="text-xs text-muted-foreground">{t("Checking...")}</span>
         ) : providerState === "disabled" ? (
-          <span className="text-xs text-muted-foreground">{t("Disabled")}</span>
+          onEnable ? (
+            <Button size="xs" variant="ghost" onClick={onEnable}>
+              {t("Enable {name}", { name: displayName })}
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">{t("Disabled")}</span>
+          )
         ) : providerState === "attention" ? (
           <span className="text-xs text-muted-foreground">{summary.headline}</span>
         ) : (

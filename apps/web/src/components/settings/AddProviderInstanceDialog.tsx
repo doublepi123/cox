@@ -205,12 +205,7 @@ export function AddProviderInstanceDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [createdInstanceId, setCreatedInstanceId] = useState<ProviderInstanceId | null>(null);
 
-  // Reserve Codex/Claude default ids while their built-in instances still exist.
-  const deletedDefaultIds = new Set<string>(settings.deletedDefaultProviderInstances ?? []);
-  const existingIds = new Set([
-    ...Object.keys(settings.providerInstances ?? {}),
-    ...["codex", "claudeAgent"].filter((id) => !deletedDefaultIds.has(id)),
-  ]);
+  const existingIds = new Set(Object.keys(settings.providerInstances ?? {}));
 
   const driverOption = providerClients.get(driver) ?? DEFAULT_DRIVER_OPTION;
   const isAcpRegistry = driver === ACP_REGISTRY_DRIVER_KIND;

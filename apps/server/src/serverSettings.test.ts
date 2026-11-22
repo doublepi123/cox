@@ -970,7 +970,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
-  it.effect("resets default customization without deleting the default", () =>
+  it.effect("resets default customization without removing the added default", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
       const codex = ProviderInstanceId.make("codex");
@@ -986,7 +986,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         instanceId: codex,
       });
 
-      assert.isUndefined(reset.providerInstances[codex]);
+      assert.deepEqual(reset.providerInstances[codex], { driver, enabled: true });
       assert.deepEqual(reset.deletedDefaultProviderInstances, []);
     }).pipe(Effect.provide(layerServerSettings())),
   );
@@ -1317,6 +1317,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
             enabled: false,
             config: {},
           },
+          [ProviderInstanceId.make("claudeAgent")]: {
+            driver: ProviderDriverKind.make("claudeAgent"),
+            enabled: true,
+          },
         },
       });
 
@@ -1330,6 +1334,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
       const next = yield* serverSettings.updateSettings({
         deletedDefaultProviderInstances: [ProviderInstanceId.make("codex")],
+        providerInstances: {
+          [ProviderInstanceId.make("claudeAgent")]: {
+            driver: ProviderDriverKind.make("claudeAgent"),
+            enabled: true,
+          },
+        },
       });
 
       assert.equal(next.textGenerationModelSelection.instanceId, "claudeAgent");
@@ -1565,6 +1575,40 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
       const unused = settings.providerInstances[ProviderInstanceId.make("opencode_unused")];
       assert.isDefined(unused);
       assert.isFalse(resolveProviderInstanceEnabled(unused));
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("keeps previously used Codex and Claude defaults unless they were deleted", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fileSystem.writeFileString(
+        serverConfig.settingsPath,
+        JSON.stringify({ deletedDefaultProviderInstances: ["claudeAgent"] }),
+      );
+      yield* recordProviderUsage("codex", null);
+      yield* recordProviderUsage("claudeAgent");
+
+      const settings = yield* serverSettings.getSettings;
+
+      assert.deepEqual(settings.providerInstances[ProviderInstanceId.make("codex")], {
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+      });
+      assert.isUndefined(settings.providerInstances[ProviderInstanceId.make("claudeAgent")]);
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("does not configure unused Codex and Claude defaults", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      yield* recordProviderUsage("cursor");
+
+      const settings = yield* serverSettings.getSettings;
+
+      assert.isUndefined(settings.providerInstances[ProviderInstanceId.make("codex")]);
+      assert.isUndefined(settings.providerInstances[ProviderInstanceId.make("claudeAgent")]);
     }).pipe(Effect.provide(layerServerSettings())),
   );
 

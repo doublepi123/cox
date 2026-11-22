@@ -28,6 +28,7 @@ interface CodexSetupSectionProps {
   readonly environmentId: EnvironmentId;
   readonly instanceId: ProviderInstanceId;
   readonly provider: ServerProvider | undefined;
+  readonly notAdded?: boolean;
   readonly mode: "managed" | "existing";
   readonly enabled: boolean;
   readonly readOnly?: boolean;
@@ -44,7 +45,7 @@ export function CodexSetupSection(props: CodexSetupSectionProps) {
   const existingState = getOnboardingProviderState(props.provider);
   const existingReady = props.enabled && existingState === "ready";
   const existingAuthenticated = props.provider?.auth.status === "authenticated";
-  const existingChecking = existingState === "checking";
+  const existingChecking = existingState === "checking" && props.notAdded !== true;
   const existingSummary = getProviderSummary(props.provider, language);
   const content =
     props.mode === "existing" && props.presentation === "onboarding" ? (

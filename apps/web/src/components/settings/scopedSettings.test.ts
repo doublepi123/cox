@@ -3,6 +3,7 @@ import {
   EnvironmentAuthorizationError,
   EnvironmentId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   type ServerSettings,
 } from "@t3tools/contracts";
@@ -724,6 +725,10 @@ describe("model selection patches at project scope", () => {
   };
   const customized = environment("Server", {
     settings: {
+      providerInstances: {
+        [codex]: { driver: ProviderDriverKind.make("codex"), enabled: true },
+        [claude]: { driver: ProviderDriverKind.make("claudeAgent"), enabled: true },
+      },
       projectSettingsOverrides: {
         [projectId]: {
           defaultModelSelection: saved,

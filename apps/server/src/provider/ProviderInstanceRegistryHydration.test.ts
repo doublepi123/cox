@@ -172,8 +172,24 @@ describe("deriveProviderInstanceConfigMap", () => {
     const merged = deriveProviderInstanceConfigMap(settings);
 
     expect(merged[codex]).toBeUndefined();
-    expect(merged[ProviderInstanceId.make("claudeAgent")]).toEqual({
-      driver: ProviderDriverKind.make("claudeAgent"),
+    expect(merged[ProviderInstanceId.make("claudeAgent")]).toBeUndefined();
+  });
+
+  it("creates no built-in instance the user did not configure", () => {
+    expect(deriveProviderInstanceConfigMap(settingsWith({ providerInstances: {} }))).toEqual({});
+  });
+
+  it("hydrates an unconfigured built-in default that a project explicitly enables", () => {
+    const cursor = ProviderInstanceId.make("cursor");
+    const settings = settingsWith({
+      providerInstances: {},
+      projectSettingsOverrides: {
+        [projectId]: { providerInstances: { [cursor]: { enabled: true } } },
+      },
+    });
+
+    expect(deriveProviderInstanceConfigMap(settings)).toEqual({
+      [cursor]: { driver: ProviderDriverKind.make("cursor"), enabled: true },
     });
   });
 });

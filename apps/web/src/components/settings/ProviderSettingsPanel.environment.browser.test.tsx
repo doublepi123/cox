@@ -306,10 +306,29 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(state.updateSettings).not.toHaveBeenCalled();
   });
 
+  it("lists no built-in provider the user did not add", async () => {
+    await setup();
+    await using _screen = await render(panel());
+
+    expect(document.querySelectorAll('button[aria-pressed][aria-label^="Select "]').length).toBe(0);
+    await expect.element(page.getByText("No providers configured.")).toBeVisible();
+  });
+
   it.each(["Move OMO Native down", "Move Codex up"] as const)(
     "persists phone-accessible row reordering with %s",
     async (actionLabel) => {
       await setup();
+      state.settings = {
+        ...DEFAULT_UNIFIED_SETTINGS,
+        providerInstances: {
+          [ProviderInstanceId.make("omo")]: { driver: ProviderDriverKind.make("omo") },
+          [codexId]: { driver: ProviderDriverKind.make("codex") },
+          [ProviderInstanceId.make("claudeAgent")]: {
+            driver: ProviderDriverKind.make("claudeAgent"),
+          },
+          [ProviderInstanceId.make("omp")]: { driver: ProviderDriverKind.make("omp") },
+        },
+      };
       await using _viewport = await phoneViewport();
       await using _screen = await render(panel());
 
@@ -341,6 +360,10 @@ describe("EnvironmentProviderSettings routing", () => {
     await setup();
     state.settings = {
       ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [ProviderInstanceId.make("omo")]: { driver: ProviderDriverKind.make("omo") },
+        [codexId]: { driver: ProviderDriverKind.make("codex") },
+      },
       deletedDefaultProviderInstances: [codexId],
     };
     await using _screen = await render(panel());
@@ -361,9 +384,13 @@ describe("EnvironmentProviderSettings routing", () => {
       driver: ProviderDriverKind.make("claudeAgent"),
     },
   ] as const)(
-    "deletes an unconfigured default through the shared confirmation flow",
+    "deletes a configured default through the shared confirmation flow",
     async ({ instanceId, instanceName, driver }) => {
       await setup();
+      state.settings = {
+        ...DEFAULT_UNIFIED_SETTINGS,
+        providerInstances: { [instanceId]: { driver } },
+      };
       await using _viewport = await phoneViewport();
       await using _screen = await render(panel({ targetInstanceId: instanceId }));
 

@@ -231,7 +231,15 @@ vi.mock(import("../../state/queries"), async (original) => ({
 }));
 vi.mock(import("../../hooks/useSettings"), async (original) => ({
   ...(await original()),
-  useEnvironmentSettings: (() => DEFAULT_UNIFIED_SETTINGS) as never,
+  useEnvironmentSettings: (() => ({
+    ...DEFAULT_UNIFIED_SETTINGS,
+    providerInstances: {
+      [ProviderInstanceId.make("codex")]: {
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+      },
+    },
+  })) as never,
 }));
 
 describe("ScheduledTasksSettings", () => {

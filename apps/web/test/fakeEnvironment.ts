@@ -94,7 +94,7 @@ const serverConfig: ServerConfig = {
       otlpTracesEnabled: false,
       otlpMetricsEnabled: false,
     },
-    settings: {},
+    settings: { providerInstances: { [CODEX]: { driver: "codex" } } },
     threadSnapshotPagination: true,
     threadResumeCompletionMarker: true,
     shellResumeCompletionMarker: true,

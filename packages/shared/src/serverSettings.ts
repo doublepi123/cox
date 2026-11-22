@@ -8,7 +8,6 @@ import {
   globalIdleCompaction,
   type IdleCompactionMode,
   isProviderAvailable,
-  isUnconfiguredDefaultInstanceEnabled,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
   isProviderTextGenerationCapable,
@@ -57,11 +56,7 @@ export function isModelSelectionProviderEnabled(
   const instanceConfig = Object.hasOwn(settings.providerInstances, selection.instanceId)
     ? settings.providerInstances[selection.instanceId]
     : undefined;
-  if (instanceConfig !== undefined) {
-    return resolveProviderInstanceEnabled(instanceConfig);
-  }
-
-  return isUnconfiguredDefaultInstanceEnabled(selection.instanceId);
+  return instanceConfig !== undefined && resolveProviderInstanceEnabled(instanceConfig);
 }
 
 const TEXT_GENERATION_FALLBACK_DRIVERS = [
@@ -182,9 +177,8 @@ export function resolveTextGenerationModelSelection(
   isEnabled: (instanceId: ProviderInstanceId, driver: ProviderDriverKind) => boolean = (
     instanceId,
   ) =>
-    settings.providerInstances[instanceId] === undefined
-      ? isUnconfiguredDefaultInstanceEnabled(instanceId)
-      : resolveProviderInstanceEnabled(settings.providerInstances[instanceId]!),
+    settings.providerInstances[instanceId] !== undefined &&
+    resolveProviderInstanceEnabled(settings.providerInstances[instanceId]),
 ): ModelSelection | null {
   const selection = settings.textGenerationModelSelection;
   const instance = settings.providerInstances[selection.instanceId];

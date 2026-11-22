@@ -220,7 +220,7 @@ describe("IdleCompactionService", () => {
     { mode: "beforeCacheExpires", driver: "codex", instance: "codex", reads: 0 },
     { mode: "beforeCacheExpires", driver: "codex", instance: "custom-codex", reads: 0 },
     { mode: "beforeCacheExpires", driver: "claudeAgent", instance: "custom-claude", reads: 1 },
-    { mode: "beforeCacheExpires", unconfigured: true, reads: 1 },
+    { mode: "beforeCacheExpires", unconfigured: true, reads: 0 },
   ] as const)(
     "loads history only for eligible idle compaction: $mode/$override/$enabled/$projectDisabled/$instance/$unconfigured",
     (scenario) => {

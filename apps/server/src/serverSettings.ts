@@ -10,7 +10,6 @@ import {
   type ProviderInstanceMutation,
   defaultInstanceIdForDriver,
   isProviderDriverKind,
-  isUnconfiguredDefaultInstanceEnabled,
   ProviderDriverKind,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
@@ -202,7 +201,14 @@ export function applyProviderInstanceMutation(
           settings.providerInstances[mutation.instanceId]?.driver ??
           ProviderDriverKind.make(mutation.instanceId))
         : undefined;
+    const existing = settings.providerInstances[mutation.instanceId];
     delete providerInstances[mutation.instanceId];
+    if (mutation.operation === "reset" && existing !== undefined) {
+      providerInstances[mutation.instanceId] = {
+        driver: existing.driver,
+        enabled: resolveProviderInstanceEnabled(existing),
+      };
+    }
     if (
       mutation.operation === "remove" &&
       driver !== undefined &&
@@ -344,12 +350,20 @@ export class ServerSettingsService extends Context.Service<
   static readonly layerTest = (overrides: DeepPartial<ServerSettings> = {}) => layerTest(overrides);
 }
 
+const TEST_SERVER_SETTINGS: ServerSettings = {
+  ...DEFAULT_SERVER_SETTINGS,
+  providerInstances: {
+    [ProviderInstanceId.make("codex")]: { driver: ProviderDriverKind.make("codex") },
+    [ProviderInstanceId.make("claudeAgent")]: { driver: ProviderDriverKind.make("claudeAgent") },
+  },
+};
+
 const makeTest = Effect.fn("serverSettings.makeTest")(function* (
   overrides: DeepPartial<ServerSettings> = {},
 ) {
   const { automaticGitFetchInterval, providerHealthRefreshInterval, ...overridesForMerge } =
     overrides;
-  const merged = deepMerge(DEFAULT_SERVER_SETTINGS, overridesForMerge);
+  const merged = deepMerge(TEST_SERVER_SETTINGS, overridesForMerge);
   const initialSettings = yield* normalizeServerSettings({
     ...merged,
     ...(automaticGitFetchInterval !== undefined
@@ -492,6 +506,39 @@ const HISTORY_RESTORED_DRIVERS: ReadonlySet<ProviderDriverKind> = new Set(
   ["cursor", "grok", "opencode"].map((driver) => ProviderDriverKind.make(driver)),
 );
 
+const FORMER_IMPLICIT_DEFAULT_DRIVERS: ReadonlyArray<ProviderDriverKind> = [
+  "codex",
+  "claudeAgent",
+].map((driver) => ProviderDriverKind.make(driver));
+
+function restoreUsedImplicitDefaultInstances(
+  settings: ServerSettings,
+  providerHistory: ReadonlyArray<{
+    readonly providerName: string;
+    readonly providerInstanceId: string | null;
+  }>,
+): ServerSettings {
+  const usedInstanceIds = new Set<string>(
+    providerHistory.map(
+      ({ providerName, providerInstanceId }) => providerInstanceId ?? providerName,
+    ),
+  );
+  const restored = FORMER_IMPLICIT_DEFAULT_DRIVERS.flatMap((driver) => {
+    const instanceId = defaultInstanceIdForDriver(driver);
+    return usedInstanceIds.has(instanceId) &&
+      !Object.hasOwn(settings.providerInstances, instanceId) &&
+      !settings.deletedDefaultProviderInstances.includes(instanceId)
+      ? [[instanceId, { driver, enabled: true } satisfies ProviderInstanceConfig] as const]
+      : [];
+  });
+  return restored.length === 0
+    ? settings
+    : {
+        ...settings,
+        providerInstances: { ...settings.providerInstances, ...Object.fromEntries(restored) },
+      };
+}
+
 function migrateLegacyProviderSettings(
   settings: ServerSettings,
   legacyProviders: Readonly<Record<string, unknown>>,
@@ -560,9 +607,7 @@ function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings
   const selection = resolveTextGenerationModelSelection(settings, (instanceId) => {
     if (settings.deletedDefaultProviderInstances.includes(instanceId)) return false;
     const instance = settings.providerInstances[instanceId];
-    return instance === undefined
-      ? isUnconfiguredDefaultInstanceEnabled(instanceId)
-      : resolveProviderInstanceEnabled(instance);
+    return instance !== undefined && resolveProviderInstanceEnabled(instance);
   });
   return selection === null || selection === settings.textGenerationModelSelection
     ? settings
@@ -834,13 +879,13 @@ const make = Effect.gen(function* () {
         provider_name AS "providerName",
         provider_instance_id AS "providerInstanceId"
       FROM projection_thread_sessions
-      WHERE provider_name IN ('cursor', 'grok', 'opencode')
+      WHERE provider_name IN ('cursor', 'grok', 'opencode', 'codex', 'claudeAgent')
       UNION
       SELECT DISTINCT
         provider_name AS "providerName",
         provider_instance_id AS "providerInstanceId"
       FROM provider_session_runtime
-      WHERE provider_name IN ('cursor', 'grok', 'opencode')
+      WHERE provider_name IN ('cursor', 'grok', 'opencode', 'codex', 'claudeAgent')
     `.pipe(
       NodeSqliteClient.readOnly,
       Effect.mapError(
@@ -878,9 +923,12 @@ const make = Effect.gen(function* () {
           );
 
     const loaded = foldProviderInstanceEnabledFlags(
-      legacyProviders === undefined
-        ? settings
-        : migrateLegacyProviderSettings(settings, legacyProviders, providerHistory),
+      restoreUsedImplicitDefaultInstances(
+        legacyProviders === undefined
+          ? settings
+          : migrateLegacyProviderSettings(settings, legacyProviders, providerHistory),
+        providerHistory,
+      ),
     );
     const folded = settingsFileTrusted
       ? migrateSingleModelServices(foldLegacyProjectSettings(loaded, legacyProjectRows))

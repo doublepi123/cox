@@ -1433,13 +1433,6 @@ const DEFAULT_DISABLED_PROVIDER_DRIVERS: ReadonlySet<ProviderDriverKind> = new S
   ),
 );
 
-const DEFAULT_ENABLED_DEFAULT_INSTANCES: ReadonlySet<ProviderInstanceId> = new Set(
-  ["codex", "claudeAgent"].map((instanceId) => ProviderInstanceId.make(instanceId)),
-);
-
-export const isUnconfiguredDefaultInstanceEnabled = (instanceId: ProviderInstanceId): boolean =>
-  DEFAULT_ENABLED_DEFAULT_INSTANCES.has(instanceId);
-
 const defaultEnabledForDriver = (driver: ProviderDriverKind): boolean =>
   !DEFAULT_DISABLED_PROVIDER_DRIVERS.has(driver);
 
@@ -1466,9 +1459,7 @@ export const resolveProjectProviderInstanceEnabled = (
   const instanceConfig = Object.hasOwn(settings.providerInstances, instanceId)
     ? settings.providerInstances[instanceId]
     : undefined;
-  return instanceConfig !== undefined
-    ? resolveProviderInstanceEnabled(instanceConfig)
-    : isUnconfiguredDefaultInstanceEnabled(instanceId);
+  return instanceConfig !== undefined && resolveProviderInstanceEnabled(instanceConfig);
 };
 
 const decodeClaudeSettings = Schema.decodeUnknownOption(ClaudeSettings);
