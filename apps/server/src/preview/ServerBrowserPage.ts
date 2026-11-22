@@ -167,7 +167,6 @@ const SNAPSHOT_SCRIPT = `(() => {
     title: document.title,
     loading: document.readyState !== "complete",
     visibleText: document.body?.innerText || "",
-    interactiveElements: [],
   };
 })()`;
 
@@ -592,7 +591,7 @@ const capture = async (
     input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
       Pick<
         PreviewAutomationSnapshot,
-        "url" | "title" | "loading" | "visibleText" | "interactiveElements"
+        "url" | "title" | "loading" | "visibleText"
       >
     >,
     captureViewport(input.cdp, { format: "png" }).then(async (full) =>
