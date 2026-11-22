@@ -1,3 +1,4 @@
+import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import {
@@ -285,4 +286,24 @@ it("stays inside the timeline scroller instead of growing the chat column", asyn
   await expect.element(page.getByText("Later", { exact: true })).toBeInTheDocument();
   const column = screen.getByTestId("column").element();
   expect(column.scrollHeight).toBe(column.clientHeight);
+});
+
+it("shows file names in queued message previews", async () => {
+  setup();
+  const fileLink = serializeComposerFileLink("src/components/ChatView.tsx");
+  state.projection = { projection: { messages: [] } };
+  state.workflow = {
+    activeRun: { id: "active-run" },
+    canPromoteToSteer: true,
+    queuedRuns: [
+      {
+        run: { id: "run:file", userMessageId: "message:file" },
+        text: `Review ${fileLink}`,
+        attachments: [],
+      },
+    ],
+  };
+  await using screen = await renderQueue();
+  await expect.element(screen.getByText("Review ChatView.tsx", { exact: true })).toBeVisible();
+  expect(screen.container.textContent).not.toContain(fileLink);
 });

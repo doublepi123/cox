@@ -1,3 +1,4 @@
+import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 import { useTranslation } from "../../i18n";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -72,7 +73,9 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   const { draftId, onContextMenu, onDiscard, onNavigate } = props;
   const composer = props.composer ?? EMPTY_COMPOSER_PARTS;
   const promptPreview =
-    replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label)
+    composerFileLinksToPlainText(
+      replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label),
+    )
       .trim()
       .split("\n", 1)[0] ?? "";
   // images mirrors persistedAttachments once rehydration finishes; before

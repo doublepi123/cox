@@ -1,3 +1,4 @@
+import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 import type { ChatAttachment } from "@t3tools/contracts";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -24,7 +25,7 @@ export function threadTitleTextFromPrompt(value: string): string {
     return reference.label;
   });
   return (
-    normalizeTitleSeed(prose) ||
+    normalizeTitleSeed(composerFileLinksToPlainText(prose)) ||
     (imageIds.size > 0 ? (imageIds.size === 1 ? "Attached image" : "Attached images") : "")
   );
 }

@@ -1,3 +1,4 @@
+import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 import { useTranslation } from "../../i18n";
 import { BookmarkIcon, FileIcon, FileTextIcon } from "lucide-react";
 import { memo, useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
@@ -15,7 +16,9 @@ function missingImageCount(entry: PromptStashEntry): number {
 }
 
 function stashEntrySnippet(entry: PromptStashEntry): string {
-  const trimmed = assistantCitationsToPlainText(entry.prompt).trim().replace(/\s+/g, " ");
+  const trimmed = assistantCitationsToPlainText(composerFileLinksToPlainText(entry.prompt))
+    .trim()
+    .replace(/\s+/g, " ");
   if (trimmed.length > 0) {
     return trimmed.length > SNIPPET_MAX_CHARS ? `${trimmed.slice(0, SNIPPET_MAX_CHARS)}…` : trimmed;
   }
