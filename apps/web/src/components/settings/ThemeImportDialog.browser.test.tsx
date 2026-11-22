@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
   getCustomThemes,
@@ -152,5 +152,74 @@ it.each(["Update existing", "Keep both"])(
     );
     await expect.element(page.getByText(/^broken\.json:/)).toBeVisible();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  },
+);
+
+it.each(["failed read", "batch install"])(
+  "keeps the oversized replacement warning after a superseded %s",
+  async (earlierImport) => {
+    const previous = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+    localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+    invalidateCustomThemes();
+    using _themes = {
+      [Symbol.dispose]() {
+        if (previous === null) localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+        else localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, previous);
+        invalidateCustomThemes();
+      },
+    };
+    await using _screen = await render(
+      <ThemeImportDialog
+        open
+        onOpenChange={() => {}}
+        onImported={() => true}
+        onImportedMany={() => {}}
+      />,
+    );
+    let resolveRead!: (text: string) => void;
+    let rejectRead!: (cause: Error) => void;
+    const earlierRead = new Promise<string>((resolve, reject) => {
+      resolveRead = resolve;
+      rejectRead = reject;
+    });
+    let signalReadStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      signalReadStarted = resolve;
+    });
+    const earlierFile = Object.assign(themeFile("Dusk"), {
+      text() {
+        signalReadStarted();
+        return earlierRead;
+      },
+    });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const files = new DataTransfer();
+    if (earlierImport === "batch install") files.items.add(themeFile("Dawn"));
+    files.items.add(earlierFile);
+    await act(async () => {
+      input.files = files.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await readStarted;
+    });
+    await expect.element(page.getByRole("button", { name: "Reading…" })).toBeDisabled();
+    await userEvent.upload(
+      input,
+      new File([" ".repeat(256 * 1024 + 1)], earlierFile.name, { type: "application/json" }),
+    );
+    const warning = page.getByText(/^That file is/);
+    await expect.element(warning).toBeVisible();
+
+    await act(async () => {
+      if (earlierImport === "batch install") {
+        resolveRead(JSON.stringify(theme("Dusk")));
+      } else {
+        rejectRead(new Error("Could not read Dusk"));
+      }
+      await earlierRead.catch(() => {});
+    });
+
+    expect(getCustomThemes().map((theme) => theme.label)).toEqual([]);
+    await expect.element(warning).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Choose files" })).toBeEnabled();
   },
 );
