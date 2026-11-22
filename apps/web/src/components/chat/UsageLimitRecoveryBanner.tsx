@@ -34,33 +34,42 @@ type RecoveryProps = {
   onChange: (recovery: OrchestrationV2LimitRecoveryUpdate) => Promise<void>;
 };
 
-export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBannerStackItem {
-  const {
-    runId,
-    errorCode,
-    resetAt,
-    stoppedAt,
-    settled,
-    requestPending,
-    recovery,
-    snoozedUntil,
-    timestampFormat,
-  } = props;
+function recoverySchedule(props: RecoveryProps) {
+  const { runId, resetAt, stoppedAt, settled, requestPending, recovery, snoozedUntil } = props;
   const canSchedule =
     !settled && !requestPending && resetAt !== null && Date.parse(resetAt) > Date.parse(stoppedAt);
   const resumes =
     canSchedule && recovery?.runId === runId && recovery.resetAt === resetAt && recovery.autoResume;
+  const displayAt =
+    resumes && resetAt && snoozedUntil && Date.parse(snoozedUntil) > Date.parse(resetAt)
+      ? snoozedUntil
+      : resetAt;
+  return { canSchedule, resumes, displayAt };
+}
+
+export function useUsageLimitRecoveryBannerItem(props: RecoveryProps | null) {
+  const displayAt = props ? recoverySchedule(props).displayAt : null;
+  const passed = useDeadlinePassed(displayAt ? Date.parse(displayAt) : null);
+  return props ? usageLimitRecoveryBannerItem(props, passed) : null;
+}
+
+export function usageLimitRecoveryBannerItem(
+  props: RecoveryProps,
+  passed?: boolean,
+): ComposerBannerStackItem {
+  const { runId, errorCode, resetAt, timestampFormat } = props;
+  const { canSchedule, resumes, displayAt } = recoverySchedule(props);
   const workspaceLimit = errorCode === CHATGPT_WORKSPACE_USAGE_LIMIT_CODE;
   const chatGptLimit = workspaceLimit || errorCode === CHATGPT_USAGE_LIMIT_CODE;
   const recoveryActions = canSchedule ? (
     <RecoveryActions key={`${runId}:${resetAt}`} {...props} />
   ) : null;
-  const displayAt =
-    resumes && resetAt && snoozedUntil && Date.parse(snoozedUntil) > Date.parse(resetAt)
-      ? snoozedUntil
-      : resetAt;
-  const resetDescription = displayAt
-    ? `${resumes ? "Resumes" : "Resets"} ${formatUpcomingTimestamp(displayAt, timestampFormat)}`
+  const deadlinePassed = passed ?? (displayAt !== null && Date.parse(displayAt) <= Date.now());
+  const resumesUpcoming = resumes && !deadlinePassed;
+  const shownAt = resumesUpcoming ? displayAt : resetAt;
+  const verb = resumesUpcoming ? "Resumes" : deadlinePassed ? "Reset" : "Resets";
+  const resetDescription = shownAt
+    ? `${verb} ${formatUpcomingTimestamp(shownAt, timestampFormat)}`
     : "Reset time unavailable; retry manually";
   if (!chatGptLimit) {
     return {
@@ -139,7 +148,13 @@ function RecoveryActions({ runId, resetAt, recovery, snoozedUntil, onChange }: R
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
       <InlineButton touchTarget="padded" disabled={pending} onClick={() => void toggle("resume")}>
-        {pending ? "Saving..." : scheduled ? "Cancel auto-resume" : "Resume at reset"}
+        {pending
+          ? "Saving..."
+          : scheduled
+            ? "Cancel auto-resume"
+            : resetPassed
+              ? "Resume now"
+              : "Resume at reset"}
       </InlineButton>
       <InlineButton
         touchTarget="padded"
