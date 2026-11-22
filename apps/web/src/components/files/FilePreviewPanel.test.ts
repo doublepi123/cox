@@ -206,6 +206,34 @@ describe("document preview contents", () => {
     expect(result.pages[0]!.html).toBe("<p>First line<br>Second line</p>");
   });
 
+  it.each([
+    ["a tracked replacement", String.raw`{\rtf1 aaa{\deleted bbb}{\revised BBB}ccc}`, "aaaBBBccc"],
+    [
+      "text after a deletion reset",
+      String.raw`{\rtf1 A\deleted old\deleted0 B\deleted old\plain C}`,
+      "ABC",
+    ],
+    [
+      "text around a deleted Unicode span",
+      String.raw`{\rtf1 A{\deleted\uc1\u945\deleted0 old}B}`,
+      "AB",
+    ],
+    [
+      "a TextEdit soft line break with no fallback",
+      String.raw`{\rtf1 First line\uc0\u8232 Second line}`,
+      "First line<br>Second line",
+    ],
+    [
+      "a TextEdit soft line break inside a deleted span",
+      String.raw`{\rtf1 First line\u8232?Second line{\deleted\u8232?}}`,
+      "First line<br>Second line",
+    ],
+  ])("renders %s in rich text", (_name, source, expected) => {
+    const result = openRtf(bytes(source));
+    if (result.type !== "document") throw new Error("Expected document");
+    expect(result.pages[0]!.html).toBe("<p>" + expected + "</p>");
+  });
+
   it("starts a new line at rich text section and column breaks", () => {
     const result = openRtf(
       bytes(
@@ -235,9 +263,6 @@ describe("document preview contents", () => {
     const result = openRtf(input.buffer);
     if (result.type !== "document") throw new Error("Expected document");
     expect(result.pages[0]!.html).toBe("<p>А А<br>あ</p>");
-    const revisions = openRtf(bytes(String.raw`{\rtf1 aaa{\deleted bbb}{\revised BBB}ccc}`));
-    if (revisions.type !== "document") throw new Error("Expected document");
-    expect(revisions.pages[0]!.html).toBe("<p>aaaBBBccc</p>");
     for (const header of [String.raw`\mac`, String.raw`\mac\ansicpg10000`]) {
       const mac = openRtf(bytes(String.raw`{\rtf1` + header + String.raw` Caf\'8e Cr\'8fme}`));
       if (mac.type !== "document") throw new Error("Expected document");

@@ -543,12 +543,12 @@ export function openRtf(bytes: ArrayBuffer): OfficeWorkerResult {
     html += span;
     run = "";
   };
-  const emit = (value: string) => {
+  const emit = (value: string, skip = hidden()) => {
     if (fallback > 0) {
       fallback--;
       return;
     }
-    if (hidden()) return;
+    if (skip) return;
     run += escape(value);
     if (completedLength + html.length + run.length > 8 * 1024 * 1024)
       throw new Error("This rich text document has too much content to preview.");
@@ -593,13 +593,22 @@ export function openRtf(bytes: ArrayBuffer): OfficeWorkerResult {
       const match = /^([a-z]+)(-?\d+)? ?/i.exec(source.slice(i));
       if (!match) {
         if (next === "~") emit("\u00a0");
-        else if ((next === "\n" || next === "\r") && !state.skip) html += "<br>";
+        else if ((next === "\n" || next === "\r") && !hidden()) html += "<br>";
         i++;
         continue;
       }
       i += match[0].length;
       const word = match[1];
       const arg = match[2] === undefined ? 1 : Number(match[2]);
+      if (word === "bin") {
+        if (!Number.isSafeInteger(arg) || arg < 0 || arg > source.length - i)
+          throw new Error("Invalid rich text binary data.");
+        i += arg;
+      }
+      if (fallback > 0) {
+        fallback--;
+        continue;
+      }
       if (word === "fonttbl") {
         state.fontTable = true;
         state.skip = true;
@@ -650,11 +659,7 @@ export function openRtf(bytes: ArrayBuffer): OfficeWorkerResult {
         ].includes(word!)
       )
         state.skip = true;
-      else if (word === "bin") {
-        if (!Number.isSafeInteger(arg) || arg < 0 || arg > source.length - i)
-          throw new Error("Invalid rich text binary data.");
-        i += arg;
-      } else if (word === "mac") state.decoder = new TextDecoder("macintosh");
+      else if (word === "mac") state.decoder = new TextDecoder("macintosh");
       else if (word === "ansicpg") {
         const label =
           (
@@ -679,19 +684,31 @@ export function openRtf(bytes: ArrayBuffer): OfficeWorkerResult {
       else if (word === "ulnone") state.underline = false;
       else if (word === "deleted") state.deleted = arg !== 0;
       else if (word === "plain")
-        state = { ...state, deleted: false, bold: false, italic: false, underline: false, font: defaultFont };
+        state = {
+          ...state,
+          deleted: false,
+          bold: false,
+          italic: false,
+          underline: false,
+          font: defaultFont,
+        };
       else if (word === "uc") state.uc = Math.max(0, Math.min(10, arg));
       else if (word === "u") {
         fallback = 0;
-        if (arg === 0x2028 && !state.skip) html += "<br>";
-        else emit(String.fromCharCode(arg < 0 ? arg + 65536 : arg));
+        // TextEdit writes a soft line break as U+2028, where Chromium does not break the line.
+        if (arg !== 0x2028) emit(String.fromCharCode(arg < 0 ? arg + 65536 : arg));
+        else if (!hidden()) html += "<br>";
         fallback = state.uc;
       } else if (!hidden() && word === "page") finishPage();
-      else if (!hidden() && (word === "par" || word === "line" || word === "row")) html += "<br>";
-      else if (!state.skip && (word === "sect" || word === "column")) {
+      else if (word === "cell") emit("\t", state.skip);
+      else if (
+        (!state.skip && word === "row") ||
+        (!hidden() && (word === "par" || word === "line"))
+      )
+        html += "<br>";
+      else if (!hidden() && (word === "sect" || word === "column")) {
         if (html && !html.endsWith("<br>")) html += "<br>";
-      }
-      else if (word === "tab" || word === "cell") emit("\t");
+      } else if (word === "tab") emit("\t");
       else if (word === "endash") emit("–");
       // oxlint-disable-next-line t3code/no-em-dash-copy -- Preserve the RTF document's punctuation.
       else if (word === "emdash") emit("—");
