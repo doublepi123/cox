@@ -104,7 +104,9 @@ started in a terminal, the page shows the manual upgrade command when an update 
 
 Browser updates are available when Cox runs directly as the main process of the Linux systemd
 **user** service `cox.service`. For a different unit name, set
-`Environment=COX_LOCAL_SERVICE_UPDATE_UNIT=my-cox.service` in that unit and restart it. Cox verifies
+`Environment=COX_LOCAL_SERVICE_UPDATE_UNIT=my-cox.service` in that unit and restart it. Set
+`COX_UPDATES_MANAGED_BY` to a non-empty host name (for example, `CoCode`) when the host manages
+upgrades; Cox then disables its own update checks. Cox verifies
 that it is the named unit's main process before enabling updates. Use a direct `ExecStart` such as
 `/absolute/path/to/cox --no-browser`; a wrapper that stays running as the main process will only
 be able to check for updates.

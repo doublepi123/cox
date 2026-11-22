@@ -75,6 +75,7 @@ export function supportsNpmCoxUpdates(config: {
   readonly devUrl: unknown;
   readonly staticDir: string | undefined;
 }): boolean {
+  if (process.env.COX_UPDATES_MANAGED_BY) return false;
   return isNpmCoxInstallation({
     enabled: config.devUrl === undefined,
     desktop: process.send !== undefined,
