@@ -92,6 +92,7 @@ import Migration0081 from "./Migrations/081_MobilePushAndWebhookNotifications.ts
 import Migration0082 from "./Migrations/082_ProjectionProjectsTrackedFolders.ts";
 import Migration0083 from "./Migrations/083_TaskFolders.ts";
 import Migration0084 from "./Migrations/084_WorktreePathKeyIndex.ts";
+import Migration0085 from "./Migrations/085_DeferredSlashCommandIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -179,6 +180,7 @@ const migrationEntries = [
   [82, "ProjectionProjectsTrackedFolders", Migration0082],
   [83, "TaskFolders", Migration0083],
   [84, "WorktreePathKeyIndex", Migration0084],
+  [85, "DeferredSlashCommandIndex", Migration0085],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

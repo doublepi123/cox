@@ -15,9 +15,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2RunAttempt,
   type OrchestrationV2TurnItem,
-  isCompactionCommandMessage,
   isDeliveredProviderTurn,
-  parseGoalCommand,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -52,7 +50,7 @@ import {
   historicalMessage,
   latestNativeContextUsage,
 } from "@t3tools/provider-core/server/handoffBudget";
-import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
+import { deliverContextHandoffs, isSlashCommandMessage, withInlineContext } from "./ContextHandoffDelivery.ts";
 import { isProviderCommand, outputInstructions } from "./runOutput.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -314,11 +312,10 @@ export const layer: Layer.Layer<
                   source.status === "cancelled" ||
                   (source.status === "completed" &&
                     handoff.delivery === undefined &&
-                    // Compaction and /goal turns defer history to the next turn.
+                    // Slash command turns defer history to the next turn.
                     projection.messages.some(
                       (message) =>
-                        message.id === source.userMessageId &&
-                        (isCompactionCommandMessage(message) || parseGoalCommand(message) !== null),
+                        message.id === source.userMessageId && isSlashCommandMessage(message),
                     ))),
             )));
       const isSideChatHandoff = (handoff: OrchestrationV2ContextHandoff) =>
@@ -749,15 +746,10 @@ export const layer: Layer.Layer<
         text: message.text,
         records: message.context?.records ?? [],
       });
-      const goalDriver =
-        session.driver === "codex" ||
-        session.driver === "claudeAgent" ||
-        (session.driver === "opencode" &&
-          session.providerSession.capabilities.turns.supportsNativeGoals === true);
-      const goalCommand = goalDriver && parseGoalCommand(message) !== null;
+      const slashCommand = isSlashCommandMessage({ ...message, text: messageText });
       // Part of the user text, so every way a turn starts carries it, after the user's own words.
       const userText =
-        run.outputSchema === undefined || goalCommand || isProviderCommand(message)
+        run.outputSchema === undefined || slashCommand || isProviderCommand(message)
           ? messageText
           : `${messageText}\n\n${outputInstructions(run.outputSchema)}`;
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
@@ -768,13 +760,7 @@ export const layer: Layer.Layer<
         projection.attempts,
       );
       const compactionMessageIds = new Set(
-        projection.messages
-          .filter(
-            (candidate) =>
-              isCompactionCommandMessage(candidate) ||
-              (goalDriver && parseGoalCommand(candidate) !== null),
-          )
-          .map((candidate) => candidate.id),
+        projection.messages.filter(isSlashCommandMessage).map((candidate) => candidate.id),
       );
       const restartCancelledWork = pendingRestartCancelledBackgroundWork({
         runs: projection.runs,
@@ -1021,9 +1007,7 @@ export const layer: Layer.Layer<
                 (candidate) => candidate.id === source?.userMessageId,
               );
               return source === undefined ||
-                (message !== undefined &&
-                  (isCompactionCommandMessage(message) ||
-                    (goalDriver && parseGoalCommand(message) !== null)))
+                (message !== undefined && isSlashCommandMessage(message))
                 ? []
                 : [source.ordinal];
             }),
@@ -1339,7 +1323,7 @@ export const layer: Layer.Layer<
             handoffs: [...handoffs, ...resumedRetryHandoff.handoffs],
             providerThread: { ...resumed.success, id: providerThread.id },
             budget: context.budget,
-            deferInline: isCompactionCommandMessage(message) || goalCommand,
+            deferInline: slashCommand,
             alreadyDeliveredItemIds: context.deliveredItemIds,
             persist: () => Effect.void,
           }).pipe(
@@ -1618,7 +1602,7 @@ export const layer: Layer.Layer<
         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
           const delivery = yield* deliverContextHandoffs({
             handoffs: [...effectiveHandoffs, ...retryHandoff.handoffs],
-            deferInline: compact || goalCommand,
+            deferInline: compact || slashCommand,
             providerThread: runningProviderThread,
             budget,
             alreadyDeliveredItemIds: deliveredItemIds,
@@ -1637,7 +1621,7 @@ export const layer: Layer.Layer<
           const start = compact ? session.compactThread! : session.startTurn;
           // Like history, the side chat context waits for a turn that sends a prompt.
           const sideChatContext =
-            sideChatHandoff === undefined || compact || goalCommand
+            sideChatHandoff === undefined || compact || slashCommand
               ? ""
               : sideChatHandoff.summaryText;
           // Record inline handoffs before startTurn so an immediate dropped terminal can restore them.
@@ -1654,7 +1638,7 @@ export const layer: Layer.Layer<
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
           const missedAttachments =
-            compact || goalCommand
+            compact || slashCommand
               ? []
               : retryHandoff.attachments.filter(
                   (missed) =>
@@ -1664,7 +1648,7 @@ export const layer: Layer.Layer<
             ...(noteContinuation || missedAttachments.length > 0 ? promptedInput : turnInput),
             message: {
               ...turnInput.message,
-              text: goalCommand ? userText : withInlineContext(context, userText),
+              text: slashCommand ? userText : withInlineContext(context, userText),
               attachments: [...missedAttachments, ...turnInput.message.attachments],
             },
           }).pipe(
