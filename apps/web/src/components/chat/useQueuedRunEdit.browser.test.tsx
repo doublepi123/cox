@@ -2,6 +2,8 @@ import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   EnvironmentId,
   ChatAttachmentId,
+  ComposerContextId,
+  type ThreadContextRecord,
   MessageId,
   ProviderInstanceId,
   RunId,
@@ -16,6 +18,12 @@ import { toastManager } from "../ui/toast";
 import { act, render } from "../../../test/render";
 import { useComposerDraftStore, useComposerThreadDraft } from "../../composerDraftStore";
 import { deriveComposerSendState } from "../ChatView.logic";
+import {
+  environmentContextRecord,
+  environmentContextReference,
+  threadContextReference,
+} from "../../lib/composerContextRecords";
+import { formatInlineContextReference } from "../../lib/composerContextReferences";
 import { makeThreadFixture } from "../../test-fixtures";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { AppAtomRegistryProvider, appAtomRegistry } from "../../rpc/atomRegistry";
@@ -102,13 +110,23 @@ const THREAD_B: ScopedThreadRef = { environmentId: ENV, threadId: ThreadId.make(
 const RUN = RunId.make("run-1");
 const MODEL = { instanceId: ProviderInstanceId.make("codex"), model: "original-model" };
 
+function threadContextRecord(ref: ScopedThreadRef, title: string): ThreadContextRecord {
+  return {
+    version: 1,
+    kind: "thread",
+    contextId: ComposerContextId.make(`thread_${ref.threadId}`),
+    label: title,
+    ...ref,
+    title,
+  };
+}
+
 type HookResult = ReturnType<typeof useQueuedRunEdit>;
 
-function projection(runs: ReadonlyArray<RunStatus>) {
-  return {
-    runs: runs.map((run) => ({ ...run, modelSelection: MODEL })),
-    messages: [],
-  } as unknown as ThreadStructure;
+type FixtureMessage = Pick<ThreadStructure["messages"][number], "id" | "text" | "context">;
+
+function projection(runs: ReadonlyArray<RunStatus>, messages: ReadonlyArray<FixtureMessage>) {
+  return { runs: runs.map((run) => ({ ...run, modelSelection: MODEL })), messages } as unknown as ThreadStructure;
 }
 
 function setRuns(ref: ScopedThreadRef, status: string) {
@@ -120,13 +138,14 @@ function Harness(props: {
   readonly runStatus: string;
   readonly hookRef: RefObject<HookResult | null>;
   readonly localSendBusy?: boolean;
+  readonly messages?: ReadonlyArray<FixtureMessage> | undefined;
 }) {
   const result = useQueuedRunEdit({
     environmentId: ENV,
     routeThreadRef: props.threadRef,
     threadDraftTarget: props.threadRef,
     activeThreadId: props.threadRef.threadId,
-    serverProjection: projection([{ id: RUN, status: props.runStatus }]),
+    serverProjection: projection([{ id: RUN, status: props.runStatus }], props.messages ?? []),
     promptRef: { current: "" },
     composerRef: { current: null },
   });
@@ -161,10 +180,15 @@ function Harness(props: {
   ) : null;
 }
 
-function view(threadRef: ScopedThreadRef, runStatus: string, hook: { current: HookResult | null }) {
+function view(
+  threadRef: ScopedThreadRef,
+  runStatus: string,
+  hook: { current: HookResult | null },
+  messages?: ReadonlyArray<FixtureMessage>,
+) {
   return (
     <AppAtomRegistryProvider>
-      <Harness threadRef={threadRef} runStatus={runStatus} hookRef={hook} />
+      <Harness threadRef={threadRef} runStatus={runStatus} hookRef={hook} messages={messages} />
     </AppAtomRegistryProvider>
   );
 }
@@ -428,6 +452,128 @@ describe("useQueuedRunEdit", () => {
         input: expect.objectContaining({
           text: "Ultrathink:",
           edit: expect.objectContaining({ attachments: [] }),
+        }),
+      }),
+    );
+  });
+
+  it("opens an edit with only the thread and machine records its text still mentions", async () => {
+    const { hook } = setup();
+    const thread = threadContextRecord(THREAD_B, "Support Any File Uploads");
+    const machine = environmentContextRecord(ENV, "Build box");
+    const unreferenced = threadContextRecord(THREAD_A, "Removed earlier");
+    const messageId = MessageId.make("message-1");
+    const text = `wait for ${formatInlineContextReference(threadContextReference(thread))} on ${formatInlineContextReference(environmentContextReference(machine))}`;
+    const messages = [
+      {
+        id: messageId,
+        text,
+        context: { version: 1 as const, records: [thread, machine, unreferenced] },
+      },
+    ];
+    await using _screen = await render(view(THREAD_A, "queued", hook, messages));
+
+    await act(() => requireHook(hook).beginEdit({ runId: RUN, messageId, text, attachments: [] }));
+
+    const draft = useComposerDraftStore.getState().getComposerDraft(requireHook(hook).draftTarget);
+    expect(draft?.prompt).toBe(text);
+    expect(draft?.threadContexts).toEqual([thread]);
+    expect(draft?.environmentContexts).toEqual([machine]);
+  });
+
+  it("saves only the thread mentions and attachments still in the edited message", async () => {
+    const { hook } = setup();
+    mocks.editQueuedRun.mockResolvedValue({ _tag: "Success" });
+    const kept = threadContextRecord(THREAD_B, "Kept");
+    const removed = threadContextRecord(THREAD_A, "Removed");
+    const removedImageId = ChatAttachmentId.make("server-image-removed");
+    const keptFileId = ChatAttachmentId.make("server-file-kept");
+    const removedImageContextId = ComposerContextId.make("image_local-removed");
+    const keptFileContextId = ComposerContextId.make("file_local-kept");
+    const removedImage = {
+      type: "image" as const,
+      id: removedImageId,
+      name: "image.png",
+      mimeType: "image/png",
+      sizeBytes: 67,
+    };
+    const keptFile = {
+      type: "file" as const,
+      id: keptFileId,
+      name: "legacy.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 40,
+    };
+    const removedImageRecord = {
+      version: 1 as const,
+      kind: "image" as const,
+      contextId: removedImageContextId,
+      label: "image.png",
+      attachmentId: removedImageId,
+      name: "image.png",
+      mimeType: "image/png",
+      sizeBytes: 67,
+    };
+    const keptFileRecord = {
+      version: 1 as const,
+      kind: "file" as const,
+      contextId: keptFileContextId,
+      label: "legacy.pdf",
+      attachmentId: keptFileId,
+      name: "legacy.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 40,
+    };
+    const messageId = MessageId.make("message-1");
+    const text = [
+      formatInlineContextReference(threadContextReference(kept)),
+      formatInlineContextReference(threadContextReference(removed)),
+      formatInlineContextReference({
+        kind: "image",
+        contextId: removedImageContextId,
+        label: "image.png",
+      }),
+    ].join(" and ");
+    const messages = [
+      {
+        id: messageId,
+        text,
+        context: {
+          version: 1 as const,
+          records: [kept, removed, removedImageRecord, keptFileRecord],
+        },
+      },
+    ];
+    await using _screen = await render(view(THREAD_A, "queued", hook, messages));
+    await act(() =>
+      requireHook(hook).beginEdit({
+        runId: RUN,
+        messageId,
+        text,
+        attachments: [removedImage, keptFile],
+      }),
+    );
+    const target = requireHook(hook).draftTarget;
+    await act(() => {
+      useComposerDraftStore.getState().setThreadContexts(target, [kept]);
+      requireHook(hook).removeEditingAttachment(removedImageId);
+    });
+
+    const draft = useComposerDraftStore.getState().getComposerDraft(target);
+    expect(draft?.prompt).not.toContain(removedImageContextId);
+    await requireHook(hook).saveEdit(
+      { ...savedContent(draft?.prompt ?? ""), threadContexts: draft?.threadContexts ?? [] },
+      () => {},
+    );
+
+    expect(mocks.editQueuedRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          text: draft?.prompt,
+          edit: expect.objectContaining({
+            attachments: [keptFile],
+            context: { version: 1 as const, records: [keptFileRecord, kept] },
+          }),
         }),
       }),
     );

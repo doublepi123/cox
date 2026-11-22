@@ -3,7 +3,10 @@ import ChatMarkdown from "./ChatMarkdown";
 import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
+  ChatAttachment,
+  ComposerContextId,
   EnvironmentContextRecord,
+  EnvironmentId,
   PreviewAnnotationPayload,
   ThreadContextRecord,
 } from "@t3tools/contracts";
@@ -11,7 +14,6 @@ import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments"
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
-import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
@@ -34,6 +36,7 @@ import {
 } from "~/lib/composerContextRecords";
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
+import { isQueuedFileAttachment, isQueuedImageAttachment } from "./chat/queuedMessageEdit";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { EnvironmentContextChip } from "./EnvironmentContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
@@ -53,6 +56,11 @@ import {
   UnresolvedChip,
 } from "./contextChipParts";
 
+export interface ComposerImageContextAttachment extends Omit<ComposerImageAttachment, "file"> {
+  readonly file: File | null;
+  readonly uploadedAttachmentId?: string | undefined;
+}
+
 export type ComposerDraftContextRecord =
   | { kind: "terminal"; record: TerminalContextDraft }
   | { kind: "review-comment"; record: ReviewCommentContext }
@@ -61,8 +69,18 @@ export type ComposerDraftContextRecord =
       record: PreviewAnnotationPayload;
       screenshot?: ComposerImageAttachment | undefined;
     }
-  | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
-  | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
+  | {
+      kind: "image";
+      record: ComposerImageContextAttachment;
+      upload?: AttachmentUploadState | undefined;
+      contextId?: ComposerContextId | undefined;
+    }
+  | {
+      kind: "file";
+      record: ComposerFileAttachment;
+      upload?: AttachmentUploadState | undefined;
+      contextId?: ComposerContextId | undefined;
+    }
   | { kind: "thread"; record: ThreadContextRecord }
   | { kind: "environment"; record: EnvironmentContextRecord };
 
@@ -91,7 +109,7 @@ export const EMPTY_COMPOSER_CONTEXT_RECORDS: ComposerDraftContextRecords = new M
 
 export function uploadedContextRecordFromDraft(entry: ComposerDraftContextRecord) {
   if (entry.kind !== "image" && entry.kind !== "file") return null;
-  return uploadedAttachmentContextRecord(entry.record, entry.upload);
+  return uploadedAttachmentContextRecord(entry.record, entry.upload, entry.contextId);
 }
 
 export const ComposerContextRecordsContext = createContext<ComposerDraftContextRecords>(
@@ -106,9 +124,44 @@ export function composerContextRecordsFromDraft(input: {
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
+  existingAttachments?:
+    | ReadonlyArray<{
+        readonly attachment: ChatAttachment;
+        readonly url: string | null;
+        readonly contextIds?: ReadonlyArray<ComposerContextId> | undefined;
+      }>
+    | undefined;
+  environmentId?: EnvironmentId | undefined;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
 }): ComposerDraftContextRecords {
   const records = new Map<string, ComposerDraftContextRecord>();
+  for (const entry of input.existingAttachments ?? []) {
+    for (const contextId of entry.contextIds ?? []) {
+      if (isQueuedImageAttachment(entry.attachment)) {
+        records.set(contextId, {
+          kind: "image",
+          contextId,
+          record: {
+            ...entry.attachment,
+            previewUrl: entry.url ?? "",
+            file: null,
+            uploadedAttachmentId: entry.attachment.id,
+          },
+        });
+      } else if (isQueuedFileAttachment(entry.attachment)) {
+        records.set(contextId, {
+          kind: "file",
+          contextId,
+          record: {
+            ...entry.attachment,
+            file: null,
+            uploadedAttachmentId: entry.attachment.id,
+            ...(input.environmentId ? { uploadEnvironmentId: input.environmentId } : {}),
+          },
+        });
+      }
+    }
+  }
   for (const record of input.images ?? []) {
     records.set(imageContextReference(record).contextId, {
       kind: "image",
@@ -189,7 +242,7 @@ function useUploadStatusSuffix(
 }
 
 function attachmentTooltip(
-  attachment: ComposerImageAttachment | ComposerFileAttachment,
+  attachment: Pick<ComposerImageContextAttachment | ComposerFileAttachment, "name" | "sizeBytes">,
   upload: AttachmentUploadState | undefined,
 ): string {
   const lines = [attachment.name, formatAttachmentSize(attachment.sizeBytes)];
@@ -198,7 +251,7 @@ function attachmentTooltip(
 }
 
 function ImageContextChip(props: {
-  record: ComposerImageAttachment;
+  record: ComposerImageContextAttachment;
   upload: AttachmentUploadState | undefined;
 }) {
   const actions = use(ComposerContextActionsContext);
