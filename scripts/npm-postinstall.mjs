@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -7,8 +8,15 @@ import { applyPatch, parsePatch, reversePatch } from "diff";
 const root = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const patches = JSON.parse(await readFile(join(root, "patches/manifest.json"), "utf8"));
+const findPackageJson = (name) => {
+  for (const directory of require.resolve.paths(name) ?? []) {
+    const candidate = join(directory, name, "package.json");
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error(`Cannot find ${name} to patch`);
+};
 for (const patch of patches) {
-  const packageJson = require.resolve(`${patch.name}/package.json`);
+  const packageJson = findPackageJson(patch.name);
   const installed = JSON.parse(await readFile(packageJson, "utf8"));
   if (installed.version !== patch.version) {
     throw new Error(

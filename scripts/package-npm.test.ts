@@ -183,6 +183,16 @@ describe("npm runtime patches", () => {
     expect(await readFile(join(dependency, "index.js"), "utf8")).toBe("patched\n");
   });
 
+  it("patches a dependency whose exports hide its package.json", async () => {
+    const { dependency, install } = await patchFixture();
+    await writeFile(
+      join(dependency, "package.json"),
+      '{"name":"fixture-dependency","version":"1.0.0","exports":{".":"./index.js"}}',
+    );
+    install();
+    expect(await readFile(join(dependency, "index.js"), "utf8")).toBe("patched\n");
+  });
+
   it("rejects wrong versions and unexpected dependency contents", async () => {
     const { dependency, install } = await patchFixture();
     await writeFile(join(dependency, "index.js"), "unexpected\n");
