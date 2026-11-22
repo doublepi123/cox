@@ -1,3 +1,4 @@
+import { scheduleLabel } from "./ScheduledTasksSettings";
 import {
   EnvironmentId,
   ProjectId,
@@ -431,4 +432,13 @@ it("rejects dedupe templates without a request placeholder", () => {
   const draft = taskToDraft({ ...legacyTask, schedule: { type: "webhook", signature: null } });
   expect(scheduleFromDraft({ ...draft, replayKey: "literal" })).toBeNull();
   expect(scheduleFromDraft({ ...draft, coalesceKey: "{{body.bad" })).toBeNull();
+});
+
+it.each(["12-hour", "24-hour"] as const)("uses %s clocks for fixed and once schedules", (timestampFormat) => {
+  const hour12 = timestampFormat === "12-hour";
+  const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", hour12, timeZone: "UTC" });
+  expect(scheduleLabel({ type: "fixed_time", timeOfDay: "16:31" }, timestampFormat, "Etc/UTC")).toContain(clock.format(Date.UTC(2000, 0, 1, 16, 31)));
+  const runAt = "2026-01-02T16:31:00.000Z";
+  const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", hour12 });
+  expect(scheduleLabel({ type: "once", runAt }, timestampFormat)).toContain(dateTime.format(new Date(runAt)));
 });

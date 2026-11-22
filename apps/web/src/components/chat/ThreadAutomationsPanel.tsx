@@ -1,3 +1,5 @@
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { useClientSettings } from "../../hooks/useSettings";
 import { useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -38,10 +40,10 @@ const STATUS_DOT_CLASS: Record<ScheduledTask["lastRunStatus"], string> = {
   failed: "bg-destructive",
 };
 
-function taskScheduleLine(task: ScheduledTask, timeZone: string | undefined) {
+function taskScheduleLine(task: ScheduledTask, timestampFormat: TimestampFormat, timeZone: string | undefined) {
   return (
     <>
-      {scheduleLabel(task.schedule, timeZone, task.nextRunAt)}
+      {scheduleLabel(task.schedule, timestampFormat, timeZone, task.nextRunAt)}
       {task.enabled && task.nextRunAt !== null ? (
         <>
           {" · next "}
@@ -61,6 +63,7 @@ export function ThreadAutomationsPanel(props: {
   readonly threadId: ThreadId;
 }) {
   const { t } = useTranslation();
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const canOperate = useAtomValue(
     serverEnvironment.runScheduledTaskNow.permissionAtom(props.environmentId),
   );
@@ -180,13 +183,13 @@ export function ThreadAutomationsPanel(props: {
                   {task.title}
                 </span>
                 <p className="truncate text-2xs text-muted-foreground">
-                  {taskScheduleLine(task, tasksQuery.data?.timeZone)}
+                  {taskScheduleLine(task, timestampFormat, tasksQuery.data?.timeZone)}
                 </p>
               </TooltipTrigger>
               <TooltipPopup side="left">
                 <p className="font-medium">{task.title}</p>
                 <p className="text-muted-foreground">
-                  {taskScheduleLine(task, tasksQuery.data?.timeZone)}
+                  {taskScheduleLine(task, timestampFormat, tasksQuery.data?.timeZone)}
                 </p>
               </TooltipPopup>
             </Tooltip>

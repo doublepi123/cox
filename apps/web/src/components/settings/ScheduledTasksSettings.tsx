@@ -1,3 +1,5 @@
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { useClientSettings } from "../../hooks/useSettings";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { Link } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
@@ -51,7 +53,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
-import { formatRelativeTime } from "../../timestampFormat";
+import { formatDateTimeTimestamp, formatRelativeTime, formatTimeOfDay } from "../../timestampFormat";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import { providerInstanceEntriesFor } from "../../providerInstances";
@@ -318,6 +320,7 @@ function splitModelKey(value: string): ModelSelection | null {
 
 export function scheduleLabel(
   schedule: ScheduledTaskSchedule,
+  timestampFormat: TimestampFormat,
   timeZone?: string,
   nextRunAt?: string | null,
 ): string {
@@ -329,7 +332,7 @@ export function scheduleLabel(
       : translateCurrent("Every {count} sec", { count: Math.round(schedule.everyMs / 1000) });
   }
   if (schedule.type === "once")
-    return translateCurrent("Once at {time}", { time: new Date(schedule.runAt).toLocaleString() });
+    return translateCurrent("Once at {time}", { time: formatDateTimeTimestamp(schedule.runAt, timestampFormat) });
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0
@@ -337,7 +340,7 @@ export function scheduleLabel(
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
         ? translateCurrent("Weekdays")
         : weekdays.map((day) => translateCurrent(WEEKDAY_LABELS[day] ?? "")).join(", ");
-  const label = translateCurrent("{days} at {time}", { days, time: schedule.timeOfDay });
+  const label = translateCurrent("{days} at {time}", { days, time: formatTimeOfDay(schedule.timeOfDay, timestampFormat) });
   const zone = scheduleTimeZoneLabel(timeZone, nextRunAt);
   return zone === undefined ? label : `${label} ${zone}`;
 }
@@ -741,6 +744,7 @@ function ScheduledTaskRow({
   readonly onEdit: () => void;
 }) {
   const { t } = useTranslation();
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const canOperate = useAtomValue(
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
@@ -783,7 +787,7 @@ function ScheduledTaskRow({
       status={
         <div className="flex flex-wrap items-center gap-2">
           <span>
-            {scheduleLabel(task.schedule, timeZone, task.nextRunAt)} ·{" "}
+            {scheduleLabel(task.schedule, timestampFormat, timeZone, task.nextRunAt)} ·{" "}
             {!task.enabled ? (
               t("Paused")
             ) : isWebhook ? (
