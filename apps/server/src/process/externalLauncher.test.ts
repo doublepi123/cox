@@ -62,6 +62,7 @@ const layerTest = (input: {
   readonly resolveExecutable?: (command: string) => string | undefined;
   readonly onSpawn?: (command: ChildProcess.StandardCommand) => void;
   readonly onUnref?: () => void;
+  readonly existingPaths?: ReadonlyArray<string>;
   readonly spawnResult?: (command: ChildProcess.StandardCommand) => MockSpawnResult | undefined;
 }) => {
   const layerSpawner = Layer.succeed(
@@ -83,8 +84,18 @@ const layerTest = (input: {
     ),
   );
 
+  const layerFileSystem = Layer.effect(
+    FileSystem.FileSystem,
+    Effect.map(FileSystem.FileSystem, (fs) => ({
+      ...fs,
+      exists: (path: string) =>
+        input.existingPaths?.includes(path) ? Effect.succeed(true) : fs.exists(path),
+    })),
+  ).pipe(Layer.provide(NodeServices.layer));
   return Layer.mergeAll(
-    ExternalLauncher.layer.pipe(Layer.provide(Layer.merge(NodeServices.layer, layerSpawner))),
+    ExternalLauncher.layer.pipe(
+      Layer.provide(Layer.mergeAll(NodeServices.layer, layerSpawner, layerFileSystem)),
+    ),
     Layer.succeed(HostProcess.Platform, input.platform),
     Layer.succeed(
       SpawnExecutableResolution,
@@ -302,6 +313,7 @@ it.effect.skipIf(windowsHost)(
         yield* fileSystem.chmod(filePath, 0o755);
       }
 
+      const target = "/home/t3/workspace [draft]/author's $media/clip|draft.mp4";
       let spawned: ChildProcess.StandardCommand | undefined;
       const result = yield* Effect.gen(function* () {
         const launcher = yield* ExternalLauncher.ExternalLauncher;
@@ -309,7 +321,7 @@ it.effect.skipIf(windowsHost)(
         const editors = yield* launcher.resolveAvailableEditors();
         yield* launcher.launchEditor({
           editor: "file-manager",
-          cwd: "/home/t3/workspace [draft]/author's $media/clip|draft.mp4",
+          cwd: target,
           reveal: true,
         });
         return { kind, editors };
@@ -322,6 +334,7 @@ it.effect.skipIf(windowsHost)(
               WSL_DISTRO_NAME: "Ubuntu-24.04",
               WSL_INTEROP: "/run/WSL/1_interop",
             },
+            existingPaths: [target],
             onSpawn: (command) => {
               spawned = command;
             },
@@ -341,6 +354,32 @@ it.effect.skipIf(windowsHost)(
         "$ProgressPreference = 'SilentlyContinue'; $folderVerb = (Get-ItemProperty -LiteralPath 'Registry::HKEY_CLASSES_ROOT\\Directory\\shell' -ErrorAction SilentlyContinue).'(default)'; if ($folderVerb -and $folderVerb -ne 'none') { Invoke-Item -LiteralPath '\\\\wsl.localhost\\Ubuntu-24.04\\home\\t3\\workspace [draft]\\author''s $media' } else { Start-Process 'explorer.exe' -ArgumentList ('/select,\"' + '\\\\wsl.localhost\\Ubuntu-24.04\\home\\t3\\workspace [draft]\\author''s $media\\clip|draft.mp4' + '\"') }",
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("does not ask Explorer to select a file that does not exist", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const binDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-editors-" });
+    yield* fs.writeFileString(path.join(binDir, "explorer.EXE"), "");
+    yield* fs.writeFileString(path.join(binDir, "powershell.EXE"), "");
+    const cwd = path.join(binDir, "missing.md");
+    const spawned: ChildProcess.StandardCommand[] = [];
+    const result = yield* Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      return yield* Effect.exit(launcher.launchEditor({ editor: "file-manager", cwd, reveal: true }));
+    }).pipe(Effect.provide(layerTest({
+      platform: "win32",
+      env: { PATH: binDir, PATHEXT: ".EXE" },
+      onSpawn: (command) => spawned.push(command),
+    })));
+    assert.isTrue(Exit.isFailure(result));
+    if (Exit.isFailure(result)) {
+      assert.equal(Option.getOrUndefined(Cause.findErrorOption(result.cause))?._tag,
+        "ExternalLauncherRevealTargetMissingError");
+    }
+    assert.deepEqual(spawned, []);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 for (const wsl of [false, true]) {
@@ -372,6 +411,7 @@ for (const wsl of [false, true]) {
                   ? { WSL_DISTRO_NAME: "Ubuntu-24.04", WSL_INTEROP: "/run/WSL/1_interop" }
                   : {}),
               },
+              existingPaths: [target],
               onSpawn: (command) => spawnedCommands.push(command),
               spawnResult: (command) =>
                 command.command === "xdg-mime"
