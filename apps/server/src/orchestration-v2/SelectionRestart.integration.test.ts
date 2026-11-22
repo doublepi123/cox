@@ -37,6 +37,7 @@ import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProjectStore from "./ProjectStore.ts";
+import * as WorkspaceFolders from "../workspace/WorkspaceFolders.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
@@ -324,6 +325,11 @@ for (const capabilities of [
           const databaseLayer = SqlitePersistence.layerMemory;
           const projectLayer = ProjectStore.layer.pipe(Layer.provide(databaseLayer));
           const runtimePolicyLayer = RuntimePolicy.layerFromProjectStore.pipe(
+            Layer.provide(
+              Layer.mock(WorkspaceFolders.WorkspaceFolders)({
+                forThread: () => Effect.succeed({ folders: [], extraRoots: [] }),
+              }),
+            ),
             Layer.provide(projectLayer),
             Layer.provide(
               Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({

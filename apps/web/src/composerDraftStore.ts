@@ -381,6 +381,7 @@ const PersistedDraftThreadState = Schema.Struct({
   envMode: DraftThreadEnvModeSchema,
   startFromOrigin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeName: Schema.optionalKey(Schema.String),
+  worktreeRepositories: Schema.optionalKey(Schema.Array(Schema.String)),
   promotedTo: Schema.optionalKey(
     Schema.NullOr(
       Schema.Struct({
@@ -466,6 +467,11 @@ export interface DraftSessionState {
   envMode: DraftThreadEnvMode;
   startFromOrigin: boolean;
   worktreeName?: string;
+  /**
+   * Tracked repositories a new worktree thread gets a worktree for, by tracked path. Absent
+   * until the user chooses, which leaves the choice to the server's default.
+   */
+  worktreeRepositories?: ReadonlyArray<string>;
   promotedTo?: ScopedThreadRef | null;
 }
 export type DraftThreadState = DraftSessionState;
@@ -542,6 +548,7 @@ interface ComposerDraftStoreState {
       worktreeName?: string;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
+      worktreeRepositories?: ReadonlyArray<string> | null;
     },
   ) => void;
   clearProjectDraftThreadId: (projectRef: ScopedProjectRef) => void;
@@ -1513,9 +1520,22 @@ function createDraftThreadState(
     ...(!projectChanged && existingThread?.worktreeName !== undefined
       ? { worktreeName: existingThread.worktreeName }
       : {}),
+    ...(!projectChanged && existingThread?.worktreeRepositories !== undefined
+      ? { worktreeRepositories: existingThread.worktreeRepositories }
+      : {}),
     promotedTo: null,
   };
 }
+
+function worktreeRepositoriesEqual(
+  left: ReadonlyArray<string> | undefined,
+  right: ReadonlyArray<string> | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined || left.length !== right.length) return false;
+  return left.every((path, index) => path === right[index]);
+}
+
 function scopedThreadRefsEqual(
   left: ScopedThreadRef | null | undefined,
   right: ScopedThreadRef | null | undefined,
@@ -1543,6 +1563,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.envMode === right.envMode &&
     left.startFromOrigin === right.startFromOrigin &&
     left.worktreeName === right.worktreeName &&
+    worktreeRepositoriesEqual(left.worktreeRepositories, right.worktreeRepositories) &&
     scopedThreadRefsEqual(left.promotedTo, right.promotedTo)
   );
 }
@@ -1691,6 +1712,13 @@ function normalizePersistedDraftThreads(
         startFromOrigin,
         ...(typeof candidateDraftThread.worktreeName === "string"
           ? { worktreeName: candidateDraftThread.worktreeName }
+          : {}),
+        ...(Array.isArray(candidateDraftThread.worktreeRepositories)
+          ? {
+              worktreeRepositories: candidateDraftThread.worktreeRepositories.filter(
+                (path): path is string => typeof path === "string",
+              ),
+            }
           : {}),
         promotedTo,
       };
@@ -2148,7 +2176,11 @@ export function partializeComposerDraftStoreState(
     if (!keptSessionKeys.has(threadKey)) {
       continue;
     }
-    persistedDraftThreadsByThreadKey[threadKey] = draftThread;
+    const { worktreeRepositories, ...persistedDraftThread } = draftThread;
+    persistedDraftThreadsByThreadKey[threadKey] = {
+      ...persistedDraftThread,
+      ...(worktreeRepositories ? { worktreeRepositories: [...worktreeRepositories] } : {}),
+    };
   }
   return {
     draftsByThreadKey: persistedDraftsByThreadKey,
@@ -2424,6 +2456,9 @@ function toHydratedDraftThreadState(
     ...(persistedDraftThread.worktreeName !== undefined
       ? { worktreeName: persistedDraftThread.worktreeName }
       : {}),
+    ...(persistedDraftThread.worktreeRepositories
+      ? { worktreeRepositories: persistedDraftThread.worktreeRepositories }
+      : {}),
     promotedTo: persistedDraftThread.promotedTo
       ? scopeThreadRef(
           persistedDraftThread.promotedTo.environmentId as EnvironmentId,
@@ -2678,6 +2713,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 : options.startFromOrigin;
             const worktreeName =
               options.worktreeName ?? (projectChanged ? undefined : existing.worktreeName);
+            const worktreeRepositories =
+              options.worktreeRepositories === undefined
+                ? projectChanged
+                  ? undefined
+                  : existing.worktreeRepositories
+                : (options.worktreeRepositories ?? undefined);
             const nextDraftThread: DraftThreadState = {
               threadId: existing.threadId,
               environmentId: nextProjectRef.environmentId,
@@ -2695,6 +2736,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 options.envMode ?? (nextWorktreePath ? "worktree" : (existing.envMode ?? "local")),
               startFromOrigin: nextStartFromOrigin,
               ...(worktreeName === undefined ? {} : { worktreeName }),
+              ...(worktreeRepositories ? { worktreeRepositories } : {}),
               promotedTo: existing.promotedTo ?? null,
             };
             const isUnchanged =
@@ -2709,6 +2751,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.envMode === existing.envMode &&
               nextDraftThread.startFromOrigin === existing.startFromOrigin &&
               nextDraftThread.worktreeName === existing.worktreeName &&
+              worktreeRepositoriesEqual(
+                nextDraftThread.worktreeRepositories,
+                existing.worktreeRepositories,
+              ) &&
               scopedThreadRefsEqual(nextDraftThread.promotedTo, existing.promotedTo);
             if (isUnchanged) {
               return state;

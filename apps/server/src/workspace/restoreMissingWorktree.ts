@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
+import * as TaskFolders from "./TaskFolders.ts";
 import { withWorkspaceLease } from "./workspaceLease.ts";
 
 class WorktreeRecreateError extends Schema.TaggedError<WorktreeRecreateError>()(
@@ -40,6 +41,7 @@ export const makeRestoreMissingWorktree = Effect.fn("makeRestoreMissingWorktree"
   ) => Effect.Effect<string | undefined>,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
+  const taskFolders = yield* TaskFolders.TaskFolders;
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
 
@@ -108,6 +110,23 @@ export const makeRestoreMissingWorktree = Effect.fn("makeRestoreMissingWorktree"
   ) {
     const { worktreePath, branch } = thread;
     if (worktreePath === null || branch === null) return;
+    const taskFolder = yield* taskFolders.find(worktreePath);
+    if (taskFolder !== null) {
+      return yield* taskFolders
+        .restore({
+          taskFolder,
+          branch,
+          recreate: (checkout) =>
+            recreateMissingWorktree({
+              cwd: checkout.repositoryPath,
+              worktreePath: checkout.worktreePath,
+              branch,
+            }),
+        })
+        .pipe(
+          Effect.mapError((cause) => new WorktreeRecreateError({ worktreePath, branch, cause })),
+        );
+    }
     const exists = yield* fileSystem.exists(worktreePath).pipe(Effect.orElseSucceed(() => true));
     if (exists || !(yield* isManagedWorktreePath(worktreePath))) return;
     const cwd = yield* findWorkspaceRoot(thread.projectId);

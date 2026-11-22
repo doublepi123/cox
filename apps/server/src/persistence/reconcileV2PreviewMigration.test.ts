@@ -61,6 +61,8 @@ describe("V2 preview upgrade", () => {
         [79, "RemovePairingAuthentication"],
         [80, "ScheduledTaskThreadMode"],
         [81, "MobilePushAndWebhookNotifications"],
+        [82, "ProjectionProjectsTrackedFolders"],
+        [83, "TaskFolders"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -165,6 +167,8 @@ describe("V2 preview upgrade", () => {
         [79, "RemovePairingAuthentication"],
         [80, "ScheduledTaskThreadMode"],
         [81, "MobilePushAndWebhookNotifications"],
+        [82, "ProjectionProjectsTrackedFolders"],
+        [83, "TaskFolders"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

@@ -693,6 +693,8 @@ describe("AcpSessionRuntime", () => {
       expect(created?.payload).toMatchObject({
         mcpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }],
       });
+      // This agent does not advertise additional directories, so the thread's other folders stay out.
+      expect(created?.payload).not.toHaveProperty("additionalDirectories");
     }).pipe(
       Effect.provide(
         AcpSessionRuntime.layer({
@@ -706,6 +708,7 @@ describe("AcpSessionRuntime", () => {
           authMethodId: "test",
           mcpServers: [{ type: "stdio", name: "t3-code", command: "/usr/bin/node", args: [] }],
           acpMcpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }],
+          extraRoots: ["/tmp/cox-tracked"],
           requestLogger: (event) =>
             Effect.sync(() => {
               requestEvents.push(event);

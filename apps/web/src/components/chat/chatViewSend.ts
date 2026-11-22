@@ -1,3 +1,4 @@
+import { translateCurrent as t } from "../../i18n";
 import {
   CommandId,
   type EnvironmentId,
@@ -203,21 +204,36 @@ export async function rewindToMessage(input: {
       throw new Error("Make room for this message's attachments in the composer before rewinding.");
     }
     const commandId = CommandId.make(randomUUID());
-    await waitForRevertedMessage(input.routeThreadRef, input.turnCount, commandId, async () => {
-      const result = await input.revertThreadCheckpoint({
-        environmentId,
-        input: {
-          commandId,
-          threadId: input.threadId,
-          turnCount: input.turnCount,
-          restoreFiles: input.restoreFiles,
-          ...(input.checkpoint === undefined
-            ? {}
-            : { checkpointId: input.checkpoint.id, scopeId: input.checkpoint.scopeId }),
-        },
+    const unrestored = await waitForRevertedMessage(
+      input.routeThreadRef,
+      input.turnCount,
+      commandId,
+      async () => {
+        const result = await input.revertThreadCheckpoint({
+          environmentId,
+          input: {
+            commandId,
+            threadId: input.threadId,
+            turnCount: input.turnCount,
+            restoreFiles: input.restoreFiles,
+            ...(input.checkpoint === undefined
+              ? {}
+              : { checkpointId: input.checkpoint.id, scopeId: input.checkpoint.scopeId }),
+          },
+        });
+        if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      },
+    );
+    if (unrestored.length > 0) {
+      toastManager.add({
+        type: "warning",
+        title: t("Some repositories were not rewound"),
+        description: t(
+          "{repositories} had no snapshot from before these turns. Check their uncommitted changes.",
+          { repositories: unrestored.join(", ") },
+        ),
       });
-      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    });
+    }
     const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
     const { prompt: restoredPrompt, mentions } = recallComposerMessage(message);
     const nextPrompt =

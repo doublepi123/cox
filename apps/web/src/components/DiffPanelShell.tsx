@@ -7,7 +7,7 @@ import { Skeleton } from "./ui/skeleton";
 export type DiffPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 function getDiffPanelHeaderRowClassName(mode: DiffPanelMode) {
   return cn(
-    "flex items-center justify-between gap-2",
+    "@container/diff-header flex items-center justify-between gap-2",
     mode === "embedded" ? "px-2" : "px-4",
     "flex h-10 min-h-10 shrink-0 items-center border-b border-border/60 bg-background max-[768px]:h-auto max-[768px]:min-h-11 max-[768px]:flex-wrap max-[768px]:py-1 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent",
   );

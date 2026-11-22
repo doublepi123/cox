@@ -51,6 +51,7 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import { isFilesystemRoot, managedWorktreesDirectories } from "./worktreesDirectory.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import { removeLinkedWorktree } from "./vcs/worktreeRemoval.ts";
+import * as TaskFolders from "./workspace/TaskFolders.ts";
 import { withWorkspaceLease } from "./workspace/workspaceLease.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
@@ -296,6 +297,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const taskFolders = yield* TaskFolders.TaskFolders;
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const reconcileBranch = yield* WorktreeBranchSync.makeReconcile;
   const terminals = yield* TerminalManager.TerminalManager;
@@ -943,6 +945,8 @@ const make = Effect.gen(function* () {
       };
       yield* Effect.gen(function* () {
         if (!(yield* fs.exists(worktreePath))) return;
+        const taskFolder = yield* taskFolders.find(worktreePath);
+        const guardedPath = taskFolder?.root ?? worktreePath;
         if (deleted && !settings.worktreeOnDelete) return keep("no rules apply");
         if (members.length > 1 && worktreeOwner(members) === undefined)
           return keep(`shared by ${members.length} threads`);
@@ -952,7 +956,7 @@ const make = Effect.gen(function* () {
         if (thread.branch === null) return keep("thread has no branch");
         if (group.some((member) => member.branch !== thread.branch))
           return keep("a subagent thread's branch differs from this worktree's branch");
-        if (hasTerminal(worktreePath)) return keep(waitForStop("open terminal"));
+        if (hasTerminal(guardedPath)) return keep(waitForStop("open terminal"));
         if (
           [...group, ...settlementChain.slice(1)].some(
             (member) =>
@@ -1000,8 +1004,160 @@ const make = Effect.gen(function* () {
         if (!eligible && !unchangedApplies && !settings.worktreeOnMerge) return keep(notDueReason);
         const pathReason = yield* worktreePathReason(worktreePath);
         if (pathReason !== null) return keep(pathReason);
-        if (yield* containsProjectRoot(worktreePath, [project, ...snapshot.projects]))
+        if (yield* containsProjectRoot(guardedPath, [project, ...snapshot.projects]))
           return keep("contains a project checkout");
+        // Re-read this path's threads and sessions so new activity cancels removal; full per-worktree snapshots take seconds.
+        const blockedSinceCheck = Effect.fnUntraced(function* () {
+          const latestProjects = yield* projectStore.listShells();
+          if (yield* containsProjectRoot(guardedPath, [project, ...latestProjects]))
+            return "contains a project checkout";
+          const latest = (yield* projections.getThreadWorktreePaths({
+            includeArchived: true,
+          })).filter((entry) => path.resolve(entry.worktreePath) === worktreePath);
+          if (hasTerminal(guardedPath)) return waitForStop("open terminal");
+          if (deleted) {
+            if (
+              !resolveWorktreeCleanup(yield* settingsService.getSettings, thread.projectId)
+                .worktreeOnDelete
+            )
+              return "thread or cleanup settings changed since check";
+            // Durable deletion cleanup must succeed or be explicitly cancelled before removing its checkout.
+            const pendingCleanup = yield* sql<{ status: string }>`
+              SELECT status FROM orchestration_v2_effect_outbox
+              WHERE thread_id = ${thread.id} AND status NOT IN ('succeeded', 'cancelled')
+            `.pipe(NodeSqliteClient.readOnly);
+            // Failed effects never retry, so only running work can finish and free the path.
+            if (pendingCleanup.some((row) => row.status !== "failed"))
+              return waitForStop("thread deletion is still pending");
+            if (pendingCleanup.length > 0) return "thread deletion is still pending";
+          }
+          const latestShells = yield* Effect.forEach(latest, (entry) =>
+            projections.getThreadShell(entry.threadId),
+          );
+          const latestGroup = latestShells.filter((shell) => shell !== null);
+          const latestOwner = worktreeOwner(deleted ? [thread, ...latestGroup] : latestGroup);
+          if (
+            latestGroup.length !== group.length ||
+            latestOwner?.id !== thread.id ||
+            latestOwner?.branch !== thread.branch ||
+            latestGroup.some((shell) => {
+              const previous = group.find((member) => member.id === shell.id);
+              return (
+                previous === undefined ||
+                shell.branch !== thread.branch ||
+                !Equal.equals(shell.settledAt, previous.settledAt) ||
+                (shell.settledAt !== null && !Equal.equals(shell.updatedAt, previous.updatedAt)) ||
+                !storageCleanupThreadIdle(shell, now, serverSettings) ||
+                path.resolve(shell.worktreePath!) !== worktreePath ||
+                storageCleanupActivityAt(shell) !== storageCleanupActivityAt(previous)
+              );
+            })
+          )
+            return waitForStop("thread activity or shared worktree changed since check");
+          if (settlementChain.length > 1) {
+            const ancestors = yield* Effect.forEach(settlementChain.slice(1), (ancestor) =>
+              projections.getThreadShell(ancestor.id),
+            );
+            const latestSettlement = worktreeSettlementChain(
+              latestGroup.find((shell) => shell.id === thread.id)!,
+              new Map(
+                [...latestGroup, ...ancestors.filter((ancestor) => ancestor !== null)].map(
+                  (ancestor) => [ancestor.id, ancestor],
+                ),
+              ),
+              now,
+              serverSettings,
+            ).at(-1);
+            if (
+              latestSettlement?.id !== settledThread?.id ||
+              !Equal.equals(latestSettlement?.settledAt, settledThread?.settledAt) ||
+              !Equal.equals(latestSettlement?.updatedAt, settledThread?.updatedAt)
+            )
+              return "parent settlement changed since check";
+          }
+          // Sessions can outlive their run and can be shared across app threads.
+          const sessionRows = yield* sql<{ payload_json: string }>`
+            SELECT payload_json FROM orchestration_v2_projection_provider_sessions
+            WHERE status != 'stopped'
+          `.pipe(NodeSqliteClient.readOnly);
+          const sessions = yield* Effect.forEach(sessionRows, (row) =>
+            decodeCleanupSession(row.payload_json),
+          );
+          // Ready persisted sessions may have released their runtime; only live sessions protect the path.
+          for (const session of sessions) {
+            const cwd = path.resolve(session.cwd);
+            if (
+              (pathKey(cwd) === pathKey(guardedPath) || inside(guardedPath, cwd)) &&
+              (yield* providerSessions.isLive(session.id))
+            )
+              return waitForStop("provider session is still open");
+          }
+          return null;
+        });
+        if (taskFolder !== null) {
+          if (!eligible) return keep(notDueReason);
+          const blocked = yield* blockedSinceCheck();
+          if (blocked !== null) return keep(blocked);
+          const bytes = yield* measureWorktree(taskFolder.root);
+          const latestSettings = yield* settingsService.getSettings;
+          if (
+            latestSettings.autoResumeLimitedThreads !== serverSettings.autoResumeLimitedThreads ||
+            latestSettings.snoozeLimitedThreads !== serverSettings.snoozeLimitedThreads ||
+            !Equal.equals(resolveWorktreeCleanup(latestSettings, thread.projectId), settings)
+          )
+            return keep("settings changed since check");
+          const checkoutBytes = new Map<string, number | null>();
+          const removed = yield* taskFolders.remove({
+            root: taskFolder.root,
+            force: false,
+            forget: false,
+            inspect: Effect.fnUntraced(
+              function* (checkout) {
+                const changed = yield* branchChanged(checkout.worktreePath, thread.branch!);
+                if (changed) return { keep: "repository or branch changed", force: false };
+                const keep = yield* localChangesReason(checkout.worktreePath, settings);
+                if (keep !== null) return { keep, force: false };
+                checkoutBytes.set(
+                  checkout.worktreePath,
+                  yield* measureWorktree(checkout.worktreePath),
+                );
+                const afterMeasure = yield* settingsService.getSettings;
+                if (
+                  afterMeasure.autoResumeLimitedThreads !==
+                    serverSettings.autoResumeLimitedThreads ||
+                  afterMeasure.snoozeLimitedThreads !== serverSettings.snoozeLimitedThreads ||
+                  !Equal.equals(resolveWorktreeCleanup(afterMeasure, thread.projectId), settings)
+                )
+                  return { keep: "settings changed since check", force: false };
+                return { keep: yield* blockedSinceCheck(), force: false };
+              },
+              Effect.orElseSucceed(() => ({ keep: "could not inspect repository", force: false })),
+            ),
+          });
+          const rootKept = removed.kept.find((repository) => repository.path === worktreePath);
+          if (rootKept) keep(rootKept.reason);
+          for (const repository of removed.kept) {
+            if (repository.path !== worktreePath)
+              entries.push({
+                ...entry,
+                path: repository.path,
+                reason: sentence(repository.reason),
+              });
+          }
+          for (const removedPath of removed.removed) {
+            if (removedPath !== worktreePath)
+              entries.push({
+                ...entry,
+                path: removedPath,
+                outcome: "removed",
+                reason: sentence(removalReason),
+                bytes: checkoutBytes.get(removedPath) ?? null,
+              });
+          }
+          if (!rootKept)
+            entries.push({ ...entry, outcome: "removed", reason: sentence(removalReason), bytes });
+          return;
+        }
         if (yield* branchChanged(worktreePath, thread.branch)) {
           if (!deleted) {
             yield* Effect.gen(function* () {
@@ -1129,94 +1285,6 @@ const make = Effect.gen(function* () {
           }
         }
         if (!eligible) return keep(notDueReason);
-        // Re-read this path's threads and sessions so new activity cancels removal; full per-worktree snapshots take seconds.
-        const blockedSinceCheck = Effect.fnUntraced(function* () {
-          const latestProjects = yield* projectStore.listShells();
-          if (yield* containsProjectRoot(worktreePath, [project, ...latestProjects]))
-            return "contains a project checkout";
-          const latest = (yield* projections.getThreadWorktreePaths({
-            includeArchived: true,
-          })).filter((entry) => path.resolve(entry.worktreePath) === worktreePath);
-          if (hasTerminal(worktreePath)) return waitForStop("open terminal");
-          if (deleted) {
-            if (
-              !resolveWorktreeCleanup(yield* settingsService.getSettings, thread.projectId)
-                .worktreeOnDelete
-            )
-              return "thread or cleanup settings changed since check";
-            // Durable deletion cleanup must succeed or be explicitly cancelled before removing its checkout.
-            const pendingCleanup = yield* sql<{ status: string }>`
-              SELECT status FROM orchestration_v2_effect_outbox
-              WHERE thread_id = ${thread.id} AND status NOT IN ('succeeded', 'cancelled')
-            `.pipe(NodeSqliteClient.readOnly);
-            // Failed effects never retry, so only running work can finish and free the path.
-            if (pendingCleanup.some((row) => row.status !== "failed"))
-              return waitForStop("thread deletion is still pending");
-            if (pendingCleanup.length > 0) return "thread deletion is still pending";
-          }
-          const latestShells = yield* Effect.forEach(latest, (entry) =>
-            projections.getThreadShell(entry.threadId),
-          );
-          const latestGroup = latestShells.filter((shell) => shell !== null);
-          const latestOwner = worktreeOwner(deleted ? [thread, ...latestGroup] : latestGroup);
-          if (
-            latestGroup.length !== group.length ||
-            latestOwner?.id !== thread.id ||
-            latestOwner?.branch !== thread.branch ||
-            latestGroup.some((shell) => {
-              const previous = group.find((member) => member.id === shell.id);
-              return (
-                previous === undefined ||
-                shell.branch !== thread.branch ||
-                !Equal.equals(shell.settledAt, previous.settledAt) ||
-                (shell.settledAt !== null && !Equal.equals(shell.updatedAt, previous.updatedAt)) ||
-                !storageCleanupThreadIdle(shell, now, serverSettings) ||
-                path.resolve(shell.worktreePath!) !== worktreePath ||
-                storageCleanupActivityAt(shell) !== storageCleanupActivityAt(previous)
-              );
-            })
-          )
-            return waitForStop("thread activity or shared worktree changed since check");
-          if (settlementChain.length > 1) {
-            const ancestors = yield* Effect.forEach(settlementChain.slice(1), (ancestor) =>
-              projections.getThreadShell(ancestor.id),
-            );
-            const latestSettlement = worktreeSettlementChain(
-              latestGroup.find((shell) => shell.id === thread.id)!,
-              new Map(
-                [...latestGroup, ...ancestors.filter((ancestor) => ancestor !== null)].map(
-                  (ancestor) => [ancestor.id, ancestor],
-                ),
-              ),
-              now,
-              serverSettings,
-            ).at(-1);
-            if (
-              latestSettlement?.id !== settledThread?.id ||
-              !Equal.equals(latestSettlement?.settledAt, settledThread?.settledAt) ||
-              !Equal.equals(latestSettlement?.updatedAt, settledThread?.updatedAt)
-            )
-              return "parent settlement changed since check";
-          }
-          // Sessions can outlive their run and can be shared across app threads.
-          const sessionRows = yield* sql<{ payload_json: string }>`
-            SELECT payload_json FROM orchestration_v2_projection_provider_sessions
-            WHERE status != 'stopped'
-          `.pipe(NodeSqliteClient.readOnly);
-          const sessions = yield* Effect.forEach(sessionRows, (row) =>
-            decodeCleanupSession(row.payload_json),
-          );
-          // Ready persisted sessions may have released their runtime; only live sessions protect the path.
-          for (const session of sessions) {
-            const cwd = path.resolve(session.cwd);
-            if (
-              (pathKey(cwd) === pathKey(worktreePath) || inside(worktreePath, cwd)) &&
-              (yield* providerSessions.isLive(session.id))
-            )
-              return waitForStop("provider session is still open");
-          }
-          return null;
-        });
         const blocked = yield* blockedSinceCheck();
         if (blocked !== null) return keep(blocked);
         const bytes = yield* measureWorktree(worktreePath);

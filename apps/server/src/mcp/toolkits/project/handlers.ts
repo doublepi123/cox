@@ -4,6 +4,7 @@ import {
   ThreadId,
   OrchestratorMcpFailure,
   ProjectId,
+  type TaskFolderError,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -303,12 +304,13 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         if (
           input.scripts !== undefined ||
           input.createWorkspaceRootIfMissing !== undefined ||
-          input.defaultModelSelection !== undefined
+          input.defaultModelSelection !== undefined ||
+          input.trackedFolders !== undefined
         )
           return yield* new OrchestratorMcpFailure({
             code: "invalid_request",
             message:
-              "A project started from its title takes only a title; set scripts or defaultModelSelection afterwards with cox_project_update.",
+              "A project started from its title takes only a title; set scripts, trackedFolders, or defaultModelSelection afterwards with cox_project_update.",
           });
         const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
         const created = yield* folders.createNamedProject({ name: input.title }).pipe(

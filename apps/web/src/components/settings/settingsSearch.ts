@@ -950,6 +950,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/projects",
     searchTerms: ["commands scripts setup run dev server checkout worktree t3.json import"],
   },
+  {
+    id: "project-repositories",
+    title: "Repositories",
+    to: "/settings/projects",
+    searchTerms: ["tracked folders multi repo workspace code-workspace rescan add folder"],
+  },
 
   {
     id: "secret-providers",

@@ -38,7 +38,7 @@ import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import { layerRealGit } from "./ProviderTurnStartService.testkit.ts";
+import { layerNoTaskFolders, layerRealGit } from "./ProviderTurnStartService.testkit.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -151,6 +151,7 @@ function startWithMissingWorktree(
                 ),
         } as never),
         layerWorktreeLocation(),
+        layerNoTaskFolders,
         Layer.mock(GitWorkflow.GitWorkflowService)({
           pruneWorktrees,
           createWorktree,
@@ -967,6 +968,7 @@ function makeLocalCommandHarness(input: {
         }),
         IdAllocator.layer,
         layerWorktreeLocation(input.worktreesDir),
+        layerNoTaskFolders,
         input.fileSystem === undefined
           ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
           : Layer.succeed(FileSystem.FileSystem, input.fileSystem),
