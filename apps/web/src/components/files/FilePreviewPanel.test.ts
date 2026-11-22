@@ -235,6 +235,9 @@ describe("document preview contents", () => {
     const result = openRtf(input.buffer);
     if (result.type !== "document") throw new Error("Expected document");
     expect(result.pages[0]!.html).toBe("<p>А А<br>あ</p>");
+    const revisions = openRtf(bytes(String.raw`{\rtf1 aaa{\deleted bbb}{\revised BBB}ccc}`));
+    if (revisions.type !== "document") throw new Error("Expected document");
+    expect(revisions.pages[0]!.html).toBe("<p>aaaBBBccc</p>");
     for (const header of [String.raw`\mac`, String.raw`\mac\ansicpg10000`]) {
       const mac = openRtf(bytes(String.raw`{\rtf1` + header + String.raw` Caf\'8e Cr\'8fme}`));
       if (mac.type !== "document") throw new Error("Expected document");
