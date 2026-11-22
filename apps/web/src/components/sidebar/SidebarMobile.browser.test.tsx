@@ -32,10 +32,7 @@ function MobileSidebar() {
             <div className="p-2">
               <SidebarThreadHeader
                 hasProjects
-                projectScope={
-                  <SidebarHeaderIconButton label="Filter projects">F</SidebarHeaderIconButton>
-                }
-                onNewProject={() => {}}
+                projectScope={<SidebarHeaderIconButton label="Projects">F</SidebarHeaderIconButton>}
                 onNewThread={() => {}}
                 newThreadDisabled={false}
                 newThreadShortcutLabel={null}
@@ -92,8 +89,7 @@ describe("mobile sidebar", () => {
       await expect.element(dialog.getByRole("link", { name: "Cox home" })).toBeVisible();
       const actions = [
         "Toggle main sidebar",
-        "Filter projects",
-        "Add project",
+        "Projects",
         "New thread",
         "Settings",
         "Pull requests",
@@ -107,11 +103,10 @@ describe("mobile sidebar", () => {
         expect(rect.left).toBeGreaterThanOrEqual(bounds.left);
         expect(rect.right).toBeLessThanOrEqual(bounds.right);
       }
-      const toolbar = ["Filter projects", "Add project", "New thread"].map((name) =>
+      const toolbar = ["Projects", "New thread"].map((name) =>
         dialog.getByRole("button", { name, exact: true }).element().getBoundingClientRect(),
       );
       expect(toolbar[0]!.right).toBeLessThanOrEqual(toolbar[1]!.left);
-      expect(toolbar[1]!.right).toBeLessThanOrEqual(toolbar[2]!.left);
       const settings = dialog.getByRole("button", { name: "Settings", exact: true });
       expect(settings.element().textContent).toContain("Settings");
       expect(settings.element().getBoundingClientRect().top).toBeGreaterThan(600);

@@ -13,7 +13,7 @@ import {
 } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, fakeTimers, render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -74,6 +74,22 @@ function project(id: string): Project {
     scripts: [],
   };
 }
+
+it("opens Add project from the sidebar project picker", async () => {
+  const previous = getClientSettings();
+  using _settings = { [Symbol.dispose]: () => __setClientSettingsForTests(previous) };
+  __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+  vi.mocked(useProjects).mockReturnValue([project("web")]);
+  vi.mocked(openCommandPalette).mockClear();
+  await using screen = await render(
+    <SidebarProvider>
+      <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+    </SidebarProvider>,
+  );
+  await screen.getByRole("combobox", { name: "Projects", exact: true }).click();
+  await page.getByRole("option", { name: "Add project", exact: true }).click();
+  expect(openCommandPalette).toHaveBeenCalledExactlyOnceWith({ open: "add-project" });
+});
 
 describe("sidebar header new thread", () => {
   it.each([

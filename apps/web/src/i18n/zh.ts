@@ -3330,6 +3330,7 @@ export const zh = {
   Browser: "浏览器",
   Diagnostics: "诊断",
   Projects: "项目",
+  "Projects: {projects}": "项目：{projects}",
   General: "常规",
   Chat: "聊天",
   "Diffs & pull requests": "差异与拉取请求",

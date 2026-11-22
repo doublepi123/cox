@@ -3537,6 +3537,7 @@ export const en = {
   Browser: "Browser",
   Diagnostics: "Diagnostics",
   Projects: "Projects",
+  "Projects: {projects}": "Projects: {projects}",
   General: "General",
   Chat: "Chat",
   "Diffs & pull requests": "Diffs & pull requests",
