@@ -11,49 +11,14 @@ export function materializeReplayTranscriptRuntimeInstructions(
       ? "Cursor"
       : runtime.driver === "grok"
         ? "Grok"
-          : runtime.driver === "acpRegistry"
-            ? "acpRegistry"
-            : runtime.driver === "fx"
-              ? "fx"
-              : undefined;
+        : runtime.driver === "acpRegistry"
+          ? "acpRegistry"
+          : runtime.driver === "fx"
+            ? "fx"
+            : undefined;
   if (harness === undefined) return transcript;
   const instructions = buildRuntimeInstructions({ harness, model: runtime.model });
-  // The notes name the model, so each prompt expects the ones for its session's current model.
-  const sessionModels = new Map<unknown, string>();
-  const notesFor = (sessionId: unknown) => {
-    const model = sessionModels.get(sessionId) ?? runtime.model;
-    return model === runtime.model ? instructions : buildRuntimeInstructions({ harness, model });
-  };
-  // Grok's flavor sets `supportsCompaction`.
-  const compactsThroughPrompt = runtime.driver === "grok";
-  // Like the adapter: notes go out until a prompt carrying that text succeeds, and a new runtime
-  // or compaction resets that. Not mirrored, as no recording has them: Copilot compaction events,
-  // child-session compactions, and ACP v2 prompts that settle through an idle `state_update`.
-  const deliveredNotes = new Map<unknown, string>();
-  // A prompt's success records delivery only if no compaction completed after it was sent.
-  const compactionCounts = new Map<unknown, number>();
-  const completedCompactionIds = new Set<string>();
-  // A turn that completes with a compaction still open projects it as completed.
-  const openCompactions = new Map<unknown, Set<unknown>>();
-  const markCompacted = (sessionId: unknown, compactionId?: unknown) => {
-    if (typeof compactionId === "string") {
-      const key = `${String(sessionId)}\u0000${compactionId}`;
-      if (completedCompactionIds.has(key)) return;
-      completedCompactionIds.add(key);
-    }
-    deliveredNotes.delete(sessionId);
-    compactionCounts.set(sessionId, (compactionCounts.get(sessionId) ?? 0) + 1);
-  };
-  let pendingPrompt:
-    | {
-        readonly sessionId: unknown;
-        /** The runtime notes the prompt carried, if any. */
-        readonly notes: string | undefined;
-        readonly compact: boolean;
-        readonly compactionsAtSend: number;
-      }
-    | undefined;
-  const cursorSessionKey = "cursor";
+  let deliveredCursorNotes: string | undefined;
   let cursorAgentId: string | undefined;
   let interruptedCursorNotes:
     | {
@@ -86,7 +51,7 @@ export function materializeReplayTranscriptRuntimeInstructions(
               ? frame.update
               : undefined;
           if (cursorUpdate?.type === "summary-completed" && cursorUpdate.failed !== true) {
-            deliveredNotes.delete(cursorSessionKey);
+            deliveredCursorNotes = undefined;
             if (interruptedCursorNotes?.agentId === cursorAgentId) {
               interruptedCursorNotes = undefined;
             }
@@ -95,17 +60,17 @@ export function materializeReplayTranscriptRuntimeInstructions(
           if (frame?.type === "run.completed" && pendingCursorRun !== undefined) {
             const status = isRecord(frame.result) ? frame.result.status : undefined;
             if (pendingCursorRun.compact) {
-              deliveredNotes.delete(cursorSessionKey);
+              deliveredCursorNotes = undefined;
             } else if (
               status === "finished" &&
               !pendingCursorRun.compacted &&
               pendingCursorRun.notes !== undefined
             ) {
-              deliveredNotes.set(cursorSessionKey, pendingCursorRun.notes);
+              deliveredCursorNotes = pendingCursorRun.notes;
               interruptedCursorNotes = undefined;
             } else if (status !== "finished") {
               if (pendingCursorRun.notes !== undefined) {
-                deliveredNotes.delete(cursorSessionKey);
+                deliveredCursorNotes = undefined;
               }
               interruptedCursorNotes =
                 status === "cancelled" &&
@@ -118,47 +83,6 @@ export function materializeReplayTranscriptRuntimeInstructions(
           }
           return entry;
         }
-        if (frame?.kind === "response" && frame.method === "session/prompt" && pendingPrompt) {
-          const stopReason = isRecord(frame.result) ? frame.result.stopReason : undefined;
-          const delivered =
-            frame.error === undefined &&
-            stopReason !== "cancelled" &&
-            stopReason !== "refusal" &&
-            stopReason !== "error";
-          const open = openCompactions.get(pendingPrompt.sessionId);
-          if (delivered && open !== undefined && open.size > 0) {
-            openCompactions.delete(pendingPrompt.sessionId);
-            markCompacted(pendingPrompt.sessionId);
-          }
-          if (delivered && pendingPrompt.compact) {
-            markCompacted(pendingPrompt.sessionId);
-          } else if (
-            delivered &&
-            pendingPrompt.notes !== undefined &&
-            (compactionCounts.get(pendingPrompt.sessionId) ?? 0) === pendingPrompt.compactionsAtSend
-          ) {
-            deliveredNotes.set(pendingPrompt.sessionId, pendingPrompt.notes);
-          }
-          pendingPrompt = undefined;
-        }
-        const update =
-          frame?.method === "session/update" && isRecord(frame.params)
-            ? frame.params.update
-            : undefined;
-        if (
-          isRecord(update) &&
-          update.sessionUpdate === "compaction_update" &&
-          isRecord(frame?.params)
-        ) {
-          const sessionId = frame.params.sessionId;
-          const open = openCompactions.get(sessionId) ?? new Set<unknown>();
-          if (update.status === "in_progress") {
-            openCompactions.set(sessionId, open.add(update.compactionId));
-          } else {
-            open.delete(update.compactionId);
-          }
-          if (update.status === "completed") markCompacted(sessionId, update.compactionId);
-        }
         return entry;
       }
       if (entry.type !== "expect_outbound") return entry;
@@ -166,7 +90,7 @@ export function materializeReplayTranscriptRuntimeInstructions(
       if (typeof frame !== "object" || frame === null) return entry;
       if (runtime.driver === "cursor" && "type" in frame) {
         if (frame.type === "agent.close") {
-          deliveredNotes.clear();
+          deliveredCursorNotes = undefined;
           cursorAgentId = undefined;
           interruptedCursorNotes = undefined;
           pendingCursorRun = undefined;
@@ -191,7 +115,7 @@ export function materializeReplayTranscriptRuntimeInstructions(
               typeof frame.message === "string" &&
               frame.message.trim() === "/compress")
           ) {
-            deliveredNotes.delete(cursorSessionKey);
+            deliveredCursorNotes = undefined;
             pendingCursorRun = { notes: undefined, compact: true, compacted: false };
             return entry;
           }
@@ -205,7 +129,7 @@ export function materializeReplayTranscriptRuntimeInstructions(
             const expected =
               model === runtime.model ? instructions : buildRuntimeInstructions({ harness, model });
             const recorded = frame.message.endsWith(expected);
-            const resend = !recorded && deliveredNotes.get(cursorSessionKey) !== expected;
+            const resend = !recorded && deliveredCursorNotes !== expected;
             interruptedCursorNotes = undefined;
             pendingCursorRun = {
               notes: recorded || resend ? expected : undefined,
@@ -226,30 +150,6 @@ export function materializeReplayTranscriptRuntimeInstructions(
       }
       if (
         "method" in frame &&
-        (frame.method === "session/close" || frame.method === "initialize")
-      ) {
-        // A closed or restarted session comes back in a new runtime, which resends the instructions.
-        deliveredNotes.clear();
-        completedCompactionIds.clear();
-        openCompactions.clear();
-        pendingPrompt = undefined;
-        return entry;
-      }
-      const params = "params" in frame && isRecord(frame.params) ? frame.params : undefined;
-      const selectedModel =
-        "method" in frame && frame.method === "session/set_config_option"
-          ? params?.configId === "model"
-            ? params.value
-            : undefined
-          : "method" in frame && frame.method === "session/set_model"
-            ? params?.modelId
-            : undefined;
-      if (typeof selectedModel === "string") {
-        sessionModels.set(params?.sessionId, selectedModel);
-        return entry;
-      }
-      if (
-        "method" in frame &&
         frame.method === "session/prompt" &&
         "params" in frame &&
         typeof frame.params === "object" &&
@@ -257,44 +157,31 @@ export function materializeReplayTranscriptRuntimeInstructions(
         "prompt" in frame.params &&
         Array.isArray(frame.params.prompt)
       ) {
-        const promptSessionId = "sessionId" in frame.params ? frame.params.sessionId : undefined;
         const prompt: ReadonlyArray<unknown> = frame.params.prompt;
-        const firstText = promptPartText(prompt[0])?.trim();
-        // Like the adapter, native slash commands go out without instructions. Where the agent
-        // compacts through the prompt, a successful `/compact` makes the next prompt resend them.
-        if (firstText?.startsWith("/") === true) {
-          pendingPrompt = {
-            sessionId: promptSessionId,
-            notes: undefined,
-            compact:
-              compactsThroughPrompt && prompt.length === 1 && /^\/compact(?:\s|$)/.test(firstText),
-            compactionsAtSend: compactionCounts.get(promptSessionId) ?? 0,
-          };
+        const first = prompt[0];
+        if (
+          isRecord(first) &&
+          first.type === "text" &&
+          typeof first.text === "string" &&
+          first.text.trimStart().startsWith("/")
+        )
+          return entry;
+        const lastPart = prompt.at(-1);
+        if (
+          typeof lastPart === "object" &&
+          lastPart !== null &&
+          "type" in lastPart &&
+          lastPart.type === "text" &&
+          "text" in lastPart &&
+          lastPart.text === instructions
+        ) {
           return entry;
         }
-        const lastText = promptPartText(prompt.at(-1));
-        const expected = notesFor(promptSessionId);
-        // A recording that switched models mid-thread already carries the
-        // instructions for the model each prompt ran on.
-        const recordedNotes =
-          lastText === expected || lastText?.startsWith("<runtime_info>") === true
-            ? lastText
-            : undefined;
-        const resend =
-          recordedNotes === undefined && deliveredNotes.get(promptSessionId) !== expected;
-        pendingPrompt = {
-          sessionId: promptSessionId,
-          // Recorders normalize the notes they keep, so a recorded block stands for this model's.
-          notes: recordedNotes !== undefined || resend ? expected : undefined,
-          compact: false,
-          compactionsAtSend: compactionCounts.get(promptSessionId) ?? 0,
-        };
-        if (!resend) return entry;
         return {
           ...entry,
           frame: {
             ...frame,
-            params: { ...frame.params, prompt: [...prompt, { type: "text", text: expected }] },
+            params: { ...frame.params, prompt: [...prompt, { type: "text", text: instructions }] },
           },
         };
       }
@@ -303,26 +190,11 @@ export function materializeReplayTranscriptRuntimeInstructions(
   };
 }
 
-function promptPartText(part: unknown): string | undefined {
-  return typeof part === "object" &&
-    part !== null &&
-    "type" in part &&
-    part.type === "text" &&
-    "text" in part &&
-    typeof part.text === "string"
-    ? part.text
-    : undefined;
-}
-
 type ReplayFrame = {
-  readonly kind?: unknown;
   readonly type?: unknown;
   readonly agentId?: unknown;
-  readonly method?: unknown;
-  readonly params?: unknown;
   readonly update?: unknown;
   readonly result?: unknown;
-  readonly error?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
