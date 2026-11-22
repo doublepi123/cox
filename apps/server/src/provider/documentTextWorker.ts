@@ -105,9 +105,11 @@ function* all(node: XmlNode, name: string | readonly string[]): Generator<XmlNod
     else yield* all(child, name);
   }
 }
-function* text(node: XmlNode): Generator<string, void> {
+function* text(node: XmlNode): Generator<TextPart, void> {
   if (HIDDEN_XML_NODES.has(node.name)) return;
-  if (["tab", "cell"].includes(node.name)) yield "\t";
+  // Word text boxes hold their own paragraphs inside the anchoring paragraph.
+  if (node.name === "txbxContent") yield* paragraphs(node);
+  else if (["tab", "cell"].includes(node.name)) yield "\t";
   else if (["br", "line-break", "cr"].includes(node.name)) yield "\n";
   else if (node.spaceCount !== undefined) {
     yield " ".repeat(Math.min(MAX_OUTPUT, node.spaceCount));
