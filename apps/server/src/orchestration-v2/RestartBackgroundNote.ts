@@ -1,10 +1,11 @@
-import type {
-  OrchestrationV2PendingBackgroundTask,
-  OrchestrationV2ProviderTurn,
-  OrchestrationV2RestartCancelledBackgroundWork,
-  OrchestrationV2Run,
-  OrchestrationV2RunAttempt,
-  OrchestrationV2TurnItem,
+import {
+  isDeliveredProviderTurn,
+  type OrchestrationV2PendingBackgroundTask,
+  type OrchestrationV2ProviderTurn,
+  type OrchestrationV2RestartCancelledBackgroundWork,
+  type OrchestrationV2Run,
+  type OrchestrationV2RunAttempt,
+  type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import { latestRootProviderFailure, runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 
@@ -139,7 +140,7 @@ export function restartCancelledBackgroundWorkNote(
 
 type ProviderTurnState = Pick<
   OrchestrationV2ProviderTurn,
-  "runAttemptId" | "providerThreadId" | "status"
+  "runAttemptId" | "providerThreadId" | "status" | "promptDropped"
 >;
 
 export function isRestartNoteSource(
@@ -211,12 +212,14 @@ export function cancelledBeforeStart(
 /** The provider never accepted this continuation's prompt, so starting it again repeats nothing. */
 export function continuationFailedBeforePrompt(
   run: Pick<OrchestrationV2Run, "status" | "activeAttemptId" | "restartContinuationOfRunId">,
-  providerTurns: ReadonlyArray<Pick<ProviderTurnState, "runAttemptId">>,
+  providerTurns: ReadonlyArray<Pick<ProviderTurnState, "runAttemptId" | "promptDropped">>,
 ): boolean {
   return (
     run.status === "failed" &&
     run.restartContinuationOfRunId !== undefined &&
-    !providerTurns.some((turn) => turn.runAttemptId === run.activeAttemptId)
+    !providerTurns.some(
+      (turn) => turn.runAttemptId === run.activeAttemptId && isDeliveredProviderTurn(turn),
+    )
   );
 }
 
@@ -227,7 +230,9 @@ export function continuationStartRetryDelayMs(
   run: OrchestrationV2Run,
   projection: {
     readonly runs: ReadonlyArray<OrchestrationV2Run>;
-    readonly providerTurns: ReadonlyArray<Pick<ProviderTurnState, "runAttemptId">>;
+    readonly providerTurns: ReadonlyArray<
+      Pick<ProviderTurnState, "runAttemptId" | "promptDropped">
+    >;
     readonly turnItems: Parameters<typeof latestRootProviderFailure>[1];
   },
 ): number | undefined {
