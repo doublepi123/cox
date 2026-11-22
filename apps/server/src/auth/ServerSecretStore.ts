@@ -116,7 +116,17 @@ export class SecretStoreEncodeError extends Schema.TaggedError<SecretStoreEncode
   }
 }
 
+export class SecretStoreNameError extends Schema.TaggedError<SecretStoreNameError>()(
+  "SecretStoreNameError",
+  { resource: Schema.String },
+) {
+  override get message(): string {
+    return "Secret names cannot contain path separators or null bytes.";
+  }
+}
+
 export const SecretStoreError = Schema.Union([
+  SecretStoreNameError,
   SecretStoreSecureError,
   SecretStoreReadError,
   SecretStoreTemporaryPathError,
@@ -169,13 +179,19 @@ export const make = Effect.gen(function* () {
     ),
   );
 
-  const resolveSecretPath = (name: string) => path.join(serverConfig.secretsDir, `${name}.bin`);
+  const resolveSecretPath = (name: string): Effect.Effect<string, SecretStoreNameError> =>
+    /[/\\\0]/.test(name)
+      ? Effect.fail(new SecretStoreNameError({ resource: "secret name" }))
+      : Effect.succeed(path.join(serverConfig.secretsDir, `${name}.bin`));
   const emptySecretRepair = yield* Semaphore.make(1);
   const isMissingOrNonEmpty = (secret: Option.Option<Uint8Array>) =>
     Option.isNone(secret) || secret.value.byteLength > 0;
 
   const get: ServerSecretStore["Service"]["get"] = (name) =>
-    fileSystem.readFile(resolveSecretPath(name)).pipe(
+    resolveSecretPath(name).pipe(Effect.flatMap((secretPath) => readSecret(name, secretPath)));
+
+  const readSecret = (name: string, secretPath: string) =>
+    fileSystem.readFile(secretPath).pipe(
       Effect.map((bytes) => Option.some(Uint8Array.from(bytes))),
       Effect.catch((cause) =>
         cause.reason._tag === "NotFound"
@@ -190,8 +206,12 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("ServerSecretStore.get"),
     );
 
-  const set: ServerSecretStore["Service"]["set"] = (name, value) => {
-    const secretPath = resolveSecretPath(name);
+  const set: ServerSecretStore["Service"]["set"] = (name, value) =>
+    resolveSecretPath(name).pipe(
+      Effect.flatMap((secretPath) => writeSecret(name, secretPath, value)),
+    );
+
+  const writeSecret = (name: string, secretPath: string, value: Uint8Array) => {
     return crypto.randomUUIDv4().pipe(
       Effect.mapError(
         (cause) =>
@@ -229,8 +249,12 @@ export const make = Effect.gen(function* () {
 
   // `link` publishes the fully written temp file under the final name, or fails with
   // AlreadyExists, so a concurrent reader never observes a partially written secret.
-  const create: ServerSecretStore["Service"]["create"] = (name, value) => {
-    const secretPath = resolveSecretPath(name);
+  const create: ServerSecretStore["Service"]["create"] = (name, value) =>
+    resolveSecretPath(name).pipe(
+      Effect.flatMap((secretPath) => createSecret(name, secretPath, value)),
+    );
+
+  const createSecret = (name: string, secretPath: string, value: Uint8Array) => {
     return crypto.randomUUIDv4().pipe(
       Effect.mapError(
         (cause) =>
@@ -321,7 +345,10 @@ export const make = Effect.gen(function* () {
     );
 
   const remove: ServerSecretStore["Service"]["remove"] = (name) =>
-    fileSystem.remove(resolveSecretPath(name)).pipe(
+    resolveSecretPath(name).pipe(Effect.flatMap((secretPath) => removeSecret(name, secretPath)));
+
+  const removeSecret = (name: string, secretPath: string) =>
+    fileSystem.remove(secretPath).pipe(
       Effect.catch((cause) =>
         cause.reason._tag === "NotFound"
           ? Effect.void
