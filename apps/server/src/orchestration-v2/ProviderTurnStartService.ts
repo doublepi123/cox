@@ -68,7 +68,9 @@ import * as RuntimePolicy from "./RuntimePolicy.ts";
 import {
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
+  pendingStoppedDelegatedTasks,
   restartCancelledBackgroundWorkNote,
+  stoppedDelegatedTasksNote,
 } from "./RestartBackgroundNote.ts";
 
 export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStartError>()(
@@ -765,25 +767,54 @@ export const layer: Layer.Layer<
         projection.providerTurns,
         projection.attempts,
       );
+      const compactionMessageIds = new Set(
+        projection.messages
+          .filter(
+            (candidate) =>
+              isCompactionCommandMessage(candidate) ||
+              (goalDriver && parseGoalCommand(candidate) !== null),
+          )
+          .map((candidate) => candidate.id),
+      );
       const restartCancelledWork = pendingRestartCancelledBackgroundWork({
         runs: projection.runs,
         providerTurns: projection.providerTurns,
-        compactionMessageIds: new Set(
-          projection.messages
-            .filter(
-              (candidate) =>
-                isCompactionCommandMessage(candidate) ||
-                (goalDriver && parseGoalCommand(candidate) !== null),
-            )
-            .map((candidate) => candidate.id),
-        ),
+        compactionMessageIds,
         run,
         attempts: projection.attempts,
       });
-      const restartNote =
+      // The turn start context omits settled tasks, so read them only after a Stop disposed some.
+      // A failed read fails the start: a turn that ran without the note would count as telling it.
+      const stoppedRunIds = projection.runs
+        .filter(
+          (source) =>
+            source.providerThreadId === run.providerThreadId &&
+            source.delegatedCompletion?.disposition === "stopped",
+        )
+        .map((source) => source.id);
+      const stoppedTasks =
+        stoppedRunIds.length === 0 || compactionMessageIds.has(run.userMessageId)
+          ? []
+          : pendingStoppedDelegatedTasks({
+              providerThreadId: run.providerThreadId,
+              runs: projection.runs,
+              providerTurns: projection.providerTurns,
+              attempts: projection.attempts,
+              compactionMessageIds,
+              subagents: (yield* projectionStore.getThreadRecords(
+                projection.thread.id,
+                ["subagents"],
+                { subagentRunIds: stoppedRunIds },
+              )).subagents,
+            });
+      const restartNote = [
         restartCancelledWork.length === 0
           ? ""
-          : restartCancelledBackgroundWorkNote(restartCancelledWork);
+          : restartCancelledBackgroundWorkNote(restartCancelledWork),
+        stoppedTasks.length === 0 ? "" : stoppedDelegatedTasksNote(stoppedTasks),
+      ]
+        .filter((part) => part !== "")
+        .join("\n\n");
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );
