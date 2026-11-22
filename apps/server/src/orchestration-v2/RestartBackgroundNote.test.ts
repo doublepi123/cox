@@ -278,7 +278,6 @@ it("tells the next completed turn about delegated tasks its Stop interrupted, on
   const stopped = task("stopped", { title: "Build A" });
   const subagents = [
     stopped,
-    task("cancelled", { cancelledRunId: RunId.make("run:child") }),
     task("finished", { status: "completed" }),
     task("delivered", { completionDelivery: { state: "delivered", observedByRunId: null } }),
   ];

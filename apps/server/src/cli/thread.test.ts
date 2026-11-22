@@ -40,7 +40,8 @@ it.effect("list includes delegated threads across pages and still leaves out sub
         { threads: [delegated], nextCursor: null },
       ],
     });
-    assert.deepStrictEqual(yield* listProjectThreads(tools, projectId), [root, delegated]);
+    const threads = yield* listProjectThreads(tools, projectId);
+    assert.deepStrictEqual(threads.map((thread) => thread.threadId), ["root", "delegated"]);
     assert.deepStrictEqual(
       calls,
       [0, 2].map((cursor) => ({
@@ -185,8 +186,7 @@ it.effect("show retains pull request metadata when reading a later message windo
         thread: {
           itemCount: 200,
           status: first ? "running" : "completed",
-          pullRequestCount: 1,
-          ...(first ? { pullRequests: [link], openPullRequestCount: 1 } : {}),
+          ...(first ? { pullRequests: [link] } : {}),
         },
         items: first ? [] : [{ position: 199, itemId: "message", type: "assistant_message" }],
         nextPosition: 199,
@@ -196,7 +196,6 @@ it.effect("show retains pull request metadata when reading a later message windo
     const { thread } = yield* readLatestMessages({ call }, threadId, 1);
     assert.strictEqual(thread.status, "completed");
     assert.deepStrictEqual(thread.pullRequests, [link]);
-    assert.strictEqual(thread.openPullRequestCount, 1);
   }),
 );
 

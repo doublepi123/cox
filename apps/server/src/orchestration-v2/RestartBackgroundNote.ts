@@ -185,7 +185,6 @@ export function pendingStoppedDelegatedTasks(input: {
       task.runId !== null &&
       stoppedRunIds.has(task.runId) &&
       task.status === "interrupted" &&
-      task.cancelledRunId === undefined &&
       task.completionDelivery?.state === "disposed" &&
       task.completedAt !== null &&
       !toldRunRequests.some(
