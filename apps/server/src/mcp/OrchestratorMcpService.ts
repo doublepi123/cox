@@ -138,6 +138,7 @@ const TASK_WAKE_EVENTS = [
   { thread: "child", eventType: "runtime-request.updated" },
 ] as const;
 const SECRET_REQUEST_POLL_INTERVAL_MS = 500;
+const MAX_LISTED_TASKS = 10;
 const DEFAULT_THREAD_LIST_LIMIT = 50;
 const DEFAULT_THREAD_READ_LIMIT = 50;
 const DEFAULT_THREAD_RUN_LIMIT = 10;
@@ -1577,6 +1578,32 @@ const make = Effect.gen(function* () {
   const requestKey = (clientRequestId: string | undefined): Effect.Effect<string> =>
     clientRequestId === undefined ? random.uuidV4() : Effect.succeed(clientRequestId);
 
+  const taskNotFound = Effect.fn("OrchestratorMcpService.taskNotFound")(function* (
+    scope: McpThreadInvocationScope,
+    taskId: NodeId,
+  ): Effect.fn.Return<never, OrchestratorMcpFailure> {
+    const { subagents } = yield* loadThreadRecords(scope.thread.threadId, ["subagents"], {
+      omitSettledSubagents: true,
+    });
+    const open = subagents.filter(
+      (task) =>
+        task.origin === "app_owned" && task.childThreadId !== null,
+    );
+    const listed = open
+      .slice(0, MAX_LISTED_TASKS)
+      .map((task) => (task.title ? `${task.id} (${task.title})` : task.id))
+      .join(", ");
+    const more =
+      open.length > MAX_LISTED_TASKS ? `, and ${open.length - MAX_LISTED_TASKS} more` : "";
+    return yield* failure(
+      "task_not_found",
+      `No delegated task with id ${taskId} exists on thread ${scope.thread.threadId}. ` +
+        (open.length === 0
+          ? "This thread has no open delegated tasks."
+          : `Open delegated tasks on this thread: ${listed}${more}.`),
+    );
+  });
+
   const readTask = Effect.fn("OrchestratorMcpService.readTask")(function* (
     scope: McpThreadInvocationScope,
     taskId: NodeId,
@@ -1595,10 +1622,7 @@ const make = Effect.gen(function* () {
         candidate.threadId === scope.thread.threadId,
     );
     if (task === undefined || task.childThreadId === null) {
-      return yield* failure(
-        "task_not_found",
-        `Delegated task ${taskId} does not belong to thread ${scope.thread.threadId}.`,
-      );
+      return yield* taskNotFound(scope, taskId);
     }
     const childControls = yield* threadManagement
       .getThreadRecords(
