@@ -102,7 +102,7 @@ describe("desktop computer host", () => {
     ).resolves.toBeNull();
     await client.close();
   });
-  it("maps PermissionDenied to missing permissions", async () => {
+  it("maps a macOS PermissionDenied to missing permissions", async () => {
     const client = await fakeEngine(
       `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{code:-32000,message:'permission'}})+'\\n')});`,
     );
@@ -111,6 +111,7 @@ describe("desktop computer host", () => {
       confirmForeground: async () => true,
       showOperation: () => {},
       refreshState: async () => state("denied"),
+      platform: "darwin",
     });
     await expect(
       executor.execute({
