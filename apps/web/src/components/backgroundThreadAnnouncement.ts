@@ -41,7 +41,7 @@ export function resolveBackgroundThreadRunStatus(thread: {
   readonly pendingBackgroundTasks: SidebarThreadSummary["pendingBackgroundTasks"];
   readonly source: Pick<
     SidebarThreadSummary["source"],
-    "latestRunBackgroundWake" | "latestRunStopRequested" | "pendingBackgroundTasks"
+    "latestRunBackgroundWake" | "latestRunStopRequested"
   >;
 }): OrchestrationV2RunStatus | null {
   const status = thread.latestRun?.status ?? null;

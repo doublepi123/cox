@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   getThemeColorsForMode,
+  parseThemeFile,
   themeColorToHex,
   THEME_FILE_VERSION,
   toCanonicalThemeColor,

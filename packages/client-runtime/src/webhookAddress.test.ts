@@ -9,21 +9,20 @@ const endpoint = {
 };
 
 describe("webhookAddress", () => {
-  it("returns the public endpoint URL copyable with no note", () => {
+  it("builds the copyable URL from the client connection instead of the server bind address", () => {
     const result = webhookAddress(
-      { ...endpoint, url: "https://connect.example.com/hooks/abc" },
-      null,
+      { ...endpoint, url: "http://127.0.0.1:8787/hooks/abc" },
+      "https://home.example.net",
     );
-    expect(result.address).toBe("https://connect.example.com/hooks/abc");
+    expect(result.address).toBe("https://home.example.net/hooks/abc");
     expect(result.copyable).toBe(true);
-    expect(result.note).toBeNull();
   });
 
-  it("is not copyable and points at T3 Connect when no base URL exists", () => {
+  it("is not copyable when no base URL exists", () => {
     const result = webhookAddress(endpoint, null);
     expect(result.address).toBe("/hooks/abc");
     expect(result.copyable).toBe(false);
-    expect(result.note).toContain("T3 Connect");
+    expect(result.note).toBe("The local server address is not available.");
   });
 
   it("warns that loopback addresses only work on this computer", () => {
@@ -33,10 +32,9 @@ describe("webhookAddress", () => {
     expect(result.note).toContain("Only this computer");
   });
 
-  it("explains reachability for non-loopback hosts", () => {
+  it("uses the direct connection origin for non-loopback hosts", () => {
     const result = webhookAddress(endpoint, "https://home.example.net");
     expect(result.address).toBe("https://home.example.net/hooks/abc");
     expect(result.copyable).toBe(true);
-    expect(result.note).toContain("Tailscale");
   });
 });

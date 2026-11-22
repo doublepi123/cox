@@ -7,7 +7,7 @@ import {
   resolveEventKeys,
   shortcutKeyFromEvent,
   type ShortcutEventLike,
-} from "./keybindingMatching.ts";
+} from "./keybindings.ts";
 
 const event = (key: string, overrides: Partial<ShortcutEventLike> = {}): ShortcutEventLike => ({
   key,

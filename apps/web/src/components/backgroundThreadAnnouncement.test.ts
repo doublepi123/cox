@@ -205,7 +205,6 @@ describe("resolveBackgroundThreadRunStatus", () => {
       latestRun: { status: overrides?.status ?? "completed" },
       pendingBackgroundTasks,
       source: {
-        pendingBackgroundTasks,
         latestRunBackgroundWake: overrides?.latestRunBackgroundWake ?? false,
         latestRunStopRequested: overrides?.latestRunStopRequested ?? false,
       },
