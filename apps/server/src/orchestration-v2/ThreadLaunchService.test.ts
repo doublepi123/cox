@@ -34,6 +34,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -140,6 +141,10 @@ interface HarnessOptions {
   readonly serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   readonly providers?: ReadonlyArray<ServerProvider>;
   readonly git?: Partial<GitWorkflow.GitWorkflowService["Service"]>;
+  readonly dispatch?: (
+    command: Parameters<ThreadManagement.ThreadManagementService["Service"]["dispatch"]>[0],
+    dispatch: ThreadManagement.ThreadManagementService["Service"]["dispatch"],
+  ) => ReturnType<ThreadManagement.ThreadManagementService["Service"]["dispatch"]>;
 }
 
 function makeHarness(options: HarnessOptions = {}) {
@@ -240,11 +245,25 @@ function makeHarness(options: HarnessOptions = {}) {
         folderForThread: () => Effect.succeedNone,
       }),
   );
+  const interceptDispatch = options.dispatch;
+  const layerLaunchThreads =
+    interceptDispatch === undefined
+      ? layerThreadManagement
+      : Layer.effect(
+          ThreadManagement.ThreadManagementService,
+          Effect.gen(function* () {
+            const threads = yield* ThreadManagement.ThreadManagementService;
+            return ThreadManagement.ThreadManagementService.of({
+              ...threads,
+              dispatch: (command) => interceptDispatch(command, threads.dispatch),
+            });
+          }),
+        ).pipe(Layer.provide(layerThreadManagement));
   const layerLaunch = ThreadLaunch.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         layerExternalServices,
-        layerThreadManagement,
+        layerLaunchThreads,
         layerReceipts,
         IdAllocator.layer,
       ),
@@ -2074,6 +2093,46 @@ it.effect("schedules an accepted preparing message exactly once across concurren
       assert.isTrue(second.resumed);
       assert.equal(harness.runSetup.mock.calls.length, 1);
       yield* Deferred.succeed(allowSetup, undefined);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("prepares a launch whose caller goes away after its first message commits", () =>
+  Effect.gen(function* () {
+    const messageCommitted = yield* Deferred.make<void>();
+    const finishDispatch = yield* Deferred.make<void>();
+    const setupEntered = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      runSetup: () =>
+        Deferred.succeed(setupEntered, undefined).pipe(Effect.as({ status: "no-script" as const })),
+      dispatch: (command, dispatch) =>
+        dispatch(command).pipe(
+          Effect.tap((result) =>
+            result.storedEvents.some((stored) => stored.event.type === "run.created")
+              ? Deferred.succeed(messageCommitted, undefined).pipe(
+                  Effect.andThen(Deferred.await(finishDispatch)),
+                )
+              : Effect.void,
+          ),
+        ),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const launch = yield* Effect.forkChild(
+        launches.launch(
+          launchInput({
+            command: "command:launch:caller-gone",
+            thread: "thread:launch:caller-gone",
+            message: "Prepare without the caller",
+            workspace: { type: "worktree", baseRef: "main" },
+          }),
+        ),
+      );
+      yield* Deferred.await(messageCommitted);
+      yield* Effect.sync(() => launch.interruptUnsafe());
+      yield* Deferred.succeed(finishDispatch, undefined);
+      yield* Fiber.await(launch);
+      yield* Deferred.await(setupEntered);
     }).pipe(Effect.provide(harness.layer));
   }),
 );
