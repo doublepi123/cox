@@ -2804,6 +2804,8 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         }),
         out("session.command", { sessionID: SESSION, name: "git/hello", text: "WORLD" }),
         reply("session.command", null),
+        out("session.active"),
+        replyData("session.active", { [SESSION]: { type: "running" } }),
         { type: "runtime_exit", status: "success" } as const,
         out("event.subscribe"),
         out("session.active"),
@@ -2849,6 +2851,148 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       );
       assert.include(texts, "HELLO WORLD");
       assert.deepInclude(collected.at(-1), { type: "turn.terminal", status: "completed" });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("finishes a workspace command whose stream dropped before its inbox event", () =>
+    Effect.gen(function* () {
+      // session.command returns 204 without an inbox id; the stream drops before session.inbox.enqueued provides it.
+      const { runtime, thread } = yield* resumed([
+        out("command.list", "<any>"),
+        reply("command.list", { location: { directory: WORK }, data: [{ name: "git/hello" }] }),
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "1" }),
+        reply("message.list", {
+          data: [
+            { id: "msg_idle_before", time: { created: 1 }, type: "idle", outcome: "succeeded" },
+          ],
+          cursor: {},
+        }),
+        out("session.command", { sessionID: SESSION, name: "git/hello", text: "WORLD" }),
+        reply("session.command", null),
+        out("session.active"),
+        replyData("session.active", { [SESSION]: { type: "running" } }),
+        { type: "runtime_exit", status: "success" } as const,
+        out("event.subscribe"),
+        out("session.active"),
+        replyData("session.active", {}),
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "50" }),
+        reply("message.list", {
+          data: [
+            { id: "msg_idle_cmd", time: { created: 4 }, type: "idle", outcome: "succeeded" },
+            {
+              id: "msg_assistant_cmd",
+              time: { created: 3 },
+              type: "assistant",
+              agent: "build",
+              model: { id: "big-pickle", providerID: "opencode", variant: "default" },
+              content: [{ type: "text", text: "HELLO WORLD" }],
+              finish: "stop",
+            },
+            {
+              id: "msg_user_cmd",
+              time: { created: 2 },
+              text: "Reply with exactly: HELLO WORLD",
+              type: "user",
+            },
+            { id: "msg_idle_before", time: { created: 1 }, type: "idle", outcome: "succeeded" },
+          ],
+          cursor: {},
+        }),
+      ]);
+      const events = yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* runtime.startTurn({
+        ...turnInput(thread),
+        message: { ...turnInput(thread).message, text: "/git/hello WORLD" },
+      });
+      const collected = yield* Fiber.join(events);
+      const texts = collected.flatMap((event) =>
+        event.type === "turn_item.updated" && event.turnItem.type === "assistant_message"
+          ? [event.turnItem.text]
+          : [],
+      );
+      assert.include(texts, "HELLO WORLD");
+      assert.deepInclude(collected.at(-1), { type: "turn.terminal", status: "completed" });
+    }),
+  );
+
+  it.effect("finishes a workspace command that never starts an execution", () =>
+    Effect.gen(function* () {
+      // A plugin command whose handler skips the model returns 204 and emits no execution events.
+      const { runtime, thread } = yield* resumed([
+        out("command.list", "<any>"),
+        reply("command.list", { location: { directory: WORK }, data: [{ name: "noop" }] }),
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "1" }),
+        reply("message.list", {
+          data: [
+            { id: "msg_idle_before", time: { created: 1 }, type: "idle", outcome: "succeeded" },
+          ],
+          cursor: {},
+        }),
+        out("session.command", { sessionID: SESSION, name: "noop", text: "" }),
+        reply("session.command", null),
+        out("session.active"),
+        replyData("session.active", {}),
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "1" }),
+        reply("message.list", {
+          data: [
+            { id: "msg_idle_before", time: { created: 1 }, type: "idle", outcome: "succeeded" },
+          ],
+          cursor: {},
+        }),
+      ]);
+      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      yield* runtime.startTurn({
+        ...turnInput(thread),
+        message: { ...turnInput(thread).message, text: "/noop" },
+      });
+      assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("ends a command from execution events that arrive after its reply", () =>
+    Effect.gen(function* () {
+      const offers: Array<ProviderContinuationRequests.ProviderContinuationRequest> = [];
+      const { runtime, thread } = yield* resumed([
+        out("command.list", "<any>"),
+        reply("command.list", { location: { directory: WORK }, data: [{ name: "quick" }] }),
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "1" }),
+        reply("message.list", { data: [], cursor: {} }),
+        out("session.command", { sessionID: SESSION, name: "quick", text: "" }),
+        reply("session.command", null),
+        // The execution already ended, but its events trail the HTTP replies.
+        out("session.active"),
+        replyData("session.active", {}),
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "1" }),
+        reply("message.list", {
+          data: [
+            { id: "msg_idle_quick", time: { created: 2 }, type: "idle", outcome: "failed" },
+            { id: "msg_user_quick", time: { created: 1 }, text: "Answer quickly", type: "user" },
+          ],
+          cursor: {},
+        }),
+        event("session.execution.started", { sessionID: SESSION }),
+        event("session.execution.failed", {
+          sessionID: SESSION,
+          error: { type: "provider", message: "The model failed." },
+        }),
+      ]).pipe(
+        Effect.provideService(ProviderContinuationRequests.ProviderContinuationRequests, {
+          offer: (request) => Effect.sync(() => void offers.push(request)),
+          take: Effect.never,
+        }),
+      );
+      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      yield* runtime.startTurn({
+        ...turnInput(thread),
+        message: { ...turnInput(thread).message, text: "/quick" },
+      });
+      assert.equal((yield* Fiber.join(terminal))?.status, "failed");
+      assert.lengthOf(offers, 0);
+      assert.isFalse(yield* runtime.hasPendingBackgroundWorkForThread!(thread));
     }).pipe(Effect.scoped),
   );
 
@@ -5903,6 +6047,8 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
             reply("message.list", { data: [], cursor: {} }),
             out("session.command", { sessionID: SESSION, name: "goal", text: control }),
             reply("session.command", null),
+            out("session.active"),
+            replyData("session.active", { [SESSION]: { type: "running" } }),
             event("session.text.ended", {
               sessionID: SESSION,
               assistantMessageID: "msg_legacy_goal",
@@ -5988,6 +6134,8 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
             reply("message.list", { data: [], cursor: {} }),
             out("session.command", { sessionID: SESSION, name: "goal", text: "Write proof.txt" }),
             reply("session.command", null),
+            out("session.active"),
+            replyData("session.active", { [SESSION]: { type: "running" } }),
             event("rpc.opencode.goal.changed", { sessionID: SESSION, goal: nativeGoal("active") }),
             event("session.execution.succeeded", { sessionID: SESSION }),
             ...(status === "complete"
