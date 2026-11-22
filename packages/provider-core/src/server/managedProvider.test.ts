@@ -366,6 +366,84 @@ describe("makeManagedServerProvider", () => {
     ).pipe(Effect.provide(Layer.mergeAll(layerAlwaysRunTest, TestClock.layer()))),
   );
 
+  const failedCheckSnapshot: ServerProvider = {
+    ...initialSnapshot,
+    message: "The provider did not finish starting.",
+  };
+
+  const makeRetryingProvider = (checkResult: (call: number) => ServerProvider) =>
+    Effect.gen(function* () {
+      const checkCalls = yield* Ref.make(0);
+      const releaseInitialCheck = yield* Deferred.make<void>();
+      const provider = yield* makeManagedServerProvider<TestSettings>({
+        resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
+        getSettings: Effect.succeed({ enabled: true }),
+        streamSettings: Stream.empty,
+        haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+        initialSnapshot: () => Effect.succeed(initialSnapshot),
+        checkProvider: Deferred.await(releaseInitialCheck).pipe(
+          Effect.andThen(Ref.updateAndGet(checkCalls, (count) => count + 1)),
+          Effect.map(checkResult),
+        ),
+        refreshInterval: "1 hour",
+        retryFailedCheck: (snapshot) => snapshot.auth.status === "unknown",
+      });
+      const firstUpdate = yield* provider.streamChanges.pipe(Stream.runHead, Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(releaseInitialCheck, undefined);
+      yield* Fiber.join(firstUpdate);
+      return { checkCalls, provider };
+    });
+
+  it.effect("retries a failed provider check on a short backoff until it recovers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { checkCalls, provider } = yield* makeRetryingProvider((call) =>
+          call < 3 ? failedCheckSnapshot : refreshedSnapshot,
+        );
+        yield* TestClock.adjust("14 seconds");
+        assert.strictEqual(yield* Ref.get(checkCalls), 1);
+        yield* TestClock.adjust("1 second");
+        assert.strictEqual(yield* Ref.get(checkCalls), 2);
+        yield* TestClock.adjust("29 seconds");
+        assert.strictEqual(yield* Ref.get(checkCalls), 2);
+        yield* TestClock.adjust("1 second");
+        assert.strictEqual(yield* Ref.get(checkCalls), 3);
+        assert.deepStrictEqual(yield* provider.getSnapshot, refreshedSnapshot);
+        yield* TestClock.adjust("30 minutes");
+        assert.strictEqual(yield* Ref.get(checkCalls), 3);
+      }),
+    ).pipe(Effect.provide(Layer.mergeAll(layerAlwaysRunTest, TestClock.layer()))),
+  );
+
+  it.effect("stops short retries after three failed attempts", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { checkCalls } = yield* makeRetryingProvider(() => failedCheckSnapshot);
+        yield* TestClock.adjust("15 seconds");
+        yield* TestClock.adjust("30 seconds");
+        yield* TestClock.adjust("60 seconds");
+        assert.strictEqual(yield* Ref.get(checkCalls), 4);
+        yield* TestClock.adjust("30 minutes");
+        assert.strictEqual(yield* Ref.get(checkCalls), 4);
+      }),
+    ).pipe(Effect.provide(Layer.mergeAll(layerAlwaysRunTest, TestClock.layer()))),
+  );
+
+  it.effect("skips short retries without foreground provider-status demand", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { checkCalls } = yield* makeRetryingProvider(() => failedCheckSnapshot);
+        yield* TestClock.adjust("2 minutes");
+        assert.strictEqual(yield* Ref.get(checkCalls), 1);
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(layerProviderHost({ runBackgroundWork: false }), TestClock.layer()),
+      ),
+    ),
+  );
+
   it.effect("reruns the provider check when streamed settings change", () =>
     Effect.scoped(
       Effect.gen(function* () {

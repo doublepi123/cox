@@ -24,6 +24,12 @@ interface ProviderSnapshotState {
   readonly enrichmentGeneration: number;
 }
 
+const FAILED_CHECK_RETRY_DELAYS: ReadonlyArray<Duration.Input> = [
+  "15 seconds",
+  "30 seconds",
+  "60 seconds",
+];
+
 function withUsageLimits(
   snapshot: ServerProvider,
   usageLimits: ServerProvider["usageLimits"],
@@ -54,6 +60,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   }) => Effect.Effect<void>;
   readonly refreshInterval?: Duration.Input;
   readonly refreshOnInterval?: boolean | ((snapshot: ServerProvider) => boolean);
+  readonly retryFailedCheck?: (snapshot: ServerProvider) => boolean;
   readonly checkProviderOnSettingsChange?: (previous: Settings, next: Settings) => boolean;
 }): Effect.fn.Return<
   ManagedServerProvider,
@@ -75,6 +82,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   });
   const settingsRef = yield* Ref.make(initialSettings);
   const enrichmentFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
+  const failedCheckRetry = yield* Ref.make({ attempts: 0, generation: 0 });
   const scope = yield* Effect.scope;
 
   const publishEnrichedSnapshot = Effect.fn("publishEnrichedSnapshot")(function* (
@@ -122,6 +130,31 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       .pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(scope));
 
     yield* Ref.set(enrichmentFiberRef, fiber);
+  });
+
+  const scheduleFailedCheckRetry = Effect.fn("scheduleFailedCheckRetry")(function* (
+    snapshot: ServerProvider,
+  ): Effect.fn.Return<void> {
+    if (!input.retryFailedCheck) return;
+    const failed = snapshot.enabled && input.retryFailedCheck(snapshot);
+    const { attempts, generation } = yield* Ref.updateAndGet(failedCheckRetry, (state) => ({
+      attempts: failed ? state.attempts + 1 : 0,
+      generation: state.generation + 1,
+    }));
+    const delay = failed ? FAILED_CHECK_RETRY_DELAYS[attempts - 1] : undefined;
+    if (delay === undefined) return;
+    yield* Effect.sleep(delay).pipe(
+      Effect.andThen(Ref.get(failedCheckRetry)),
+      Effect.flatMap((state) =>
+        state.generation === generation
+          ? shouldRefreshOnInterval.pipe(
+              Effect.flatMap((shouldRefresh) => (shouldRefresh ? refreshOnInterval : Effect.void)),
+            )
+          : Effect.void,
+      ),
+      Effect.ignoreCause({ log: true }),
+      Effect.forkIn(scope, { startImmediately: true }),
+    );
   });
 
   const applySnapshotBase = Effect.fn("applySnapshot")(function* (
@@ -188,6 +221,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     yield* Ref.set(settingsRef, nextSettings);
     yield* PubSub.publish(changesPubSub, nextSnapshot);
     yield* restartSnapshotEnrichment(nextSettings, nextSnapshot, nextGeneration);
+    yield* scheduleFailedCheckRetry(nextSnapshot);
     return nextSnapshot;
   });
   const applySnapshot = (nextSettings: Settings, options?: { readonly forceRefresh?: boolean }) =>

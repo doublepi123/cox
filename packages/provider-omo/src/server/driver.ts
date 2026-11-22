@@ -113,6 +113,7 @@ export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
           Effect.map(stamp),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         ),
+        retryFailedCheck: (snapshot) => snapshot.auth.status === "unknown",
       });
       const adapter = yield* OmoAdapterDriver.create({
         ...input,
