@@ -125,6 +125,7 @@ import {
   fileAttachmentCapabilityBlockReason,
   fileAttachmentStagingLimit,
   isPreviewableComposerVideo,
+  isImageOnlyClipboardHtml,
   shouldHandleComposerAttachmentPaste,
 } from "./composerAttachmentFiles";
 import {
@@ -2483,7 +2484,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       folders.length > 0 ||
       (activeThreadId &&
         files.length > 0 &&
-        shouldHandleComposerAttachmentPaste({ files, plainText }))
+        shouldHandleComposerAttachmentPaste({
+          files,
+          plainText,
+          bypassAutoAttachment,
+          htmlIsOnlyImage:
+            plainText.length > 0 &&
+            isImageOnlyClipboardHtml(event.clipboardData.getData("text/html")),
+        }))
     ) {
       event.preventDefault();
       event.stopPropagation();
