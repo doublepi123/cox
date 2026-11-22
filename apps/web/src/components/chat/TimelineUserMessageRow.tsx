@@ -406,7 +406,7 @@ export function FoldedMessageHeader(props: {
     >
       <Icon className="size-4 shrink-0 stroke-2 text-muted-foreground" />
       <span className="max-w-1/2 shrink-0 truncate text-muted-foreground">{props.label}</span>
-      <span className="min-w-0 flex-1 truncate">{props.summary}</span>
+      <span className="min-w-0 flex-1 truncate">{props.summary.normalize("NFC")}</span>
       <ChevronDownIcon
         className={cn(
           "size-3.5 shrink-0 text-muted-foreground transition-transform",

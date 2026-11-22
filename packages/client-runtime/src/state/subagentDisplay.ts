@@ -5,7 +5,7 @@ import type {
   ServerProvider,
 } from "@t3tools/contracts";
 import { formatModelSlugName, resolveSelectableModel } from "@t3tools/shared/model";
-import { fileBasename } from "@t3tools/shared/path";
+import { fileDisplayName } from "@t3tools/shared/path";
 import { resolveModelShortName } from "../providerClients.ts";
 import { isTerminalSubagentStatus } from "./subagentRuntime.ts";
 
@@ -103,7 +103,7 @@ export function resolveSubagentMetadata(input: {
               : input.childThread?.worktreePath
                 ? "Worktree"
                 : "Workspace",
-            value: input.childThread?.branch ?? fileBasename(childWorkspace),
+            value: input.childThread?.branch ?? fileDisplayName(childWorkspace),
           },
         ]
       : []),
