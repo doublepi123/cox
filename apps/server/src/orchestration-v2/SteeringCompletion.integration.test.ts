@@ -995,11 +995,12 @@ it.effect(
     ),
 );
 
-it.effect("starts a steer that missed the turn on the saved next-turn selection", () =>
-  Effect.scoped(
+it.effect.each(["complete", "stop-before-end"] as const)(
+  "starts a steer that missed the turn in its place on the saved next-turn selection: %s",
+  (timing) =>
     Effect.gen(function* () {
       const { events, started, steered, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
-        "steering-selection-follow-up",
+        `steering-selection-follow-up-${timing}`,
       );
       yield* Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -1018,6 +1019,26 @@ it.effect("starts a steer that missed the turn on the saved next-turn selection"
           createdBy: "user",
           creationSource: "web",
         });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("queued-later"),
+          threadId,
+          messageId: MessageId.make("message:queued-later"),
+          text: "queued later",
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+        if (timing === "stop-before-end") {
+          yield* orchestrator.dispatch({
+            type: "run.interrupt",
+            commandId: CommandId.make("stop"),
+            threadId,
+            runId: first.runId,
+            holdQueue: true,
+          });
+        }
         const settled = yield* orchestrator.streamDomainEvents.pipe(
           Stream.filter(
             (event) =>
@@ -1047,6 +1068,19 @@ it.effect("starts a steer that missed the turn on the saved next-turn selection"
         });
         yield* Fiber.join(settled);
         yield* worker.drain();
+        if (timing === "stop-before-end") {
+          const queued = (yield* orchestrator.getThreadProjection(threadId)).runs
+            .filter((run) => run.status === "queued")
+            .toSorted((left, right) => (left.queuePosition ?? 0) - (right.queuePosition ?? 0));
+          assert.deepEqual(
+            queued.map((run) => [run.userMessageId, run.queueHeld === true]),
+            [
+              [MessageId.make("message:steer"), false],
+              [MessageId.make("message:queued-later"), false],
+            ],
+          );
+          return;
+        }
         yield* orchestrator.resumeQueuedRuns;
         yield* worker.drain();
 
@@ -1054,19 +1088,25 @@ it.effect("starts a steer that missed the turn on the saved next-turn selection"
         assert.deepEqual(steered, []);
         assert.equal(started.length, 2);
         assert.equal(started[1]?.message.messageId, MessageId.make("message:steer"));
-        const item = projection.turnItems.find(
-          (candidate) => candidate.type === "user_message" && candidate.text === "late steer",
-        );
-        assert.equal(item?.runId, started[1]?.runId);
-        assert.equal(Math.floor((item?.ordinal ?? 0) / 1_000_000), started[1]?.runOrdinal);
         assert.deepEqual(started[1]?.modelSelection, composerSelection);
         assert.deepEqual(projection.thread.modelSelection, composerSelection);
+        const message = projection.turnItems.find(
+          (item) =>
+            item.type === "user_message" && item.messageId === MessageId.make("message:steer"),
+        );
+        assert.equal(message?.runId, started[1]!.runId);
+        assert.isAbove(
+          message!.ordinal,
+          Math.max(
+            ...projection.turnItems
+              .filter((item) => item.runId === first.runId)
+              .map((item) => item.ordinal),
+          ),
+        );
       }).pipe(Effect.provide(layer));
     }),
-  ),
 );
 
-// regression: #26695 cancelling a Copilot prompt to steer it kills its background agents
 it.effect("queues a steer until the turn ends when the provider cannot steer it", () =>
   Effect.scoped(
     Effect.gen(function* () {
