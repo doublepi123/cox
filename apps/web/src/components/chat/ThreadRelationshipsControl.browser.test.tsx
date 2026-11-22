@@ -43,6 +43,48 @@ import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 const environmentId = EnvironmentId.make("environment");
 const threadId = ThreadId.make("fork");
 
+it("keeps focus on the list when Show more pages reveal the last rows", async () => {
+  setup();
+  const projection = makeThreadProjectionFixture();
+  const environmentId = EnvironmentId.make("local");
+  const { updatedAt } = projection.thread;
+  state.projection = {
+    ...projection,
+    subagents: Array.from({ length: 7 }, (_, index) => ({
+      id: NodeId.make(`agent-${index}`),
+      threadId: projection.thread.id,
+      runId: null,
+      parentNodeId: NodeId.make("parent"),
+      origin: "app_owned",
+      createdBy: "agent",
+      driver: "codex",
+      providerInstanceId: projection.thread.providerInstanceId,
+      providerThreadId: null,
+      childThreadId: ThreadId.make(`omitted-child-${index}`),
+      nativeTaskRef: null,
+      prompt: `Inspect the change part ${index}`,
+      title: `Agent ${index}`,
+      model: null,
+      status: "completed",
+      result: null,
+      startedAt: null,
+      completedAt: updatedAt,
+      updatedAt,
+    })),
+  };
+  await using screen = await render(
+    <ThreadRelationshipsPanel
+      environmentId={environmentId}
+      threadId={projection.thread.id}
+      showLineage
+      showSideChats
+    />,
+  );
+  await screen.getByRole("button", { name: /Previous agents/ }).click();
+  await screen.getByRole("button", { name: "Show 1 more" }).click();
+  await expect.element(screen.getByRole("list", { name: "Related threads" })).toHaveFocus();
+});
+
 function setup() {
   state.commandSucceeds = false;
   state.projection = {
