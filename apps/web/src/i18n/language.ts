@@ -25,6 +25,19 @@ export function resolveLanguage(
   return preference === "system" ? detectDeviceLanguage(languages) : preference;
 }
 
+export function resolveFormattingLocale(
+  preference: LanguagePreference,
+  languages: readonly string[],
+): Language | undefined {
+  if (
+    preference === "system" ||
+    (preference === "en" && /^en(?:[-_]|$)/i.test(languages[0] ?? ""))
+  ) {
+    return undefined;
+  }
+  return preference;
+}
+
 export function translate(
   language: Language,
   key: string,

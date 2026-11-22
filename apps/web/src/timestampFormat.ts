@@ -70,13 +70,19 @@ const timestampFormatterCache = new Map<string, Intl.DateTimeFormat>();
 function getTimestampFormatter(
   timestampFormat: TimestampFormat,
   includeSeconds: boolean,
+  locale = timestampLocale,
 ): Intl.DateTimeFormat {
-  const cacheKey = `${timestampFormat}:${includeSeconds ? "seconds" : "minutes"}`;
+  const cacheKey = `${timestampFormat}:${includeSeconds ? "seconds" : "minutes"}:${locale ?? ""}`;
   const cachedFormatter = timestampFormatterCache.get(cacheKey);
   if (cachedFormatter) {
     return cachedFormatter;
   }
-  const formatter = new Intl.DateTimeFormat(timestampLocale, {
+  const hourCycle =
+    timestampFormat === "locale" && locale !== timestampLocale
+      ? getTimestampFormatter(timestampFormat, includeSeconds).resolvedOptions().hourCycle
+      : undefined;
+  const formatter = new Intl.DateTimeFormat(locale, {
+    ...(hourCycle === undefined ? {} : { hourCycle }),
     ...getTimestampFormatOptions(timestampFormat, includeSeconds),
     timeZone: "UTC",
   });
@@ -137,10 +143,14 @@ export function formatFullTimestamp(isoDate: string, timestampFormat: TimestampF
   );
 }
 
-export function formatShortTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
+export function formatShortTimestamp(
+  isoDate: string,
+  timestampFormat: TimestampFormat,
+  locale?: string,
+): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
-  return getTimestampFormatter(timestampFormat, false).format(wallClockAsUtc(date));
+  return getTimestampFormatter(timestampFormat, false, locale).format(wallClockAsUtc(date));
 }
 const numericDateFormatter = new Intl.DateTimeFormat(timestampLocale, {
   month: "numeric",

@@ -1,4 +1,4 @@
-import { useTranslation } from "../i18n";
+import { useFormattingLocale, useTranslation } from "../i18n";
 import { useEffect, useId, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { create } from "zustand";
@@ -65,6 +65,7 @@ export function CustomSnoozeDialogHost() {
 
 function CustomSnoozeDialog() {
   const { t } = useTranslation();
+  const locale = useFormattingLocale();
   const id = useId();
   const navigate = useNavigate();
   const [initial] = useState(() => new Date(Date.now() + 3_600_000));
@@ -136,7 +137,7 @@ function CustomSnoozeDialog() {
                             <Button align="between" fill id={`${id}-date`} variant="outline" />
                           }
                         >
-                          {date.toLocaleDateString(undefined, {
+                          {date.toLocaleDateString(locale, {
                             month: "short",
                             day: "numeric",
                             year: "numeric",

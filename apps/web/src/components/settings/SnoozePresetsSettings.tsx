@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { useFormattingLocale, useTranslation } from "../../i18n";
 import { useState } from "react";
 import {
   DEFAULT_SNOOZE_PRESETS,
@@ -234,26 +234,20 @@ function SnoozePresetList(props: {
   onAdd: () => void;
   onSettle: () => void;
 }) {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   const nowMinute = useNowMinute();
   const now = new Date(`${nowMinute}Z`);
   const formatTime = (date: Date) =>
-    formatShortTimestamp(date.toISOString(), props.timestampFormat);
+    formatShortTimestamp(date.toISOString(), props.timestampFormat, locale);
   const localizeLabel = (label: string) => {
     const duration = /^In (\d+) (minutes?|hours?|days?)$/.exec(label);
     return duration ? t(`In {count} ${duration[2]}`, { count: duration[1]! }) : t(label);
   };
-  const localizeWhen = (resolved: NonNullable<ReturnType<typeof resolveSnoozePreset>>) => {
-    const wake = new Date(resolved.snoozedUntil);
-    const time = formatTime(wake);
-    return resolved.whenLabel === time
-      ? time
-      : `${wake.toLocaleDateString(language, { weekday: "short" })} ${time}`;
-  };
   const seenIds = new Set<string>();
   const seenWakes = new Set<string>();
   const previews = props.presets.map((preset) => {
-    const resolved = resolveSnoozePreset(preset, now, formatTime);
+    const resolved = resolveSnoozePreset(preset, now, formatTime, locale);
     if (resolved === null) return { tone: "muted", text: t("Passed for today") } as const;
     if (seenIds.has(resolved.id)) {
       return { tone: "muted", text: t("Duplicate of an option above") } as const;
@@ -266,11 +260,11 @@ function SnoozePresetList(props: {
     return {
       tone: "menu",
       label: localizeLabel(resolved.label),
-      when: localizeWhen(resolved),
+      when: resolved.whenLabel,
     } as const;
   });
 
-  const menuPresets = resolveSnoozePresets(now, { presets: props.presets, formatTime });
+  const menuPresets = resolveSnoozePresets(now, { presets: props.presets, formatTime, locale });
   const repeatedLabels = new Set(
     menuPresets
       .map((preset) => preset.label)
@@ -278,7 +272,7 @@ function SnoozePresetList(props: {
   );
   const menuOrder = menuPresets.map((preset) =>
     repeatedLabels.has(preset.label)
-      ? `${localizeLabel(preset.label)} ${localizeWhen(preset)}`
+      ? `${localizeLabel(preset.label)} ${preset.whenLabel}`
       : localizeLabel(preset.label),
   );
 

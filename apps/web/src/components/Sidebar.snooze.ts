@@ -7,6 +7,7 @@ import {
   type SnoozePreset,
 } from "@t3tools/client-runtime/state/thread-settled";
 
+import { getFormattingLocale } from "../i18n";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { serverEnvironment } from "../state/server";
 import { formatShortTimestamp } from "../timestampFormat";
@@ -50,8 +51,10 @@ function snoozeOptions(timestampFormat: TimestampFormat, environmentId: Environm
   const presets = appAtomRegistry.get(
     serverEnvironment.settingsValueAtom(environmentId),
   )?.snoozePresets;
+  const locale = getFormattingLocale();
   return {
     ...(presets ? { presets } : {}),
-    formatTime: (date: Date) => formatShortTimestamp(date.toISOString(), timestampFormat),
+    formatTime: (date: Date) => formatShortTimestamp(date.toISOString(), timestampFormat, locale),
+    locale,
   };
 }

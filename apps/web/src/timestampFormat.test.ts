@@ -5,6 +5,7 @@ import {
   formatDayAwareTimestamp,
   formatRelativeElapsed,
   formatRelativeTimeLabel,
+  formatShortTimestamp,
 } from "./timestampFormat";
 import { translate } from "./i18n/language";
 
@@ -20,6 +21,17 @@ it("formats the time and date in the current system time zone", () => {
     if (previousZone === undefined) delete process.env.TZ;
     else process.env.TZ = previousZone;
   }
+});
+
+it("localizes the day period while honoring the system clock and explicit 24-hour mode", () => {
+  const date = new Date(2026, 10, 19, 18, 5);
+  const hourCycle = Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions()
+    .hourCycle!;
+  expect(formatShortTimestamp(date.toISOString(), "locale", "zh")).toBe(
+    new Intl.DateTimeFormat("zh", { hour: "numeric", minute: "2-digit", hourCycle }).format(date),
+  );
+  expect(formatShortTimestamp(date.toISOString(), "12-hour", "zh")).toBe("下午6:05");
+  expect(formatShortTimestamp(date.toISOString(), "24-hour", "zh")).toBe("18:05");
 });
 
 describe("localized timestamps", () => {

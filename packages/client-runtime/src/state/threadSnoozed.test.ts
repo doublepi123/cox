@@ -376,6 +376,17 @@ describe("threadWokeAt", () => {
 });
 
 describe("resolveSnoozePresets", () => {
+  it("uses the German weekday with the caller's clock format", () => {
+    const options = {
+      locale: "de",
+      formatTime,
+      presets: [{ kind: "at", day: "monday", time: "18:00" }] as const,
+    };
+    const [preset] = resolveSnoozePresets(localDate(2026, 4, 8, 20), options);
+
+    expect(preset?.whenLabel).toMatch(/^Mo\.? 18:00$/);
+  });
+
   const formatTime = (date: Date) =>
     `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
   const menu = (now: Date, presets?: ReadonlyArray<SnoozePresetSetting>) =>

@@ -11,6 +11,7 @@ import {
   detectDeviceLanguage,
   parseLanguagePreference,
   resolveLanguage,
+  resolveFormattingLocale,
   translate,
 } from "./language";
 
@@ -26,6 +27,16 @@ describe("device language", () => {
     [["not-zh", "eng"], "en"],
   ] as const)("resolves %j to %s", (languages, language) => {
     expect(detectDeviceLanguage(languages)).toBe(language);
+  });
+
+  it.each([
+    ["system", ["en-GB"], undefined],
+    ["system", ["zh-TW", "en-GB"], undefined],
+    ["en", ["en-GB"], undefined],
+    ["en", ["zh-CN"], "en"],
+    ["zh", ["en-US"], "zh"],
+  ] as const)("formats %s with browser languages %j", (preference, languages, expected) => {
+    expect(resolveFormattingLocale(preference, languages)).toBe(expected);
   });
 
   it("gives explicit preferences priority over the device", () => {

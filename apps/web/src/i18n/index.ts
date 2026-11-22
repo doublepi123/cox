@@ -4,6 +4,7 @@ import {
   LANGUAGE_STORAGE_KEY,
   parseLanguagePreference,
   resolveLanguage,
+  resolveFormattingLocale,
   translate,
   type Language,
   type LanguagePreference,
@@ -31,6 +32,14 @@ function deviceLanguages(): readonly string[] {
 
 export function getLanguage(): Language {
   return resolveLanguage(preference, deviceLanguages());
+}
+
+export function getFormattingLocale() {
+  return resolveFormattingLocale(preference, deviceLanguages());
+}
+
+export function useFormattingLocale() {
+  return useSyncExternalStore(subscribe, getFormattingLocale, () => undefined);
 }
 
 export function translateCurrent(
