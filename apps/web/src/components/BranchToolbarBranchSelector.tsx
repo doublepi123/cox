@@ -58,6 +58,7 @@ import {
   resolveEffectiveEnvMode,
   sanitizeNewRefName,
   shouldIncludeBranchPickerItem,
+  toBranchActionErrorMessage,
 } from "./BranchToolbar.logic";
 import {
   ThreadPullRequestBadgeControl,
@@ -94,9 +95,6 @@ interface BranchToolbarBranchSelectorProps {
   onComposerFocusRequest?: () => void;
 }
 
-function toBranchActionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : translateCurrent("An error occurred.");
-}
 
 export function BranchToolbarBranchSelector({
   forceNewWorktree = false,
