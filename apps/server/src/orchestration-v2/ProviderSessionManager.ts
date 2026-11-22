@@ -644,10 +644,12 @@ export const layerWithOptions = (
           cause: detail,
         });
         const subscribers = yield* Ref.getAndSet(entry.eventSubscribers, new Map());
+        let remaining = subscribers.size;
+        const finish = Effect.suspend(() => (--remaining === 0 ? afterDrain : Effect.void));
         yield* Effect.forEach(
           subscribers.values(),
           (queue) => {
-            subscriberReleaseCleanup.set(queue, afterDrain);
+            subscriberReleaseCleanup.set(queue, finish);
             return Queue.offer(queue, {
               type: "failure",
               cause: cause ?? Cause.fail(error),
@@ -655,6 +657,7 @@ export const layerWithOptions = (
           },
           { discard: true },
         );
+        return subscribers.size > 0;
       });
 
       // Server shutdown interrupts subscribers rather than ending them: a
@@ -1220,6 +1223,7 @@ export const layerWithOptions = (
         readonly releasedAt: DateTime.Utc;
         readonly detachedThreadId?: ThreadId;
         readonly replaced: boolean;
+        readonly nativeWorkHandledBySubscriber?: boolean;
       }) =>
         Effect.all(
           [
@@ -1240,12 +1244,15 @@ export const layerWithOptions = (
               ),
             ),
             Effect.exit(
-              endReleasedNativeSubagents(input.releasedBackgroundTasks, input.releasedAt),
-            ),
-            Effect.exit(
-              Effect.forEach(input.releasedBackgroundTasks, writeReleasedWorkNote, {
-                discard: true,
-              }),
+              input.nativeWorkHandledBySubscriber === true
+                ? Effect.void
+                : endReleasedNativeSubagents(input.releasedBackgroundTasks, input.releasedAt).pipe(
+                    Effect.andThen(
+                      Effect.forEach(input.releasedBackgroundTasks, writeReleasedWorkNote, {
+                        discard: true,
+                      }),
+                    ),
+                  ),
             ),
           ],
           { concurrency: 1 },
@@ -1436,17 +1443,33 @@ export const layerWithOptions = (
                     (thread) => writeReleasedToolCallEvents(thread, releasedAt),
                     { discard: true },
                   ).pipe(logReleaseFailure(input.providerSessionId));
+                  let nativeWorkHandledBySubscriber = false;
                   if (input.gracefulSubscribers === true) {
                     yield* endSubscribers(entry, afterDrain);
                   } else if (input.reason === "server_shutdown") {
                     yield* interruptSubscribers(entry);
                   } else {
-                    yield* failSubscribers(
+                    const providerFailed =
+                      input.reason === "runtime_error" && releasedBackgroundTasks.length > 0;
+                    const draining = yield* failSubscribers(
                       entry,
                       input.detail ?? `Provider session released: ${input.reason}.`,
-                      afterDrain,
+                      providerFailed
+                        ? afterDrain.pipe(
+                            Effect.andThen(
+                              endReleasedNativeSubagents(releasedBackgroundTasks, releasedAt),
+                            ),
+                            Effect.andThen(
+                              Effect.forEach(releasedBackgroundTasks, writeReleasedWorkNote, {
+                                discard: true,
+                              }),
+                            ),
+                            logReleaseFailure(input.providerSessionId),
+                          )
+                        : afterDrain,
                       input.eventStreamCause,
                     );
+                    nativeWorkHandledBySubscriber = providerFailed && draining;
                   }
                   const closeExit = yield* closeScopeWithin(entry.scope, {
                     providerSessionId: input.providerSessionId,
@@ -1458,6 +1481,7 @@ export const layerWithOptions = (
                     ...(input.detail === undefined ? {} : { detail: input.detail }),
                     releasedBackgroundTasks,
                     releasedAt,
+                    nativeWorkHandledBySubscriber,
                     ...detachedThread,
                   };
                   const recorded = yield* Effect.exit(
@@ -2099,7 +2123,6 @@ export const layerWithOptions = (
                 ? Effect.succeed(signal.event)
                 : Effect.failCause(signal.cause),
             ),
-            Stream.ensuring(close),
           );
           return { events, close } satisfies ProviderAdapter.ProviderAdapterV2EventSubscription;
         },
@@ -2131,7 +2154,11 @@ export const layerWithOptions = (
           },
           subscribeEvents,
           events: Stream.unwrap(
-            subscribeEvents.pipe(Effect.map((subscription) => subscription.events)),
+            subscribeEvents.pipe(
+              Effect.map((subscription) =>
+                subscription.events.pipe(Stream.ensuring(subscription.close)),
+              ),
+            ),
           ),
           ensureThread: (input) =>
             observeActivity(
