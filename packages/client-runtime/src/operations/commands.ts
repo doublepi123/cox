@@ -1102,25 +1102,31 @@ export const mergeThreadBack = Effect.fn("EnvironmentCommands.mergeThreadBack")(
 export const resumeThreadQueue = Effect.fn("EnvironmentCommands.resumeThreadQueue")(function* (
   input: ResumeThreadQueueInput,
 ) {
-  return yield* dispatch({
-    ...(input.runId === undefined
-      ? { type: "queue.resume" as const }
-      : { type: "queued-run.start" as const, runId: input.runId }),
-    commandId: yield* allocateCommandId(input),
-    threadId: input.threadId,
-  });
+  return yield* withTransportRecovery(
+    dispatch({
+      ...(input.runId === undefined
+        ? { type: "queue.resume" as const }
+        : { type: "queued-run.start" as const, runId: input.runId }),
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+    }),
+    true,
+  );
 });
 
 export const promoteQueuedRun = Effect.fn("EnvironmentCommands.promoteQueuedRun")(function* (
   input: PromoteQueuedRunInput,
 ) {
-  return yield* dispatch({
-    type: "queued-message.promote-to-steer",
-    commandId: yield* allocateCommandId(input),
-    threadId: input.threadId,
-    queuedRunId: input.queuedRunId,
-    targetRunId: input.targetRunId,
-  });
+  return yield* withTransportRecovery(
+    dispatch({
+      type: "queued-message.promote-to-steer",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      queuedRunId: input.queuedRunId,
+      targetRunId: input.targetRunId,
+    }),
+    true,
+  );
 });
 
 export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(function* (
