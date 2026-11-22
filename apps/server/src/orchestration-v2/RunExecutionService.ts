@@ -406,6 +406,8 @@ export function routeProviderEvent(
         },
       ];
     }
+    case "thread_model_selection.updated":
+      return [event.threadId === input.threadId, state];
     case "provider_thread.updated": {
       if (event.sessionScoped === true) return [false, state];
       const belongs =
