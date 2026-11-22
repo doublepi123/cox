@@ -2,6 +2,7 @@ import type { DesktopComputerUseState } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
   desktopComputerControlIndicatorState,
+  desktopComputerPermissionLabel,
   hasMacOs15InputMonitoringPane,
   missingDesktopComputerPermissions,
 } from "./desktopComputerUse";
@@ -40,6 +41,19 @@ describe("desktop computer permissions", () => {
         }),
       ),
     ).toEqual(["screenRecording", "input"]);
+  });
+
+  it("maps capabilities to platform names without changing the macOS labels", () => {
+    expect({
+      screenRecording: desktopComputerPermissionLabel("screenRecording", "win32"),
+      accessibility: desktopComputerPermissionLabel("accessibility", "win32"),
+      input: desktopComputerPermissionLabel("input", "win32"),
+    }).toEqual({
+      screenRecording: "Screen capture",
+      accessibility: "UI Automation",
+      input: "Input and stop shortcut",
+    });
+    expect(desktopComputerPermissionLabel("input", "darwin")).toBe("Input Monitoring");
   });
 
   it.each([

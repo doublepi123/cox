@@ -6,6 +6,21 @@ export const DESKTOP_COMPUTER_PERMISSION_LABELS: Record<DesktopComputerPermissio
   input: "Input Monitoring",
 };
 
+const WINDOWS_COMPUTER_PERMISSION_LABELS: Record<DesktopComputerPermission, string> = {
+  screenRecording: "Screen capture",
+  accessibility: "UI Automation",
+  input: "Input and stop shortcut",
+};
+
+export function desktopComputerPermissionLabel(
+  permission: DesktopComputerPermission,
+  platform: string | undefined,
+): string {
+  return platform === "win32"
+    ? WINDOWS_COMPUTER_PERMISSION_LABELS[permission]
+    : DESKTOP_COMPUTER_PERMISSION_LABELS[permission];
+}
+
 export const DESKTOP_COMPUTER_PERMISSIONS = [
   "screenRecording",
   "accessibility",

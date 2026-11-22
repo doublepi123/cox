@@ -44,8 +44,8 @@ import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useDesktopComputerUse } from "../../hooks/useDesktopComputerUse";
 import {
-  DESKTOP_COMPUTER_PERMISSION_LABELS,
   desktopComputerControlIndicatorState,
+  desktopComputerPermissionLabel,
   missingDesktopComputerPermissions,
   type DesktopComputerControlIndicatorState,
 } from "../../lib/desktopComputerUse";
@@ -298,15 +298,28 @@ export const ChatHeader = memo(function ChatHeader({
     computerControlAgentSupported,
   );
   const computerControlLabel = computerControlState
-    ? t(COMPUTER_CONTROL_INDICATOR_LABELS[computerControlState])
+    ? computerControlState === "waiting" && window.coxDesktop?.platform === "win32"
+      ? t("Computer control waiting for setup")
+      : t(COMPUTER_CONTROL_INDICATOR_LABELS[computerControlState])
     : null;
-  const computerControlTooltip =
+  const computerControlPlatform = window.coxDesktop?.platform;
+  const computerControlMissingNames =
     computerControlState === "waiting" && computer.state
-      ? `${computerControlLabel}\n${t("Missing permissions: {permissions}", {
-          permissions: missingDesktopComputerPermissions(computer.state)
-            .map((permission) => t(DESKTOP_COMPUTER_PERMISSION_LABELS[permission]))
-            .join(", "),
-        })}`
+      ? missingDesktopComputerPermissions(computer.state)
+          .map((permission) =>
+            t(desktopComputerPermissionLabel(permission, computerControlPlatform)),
+          )
+          .join(", ")
+      : null;
+  const computerControlTooltip =
+    computerControlState === "waiting" && computerControlMissingNames !== null
+      ? `${computerControlLabel}\n${
+          computerControlPlatform === "win32"
+            ? t("Not ready: {items}", { items: computerControlMissingNames })
+            : t("Missing permissions: {permissions}", {
+                permissions: computerControlMissingNames,
+              })
+        }`
       : computerControlState === "ready"
         ? t("Computer control is ready for this agent.")
         : computerControlState === "unsupported"
@@ -473,7 +486,9 @@ export const ChatHeader = memo(function ChatHeader({
           <MobileBranchOverflowTrigger />
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {computerControlState && computerControlLabel && window.coxDesktop?.platform === "darwin" ? (
+      {computerControlState &&
+      computerControlLabel &&
+      (computerControlPlatform === "darwin" || computerControlPlatform === "win32") ? (
         <Tooltip>
           <TooltipTrigger
             render={

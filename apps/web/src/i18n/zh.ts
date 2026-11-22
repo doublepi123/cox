@@ -3968,30 +3968,46 @@ export const zh = {
   "Computer control": "电脑操控",
   "Allow Cox to see the screen and control this Mac with a compatible agent.":
     "允许 Cox 使用兼容的 Agent 查看屏幕并操控这台 Mac。",
+  "Allow Cox to see the screen and control this Windows PC with a compatible agent.":
+    "允许 Cox 使用兼容的 Agent 查看屏幕并操控这台 Windows 电脑。",
   "Ready to use computer control": "可以使用电脑操控",
   "Enabled, waiting for permission": "已启用，待授权",
+  "Enabled, waiting for setup": "已启用，待完成设置",
   "Missing: {permissions}": "缺少：{permissions}",
   "Set up permissions": "设置权限",
   "Computer control was stopped": "电脑操控已停止",
   "Set up computer control": "设置电脑操控",
   "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.":
     "在 macOS“隐私与安全性”中授权 {appName}。也可以稍后完成这些权限设置。",
+  "Windows needs no extra permissions. Apps running as administrator can't be controlled unless Cox also runs as administrator.":
+    "Windows 不需要额外授权。以管理员身份运行的应用无法被操控，除非 Cox 也以管理员身份运行。",
   "Set up later": "稍后设置",
   "Re-check": "重新检查",
   Granted: "已授权",
   Missing: "未授权",
+  "Not ready": "未就绪",
   "Open System Settings": "打开系统设置",
   "Open System Settings for {permission}": "打开{permission}的系统设置",
   "Screen Recording": "屏幕录制",
   Accessibility: "辅助功能",
   "Input Monitoring": "输入监控",
+  "Screen capture": "屏幕捕获",
+  "UI Automation": "界面自动化（UI Automation）",
+  "Input and stop shortcut": "输入与急停快捷键",
   "Lets Cox see the screen and window content.": "允许 Cox 查看屏幕和窗口内容。",
   "Lets Cox read interface elements and operate windows, including sending clicks and keys.":
     "允许 Cox 读取界面元素并操作窗口，包括发送点击和按键。",
+  "Lets Cox read interface elements and operate windows.": "允许 Cox 读取界面元素并操作窗口。",
+  "Lets Cox send clicks and keys in the background; Ctrl+Alt+Shift+Esc stops input from any app.":
+    "允许 Cox 在后台发送点击和按键；在任意应用中按 Ctrl+Alt+Shift+Esc 均可急停输入。",
   "On macOS 15+, open Privacy & Security → Input Monitoring. Input control uses the Accessibility grant; Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
     "macOS 15 或更高版本中，打开“隐私与安全性 → 输入监控”。输入控制使用辅助功能授权；输入监控允许 Control+Option+Command+Escape 全局停止任何 App 的输入。",
   "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
     "输入控制使用辅助功能授权。输入监控允许 Control+Option+Command+Escape 全局停止任何 App 的输入。",
+  "The stop shortcut could not start. Close other apps that capture Ctrl+Alt+Shift+Esc, then Re-check.":
+    "急停快捷键未能启动。请关闭其他占用 Ctrl+Alt+Shift+Esc 的应用，然后重新检查。",
+  "No display was found. Re-check after connecting a display.":
+    "未找到显示器。连接显示器后，请重新检查。",
   "Authorize {appName} for {permission}": "为 {appName} 授予{permission}权限",
   "macOS requires quitting and reopening Cox for the grant to take effect.":
     "macOS 需要退出并重新打开 Cox，授权才会生效。",
@@ -4001,10 +4017,12 @@ export const zh = {
   "Computer control engine error": "电脑操控引擎错误",
   "Computer control ready": "电脑操控就绪",
   "Computer control waiting for permission": "电脑操控待授权",
+  "Computer control waiting for setup": "电脑操控待完成设置",
   "Agent does not support computer control": "当前 Agent 不支持电脑操控",
   "Computer control stopped": "电脑操控已停止",
   "Computer control is ready for this agent.": "当前 Agent 可以使用电脑操控。",
   "Missing permissions: {permissions}": "缺少权限：{permissions}",
+  "Not ready: {items}": "未就绪：{items}",
   "This agent cannot use computer control. Choose an agent with MCP tool support.":
     "当前 Agent 无法使用电脑操控。请选择支持 MCP 工具的 Agent。",
   "Computer control was stopped. Resume it in Labs settings.":

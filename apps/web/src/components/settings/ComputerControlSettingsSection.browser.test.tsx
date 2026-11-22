@@ -34,7 +34,7 @@ function computerState(overrides: Partial<DesktopComputerUseState> = {}): Deskto
   };
 }
 
-function computerBridge(initial: DesktopComputerUseState) {
+function computerBridge(initial: DesktopComputerUseState, platform: "darwin" | "win32" = "darwin") {
   let current = initial;
   const listeners = new Set<(state: DesktopComputerUseState) => void>();
   const publish = (next: DesktopComputerUseState) => {
@@ -42,7 +42,7 @@ function computerBridge(initial: DesktopComputerUseState) {
     for (const listener of listeners) listener(current);
   };
   const bridge = {
-    platform: "darwin",
+    platform,
     getComputerUse: vi.fn(async () => current),
     setComputerUseEnabled: vi.fn(async (enabled: boolean) => {
       current = { ...current, enabled };
@@ -92,6 +92,66 @@ describe("computer control settings", () => {
           { exact: true },
         ),
       )
+      .toBeVisible();
+  });
+
+  it("shows Windows capabilities and keeps their names after setting up later", async () => {
+    using _language = englishLanguage();
+    const appPath = "C:\\Program Files\\Cox\\Cox.exe";
+    const { bridge } = computerBridge(
+      computerState({
+        appPath,
+        macosVersion: null,
+        permissions: { screenRecording: "denied", accessibility: "granted", input: "denied" },
+      }),
+      "win32",
+    );
+    using _bridge = stubGlobal("coxDesktop", bridge);
+    await using screen = await render(<ComputerControlSettingsSection />);
+    await screen.getByRole("switch", { name: "Computer control" }).click();
+    await expect
+      .element(page.getByRole("dialog", { name: "Set up computer control" }))
+      .toBeVisible();
+    for (const capability of ["Screen capture", "UI Automation", "Input and stop shortcut"]) {
+      await expect.element(page.getByText(capability, { exact: true })).toBeVisible();
+    }
+    await expect
+      .element(
+        page.getByText(
+          "Windows needs no extra permissions. Apps running as administrator can't be controlled unless Cox also runs as administrator.",
+          { exact: true },
+        ),
+      )
+      .toBeVisible();
+    await expect
+      .element(
+        page.getByText(
+          "The stop shortcut could not start. Close other apps that capture Ctrl+Alt+Shift+Esc, then Re-check.",
+          { exact: true },
+        ),
+      )
+      .toBeVisible();
+    await expect
+      .element(page.getByText("No display was found. Re-check after connecting a display."))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: /Open System Settings/ }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Restart Cox", exact: true }))
+      .not.toBeInTheDocument();
+    await expect.element(page.getByText(appPath, { exact: true })).not.toBeInTheDocument();
+    await page.getByRole("button", { name: "Set up later", exact: true }).click();
+    await expect
+      .element(screen.getByText("Enabled, waiting for setup", { exact: true }))
+      .toBeVisible();
+    await expect
+      .element(
+        screen.getByText("Missing: Screen capture, Input and stop shortcut", { exact: true }),
+      )
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Set up computer control", exact: true }))
       .toBeVisible();
   });
 

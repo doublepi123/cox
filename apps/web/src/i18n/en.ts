@@ -215,30 +215,47 @@ export const en = {
   "Computer control": "Computer control",
   "Allow Cox to see the screen and control this Mac with a compatible agent.":
     "Allow Cox to see the screen and control this Mac with a compatible agent.",
+  "Allow Cox to see the screen and control this Windows PC with a compatible agent.":
+    "Allow Cox to see the screen and control this Windows PC with a compatible agent.",
   "Ready to use computer control": "Ready to use computer control",
   "Enabled, waiting for permission": "Enabled, waiting for permission",
+  "Enabled, waiting for setup": "Enabled, waiting for setup",
   "Missing: {permissions}": "Missing: {permissions}",
   "Set up permissions": "Set up permissions",
   "Computer control was stopped": "Computer control was stopped",
   "Set up computer control": "Set up computer control",
   "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.":
     "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.",
+  "Windows needs no extra permissions. Apps running as administrator can't be controlled unless Cox also runs as administrator.":
+    "Windows needs no extra permissions. Apps running as administrator can't be controlled unless Cox also runs as administrator.",
   "Set up later": "Set up later",
   "Re-check": "Re-check",
   Granted: "Granted",
   Missing: "Missing",
+  "Not ready": "Not ready",
   "Open System Settings": "Open System Settings",
   "Open System Settings for {permission}": "Open System Settings for {permission}",
   "Screen Recording": "Screen Recording",
   Accessibility: "Accessibility",
   "Input Monitoring": "Input Monitoring",
+  "Screen capture": "Screen capture",
+  "UI Automation": "UI Automation",
+  "Input and stop shortcut": "Input and stop shortcut",
   "Lets Cox see the screen and window content.": "Lets Cox see the screen and window content.",
   "Lets Cox read interface elements and operate windows, including sending clicks and keys.":
     "Lets Cox read interface elements and operate windows, including sending clicks and keys.",
+  "Lets Cox read interface elements and operate windows.":
+    "Lets Cox read interface elements and operate windows.",
+  "Lets Cox send clicks and keys in the background; Ctrl+Alt+Shift+Esc stops input from any app.":
+    "Lets Cox send clicks and keys in the background; Ctrl+Alt+Shift+Esc stops input from any app.",
   "On macOS 15+, open Privacy & Security → Input Monitoring. Input control uses the Accessibility grant; Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
     "On macOS 15+, open Privacy & Security → Input Monitoring. Input control uses the Accessibility grant; Input Monitoring lets Control+Option+Command+Escape stop input from any app.",
   "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.":
     "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.",
+  "The stop shortcut could not start. Close other apps that capture Ctrl+Alt+Shift+Esc, then Re-check.":
+    "The stop shortcut could not start. Close other apps that capture Ctrl+Alt+Shift+Esc, then Re-check.",
+  "No display was found. Re-check after connecting a display.":
+    "No display was found. Re-check after connecting a display.",
   "Authorize {appName} for {permission}": "Authorize {appName} for {permission}",
   "macOS requires quitting and reopening Cox for the grant to take effect.":
     "macOS requires quitting and reopening Cox for the grant to take effect.",
@@ -248,10 +265,12 @@ export const en = {
   "Computer control engine error": "Computer control engine error",
   "Computer control ready": "Computer control ready",
   "Computer control waiting for permission": "Computer control waiting for permission",
+  "Computer control waiting for setup": "Computer control waiting for setup",
   "Agent does not support computer control": "Agent does not support computer control",
   "Computer control stopped": "Computer control stopped",
   "Computer control is ready for this agent.": "Computer control is ready for this agent.",
   "Missing permissions: {permissions}": "Missing permissions: {permissions}",
+  "Not ready: {items}": "Not ready: {items}",
   "This agent cannot use computer control. Choose an agent with MCP tool support.":
     "This agent cannot use computer control. Choose an agent with MCP tool support.",
   "Computer control was stopped. Resume it in Labs settings.":

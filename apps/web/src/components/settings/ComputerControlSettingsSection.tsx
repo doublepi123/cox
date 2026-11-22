@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useDesktopComputerUse } from "../../hooks/useDesktopComputerUse";
 import { useTranslation } from "../../i18n";
 import {
-  DESKTOP_COMPUTER_PERMISSION_LABELS,
+  desktopComputerPermissionLabel,
   hasMacOs15InputMonitoringPane,
   missingDesktopComputerPermissions,
 } from "../../lib/desktopComputerUse";
@@ -27,9 +27,10 @@ import { searchableSetting } from "./settingsSearch";
 function permissionNames(
   permissions: readonly DesktopComputerPermission[],
   translate: (key: string) => string,
+  platform: string | undefined,
 ): string {
   return permissions
-    .map((permission) => translate(DESKTOP_COMPUTER_PERMISSION_LABELS[permission]))
+    .map((permission) => translate(desktopComputerPermissionLabel(permission, platform)))
     .join(", ");
 }
 
@@ -37,18 +38,28 @@ function PermissionGuideRow({
   permission,
   state,
   checking,
+  platform,
   onOpenSettings,
 }: {
   readonly permission: DesktopComputerPermission;
   readonly state: DesktopComputerUseState;
   readonly checking: boolean;
+  readonly platform: string | undefined;
   readonly onOpenSettings: (permission: DesktopComputerPermission) => void;
 }) {
   const { t } = useTranslation();
+  const isWindows = platform === "win32";
   const status = state.permissions[permission];
-  const label = t(DESKTOP_COMPUTER_PERMISSION_LABELS[permission]);
-  const description =
-    permission === "screenRecording"
+  const label = t(desktopComputerPermissionLabel(permission, platform));
+  const description = isWindows
+    ? permission === "screenRecording"
+      ? t("Lets Cox see the screen and window content.")
+      : permission === "accessibility"
+        ? t("Lets Cox read interface elements and operate windows.")
+        : t(
+            "Lets Cox send clicks and keys in the background; Ctrl+Alt+Shift+Esc stops input from any app.",
+          )
+    : permission === "screenRecording"
       ? t("Lets Cox see the screen and window content.")
       : permission === "accessibility"
         ? t(
@@ -61,6 +72,16 @@ function PermissionGuideRow({
           : t(
               "Input control uses the Accessibility grant. Input Monitoring lets Control+Option+Command+Escape stop input from any app.",
             );
+  const hint =
+    isWindows && status === "denied" && !checking
+      ? permission === "screenRecording"
+        ? t("No display was found. Re-check after connecting a display.")
+        : permission === "input"
+          ? t(
+              "The stop shortcut could not start. Close other apps that capture Ctrl+Alt+Shift+Esc, then Re-check.",
+            )
+          : null
+      : null;
   return (
     <li className="flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0 flex-1 space-y-1.5">
@@ -85,26 +106,33 @@ function PermissionGuideRow({
             {checking
               ? t("Checking…")
               : status === "granted"
-                ? t("Granted")
+                ? isWindows
+                  ? t("Ready")
+                  : t("Granted")
                 : status === "denied"
-                  ? t("Missing")
+                  ? isWindows
+                    ? t("Not ready")
+                    : t("Missing")
                   : t("Unknown")}
           </span>
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
-        <p className="text-xs text-foreground/75">
-          {t("Authorize {appName} for {permission}", {
-            appName: state.appName,
-            permission: label,
-          })}
-        </p>
-        {state.appPath ? (
+        {hint ? <p className="text-xs leading-relaxed text-warning-foreground">{hint}</p> : null}
+        {!isWindows ? (
+          <p className="text-xs text-foreground/75">
+            {t("Authorize {appName} for {permission}", {
+              appName: state.appName,
+              permission: label,
+            })}
+          </p>
+        ) : null}
+        {!isWindows && state.appPath ? (
           <code dir="ltr" className="block wrap-anywhere text-xs text-muted-foreground">
             {state.appPath}
           </code>
         ) : null}
       </div>
-      {status !== "granted" && window.coxDesktop?.openComputerUseSettings ? (
+      {!isWindows && status !== "granted" && window.coxDesktop?.openComputerUseSettings ? (
         <div className="shrink-0">
           <Button
             size="sm"
@@ -126,8 +154,10 @@ export function ComputerControlSettingsSection() {
   const [guideOpen, setGuideOpen] = useState(false);
   const state = computer.state;
   if (!state?.supported || !window.coxDesktop?.getComputerUse) return null;
+  const platform = window.coxDesktop.platform;
+  const isWindows = platform === "win32";
   const missing = missingDesktopComputerPermissions(state);
-  const missingNames = permissionNames(missing, t);
+  const missingNames = permissionNames(missing, t, platform);
   const engineMessage =
     state.engine === "missing"
       ? t("Computer control engine is missing.")
@@ -154,9 +184,13 @@ export function ComputerControlSettingsSection() {
       <SettingsSection title={t("Computer control")}>
         <SettingsRow
           {...searchableSetting("computer-control")}
-          description={t(
-            "Allow Cox to see the screen and control this Mac with a compatible agent.",
-          )}
+          description={
+            isWindows
+              ? t(
+                  "Allow Cox to see the screen and control this Windows PC with a compatible agent.",
+                )
+              : t("Allow Cox to see the screen and control this Mac with a compatible agent.")
+          }
           status={
             state.stopped ? (
               <p className="text-warning-foreground">{t("Computer control was stopped")}</p>
@@ -164,7 +198,11 @@ export function ComputerControlSettingsSection() {
               <p className="text-success-foreground">{t("Ready to use computer control")}</p>
             ) : state.enabled ? (
               <div className="space-y-0.5">
-                <p className="text-warning-foreground">{t("Enabled, waiting for permission")}</p>
+                <p className="text-warning-foreground">
+                  {isWindows
+                    ? t("Enabled, waiting for setup")
+                    : t("Enabled, waiting for permission")}
+                </p>
                 {missing.length > 0 ? (
                   <p>{t("Missing: {permissions}", { permissions: missingNames })}</p>
                 ) : null}
@@ -180,7 +218,7 @@ export function ComputerControlSettingsSection() {
                   </Button>
                 ) : (
                   <Button size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
-                    {t("Set up permissions")}
+                    {isWindows ? t("Set up computer control") : t("Set up permissions")}
                   </Button>
                 )}
                 {enabledSwitch}
@@ -202,14 +240,18 @@ export function ComputerControlSettingsSection() {
           <DialogHeader>
             <DialogTitle>{t("Set up computer control")}</DialogTitle>
             <DialogDescription>
-              {t(
-                "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.",
-                { appName: state.appName },
-              )}
+              {isWindows
+                ? t(
+                    "Windows needs no extra permissions. Apps running as administrator can't be controlled unless Cox also runs as administrator.",
+                  )
+                : t(
+                    "Authorize {appName} in macOS Privacy & Security. You can finish these permissions later.",
+                    { appName: state.appName },
+                  )}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            {state.restartRequired ? (
+            {!isWindows && state.restartRequired ? (
               <div className="flex flex-col gap-3 rounded-lg bg-warning-surface p-3 text-warning-foreground sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-relaxed" role="alert">
                   {t("macOS requires quitting and reopening Cox for the grant to take effect.")}
@@ -246,6 +288,7 @@ export function ComputerControlSettingsSection() {
                   permission={permission}
                   state={state}
                   checking={computer.checking}
+                  platform={platform}
                   onOpenSettings={(next) => void computer.openSettings(next)}
                 />
               ))}

@@ -1,6 +1,6 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, type DesktopComputerUseState } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 const persisted = vi.hoisted(() => ({ title: "" }));
 vi.mock(import("../../state/session"), async (importOriginal) => ({
@@ -20,10 +20,16 @@ vi.mock("~/hooks/useThreadActionMenu", () => ({
   useThreadActionMenu: () => ({ openMenu: () => {}, closeMenu: () => {} }),
 }));
 
-import { render } from "../../../test/render";
+import { render, stubGlobal } from "../../../test/render";
+import { setLanguagePreference } from "../../i18n";
 import { ChatHeader } from "./ChatHeader";
 
-function header(title: string) {
+function englishLanguage() {
+  setLanguagePreference("en");
+  return { [Symbol.dispose]: () => setLanguagePreference("system") };
+}
+
+function header(title: string, computerControlAgentSupported = false) {
   return (
     <>
       <ChatHeader
@@ -36,6 +42,7 @@ function header(title: string) {
         onOpenThread={() => {}}
         rightPanelOpen={false}
         onNewThreadInProject={() => {}}
+        computerControlAgentSupported={computerControlAgentSupported}
       />
       <div tabIndex={0}>Outside rename</div>
     </>
@@ -71,3 +78,35 @@ it.each(["blur", "Enter"] as const)(
     expect(persisted.title).toBe("My edited title");
   },
 );
+
+it("shows the Windows computer-control indicator and capability names", async () => {
+  using _language = englishLanguage();
+  const state: DesktopComputerUseState = {
+    supported: true,
+    enabled: true,
+    engine: "ready",
+    engineMessage: null,
+    permissions: { screenRecording: "denied", accessibility: "granted", input: "denied" },
+    appName: "Cox",
+    appPath: "C:\\Program Files\\Cox\\Cox.exe",
+    macosVersion: null,
+    restartRequired: false,
+    stopped: false,
+    ready: false,
+  };
+  using _bridge = stubGlobal("coxDesktop", {
+    platform: "win32",
+    getComputerUse: vi.fn(async () => state),
+    onComputerUse: vi.fn(() => () => {}),
+  });
+  await using screen = await render(header("Windows control", true));
+  const indicator = screen.getByRole("button", {
+    name: "Open computer control settings: Computer control waiting for setup",
+    exact: true,
+  });
+  await expect.element(indicator).toBeVisible();
+  await indicator.hover();
+  await expect
+    .element(page.getByText("Not ready: Screen capture, Input and stop shortcut", { exact: false }))
+    .toBeVisible();
+});
