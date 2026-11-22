@@ -32,7 +32,7 @@ ${OMO_MEMORY_SOURCE}
 const excluded = new Set([
   "config-startup", "config-watch", "model-profile", "onboarding", "onboarding-scan",
   "side-panel", "telemetry", "device-service", "feedback", "thread",
-  "browser-bridge", "desktop-toolkit",
+  "browser-bridge", "desktop-toolkit", "computer-use",
 ]);
 
 export default async function coxOmo(pi) {
@@ -126,7 +126,6 @@ export default async function coxOmo(pi) {
   if (!memoryWarning && Array.isArray(memory.diagnostics) && memory.diagnostics.length)
     memoryWarning = memory.diagnostics.join(" ");
   const components = entry.omoSenpiComponents.filter(c => !excluded.has(c.name) &&
-    (c.name !== "computer-use" || process.env.COX_OMO_COMPUTER_USE === "1") &&
     (c.name !== "task" || process.env.COX_OMO_TOOLS_REQUIRED !== "0")).map(c =>
     c.name === "task" ? tasks.createTaskComponent({ loadConfig: () => ({ config, diagnostics: [], layers: [], sources: [] }) }) :
     c.name === "memory" ? memory : c);
@@ -252,14 +251,6 @@ export const buildOmoLaunch: typeof buildPiRpcLaunch = (input) => {
         input.extensionPath !== undefined && !input.disableExtensions ? "1" : "0",
       COX_OMO_TOOLS_REQUIRED: input.disableTools ? "0" : "1",
       COX_OMO_EPHEMERAL: input.ephemeral ? "1" : "0",
-      COX_OMO_COMPUTER_USE:
-        process.platform === "darwin" &&
-        process.connected === true &&
-        process.env.COX_OWNED_OMO_COMPUTER_USE === "1" &&
-        !input.ephemeral &&
-        !input.disableTools
-          ? "1"
-          : "0",
     },
   };
 };

@@ -226,7 +226,7 @@ describe("official OMO no-model runtime layout acceptance", () => {
           });
           expect(
             await request({ type: "extension_request", name: "cox.assets.computer-tools" }),
-          ).toEqual({ names: fixture.computerUse ? ["computer"] : [] });
+          ).toEqual({ names: [] });
           expect(
             await request({ type: "set_permission_preset", permissionPreset: "ask" }),
           ).toMatchObject({

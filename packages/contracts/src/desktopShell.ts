@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import type { DesktopComputerBridge } from "./desktopComputer.ts";
 
 export interface DesktopWindowState {
   readonly fullscreen: boolean;
@@ -49,7 +50,7 @@ export const DesktopUpdateProgress = Schema.Struct({
 });
 export type DesktopUpdateProgress = typeof DesktopUpdateProgress.Type;
 
-export interface DesktopShellBridge {
+export interface DesktopShellBridge extends DesktopComputerBridge {
   readonly platform: string;
   readonly windowKind?: "main" | "settings" | "usage";
   openSettings?(path: string): Promise<void>;

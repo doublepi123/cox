@@ -84,6 +84,8 @@ import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as AgentAttentionNotifier from "./notifications/AgentAttentionNotifier.ts";
+import * as ComputerRunRelay from "./computer/ComputerRunRelay.ts";
+import * as DesktopComputerLink from "./computer/DesktopComputerLink.ts";
 import * as WebPushService from "./notifications/WebPushService.ts";
 import * as NotificationSubscriptions from "./persistence/NotificationSubscriptions.ts";
 import * as LocalServiceUpdate from "./localServiceUpdate/LocalServiceUpdate.ts";
@@ -672,6 +674,7 @@ const layerMakeRoutes = Layer.mergeAll(
     Ws.layer,
   ),
   McpHttpServer.layer.pipe(
+    Layer.provide(DesktopComputerLink.layer),
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),
@@ -744,8 +747,10 @@ const layerMakeServer = Layer.unwrap(
     const layerRuntimeServices = Layer.unwrap(
       Effect.gen(function* () {
         const notifier = yield* AgentAttentionNotifier.AgentAttentionNotifier;
+        const computerRelay = yield* ComputerRunRelay.ComputerRunRelay;
         return ServerRuntimeStartup.layerWithOptions({
           activate: notifier.start.pipe(
+            Effect.andThen(computerRelay.start),
             Effect.andThen(Deferred.succeed(activation, undefined)),
             Effect.asVoid,
           ),
@@ -757,6 +762,11 @@ const layerMakeServer = Layer.unwrap(
         });
       }),
     ).pipe(
+      Layer.provide(
+        ComputerRunRelay.layer.pipe(
+          Layer.provide(Layer.mergeAll(DesktopComputerLink.layer, RuntimeLayer.layerEventSink)),
+        ),
+      ),
       Layer.provide(
         AgentAttentionNotifier.layer.pipe(
           Layer.provide(

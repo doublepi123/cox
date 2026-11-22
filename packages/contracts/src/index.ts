@@ -69,6 +69,7 @@ export * from "./notifications.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./browserUi.ts";
 export { DesktopUpdateProgress } from "./desktopShell.ts";
+export * from "./desktopComputer.ts";
 export type {
   DesktopShellBridge,
   DesktopWindowState,

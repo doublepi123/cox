@@ -6,7 +6,9 @@ import { ProviderInstanceId } from "@t3tools/contracts";
 import { McpProviderSessions } from "@t3tools/provider-core/server/McpProviderSessions";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { McpServer } from "effect/ai";
+import * as Context from "effect/Context";
+import { McpSchema, McpServer } from "effect/ai";
+import { DesktopComputerLink } from "../computer/DesktopComputerLink.ts";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { ServerConfig } from "../config.ts";
@@ -44,6 +46,11 @@ import budget from "./agentContextBudget.json" with { type: "json" };
 
 // Registration only stores tool definitions, so the handlers' services are never called.
 const toolHandlerServices = Layer.mergeAll(
+  Layer.mock(DesktopComputerLink)({
+    availability: () => ({ enabled: false, ready: false, missing: [] }),
+    isActive: () => false,
+    release: () => undefined,
+  }),
   Layer.mock(DocumentText)({}),
   Layer.mock(GitVcsDriver)({}),
   Layer.mock(GitWorkflowService)({}),
@@ -117,11 +124,19 @@ it.effect("agent context matches the committed budget", () =>
       // The model sees these fields. outputSchema and annotations are protocol metadata.
       mcpToolListJsonBytes: utf8Bytes(
         JSON.stringify(
-          mcp.tools.map(({ tool }) => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-          })),
+          mcp.tools
+            .filter(({ annotations }) => {
+              const enabled = Context.getOrUndefined(annotations, McpSchema.EnabledWhen);
+              return (
+                enabled === undefined ||
+                enabled({ protocolVersion: "2025-06-18", capabilities: {} })
+              );
+            })
+            .map(({ tool }) => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            })),
         ),
       ),
     };

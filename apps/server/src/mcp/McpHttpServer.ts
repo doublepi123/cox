@@ -71,6 +71,13 @@ import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import { MCP_HTTP_PATH } from "../httpCors.ts";
+import * as DesktopComputerLink from "../computer/DesktopComputerLink.ts";
+import * as ComputerHandlers from "./toolkits/computer/handlers.ts";
+import {
+  ComputerScreenshotToolkit,
+  ComputerToolkit,
+  ScreenshotTool as ComputerScreenshotTool,
+} from "./toolkits/computer/tools.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
   requestUrl(request).pipe(
@@ -751,6 +758,31 @@ const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(funct
   );
 });
 
+const registerComputerScreenshot = Effect.fn("McpHttpServer.registerComputerScreenshot")(
+  function* () {
+    const link = yield* DesktopComputerLink.DesktopComputerLink;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const built = yield* decodeAsAdvertised(ComputerScreenshotToolkit);
+    yield* registerImageTool(
+      ComputerScreenshotTool,
+      (payload) =>
+        built
+          .handle("computer_screenshot", payload)
+          .pipe(Stream.unwrap, Stream.run(Sink.last()), Effect.flatMap(Effect.fromOption)),
+      (effect) =>
+        effect.pipe(
+          Effect.provideService(DesktopComputerLink.DesktopComputerLink, link),
+          Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
+        ),
+      "computer",
+      (error) =>
+        typeof error === "object" && error !== null && "message" in error
+          ? String(error.message)
+          : "Computer screenshot failed.",
+    );
+  },
+);
+
 /**
  * Tools that hand work to another thread's agent: they create it, message it,
  * steer it, or move context into it. Their events name the receiving agent too.
@@ -1099,6 +1131,11 @@ const layerEnvironmentToolkit = toolkitRegistration(
 
 export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 
+export const layerComputerToolkit = Layer.mergeAll(
+  toolkitRegistration(ComputerToolkit, ComputerHandlers.layer),
+  imageToolRegistration(registerComputerScreenshot(), ComputerHandlers.layerScreenshot),
+);
+
 export const layerAttachmentToolkit = toolkitRegistration(
   AttachmentToolkit,
   AttachmentHandlers.layer,
@@ -1146,6 +1183,7 @@ export const layerTools = Layer.mergeAll(
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,
   layerHtmlToolkit,
+  layerComputerToolkit,
 );
 
 export const layer = layerMcpTransport(layerTools);
