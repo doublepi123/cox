@@ -16,12 +16,7 @@
       "sha256": "4885be2440362c8956d12265381ca99a7968ceecc7aed1376348d0bb173c3138"
     }
   ],
-  "gateExits": [
-    "SERVER=0",
-    "TYPE=0",
-    "BUILD=0",
-    "DIFF=0"
-  ],
+  "gateExits": ["SERVER=0", "TYPE=0", "BUILD=0", "DIFF=0"],
   "trackedAndUntrackedPathsInspected": 904,
   "pathsNewerThanGate": [],
   "productConnectionFilesReviewed": [
@@ -37,35 +32,17 @@
       "before": [
         "qa/webhook-before.json",
         [
-          [
-            202,
-            "filtered"
-          ],
-          [
-            202,
-            "filtered"
-          ],
-          [
-            202,
-            "filtered"
-          ]
+          [202, "filtered"],
+          [202, "filtered"],
+          [202, "filtered"]
         ]
       ],
       "after": [
         "qa/webhook-after.json",
         [
-          [
-            202,
-            "prompt_too_long"
-          ],
-          [
-            202,
-            "filtered"
-          ],
-          [
-            202,
-            "filtered"
-          ]
+          [202, "prompt_too_long"],
+          [202, "filtered"],
+          [202, "filtered"]
         ]
       ],
       "passed": true
@@ -74,10 +51,7 @@
       "sha": "1c86881dd5aa845c125957bf2a7c87013819d639",
       "entry": "Open Changes for 600 modified files in 600 folders. Show file tree, collapse all folders, expand all folders.",
       "criterion": "Both toggles work, child rows are visible and the longest task is lower than the baseline.",
-      "before": [
-        "qa/diff-baseline.json",
-        155
-      ],
+      "before": ["qa/diff-baseline.json", 155],
       "after": [
         "qa/diff-after.json",
         62,
@@ -91,15 +65,8 @@
       "sha": "f05cd350d255c37525af11d5a2fb04c7e4a98617",
       "entry": "Expand the 8000-entry z-performance folder in Files and wait for file-0000.ts to be visible.",
       "criterion": "The same folder expands and the baseline 119 ms long task is absent.",
-      "before": [
-        "qa/perf-baseline.json",
-        119
-      ],
-      "after": [
-        "qa/perf-after.json",
-        0,
-        "qa/phone-large-folder.png"
-      ],
+      "before": ["qa/perf-baseline.json", 119],
+      "after": ["qa/perf-after.json", 0, "qa/phone-large-folder.png"],
       "passed": true,
       "scope": "Numeric long-task assertion evaluated here. Visual observations are in the archived notebook."
     },
@@ -108,10 +75,7 @@
       "entry": "Open two PTYs and run Cox QA Long in term-2. Observe activity over WebSocket and in the UI.",
       "criterion": "Full label while the command runs and Terminal 2 after exit.",
       "before": null,
-      "after": [
-        "qa/terminal-long-metadata.json",
-        "qa/terminal-label-live.png"
-      ],
+      "after": ["qa/terminal-long-metadata.json", "qa/terminal-label-live.png"],
       "passed": true,
       "scope": "After-only physical PTY evidence. No pre-change PTY capture in these artifacts."
     }
@@ -152,9 +116,7 @@
           "Usage: cursorsandbox [OPTIONS] [COMMAND]...",
           ""
         ],
-        [
-          "function function"
-        ]
+        ["function function"]
       ],
       "summary": "continued-audit-summary.log"
     },
@@ -272,13 +234,7 @@
   ],
   "latestGate": {
     "source": "windows-terminal-summary.log",
-    "exitLines": [
-      "INSTALL=0",
-      "PTY=0",
-      "TYPE=0",
-      "BUILD=0",
-      "DIFF=0"
-    ],
+    "exitLines": ["INSTALL=0", "PTY=0", "TYPE=0", "BUILD=0", "DIFF=0"],
     "focusedTests": {
       "windowsPrototype": 3,
       "terminalAdjacent": 17,
@@ -291,26 +247,12 @@
     {
       "prefix": "43d445b408fb",
       "entry": "Workspace file picker opens portrait-qa.webm, recorded with intrinsic size 100 by 220.",
-      "before": [
-        "portrait-video-before.png"
-      ],
-      "after": [
-        "portrait-video-desktop.png",
-        "portrait-video-phone.png"
-      ],
+      "before": ["portrait-video-before.png"],
+      "after": ["portrait-video-desktop.png", "portrait-video-phone.png"],
       "criterion": "Displayed width/height differs from 100/220 by less than 0.02 after the fix.",
-      "baseline": [
-        251,
-        141.1875
-      ],
-      "desktop": [
-        100,
-        220
-      ],
-      "phone": [
-        100,
-        220
-      ],
+      "baseline": [251, 141.1875],
+      "desktop": [100, 220],
+      "phone": [100, 220],
       "sha": "43d445b408fb0f612f17388fdc8cdbd2f2e1f24c",
       "artifacts": [
         {
@@ -336,26 +278,12 @@
     {
       "prefix": "854247e2420a",
       "entry": "Open vector-qa.md, show rendered Markdown, and open Preview QA diagram.",
-      "before": [
-        "vector-before.png"
-      ],
-      "after": [
-        "vector-desktop.png",
-        "vector-phone.png"
-      ],
+      "before": ["vector-before.png"],
+      "after": ["vector-desktop.png", "vector-phone.png"],
       "criterion": "The SVG fills available space at its original 600:240 ratio in each viewport.",
-      "baseline": [
-        300,
-        120
-      ],
-      "desktop": [
-        1228.796875,
-        491.515625
-      ],
-      "phone": [
-        358.796875,
-        143.515625
-      ],
+      "baseline": [300, 120],
+      "desktop": [1228.796875, 491.515625],
+      "phone": [358.796875, 143.515625],
       "sha": "854247e2420a13d4e4dd2c649e60671f0bfb9631",
       "artifacts": [
         {

@@ -210,7 +210,9 @@ export function ServerList(props: ServerListProps) {
                   >
                     {t(profile.healthStatus)}
                   </span>
-                  {profile.hasSavedPassword ? <span className="badge">{t("vaultSaved")}</span> : null}
+                  {profile.hasSavedPassword ? (
+                    <span className="badge">{t("vaultSaved")}</span>
+                  ) : null}
                 </span>
                 <span className="server-connect-state">
                   {props.busyId === profile.id ? t("connectingServer") : t("connect")}

@@ -273,8 +273,9 @@ async function walk(directory) {
 
 async function checkMobileIcons() {
   const forbidden = new Set(
-    JSON.parse(await readFile(new URL("./capacitor-default-icon-hashes.json", import.meta.url), "utf8"))
-      .sha256,
+    JSON.parse(
+      await readFile(new URL("./capacitor-default-icon-hashes.json", import.meta.url), "utf8"),
+    ).sha256,
   );
   const failures = [];
   const roots = [

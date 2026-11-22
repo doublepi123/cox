@@ -11,17 +11,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  Menu,
-  net,
-  screen,
-  session,
-  shell,
-} from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, screen, session, shell } from "electron";
 import type { Event, IpcMainEvent, NativeImage } from "electron";
 import { BackendProcess, validateBackendInstallation } from "./backend.ts";
 import { BackendUpdates } from "./backend-updates.ts";

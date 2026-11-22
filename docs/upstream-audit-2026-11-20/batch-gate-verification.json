@@ -5,18 +5,10 @@
     {
       "file": "quick-effort-close-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "15fe2832727893cbdd2214383f9f971474849695"
-      ],
+      "referencedBy": ["15fe2832727893cbdd2214383f9f971474849695"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -28,22 +20,10 @@
         "31564dece84fa99e2abde8a22ed346b675384565"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 3", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -99,14 +79,8 @@
         "bc6062805db775019cf6f13cc543e694ad9e20fc"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -162,34 +136,13 @@
         "bc6062805db775019cf6f13cc543e694ad9e20fc"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 4",
-          1
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 4", 1],
+        ["CHECK 5", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0],
+        ["CHECK 6", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -245,22 +198,10 @@
         "bc6062805db775019cf6f13cc543e694ad9e20fc"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -297,50 +238,17 @@
         "fe59fa44d0f12ba1e58b1cccc2c888ac99e743da"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          1
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 9",
-          1
-        ],
-        [
-          "CHECK 10",
-          0
-        ]
+        ["CHECK 0", 1],
+        ["CHECK 1", 0],
+        ["CHECK 2", 1],
+        ["CHECK 3", 0],
+        ["CHECK 4", 1],
+        ["CHECK 5", 0],
+        ["CHECK 6", 0],
+        ["CHECK 7", 0],
+        ["CHECK 8", 0],
+        ["CHECK 9", 1],
+        ["CHECK 10", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -352,22 +260,10 @@
         "01eb339371010c4c7048683a0fa07825655a5937"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -412,50 +308,17 @@
         "fbd77b9b37bf99ebdee75250335491b03ae9a4c9"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 9",
-          1
-        ],
-        [
-          "CHECK 10",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 1],
+        ["CHECK 4", 0],
+        ["CHECK 5", 0],
+        ["CHECK 6", 0],
+        ["CHECK 7", 0],
+        ["CHECK 8", 0],
+        ["CHECK 9", 1],
+        ["CHECK 10", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -500,56 +363,24 @@
         "fbd77b9b37bf99ebdee75250335491b03ae9a4c9"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 1],
+        ["CHECK 4", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-appearance-summary.log",
       "sha256": "ff5d59cd5746a9f27208f009df2e436111b77dfa3a173c32b854826c56f6705a",
-      "referencedBy": [
-        "4e6b7d8447d3d2067747304e7a61e7d41f2464df"
-      ],
+      "referencedBy": ["4e6b7d8447d3d2067747304e7a61e7d41f2464df"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 4", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -569,34 +400,13 @@
         "ff8a83106773936314e527f116255e66df426a1f"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 5",
-          1
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0],
+        ["CHECK 6", 0],
+        ["CHECK 5", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -628,22 +438,10 @@
         "ff8a83106773936314e527f116255e66df426a1f"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -656,18 +454,9 @@
         "c6b18c4741d75e5150ecbe062401448c7e156e35"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -692,26 +481,11 @@
         "475ae52ac279152dd2c13a86a59227d3e1441e3d"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -736,22 +510,10 @@
         "475ae52ac279152dd2c13a86a59227d3e1441e3d"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          1
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -776,42 +538,15 @@
         "475ae52ac279152dd2c13a86a59227d3e1441e3d"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 7",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 8",
-          1
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 6", 0],
+        ["CHECK 1", 1],
+        ["CHECK 4", 0],
+        ["CHECK 7", 1],
+        ["CHECK 2", 0],
+        ["CHECK 5", 0],
+        ["CHECK 8", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -836,18 +571,9 @@
         "475ae52ac279152dd2c13a86a59227d3e1441e3d"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -862,30 +588,12 @@
         "759e649ea8b306ae3ea8f97ed14e69158204ef8f"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -912,22 +620,10 @@
         "05ccd6bfb5c49fe73cd979c03ec8eb3e6f45fa6a"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -953,12 +649,7 @@
         "71adeef080d1a6ee03ddd8fc7493ea5928afed89",
         "05ccd6bfb5c49fe73cd979c03ec8eb3e6f45fa6a"
       ],
-      "exits": [
-        [
-          "CHECK 0",
-          0
-        ]
-      ],
+      "exits": [["CHECK 0", 0]],
       "classification": "recorded-exits-zero"
     },
     {
@@ -984,42 +675,15 @@
         "05ccd6bfb5c49fe73cd979c03ec8eb3e6f45fa6a"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 7",
-          1
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 4", 0],
+        ["CHECK 5", 0],
+        ["CHECK 7", 1],
+        ["CHECK 8", 0],
+        ["CHECK 3", 0],
+        ["CHECK 6", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1057,66 +721,21 @@
         "292a8e448b3970b4ea556ff29816d09ffa76b69d"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 9",
-          0
-        ],
-        [
-          "CHECK 10",
-          0
-        ],
-        [
-          "CHECK 11",
-          0
-        ],
-        [
-          "CHECK 12",
-          0
-        ],
-        [
-          "CHECK 13",
-          0
-        ],
-        [
-          "CHECK 14",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0],
+        ["CHECK 4", 0],
+        ["CHECK 5", 0],
+        ["CHECK 6", 0],
+        ["CHECK 7", 0],
+        ["CHECK 8", 0],
+        ["CHECK 9", 0],
+        ["CHECK 10", 0],
+        ["CHECK 11", 0],
+        ["CHECK 12", 0],
+        ["CHECK 13", 0],
+        ["CHECK 14", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1161,22 +780,10 @@
         "f2aa99694b9e65b146dedeb4660f5ff00adce6c5"
       ],
       "exits": [
-        [
-          "OPENCODE",
-          0
-        ],
-        [
-          "TYPE",
-          1
-        ],
-        [
-          "BUILD",
-          0
-        ],
-        [
-          "FORMAT",
-          0
-        ]
+        ["OPENCODE", 0],
+        ["TYPE", 1],
+        ["BUILD", 0],
+        ["FORMAT", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1221,44 +828,21 @@
         "f2aa99694b9e65b146dedeb4660f5ff00adce6c5"
       ],
       "exits": [
-        [
-          "TYPE",
-          0
-        ],
-        [
-          "BROWSER",
-          0
-        ],
-        [
-          "FORMAT",
-          0
-        ]
+        ["TYPE", 0],
+        ["BROWSER", 0],
+        ["FORMAT", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-settings-fallback-summary.log",
       "sha256": "dc731e1aae556d30f919ac5a8cb9781a8de2595a9244784bd171da65202abf84",
-      "referencedBy": [
-        "cae3ced9fbe3b5f304c9264539b0889009b75469"
-      ],
+      "referencedBy": ["cae3ced9fbe3b5f304c9264539b0889009b75469"],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1299,42 +883,15 @@
         "55e379bb96d8cb1223d9faa453e9ed6f04f2c2f7"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          1
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0],
+        ["CHECK 4", 0],
+        ["CHECK 5", 0],
+        ["CHECK 6", 1],
+        ["CHECK 7", 0],
+        ["CHECK 8", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1369,94 +926,39 @@
         "ff9dca8931f5d3f9b7392109121ade9de8cc295f"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 9",
-          1
-        ],
-        [
-          "CHECK 10",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0],
+        ["CHECK 4", 0],
+        ["CHECK 5", 0],
+        ["CHECK 6", 0],
+        ["CHECK 7", 0],
+        ["CHECK 8", 0],
+        ["CHECK 9", 1],
+        ["CHECK 10", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-cli-cache-close-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "6d584fa8150965cda908268e65a393502064f261"
-      ],
+      "referencedBy": ["6d584fa8150965cda908268e65a393502064f261"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-cli-cache-summary.log",
       "sha256": "bca1b1eca62104c5c4bb3375d271587bc297563dee250c950cb343bda39e97ae",
-      "referencedBy": [
-        "6d584fa8150965cda908268e65a393502064f261"
-      ],
+      "referencedBy": ["6d584fa8150965cda908268e65a393502064f261"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1468,22 +970,10 @@
         "4c361199f47f6ea32a2c14835df392640d0f7c63"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1495,48 +985,22 @@
         "4c361199f47f6ea32a2c14835df392640d0f7c63"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-scheduled-branch-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "4773ab7a716bc8493b97ec8521965a265497ea4b"
-      ],
+      "referencedBy": ["4773ab7a716bc8493b97ec8521965a265497ea4b"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1556,22 +1020,10 @@
         "26b872b46a4dd7a96dd1aaab57bc5a4fb4cef25f"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1591,18 +1043,9 @@
         "26b872b46a4dd7a96dd1aaab57bc5a4fb4cef25f"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 1",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 1", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1622,26 +1065,11 @@
         "26b872b46a4dd7a96dd1aaab57bc5a4fb4cef25f"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 4", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -1655,22 +1083,10 @@
         "bf8e5e61b6a2db6212b89afc21c3e6e80f44fdae"
       ],
       "exits": [
-        [
-          "WEB",
-          0
-        ],
-        [
-          "CURSOR",
-          0
-        ],
-        [
-          "BUILD",
-          0
-        ],
-        [
-          "FORMAT",
-          0
-        ]
+        ["WEB", 0],
+        ["CURSOR", 0],
+        ["BUILD", 0],
+        ["FORMAT", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1692,12 +1108,7 @@
         "c57aab6fd7815d86cdca2d49545cbe5890ea7f80",
         "158394194c6ba4a3e2b0cd1c2bab28ceacdca7e1"
       ],
-      "exits": [
-        [
-          "CHECK 0",
-          0
-        ]
-      ],
+      "exits": [["CHECK 0", 0]],
       "classification": "recorded-exits-zero"
     },
     {
@@ -1719,14 +1130,8 @@
         "158394194c6ba4a3e2b0cd1c2bab28ceacdca7e1"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 0", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1749,22 +1154,10 @@
         "158394194c6ba4a3e2b0cd1c2bab28ceacdca7e1"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1787,98 +1180,40 @@
         "158394194c6ba4a3e2b0cd1c2bab28ceacdca7e1"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 9",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 0", 1],
+        ["CHECK 2", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0],
+        ["CHECK 7", 0],
+        ["CHECK 3", 0],
+        ["CHECK 6", 0],
+        ["CHECK 9", 0],
+        ["CHECK 8", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-picture-summary.log",
       "sha256": "a740892964816d9091d758b45b3fa438d8f1d1270246033c3df65c7546589410",
-      "referencedBy": [
-        "b46a4edc03722dccd941708fe6976e871a394e5a"
-      ],
+      "referencedBy": ["b46a4edc03722dccd941708fe6976e871a394e5a"],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-picture-target-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "b46a4edc03722dccd941708fe6976e871a394e5a"
-      ],
+      "referencedBy": ["b46a4edc03722dccd941708fe6976e871a394e5a"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1890,22 +1225,10 @@
         "5478e44cc900577de62e271a43c4c341a1268977"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1917,22 +1240,10 @@
         "ec918277f0a72b1e0c74a55f75f8a68e93405250"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -1944,22 +1255,10 @@
         "ec918277f0a72b1e0c74a55f75f8a68e93405250"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -1973,26 +1272,11 @@
         "26f70e72fa4ca3fb4144b46d3001f5584e030ebe"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -2006,34 +1290,13 @@
         "26f70e72fa4ca3fb4144b46d3001f5584e030ebe"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 5",
-          1
-        ],
-        [
-          "CHECK 6",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0],
+        ["CHECK 2", 0],
+        ["CHECK 5", 1],
+        ["CHECK 6", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2047,18 +1310,9 @@
         "6d6c4614aa009f0be00fbbd9142ae1f7a874a86f"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 1],
+        ["CHECK 2", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2071,12 +1325,7 @@
         "009c9e6bd70737aea4d9baf1e30db2d54577e7f1",
         "6d6c4614aa009f0be00fbbd9142ae1f7a874a86f"
       ],
-      "exits": [
-        [
-          "CHECK 0",
-          0
-        ]
-      ],
+      "exits": [["CHECK 0", 0]],
       "classification": "recorded-exits-zero"
     },
     {
@@ -2089,114 +1338,55 @@
         "6d6c4614aa009f0be00fbbd9142ae1f7a874a86f"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 4", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-preview-navigation-summary.log",
       "sha256": "2d88f570ec3eff773d4ce5b9d59492efc506a566aaa5e4d774e2bbb8c6d5011c",
-      "referencedBy": [
-        "cb7fb7a493370b3167e23009459b9a8d3390dcdb"
-      ],
+      "referencedBy": ["cb7fb7a493370b3167e23009459b9a8d3390dcdb"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-preview-focus-summary.log",
       "sha256": "0934d5ebca33a9207436c06e7d7591565009a183314c83176ee8619bd816d53e",
-      "referencedBy": [
-        "dd6c05ec313c6c870c7a7688e87143da5084031d"
-      ],
+      "referencedBy": ["dd6c05ec313c6c870c7a7688e87143da5084031d"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-cli-lazy-close-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "d01b92c0613936e5204ea2787a9ed6bf7d1ff547"
-      ],
+      "referencedBy": ["d01b92c0613936e5204ea2787a9ed6bf7d1ff547"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-cli-lazy-summary.log",
       "sha256": "bca1b1eca62104c5c4bb3375d271587bc297563dee250c950cb343bda39e97ae",
-      "referencedBy": [
-        "d01b92c0613936e5204ea2787a9ed6bf7d1ff547"
-      ],
+      "referencedBy": ["d01b92c0613936e5204ea2787a9ed6bf7d1ff547"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2228,34 +1418,13 @@
         "bc6621d73ade6ad8be7547745299e840d2237eda"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0],
+        ["CHECK 4", 0],
+        ["CHECK 5", 0],
+        ["CHECK 6", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2287,46 +1456,16 @@
         "bc6621d73ade6ad8be7547745299e840d2237eda"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 9",
-          0
-        ],
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 5", 0],
+        ["CHECK 8", 0],
+        ["CHECK 6", 0],
+        ["CHECK 9", 0],
+        ["CHECK 1", 1],
+        ["CHECK 4", 0],
+        ["CHECK 7", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2347,26 +1486,11 @@
         "4d47d0b76eca2af12a202e7da9349514538f13fe"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -2380,18 +1504,9 @@
         "ab45ce71673398678004b92552e0e5bc91c10201"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -2405,72 +1520,28 @@
         "ab45ce71673398678004b92552e0e5bc91c10201"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          1
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 5", 0],
+        ["CHECK 3", 0],
+        ["CHECK 6", 1],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0],
+        ["CHECK 7", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-renames-effort-summary.log",
       "sha256": "797c75922a24b905e1844b569ceb24939128a4e4588b9841c8470b83b7a0bc16",
-      "referencedBy": [
-        "8bfe94af18e11f6a9e57a158bca69e5b3094cb24"
-      ],
+      "referencedBy": ["8bfe94af18e11f6a9e57a158bca69e5b3094cb24"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 4",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 4", 1],
+        ["CHECK 2", 0],
+        ["CHECK 5", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -2501,26 +1572,11 @@
         "09fc222fed646458dacc2badd40fb111c0c92699"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 0", 1],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2551,18 +1607,9 @@
         "09fc222fed646458dacc2badd40fb111c0c92699"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -2593,76 +1640,29 @@
         "09fc222fed646458dacc2badd40fb111c0c92699"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 4",
-          1
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 7",
-          0
-        ],
-        [
-          "CHECK 8",
-          1
-        ],
-        [
-          "CHECK 9",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 1],
+        ["CHECK 2", 1],
+        ["CHECK 3", 0],
+        ["CHECK 4", 1],
+        ["CHECK 5", 0],
+        ["CHECK 6", 0],
+        ["CHECK 7", 0],
+        ["CHECK 8", 1],
+        ["CHECK 9", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-small-behaviors-summary.log",
       "sha256": "7849bb4031361d408855bd45f5914549299d820f27d13cbfe2b8a92962e707e8",
-      "referencedBy": [
-        "31564dece84fa99e2abde8a22ed346b675384565"
-      ],
+      "referencedBy": ["31564dece84fa99e2abde8a22ed346b675384565"],
       "exits": [
-        [
-          "CHECK 1",
-          2
-        ],
-        [
-          "CHECK 2",
-          1
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 4",
-          1
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 2],
+        ["CHECK 2", 1],
+        ["CHECK 0", 0],
+        ["CHECK 4", 1],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -2677,22 +1677,10 @@
         "f5f8c8d18baf6a194fea9c7a3734158c2b7ea57b"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2707,14 +1695,8 @@
         "f5f8c8d18baf6a194fea9c7a3734158c2b7ea57b"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -2729,132 +1711,63 @@
         "f5f8c8d18baf6a194fea9c7a3734158c2b7ea57b"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-desktop-mail-format-summary.log",
       "sha256": "11206484d688458fe6110598e34bcc19b5dfa9c7b687baad1c07acff3b8d7e32",
-      "referencedBy": [
-        "2922e8fb5952277793e0915b6adbceb58ebef1b0"
-      ],
-      "exits": [
-        [
-          "CHECK 0",
-          0
-        ]
-      ],
+      "referencedBy": ["2922e8fb5952277793e0915b6adbceb58ebef1b0"],
+      "exits": [["CHECK 0", 0]],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-desktop-mail-summary.log",
       "sha256": "8966f37cf731e461791995f7a5ba644efedd72185c03d7c1091cd428d10ba3ff",
-      "referencedBy": [
-        "2922e8fb5952277793e0915b6adbceb58ebef1b0"
-      ],
+      "referencedBy": ["2922e8fb5952277793e0915b6adbceb58ebef1b0"],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "audit-closing-verified-summary.log",
       "sha256": "5d9f7aa49cc130fc795967efe4bf8422f3384184029502a864de003fa31dbac6",
-      "referencedBy": [
-        "46015ec958f9fe5a71856a564950aec3493b1945"
-      ],
+      "referencedBy": ["46015ec958f9fe5a71856a564950aec3493b1945"],
       "exits": [
-        [
-          "WEB",
-          0
-        ],
-        [
-          "TYPE",
-          0
-        ],
-        [
-          "BUILD",
-          0
-        ],
-        [
-          "DIFF",
-          0
-        ]
+        ["WEB", 0],
+        ["TYPE", 0],
+        ["BUILD", 0],
+        ["DIFF", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-worktree-skills-close-summary.log",
       "sha256": "2d88f570ec3eff773d4ce5b9d59492efc506a566aaa5e4d774e2bbb8c6d5011c",
-      "referencedBy": [
-        "81c3da3856b10bbe4543185e03ac2be978478747"
-      ],
+      "referencedBy": ["81c3da3856b10bbe4543185e03ac2be978478747"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-completed-output-close-summary.log",
       "sha256": "e552493fa0240665fdf65fb60cc2ea328fcf64994bc62b0838fb6f5c2eb9ab1b",
-      "referencedBy": [
-        "05020d6fa9ac46b078812441adce64eea1a4fb26"
-      ],
+      "referencedBy": ["05020d6fa9ac46b078812441adce64eea1a4fb26"],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 0", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -2871,26 +1784,11 @@
         "7379f1969b0f4b579327cf81299ef8cc3ddf8e9c"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -2907,48 +1805,22 @@
         "7379f1969b0f4b579327cf81299ef8cc3ddf8e9c"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "resume-scheduler-zone-summary.log",
       "sha256": "d9346c242e1413ba5bd73973dd0d2d71cd88b03cf7a80cf1379a38564b6e6826",
-      "referencedBy": [
-        "ba32aabf62e6d33b55656bf8b836d407303a70fe"
-      ],
+      "referencedBy": ["ba32aabf62e6d33b55656bf8b836d407303a70fe"],
       "exits": [
-        [
-          "RUNTIME",
-          0
-        ],
-        [
-          "SERVER",
-          0
-        ],
-        [
-          "WEB",
-          0
-        ],
-        [
-          "TYPE",
-          0
-        ]
+        ["RUNTIME", 0],
+        ["SERVER", 0],
+        ["WEB", 0],
+        ["TYPE", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -2961,100 +1833,46 @@
         "77b38f9b09a9971c08abd2a3e9dfa29c688516e2"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-branch-conflict-close-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "1264c206aee0dce805d6279809118bc091f29d2f"
-      ],
+      "referencedBy": ["1264c206aee0dce805d6279809118bc091f29d2f"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-branch-conflict-summary.log",
       "sha256": "bca1b1eca62104c5c4bb3375d271587bc297563dee250c950cb343bda39e97ae",
-      "referencedBy": [
-        "1264c206aee0dce805d6279809118bc091f29d2f"
-      ],
+      "referencedBy": ["1264c206aee0dce805d6279809118bc091f29d2f"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-title-project-summary.log",
       "sha256": "a740892964816d9091d758b45b3fa438d8f1d1270246033c3df65c7546589410",
-      "referencedBy": [
-        "c092c6eb1e91772e93f0956a5fa6c855d62aa51e"
-      ],
+      "referencedBy": ["c092c6eb1e91772e93f0956a5fa6c855d62aa51e"],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3079,26 +1897,11 @@
         "5ec4f500ef36adf517c9944d1e2190aad719fb84"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 4", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3121,30 +1924,12 @@
         "5ec4f500ef36adf517c9944d1e2190aad719fb84"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -3158,26 +1943,11 @@
         "bbda0c107110d9e179e6a3c908a1554fb0e83387"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 4", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -3200,52 +1970,23 @@
         "449deb635ec0fc7735b42671afcdb7ee73eebf45"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          1
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 1],
+        ["CHECK 5", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 6", 0],
+        ["CHECK 1", 1],
+        ["CHECK 4", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-desktop-path-close-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "e1fad19018bbc6aae612f2b2226133f10912cb62"
-      ],
+      "referencedBy": ["e1fad19018bbc6aae612f2b2226133f10912cb62"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3258,14 +1999,8 @@
         "21fe33c8d7f7b3f740febfa49fb4c66bed7a7f93"
       ],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3278,114 +2013,51 @@
         "21fe33c8d7f7b3f740febfa49fb4c66bed7a7f93"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-fx-home-retest-summary.log",
       "sha256": "11206484d688458fe6110598e34bcc19b5dfa9c7b687baad1c07acff3b8d7e32",
-      "referencedBy": [
-        "9771c5fd2df6568c7a4ac8a2263ed1e58535f9b5"
-      ],
-      "exits": [
-        [
-          "CHECK 0",
-          0
-        ]
-      ],
+      "referencedBy": ["9771c5fd2df6568c7a4ac8a2263ed1e58535f9b5"],
+      "exits": [["CHECK 0", 0]],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-fx-home-summary.log",
       "sha256": "d853e5d7204609eaed819f3a53c754ced45b0c9805125675c5fc3c6e917cfcad",
-      "referencedBy": [
-        "9771c5fd2df6568c7a4ac8a2263ed1e58535f9b5"
-      ],
+      "referencedBy": ["9771c5fd2df6568c7a4ac8a2263ed1e58535f9b5"],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "combined-web-mobile-motion-summary.log",
       "sha256": "7b6c5197cc00f8f63e3833678902e70b3adb526568b2c095e1836511841d0100",
-      "referencedBy": [
-        "7ab11f18719e2471c9f0cdcc797d1afa42beb285"
-      ],
-      "exits": [
-        [
-          "BROWSER",
-          0
-        ]
-      ],
+      "referencedBy": ["7ab11f18719e2471c9f0cdcc797d1afa42beb285"],
+      "exits": [["BROWSER", 0]],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-workspace-native-summary.log",
       "sha256": "ff5d59cd5746a9f27208f009df2e436111b77dfa3a173c32b854826c56f6705a",
-      "referencedBy": [
-        "7b17bdbcef739444d8e50f4d59872d897734ed9c"
-      ],
+      "referencedBy": ["7b17bdbcef739444d8e50f4d59872d897734ed9c"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 4", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3397,14 +2069,8 @@
         "2dd6cddbc3fc20a4c8a330dc7361750cccfe35e3"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3416,18 +2082,9 @@
         "2dd6cddbc3fc20a4c8a330dc7361750cccfe35e3"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -3439,56 +2096,24 @@
         "65716ba1d7a78171bf11fbc1f11660cdd938b588"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-preview-recording-summary.log",
       "sha256": "00260e48a325d0f31927818175d4e66cf1db55098990b96197fffe4eac90952e",
-      "referencedBy": [
-        "719707c3547c2e5910f15ce3f128160be7915429"
-      ],
+      "referencedBy": ["719707c3547c2e5910f15ce3f128160be7915429"],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          2
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 2]
       ],
       "classification": "contains-nonzero"
     },
@@ -3500,250 +2125,120 @@
         "86a9d9fb71ae010ac59014e7d9d0842db16acf1d"
       ],
       "exits": [
-        [
-          "SERVER",
-          0
-        ],
-        [
-          "WEB",
-          0
-        ],
-        [
-          "TYPE",
-          0
-        ]
+        ["SERVER", 0],
+        ["WEB", 0],
+        ["TYPE", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-workspace-summary.log",
       "sha256": "913c26083039dcd04e0a42325a5230c4aed9535b5defce03c70aab2e1bcf2ac8",
-      "referencedBy": [
-        "cbf9e26bc6a63906cae5a0d0f673a61b03b2d06b"
-      ],
+      "referencedBy": ["cbf9e26bc6a63906cae5a0d0f673a61b03b2d06b"],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-terminal-budget-close-summary.log",
       "sha256": "51d4741b0afb45bcc4b345b50fbe0b8cb37bbfa4dc9af075dabfc520b0d53d2e",
-      "referencedBy": [
-        "8bfb723dc173f94dc955c572cb2ff6adc8996a8c"
-      ],
+      "referencedBy": ["8bfb723dc173f94dc955c572cb2ff6adc8996a8c"],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 1", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-terminal-budget-summary.log",
       "sha256": "00260e48a325d0f31927818175d4e66cf1db55098990b96197fffe4eac90952e",
-      "referencedBy": [
-        "8bfb723dc173f94dc955c572cb2ff6adc8996a8c"
-      ],
+      "referencedBy": ["8bfb723dc173f94dc955c572cb2ff6adc8996a8c"],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          2
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 2]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-provider-state-close-summary.log",
       "sha256": "2d88f570ec3eff773d4ce5b9d59492efc506a566aaa5e4d774e2bbb8c6d5011c",
-      "referencedBy": [
-        "13034bfad2f7587f6055901b423ff03b4c5ad078"
-      ],
+      "referencedBy": ["13034bfad2f7587f6055901b423ff03b4c5ad078"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-worktree-prefix-summary.log",
       "sha256": "122e6d91c3d13109c442a82d39102bb20c12c4ea721206ffb15df8104ee4042c",
-      "referencedBy": [
-        "c2931a6e9cab0402e709777921e3961eeba0b751"
-      ],
+      "referencedBy": ["c2931a6e9cab0402e709777921e3961eeba0b751"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-forgejo-ff-summary.log",
       "sha256": "4d0e5d808e2a344eece5d0956b8b8025145cbe9ff1dee21f8cb8c0dc4b8bc3ad",
-      "referencedBy": [
-        "5e18314b88369981fb6cde7ebc51c0c76ff31d2d"
-      ],
+      "referencedBy": ["5e18314b88369981fb6cde7ebc51c0c76ff31d2d"],
       "exits": [
-        [
-          "FORGEJO",
-          0
-        ],
-        [
-          "CONTRACTS",
-          0
-        ],
-        [
-          "WEB",
-          0
-        ],
-        [
-          "TYPE",
-          0
-        ]
+        ["FORGEJO", 0],
+        ["CONTRACTS", 0],
+        ["WEB", 0],
+        ["TYPE", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-desktop-bounds-close-summary.log",
       "sha256": "e552493fa0240665fdf65fb60cc2ea328fcf64994bc62b0838fb6f5c2eb9ab1b",
-      "referencedBy": [
-        "025942d76a53c739fa58e4e90a552c55606551f3"
-      ],
+      "referencedBy": ["025942d76a53c739fa58e4e90a552c55606551f3"],
       "exits": [
-        [
-          "CHECK 1",
-          1
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 1],
+        ["CHECK 0", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-desktop-bounds-format-summary.log",
       "sha256": "11206484d688458fe6110598e34bcc19b5dfa9c7b687baad1c07acff3b8d7e32",
-      "referencedBy": [
-        "025942d76a53c739fa58e4e90a552c55606551f3"
-      ],
-      "exits": [
-        [
-          "CHECK 0",
-          0
-        ]
-      ],
+      "referencedBy": ["025942d76a53c739fa58e4e90a552c55606551f3"],
+      "exits": [["CHECK 0", 0]],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-preview-still-close-summary.log",
       "sha256": "0934d5ebca33a9207436c06e7d7591565009a183314c83176ee8619bd816d53e",
-      "referencedBy": [
-        "97cfc07759fed2a67edef22de4370ed74ff40030"
-      ],
+      "referencedBy": ["97cfc07759fed2a67edef22de4370ed74ff40030"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-preview-commit-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "67d91a0390d0cc189b783187a081d792fe3a731f"
-      ],
+      "referencedBy": ["67d91a0390d0cc189b783187a081d792fe3a731f"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3756,18 +2251,9 @@
         "69f8f59b5185d892d4df612df1f7eca8671fcc03"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3780,206 +2266,98 @@
         "6ea5af70adba6b1cc4c23261f002e2e64cf5b30f"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 5", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "combined-web-palette-root-summary.log",
       "sha256": "7b6c5197cc00f8f63e3833678902e70b3adb526568b2c095e1836511841d0100",
-      "referencedBy": [
-        "74573fc29b901bafbf8f1dbb2eb29606da1fa448"
-      ],
-      "exits": [
-        [
-          "BROWSER",
-          0
-        ]
-      ],
+      "referencedBy": ["74573fc29b901bafbf8f1dbb2eb29606da1fa448"],
+      "exits": [["BROWSER", 0]],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-compressed-import-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "9b6dde9a2384b883dda71fd31cab21616caf436c"
-      ],
+      "referencedBy": ["9b6dde9a2384b883dda71fd31cab21616caf436c"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-stale-remote-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "1da05a8a9833549b4ca1ef009cb27f81041e7427"
-      ],
+      "referencedBy": ["1da05a8a9833549b4ca1ef009cb27f81041e7427"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-terminal-c1-summary.log",
       "sha256": "0934d5ebca33a9207436c06e7d7591565009a183314c83176ee8619bd816d53e",
-      "referencedBy": [
-        "d772115e0dfdd2840ba82fe3ce990fba4f5d44d6"
-      ],
+      "referencedBy": ["d772115e0dfdd2840ba82fe3ce990fba4f5d44d6"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "resume-last-behaviors-summary.log",
       "sha256": "0f366c3861f333442080ee209818894e846577537024e19a6888deeef7dd67ee",
-      "referencedBy": [
-        "c8db8be305056bda6f82f96a43c65db178e62d36"
-      ],
+      "referencedBy": ["c8db8be305056bda6f82f96a43c65db178e62d36"],
       "exits": [
-        [
-          "RUNTIME",
-          0
-        ],
-        [
-          "WEB",
-          1
-        ],
-        [
-          "TYPE",
-          1
-        ],
-        [
-          "BUILD",
-          0
-        ]
+        ["RUNTIME", 0],
+        ["WEB", 1],
+        ["TYPE", 1],
+        ["BUILD", 0]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-at-rtl-summary.log",
       "sha256": "7782b2b24728a77a1942f505e6fb4910d76c83f2abcd4d0fd31de715be98369f",
-      "referencedBy": [
-        "2d689687f57acafe1b85cbc9d82583ea66d2d0fc"
-      ],
+      "referencedBy": ["2d689687f57acafe1b85cbc9d82583ea66d2d0fc"],
       "exits": [
-        [
-          "WEB",
-          0
-        ],
-        [
-          "TYPE",
-          0
-        ]
+        ["WEB", 0],
+        ["TYPE", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "resume-video-final-summary.log",
       "sha256": "4d6ee1e9532845255efb56fc46fd1d86a7c7892cec376f56758dfdfe73ed8111",
-      "referencedBy": [
-        "cf382b0c44eb619cfa7f14a8ec279fd8138c90f2"
-      ],
+      "referencedBy": ["cf382b0c44eb619cfa7f14a8ec279fd8138c90f2"],
       "exits": [
-        [
-          "VIDEO",
-          0
-        ],
-        [
-          "FORMAT",
-          0
-        ]
+        ["VIDEO", 0],
+        ["FORMAT", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-preview-busy-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "a37715c1e7e382d95afcca73a6341f2ba39f8bd0"
-      ],
+      "referencedBy": ["a37715c1e7e382d95afcca73a6341f2ba39f8bd0"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -3995,22 +2373,10 @@
         "449deb635ec0fc7735b42671afcdb7ee73eebf45"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          1
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 2", 1],
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -4024,18 +2390,9 @@
         "109e9dbdfd1329828e1db35da0a910db9bf06a7e"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 1", 0],
+        ["CHECK 0", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -4049,90 +2406,38 @@
         "109e9dbdfd1329828e1db35da0a910db9bf06a7e"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          1
-        ],
-        [
-          "CHECK 5",
-          0
-        ],
-        [
-          "CHECK 8",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 6",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 7",
-          1
-        ]
+        ["CHECK 2", 1],
+        ["CHECK 5", 0],
+        ["CHECK 8", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0],
+        ["CHECK 6", 0],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0],
+        ["CHECK 7", 1]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-azure-names-close-summary.log",
       "sha256": "14e6abc05e5fc3192130e61d947ca87445193d8cf590792df810ed374e927949",
-      "referencedBy": [
-        "4d5d5f89d418c92a1478e15dace1e428f0fc13e8"
-      ],
+      "referencedBy": ["4d5d5f89d418c92a1478e15dace1e428f0fc13e8"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-azure-names-summary.log",
       "sha256": "dc915320e78165cdb02ce23788f7aa11a994f724761368b43bbbcc07df478e18",
-      "referencedBy": [
-        "4d5d5f89d418c92a1478e15dace1e428f0fc13e8"
-      ],
+      "referencedBy": ["4d5d5f89d418c92a1478e15dace1e428f0fc13e8"],
       "exits": [
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ],
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ]
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 1],
+        ["CHECK 1", 0],
+        ["CHECK 4", 0]
       ],
       "classification": "contains-nonzero"
     },
@@ -4149,52 +2454,24 @@
     {
       "file": "quick-schedule-plain-close-summary.log",
       "sha256": "122e6d91c3d13109c442a82d39102bb20c12c4ea721206ffb15df8104ee4042c",
-      "referencedBy": [
-        "3ceed620cfcfe6bd34acf2cbcea77d9671b21b84"
-      ],
+      "referencedBy": ["3ceed620cfcfe6bd34acf2cbcea77d9671b21b84"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-storage-safety-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "f56f27e6c9302c1cfde816fed44c5b71fab8a0a0"
-      ],
+      "referencedBy": ["f56f27e6c9302c1cfde816fed44c5b71fab8a0a0"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
@@ -4206,96 +2483,45 @@
         "cef95b6db91d75293489a5a0b42a59758d97a868"
       ],
       "exits": [
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 1",
-          0
-        ]
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0],
+        ["CHECK 1", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-question-frame-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "6c7a87cbcbf4ed031e23a70dbc34db30003c0b23"
-      ],
+      "referencedBy": ["6c7a87cbcbf4ed031e23a70dbc34db30003c0b23"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-minimap-long-final-summary.log",
       "sha256": "2d88f570ec3eff773d4ce5b9d59492efc506a566aaa5e4d774e2bbb8c6d5011c",
-      "referencedBy": [
-        "843893e58c3f8fcc1ecce970411e439d1fa69002"
-      ],
+      "referencedBy": ["843893e58c3f8fcc1ecce970411e439d1fa69002"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-minimap-long-summary.log",
       "sha256": "f84af7dcd356b29c06c65204fbc83577109c3e67d1f2b6b67038528b193536dd",
-      "referencedBy": [
-        "843893e58c3f8fcc1ecce970411e439d1fa69002"
-      ],
+      "referencedBy": ["843893e58c3f8fcc1ecce970411e439d1fa69002"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          1
-        ],
-        [
-          "CHECK 3",
-          0
-        ],
-        [
-          "CHECK 2",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 1],
+        ["CHECK 3", 0],
+        ["CHECK 2", 1]
       ],
       "classification": "contains-nonzero"
     },
@@ -4308,126 +2534,58 @@
         "14d57b451e4eaa66ccc0b840de552826279484bd"
       ],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-desktop-crash-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "3e7f5ecc55c532ce60e6b1c48f210e17f3c8c9d1"
-      ],
+      "referencedBy": ["3e7f5ecc55c532ce60e6b1c48f210e17f3c8c9d1"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-script-draft-close-summary.log",
       "sha256": "2d88f570ec3eff773d4ce5b9d59492efc506a566aaa5e4d774e2bbb8c6d5011c",
-      "referencedBy": [
-        "916fcdc364859f6cc0eddd00995aa092c7b55687"
-      ],
+      "referencedBy": ["916fcdc364859f6cc0eddd00995aa092c7b55687"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 0", 0],
+        ["CHECK 2", 0]
       ],
       "classification": "recorded-exits-zero"
     },
     {
       "file": "quick-script-draft-summary.log",
       "sha256": "7fea77b197b09f69c3602872342a259997d5a76d3df4ab77c360a99799b2dc69",
-      "referencedBy": [
-        "916fcdc364859f6cc0eddd00995aa092c7b55687"
-      ],
+      "referencedBy": ["916fcdc364859f6cc0eddd00995aa092c7b55687"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 4",
-          0
-        ],
-        [
-          "CHECK 3",
-          1
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 4", 0],
+        ["CHECK 3", 1]
       ],
       "classification": "contains-nonzero"
     },
     {
       "file": "quick-antigravity-auth-summary.log",
       "sha256": "e30cfbabbbea6d4b5b76655e485b9685c570ce6eb19f6e2fa10fc66d0f93a0ee",
-      "referencedBy": [
-        "320ab2a2ac89c374533fb9d2f942b2c6bebf9bf8"
-      ],
+      "referencedBy": ["320ab2a2ac89c374533fb9d2f942b2c6bebf9bf8"],
       "exits": [
-        [
-          "CHECK 1",
-          0
-        ],
-        [
-          "CHECK 2",
-          0
-        ],
-        [
-          "CHECK 0",
-          0
-        ],
-        [
-          "CHECK 3",
-          0
-        ]
+        ["CHECK 1", 0],
+        ["CHECK 2", 0],
+        ["CHECK 0", 0],
+        ["CHECK 3", 0]
       ],
       "classification": "recorded-exits-zero"
     }
@@ -5959,9 +4117,7 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/vite.config.ts"
-            ]
+            "files": ["apps/web/vite.config.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6010,10 +4166,7 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/terminal-links.ts",
-              "apps/web/src/terminal-links.test.ts"
-            ]
+            "files": ["apps/web/src/terminal-links.ts", "apps/web/src/terminal-links.test.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -6049,9 +4202,7 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/components/CommandPaletteContent.tsx"
-            ]
+            "files": ["apps/web/src/components/CommandPaletteContent.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6061,9 +4212,7 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/components/pullRequest/PullRequestCodeTab.tsx"
-            ]
+            "files": ["apps/web/src/components/pullRequest/PullRequestCodeTab.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6073,9 +4222,7 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/components/BranchToolbarBranchSelector.tsx"
-            ]
+            "files": ["apps/web/src/components/BranchToolbarBranchSelector.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6111,15 +4258,11 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/composerDraftStore.ts"
-            ]
+            "files": ["apps/web/src/composerDraftStore.ts"]
           },
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/composerDraftStore.test.ts"
-            ]
+            "files": ["apps/web/src/composerDraftStore.test.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -6155,9 +4298,7 @@
         "sources": [
           {
             "source": "final-wave-web-applied.tsv",
-            "files": [
-              "apps/web/src/components/BranchToolbarEnvModeSelector.tsx"
-            ]
+            "files": ["apps/web/src/components/BranchToolbarEnvModeSelector.tsx"]
           },
           {
             "source": "final-wave-web-applied.tsv",
@@ -6190,9 +4331,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/index.css"
-            ]
+            "files": ["apps/web/src/index.css"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6202,9 +4341,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/ThreadNotificationCoordinator.tsx"
-            ]
+            "files": ["apps/web/src/components/ThreadNotificationCoordinator.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6214,9 +4351,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/Sidebar.tsx"
-            ]
+            "files": ["apps/web/src/components/Sidebar.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6226,9 +4361,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/PanelLayoutControls.tsx"
-            ]
+            "files": ["apps/web/src/components/chat/PanelLayoutControls.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6328,9 +4461,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/pullRequest/PullRequestCodeTab.tsx"
-            ]
+            "files": ["apps/web/src/components/pullRequest/PullRequestCodeTab.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6340,9 +4471,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "packages/client-runtime/src/state/threadInbox.ts"
-            ]
+            "files": ["packages/client-runtime/src/state/threadInbox.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6522,9 +4651,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/useComposerSend.ts"
-            ]
+            "files": ["apps/web/src/components/chat/useComposerSend.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6648,15 +4775,11 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/server/src/storageCleanup.ts"
-            ]
+            "files": ["apps/server/src/storageCleanup.ts"]
           },
           {
             "source": "quick-i-applied.tsv",
-            "files": [
-              "apps/server/src/storageCleanup.ts"
-            ]
+            "files": ["apps/server/src/storageCleanup.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6795,9 +4918,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "packages/shared/src/markdownMath.ts"
-            ]
+            "files": ["packages/shared/src/markdownMath.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6846,9 +4967,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/MessagesTimeline.tsx"
-            ]
+            "files": ["apps/web/src/components/chat/MessagesTimeline.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6858,9 +4977,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/preview/RightPanelResizeHandle.tsx"
-            ]
+            "files": ["apps/web/src/components/preview/RightPanelResizeHandle.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6926,9 +5043,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/ComposerStashMenu.tsx"
-            ]
+            "files": ["apps/web/src/components/chat/ComposerStashMenu.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6938,9 +5053,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx"
-            ]
+            "files": ["apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -6950,9 +5063,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/TimelineWorkEntryRow.tsx"
-            ]
+            "files": ["apps/web/src/components/chat/TimelineWorkEntryRow.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -7128,9 +5239,7 @@
         "sources": [
           {
             "source": "quick-37-applied.tsv",
-            "files": [
-              "apps/web/src/lib/diffRendering.ts"
-            ]
+            "files": ["apps/web/src/lib/diffRendering.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -7493,10 +5602,7 @@
         "sources": [
           {
             "source": "quick-c-applied.tsv",
-            "files": [
-              "apps/web/src/filePathDisplay.test.ts",
-              "apps/web/src/filePathDisplay.ts"
-            ]
+            "files": ["apps/web/src/filePathDisplay.test.ts", "apps/web/src/filePathDisplay.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -7546,10 +5652,7 @@
         "sources": [
           {
             "source": "quick-c-applied.tsv",
-            "files": [
-              "apps/web/src/components/ChatView.tsx",
-              "apps/web/src/lib/workspaceFocus.ts"
-            ]
+            "files": ["apps/web/src/components/ChatView.tsx", "apps/web/src/lib/workspaceFocus.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -7637,10 +5740,7 @@
         "sources": [
           {
             "source": "quick-c-applied.tsv",
-            "files": [
-              "packages/shared/src/fileLinks.test.ts",
-              "packages/shared/src/fileLinks.ts"
-            ]
+            "files": ["packages/shared/src/fileLinks.test.ts", "packages/shared/src/fileLinks.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -7785,9 +5885,7 @@
         "sources": [
           {
             "source": "quick-c-applied.tsv",
-            "files": [
-              "apps/web/src/components/ThreadContextChip.tsx"
-            ]
+            "files": ["apps/web/src/components/ThreadContextChip.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -7821,10 +5919,7 @@
         "sources": [
           {
             "source": "quick-c-applied.tsv",
-            "files": [
-              "apps/server/src/cli/project.test.ts",
-              "apps/server/src/cli/project.ts"
-            ]
+            "files": ["apps/server/src/cli/project.test.ts", "apps/server/src/cli/project.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -7855,10 +5950,7 @@
         "sources": [
           {
             "source": "quick-c-applied.tsv",
-            "files": [
-              "packages/shared/src/git.test.ts",
-              "packages/shared/src/git.ts"
-            ]
+            "files": ["packages/shared/src/git.test.ts", "packages/shared/src/git.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -8752,9 +6844,7 @@
         "sources": [
           {
             "source": "quick-d-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/threadDetailsPanelStyles.ts"
-            ]
+            "files": ["apps/web/src/components/chat/threadDetailsPanelStyles.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -9117,10 +7207,7 @@
         "sources": [
           {
             "source": "quick-e-applied.tsv",
-            "files": [
-              "packages/shared/src/cliArgs.test.ts",
-              "packages/shared/src/cliArgs.ts"
-            ]
+            "files": ["packages/shared/src/cliArgs.test.ts", "packages/shared/src/cliArgs.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -9816,9 +7903,7 @@
         "sources": [
           {
             "source": "quick-e-applied.tsv",
-            "files": [
-              "apps/server/src/usage/usageTranscriptReader.ts"
-            ]
+            "files": ["apps/server/src/usage/usageTranscriptReader.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -9920,9 +8005,7 @@
         "sources": [
           {
             "source": "quick-e-applied.tsv",
-            "files": [
-              "apps/web/src/components/sidebar/SidebarThreadRow.tsx"
-            ]
+            "files": ["apps/web/src/components/sidebar/SidebarThreadRow.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -10626,10 +8709,7 @@
         "sources": [
           {
             "source": "quick-f-applied.tsv",
-            "files": [
-              "apps/server/src/binCli.test.ts",
-              "apps/server/src/cli/thread.ts"
-            ]
+            "files": ["apps/server/src/binCli.test.ts", "apps/server/src/cli/thread.ts"]
           }
         ],
         "passingExplicitTestPaths": [
@@ -10663,9 +8743,7 @@
         "sources": [
           {
             "source": "quick-f-applied.tsv",
-            "files": [
-              "apps/web/src/components/files/PdfViewer.tsx"
-            ]
+            "files": ["apps/web/src/components/files/PdfViewer.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -10860,9 +8938,7 @@
         "sources": [
           {
             "source": "quick-follow-applied.tsv",
-            "files": [
-              "apps/web/src/components/files/FilePreviewPanel.tsx"
-            ]
+            "files": ["apps/web/src/components/files/FilePreviewPanel.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -10924,9 +9000,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/usePendingThreadRequests.ts"
-            ]
+            "files": ["apps/web/src/components/chat/usePendingThreadRequests.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -10936,9 +9010,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "packages/client-runtime/src/state/assets.ts"
-            ]
+            "files": ["packages/client-runtime/src/state/assets.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -10948,9 +9020,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/server/src/vcs/GitVcsDriverCore.ts"
-            ]
+            "files": ["apps/server/src/vcs/GitVcsDriverCore.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -10994,9 +9064,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/web/src/terminal/ghostty/surface.ts"
-            ]
+            "files": ["apps/web/src/terminal/ghostty/surface.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11045,9 +9113,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/server/src/preview/ServerBrowserPage.ts"
-            ]
+            "files": ["apps/server/src/preview/ServerBrowserPage.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11057,9 +9123,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "packages/provider-acp/src/server/adapter.ts"
-            ]
+            "files": ["packages/provider-acp/src/server/adapter.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11109,9 +9173,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "packages/source-control-forgejo/src/server/ForgejoSourceControlProvider.ts"
-            ]
+            "files": ["packages/source-control-forgejo/src/server/ForgejoSourceControlProvider.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11213,9 +9275,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/web/src/keybindings.ts"
-            ]
+            "files": ["apps/web/src/keybindings.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11254,9 +9314,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/web/src/components/pullRequest/pullRequestList.logic.ts"
-            ]
+            "files": ["apps/web/src/components/pullRequest/pullRequestList.logic.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11305,9 +9363,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "packages/shared/src/cloneUrl.ts"
-            ]
+            "files": ["packages/shared/src/cloneUrl.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11317,9 +9373,7 @@
         "sources": [
           {
             "source": "quick-g-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/MarkdownCodeBlock.tsx"
-            ]
+            "files": ["apps/web/src/components/chat/MarkdownCodeBlock.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11368,9 +9422,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/server/src/orchestration-v2/Orchestrator.ts"
-            ]
+            "files": ["apps/server/src/orchestration-v2/Orchestrator.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11380,9 +9432,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/server/src/orchestration-v2/ContextHandoffService.ts"
-            ]
+            "files": ["apps/server/src/orchestration-v2/ContextHandoffService.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11392,9 +9442,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/server/src/provider/antigravityUsageLimits.ts"
-            ]
+            "files": ["apps/server/src/provider/antigravityUsageLimits.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11404,9 +9452,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/web/src/components/files/PdfViewer.tsx"
-            ]
+            "files": ["apps/web/src/components/files/PdfViewer.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11416,9 +9462,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/web/src/contextMenuFallback.ts"
-            ]
+            "files": ["apps/web/src/contextMenuFallback.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11441,9 +9485,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/web/src/markdown-clipboard.ts"
-            ]
+            "files": ["apps/web/src/markdown-clipboard.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11505,9 +9547,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/server/src/usage/cliproxyApi.ts"
-            ]
+            "files": ["apps/server/src/usage/cliproxyApi.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11517,9 +9557,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/ThreadRelationshipsControl.tsx"
-            ]
+            "files": ["apps/web/src/components/chat/ThreadRelationshipsControl.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11529,9 +9567,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/web/src/components/settings/RedactedSensitiveText.tsx"
-            ]
+            "files": ["apps/web/src/components/settings/RedactedSensitiveText.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11541,9 +9577,7 @@
         "sources": [
           {
             "source": "quick-h-applied.tsv",
-            "files": [
-              "apps/server/src/provider/acp/AntigravityAcpSupport.ts"
-            ]
+            "files": ["apps/server/src/provider/acp/AntigravityAcpSupport.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11842,9 +9876,7 @@
         "sources": [
           {
             "source": "quick-j-applied.tsv",
-            "files": [
-              "apps/server/src/vcs/GitVcsDriverCore.ts"
-            ]
+            "files": ["apps/server/src/vcs/GitVcsDriverCore.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11854,9 +9886,7 @@
         "sources": [
           {
             "source": "quick-j-applied.tsv",
-            "files": [
-              "apps/server/src/preview/ServerBrowserPage.ts"
-            ]
+            "files": ["apps/server/src/preview/ServerBrowserPage.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11866,9 +9896,7 @@
         "sources": [
           {
             "source": "quick-j-applied.tsv",
-            "files": [
-              "apps/web/src/components/files/FilePreviewPanel.tsx"
-            ]
+            "files": ["apps/web/src/components/files/FilePreviewPanel.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11917,9 +9945,7 @@
         "sources": [
           {
             "source": "quick-mcp-applied.tsv",
-            "files": [
-              "apps/server/src/mcp/OrchestratorMcpService.ts"
-            ]
+            "files": ["apps/server/src/mcp/OrchestratorMcpService.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -11929,9 +9955,7 @@
         "sources": [
           {
             "source": "quick-mcp-applied.tsv",
-            "files": [
-              "apps/server/src/mcp/OrchestratorMcpService.ts"
-            ]
+            "files": ["apps/server/src/mcp/OrchestratorMcpService.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -12517,9 +10541,7 @@
         "sources": [
           {
             "source": "quick-terminal-history-applied.tsv",
-            "files": [
-              "apps/server/src/terminal/Manager.ts"
-            ]
+            "files": ["apps/server/src/terminal/Manager.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -12542,9 +10564,7 @@
         "sources": [
           {
             "source": "quick-webwide-applied.tsv",
-            "files": [
-              "apps/web/src/components/RightPanelTabs.tsx"
-            ]
+            "files": ["apps/web/src/components/RightPanelTabs.tsx"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -12554,9 +10574,7 @@
         "sources": [
           {
             "source": "quick-webwide-applied.tsv",
-            "files": [
-              "apps/web/src/components/chat/composerEventScope.ts"
-            ]
+            "files": ["apps/web/src/components/chat/composerEventScope.ts"]
           }
         ],
         "passingExplicitTestPaths": []
@@ -12566,9 +10584,7 @@
         "sources": [
           {
             "source": "quick-webwide-applied.tsv",
-            "files": [
-              "apps/web/src/terminal/ghostty/keyCodes.ts"
-            ]
+            "files": ["apps/web/src/terminal/ghostty/keyCodes.ts"]
           }
         ],
         "passingExplicitTestPaths": []

@@ -177,7 +177,9 @@ describe("safe area on full-screen routes", () => {
           await using _screen = await render(<RouteChrome path={path} />, {
             router: path.startsWith("/") ? path : "/",
           });
-          const offenders = visibleControls(document).filter((control) => control.box.top < SAFE_TOP);
+          const offenders = visibleControls(document).filter(
+            (control) => control.box.top < SAFE_TOP,
+          );
           expect(offenders.map((control) => `${path} ${control.label}@${control.box.top}`)).toEqual(
             [],
           );
@@ -186,9 +188,10 @@ describe("safe area on full-screen routes", () => {
             const buttons = [...document.querySelectorAll<HTMLElement>("button")];
             expect(buttons.length).toBeGreaterThan(0);
             for (const button of buttons) {
-              expect(button.getBoundingClientRect().bottom, button.textContent ?? "").toBeLessThanOrEqual(
-                window.innerHeight - SAFE_BOTTOM + 0.5,
-              );
+              expect(
+                button.getBoundingClientRect().bottom,
+                button.textContent ?? "",
+              ).toBeLessThanOrEqual(window.innerHeight - SAFE_BOTTOM + 0.5);
             }
           }
           if (path === "/settings") {

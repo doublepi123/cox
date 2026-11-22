@@ -60,8 +60,8 @@ button {
   margin-inline: calc(-1 * max(var(--space-4), var(--safe-left)))
     calc(-1 * max(var(--space-4), var(--safe-right)));
   margin-bottom: var(--space-6);
-  padding: max(var(--space-5), var(--safe-top)) max(var(--space-4), var(--safe-right)) var(--space-4)
-    max(var(--space-4), var(--safe-left));
+  padding: max(var(--space-5), var(--safe-top)) max(var(--space-4), var(--safe-right))
+    var(--space-4) max(var(--space-4), var(--safe-left));
   background: color-mix(in srgb, var(--bg-canvas) 88%, transparent);
   backdrop-filter: blur(18px);
 }

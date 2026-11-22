@@ -93,9 +93,7 @@ export function pasteTextToFocusComposer(event: ClipboardEvent): string | null {
 export function clipboardFiles(
   data: {
     readonly files?: ArrayLike<File> | undefined;
-    readonly items?:
-      | ArrayLike<{ readonly kind: string; getAsFile(): File | null }>
-      | undefined;
+    readonly items?: ArrayLike<{ readonly kind: string; getAsFile(): File | null }> | undefined;
   } | null,
 ): File[] {
   if (!data) return [];

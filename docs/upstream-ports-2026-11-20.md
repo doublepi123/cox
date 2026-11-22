@@ -7,50 +7,50 @@ Disposition: 42 adapted, 204 skipped. Nothing was cherry-picked as ancestry. No 
 
 ## Adapted
 
-| Commit | What landed in Cox |
-| --- | --- |
-| [3a51807da052](https://github.com/pingdotgg/t3code/commit/3a51807da052) | A checkpoint still saves when some workspace files cannot be read. |
-| [f2716cd71092](https://github.com/pingdotgg/t3code/commit/f2716cd71092) | Compact Codex flags written as -c or -p without an equals sign still reach text generation. |
-| [207fc2c48b64](https://github.com/pingdotgg/t3code/commit/207fc2c48b64) | Closing a terminal sends SIGHUP first, so background jobs the shell started stop with it. |
-| [e0f5acd17893](https://github.com/pingdotgg/t3code/commit/e0f5acd17893) | A failed thread stays Failed in the command palette while background work is still running. |
-| [a6d2bed55b8e](https://github.com/pingdotgg/t3code/commit/a6d2bed55b8e) | An ACP tool update that omits the title keeps the tool's name. |
-| [94b54cfa9f0e](https://github.com/pingdotgg/t3code/commit/94b54cfa9f0e) | A file tooltip keeps its size after a workspace search refreshes the file list. |
-| [693e8c7db41e](https://github.com/pingdotgg/t3code/commit/693e8c7db41e) | Releasing a provider session stops its event pump, so a finished session does not stay on the heap. |
-| [f03ce6869101](https://github.com/pingdotgg/t3code/commit/f03ce6869101) | A delegated wake that was cancelled before it started no longer blocks the thread from settling. |
-| [2fe74b00fa3e](https://github.com/pingdotgg/t3code/commit/2fe74b00fa3e) | Shell status reads use the pending-item index instead of walking finished tool calls. |
-| [9246c3235e19](https://github.com/pingdotgg/t3code/commit/9246c3235e19) | Saved notebook output no longer keeps terminal color codes. |
-| [ff4197c48052](https://github.com/pingdotgg/t3code/commit/ff4197c48052) | Queue checks skip the history scan when the thread has nothing queued. |
-| [5533151d779c](https://github.com/pingdotgg/t3code/commit/5533151d779c) | A delegated-task wake names the child thread, so a follow-up can find the task it was given. |
-| [a4d015170024](https://github.com/pingdotgg/t3code/commit/a4d015170024) | Find in Thread matches a dotted capital I without shifting later matches. |
+| Commit                                                                  | What landed in Cox                                                                                                   |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| [3a51807da052](https://github.com/pingdotgg/t3code/commit/3a51807da052) | A checkpoint still saves when some workspace files cannot be read.                                                   |
+| [f2716cd71092](https://github.com/pingdotgg/t3code/commit/f2716cd71092) | Compact Codex flags written as -c or -p without an equals sign still reach text generation.                          |
+| [207fc2c48b64](https://github.com/pingdotgg/t3code/commit/207fc2c48b64) | Closing a terminal sends SIGHUP first, so background jobs the shell started stop with it.                            |
+| [e0f5acd17893](https://github.com/pingdotgg/t3code/commit/e0f5acd17893) | A failed thread stays Failed in the command palette while background work is still running.                          |
+| [a6d2bed55b8e](https://github.com/pingdotgg/t3code/commit/a6d2bed55b8e) | An ACP tool update that omits the title keeps the tool's name.                                                       |
+| [94b54cfa9f0e](https://github.com/pingdotgg/t3code/commit/94b54cfa9f0e) | A file tooltip keeps its size after a workspace search refreshes the file list.                                      |
+| [693e8c7db41e](https://github.com/pingdotgg/t3code/commit/693e8c7db41e) | Releasing a provider session stops its event pump, so a finished session does not stay on the heap.                  |
+| [f03ce6869101](https://github.com/pingdotgg/t3code/commit/f03ce6869101) | A delegated wake that was cancelled before it started no longer blocks the thread from settling.                     |
+| [2fe74b00fa3e](https://github.com/pingdotgg/t3code/commit/2fe74b00fa3e) | Shell status reads use the pending-item index instead of walking finished tool calls.                                |
+| [9246c3235e19](https://github.com/pingdotgg/t3code/commit/9246c3235e19) | Saved notebook output no longer keeps terminal color codes.                                                          |
+| [ff4197c48052](https://github.com/pingdotgg/t3code/commit/ff4197c48052) | Queue checks skip the history scan when the thread has nothing queued.                                               |
+| [5533151d779c](https://github.com/pingdotgg/t3code/commit/5533151d779c) | A delegated-task wake names the child thread, so a follow-up can find the task it was given.                         |
+| [a4d015170024](https://github.com/pingdotgg/t3code/commit/a4d015170024) | Find in Thread matches a dotted capital I without shifting later matches.                                            |
 | [554be2c6174d](https://github.com/pingdotgg/t3code/commit/554be2c6174d) | Full access still denies Claude's removal check when the warning says "dangerous removal" instead of "Dangerous rm". |
-| [e7b61491a3a9](https://github.com/pingdotgg/t3code/commit/e7b61491a3a9) | A handoff that was already delivered is not sent again into a later fresh session. |
-| [f9e45e436317](https://github.com/pingdotgg/t3code/commit/f9e45e436317) | On a machine with no swap, agents are OOM-killed at the memory cap instead of stalling for hours. |
-| [c57ccdaf522f](https://github.com/pingdotgg/t3code/commit/c57ccdaf522f) | Signed preview and upload URLs no longer appear in HTTP request logs. |
-| [09b79941a521](https://github.com/pingdotgg/t3code/commit/09b79941a521) | A Codex launch override keeps an escaped trailing space instead of trimming it away. |
-| [4d5bf2d5579f](https://github.com/pingdotgg/t3code/commit/4d5bf2d5579f) | OpenCode's xhigh reasoning level is labeled Extra High. |
-| [47583f868234](https://github.com/pingdotgg/t3code/commit/47583f868234) | After a restart, a Codex goal turn stays paused instead of running where you cannot see it. |
-| [800b0748bcd2](https://github.com/pingdotgg/t3code/commit/800b0748bcd2) | Coming back from a restart no longer reads every idle thread that shares a session. |
-| [eb90b7921721](https://github.com/pingdotgg/t3code/commit/eb90b7921721) | Command rows show the real command when Windows launched it through pwsh -Command or cmd /c. |
-| [0240eac9dad5](https://github.com/pingdotgg/t3code/commit/0240eac9dad5) | An image an ACP agent reads shows a preview. |
-| [ebb3dd0b7600](https://github.com/pingdotgg/t3code/commit/ebb3dd0b7600) | If GitHub refuses to refresh an app sign-in, Cox signs that session out instead of retrying it. |
-| [9d2db4b23fe0](https://github.com/pingdotgg/t3code/commit/9d2db4b23fe0) | An ACP compaction drops a summary the agent already cleared. |
-| [3c08684f1deb](https://github.com/pingdotgg/t3code/commit/3c08684f1deb) | CamelCase account names get initials you can tell apart. |
-| [5bc2d512e470](https://github.com/pingdotgg/t3code/commit/5bc2d512e470) | Find in a wide table scrolls the match into view. |
-| [8695a7e5cf12](https://github.com/pingdotgg/t3code/commit/8695a7e5cf12) | A pending Merge back explains how to send the follow-up. |
-| [f6881ceba049](https://github.com/pingdotgg/t3code/commit/f6881ceba049) | Managed npm commands stay out of the user PATH. |
-| [a8b57b07ea8d](https://github.com/pingdotgg/t3code/commit/a8b57b07ea8d) | You can revert a parent turn after its subagents have finished. |
-| [71e1bb2dcc07](https://github.com/pingdotgg/t3code/commit/71e1bb2dcc07) | An Antigravity sign-in crash is reported as a runtime crash, not a Google sign-in failure. |
-| [17c401ddc0e0](https://github.com/pingdotgg/t3code/commit/17c401ddc0e0) | A terminal another client closed disappears from this client's drawer. |
-| [80cf4f794589](https://github.com/pingdotgg/t3code/commit/80cf4f794589) | The terminal button opens the drawer again after the last terminal closed. |
-| [57db750b8f37](https://github.com/pingdotgg/t3code/commit/57db750b8f37) | Copilot subagent thinking and replies show on the subagent thread. |
-| [284d3de3ccba](https://github.com/pingdotgg/t3code/commit/284d3de3ccba) | A thread that finished while you were away opens at the end instead of a stale position. |
-| [b48a20bc858d](https://github.com/pingdotgg/t3code/commit/b48a20bc858d) | Settings search icons line up with their titles. |
-| [c8625cafce8d](https://github.com/pingdotgg/t3code/commit/c8625cafce8d) | Ctrl+B reaches a focused terminal instead of toggling the sidebar. |
-| [2a411317d9b7](https://github.com/pingdotgg/t3code/commit/2a411317d9b7) | PDF pages stay visible while the panel is resized. |
-| [7da0a166e1d9](https://github.com/pingdotgg/t3code/commit/7da0a166e1d9) | A provider status check stops reading after 8 MB, so a noisy CLI cannot fill memory. |
-| [9f4d25495d72](https://github.com/pingdotgg/t3code/commit/9f4d25495d72) | Whole-word content search no longer misses files because substring hits filled the page. |
-| [5ce1bd5e142f](https://github.com/pingdotgg/t3code/commit/5ce1bd5e142f) | A full disk no longer leaves a run stuck in Preparing. |
-| [a2a463a32e6b](https://github.com/pingdotgg/t3code/commit/a2a463a32e6b) | Looking up a gh credential no longer leaves a dbus-launch process behind on a headless machine. |
+| [e7b61491a3a9](https://github.com/pingdotgg/t3code/commit/e7b61491a3a9) | A handoff that was already delivered is not sent again into a later fresh session.                                   |
+| [f9e45e436317](https://github.com/pingdotgg/t3code/commit/f9e45e436317) | On a machine with no swap, agents are OOM-killed at the memory cap instead of stalling for hours.                    |
+| [c57ccdaf522f](https://github.com/pingdotgg/t3code/commit/c57ccdaf522f) | Signed preview and upload URLs no longer appear in HTTP request logs.                                                |
+| [09b79941a521](https://github.com/pingdotgg/t3code/commit/09b79941a521) | A Codex launch override keeps an escaped trailing space instead of trimming it away.                                 |
+| [4d5bf2d5579f](https://github.com/pingdotgg/t3code/commit/4d5bf2d5579f) | OpenCode's xhigh reasoning level is labeled Extra High.                                                              |
+| [47583f868234](https://github.com/pingdotgg/t3code/commit/47583f868234) | After a restart, a Codex goal turn stays paused instead of running where you cannot see it.                          |
+| [800b0748bcd2](https://github.com/pingdotgg/t3code/commit/800b0748bcd2) | Coming back from a restart no longer reads every idle thread that shares a session.                                  |
+| [eb90b7921721](https://github.com/pingdotgg/t3code/commit/eb90b7921721) | Command rows show the real command when Windows launched it through pwsh -Command or cmd /c.                         |
+| [0240eac9dad5](https://github.com/pingdotgg/t3code/commit/0240eac9dad5) | An image an ACP agent reads shows a preview.                                                                         |
+| [ebb3dd0b7600](https://github.com/pingdotgg/t3code/commit/ebb3dd0b7600) | If GitHub refuses to refresh an app sign-in, Cox signs that session out instead of retrying it.                      |
+| [9d2db4b23fe0](https://github.com/pingdotgg/t3code/commit/9d2db4b23fe0) | An ACP compaction drops a summary the agent already cleared.                                                         |
+| [3c08684f1deb](https://github.com/pingdotgg/t3code/commit/3c08684f1deb) | CamelCase account names get initials you can tell apart.                                                             |
+| [5bc2d512e470](https://github.com/pingdotgg/t3code/commit/5bc2d512e470) | Find in a wide table scrolls the match into view.                                                                    |
+| [8695a7e5cf12](https://github.com/pingdotgg/t3code/commit/8695a7e5cf12) | A pending Merge back explains how to send the follow-up.                                                             |
+| [f6881ceba049](https://github.com/pingdotgg/t3code/commit/f6881ceba049) | Managed npm commands stay out of the user PATH.                                                                      |
+| [a8b57b07ea8d](https://github.com/pingdotgg/t3code/commit/a8b57b07ea8d) | You can revert a parent turn after its subagents have finished.                                                      |
+| [71e1bb2dcc07](https://github.com/pingdotgg/t3code/commit/71e1bb2dcc07) | An Antigravity sign-in crash is reported as a runtime crash, not a Google sign-in failure.                           |
+| [17c401ddc0e0](https://github.com/pingdotgg/t3code/commit/17c401ddc0e0) | A terminal another client closed disappears from this client's drawer.                                               |
+| [80cf4f794589](https://github.com/pingdotgg/t3code/commit/80cf4f794589) | The terminal button opens the drawer again after the last terminal closed.                                           |
+| [57db750b8f37](https://github.com/pingdotgg/t3code/commit/57db750b8f37) | Copilot subagent thinking and replies show on the subagent thread.                                                   |
+| [284d3de3ccba](https://github.com/pingdotgg/t3code/commit/284d3de3ccba) | A thread that finished while you were away opens at the end instead of a stale position.                             |
+| [b48a20bc858d](https://github.com/pingdotgg/t3code/commit/b48a20bc858d) | Settings search icons line up with their titles.                                                                     |
+| [c8625cafce8d](https://github.com/pingdotgg/t3code/commit/c8625cafce8d) | Ctrl+B reaches a focused terminal instead of toggling the sidebar.                                                   |
+| [2a411317d9b7](https://github.com/pingdotgg/t3code/commit/2a411317d9b7) | PDF pages stay visible while the panel is resized.                                                                   |
+| [7da0a166e1d9](https://github.com/pingdotgg/t3code/commit/7da0a166e1d9) | A provider status check stops reading after 8 MB, so a noisy CLI cannot fill memory.                                 |
+| [9f4d25495d72](https://github.com/pingdotgg/t3code/commit/9f4d25495d72) | Whole-word content search no longer misses files because substring hits filled the page.                             |
+| [5ce1bd5e142f](https://github.com/pingdotgg/t3code/commit/5ce1bd5e142f) | A full disk no longer leaves a run stuck in Preparing.                                                               |
+| [a2a463a32e6b](https://github.com/pingdotgg/t3code/commit/a2a463a32e6b) | Looking up a gh credential no longer leaves a dbus-launch process behind on a headless machine.                      |
 
 ## Skipped
 

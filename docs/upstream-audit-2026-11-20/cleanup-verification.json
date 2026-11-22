@@ -1,9 +1,6 @@
 {
   "directory": "/tmp/cox-upstream-audit-K0VB8D",
-  "checkedLoopbackPorts": [
-    48731,
-    58731
-  ],
+  "checkedLoopbackPorts": [48731, 58731],
   "listenerOutput": "",
   "registeredAuditWorktrees": [],
   "runningExecutablesFromAuditDirectory": [],
