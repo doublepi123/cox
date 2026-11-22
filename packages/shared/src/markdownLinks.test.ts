@@ -123,6 +123,9 @@ describe("workspaceRelativeFilePath", () => {
 describe("extractMarkdownLinkHrefs", () => {
   it.each([
     ["[".repeat(32_000), []],
+    [`[a](a.ts "it's a title") [b](b.ts 'a "quoted" title') [c](ok)`, ["a.ts", "b.ts", "ok"]],
+    [`[a](a.ts "mixed') [b](b.ts)`, ["b.ts"]],
+    [`[a](a.ts "it's\n\n[b](lib/a.ts)")`, ["lib/a.ts"]],
     ["[a](<foo)bar> invalid [b](ok)", ["<foo", "ok"]],
     ["[[[nested](src/main.ts) [unfinished", ["src/main.ts"]],
     [`See ${serializeComposerFileLink("pages/posts/[id].tsx")} now`, ["pages/posts/%5Bid%5D.tsx"]],
