@@ -124,6 +124,23 @@ function editorIn(container: HTMLElement) {
   return element.editor;
 }
 
+it("distinguishes text edits from caret moves in change notifications", async () => {
+  const onChange = vi.fn<ComposerPromptEditorProps["onChange"]>();
+  await using screen = await mountEditor("", true, [], onChange);
+  await act(async () => {
+    screen.editor.commands.focus("end");
+  });
+  await vi.waitFor(() => expect(document.activeElement).toBe(screen.editor.view.dom));
+  await userEvent.keyboard("/mod ab");
+  expect(onChange.mock.lastCall?.[0]).toBe("/mod ab");
+  expect(onChange.mock.lastCall?.[5]).toBe(true);
+
+  await userEvent.keyboard("{ArrowLeft}");
+  expect(onChange.mock.lastCall?.[0]).toBe("/mod ab");
+  expect(onChange.mock.lastCall?.[5]).toBe(false);
+});
+
+
 async function mountEditor(...props: Parameters<typeof composer>) {
   await using stack = new AsyncDisposableStack();
   const screen = stack.use(await render(composer(...props)));
