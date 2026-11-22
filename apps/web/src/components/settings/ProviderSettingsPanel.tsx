@@ -98,6 +98,7 @@ import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { GrokSetupSection } from "./GrokSetupSection";
+import { CursorCliSetupSection } from "./CursorCliSetupSection";
 import { PiSetupSection, OmoSetupSection } from "./PiSetupSection";
 import { OpenCodeSetupSection } from "./OpenCodeSetupSection";
 import { ClaudeSetupSection } from "./ClaudeSetupSection";
@@ -1389,6 +1390,16 @@ function ProviderInstanceRow({
             />
           ) : mode === "editor" && driver === "grok" ? (
             <GrokSetupSection
+              environmentId={environmentId}
+              environmentLabel={environmentLabel}
+              instanceId={instanceId}
+              provider={liveProvider}
+              enabled={resolveProviderInstanceEnabled(instance)}
+              readOnly={readOnly}
+              onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
+            />
+          ) : mode === "editor" && driver === "cursorCli" ? (
+            <CursorCliSetupSection
               environmentId={environmentId}
               environmentLabel={environmentLabel}
               instanceId={instanceId}

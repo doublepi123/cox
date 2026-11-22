@@ -118,6 +118,7 @@ export type CustomModelSetting = typeof CustomModelSetting.Type;
 const CODEX_DRIVER_KIND = ProviderDriverKind.make("codex");
 const CLAUDE_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
+const CURSOR_CLI_DRIVER_KIND = ProviderDriverKind.make("cursorCli");
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 const FX_DRIVER_KIND = ProviderDriverKind.make("fx");
 const MUSE_DRIVER_KIND = ProviderDriverKind.make("muse");
@@ -147,6 +148,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   [CODEX_DRIVER_KIND]: DEFAULT_MODEL,
   [CLAUDE_DRIVER_KIND]: "claude-opus-5-5",
   [CURSOR_DRIVER_KIND]: "auto",
+  [CURSOR_CLI_DRIVER_KIND]: "default",
   // Product slug meaning the current session model, never an ACP model id.
   [GROK_DRIVER_KIND]: "grok-build",
   [FX_DRIVER_KIND]: "default",
@@ -168,6 +170,7 @@ export const DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER: Partial<
   [ProviderDriverKind.make("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
   [CLAUDE_DRIVER_KIND]: "claude-haiku-5-5",
   [CURSOR_DRIVER_KIND]: "composer-2",
+  [CURSOR_CLI_DRIVER_KIND]: "default",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
 };
 
@@ -202,6 +205,7 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
   [CODEX_DRIVER_KIND]: "Codex",
   [CLAUDE_DRIVER_KIND]: "Claude",
   [CURSOR_DRIVER_KIND]: "Cursor",
+  [CURSOR_CLI_DRIVER_KIND]: "Cursor CLI",
   [GROK_DRIVER_KIND]: "Grok",
   [FX_DRIVER_KIND]: "fx",
   [MUSE_DRIVER_KIND]: "Muse Code",

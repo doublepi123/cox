@@ -68,6 +68,7 @@ const TEXT_GENERATION_FALLBACK_DRIVERS = [
   "codex",
   "claudeAgent",
   "cursor",
+  "cursorCli",
   "grok",
   "muse",
   "pi",

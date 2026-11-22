@@ -1014,6 +1014,30 @@ export const zh = {
     "可选的 ACP 认证方式 ID，默认选择第一个由代理管理的方式。",
   "Path to the fx binary. All fx instances on this machine share its fx login.":
     "fx 可执行文件路径，此计算机上的所有 fx 实例共用其登录。",
+  "Preparing Cursor CLI setup…": "正在准备 Cursor CLI 设置…",
+  "Installing Cursor CLI…": "正在安装 Cursor CLI…",
+  "Cursor CLI {version} is installed.": "已安装 Cursor CLI {version}。",
+  "Install the official Cursor CLI to run Cursor agents over ACP.":
+    "安装官方 Cursor CLI，通过 ACP 运行 Cursor 智能体。",
+  "Cursor CLI setup": "Cursor CLI 接入设置",
+  "Cursor CLI": "Cursor CLI",
+  "Enable Cursor CLI": "启用 Cursor CLI",
+  "Install Cursor CLI": "安装 Cursor CLI",
+  "Update Cursor CLI": "更新 Cursor CLI",
+  "Uses the custom Cursor CLI binary path below.": "使用下方配置的 Cursor CLI 可执行文件路径。",
+  "Using your existing Cursor CLI.": "正在使用本机已有的 Cursor CLI。",
+  "Cox installs Cursor CLI in its own tools directory.":
+    "Cox 将 Cursor CLI 安装在自己的工具目录中。",
+  "This instance uses CURSOR_API_KEY. Remove it from the provider environment to sign in with a Cursor account.":
+    "当前实例使用 CURSOR_API_KEY。如需登录 Cursor 账号，请先从提供商环境变量中移除它。",
+  "Path to the Cursor CLI binary. Leave empty to use cursor-agent on PATH.":
+    "Cursor CLI 可执行文件路径。留空则使用 PATH 中的 cursor-agent。",
+  "Optional Cursor API endpoint passed to the CLI with --endpoint.":
+    "可选，通过 --endpoint 传给 CLI 的 Cursor API 端点。",
+  "Optional. Overrides the Cursor CLI login for this provider.":
+    "可选。为此提供商覆盖 Cursor CLI 的登录状态。",
+  "Could not install Cursor CLI. Check your connection and disk space, then retry.":
+    "无法安装 Cursor CLI，请检查网络连接和磁盘空间后重试。",
   "Path to the Grok CLI binary.": "Grok CLI 可执行文件路径。",
   "Path to the Muse Code binary on this environment. Sign in with muse login on that host.":
     "此环境中的 Muse Code 可执行文件路径，请在该主机上运行 muse login 登录。",

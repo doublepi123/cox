@@ -1,6 +1,6 @@
 {
   "name": "cox",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "license": "MIT",
   "bin": {
     "cox": "./dist/bin.mjs"
@@ -37,6 +37,7 @@
     "@t3tools/provider-acp-registry": "workspace:*",
     "@t3tools/provider-core": "workspace:*",
     "@t3tools/provider-cursor": "workspace:*",
+    "@t3tools/provider-cursor-cli": "workspace:*",
     "@t3tools/provider-fx": "workspace:*",
     "@t3tools/provider-grok": "workspace:*",
     "@t3tools/provider-muse": "workspace:*",
