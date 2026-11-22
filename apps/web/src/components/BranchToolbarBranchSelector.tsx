@@ -540,7 +540,7 @@ export function BranchToolbarBranchSelector({
     if (open && !isBranchMenuOpen && branchCwd !== null) {
       void refreshLocalStatusForPicker({
         environmentId,
-        input: { cwd: branchCwd, localOnly: true },
+        input: { cwd: branchCwd },
       });
     }
     if (!open) {

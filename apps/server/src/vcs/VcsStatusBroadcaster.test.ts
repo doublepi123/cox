@@ -118,6 +118,7 @@ function layerTestFor(state: {
   remoteStatusReusedDetails?: Array<boolean>;
   remoteStatusError?: GitManagerError;
   refSnapshot?: string;
+  worktreeStamp?: string | null;
   backgroundWorkEnabled?: boolean;
   automaticFetchInterval?: Effect.Effect<Duration.Duration>;
   beforeRemoteStatus?: Effect.Effect<void>;
@@ -140,7 +141,13 @@ function layerTestFor(state: {
     ),
     Layer.provide(
       Layer.mock(GitWorkflowService.GitWorkflowService)({
-        readRefSnapshot: () => Effect.sync(() => state.refSnapshot ?? "initial"),
+        readLocalStatusRefSnapshot: () => Effect.sync(() => state.refSnapshot ?? "initial"),
+        readRefSnapshot: (_cwd, refs) =>
+          Effect.sync(() =>
+            state.worktreeStamp === null
+              ? null
+              : `${refs ?? state.refSnapshot ?? "initial"}\0${state.worktreeStamp ?? ""}`,
+          ),
         localStatus: () =>
           Effect.suspend(() => {
             state.localStatusCalls += 1;
@@ -237,6 +244,28 @@ function layerBackgroundPolicy(shouldRunScopeWork: (scope: BackgroundScope) => b
 }
 
 describe("VcsStatusBroadcaster", () => {
+  it.effect("picker refresh digests change when worktree occupancy changes without a ref move", () => {
+    const state: Parameters<typeof layerTestFor>[0] = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: baseRemoteStatus,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+    };
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      const refresh = broadcaster.refreshStatus("/repo", { localOnly: true });
+      const initial = yield* refresh;
+      assert.isString(initial.refsDigest);
+      assert.equal((yield* refresh).refsDigest, initial.refsDigest);
+      state.worktreeStamp = "feature in /linked";
+      assert.notEqual((yield* refresh).refsDigest, initial.refsDigest);
+      state.worktreeStamp = null;
+      assert.isUndefined((yield* refresh).refsDigest);
+    }).pipe(Effect.provide(layerTestFor(state)));
+  });
+
   it.effect("the turn-end PR lookup reuses the upstream read it follows, once", () => {
     const state: Parameters<typeof layerTestFor>[0] = {
       currentLocalStatus: baseLocalStatus,
@@ -496,6 +525,7 @@ describe("VcsStatusBroadcaster", () => {
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
             readRefSnapshot: () => Effect.succeed("initial"),
+            readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
             localStatus: () => Effect.succeed(localStatus),
             currentBranch: () => Effect.succeed(localStatus.refName),
             remoteStatus: () => Effect.succeed(remoteStatus),
@@ -592,6 +622,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
           readRefSnapshot: () => Effect.succeed("initial"),
+          readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () => Effect.succeed(baseLocalStatus),
           currentBranch: () => Effect.succeed(baseLocalStatus.refName),
           remoteStatus: () =>
@@ -639,6 +670,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
           readRefSnapshot: () => Effect.succeed("initial"),
+          readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () => Effect.succeed(baseLocalStatus),
           currentBranch: () => Effect.succeed(baseLocalStatus.refName),
           remoteStatus: () =>
@@ -689,6 +721,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
           readRefSnapshot: () => Effect.succeed("initial"),
+          readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -773,6 +806,7 @@ describe("VcsStatusBroadcaster", () => {
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
             readRefSnapshot: () => Effect.succeed("initial"),
+            readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
             localStatus: (input) =>
               Effect.sync(() => {
                 seenCwds.push(input.cwd);
@@ -1146,6 +1180,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
           readRefSnapshot: () => Effect.succeed("initial"),
+          readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;

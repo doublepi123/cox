@@ -66,7 +66,8 @@ export class GitWorkflowService extends Context.Service<
       input: VcsStatusInput,
       options?: GitManager.GitRemoteStatusOptions,
     ) => Effect.Effect<VcsStatusRemoteResult | null, GitManagerServiceError>;
-    readonly readRefSnapshot: (cwd: string) => Effect.Effect<string | null>;
+    readonly readLocalStatusRefSnapshot: GitVcsDriver.GitVcsDriver["Service"]["readLocalStatusRefSnapshot"];
+    readonly readRefSnapshot: GitVcsDriver.GitVcsDriver["Service"]["readRefSnapshot"];
     readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
@@ -391,6 +392,7 @@ export const make = Effect.gen(function* () {
         ),
       );
     }),
+    readLocalStatusRefSnapshot: git.readLocalStatusRefSnapshot,
     readRefSnapshot: git.readRefSnapshot,
     invalidateLocalStatus: gitManager.invalidateLocalStatus,
     invalidateRemoteStatus: gitManager.invalidateRemoteStatus,

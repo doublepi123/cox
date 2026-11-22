@@ -391,7 +391,7 @@ describe("cached VCS refs", () => {
         yield* Effect.promise(() =>
           atoms.refreshLocalStatusForPicker.run(registry, {
             environmentId: TARGET.environmentId,
-            input: { cwd: "/repo", localOnly: true },
+            input: { cwd: "/repo" },
           }),
         );
         expect(yield* Ref.get(clears)).toBe(2);
@@ -455,7 +455,7 @@ describe("cached VCS refs", () => {
 
         const refresh = atoms.refreshLocalStatusForPicker.run(registry, {
           ...target,
-          input: { cwd: "/repo", localOnly: true },
+          input: { cwd: "/repo" },
         });
         yield* Deferred.await(refreshStarted);
         const checkout = yield* Effect.promise(() =>

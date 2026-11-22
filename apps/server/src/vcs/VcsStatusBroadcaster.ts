@@ -555,7 +555,7 @@ export const make = Effect.gen(function* () {
             : yield* maybeAutoPull(cwd, remoteRead, options?.policyCwds ?? [cwd]);
         if (pulled !== null) return pulled.remote;
         const refsAtLocalRead = options?.refsAtLocalRead;
-        const refs = refsAtLocalRead && remote ? yield* workflow.readRefSnapshot(cwd) : null;
+        const refs = refsAtLocalRead && remote ? yield* workflow.readLocalStatusRefSnapshot(cwd) : null;
         if (
           remote &&
           (!previousRemote ||
