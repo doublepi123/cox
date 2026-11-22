@@ -48,8 +48,23 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group"
 import { Kbd, KbdGroup } from "../ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { SelectButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Combobox, ComboboxTrigger, ComboboxPopup, ComboboxSearchInput, ComboboxEmpty, ComboboxList, ComboboxItem } from "../ui/combobox";
+import {
+  SelectButton,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import {
+  Combobox,
+  ComboboxTrigger,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  ComboboxEmpty,
+  ComboboxList,
+  ComboboxItem,
+} from "../ui/combobox";
 import { useClientSettings } from "../../hooks/useSettings";
 import { Toggle } from "../ui/toggle";
 import { toastManager } from "../ui/toast";
@@ -1125,11 +1140,7 @@ function NewKeybindingCommandSelect({
         {draft.commandDraft ? t(commandLabel(draft.commandDraft)) : t("Command")}
       </ComboboxTrigger>
       <ComboboxPopup aria-label={t("Command")} className="w-96">
-        <ComboboxSearchInput
-          autoFocus
-          placeholder={t("Search")}
-          aria-label={t("Search")}
-        />
+        <ComboboxSearchInput autoFocus placeholder={t("Search")} aria-label={t("Search")} />
         <ComboboxEmpty>{t("No results found.")}</ComboboxEmpty>
         <ComboboxList>
           {(command: KeybindingCommandOption) => {
@@ -1247,7 +1258,12 @@ function NewKeybindingSettingsRow(props: NewKeybindingProps) {
       control={
         <div className="flex flex-wrap items-center gap-2">
           <div className="min-w-0 w-56">
-            <NewKeybindingCommandSelect fill draft={draft} commandOptions={commandOptions} allRows={allRows} />
+            <NewKeybindingCommandSelect
+              fill
+              draft={draft}
+              commandOptions={commandOptions}
+              allRows={allRows}
+            />
           </div>
           <KeybindingConflictWarning labels={draft.conflictLabels} />
           <div className="min-w-0 w-44">

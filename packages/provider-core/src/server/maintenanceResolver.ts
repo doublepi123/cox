@@ -495,7 +495,9 @@ const runNpmGlobalLatestVersions = Effect.fn("runNpmGlobalLatestVersions")(funct
     // npm outdated exits 1 when updates are available.
     [0, 1],
   );
-  const outdatedEntries = outdated ? Option.getOrUndefined(decodePnpmOutdated(outdated)) : undefined;
+  const outdatedEntries = outdated
+    ? Option.getOrUndefined(decodePnpmOutdated(outdated))
+    : undefined;
   // npm prints failures such as an unreachable registry as `{"error": ...}`, also exiting 1.
   if (!outdatedEntries || "error" in outdatedEntries) return versions;
   for (const name of packageNames) {
@@ -527,7 +529,7 @@ const resolveNpmGlobalLatestVersion = Effect.fn("resolveNpmGlobalLatestVersion")
   // Claude's driver sets its own variables and drops ELECTRON_RUN_AS_NODE; npm reads neither.
   const npmEnv = Object.entries(env).filter(([name]) => !NPM_IGNORED_VARIABLE.test(name));
   const envHash = NodeCrypto.createHash("sha256");
-  for (const [name, value] of npmEnv.toSorted(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+  for (const [name, value] of npmEnv.toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     envHash.update(`${name}\0${value ?? ""}\0`);
   }
   const key = [npmPath, npmPrefix, envHash.digest("hex")].join("\0");

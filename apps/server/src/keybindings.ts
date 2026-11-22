@@ -517,8 +517,7 @@ const make = Effect.gen(function* () {
           !customConfig.some(
             (entry) =>
               hasSameShortcutContext(entry, rule) ||
-              (entry.when === "false" &&
-                isSameKeybindingRule(entry, { ...rule, when: "false" })),
+              (entry.when === "false" && isSameKeybindingRule(entry, { ...rule, when: "false" })),
           )
         ) {
           missingDefaults.push(rule);

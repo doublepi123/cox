@@ -1515,7 +1515,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     textChanged: boolean,
   ) => {
     refreshWorkspaceSnapshotOnTyping();
-    const trigger = cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor);
+    const trigger = cursorAdjacentToMention
+      ? null
+      : detectComposerTrigger(nextPrompt, expandedCursor);
     const updateTrigger = textChanged ? setComposerTrigger : followComposerCaret;
     if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
       if (activePendingProgress.activeQuestion.allowCustomAnswer === false) return;
@@ -3369,7 +3371,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           className="pointer-events-auto ml-2 inline-flex cursor-pointer rounded align-[1px] [&:hover_kbd]:text-foreground"
                           onPointerDown={(event) => event.preventDefault()}
                           onClick={() => {
-                            const accepted = promptSuggestionToAccept(offeredPromptSuggestion, promptRef.current);
+                            const accepted = promptSuggestionToAccept(
+                              offeredPromptSuggestion,
+                              promptRef.current,
+                            );
                             if (accepted !== null) applyPromptReplacementStable(0, 0, accepted);
                           }}
                         >

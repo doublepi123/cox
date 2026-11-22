@@ -333,11 +333,22 @@ export function renderGhosttySnapshot(options: {
       const shape = POWERLINE_SHAPES.get(first.text);
       if (shape) {
         if (!first.invisible) {
-          const seamOverlap = shape.kind === "cap" &&
+          const seamOverlap =
+            shape.kind === "cap" &&
             ((runStart === 0 && shape.flatEdge === "left") ||
-              (runStart === row.cells.length - 1 && shape.flatEdge === "right")) ? 0 : 1;
-          drawPowerlineShape(context, shape, cssColor(first.foreground),
-            padding + runStart * metrics.width, top, metrics.width, metrics.height, seamOverlap);
+              (runStart === row.cells.length - 1 && shape.flatEdge === "right"))
+              ? 0
+              : 1;
+          drawPowerlineShape(
+            context,
+            shape,
+            cssColor(first.foreground),
+            padding + runStart * metrics.width,
+            top,
+            metrics.width,
+            metrics.height,
+            seamOverlap,
+          );
         }
         runStart += 1;
         continue;
@@ -414,7 +425,16 @@ export function renderGhosttySnapshot(options: {
         context.fillStyle = cssColor(snapshot.background);
         const shape = POWERLINE_SHAPES.get(cell.text);
         if (shape) {
-          drawPowerlineShape(context, shape, cssColor(snapshot.background), left, top, metrics.width, metrics.height, 0);
+          drawPowerlineShape(
+            context,
+            shape,
+            cssColor(snapshot.background),
+            left,
+            top,
+            metrics.width,
+            metrics.height,
+            0,
+          );
         } else if (cell.text) {
           context.font = fontForCell(cell, fontSize, fontFamily);
           if (wide) context.textAlign = "center";

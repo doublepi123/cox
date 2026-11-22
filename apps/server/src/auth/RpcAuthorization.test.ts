@@ -77,7 +77,6 @@ describe("RPC authorization scopes", () => {
     );
   });
 
-
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(

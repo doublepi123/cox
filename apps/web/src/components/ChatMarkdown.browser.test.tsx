@@ -632,17 +632,17 @@ it("preserves typed list values and the first copied item number", async () => {
 });
 
 it("stays open while the pointer selects the path, then closes when it leaves", async () => {
-    setup();
-    await using screen = await renderText("[notes](/tmp/project/docs/notes.md)");
-    await userEvent.hover(screen.container.querySelector(".chat-markdown-file-link")!);
-    const path = page.getByText("/tmp/project/docs/notes.md");
-    await expect.element(path).toBeVisible();
+  setup();
+  await using screen = await renderText("[notes](/tmp/project/docs/notes.md)");
+  await userEvent.hover(screen.container.querySelector(".chat-markdown-file-link")!);
+  const path = page.getByText("/tmp/project/docs/notes.md");
+  await expect.element(path).toBeVisible();
 
-    // Forced so the pointer lands on the popup even when it ignores pointer events.
-    await userEvent.tripleClick(path, { force: true });
-    expect(window.getSelection()?.toString().trim()).toBe("/tmp/project/docs/notes.md");
-    await expect.element(path).toBeVisible();
+  // Forced so the pointer lands on the popup even when it ignores pointer events.
+  await userEvent.tripleClick(path, { force: true });
+  expect(window.getSelection()?.toString().trim()).toBe("/tmp/project/docs/notes.md");
+  await expect.element(path).toBeVisible();
 
-    await commands.resetPointer();
-    await expect.element(path).not.toBeInTheDocument();
-  });
+  await commands.resetPointer();
+  await expect.element(path).not.toBeInTheDocument();
+});

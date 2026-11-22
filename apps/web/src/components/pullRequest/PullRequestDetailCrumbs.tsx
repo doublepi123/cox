@@ -140,9 +140,12 @@ export function PullRequestDetailCrumbs({
                   repositoryUrl ? (
                     <button
                       type="button"
-                      onClick={(event) => void openLink(repositoryUrl, { event }).catch(console.error)}
+                      onClick={(event) =>
+                        void openLink(repositoryUrl, { event }).catch(console.error)
+                      }
                       onAuxClick={(event) => {
-                        if (event.button === 1) void openLink(repositoryUrl, { event }).catch(console.error);
+                        if (event.button === 1)
+                          void openLink(repositoryUrl, { event }).catch(console.error);
                       }}
                       className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >

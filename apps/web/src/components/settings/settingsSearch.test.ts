@@ -84,7 +84,9 @@ describe("searchSettings", () => {
   });
 
   it("removes the read-only local access page from navigation and search", () => {
-    expect(settingsNavGroups(false).flatMap((group) => group.paths)).not.toContain("/settings/access");
+    expect(settingsNavGroups(false).flatMap((group) => group.paths)).not.toContain(
+      "/settings/access",
+    );
     expect(SETTINGS_SEARCH_ITEMS.some((item) => item.to === "/settings/access")).toBe(false);
     expect(searchSettings("local authentication")).toEqual([]);
   });

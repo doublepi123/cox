@@ -95,7 +95,6 @@ interface BranchToolbarBranchSelectorProps {
   onComposerFocusRequest?: () => void;
 }
 
-
 export function BranchToolbarBranchSelector({
   forceNewWorktree = false,
   ref,

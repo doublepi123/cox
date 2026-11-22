@@ -1620,15 +1620,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
   const callLauncher = yield* writeAcpMcpCallLauncher(host.paths.stateDir);
   const readMcpContext = (threadId: ThreadId | null) =>
     threadId === null
-      ? Effect.succeed(
-          acpMcpContext(undefined, self, flavor.mcpOverHttp, callLauncher),
-        )
+      ? Effect.succeed(acpMcpContext(undefined, self, flavor.mcpOverHttp, callLauncher))
       : mcpSessions
           .read(threadId)
           .pipe(
-            Effect.map((session) =>
-              acpMcpContext(session, self, flavor.mcpOverHttp, callLauncher),
-            ),
+            Effect.map((session) => acpMcpContext(session, self, flavor.mcpOverHttp, callLauncher)),
           );
   const driver = flavor.driver;
   const continuationRequests = options.continuationRequests;
@@ -4945,7 +4941,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* applyLateBackgroundMutation(notification.sessionId, lateBackgroundMutation);
               }
             }
-            if (lateBackgroundMutations.length === 0 && !(/<monitor-event\b/i.test(text) || /Monitor\s+["']?[0-9a-f-]{8,}["']?\s+ended/i.test(text))) {
+            if (
+              lateBackgroundMutations.length === 0 &&
+              !(
+                /<monitor-event\b/i.test(text) ||
+                /Monitor\s+["']?[0-9a-f-]{8,}["']?\s+ended/i.test(text)
+              )
+            ) {
               yield* appendLoadedHistory(
                 notification,
                 update.sessionUpdate === "user_message_chunk"

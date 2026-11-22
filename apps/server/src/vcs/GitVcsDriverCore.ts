@@ -1896,9 +1896,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   });
 
   const readStatusRemotes = (cwd: string, gitCommonDir?: string) =>
-    gitCommonDir === undefined
-      ? listRemoteNames(cwd)
-      : Cache.get(statusRemotesCache, gitCommonDir);
+    gitCommonDir === undefined ? listRemoteNames(cwd) : Cache.get(statusRemotesCache, gitCommonDir);
   const hasAnyRemote = (cwd: string) =>
     resolveRepositoryPaths(cwd).pipe(
       Effect.orElseSucceed(() => null),
@@ -3227,7 +3225,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         remoteName,
         branchName,
         publishes: true,
-        upstream: upstreamRef === null ? null : { remoteName: ".", branchName: upstreamRef, upstreamRef },
+        upstream:
+          upstreamRef === null ? null : { remoteName: ".", branchName: upstreamRef, upstreamRef },
       };
     }
 
@@ -3401,9 +3400,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           yield* writeConfigValue({
             cwd,
             key: `branch.${branch}.t3-merge-base-ref`,
-            value: upstream.remoteName === "."
-              ? `refs/heads/${upstream.upstreamRef}`
-              : `refs/remotes/${upstream.upstreamRef}`,
+            value:
+              upstream.remoteName === "."
+                ? `refs/heads/${upstream.upstreamRef}`
+                : `refs/remotes/${upstream.upstreamRef}`,
           });
         }
       }
@@ -3465,7 +3465,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       { concurrency: 2 },
     );
     let upstreamRef = currentUpstreamRef?.startsWith("/")
-      ? (yield* resolveCurrentUpstream(cwd, currentUpstreamRef))?.upstreamRef ?? null
+      ? ((yield* resolveCurrentUpstream(cwd, currentUpstreamRef))?.upstreamRef ?? null)
       : currentUpstreamRef;
     // `@{upstream}` needs the tracking ref, which an unborn branch's first pull has not fetched.
     if (upstreamRef === null && refName) {
@@ -3669,31 +3669,33 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     allowPartial: boolean,
     isolated: boolean,
   ) {
-    const [stagedDeletionsStdout, indexValue] = isolated ? ["", ""] : yield* Effect.all(
-      [
-        runGitStdoutWithOptions(
-          "GitVcsDriver.readUnifiedWorkingTreeReviewDiff.stagedDeletions",
-          cwd,
+    const [stagedDeletionsStdout, indexValue] = isolated
+      ? ["", ""]
+      : yield* Effect.all(
           [
-            "diff",
-            "--cached",
-            "--no-renames",
-            "--name-only",
-            "--diff-filter=D",
-            "-z",
-            "HEAD",
-            "--",
+            runGitStdoutWithOptions(
+              "GitVcsDriver.readUnifiedWorkingTreeReviewDiff.stagedDeletions",
+              cwd,
+              [
+                "diff",
+                "--cached",
+                "--no-renames",
+                "--name-only",
+                "--diff-filter=D",
+                "-z",
+                "HEAD",
+                "--",
+              ],
+              { allowNonZeroExit: true, maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
+            ),
+            runGitStdout("GitVcsDriver.readUnifiedWorkingTreeReviewDiff.indexPath", cwd, [
+              "rev-parse",
+              "--git-path",
+              "index",
+            ]),
           ],
-          { allowNonZeroExit: true, maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
-        ),
-        runGitStdout("GitVcsDriver.readUnifiedWorkingTreeReviewDiff.indexPath", cwd, [
-          "rev-parse",
-          "--git-path",
-          "index",
-        ]),
-      ],
-      { concurrency: 2 },
-    );
+          { concurrency: 2 },
+        );
     const stagedDeletions = new Set(stagedDeletionsStdout.split("\0").filter(Boolean));
     const candidates = yield* Effect.filter(
       untrackedPaths.filter((relativePath) => !stagedDeletions.has(relativePath)),
@@ -3842,7 +3844,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
               () => listUntracked(false),
             ),
           )
-        : listUntracked(false)    ).pipe(Effect.orElseSucceed(() => null));
+        : listUntracked(false)
+    ).pipe(Effect.orElseSucceed(() => null));
     if (untracked === null) return null;
     // ls-files lists a nested repository with a trailing slash; its diff path has none.
     const paths = splitNullSeparatedGitStdoutPaths(untracked).filter(

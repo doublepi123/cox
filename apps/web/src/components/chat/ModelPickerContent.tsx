@@ -777,9 +777,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     const shown = isSearching
       ? matchesLockedProvider(entry)
       : entry.instanceId === selectedEntry?.instanceId;
-    const notice = shown
-      ? formatProviderUpdateRequiredNotice(entry.snapshot, searchQuery)
-      : null;
+    const notice = shown ? formatProviderUpdateRequiredNotice(entry.snapshot, searchQuery) : null;
     return notice
       ? [
           {

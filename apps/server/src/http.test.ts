@@ -161,10 +161,12 @@ describe("untraced requests", () => {
         }),
       );
       const layerLogger = Logger.layer(
-        [Logger.make(({ fiber }) => {
-          const url = fiber.getRef(References.CurrentLogAnnotations)["http.url"];
-          if (url !== undefined) loggedUrls.push(url);
-        })],
+        [
+          Logger.make(({ fiber }) => {
+            const url = fiber.getRef(References.CurrentLogAnnotations)["http.url"];
+            if (url !== undefined) loggedUrls.push(url);
+          }),
+        ],
         { mergeWithExisting: false },
       );
       const layerRoutes = Layer.effectDiscard(

@@ -14,7 +14,12 @@ import {
   US_SHIFTED_TO_UNSHIFTED_KEYS,
 } from "@t3tools/shared/keybindings";
 
-import { formatShortcutLabel, shortcutConflictKey, shortcutForContext, shortcutKeyFromEvent } from "../../keybindings";
+import {
+  formatShortcutLabel,
+  shortcutConflictKey,
+  shortcutForContext,
+  shortcutKeyFromEvent,
+} from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 

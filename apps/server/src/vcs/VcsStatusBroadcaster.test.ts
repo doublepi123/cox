@@ -160,8 +160,7 @@ function layerTestFor(state: {
           Effect.sync(() => {
             const refName = state.currentLocalStatus.refName;
             if (!state.currentRemoteStatus?.hasUpstream || refName === null) return null;
-            const { aheadCount, behindCount } =
-              state.currentRemoteStatus;
+            const { aheadCount, behindCount } = state.currentRemoteStatus;
             return {
               refName,
               aheadCount,
@@ -244,27 +243,30 @@ function layerBackgroundPolicy(shouldRunScopeWork: (scope: BackgroundScope) => b
 }
 
 describe("VcsStatusBroadcaster", () => {
-  it.effect("picker refresh digests change when worktree occupancy changes without a ref move", () => {
-    const state: Parameters<typeof layerTestFor>[0] = {
-      currentLocalStatus: baseLocalStatus,
-      currentRemoteStatus: baseRemoteStatus,
-      localStatusCalls: 0,
-      remoteStatusCalls: 0,
-      localInvalidationCalls: 0,
-      remoteInvalidationCalls: 0,
-    };
-    return Effect.gen(function* () {
-      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-      const refresh = broadcaster.refreshStatus("/repo", { localOnly: true });
-      const initial = yield* refresh;
-      assert.isString(initial.refsDigest);
-      assert.equal((yield* refresh).refsDigest, initial.refsDigest);
-      state.worktreeStamp = "feature in /linked";
-      assert.notEqual((yield* refresh).refsDigest, initial.refsDigest);
-      state.worktreeStamp = null;
-      assert.isUndefined((yield* refresh).refsDigest);
-    }).pipe(Effect.provide(layerTestFor(state)));
-  });
+  it.effect(
+    "picker refresh digests change when worktree occupancy changes without a ref move",
+    () => {
+      const state: Parameters<typeof layerTestFor>[0] = {
+        currentLocalStatus: baseLocalStatus,
+        currentRemoteStatus: baseRemoteStatus,
+        localStatusCalls: 0,
+        remoteStatusCalls: 0,
+        localInvalidationCalls: 0,
+        remoteInvalidationCalls: 0,
+      };
+      return Effect.gen(function* () {
+        const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+        const refresh = broadcaster.refreshStatus("/repo", { localOnly: true });
+        const initial = yield* refresh;
+        assert.isString(initial.refsDigest);
+        assert.equal((yield* refresh).refsDigest, initial.refsDigest);
+        state.worktreeStamp = "feature in /linked";
+        assert.notEqual((yield* refresh).refsDigest, initial.refsDigest);
+        state.worktreeStamp = null;
+        assert.isUndefined((yield* refresh).refsDigest);
+      }).pipe(Effect.provide(layerTestFor(state)));
+    },
+  );
 
   it.effect("the turn-end PR lookup reuses the upstream read it follows, once", () => {
     const state: Parameters<typeof layerTestFor>[0] = {

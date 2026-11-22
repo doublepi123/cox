@@ -554,10 +554,7 @@ it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
             });
           }
 
-          expect(runtimeMock.state.promptVariants).toEqual([
-            undefined,
-            "default",
-          ]);
+          expect(runtimeMock.state.promptVariants).toEqual([undefined, "default"]);
         }),
       ),
   );

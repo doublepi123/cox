@@ -1334,10 +1334,10 @@ export const layer: Layer.Layer<
             : rejectedHistory
               ? "rejected_native_history"
               : uncertainDelivery
-              ? "uncertain_history_delivery"
-              : resumed._tag === "Success"
-                ? "handoff_budget_exhausted"
-                : "resume_failed",
+                ? "uncertain_history_delivery"
+                : resumed._tag === "Success"
+                  ? "handoff_budget_exhausted"
+                  : "resume_failed",
           errorTag: resumed._tag === "Failure" ? resumed.failure._tag : "ContextHandoffBudgetError",
         });
         const replacement = yield* loadFromProvider(

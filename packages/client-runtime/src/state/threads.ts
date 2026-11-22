@@ -1083,7 +1083,8 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       }),
       {
         onDefect: Effect.fn("EnvironmentThreadState.onDefect")(function* (cause) {
-          if (!Cause.hasDies(cause)) return yield* setStreamError("Could not synchronize the thread.");
+          if (!Cause.hasDies(cause))
+            return yield* setStreamError("Could not synchronize the thread.");
           yield* Ref.set(forceSnapshot, true);
           if (yield* Ref.getAndSet(resuming, false)) {
             yield* Queue.offer(resubscribes, undefined);

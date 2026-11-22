@@ -760,7 +760,12 @@ describe("question answer paths", () => {
             "word/document.xml":
               '<w:document xmlns:w="urn:w"><w:body><w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Report &amp; totals</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>North</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>12</w:t></w:r></w:p><w:p><w:r><w:t>34</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:sdt><w:sdtPr><w:alias w:val="Title"/></w:sdtPr><w:sdtContent><w:tc><w:p><w:r><w:t>Annual report</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt><w:tc><w:p><w:r><w:t>Draft</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Before</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Inner</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>After</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Neighbor</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>',
           },
-          expected: ["## Report & totals", "North\t12 34", "Annual report\tDraft", "Before Inner After\tNeighbor"],
+          expected: [
+            "## Report & totals",
+            "North\t12 34",
+            "Annual report\tDraft",
+            "Before Inner After\tNeighbor",
+          ],
         },
         {
           ext: "docx",
@@ -981,7 +986,11 @@ describe("question answer paths", () => {
                 .join("") +
               "</office:document>",
           },
-          expected: ["## Orchard", "19   violet crates", "Contents\nOrchard 1" + "\nContents\nOrchard 1".repeat(6)],
+          expected: [
+            "## Orchard",
+            "19   violet crates",
+            "Contents\nOrchard 1" + "\nContents\nOrchard 1".repeat(6),
+          ],
         },
         {
           ext: "ods",
@@ -1040,8 +1049,15 @@ describe("question answer paths", () => {
               "</draw:text-box></draw:frame></presentation:notes></draw:page></office:document>",
           },
           expected: [
-            "## Slide 1", "First slide", "Overview", "Notes:\nSpeaker only",
-            "## Slide 2", "Second", "## Slide 3", "Third", "Notes:\n42",
+            "## Slide 1",
+            "First slide",
+            "Overview",
+            "Notes:\nSpeaker only",
+            "## Slide 2",
+            "Second",
+            "## Slide 3",
+            "Third",
+            "Notes:\n42",
           ],
           absent: ["Slide preview", "Thumbnail metadata"],
         },

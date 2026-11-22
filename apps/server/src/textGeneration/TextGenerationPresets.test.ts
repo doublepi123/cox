@@ -13,5 +13,7 @@ it("asks for a Conventional Commit title when the listed commits use that style"
     policy: conventionalCommitsTextGenerationPolicy,
   });
 
-  expect(prompt).toContain("When the listed commits use Conventional Commits, write the title as a Conventional Commit subject too");
+  expect(prompt).toContain(
+    "When the listed commits use Conventional Commits, write the title as a Conventional Commit subject too",
+  );
 });

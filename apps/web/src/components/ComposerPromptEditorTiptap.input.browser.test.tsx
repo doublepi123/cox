@@ -141,7 +141,6 @@ it("distinguishes text edits from caret moves in change notifications", async ()
   expect(onChange.mock.lastCall?.[5]).toBe(false);
 });
 
-
 async function mountEditor(...props: Parameters<typeof composer>) {
   await using stack = new AsyncDisposableStack();
   const screen = stack.use(await render(composer(...props)));
@@ -1485,26 +1484,34 @@ it("does not outline the line under a click made with the node-select modifier h
   expect(getComputedStyle(paragraph).outlineStyle).toBe("none");
 });
 
-it.each([240, 640])("keeps wrapped prompt suggestions inside the composer at %spx", async (width) => {
-  const suggestion = Array.from({ length: 8 }, () => "Describe the behavior and check the result.").join(" ");
-  await using screen = await render(
-    <div style={{ width }}>
-      <ComposerPromptEditor
-        editorRef={createRef<ComposerPromptEditorHandle>()}
-        value=""
-        cursor={0}
-        contextRecords={new Map()}
-        skills={[]}
-        disabled={false}
-        placeholder={suggestion}
-        onChange={() => {}}
-        onPaste={() => {}}
-      />
-      <button type="button">Composer toolbar</button>
-    </div>,
-  );
-  const placeholder = screen.getByText(suggestion).element();
-  const toolbar = screen.getByRole("button", { name: "Composer toolbar" }).element();
-  expect(placeholder.getBoundingClientRect().height).toBeGreaterThan(0);
-  expect(placeholder.getBoundingClientRect().bottom).toBeLessThanOrEqual(toolbar.getBoundingClientRect().top);
-});
+it.each([240, 640])(
+  "keeps wrapped prompt suggestions inside the composer at %spx",
+  async (width) => {
+    const suggestion = Array.from(
+      { length: 8 },
+      () => "Describe the behavior and check the result.",
+    ).join(" ");
+    await using screen = await render(
+      <div style={{ width }}>
+        <ComposerPromptEditor
+          editorRef={createRef<ComposerPromptEditorHandle>()}
+          value=""
+          cursor={0}
+          contextRecords={new Map()}
+          skills={[]}
+          disabled={false}
+          placeholder={suggestion}
+          onChange={() => {}}
+          onPaste={() => {}}
+        />
+        <button type="button">Composer toolbar</button>
+      </div>,
+    );
+    const placeholder = screen.getByText(suggestion).element();
+    const toolbar = screen.getByRole("button", { name: "Composer toolbar" }).element();
+    expect(placeholder.getBoundingClientRect().height).toBeGreaterThan(0);
+    expect(placeholder.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      toolbar.getBoundingClientRect().top,
+    );
+  },
+);

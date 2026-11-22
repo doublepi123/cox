@@ -334,7 +334,9 @@ function sessionScopedArtifactThreadId(
     id !== null && [...busyTurns].some((key) => key.startsWith(busyTurnPrefix(id)));
   switch (event.type) {
     case "provider_thread.updated":
-      return event.sessionScoped === true ? (event.providerThread.appThreadId ?? undefined) : undefined;
+      return event.sessionScoped === true
+        ? (event.providerThread.appThreadId ?? undefined)
+        : undefined;
     case "plan.updated":
       return event.driver === "omo" && event.plan.kind === "todo_list" && event.plan.runId === null
         ? event.plan.threadId

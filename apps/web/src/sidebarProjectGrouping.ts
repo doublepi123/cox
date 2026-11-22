@@ -206,7 +206,9 @@ export function buildSidebarProjectPickerEntries(input: {
             project.id === preferredProjectRef.projectId,
         ) ??
         selectGroupDefaultProject(
-          group.memberProjects.filter((project) => project.environmentId === preferredProjectRef.environmentId),
+          group.memberProjects.filter(
+            (project) => project.environmentId === preferredProjectRef.environmentId,
+          ),
         ))
       : null;
     const targetProject =

@@ -618,7 +618,6 @@ const gitSupportsRemergeDiff = (versionOutput: string): boolean => {
   return major > 2 || (major === 2 && Number(match[2]) >= 36);
 };
 
-
 export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -670,7 +669,6 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     }
     return remergeDiffSupported;
   });
-
 
   const detectRepository: VcsDriver.VcsDriver["Service"]["detectRepository"] = Effect.fn(
     "detectRepository",

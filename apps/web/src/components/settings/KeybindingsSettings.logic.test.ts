@@ -53,8 +53,12 @@ describe("KeybindingsSettings.logic", () => {
       const labels = (mode: "enter" | "mod-enter" | "mod-enter-multiline") =>
         buildKeybindingRows(binding, "Win32", mode)[0]?.previewLabels;
       expect(labels("enter")).toEqual(["Ctrl+Enter"]);
-      expect(labels("mod-enter")).toEqual([command === "composer.sendAlternate" ? "Ctrl+Shift+Enter" : "Ctrl+Enter"]);
-      expect(labels("mod-enter-multiline")).toEqual(command === "composer.sendAlternate" ? ["Ctrl+Enter", "Ctrl+Shift+Enter"] : ["Ctrl+Enter"]);
+      expect(labels("mod-enter")).toEqual([
+        command === "composer.sendAlternate" ? "Ctrl+Shift+Enter" : "Ctrl+Enter",
+      ]);
+      expect(labels("mod-enter-multiline")).toEqual(
+        command === "composer.sendAlternate" ? ["Ctrl+Enter", "Ctrl+Shift+Enter"] : ["Ctrl+Enter"],
+      );
     }
     const shiftedBindings = compileResolvedKeybindingsConfig([
       { command: "chat.new", key: "mod+shift+enter" },

@@ -59,7 +59,9 @@ export function countPreparingComposerImages(targetKey: string): number {
   return getPreparingComposerImages(targetKey).length;
 }
 
-export function getPreparingComposerImages(targetKey: string): ReadonlyArray<PreparingComposerImage> {
+export function getPreparingComposerImages(
+  targetKey: string,
+): ReadonlyArray<PreparingComposerImage> {
   return usePreparingComposerImageStore.getState().byTargetKey[targetKey] ?? NO_PREPARING_IMAGES;
 }
 

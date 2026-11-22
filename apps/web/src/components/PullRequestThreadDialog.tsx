@@ -157,7 +157,10 @@ export function PullRequestThreadDialog({
         const error = squashAtomCommandFailure(result);
         setCheckoutError({
           target: checkoutTarget,
-          message: error instanceof Error ? error.message : `Failed to prepare ${terminology.singular} thread.`,
+          message:
+            error instanceof Error
+              ? error.message
+              : `Failed to prepare ${terminology.singular} thread.`,
         });
       }
       return;

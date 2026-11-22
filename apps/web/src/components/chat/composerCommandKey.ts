@@ -254,7 +254,11 @@ export function composerCommandKeyHandler(input: {
       dismissComposerTrigger(trigger);
       return true;
     }
-    if (menuIsActive && !event.shiftKey && (submissionIntent === null || submissionIntent === "foreground")) {
+    if (
+      menuIsActive &&
+      !event.shiftKey &&
+      (submissionIntent === null || submissionIntent === "foreground")
+    ) {
       const currentItems = composerMenuItemsRef.current;
       const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
       if (key === "ArrowDown" && currentItems.length > 0) {
@@ -270,7 +274,10 @@ export function composerCommandKeyHandler(input: {
         return true;
       }
     }
-    const acceptedSuggestion = promptSuggestionToAccept(promptSuggestion ?? null, promptRef.current);
+    const acceptedSuggestion = promptSuggestionToAccept(
+      promptSuggestion ?? null,
+      promptRef.current,
+    );
     if (
       key === "Tab" &&
       acceptedSuggestion !== null &&

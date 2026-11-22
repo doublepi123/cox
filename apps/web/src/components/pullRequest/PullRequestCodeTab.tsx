@@ -1568,32 +1568,32 @@ function PullRequestCodeTab({
               {diffLoading}
             </div>
           ) : (
-          <FileViewedToggleContext value={fileViewedToggle}>
-            <StyledDiffCodeView<ReviewAnnotationGroup>
-              className="@container h-full overflow-auto [scrollbar-gutter:stable]"
-              containerRef={(node) => {
-                // Pierre sets tabIndex -1 on this root and forwards no data attributes.
-                node?.setAttribute("data-workspace-focus-default", "");
-                scrollerRef(node);
-              }}
-              viewerRef={codeViewReveal.attach}
-              items={items}
-              selectedLines={selectedLines}
-              onSelectedLinesChange={setSelectedLines}
-              options={diffViewOptions}
-              renderCodeViewFooter={renderCodeViewFooter}
-              renderHeaderPrefix={renderHeaderPrefix}
-              renderHeaderMetadata={renderHeaderMetadata}
-              renderAnnotation={renderAnnotation}
-              // Find may repeat requests before render; only unfold, never toggle.
-              onRevealSearchMatch={(item) =>
-                setToggledFiles((current) =>
-                  toggleFileDiffFoldForViewed(item.id, false, effectiveFoldOverride, current),
-                )
-              }
-              unsafeCSSExtra={REPLACE_FILE_COUNTS_CSS}
-            />
-          </FileViewedToggleContext>
+            <FileViewedToggleContext value={fileViewedToggle}>
+              <StyledDiffCodeView<ReviewAnnotationGroup>
+                className="@container h-full overflow-auto [scrollbar-gutter:stable]"
+                containerRef={(node) => {
+                  // Pierre sets tabIndex -1 on this root and forwards no data attributes.
+                  node?.setAttribute("data-workspace-focus-default", "");
+                  scrollerRef(node);
+                }}
+                viewerRef={codeViewReveal.attach}
+                items={items}
+                selectedLines={selectedLines}
+                onSelectedLinesChange={setSelectedLines}
+                options={diffViewOptions}
+                renderCodeViewFooter={renderCodeViewFooter}
+                renderHeaderPrefix={renderHeaderPrefix}
+                renderHeaderMetadata={renderHeaderMetadata}
+                renderAnnotation={renderAnnotation}
+                // Find may repeat requests before render; only unfold, never toggle.
+                onRevealSearchMatch={(item) =>
+                  setToggledFiles((current) =>
+                    toggleFileDiffFoldForViewed(item.id, false, effectiveFoldOverride, current),
+                  )
+                }
+                unsafeCSSExtra={REPLACE_FILE_COUNTS_CSS}
+              />
+            </FileViewedToggleContext>
           )}
         </div>
         {fileTreeOpen ? (

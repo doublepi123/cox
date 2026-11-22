@@ -1820,7 +1820,6 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
   });
 });
 
-
 describe("resolveScopedNewThreadProjectRef", () => {
   const local = { environmentId: "env-local", projectId: "api" };
   const remote = { environmentId: "env-remote", projectId: "api-remote" };

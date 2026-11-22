@@ -1466,7 +1466,16 @@ it.each([
   [{ localServerError: "local", runtimeError: "runtime" }, "local", null],
   [{ streamError: "stream" }, "stream", null],
   [{ runtimeError: "E" }, "E", "E"],
-] as const)("session dismissals apply only to runtime failures: %j", (changes, error, runtimeError) => {
-  const initial = { isServerThread: true, localServerError: null, localDraftError: null, runtimeError: null, streamError: null };
-  expect(resolveThreadErrorBanner({ ...initial, ...changes })).toEqual({ error, runtimeError });
-});
+] as const)(
+  "session dismissals apply only to runtime failures: %j",
+  (changes, error, runtimeError) => {
+    const initial = {
+      isServerThread: true,
+      localServerError: null,
+      localDraftError: null,
+      runtimeError: null,
+      streamError: null,
+    };
+    expect(resolveThreadErrorBanner({ ...initial, ...changes })).toEqual({ error, runtimeError });
+  },
+);

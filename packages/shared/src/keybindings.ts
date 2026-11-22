@@ -103,7 +103,6 @@ const US_MAC_OPTION_GLYPH_LETTERS: ReadonlyMap<string, string> = new Map([
   ["Ω", "z"],
 ]);
 
-
 export function isMacPlatform(platform: string): boolean {
   return /mac|iphone|ipad|ipod/i.test(platform);
 }

@@ -146,7 +146,9 @@ function press(target: Element = document.body) {
 function deferredPreview() {
   type Result = ReturnType<typeof AsyncResult.success>;
   let resolve!: (value: Result) => void;
-  const promise = new Promise<Result>((settle) => { resolve = settle; });
+  const promise = new Promise<Result>((settle) => {
+    resolve = settle;
+  });
   return { promise, resolve };
 }
 

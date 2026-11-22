@@ -459,7 +459,9 @@ it.effect.each(deliveries)(
           if (delivery === "child completion") {
             assert.lengthOf(after.runs, 1);
             assert.deepEqual(
-              after.messages.filter((message) => message.id === messageId).map((message) => message.runId),
+              after.messages
+                .filter((message) => message.id === messageId)
+                .map((message) => message.runId),
               [parent.id],
             );
             assert.equal(after.subagents[0]?.completionDelivery?.state, "delivered");

@@ -1299,7 +1299,10 @@ const make = Effect.gen(function* () {
                   const markReady = () => Deferred.doneUnsafe(ready, Exit.void);
                   const changes = watchFileChanges(linkTargetPath, markReady).pipe(
                     Stream.as(undefined),
-                    Stream.catchIf((error) => error.reason._tag === "NotFound", () => Stream.empty),
+                    Stream.catchIf(
+                      (error) => error.reason._tag === "NotFound",
+                      () => Stream.empty,
+                    ),
                     Stream.ignoreCause({ log: true }),
                     Stream.ensuring(Effect.sync(markReady)),
                   );

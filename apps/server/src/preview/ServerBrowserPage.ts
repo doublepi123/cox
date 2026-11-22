@@ -589,10 +589,7 @@ const capture = async (
   // Bracket the tree with value reads to detect changes; await tree completion before retrying failed captures.
   const pageAndScreenshot = Promise.all([
     input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
-      Pick<
-        PreviewAutomationSnapshot,
-        "url" | "title" | "loading" | "visibleText"
-      >
+      Pick<PreviewAutomationSnapshot, "url" | "title" | "loading" | "visibleText">
     >,
     captureViewport(input.cdp, { format: "png" }).then(async (full) =>
       scale < 1

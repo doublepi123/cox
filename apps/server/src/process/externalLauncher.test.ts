@@ -367,16 +367,24 @@ it.effect("does not ask Explorer to select a file that does not exist", () =>
     const spawned: ChildProcess.StandardCommand[] = [];
     const result = yield* Effect.gen(function* () {
       const launcher = yield* ExternalLauncher.ExternalLauncher;
-      return yield* Effect.exit(launcher.launchEditor({ editor: "file-manager", cwd, reveal: true }));
-    }).pipe(Effect.provide(layerTest({
-      platform: "win32",
-      env: { PATH: binDir, PATHEXT: ".EXE" },
-      onSpawn: (command) => spawned.push(command),
-    })));
+      return yield* Effect.exit(
+        launcher.launchEditor({ editor: "file-manager", cwd, reveal: true }),
+      );
+    }).pipe(
+      Effect.provide(
+        layerTest({
+          platform: "win32",
+          env: { PATH: binDir, PATHEXT: ".EXE" },
+          onSpawn: (command) => spawned.push(command),
+        }),
+      ),
+    );
     assert.isTrue(Exit.isFailure(result));
     if (Exit.isFailure(result)) {
-      assert.equal(Option.getOrUndefined(Cause.findErrorOption(result.cause))?._tag,
-        "ExternalLauncherRevealTargetMissingError");
+      assert.equal(
+        Option.getOrUndefined(Cause.findErrorOption(result.cause))?._tag,
+        "ExternalLauncherRevealTargetMissingError",
+      );
     }
     assert.deepEqual(spawned, []);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

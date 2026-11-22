@@ -402,12 +402,21 @@ describe("Claude model catalog", () => {
   it("offers Fast Mode for Fable 5.2 once the CLI supports it", () => {
     const catalog = BUNDLED_CLAUDE_MODEL_CATALOG;
     const slug = "claude-fable-5-2";
-    assert.notInclude(resolveClaudeModelsForVersion(catalog, "2.1.320").map((model) => model.slug), slug);
+    assert.notInclude(
+      resolveClaudeModelsForVersion(catalog, "2.1.320").map((model) => model.slug),
+      slug,
+    );
     const models = resolveClaudeModelsForVersion(catalog, "2.1.321");
-    assert.include(models.map((model) => model.slug), slug);
-    assert.isTrue(models.find((model) => model.slug === slug)?.capabilities?.optionDescriptors?.some(
-      (descriptor) => descriptor.id === "fastMode" && descriptor.type === "boolean",
-    ));
+    assert.include(
+      models.map((model) => model.slug),
+      slug,
+    );
+    assert.isTrue(
+      models
+        .find((model) => model.slug === slug)
+        ?.capabilities?.optionDescriptors?.some(
+          (descriptor) => descriptor.id === "fastMode" && descriptor.type === "boolean",
+        ),
+    );
   });
-
 });

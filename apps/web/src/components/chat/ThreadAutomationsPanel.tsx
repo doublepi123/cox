@@ -40,7 +40,11 @@ const STATUS_DOT_CLASS: Record<ScheduledTask["lastRunStatus"], string> = {
   failed: "bg-destructive",
 };
 
-function taskScheduleLine(task: ScheduledTask, timestampFormat: TimestampFormat, timeZone: string | undefined) {
+function taskScheduleLine(
+  task: ScheduledTask,
+  timestampFormat: TimestampFormat,
+  timeZone: string | undefined,
+) {
   return (
     <>
       {scheduleLabel(task.schedule, timestampFormat, timeZone, task.nextRunAt)}

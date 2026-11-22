@@ -76,9 +76,7 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
               {translateUi("Copy as Markdown")}
             </MenuItem>
             <MenuItem onClick={() => handleCopy("csv")}>{translateUi("Copy as CSV")}</MenuItem>
-            <MenuItem onClick={() => handleCopy("html")}>
-              {translateUi("Copy as HTML")}
-            </MenuItem>
+            <MenuItem onClick={() => handleCopy("html")}>{translateUi("Copy as HTML")}</MenuItem>
           </MenuPopup>
         </Menu>
       </div>

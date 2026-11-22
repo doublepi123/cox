@@ -75,7 +75,8 @@ function xml(source: string, odfSpaces = false, htmlEntities = false): XmlNode {
     // Keep one when no Choice carries text, such as a chart with a VML caption.
     if (
       (node.name === "Fallback" && parent.hasTextChoice) ||
-      (odfSpaces && node.name === "page-thumbnail" &&
+      (odfSpaces &&
+        node.name === "page-thumbnail" &&
         stack.some((ancestor) => ancestor.name === "notes"))
     ) {
       parent.children.pop();
@@ -425,8 +426,7 @@ function* rtf(source: string): Generator<string, void> {
       const word = /^([a-z]+)(-?\d+)? ?/i.exec(rest);
       if (hex) {
         if (fallback) fallback--;
-        else if (!state.skip)
-          yield decoder().decode(Uint8Array.of(Number.parseInt(hex[1]!, 16)));
+        else if (!state.skip) yield decoder().decode(Uint8Array.of(Number.parseInt(hex[1]!, 16)));
         i += 3;
       } else if (word) {
         i += word[0].length;
@@ -491,9 +491,7 @@ function* rtf(source: string): Generator<string, void> {
     } else if (!state.skip && char !== "\n" && char !== "\r") {
       if (fallback) fallback--;
       else
-        yield char.charCodeAt(0) < 128
-          ? char
-          : decoder().decode(Uint8Array.of(char.charCodeAt(0)));
+        yield char.charCodeAt(0) < 128 ? char : decoder().decode(Uint8Array.of(char.charCodeAt(0)));
     }
   }
 }

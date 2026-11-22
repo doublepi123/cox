@@ -279,9 +279,7 @@ export function liveWorkEntryLabel(
               : "Ran";
     return `${verb} ${program}`;
   }
-  return (
-    commandlessCommandLabel(entry, status) ?? workEntryDisplayLabel(entry, workspaceRoot)
-  );
+  return commandlessCommandLabel(entry, status) ?? workEntryDisplayLabel(entry, workspaceRoot);
 }
 
 export function workEntryIsVisibleInGroup(

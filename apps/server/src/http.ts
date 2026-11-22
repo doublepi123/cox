@@ -413,7 +413,8 @@ const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)(
     redactedSignedPath(requestPath(request)) !== undefined,
 );
 
-export const requestObservability = (logRequests: boolean) =>
+export const requestObservability =
+  (logRequests: boolean) =>
   <E, R>(httpEffect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) =>
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
       const redactedPath = redactedSignedPath(requestPath(request));
@@ -421,10 +422,17 @@ export const requestObservability = (logRequests: boolean) =>
         return logRequests ? HttpMiddleware.logger(httpEffect) : httpEffect;
       }
 
-      const original = Effect.provideService(httpEffect, HttpServerRequest.HttpServerRequest, request);
+      const original = Effect.provideService(
+        httpEffect,
+        HttpServerRequest.HttpServerRequest,
+        request,
+      );
       const logged = logRequests ? HttpMiddleware.logger(original) : original;
       return HttpMiddleware.tracer(logged).pipe(
-        Effect.provideService(HttpServerRequest.HttpServerRequest, request.modify({ url: redactedPath })),
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          request.modify({ url: redactedPath }),
+        ),
         Effect.provideService(HttpMiddleware.TracerDisabledWhen, () => false),
       );
     });

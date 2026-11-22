@@ -489,11 +489,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
             <span
               ref={labelRef}
-              className={cn(
-                answerPreview ? "min-w-0" : "min-w-0 flex-1",
-                "truncate",
-                headingClass,
-              )}
+              className={cn(answerPreview ? "min-w-0" : "min-w-0 flex-1", "truncate", headingClass)}
             >
               {isReasoning && !expanded ? (
                 <ChatMarkdown

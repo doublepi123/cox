@@ -33,7 +33,10 @@ import {
   OPENCODE_2_RESPONSES,
   replayOpenCodeServer,
 } from "./probeResponses.fixture.ts";
-import { buildProviderOptionSelectionsFromDescriptors, DEFAULT_VARIANT_CHOICE_ID } from "@t3tools/shared/model";
+import {
+  buildProviderOptionSelectionsFromDescriptors,
+  DEFAULT_VARIANT_CHOICE_ID,
+} from "@t3tools/shared/model";
 const decodeOpenCodeSettings = Schema.decodeSync(OpenCodeSettings);
 
 const DEFAULT_VERSION_STDOUT = "opencode 1.14.19\n";

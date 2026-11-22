@@ -1201,11 +1201,13 @@ it.layer(
       yield* manager.close({ threadId: "thread-1" });
 
       const reopened = yield* manager.open(openInput());
-      expect(reopened.history.startsWith(
-        'prompt \u001b[!p\u001b["p\u001b[4 q\u001b[u' +
-          "\u001b]4;1;red;2;?\u0007\u001b]0;t\u001b\\\u001b]4;3;?\u001b]0;x\u001b" +
-          `\u001b[${"0".repeat(5000)}31mXdone\n`,
-      )).toBe(true);
+      expect(
+        reopened.history.startsWith(
+          'prompt \u001b[!p\u001b["p\u001b[4 q\u001b[u' +
+            "\u001b]4;1;red;2;?\u0007\u001b]0;t\u001b\\\u001b]4;3;?\u001b]0;x\u001b" +
+            `\u001b[${"0".repeat(5000)}31mXdone\n`,
+        ),
+      ).toBe(true);
     }),
   );
 

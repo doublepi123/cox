@@ -66,7 +66,12 @@ export function ThreadContextChip(props: {
         }
       />
       <ThreadHoverCardPopup side="top">
-        <ThreadChipHoverCard title={title} project={project} shell={shell} unreadable={props.unreadable === true} />
+        <ThreadChipHoverCard
+          title={title}
+          project={project}
+          shell={shell}
+          unreadable={props.unreadable === true}
+        />
       </ThreadHoverCardPopup>
     </Tooltip>
   );

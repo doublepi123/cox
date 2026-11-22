@@ -176,7 +176,11 @@ it("keeps a screen reader's place when scrolling the description condenses the h
   style.textContent = appCss;
   document.head.append(style);
   using _style = { [Symbol.dispose]: () => style.remove() };
-  using _shown = { [Symbol.dispose]: () => { shown.detail = null; } };
+  using _shown = {
+    [Symbol.dispose]: () => {
+      shown.detail = null;
+    },
+  };
   const controller = createWorkspaceFocusController(document);
   using _controller = { [Symbol.dispose]: () => controller.dispose() };
   await using screen = await render(

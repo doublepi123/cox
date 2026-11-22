@@ -377,8 +377,9 @@ export function SettingsSidebarNav({
                     aria-label={t("Settings sections")}
                     className="flex flex-col gap-4"
                   >
-                    {navGroups.filter((group) => group.paths.length > 0).map(
-                      (group, index) => (
+                    {navGroups
+                      .filter((group) => group.paths.length > 0)
+                      .map((group, index) => (
                         <div
                           key={group.heading ?? index}
                           role="group"
@@ -434,8 +435,7 @@ export function SettingsSidebarNav({
                               })}
                           </SidebarMenu>
                         </div>
-                      ),
-                    )}
+                      ))}
                   </div>
                 </div>
               )}

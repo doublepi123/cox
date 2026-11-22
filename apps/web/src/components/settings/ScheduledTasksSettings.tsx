@@ -53,7 +53,11 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
-import { formatDateTimeTimestamp, formatRelativeTime, formatTimeOfDay } from "../../timestampFormat";
+import {
+  formatDateTimeTimestamp,
+  formatRelativeTime,
+  formatTimeOfDay,
+} from "../../timestampFormat";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import { providerInstanceEntriesFor } from "../../providerInstances";
@@ -332,7 +336,9 @@ export function scheduleLabel(
       : translateCurrent("Every {count} sec", { count: Math.round(schedule.everyMs / 1000) });
   }
   if (schedule.type === "once")
-    return translateCurrent("Once at {time}", { time: formatDateTimeTimestamp(schedule.runAt, timestampFormat) });
+    return translateCurrent("Once at {time}", {
+      time: formatDateTimeTimestamp(schedule.runAt, timestampFormat),
+    });
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0
@@ -340,7 +346,10 @@ export function scheduleLabel(
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
         ? translateCurrent("Weekdays")
         : weekdays.map((day) => translateCurrent(WEEKDAY_LABELS[day] ?? "")).join(", ");
-  const label = translateCurrent("{days} at {time}", { days, time: formatTimeOfDay(schedule.timeOfDay, timestampFormat) });
+  const label = translateCurrent("{days} at {time}", {
+    days,
+    time: formatTimeOfDay(schedule.timeOfDay, timestampFormat),
+  });
   const zone = scheduleTimeZoneLabel(timeZone, nextRunAt);
   return zone === undefined ? label : `${label} ${zone}`;
 }

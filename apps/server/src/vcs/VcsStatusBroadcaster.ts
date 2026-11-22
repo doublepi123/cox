@@ -555,7 +555,8 @@ export const make = Effect.gen(function* () {
             : yield* maybeAutoPull(cwd, remoteRead, options?.policyCwds ?? [cwd]);
         if (pulled !== null) return pulled.remote;
         const refsAtLocalRead = options?.refsAtLocalRead;
-        const refs = refsAtLocalRead && remote ? yield* workflow.readLocalStatusRefSnapshot(cwd) : null;
+        const refs =
+          refsAtLocalRead && remote ? yield* workflow.readLocalStatusRefSnapshot(cwd) : null;
         if (
           remote &&
           (!previousRemote ||
@@ -583,7 +584,9 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((refs) =>
           refs === null
             ? Effect.succeed(status)
-            : Effect.promise(() => globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(refs))).pipe(
+            : Effect.promise(() =>
+                globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(refs)),
+              ).pipe(
                 Effect.map((digest): VcsRefreshStatusResult => ({
                   ...status,
                   refsDigest: Hex.encode(new Uint8Array(digest)).slice(0, 32),
@@ -621,7 +624,8 @@ export const make = Effect.gen(function* () {
         yield* refreshLocalStatusCore(cwd);
         // Without a fetch, the cached behind count cannot justify an automatic pull.
         const pulled = refreshUpstream ? yield* maybeAutoPull(cwd, remoteRead, [rawCwd]) : null;
-        if (pulled !== null) return yield* withRefsDigest(mergeGitStatusParts(pulled.local, pulled.remote));
+        if (pulled !== null)
+          return yield* withRefsDigest(mergeGitStatusParts(pulled.local, pulled.remote));
         yield* updateCachedRemoteStatus(cwd, remoteRead, { publish: true });
         const parts = yield* getStatusParts(cwd);
         return yield* withRefsDigest(mergeGitStatusParts(parts.local, parts.remote));

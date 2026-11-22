@@ -265,7 +265,12 @@ export function useComposerAttachmentIntake(input: {
       const { id, file } = image;
       const movedThread = movedPreparingImageThread(image);
       // Removed from the strip while an earlier image was compressing.
-      if (!isPreparingComposerImage(movedThread ? composerTargetKey(movedThread) : attachmentTargetKey, id)) {
+      if (
+        !isPreparingComposerImage(
+          movedThread ? composerTargetKey(movedThread) : attachmentTargetKey,
+          id,
+        )
+      ) {
         continue;
       }
       // A rejection must still reach the cleanup below: a leaked
@@ -342,7 +347,9 @@ export function useComposerAttachmentIntake(input: {
       .map(([, message]) => message)
       .slice(-1);
     if (rejectedNames.length > 0) {
-      errors.push(`${rejectedNames.join(", ")} could not be restored: the composer is at its ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}-attachment limit.`);
+      errors.push(
+        `${rejectedNames.join(", ")} could not be restored: the composer is at its ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}-attachment limit.`,
+      );
     }
     if (errors.length > 0) setThreadError(threadId, errors.join("\n"));
     if (movedThread && storedImages.length > 0) {

@@ -528,7 +528,10 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     // Explorer answers /select of a missing path by opening its default folder, not the parent.
     const fs = yield* FileSystem.FileSystem;
     if (!(yield* fs.exists(input.cwd).pipe(Effect.orElseSucceed(() => true)))) {
-      return yield* new ExternalLauncherRevealTargetMissingError({ editor: editorDef.id, target: input.cwd });
+      return yield* new ExternalLauncherRevealTargetMissingError({
+        editor: editorDef.id,
+        target: input.cwd,
+      });
     }
     return yield* resolveFileManagerRevealLaunch(input.cwd, platform, env, command);
   }

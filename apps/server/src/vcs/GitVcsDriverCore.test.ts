@@ -1423,13 +1423,7 @@ it.effect("a refreshed ref list reads the current branch and repository paths on
       assert.equal(spawnedArgs.filter((args) => args[0] === "symbolic-ref").length, 1);
       assert.equal(spawnedArgs.filter((args) => args[0] === "rev-parse").length, 1);
     }),
-  ).pipe(
-    Effect.provide(
-      layerServerConfig.pipe(
-        Layer.provideMerge(NodeServices.layer),
-      ),
-    ),
-  ),
+  ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
 );
 
 it.effect.each(["a Cox branch creation", "an external worktree addition"] as const)(
@@ -1499,13 +1493,7 @@ it.effect.each(["a Cox branch creation", "an external worktree addition"] as con
           yield* Fiber.join(inFlight);
         }
       }),
-    ).pipe(
-      Effect.provide(
-        layerServerConfig.pipe(
-          Layer.provideMerge(NodeServices.layer),
-        ),
-      ),
-    ),
+    ).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
 );
 
 it.effect("invalidates a ref snapshot when a mutation fails after changing Git", () =>

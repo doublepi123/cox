@@ -79,7 +79,11 @@ export function formatProviderUpdateRequiredNotice(
   const version = minVersion.startsWith("v") ? minVersion : `v${minVersion}`;
   const names = formatModelList(models.map((model) => model.name));
   const latestVersion = channelLatestVersionBelow(provider, minVersion);
-  if (latestVersion && provider.driver === "claudeAgent" && provider.versionAdvisory?.updateCommand === HOMEBREW_STABLE_CASK_UPDATE_COMMAND) {
+  if (
+    latestVersion &&
+    provider.driver === "claudeAgent" &&
+    provider.versionAdvisory?.updateCommand === HOMEBREW_STABLE_CASK_UPDATE_COMMAND
+  ) {
     return `Using ${names} requires ${providerName} ${version} or newer, but the claude-code Homebrew cask only has ${withV(latestVersion)}. Switch to the claude-code@latest cask: ${HOMEBREW_LATEST_CASK_SWITCH_COMMAND}`;
   }
   if (latestVersion) {

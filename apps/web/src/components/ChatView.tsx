@@ -1622,16 +1622,20 @@ export default function ChatView(props: ChatViewProps) {
       !threadRuntimeIsActive(serverThreadShell?.runtime),
     mutationId: workspaceMutationId,
   });
-  const gitStatusRevision = workspaceRevision.revision === null
-    ? undefined
-    : `${activeThreadKey ?? ""}\u0000${workspaceRevision.revision}`;
+  const gitStatusRevision =
+    workspaceRevision.revision === null
+      ? undefined
+      : `${activeThreadKey ?? ""}\u0000${workspaceRevision.revision}`;
   const gitStatusQuery = {
     data: useAtomValue(
       gitStatusAtom
         ? chatGitStatusAtom(
             workspaceRevision.pending
               ? revisionedQuery(gitStatusAtom, undefined, { startedUnder: gitStatusRevision })
-              : revisionedQuery(gitStatusAtom, workspaceMutationId === null ? undefined : gitStatusRevision),
+              : revisionedQuery(
+                  gitStatusAtom,
+                  workspaceMutationId === null ? undefined : gitStatusRevision,
+                ),
           )
         : NO_CHAT_GIT_STATUS_ATOM,
     ),
