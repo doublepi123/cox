@@ -207,6 +207,16 @@ describe("document preview contents", () => {
   });
 
   it.each([
+    [
+      "visible text around hidden character formatting",
+      String.raw`{\rtf1 A{\v hidden{\v0 B}hidden}C\v hidden\v0 D\v hidden\plain E}`,
+      "ABCDE",
+    ],
+    [
+      "line breaks inside hidden text",
+      String.raw`{\rtf1\ansi{\v\line\line\line}First line\line Second line}`,
+      "First line<br>Second line",
+    ],
     ["a tracked replacement", String.raw`{\rtf1 aaa{\deleted bbb}{\revised BBB}ccc}`, "aaaBBBccc"],
     [
       "text after a deletion reset",
