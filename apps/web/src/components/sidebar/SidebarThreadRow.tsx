@@ -302,7 +302,9 @@ function SidebarThreadTooltip({
         {worktreePath ? (
           <div className="flex min-w-0 items-center gap-2">
             <FolderGit2Icon className="size-3 shrink-0 stroke-muted-foreground" />
-            <MiddleTruncate value={formatWorktreePathForDisplay(worktreePath)} className="flex" />
+            <div className="flex min-w-0">
+              <MiddleTruncate value={formatWorktreePathForDisplay(worktreePath)} />
+            </div>
           </div>
         ) : null}
         {branchMismatch ? (
