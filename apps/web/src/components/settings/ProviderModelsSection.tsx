@@ -148,11 +148,19 @@ export function ProviderModelsSection({
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const scrollToSlugRef = useRef<string | null>(null);
+  const [heldPlacements, setHeldPlacements] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
+  );
   const hiddenModelSet = new Set(hiddenModels);
+  const placedHiddenSet = new Set(
+    models
+      .filter((model) => heldPlacements.get(model.slug) ?? hiddenModelSet.has(model.slug))
+      .map((model) => model.slug),
+  );
   const favoriteModelSet = new Set(favoriteModels);
   const displayModels = groupModelsForDisplay(models, {
     favoriteModels: favoriteModelSet,
-    hiddenModels: hiddenModelSet,
+    hiddenModels: placedHiddenSet,
     modelOrder,
   });
   const favoriteCount = displayModels.filter((model) => favoriteModelSet.has(model.slug)).length;
@@ -246,6 +254,9 @@ export function ProviderModelsSection({
 
   const setHidden = (slug: string, hidden: boolean) => {
     if (!canWritePreferences || hidden === hiddenModelSet.has(slug)) return;
+    setHeldPlacements((current) =>
+      current.has(slug) ? current : new Map(current).set(slug, hiddenModelSet.has(slug)),
+    );
     onHiddenModelsChange(
       hidden ? [...hiddenModels, slug] : hiddenModels.filter((model) => model !== slug),
       [slug],
@@ -260,7 +271,7 @@ export function ProviderModelsSection({
   const groupOf = (model: (typeof displayModels)[number]) =>
     favoriteModelSet.has(model.slug)
       ? "favorite"
-      : !model.isCustom && hiddenModelSet.has(model.slug)
+      : !model.isCustom && placedHiddenSet.has(model.slug)
         ? "hidden"
         : "visible";
   const handleMove = (slug: string, direction: -1 | 1) => {
@@ -338,12 +349,13 @@ export function ProviderModelsSection({
               type="button"
               size="xs"
               variant="ghost-muted"
-              onClick={() =>
+              onClick={() => {
+                setHeldPlacements(new Map());
                 onHiddenModelsChange(
                   nextHiddenModelsForBulkToggle(models, hiddenModels),
                   builtInModels.map((model) => model.slug),
-                )
-              }
+                );
+              }}
             >
               {allBuiltInModelsHidden ? t("Enable all") : t("Disable all")}
             </Button>
