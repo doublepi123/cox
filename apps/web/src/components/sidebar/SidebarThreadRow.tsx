@@ -146,7 +146,7 @@ function RelativeTimeLabel(props: { timestamp: string | null }) {
     : formatRelativeTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`), language, true);
 }
 
-function JumpHintBadge(props: { label: string }) {
+export function JumpHintBadge(props: { label: string }) {
   return (
     <span
       aria-hidden
