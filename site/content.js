@@ -141,9 +141,9 @@ export const messages = {
     "feature.terminal.worktree": "工作树",
     "mobile.title": "离开桌前，驾驶舱​仍在掌心",
     "mobile.description":
-      "用 Cox Mobile 或手机浏览器直连自己的服务器。想把 Cox 和智能体都装在 Android 手机或 iPhone 上，可以用 CoCode。",
+      "用 Cox Mobile 或手机浏览器直连自己的服务器。想把 Cox 和智能体都装在手机上，可以用 CoCode（iOS 为实验版）。",
     "mobile.download": "下载 Cox Mobile",
-    "mobile.cocodeCta": "探索 CoCode（Android / iOS）",
+    "mobile.cocodeCta": "探索 CoCode",
     "mobile.platforms": "iOS 17+（IPA）· Android 8+（APK）",
     "mobile.feature1.title": "多台服务器，各自保存登录状态",
     "mobile.feature1.description":
@@ -186,7 +186,7 @@ export const messages = {
     "mobile.matrix.coxFit":
       "连接多台服务器，独立保存会话。配合 Bark、Telegram 或 Ntfy 接收后台提醒。",
     "mobile.matrix.cocodePlatform":
-      "Android 8.0+ 与 iOS / iPadOS 27+ 独立应用（iOS 需自行签名，可与 Cox Mobile 同机并存）",
+      "Android 8.0+ 独立应用；iOS / iPadOS 27+ 实验版需自行签名。可与 Cox Mobile 同机并存",
     "mobile.matrix.cocodeWhere":
       "手机本地的 Alpine Linux（Android 用 PRoot，iOS 用 Kernarium 虚拟机）",
     "mobile.matrix.cocodeFit":
@@ -214,9 +214,9 @@ export const messages = {
     "desktop.feature3.title": "HTTPS 与 Cloudflare Access 远程连接",
     "desktop.feature3.description":
       "连接自建 Cox 服务器要求 HTTPS 与密码，兼容 Cloudflare Access 身份验证。每个服务器拥有独立浏览器配置，可同时连接与单独断开。",
-    "desktop.mobile": "在手机本地运行 CoCode（Android / iOS）",
+    "desktop.mobile": "在手机本地运行 CoCode",
     "desktop.mobileDescription":
-      "无需电脑、root 或越狱，在 Android 手机或 iPhone 上本地运行 Cox 与智能体；可与 Cox Mobile 远程版同机共存。",
+      "无需电脑、root 或越狱，在 Android 手机上本地运行 Cox 与智能体，iPhone 可试用实验版；可与 Cox Mobile 远程版同机共存。",
     "local.title": "本地控制面，不是云端托管",
     "local.description":
       "Cox 服务运行在你的电脑或自建主机上，默认只监听 127.0.0.1。项目、对话、凭据与检查点留在本地数据目录，上游密钥由本地网关保管，桌面与移动端均直连你的实例。",
@@ -419,9 +419,9 @@ export const messages = {
     "feature.terminal.worktree": "Worktree",
     "mobile.title": "Away from your desk. Still in the cockpit.",
     "mobile.description":
-      "Connect directly to your server with Cox Mobile or a mobile browser. To run Cox and agents on an Android phone or iPhone itself, use CoCode.",
+      "Connect directly to your server with Cox Mobile or a mobile browser. To run Cox and agents on the phone itself, use CoCode (experimental on iOS).",
     "mobile.download": "Download Cox Mobile",
-    "mobile.cocodeCta": "Explore CoCode for Android and iOS",
+    "mobile.cocodeCta": "Explore CoCode",
     "mobile.platforms": "iOS 17+ (IPA) · Android 8+ (APK)",
     "mobile.feature1.title": "Separate sessions for each server",
     "mobile.feature1.description":
@@ -466,7 +466,7 @@ export const messages = {
     "mobile.matrix.coxFit":
       "Keep sessions separate across servers. Use Bark, Telegram, or Ntfy for background alerts.",
     "mobile.matrix.cocodePlatform":
-      "Android 8.0+ and iOS / iPadOS 27+ standalone app (sign the iOS build yourself; installs side by side with Cox Mobile)",
+      "Android 8.0+ standalone app; experimental iOS / iPadOS 27+ build you sign yourself. Installs side by side with Cox Mobile",
     "mobile.matrix.cocodeWhere":
       "Alpine Linux on the phone (PRoot on Android, a Kernarium virtual machine on iOS)",
     "mobile.matrix.cocodeFit":
@@ -495,9 +495,9 @@ export const messages = {
     "desktop.feature3.title": "HTTPS and Cloudflare Access remote servers",
     "desktop.feature3.description":
       "Connect to self-hosted Cox servers over HTTPS with a password and optional Cloudflare Access SSO. Each server stays in an isolated profile and disconnects independently.",
-    "desktop.mobile": "Run CoCode locally on Android or iOS",
+    "desktop.mobile": "Run CoCode locally on your phone",
     "desktop.mobileDescription":
-      "Run Cox and coding agents on an Android phone or iPhone without a computer, root, or a jailbreak, side by side with Cox Mobile.",
+      "Run Cox and coding agents on an Android phone without a computer, root, or a jailbreak, with an experimental iPhone build, side by side with Cox Mobile.",
     "local.title": "A local control plane, not a hosted service",
     "local.description":
       "Cox runs on your computer or self-hosted server and listens on 127.0.0.1 by default. Projects, threads, credentials, and checkpoints stay in your local data directory while desktop and mobile clients connect directly.",

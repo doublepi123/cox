@@ -6,7 +6,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-[Website](https://doublepi.dev/) · [CoCode for Android and iOS](https://doublepi.dev/cocode/)
+[Website](https://doublepi.dev/) · [CoCode](https://doublepi.dev/cocode/)
 
 Cox is a Web interface and desktop client for coding agents, derived from [T3 Code](https://github.com/pingdotgg/t3code), starting at `0102f07afb` in the `doublepi123/t3code` fork.
 
@@ -15,7 +15,7 @@ Run the server on your computer and control your locally installed coding agents
 ## Project website
 
 The product homepage is [doublepi.dev](https://doublepi.dev/), with the
-[CoCode Android and iOS page](https://doublepi.dev/cocode/) under the same GitHub Pages site.
+[CoCode page](https://doublepi.dev/cocode/) (Android, experimental iOS) under the same GitHub Pages site.
 The bilingual website source lives in [`site/`](site/README.md), with a responsive
 feature showcase, an illustrative workspace, and copyable installation commands.
 It is separate from the local Cox application and does not host agents or user data.
