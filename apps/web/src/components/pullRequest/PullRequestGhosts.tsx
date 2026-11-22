@@ -1,5 +1,5 @@
 import { useTranslation } from "../../i18n";
-import type { PullRequestListEntry, PullRequestSummary } from "@t3tools/contracts";
+import type { PullRequestListEntry, PullRequestSummary, ScopedThreadRef } from "@t3tools/contracts";
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
@@ -17,7 +17,7 @@ import {
   type ChangeRequestTerminology,
 } from "@t3tools/client-runtime/source-control-clients";
 
-import { readLocalApi } from "~/localApi";
+import { useOpenLink } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
 import { RelativeTime } from "~/components/RelativeTime";
 
@@ -81,6 +81,7 @@ export function PullRequestListGhost({ rows = 7, caption }: { rows?: number; cap
 
 export function PullRequestDetailGhost({
   seed: entry,
+  threadRef = null,
   summary,
   actions,
   checkoutCommand,
@@ -92,6 +93,7 @@ export function PullRequestDetailGhost({
   onCheckoutError,
 }: {
   seed?: PullRequestListEntry | null;
+  threadRef?: ScopedThreadRef | null | undefined;
   summary?: PullRequestSummary | null;
   actions?: ReactNode;
   checkoutCommand?: string | null;
@@ -103,6 +105,7 @@ export function PullRequestDetailGhost({
   onCheckoutError?: ((error: Error) => void) | undefined;
 }) {
   const { t } = useTranslation();
+  const openLink = useOpenLink(threadRef);
   const seed = summary
     ? {
         ...entry,
@@ -155,7 +158,10 @@ export function PullRequestDetailGhost({
               <>
                 <span className="min-w-0 truncate font-medium">{seed.repository}</span>
                 <InlineButton
-                  onClick={() => void readLocalApi()?.shell.openExternal(seed.url)}
+                  onClick={(event) => void openLink(seed.url, { event }).catch(console.error)}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) void openLink(seed.url, { event }).catch(console.error);
+                  }}
                   aria-label={`Open ${terminology.singular} #${seed.number} on host`}
                 >
                   <span className={statePresentation?.toneClassName}>#{seed.number}</span>
