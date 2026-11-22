@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "
 import { randomUUID } from "node:crypto";
 
 const desktopParent = process.env.COX_DESKTOP_PARENT_PID;
+delete process.env.COX_OWNED_OMO_COMPUTER_USE;
 if (desktopParent !== undefined) {
   delete process.env.COX_DESKTOP_PARENT_PID;
   if (!process.send || desktopParent !== String(process.ppid) || !process.connected)
@@ -59,7 +60,24 @@ if (desktopParent !== undefined) {
   const send = process.send.bind(process);
   await new Promise<void>((resolve) => {
     const start = (message: unknown) => {
-      if (message !== "cox:backend-start") return;
+      if (message !== "cox:backend-start") {
+        if (
+          typeof message !== "object" ||
+          message === null ||
+          !("type" in message) ||
+          message.type !== "cox:backend-start" ||
+          !("computerUseEnabled" in message) ||
+          message.computerUseEnabled !== true
+        )
+          return;
+        const hostFlag = process.argv.indexOf("--host");
+        if (
+          process.platform === "darwin" &&
+          hostFlag >= 0 &&
+          process.argv[hostFlag + 1] === "127.0.0.1"
+        )
+          process.env.COX_OWNED_OMO_COMPUTER_USE = "1";
+      }
       process.off("message", start);
       resolve();
     };

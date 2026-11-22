@@ -34,6 +34,11 @@ describe("toolActivity", () => {
     ).toEqual({ rawInput: { startLine: 4 } });
   });
 
+  it("recognizes native computer tool calls before result metadata exists", () => {
+    expect(dynamicToolSurface("computer", {})).toBe("computer");
+    expect(dynamicToolSurface("computer_actions", {})).toBe("computer");
+  });
+
   it("recognizes computer-use REPL calls before result metadata exists", () => {
     expect(dynamicToolSurface("cua_repl.js", {})).toBe("computer");
     for (const name of ["node_repl.js", "js"]) {

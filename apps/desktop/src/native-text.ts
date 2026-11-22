@@ -18,6 +18,16 @@ const chinese = {
   "Open installer": "打开安装包",
   Settings: "设置",
   Usage: "用量",
+  "OMO Computer Use": "OMO 电脑控制",
+  "Open the local Cox workspace to set up computer use.": "请打开 Cox 本地工作区，再设置电脑控制。",
+  "Enable OMO computer use?": "启用 OMO 电脑控制？",
+  "Disable OMO computer use?": "停用 OMO 电脑控制？",
+  "Enable and restart": "启用并重启",
+  "Disable and restart": "停用并重启",
+  "OMO can capture and operate Mac windows. Grant Cox Screen Recording and Accessibility in System Settings, then quit and reopen Cox. Press Control+Option+Command+Escape to stop input. Restarting interrupts local tasks and terminals.":
+    "OMO 可以截取并操作 Mac 窗口。请在系统设置中为 Cox 开启屏幕录制和辅助功能，随后完全退出并重新打开 Cox。按 Control+Option+Command+Escape 可立即停止输入。重启会中断本地任务和终端。",
+  "Restarting removes the computer tool from local OMO sessions and interrupts local tasks and terminals.":
+    "重启会从本地 OMO 会话移除电脑控制工具，并中断本地任务和终端。",
   Connections: "连接管理",
   Local: "本地",
   "Connect to remote server": "连接远程服务器",

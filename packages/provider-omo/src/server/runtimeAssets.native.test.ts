@@ -28,6 +28,9 @@ export default async function probe(pi) {
   let readChildPreset;
   pi.on("session_start", (_event, ctx) => { context = ctx; });
   pi.on("session_shutdown", () => child?.dispose());
+  pi.rpc.handle("cox.assets.computer-tools", async () => ({
+    names: pi.getAllTools().filter(tool => tool.name === "computer").map(tool => tool.name),
+  }));
   pi.rpc.handle("cox.assets.child", async () => {
     const settingsManager = sdk.SettingsManager.inMemory({ enabledBuiltinExtensions: ["permission-system"], permissionPreset: "full-access" });
     const loader = new sdk.DefaultResourceLoader({ cwd: context.cwd, agentDir: context.agentDir, settingsManager,
@@ -83,11 +86,12 @@ const npm = process.env.COX_OMO_NPM_TEST_LAUNCHER;
 
 describe("official OMO no-model runtime layout acceptance", () => {
   for (const fixture of [
-    { kind: "standalone", executable: standalone },
-    { kind: "npm", executable: npm },
+    { kind: "standalone", executable: standalone, computerUse: false },
+    { kind: "npm", executable: npm, computerUse: false },
+    { kind: "npm", executable: npm, computerUse: true },
   ] as const) {
     it.runIf(fixture.executable !== undefined)(
-      `${fixture.kind}: final extension startup and live child write downgrades`,
+      `${fixture.kind}: final extension startup, computer use ${fixture.computerUse ? "on" : "off"}, and live child write downgrades`,
       async () => {
         if (fixture.executable === undefined)
           throw new Error("An isolated official OMO fixture is required.");
@@ -98,7 +102,7 @@ describe("official OMO no-model runtime layout acceptance", () => {
           expect(hash).toBe("3a74aba613cf02e740073b302171c0fb9d9155f5ff6069f91bea23972ffa1444");
         }
         const temporary = await NodeFS.mkdtemp(
-          NodePath.join(NodeOS.homedir(), ".cache", "cox-omo-assets-native-"),
+          NodePath.join(NodeOS.tmpdir(), "cox-omo-assets-native-"),
         );
         const home = NodePath.join(temporary, "home");
         const agent = NodePath.join(temporary, "agent");
@@ -147,6 +151,7 @@ describe("official OMO no-model runtime layout acceptance", () => {
             COX_OMO_AUTOMATIC_MEMORY: enabledMemory ? "1" : "0",
             COX_OMO_MEMORY_HOME: NodePath.join(temporary, "memory"),
             COX_OMO_TASK_CONFIG: JSON.stringify(config),
+            COX_OMO_COMPUTER_USE: "1",
             CI: "1",
             GIT_CONFIG_NOSYSTEM: "1",
             GIT_CONFIG_GLOBAL: NodePath.join(temporary, "gitconfig"),
@@ -168,7 +173,7 @@ describe("official OMO no-model runtime layout acceptance", () => {
           ],
           {
             cwd,
-            env: launch.env,
+            env: fixture.computerUse ? { ...launch.env, COX_OMO_COMPUTER_USE: "1" } : launch.env,
             stdio: ["pipe", "pipe", "pipe"],
           },
         );
@@ -219,6 +224,9 @@ describe("official OMO no-model runtime layout acceptance", () => {
             nativeTaskReady: true,
             nativeTask: { status: "active" },
           });
+          expect(
+            await request({ type: "extension_request", name: "cox.assets.computer-tools" }),
+          ).toEqual({ names: fixture.computerUse ? ["computer"] : [] });
           expect(
             await request({ type: "set_permission_preset", permissionPreset: "ask" }),
           ).toMatchObject({

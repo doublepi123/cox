@@ -37,6 +37,7 @@ function menuActions() {
     openSettings: vi.fn(),
     checkUpdates: vi.fn(),
     toggleAutomaticUpdates: vi.fn(),
+    openComputerUse: vi.fn(),
     openLogs: vi.fn(),
   };
 }
@@ -106,6 +107,9 @@ describe("native application menu placement", () => {
     (platform) => {
       const actions = menuActions();
       const items = flatten(createDesktopMenuTemplate(platform, "en-US", actions));
+      expect(items.some((item) => item.click === actions.openComputerUse)).toBe(
+        platform === "darwin",
+      );
       const check = items.filter((item) => item.id === "cox-check-updates");
       const automatic = items.filter((item) => item.id === "cox-automatic-updates");
 

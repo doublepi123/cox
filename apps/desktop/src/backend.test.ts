@@ -14,6 +14,7 @@ import { join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home-dir') + 1];
 const mode = process.env.FIXTURE_MODE;
 writeFileSync(join(home, 'parent-flag'), String(process.env.COX_DESKTOP_PARENT_PID));
+writeFileSync(join(home, 'computer-use'), String(process.env.COX_OWNED_OMO_COMPUTER_USE));
 if (mode === 'exit') process.exit(7);
 const server = createServer((request, response) => {
   if (request.url === '/crash') { response.end('stopping'); setImmediate(() => process.exit(9)); return; }
@@ -54,7 +55,7 @@ server.listen(0, '127.0.0.1', () => {
 const cleanups: Array<() => Promise<unknown>> = [];
 const preload = join(import.meta.dirname, "backend-parent.ts");
 
-async function createBackend(mode = "normal") {
+async function createBackend(mode = "normal", computerUseEnabled = false) {
   const home = await mkdtemp(join(tmpdir(), "cox-desktop-test-"));
   cleanups.unshift(() => rm(home, { recursive: true, force: true }));
   const entry = join(home, "fixture.mjs");
@@ -67,7 +68,8 @@ async function createBackend(mode = "normal") {
     preloadPath: preload,
     homeDirectory: home,
     cwd: home,
-    environment: { ...process.env, FIXTURE_MODE: mode },
+    environment: { ...process.env, FIXTURE_MODE: mode, COX_OWNED_OMO_COMPUTER_USE: "1" },
+    computerUseEnabled,
     onLog,
     onUnexpectedExit,
     stopTimeoutMs: 100,
@@ -107,6 +109,14 @@ describe("desktop backend supervisor", () => {
   it("rejects a runtime descriptor owned by another process", async () => {
     const { backend } = await createBackend("wrong-owner");
     await expect(backend.start()).rejects.toThrow("did not publish its own loopback address");
+  });
+
+  it.each([false, true])("requires a native macOS opt-in for computer use (%s)", async (enable) => {
+    const { backend, home } = await createBackend("normal", enable);
+    await backend.start();
+    expect(await readFile(join(home, "computer-use"), "utf8")).toBe(
+      enable && process.platform === "darwin" ? "1" : "undefined",
+    );
   });
 
   it("waits for its runtime descriptor after the address is logged", async () => {

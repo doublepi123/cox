@@ -22,6 +22,7 @@ export interface BackendOptions {
   readonly onUnexpectedExit: (message: string) => void;
   readonly startupTimeoutMs?: number;
   readonly stopTimeoutMs?: number;
+  readonly computerUseEnabled?: boolean;
 }
 
 export class BackendProcess {
@@ -61,7 +62,12 @@ export class BackendProcess {
     );
     child.on("message", (message: unknown) => {
       if (message === "cox:backend-ready-to-start" && child.connected && !this.stopping)
-        child.send("cox:backend-start", () => {});
+        child.send(
+          this.options.computerUseEnabled === true
+            ? { type: "cox:backend-start", computerUseEnabled: true }
+            : "cox:backend-start",
+          () => {},
+        );
     });
     this.child = child;
     this.exited = new Promise((resolve) => {

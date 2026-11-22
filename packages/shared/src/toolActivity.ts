@@ -35,7 +35,8 @@ export const COMPUTER_USE_TOOL_SOURCE = {
 } as const;
 
 export function dynamicToolSurface(toolName: string | null | undefined, input: unknown) {
-  if (toolName === "cua_repl.js") return "computer" as const;
+  if (toolName === "cua_repl.js" || toolName === "computer" || toolName === "computer_actions")
+    return "computer" as const;
   const code = asRecord(input)?.code;
   return isJavaScriptReplTool(toolName) &&
     typeof code === "string" &&

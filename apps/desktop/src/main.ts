@@ -91,6 +91,16 @@ const home = app.isPackaged
   ? join(homedir(), ".cox", "desktop")
   : join(root, ".cox", "desktop-dev");
 mkdirSync(join(home, "browser"), { recursive: true, mode: 0o700 });
+const computerUsePreference = join(home, "omo-computer-use.json");
+let computerUseEnabled = false;
+if (process.platform === "darwin") {
+  try {
+    computerUseEnabled = readFileSync(computerUsePreference, "utf8").trim() === "true";
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT")
+      process.stderr.write(`Could not read OMO computer use preference: ${String(error)}\n`);
+  }
+}
 app.setPath("userData", join(home, "browser"));
 app.setAppLogsPath(join(home, "logs"));
 app.setName("Cox");
@@ -1670,6 +1680,47 @@ async function start() {
           });
         });
     },
+    openComputerUse: async () => {
+      const owner = mainOwner(BrowserWindow.getFocusedWindow());
+      if (!owner || accessForWindow(owner)?.kind !== "local" || !desktopReady) {
+        await dialog.showMessageBox({
+          message: text("Open the local Cox workspace to set up computer use."),
+        });
+        return;
+      }
+      const enable = !computerUseEnabled;
+      const result = await dialog.showMessageBox(owner, {
+        message: text(enable ? "Enable OMO computer use?" : "Disable OMO computer use?"),
+        detail: text(
+          enable
+            ? "OMO can capture and operate Mac windows. Grant Cox Screen Recording and Accessibility in System Settings, then quit and reopen Cox. Press Control+Option+Command+Escape to stop input. Restarting interrupts local tasks and terminals."
+            : "Restarting removes the computer tool from local OMO sessions and interrupts local tasks and terminals.",
+        ),
+        buttons: [text("Cancel"), text(enable ? "Enable and restart" : "Disable and restart")],
+        cancelId: 0,
+        defaultId: 0,
+        noLink: true,
+      });
+      if (
+        result.response !== 1 ||
+        approvedQuit ||
+        quitPending ||
+        accessForWindow(owner)?.kind !== "local"
+      )
+        return;
+      try {
+        const temporary = computerUsePreference + "." + randomUUID();
+        writeFileSync(temporary, JSON.stringify(enable) + "\n", { mode: 0o600, flag: "wx" });
+        renameSync(temporary, computerUsePreference);
+      } catch (error) {
+        dialog.showErrorBox(text("OMO Computer Use"), String(error));
+        return;
+      }
+      computerUseEnabled = enable;
+      restartAfterQuit = true;
+      quitPending = true;
+      await finishQuit();
+    },
     openLogs: () => {
       void shell.openPath(dirname(logPath));
     },
@@ -1823,6 +1874,7 @@ async function start() {
       homeDirectory: home,
       cwd: homedir(),
       environment,
+      computerUseEnabled,
       onLog: (message) => log.write(message),
       onUnexpectedExit: (message) => {
         if (startingBackend) return;
