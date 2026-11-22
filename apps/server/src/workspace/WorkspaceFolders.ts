@@ -64,6 +64,8 @@ export class WorkspaceFolders extends Context.Service<
     readonly submodules: (input: {
       readonly projectId: ProjectId;
       readonly worktreePath: string | null;
+      /** The thread's `forThread` folders; passed in so the project is walked once. */
+      readonly folders: ReadonlyArray<ThreadFolder>;
     }) => Effect.Effect<ReadonlyArray<ThreadFolder>, WorkspaceFoldersError>;
     readonly list: (
       input: WorkspaceListFoldersInput,
@@ -514,7 +516,6 @@ const make = Effect.gen(function* () {
   const submodules: WorkspaceFolders["Service"]["submodules"] = Effect.fn(
     "WorkspaceFolders.submodules",
   )(function* (input) {
-    const { folders } = yield* forThread(input);
     // A worktree can outlive its project record; its submodules are then named by where they are.
     const projectRoot = yield* readProject(input.projectId).pipe(
       Effect.map((project) => path.resolve(project.workspaceRoot)),
@@ -526,7 +527,7 @@ const make = Effect.gen(function* () {
     const identity = Option.getOrElse(projectRoot, () => root);
     return yield* submodulesOf([
       { path: root, identity },
-      ...folders.flatMap((folder) =>
+      ...input.folders.flatMap((folder) =>
         folder.isGitRepository
           ? [{ path: folder.path, identity: folder.repositoryPath ?? folder.path }]
           : [],
