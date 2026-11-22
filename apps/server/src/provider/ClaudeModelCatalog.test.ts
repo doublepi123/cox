@@ -16,6 +16,7 @@ import {
   scopeClaudeModelCatalog,
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeModelServiceCatalog,
+  scopeClaudeUpgradeMessageToChannel,
 } from "./ClaudeModelCatalog.ts";
 
 const manifest = (): ModelManifestData => ({
@@ -224,6 +225,30 @@ describe("Claude model catalog", () => {
     assert.strictEqual(
       formatClaudeVersionUpgradeMessage(catalog, "3.1.9"),
       "Claude Code v3.1.9 is too old for Claude Synthetic Next. Upgrade to v3.2.0 or newer to access it.",
+    );
+    // A Homebrew cask that still ships 3.1.9 cannot deliver the upgrade the check asked for.
+    const probed = {
+      version: "3.1.9",
+      message: formatClaudeVersionUpgradeMessage(catalog, "3.1.9"),
+      versionAdvisory: { latestVersion: "3.1.9", updateCommand: "brew upgrade --cask claude-code" },
+    };
+    assert.strictEqual(
+      scopeClaudeUpgradeMessageToChannel(catalog, probed).message,
+      "Claude Code v3.1.9 is too old for Claude Synthetic Next, which needs v3.2.0 or newer, but the claude-code Homebrew cask only has v3.1.9. Switch to the claude-code@latest cask: brew uninstall --cask claude-code && brew install --cask claude-code@latest",
+    );
+    assert.strictEqual(
+      scopeClaudeUpgradeMessageToChannel(catalog, {
+        ...probed,
+        versionAdvisory: { latestVersion: "3.1.9", updateCommand: null },
+      }).message,
+      "Claude Code v3.1.9 is too old for Claude Synthetic Next, which needs v3.2.0 or newer, but the newest version this install can update to is v3.1.9. Install Claude Code another way or wait for a newer release.",
+    );
+    assert.strictEqual(
+      scopeClaudeUpgradeMessageToChannel(catalog, {
+        ...probed,
+        versionAdvisory: { ...probed.versionAdvisory, latestVersion: "3.2.0" },
+      }).message,
+      probed.message,
     );
   });
 
