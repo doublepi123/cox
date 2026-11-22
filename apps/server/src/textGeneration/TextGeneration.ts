@@ -121,32 +121,49 @@ export const make = Effect.gen(function* () {
       selected?.enabled === true &&
       selected.status === "error" &&
       (!selected.installed || selected.auth.status === "unauthenticated");
+    const unsupported =
+      (selected !== undefined && !isProviderTextGenerationCapable(selected)) ||
+      selected?.models.find((candidate) => candidate.slug === selection.model)
+        ?.supportsTextGeneration === false;
     if (
+      unsupported ||
       disabled ||
       unusable ||
       exhaustedUsageWindow(selected, now, selection.model) ||
       resolved === null
     ) {
-      const fallback = fallbackTextGenerationModelSelection(
-        settings,
-        (instanceId, driver, candidate) => {
-          const provider = snapshots.find((candidate) => candidate.instanceId === instanceId);
-          return (
-            instanceId !== selection.instanceId &&
-            provider?.enabled === true &&
-            resolveProjectProviderInstanceEnabled(settings, projectId ?? null, instanceId) &&
-            provider.installed &&
-            provider.auth.status !== "unauthenticated" &&
-            provider.status !== "error" &&
-            isProviderAvailable(provider) &&
-            isProviderTextGenerationCapable(provider) &&
-            (operation !== "generateReviewGuide" || INVESTIGATING_DRIVERS.has(driver)) &&
-            !exhaustedUsageWindow(provider, now, candidate.model)
-          );
-        },
-        { includeConfiguredInstances: true, providers: snapshots },
-      );
+      const rejected = selection;
+      const fallbackWhere = (sameInstance: boolean) =>
+        fallbackTextGenerationModelSelection(
+          settings,
+          (instanceId, driver, candidate) => {
+            const provider = snapshots.find((candidate) => candidate.instanceId === instanceId);
+            return (
+              (sameInstance
+                ? instanceId === rejected.instanceId && candidate.model !== rejected.model
+                : instanceId !== rejected.instanceId) &&
+              provider?.enabled === true &&
+              resolveProjectProviderInstanceEnabled(settings, projectId ?? null, instanceId) &&
+              provider.installed &&
+              provider.auth.status !== "unauthenticated" &&
+              provider.status !== "error" &&
+              isProviderAvailable(provider) &&
+              isProviderTextGenerationCapable(provider) &&
+              provider.models.find((model) => model.slug === candidate.model)
+                ?.supportsTextGeneration !== false &&
+              (operation !== "generateReviewGuide" || INVESTIGATING_DRIVERS.has(driver)) &&
+              !exhaustedUsageWindow(provider, now, candidate.model)
+            );
+          },
+          { includeConfiguredInstances: true, providers: snapshots },
+        );
+      const fallback = fallbackWhere(false) ?? fallbackWhere(true);
       if (fallback) selection = fallback;
+      else if (unsupported)
+        return yield* new TextGenerationError({
+          operation,
+          detail: "No available model supports text generation.",
+        });
       else if (resolved === null)
         return yield* new TextGenerationError({
           operation,

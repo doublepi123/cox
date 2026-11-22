@@ -563,6 +563,8 @@ const PREFLIGHT_PRIMARY_STATES = [
   "exhausted",
   "not installed",
   "not installed, fallback disabled for project",
+  "not installed, fallback model cannot generate text",
+  "thread default model cannot generate text",
   "signed out",
   "signed out, fallback failed",
 ] as const;
@@ -577,6 +579,9 @@ it.effect.each(PREFLIGHT_PRIMARY_STATES)("text generation preflight: %s", (prima
       model: "chat-model",
       options: [{ id: "effort", value: "high" }],
     };
+    const supportedModel =
+      DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")]!;
+    const blockedModel = "custom-no-text";
     const calls: ModelSelection[] = [];
     const instances: ProviderInstance[] = [primary, fallback].map((instanceId) => {
       const driver = ProviderDriverKind.make(instanceId === primary ? "codex" : "claudeAgent");
@@ -589,13 +594,27 @@ it.effect.each(PREFLIGHT_PRIMARY_STATES)("text generation preflight: %s", (prima
         auth: { status: "authenticated" },
         version: null,
         checkedAt: "1970-01-01T00:00:00Z",
-        models: [],
+        models:
+          instanceId === fallback && primaryState.endsWith("cannot generate text")
+            ? [
+                {
+                  slug: blockedModel,
+                  name: blockedModel,
+                  isCustom: true,
+                  supportsTextGeneration: false,
+                  capabilities: null,
+                },
+                { slug: supportedModel, name: supportedModel, isCustom: false, capabilities: null },
+              ]
+            : [],
         slashCommands: [],
         skills: [],
         ...(primaryState === "pending" && instanceId === primary
           ? { installed: false, status: "warning", auth: { status: "unknown" } }
           : {}),
-        ...(primaryState.startsWith("not installed") && instanceId === primary
+        ...((primaryState.startsWith("not installed") ||
+          primaryState === "thread default model cannot generate text") &&
+        instanceId === primary
           ? { installed: false, status: "error", auth: { status: "unknown" } }
           : {}),
         ...(primaryState.startsWith("signed out") && instanceId === primary
@@ -644,8 +663,16 @@ it.effect.each(PREFLIGHT_PRIMARY_STATES)("text generation preflight: %s", (prima
           }),
           ServerSettings.layerTest({
             providerInstances: {
-              [fallback]: { driver: ProviderDriverKind.make("claudeAgent"), config: {} },
+              [fallback]: {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                config: { customModels: [blockedModel] },
+              },
             },
+            ...(primaryState.endsWith("cannot generate text")
+              ? {
+                  defaultModelSelection: { instanceId: fallback, model: blockedModel },
+                }
+              : {}),
             ...(primaryState === "not installed, fallback disabled for project"
               ? {
                   projectSettingsOverrides: {
@@ -665,7 +692,10 @@ it.effect.each(PREFLIGHT_PRIMARY_STATES)("text generation preflight: %s", (prima
         cwd: "/tmp",
         message: "hello",
         linkedContext: "",
-        modelSelection: selection,
+        modelSelection:
+          primaryState === "thread default model cannot generate text"
+            ? { instanceId: fallback, model: blockedModel }
+            : selection,
         projectId,
       }),
     ).toEqual({ title: "Generated title" });

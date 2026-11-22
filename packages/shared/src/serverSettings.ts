@@ -160,14 +160,27 @@ export function fallbackTextGenerationModelSelection(
     ),
   ];
   for (const [instanceId, driver] of candidates) {
+    const models = options?.providers?.find(
+      (provider) => provider.instanceId === instanceId,
+    )?.models;
     const selection = textGenerationModelSelectionForInstance(
       settings,
       instanceId,
       driver,
       undefined,
-      options?.providers?.find((provider) => provider.instanceId === instanceId)?.models,
+      models,
     );
     if (selection && isEnabled(instanceId, driver, selection)) return selection;
+    for (const model of models ?? []) {
+      if (model.slug === selection?.model) continue;
+      const candidate = createModelSelection(instanceId, model.slug);
+      if (
+        textGenerationModelSelectionForInstance(settings, instanceId, driver, candidate, models)
+          ?.model === model.slug &&
+        isEnabled(instanceId, driver, candidate)
+      )
+        return candidate;
+    }
   }
   return null;
 }
