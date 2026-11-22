@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.24 — 2026-11-22
+
+- Add a Cursor CLI provider that runs the official `cursor-agent` over ACP,
+  beside the existing Cursor SDK provider. Cox can install the official CLI,
+  sign in through the CLI login link or use `CURSOR_API_KEY`, show each
+  model's options, and display Cursor questions and plans.
+
 ## Desktop 0.2.36 — 2026-11-22
 
 - Add an experimental OMO Computer Use option in the local macOS workspace.
