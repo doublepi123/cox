@@ -320,3 +320,9 @@ No version bump.
 Cox baseline `c641ee23d350`; upstream `455a60aa3ceb..4d5bf2d5579f` (246 commits).
 Adapted: 42, including a second pass the same day. The commit-by-commit record is [docs/upstream-ports-2026-11-20.md](docs/upstream-ports-2026-11-20.md).
 `apps/mobile` was not changed. No version bump.
+
+## November 22 Cox-native update control
+
+This release adds `COX_UPDATES_MANAGED_BY` for npm installations whose host
+manages Cox upgrades. No upstream commit was ported; upstream disposition counts
+remain unchanged.

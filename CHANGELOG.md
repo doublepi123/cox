@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.27 — 2026-11-22
+
+- Let hosts that manage Cox upgrades disable Cox's own update checks with
+  `COX_UPDATES_MANAGED_BY`.
+
 ## 0.2.26 — 2026-11-22
 
 - Cox no longer creates Codex, Claude or any other built-in provider by
