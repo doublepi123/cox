@@ -63,6 +63,7 @@ describe("V2 preview upgrade", () => {
         [81, "MobilePushAndWebhookNotifications"],
         [82, "ProjectionProjectsTrackedFolders"],
         [83, "TaskFolders"],
+        [84, "WorktreePathKeyIndex"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -169,6 +170,7 @@ describe("V2 preview upgrade", () => {
         [81, "MobilePushAndWebhookNotifications"],
         [82, "ProjectionProjectsTrackedFolders"],
         [83, "TaskFolders"],
+        [84, "WorktreePathKeyIndex"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
