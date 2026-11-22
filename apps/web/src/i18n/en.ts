@@ -1065,6 +1065,7 @@ export const en = {
   "Editor: Open Favorite": "Editor: Open Favorite",
   "Gemini Enterprise": "Gemini Enterprise",
   "Agent Platform (Vertex AI)": "Agent Platform (Vertex AI)",
+  "Move this command to the front of the queue": "Move this command to the front of the queue",
   "Move queued message up": "Move queued message up",
   "Move queued message down": "Move queued message down",
   "Queued message {position} of {count}, not sent":

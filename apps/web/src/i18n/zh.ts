@@ -990,6 +990,7 @@ export const zh = {
   "Editor: Open Favorite": "编辑器：打开收藏编辑器",
   "Gemini Enterprise": "Gemini Enterprise",
   "Agent Platform (Vertex AI)": "Agent Platform（Vertex AI）",
+  "Move this command to the front of the queue": "将此命令移至队列最前面",
   "Move queued message up": "上移排队消息",
   "Move queued message down": "下移排队消息",
   "Queued message {position} of {count}, not sent":

@@ -170,6 +170,14 @@ export function replaceTextRange(
   return { text: nextText, cursor: safeStart + replacement.length };
 }
 
+/** A message that only invokes a slash command, such as `/context all`, not a path like `/src/a.ts`. */
+export function isSlashCommand(message: {
+  readonly text: string;
+  readonly attachments: ReadonlyArray<unknown>;
+}): boolean {
+  return message.attachments.length === 0 && /^\/[\w:-]+(?:\s|$)/u.test(message.text.trim());
+}
+
 export function isClearComposerCommand(text: string): boolean {
   return /^\/clear\s*$/i.test(text.trim());
 }
