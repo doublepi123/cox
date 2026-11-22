@@ -5,7 +5,7 @@ export const conventionalCommitsTextGenerationPolicy: TextGenerationPolicy = {
   commitInstructions:
     "Use Conventional Commits when generating commit subjects. Prefer the narrowest accurate type and include a scope only when it is obvious from the diff.",
   changeRequestInstructions:
-    "Keep the change request title concise. Do not force Conventional Commit syntax into the title unless the repository already uses it.",
+    "Keep the change request title concise. When the listed commits use Conventional Commits, write the title as a Conventional Commit subject too, for example 'feat(web): add a recorder', with the narrowest accurate type, a scope only when obvious, and a lowercase description. Otherwise do not force Conventional Commit syntax into the title.",
   inferRepositoryConventions: false,
 };
 
