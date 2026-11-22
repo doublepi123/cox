@@ -1484,3 +1484,27 @@ it("does not outline the line under a click made with the node-select modifier h
   await vi.waitFor(() => expect(document.activeElement).toBe(editor.view.dom));
   expect(getComputedStyle(paragraph).outlineStyle).toBe("none");
 });
+
+it.each([240, 640])("keeps wrapped prompt suggestions inside the composer at %spx", async (width) => {
+  const suggestion = Array.from({ length: 8 }, () => "Describe the behavior and check the result.").join(" ");
+  await using screen = await render(
+    <div style={{ width }}>
+      <ComposerPromptEditor
+        editorRef={createRef<ComposerPromptEditorHandle>()}
+        value=""
+        cursor={0}
+        contextRecords={new Map()}
+        skills={[]}
+        disabled={false}
+        placeholder={suggestion}
+        onChange={() => {}}
+        onPaste={() => {}}
+      />
+      <button type="button">Composer toolbar</button>
+    </div>,
+  );
+  const placeholder = screen.getByText(suggestion).element();
+  const toolbar = screen.getByRole("button", { name: "Composer toolbar" }).element();
+  expect(placeholder.getBoundingClientRect().height).toBeGreaterThan(0);
+  expect(placeholder.getBoundingClientRect().bottom).toBeLessThanOrEqual(toolbar.getBoundingClientRect().top);
+});
