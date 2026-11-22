@@ -73,6 +73,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       defaultProjectRef: resolveDefaultProjectRef(
         readProjects(),
         useUiStateStore.getState().projectOrder,
+        selectProjectGroupingSettings(getClientSettings()),
       ),
       handleNewThread,
     };

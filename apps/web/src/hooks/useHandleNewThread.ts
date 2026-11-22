@@ -18,7 +18,9 @@ import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import {
   deriveLogicalProjectKeyFromSettings,
   getProjectOrderKey,
+  resolveGroupDefaultProject,
   selectProjectGroupingSettings,
+  type ProjectGroupingSettings,
 } from "@t3tools/client-runtime/state/project-grouping";
 import { resolveNewThreadEnvMode, resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -41,7 +43,7 @@ import { environmentSummaries } from "../state/presentation";
 import { environmentServerConfigsAtom } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
-import { getClientSettings } from "./useSettings";
+import { getClientSettings, useClientSettings } from "./useSettings";
 import { useThreadRouteTarget } from "./useThreadRouteTarget";
 import { readUnloadedThreadCount } from "../state/olderSettledShelf";
 import { resolveProjectDefaultProviderModelSelection } from "../providerInstances";
@@ -426,9 +428,11 @@ export function createNewThreadHandler(router: AnyRouter) {
 export function resolveDefaultProjectRef(
   projects: ReadonlyArray<EnvironmentProject>,
   projectOrder: readonly string[],
+  groupingSettings?: ProjectGroupingSettings,
 ): ScopedProjectRef | null {
-  const [defaultProject] = orderItemsByPreferredIds({
-    items: projects.filter((project) => project.archivedAt == null),
+  const liveProjects = projects.filter((project) => project.archivedAt == null);
+  const [firstProject] = orderItemsByPreferredIds({
+    items: liveProjects,
     preferredIds: projectOrder,
     getId: getProjectOrderKey,
     getPreferenceIds: (project) => [
@@ -436,7 +440,11 @@ export function resolveDefaultProjectRef(
       legacyProjectCwdPreferenceKey(project.workspaceRoot),
     ],
   });
-  return defaultProject ? scopeProjectRef(defaultProject.environmentId, defaultProject.id) : null;
+  if (!firstProject) return null;
+  const defaultProject = groupingSettings
+    ? resolveGroupDefaultProject(firstProject, liveProjects, groupingSettings)
+    : firstProject;
+  return scopeProjectRef(defaultProject.environmentId, defaultProject.id);
 }
 
 export function useHandleNewThread() {
@@ -455,7 +463,8 @@ export function useHandleNewThread() {
   );
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
-  const defaultProjectRef = resolveDefaultProjectRef(projects, projectOrder);
+  const groupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const defaultProjectRef = resolveDefaultProjectRef(projects, projectOrder, groupingSettings);
 
   return {
     activeDraftThread,
