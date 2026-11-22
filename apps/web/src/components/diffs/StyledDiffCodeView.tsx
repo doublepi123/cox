@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 /* oxlint-disable eslint/no-restricted-imports -- This is the single styled adapter around Pierre's raw viewer. */
 import {
   CodeView,
@@ -224,6 +225,13 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
   unsafeCSSExtra,
   ...props
 }: StyledDiffCodeViewProps<LAnnotation>) {
+  const { t } = useTranslation();
+  const lineKindCss = `[data-indicators="bars"] [data-line][data-line-type="change-deletion"]::before {
+    content: "" / ${JSON.stringify(t("Removed"))};
+  }
+  [data-indicators="bars"] [data-line][data-line-type="change-addition"]::before {
+    content: "" / ${JSON.stringify(t("Added"))};
+  }`;
   return (
     <DiffWorkerPoolProvider>
       <CodeView<LAnnotation>
@@ -237,8 +245,8 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
         options={{
           ...options,
           unsafeCSS: unsafeCSSExtra
-            ? `${DIFF_VIEW_UNSAFE_CSS}\n${unsafeCSSExtra}`
-            : DIFF_VIEW_UNSAFE_CSS,
+            ? `${DIFF_VIEW_UNSAFE_CSS}\n${lineKindCss}\n${unsafeCSSExtra}`
+            : `${DIFF_VIEW_UNSAFE_CSS}\n${lineKindCss}`,
           itemMetrics: {
             diffHeaderHeight: 32,
             hunkSeparatorHeight: 24,
