@@ -330,7 +330,7 @@ describe("cached VCS refs", () => {
         });
         const client = {
           [WS_METHODS.vcsPull]: () => Effect.fail(expectedError),
-          [WS_METHODS.vcsRefreshStatus]: () => Effect.void,
+          [WS_METHODS.vcsRefreshStatus]: () => Effect.succeed({ refsDigest: "same-refs" }),
           [WS_METHODS.gitPreparePullRequestThread]: () => Effect.succeed(preparedPullRequest),
         } as unknown as WsRpcProtocolClient;
         const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
@@ -388,6 +388,15 @@ describe("cached VCS refs", () => {
         expect(yield* Ref.get(clears)).toBe(2);
         expect(registry.get(vcsRefsCacheStateAtom(TARGET)).revision).toBe(2);
 
+        yield* Effect.promise(() =>
+          atoms.refreshLocalStatusForPicker.run(registry, {
+            environmentId: TARGET.environmentId,
+            input: { cwd: "/repo", localOnly: true },
+          }),
+        );
+        expect(yield* Ref.get(clears)).toBe(2);
+        expect(registry.get(vcsRefsCacheStateAtom(TARGET)).revision).toBe(2);
+
         const resultAfterCheckout = yield* Effect.promise(() =>
           createGitEnvironmentAtoms(runtime).preparePullRequestThread.run(registry, {
             environmentId: TARGET.environmentId,
@@ -410,6 +419,7 @@ describe("cached VCS refs", () => {
           [WS_METHODS.vcsRefreshStatus]: () =>
             Deferred.succeed(refreshStarted, undefined).pipe(
               Effect.andThen(Deferred.await(releaseRefresh)),
+              Effect.as({}),
             ),
           [WS_METHODS.vcsSwitchRef]: () => Effect.succeed({ refName: "feature" }),
         } as unknown as WsRpcProtocolClient;

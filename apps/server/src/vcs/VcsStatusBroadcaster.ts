@@ -1,5 +1,6 @@
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Hex from "effect/encoding/Hex";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -18,6 +19,7 @@ import type {
   VcsStatusInput,
   VcsStatusLocalResult,
   VcsStatusRemoteResult,
+  VcsRefreshStatusResult,
   VcsStatusResult,
   VcsStatusStreamEvent,
   VcsStatusSubscriptionInput,
@@ -220,7 +222,7 @@ export class VcsStatusBroadcaster extends Context.Service<
     readonly refreshStatus: (
       cwd: string,
       options?: { readonly localOnly?: boolean },
-    ) => Effect.Effect<VcsStatusResult, GitManagerServiceError>;
+    ) => Effect.Effect<VcsRefreshStatusResult, GitManagerServiceError>;
     readonly refreshPullRequestStatus: (
       cwd: string,
     ) => Effect.Effect<VcsStatusRemoteResult | null, GitManagerServiceError>;
@@ -564,6 +566,19 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.refreshStatus",
   )(function* (rawCwd, options) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
+    const withRefsDigest = (status: VcsStatusResult) =>
+      workflow.readRefSnapshot(cwd).pipe(
+        Effect.flatMap((refs) =>
+          refs === null
+            ? Effect.succeed(status)
+            : Effect.promise(() => globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(refs))).pipe(
+                Effect.map((digest): VcsRefreshStatusResult => ({
+                  ...status,
+                  refsDigest: Hex.encode(new Uint8Array(digest)).slice(0, 32),
+                })),
+              ),
+        ),
+      );
     const previous = options?.localOnly ? yield* getCachedStatus(cwd) : null;
     const local = yield* refreshLocalStatusCore(cwd);
     if (options?.localOnly) {
@@ -579,7 +594,7 @@ export const make = Effect.gen(function* () {
             );
           }
           const parts = yield* getStatusParts(cwd);
-          return mergeGitStatusParts(parts.local, parts.remote);
+          return yield* withRefsDigest(mergeGitStatusParts(parts.local, parts.remote));
         }),
       );
     }
@@ -594,10 +609,10 @@ export const make = Effect.gen(function* () {
         yield* refreshLocalStatusCore(cwd);
         // Without a fetch, the cached behind count cannot justify an automatic pull.
         const pulled = refreshUpstream ? yield* maybeAutoPull(cwd, remoteRead, [rawCwd]) : null;
-        if (pulled !== null) return mergeGitStatusParts(pulled.local, pulled.remote);
+        if (pulled !== null) return yield* withRefsDigest(mergeGitStatusParts(pulled.local, pulled.remote));
         yield* updateCachedRemoteStatus(cwd, remoteRead, { publish: true });
         const parts = yield* getStatusParts(cwd);
-        return mergeGitStatusParts(parts.local, parts.remote);
+        return yield* withRefsDigest(mergeGitStatusParts(parts.local, parts.remote));
       }),
     );
   });
@@ -822,7 +837,7 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  type SharedRefresh = Deferred.Deferred<VcsStatusResult, GitManagerServiceError>;
+  type SharedRefresh = Deferred.Deferred<VcsRefreshStatusResult, GitManagerServiceError>;
   const queuedRefreshesRef = yield* Ref.make(new Map<string, SharedRefresh | null>());
 
   const runQueuedRefreshes = Effect.fn("VcsStatusBroadcaster.runQueuedRefreshes")(function* (
@@ -849,7 +864,7 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.shareQueuedRefreshStatus",
   )(function* (rawCwd, options) {
     if (options?.localOnly) return yield* refreshStatus(rawCwd, options);
-    const requested = yield* Deferred.make<VcsStatusResult, GitManagerServiceError>();
+    const requested = yield* Deferred.make<VcsRefreshStatusResult, GitManagerServiceError>();
     const shared = yield* Effect.uninterruptible(
       Effect.gen(function* () {
         const followUp = yield* Ref.modify(
