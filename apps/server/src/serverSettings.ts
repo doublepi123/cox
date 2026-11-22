@@ -47,6 +47,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
 import * as ServerConfig from "./config.ts";
+import { watchDirectoryPath } from "./watchDirectoryReplacements.ts";
 import { type DeepPartial, deepMerge } from "@t3tools/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
 import {
@@ -1235,12 +1236,12 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  const watchFileChanges = (filePath: string) => {
+  const watchFileChanges = (filePath: string, onReady?: () => void) => {
     const directory = pathService.dirname(filePath);
     const fileName = pathService.basename(filePath);
     const resolvedFilePath = pathService.resolve(filePath);
     return fs
-      .watch(directory)
+      .watch(directory, onReady ? { onReady } : undefined)
       .pipe(
         Stream.filter(
           (event) =>
@@ -1290,7 +1291,25 @@ const make = Effect.gen(function* () {
         Option.match({
           onNone: () => Stream.empty,
           onSome: (linkTargetPath) =>
-            watchFileChanges(linkTargetPath).pipe(Stream.ignore({ log: true })),
+            watchDirectoryPath(
+              pathService.dirname(linkTargetPath),
+              Stream.unwrap(
+                Effect.gen(function* () {
+                  const ready = yield* Deferred.make<void>();
+                  const markReady = () => Deferred.doneUnsafe(ready, Exit.void);
+                  const changes = watchFileChanges(linkTargetPath, markReady).pipe(
+                    Stream.as(undefined),
+                    Stream.catchIf((error) => error.reason._tag === "NotFound", () => Stream.empty),
+                    Stream.ignoreCause({ log: true }),
+                    Stream.ensuring(Effect.sync(markReady)),
+                  );
+                  return Stream.merge(changes, Stream.fromEffect(Deferred.await(ready)));
+                }),
+              ),
+            ).pipe(
+              Stream.provideService(FileSystem.FileSystem, fs),
+              Stream.provideService(Path.Path, pathService),
+            ),
         }),
       ),
     );
