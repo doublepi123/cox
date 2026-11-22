@@ -23,6 +23,7 @@ import {
   makeAntigravityStdoutTransform,
 } from "../antigravityAuthSupport.ts";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import type { AcpSessionModeState } from "@t3tools/provider-acp/server/runtimeModel";
 import {
   acpPermissionDisposition,
   unknownRecord,
@@ -106,12 +107,16 @@ export function antigravityPermissionMode(runtimeMode: RuntimeMode): string {
     case "auto-accept-edits":
       return "auto_edit";
     case "auto":
+      return "auto";
     case "approval-required":
       return "default";
   }
 }
 
-export function antigravityCliSessionMode(modeId: string): string {
+export function antigravityCliSessionMode(modeId: string, modeState?: AcpSessionModeState): string {
+  if (modeId === "auto" && !modeState?.availableModes.some((mode) => mode.id === "auto")) {
+    return "default";
+  }
   return modeId === "yolo" || modeId === "auto_edit" ? "default" : modeId;
 }
 

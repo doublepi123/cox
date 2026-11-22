@@ -7,6 +7,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSetupError,
+  type RuntimeMode,
   type ServerProviderUsageLimits,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -132,9 +133,11 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
   options: {
     readonly enabled?: boolean;
     readonly safe?: boolean;
+    readonly rememberedRuntimeModes?: ReadonlyArray<RuntimeMode>;
     readonly probeUsage?: Effect.Effect<ServerProviderUsageLimits>;
   } = {},
 ) {
+  const savedRuntimeModes = yield* Ref.make<ReadonlyArray<ReadonlyArray<RuntimeMode>>>([]);
   const initialProbe = yield* Deferred.make<EffectAcpSchema.InitializeResponse, ProbeError>();
   const probeCalls = yield* Ref.make(0);
   const safetyCalls = yield* Ref.make(0);
@@ -146,6 +149,10 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
     decodeSettings({ enabled: options.enabled ?? true, customModels: ["do-not-seed-me"] }),
     {
       stampIdentity: (snapshot) => Effect.succeed({ ...snapshot, instanceId, driver }),
+      ...(options.rememberedRuntimeModes
+        ? { rememberedRuntimeModes: options.rememberedRuntimeModes }
+        : {}),
+      rememberRuntimeModes: (modes) => Ref.update(savedRuntimeModes, (saved) => [...saved, modes]),
       ...(options.probeUsage ? { probeUsage: options.probeUsage } : {}),
       probe: Ref.update(probeCalls, (count) => count + 1).pipe(
         Effect.andThen(Ref.get(probe)),
@@ -175,6 +182,7 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
     initialProbe,
     initialUpdate,
     initialize,
+    savedRuntimeModes,
   };
 });
 
@@ -281,6 +289,62 @@ describe("Antigravity model catalog", () => {
 });
 
 it.layer(layerTest)("Antigravity provider snapshots", (it) => {
+  it.effect("offers Auto only while the signed-in session advertises agy's own Auto", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.initialize;
+      const supportedModes = harness.provider.snapshot.getSnapshot.pipe(
+        Effect.map((snapshot) => snapshot.supportedRuntimeModes),
+      );
+      const withoutAuto = ["approval-required", "auto-accept-edits", "full-access"];
+      const startedWithAuto = {
+        ...started,
+        sessionSetupResult: {
+          ...sessionSetupResult,
+          modes: {
+            currentModeId: "default",
+            availableModes: [
+              { id: "default", name: "Default" },
+              { id: "auto", name: "Auto" },
+            ],
+          },
+        },
+      };
+      expect(yield* supportedModes).toEqual(withoutAuto);
+      yield* harness.provider.onSessionStarted(startedWithAuto);
+      expect(yield* supportedModes).toEqual([
+        "approval-required",
+        "auto-accept-edits",
+        "auto",
+        "full-access",
+      ]);
+      yield* harness.provider.onSessionStarted(started);
+      expect(yield* supportedModes).toEqual(withoutAuto);
+      yield* harness.provider.onSessionStarted(startedWithAuto);
+      yield* harness.provider.onSignedOut;
+      expect(yield* supportedModes).toEqual(withoutAuto);
+      const withAuto: ReadonlyArray<RuntimeMode> = [
+        "approval-required",
+        "auto-accept-edits",
+        "auto",
+        "full-access",
+      ];
+      expect(yield* Ref.get(harness.savedRuntimeModes)).toEqual([
+        withAuto,
+        withoutAuto,
+        withAuto,
+        withoutAuto,
+      ]);
+
+      // A restart offers what the last session advertised before any session starts.
+      const restarted = yield* makeHarness({ rememberedRuntimeModes: withAuto });
+      yield* restarted.initialize;
+      expect(yield* restarted.provider.snapshot.getSnapshot).toMatchObject({
+        supportedRuntimeModes: withAuto,
+      });
+    }),
+  );
+
   it.effect("does not probe or run helper safety checks while disabled", () =>
     Effect.scoped(
       Effect.gen(function* () {

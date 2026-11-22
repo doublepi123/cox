@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   type AntigravitySettings,
   type ProviderSetupError,
+  type RuntimeMode,
   type ServerProvider,
   type ServerProviderModel,
   type ServerProviderSlashCommand,
@@ -20,6 +21,7 @@ import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import { parseSessionModeState } from "@t3tools/provider-acp/server/runtimeModel";
 import { acpProviderOptionDescriptors } from "@t3tools/provider-acp/server/sessionConfig";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
@@ -158,6 +160,25 @@ interface AntigravityProviderOptions {
   readonly clearUsage?: Effect.Effect<void>;
   readonly maintenanceCapabilities?: ProviderMaintenanceCapabilities;
   readonly auth?: { readonly type: string; readonly label: string };
+  readonly rememberedRuntimeModes?: ReadonlyArray<RuntimeMode>;
+  readonly rememberRuntimeModes?: (modes: ReadonlyArray<RuntimeMode>) => Effect.Effect<void>;
+}
+
+const RUNTIME_MODES_WITHOUT_AUTO = [
+  "approval-required",
+  "auto-accept-edits",
+  "full-access",
+] as const;
+
+/** Auto is offered only where the session advertises agy's own Auto; elsewhere it runs Supervised. */
+function antigravityRuntimeModes(
+  sessionSetupResult: AcpSessionRuntime.AcpSessionRuntimeStartResult["sessionSetupResult"],
+): ReadonlyArray<RuntimeMode> {
+  return parseSessionModeState(sessionSetupResult)?.availableModes.some(
+    (mode) => mode.id === "auto",
+  )
+    ? ["approval-required", "auto-accept-edits", "auto", "full-access"]
+    : RUNTIME_MODES_WITHOUT_AUTO;
 }
 
 export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(function* (
@@ -167,7 +188,11 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const initialDraft = {
     ...buildServerProvider({
-      presentation: { displayName: "Antigravity", showInteractionModeToggle: false },
+      presentation: {
+        displayName: "Antigravity",
+        showInteractionModeToggle: false,
+        supportedRuntimeModes: options.rememberedRuntimeModes ?? RUNTIME_MODES_WITHOUT_AUTO,
+      },
       enabled: settings.enabled,
       checkedAt,
       models: [],
@@ -316,17 +341,18 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
         ? yield* options.probeUsage
         : before.draft.usageLimits;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
-    yield* SubscriptionRef.update(metadata, (state) => {
+    const supportedRuntimeModes = antigravityRuntimeModes(started.sessionSetupResult);
+    const previousModes = yield* SubscriptionRef.modify(metadata, (state) => {
       if (
         state.authRevision !== before.authRevision &&
         state.draft.auth.status === "unauthenticated"
       ) {
-        return state;
+        return [supportedRuntimeModes, state] as const;
       }
       const { message: _previousMessage, ...draft } = state.draft;
       const workspaces = draft.workspaceSnapshots ?? [];
       const workspace = cwd ? workspaces.find((entry) => entry.cwd === cwd) : undefined;
-      return {
+      const next = {
         authRevision: state.authRevision + 1,
         draft: {
           ...draft,
@@ -344,6 +370,7 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
             probed: usageLimits ?? draft.usageLimits,
           }),
           models: buildAntigravityModelsFromSession(started.sessionSetupResult, thinkingLevels),
+          supportedRuntimeModes,
           supportsTextGeneration,
           ...(cwd
             ? {
@@ -360,7 +387,11 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
             : {}),
         },
       } satisfies AntigravityProviderState;
+      return [draft.supportedRuntimeModes, next] as const;
     });
+    if (previousModes?.join() !== supportedRuntimeModes.join() && options.rememberRuntimeModes) {
+      yield* options.rememberRuntimeModes(supportedRuntimeModes);
+    }
   });
 
   const onConfigOptionsUpdated = Effect.fn("AntigravityProvider.onConfigOptionsUpdated")(function* (
@@ -413,26 +444,32 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     if (options.clearUsage) yield* options.clearUsage;
     if (!settings.enabled) return;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
-    yield* SubscriptionRef.update(
-      metadata,
-      (state) =>
-        ({
-          authRevision: state.authRevision + 1,
-          draft: {
-            ...state.draft,
-            auth: { status: "unauthenticated" },
-            status: "warning",
-            message: SIGN_IN_MESSAGE,
-            checkedAt: updatedAt,
-            models: [],
-            slashCommands: [],
-            skills: [],
-            workspaceSnapshots: [],
-            supportsTextGeneration: false,
-            usageLimits: undefined,
-          },
-        }) satisfies AntigravityProviderState,
-    );
+    const previousModes = yield* SubscriptionRef.modify(metadata, (state) => [
+      state.draft.supportedRuntimeModes,
+      {
+        authRevision: state.authRevision + 1,
+        draft: {
+          ...state.draft,
+          auth: { status: "unauthenticated" },
+          status: "warning",
+          message: SIGN_IN_MESSAGE,
+          checkedAt: updatedAt,
+          models: [],
+          slashCommands: [],
+          skills: [],
+          workspaceSnapshots: [],
+          supportedRuntimeModes: RUNTIME_MODES_WITHOUT_AUTO,
+          supportsTextGeneration: false,
+          usageLimits: undefined,
+        },
+      } satisfies AntigravityProviderState,
+    ]);
+    if (
+      previousModes?.join() !== RUNTIME_MODES_WITHOUT_AUTO.join() &&
+      options.rememberRuntimeModes
+    ) {
+      yield* options.rememberRuntimeModes(RUNTIME_MODES_WITHOUT_AUTO);
+    }
     discoveredSkills.clear();
     thinkingLevels.clear();
   });
