@@ -95,7 +95,7 @@ function ComboboxSearchInput({
 }: React.ComponentProps<typeof ComboboxInput> & { variant?: "line" | "filled" }) {
   if (variant === "filled") {
     return (
-      <div className="min-w-0 shrink-0 px-3 pb-2">
+      <label className="block min-w-0 shrink-0 cursor-text px-3 pb-2">
         <div className="relative rounded-xl bg-input/48 transition-shadow focus-within:ring-2 focus-within:ring-ring/48 dark:bg-input/40 [&_input]:h-10 [&_input]:ps-9 [&_input]:pe-3 [&_input]:font-sans [&_input]:text-base [&_input]:leading-10">
           <SearchIcon
             aria-hidden="true"
@@ -103,11 +103,11 @@ function ComboboxSearchInput({
           />
           <ComboboxInput {...props} showTrigger={false} unstyled />
         </div>
-      </div>
+      </label>
     );
   }
   return (
-    <div className="min-w-0 shrink-0 px-3 pt-2.5">
+    <label className="block min-w-0 shrink-0 cursor-text px-3 pt-2.5">
       <div className="relative -translate-y-px border-b border-border/70 pb-1.5 transition-colors focus-within:border-ring [&_input]:flex [&_input]:w-full">
         <SearchIcon
           aria-hidden="true"
@@ -115,7 +115,7 @@ function ComboboxSearchInput({
         />
         <ComboboxInput {...props} search showTrigger={false} size="sm" unstyled />
       </div>
-    </div>
+    </label>
   );
 }
 
