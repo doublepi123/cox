@@ -200,6 +200,12 @@ describe("document preview contents", () => {
     );
   });
 
+  it("breaks lines at TextEdit soft line breaks", () => {
+    const result = openRtf(bytes(String.raw`{\rtf1\ansi First line\u8232?Second line}`));
+    if (result.type !== "document") throw new Error("Expected document");
+    expect(result.pages[0]!.html).toBe("<p>First line<br>Second line</p>");
+  });
+
   it("starts a new line at rich text section and column breaks", () => {
     const result = openRtf(
       bytes(

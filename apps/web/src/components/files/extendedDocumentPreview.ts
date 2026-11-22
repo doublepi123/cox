@@ -680,7 +680,8 @@ export function openRtf(bytes: ArrayBuffer): OfficeWorkerResult {
       else if (word === "uc") state.uc = Math.max(0, Math.min(10, arg));
       else if (word === "u") {
         fallback = 0;
-        emit(String.fromCharCode(arg < 0 ? arg + 65536 : arg));
+        if (arg === 0x2028 && !state.skip) html += "<br>";
+        else emit(String.fromCharCode(arg < 0 ? arg + 65536 : arg));
         fallback = state.uc;
       } else if (!state.skip && word === "page") finishPage();
       else if (!state.skip && (word === "par" || word === "line" || word === "row")) html += "<br>";
