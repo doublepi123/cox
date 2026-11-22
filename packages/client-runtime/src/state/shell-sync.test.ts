@@ -994,6 +994,7 @@ describe("environment shell synchronization", () => {
       const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
       const subscribeInputs = yield* Queue.unbounded<unknown>();
       const loadOptions = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const firstLoad = yield* Deferred.make<void>();
       const client = {
         [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: (input: unknown) =>
           Stream.unwrap(
@@ -1036,6 +1037,7 @@ describe("environment shell synchronization", () => {
       const snapshotLoader = ShellSnapshotLoader.ShellSnapshotLoader.of({
         load: (_prepared, options) =>
           Ref.update(loadOptions, (all) => [...all, options]).pipe(
+            Effect.tap(() => Deferred.succeed(firstLoad, undefined)),
             Effect.as(Option.some(LIVE_SHELL_SNAPSHOT)),
           ),
       });
@@ -1053,9 +1055,7 @@ describe("environment shell synchronization", () => {
         omitOlderSettled: true,
         requestCompletionMarker: true,
       });
-      while ((yield* Ref.get(loadOptions)).length === 0) {
-        yield* Effect.yieldNow;
-      }
+      yield* Deferred.await(firstLoad);
       expect(yield* Ref.get(loadOptions)).toEqual([
         { omitIdleSubagents: true, omitOlderSettled: true },
       ]);
