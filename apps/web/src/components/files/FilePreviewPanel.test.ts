@@ -459,6 +459,13 @@ describe("document preview contents", () => {
     expect(result.type).toBe("document");
     if (result.type !== "document") throw new Error("Expected document");
     expect(result.pages[0]!.html).toContain(kind === "odt" ? "Field notes" : "Launch plan");
+    if (kind === "odt") {
+      const index = '<text:table-of-content><text:table-of-content-source><text:index-title-template><text:p>Index</text:p></text:index-title-template><text:table-of-content-entry-template><text:p>Entry</text:p></text:table-of-content-entry-template></text:table-of-content-source><text:index-body><text:index-title><text:p>Index</text:p></text:index-title><text:p>Field notes</text:p></text:index-body></text:table-of-content>';
+      archive.file("content.xml", `<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text><text:p>Field notes</text:p>${index}</office:text></office:body></office:document-content>`);
+      const indexed = await openDocument(archive, kind);
+      if (indexed.type !== "document") throw new Error("Expected document");
+      expect(indexed.pages[0]!.html).toBe("<p>Field notes</p><p>Index</p><p>Field notes</p>");
+    }
     archive.file(
       "content.xml",
       '<!DOCTYPE x [<!ENTITY external SYSTEM "file:///etc/passwd">]><x>&external;</x>',
