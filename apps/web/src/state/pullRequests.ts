@@ -576,7 +576,15 @@ function createMergedEnvironmentQuery<Input, A>(
         appAtomRegistry.refresh(atom);
       }
     };
-    return { ...view, refresh };
+    const retry = () => {
+      for (const atom of new Set(
+        (JSON.parse(key) as ReadonlyArray<EnvironmentQueryTarget<Input>>).map(atomFor),
+      )) {
+        const result = appAtomRegistry.get(atom);
+        if (result._tag === "Failure" && !result.waiting) appAtomRegistry.refresh(atom);
+      }
+    };
+    return { ...view, refresh, retry };
   };
 }
 
@@ -619,6 +627,7 @@ export interface MergedPullRequestListView {
   readonly error: EnvironmentQueryError | null;
   readonly isPending: boolean;
   readonly refresh: (targets?: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput>>) => void;
+  readonly retry: () => void;
 }
 
 export function usePullRequestList(
@@ -626,7 +635,13 @@ export function usePullRequestList(
 ): MergedPullRequestListView {
   const query = usePullRequestListsQuery(targets);
   const data = mergePullRequestLists(query.values);
-  return { data, error: query.error, isPending: query.isPending, refresh: query.refresh };
+  return {
+    data,
+    error: query.error,
+    isPending: query.isPending,
+    refresh: query.refresh,
+    retry: query.retry,
+  };
 }
 
 export function usePullRequestListStats(

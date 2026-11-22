@@ -9,20 +9,25 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 const listAnswers = vi.hoisted(
-  () => new Map<string, Atom.Atom<AsyncResult.AsyncResult<unknown, Error>>>(),
+  () => new Map<string, Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>>(),
 );
 
-vi.mock("@effect/atom-react", async (importOriginal) => {
-  const { AtomRegistry } = await import("effect/reactivity");
-  const registry = AtomRegistry.make();
-  return {
-    ...(await importOriginal<typeof import("@effect/atom-react")>()),
-    useAtomValue: (atom: Atom.Atom<unknown>) => registry.get(atom),
-  };
-});
+const registry = await vi.hoisted(async () =>
+  (await import("effect/reactivity")).AtomRegistry.make(),
+);
+
+vi.mock("@effect/atom-react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@effect/atom-react")>()),
+  useAtomValue: (atom: Atom.Atom<unknown>) => registry.get(atom),
+}));
+vi.mock("../rpc/atomRegistry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../rpc/atomRegistry")>()),
+  appAtomRegistry: registry,
+}));
 vi.mock("@t3tools/client-runtime/state/pull-requests", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@t3tools/client-runtime/state/pull-requests")>();
@@ -508,6 +513,36 @@ describe("pull request list answers across a reload", () => {
         local,
         remote,
       ]);
+    }
+  });
+
+  it("retries only the environment whose list failed, leaving one still loading to finish", () => {
+    const requests: string[] = [];
+    const read = (environmentId: string, answer: Effect.Effect<never, string>) =>
+      Atom.make(
+        Effect.suspend(() => {
+          requests.push(environmentId);
+          return answer;
+        }),
+      );
+    const slow = EnvironmentId.make("env-slow");
+    const failing = EnvironmentId.make("env-failing");
+    const reads = [read(slow, Effect.never), read(failing, Effect.fail("Unreachable"))] as const;
+    listAnswers.set(slow, reads[0]);
+    listAnswers.set(failing, reads[1]);
+    const unmounts = reads.map((atom) => registry.mount(atom));
+    try {
+      const view = usePullRequestList([
+        { environmentId: slow, input },
+        { environmentId: failing, input },
+      ]);
+      expect(view).toMatchObject({ isPending: true, error: { environmentId: failing } });
+
+      view.retry();
+
+      expect(requests).toEqual([slow, failing, failing]);
+    } finally {
+      for (const unmount of unmounts) unmount();
     }
   });
 
