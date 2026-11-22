@@ -1,6 +1,7 @@
 import type { ServerProviderModel } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -24,7 +25,7 @@ import {
 } from "@t3tools/provider-pi/server";
 import type { OmoSettings } from "../settings.ts";
 import { buildOmoLaunch } from "./extension.ts";
-import { makeOmoRpcConnection } from "./runtime.ts";
+import { makeOmoRpcConnection, OMO_STARTUP_TIMEOUT_MS } from "./runtime.ts";
 import { OMO_MINIMUM_VERSION, isSupportedOmoVersion } from "./configuration.ts";
 
 const presentation = {
@@ -36,6 +37,7 @@ const presentation = {
 
 const isPiRpcError = Schema.is(PiRpcError);
 const isPiRpcTimeoutError = Schema.is(PiRpcTimeoutError);
+const OMO_PROBE_TIMEOUT_SECONDS = OMO_STARTUP_TIMEOUT_MS / 1_000 + 30;
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
@@ -195,11 +197,11 @@ export const checkOmoStatus = Effect.fn("checkOmoStatus")(function* (
   }).pipe(
     Effect.scoped,
     Effect.timeoutOrElse({
-      duration: "30 seconds",
+      duration: Duration.seconds(OMO_PROBE_TIMEOUT_SECONDS),
       orElse: () =>
         Effect.succeed(
           fallback(
-            "OMO Native did not finish starting within 30 seconds. Check the installation and model configuration.",
+            `OMO Native did not finish starting within ${OMO_PROBE_TIMEOUT_SECONDS} seconds. Check the installation and model configuration.`,
             installedVersion !== null,
             installedVersion,
           ),

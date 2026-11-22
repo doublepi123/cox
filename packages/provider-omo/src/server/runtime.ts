@@ -190,6 +190,8 @@ export function omoMemoryWarningEvent(value: unknown): PiRpcRecord | undefined {
     : undefined;
 }
 
+export const OMO_STARTUP_TIMEOUT_MS = 120_000;
+
 export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeOmoRpcConnection")(
   function* (options: PiRpcSpawnOptions) {
     const scope = yield* Effect.scope;
@@ -466,11 +468,16 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
       Effect.catchCause((cause) => Queue.failCause(events, cause)),
       Effect.forkIn(scope),
     );
-    yield* connection.request({
-      type: "set_client_info",
-      capabilities: ["interactive_user", "extension_events"],
-    });
-    const info = record(yield* connection.request({ type: "get_protocol_info" }));
+    yield* connection.request(
+      {
+        type: "set_client_info",
+        capabilities: ["interactive_user", "extension_events"],
+      },
+      OMO_STARTUP_TIMEOUT_MS,
+    );
+    const info = record(
+      yield* connection.request({ type: "get_protocol_info" }, OMO_STARTUP_TIMEOUT_MS),
+    );
     if (!Array.isArray(info.capabilities) || !info.capabilities.includes("session_lifecycle"))
       return yield* new PiRpcError({
         operation: "startup",
@@ -484,7 +491,10 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
       });
     if (options.env.COX_OMO_EXTENSION_REQUIRED === "1") {
       const initialized = record(
-        yield* connection.request({ type: "extension_request", name: "cox.omo.ready", data: {} }),
+        yield* connection.request(
+          { type: "extension_request", name: "cox.omo.ready", data: {} },
+          OMO_STARTUP_TIMEOUT_MS,
+        ),
       );
       selectionBaseline = record(initialized.selectionBaseline);
       const failure = omoStartupFailure(initialized);
