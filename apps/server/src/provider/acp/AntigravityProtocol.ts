@@ -14,6 +14,7 @@ import type { AcpToolCallState } from "@t3tools/provider-acp/server/runtimeModel
 
 const TOOL_TEXT_LIMIT = 8_000;
 const TOOL_TEXT_TRUNCATED = "[Earlier output truncated]\n\n";
+const COMMAND_LINE_TRUNCATED = "\n\n[Command truncated]";
 const QUESTION_LABEL_LIMIT = 512;
 
 const NativeToolFields = Schema.Struct({
@@ -168,12 +169,31 @@ function boundText(text: string, limit = TOOL_TEXT_LIMIT): string {
   return copyBoundedText(`${TOOL_TEXT_TRUNCATED}${tail}`);
 }
 
+// A command line's program and target are at its start, so it keeps its head.
+function boundCommandLine(text: string, limit = TOOL_TEXT_LIMIT): string {
+  if (
+    text.length <= limit ||
+    (text.length <= limit + COMMAND_LINE_TRUNCATED.length && text.endsWith(COMMAND_LINE_TRUNCATED))
+  ) {
+    return text;
+  }
+  const head = text.slice(0, limit).replace(/[\uD800-\uDBFF]$/u, "");
+  return copyBoundedText(`${head}${COMMAND_LINE_TRUNCATED}`);
+}
+
+const COMMAND_LINE_FIELDS = new Set(["CommandLine", "command_line", "commandLine", "command"]);
+
 interface ToolPayloadBudget {
   nodes: number;
   text: number;
 }
 
-function sanitizeToolValue(value: unknown, budget: ToolPayloadBudget, depth: number): unknown {
+function sanitizeToolValue(
+  value: unknown,
+  budget: ToolPayloadBudget,
+  depth: number,
+  field?: string,
+): unknown {
   if (depth > 12 || budget.nodes-- <= 0) {
     return undefined;
   }
@@ -181,7 +201,9 @@ function sanitizeToolValue(value: unknown, budget: ToolPayloadBudget, depth: num
     if (/^data:image\//i.test(value) || budget.text <= 0) {
       return undefined;
     }
-    const text = boundText(value, Math.min(TOOL_TEXT_LIMIT, budget.text));
+    const bound =
+      field !== undefined && COMMAND_LINE_FIELDS.has(field) ? boundCommandLine : boundText;
+    const text = bound(value, Math.min(TOOL_TEXT_LIMIT, budget.text));
     budget.text -= text.length;
     return text;
   }
@@ -210,7 +232,7 @@ function sanitizeToolValue(value: unknown, budget: ToolPayloadBudget, depth: num
     ) {
       continue;
     }
-    const sanitized = sanitizeToolValue(entry, budget, depth + 1);
+    const sanitized = sanitizeToolValue(entry, budget, depth + 1, key);
     if (sanitized !== undefined) entries.push([key, sanitized]);
   }
   return Object.fromEntries(entries);
@@ -366,7 +388,7 @@ export function normalizeAntigravityToolCall(toolCall: AcpToolCallState): AcpToo
     output?.commandLine ??
     output?.command_line ??
     toolCall.command;
-  const command = nativeCommand?.trim() ? boundText(nativeCommand.trim()) : undefined;
+  const command = nativeCommand?.trim() ? boundCommandLine(nativeCommand.trim()) : undefined;
   const nativeCwd =
     input?.Cwd ??
     input?.WorkingDirectory ??
