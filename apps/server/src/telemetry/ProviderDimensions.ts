@@ -33,7 +33,11 @@ export function providerDimensions(
 ): ProviderDimensions {
   const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
   if (provider === undefined) return { provider: "unknown" };
-  const model = provider.models.find((candidate) => candidate.slug === selection.model);
+  const model =
+    provider.models.find((candidate) => candidate.slug === selection.model) ??
+    provider.models.find(
+      (candidate) => !candidate.isCustom && candidate.aliases?.includes(selection.model),
+    );
   return VENDOR_CATALOG_DRIVERS.has(provider.driver) && model !== undefined && !model.isCustom
     ? { provider: provider.driver, model: model.slug }
     : { provider: provider.driver };

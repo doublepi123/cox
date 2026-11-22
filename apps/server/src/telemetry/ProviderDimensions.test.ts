@@ -1,12 +1,17 @@
 import { ProviderInstanceId, ThreadId, type ServerProvider } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 
-import { type AgentThread, agentToolProperties, handoffSettings } from "./ProviderDimensions.ts";
+import {
+  type AgentThread,
+  agentToolProperties,
+  handoffSettings,
+  providerDimensions,
+} from "./ProviderDimensions.ts";
 
 const provider = (
   instanceId: string,
   driver: string,
-  models: ReadonlyArray<{ slug: string; isCustom: boolean }>,
+  models: ReadonlyArray<{ slug: string; isCustom: boolean; aliases?: ReadonlyArray<string> }>,
 ) =>
   ({
     instanceId: ProviderInstanceId.make(instanceId),
@@ -65,6 +70,20 @@ it("omits custom, user-configured, and unknown models and instance names", () =>
       targetModel: undefined,
     },
   ]);
+});
+
+it("records canonical model labels from the Antigravity live catalog", () => {
+  const antigravity = provider("agy", "antigravity", [
+    { slug: "gemini-4-neon", aliases: ["antigravity-default"], isCustom: false },
+    { slug: "gemini-4-hydrogen", isCustom: false },
+    { slug: "private", aliases: ["private-alias"], isCustom: true },
+  ]);
+  const label = (model: string) =>
+    providerDimensions([antigravity], { instanceId: antigravity.instanceId, model }).model;
+  expect(label("gemini-4-hydrogen")).toBe("gemini-4-hydrogen");
+  expect(label("antigravity-default")).toBe("gemini-4-neon");
+  expect(label("gemini-4-unlisted")).toBeUndefined();
+  expect(label("private-alias")).toBeUndefined();
 });
 
 it("drops input strings outside the schema's literals, since rejected calls are recorded too", () => {
