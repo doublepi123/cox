@@ -83,7 +83,11 @@ describe("runMigrations", () => {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 80 });
 
-      assert.deepStrictEqual(yield* runMigrations(), [[81, "MobilePushAndWebhookNotifications"]]);
+      assert.deepStrictEqual(yield* runMigrations(), [
+        [81, "MobilePushAndWebhookNotifications"],
+        [82, "ProjectionProjectsTrackedFolders"],
+        [83, "TaskFolders"],
+      ]);
 
       const tables = yield* sql<{ readonly name: string }>`
         SELECT name FROM sqlite_master
