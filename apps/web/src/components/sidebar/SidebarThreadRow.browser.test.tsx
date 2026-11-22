@@ -60,10 +60,8 @@ function fixture(variant: "card" | "slim" | "folder" | "folder-multiline") {
     isRouteThread: false,
     openPullRequestsInRightPanel: false,
     jumpLabel: null,
-    currentEnvironmentId: thread.environmentId,
     environmentLabel: null,
     environmentMachine: "desktop" as const,
-    scratchMachineLabel: null,
     project: null,
     projectDisplayName: "Project",
     providerEntryByInstanceId: new Map(),
@@ -102,6 +100,16 @@ function fixture(variant: "card" | "slim" | "folder" | "folder-multiline") {
     ),
   };
 }
+
+it.each(["card", "folder-multiline"] as const)("shows the environment on %s rows", async (variant) => {
+  const f = fixture(variant);
+  await using screen = await render(
+    f.element({ environmentLabel: "Desk", thread: { ...f.props.thread, branch: "feature" } }),
+  );
+
+  await expect.element(screen.getByText("Desk", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("feature", { exact: true })).not.toBeInTheDocument();
+});
 
 describe("pinned sidebar thread actions", () => {
   it.each(["card", "slim", "folder", "folder-multiline"] as const)(
