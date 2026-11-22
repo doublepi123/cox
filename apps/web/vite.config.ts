@@ -33,7 +33,6 @@ Object.assign(process.env, repoEnv);
 const port = Number(process.env.COX_WEB_PORT ?? process.env.PORT ?? 5733);
 const host = process.env.HOST?.trim() || "127.0.0.1";
 const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
-const configuredFeatureSecrets = process.env.T3CODE_FEATURE_SECRETS?.trim() || "";
 const configuredReleaseChannel = process.env.T3CODE_BUILT_DEV === "1" ? "dev" : "";
 const sourcemapEnv = process.env.T3CODE_WEB_SOURCEMAP?.trim().toLowerCase();
 
@@ -272,7 +271,6 @@ export default defineConfig(() => {
       ],
     },
     define: {
-      "import.meta.env.T3CODE_FEATURE_SECRETS": JSON.stringify(configuredFeatureSecrets),
       "import.meta.env.VITE_RELEASE_CHANNEL": JSON.stringify(configuredReleaseChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
     },

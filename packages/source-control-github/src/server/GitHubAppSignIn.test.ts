@@ -14,6 +14,7 @@ import { DEFAULT_SERVER_SETTINGS, ServerSettingsError } from "@t3tools/contracts
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
 import { readSourceControlHostSettings } from "@t3tools/source-control-core/shared/definition";
+import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as TestSourceControlHost from "@t3tools/source-control-testing/TestSourceControlHost";
 
@@ -53,6 +54,8 @@ function harness(options: {
   readonly settingsWritesFail?: boolean;
   /** Holds a request open until it completes, to interleave other work with it. */
   readonly gate?: (sent: Sent) => Effect.Effect<void>;
+  /** Defaults to a configured app; null runs without one. */
+  readonly clientId?: string | null;
 }) {
   const requests: Array<Sent> = [];
   const http = HttpClient.make((request) => {
@@ -113,6 +116,13 @@ function harness(options: {
     Layer.provideMerge(SourceControlRateLimit.layer),
     Layer.provideMerge(options.settingsWritesFail === true ? failingWrites : host),
     Layer.provide(NodeCrypto.layer),
+    Layer.provide(
+      FeatureFlags.layerTest({
+        githubAppClientId: Option.fromNullishOr(
+          options.clientId === undefined ? "Iv-test-client" : options.clientId,
+        ),
+      }),
+    ),
     Layer.provide(Layer.succeed(HttpClient.HttpClient, http)),
   );
   return { layer, requests };
@@ -155,7 +165,6 @@ const installedOn = (sent: Sent): Reply =>
 
 beforeEach(() => {
   for (const name of ["GH_TOKEN", "GITHUB_TOKEN"]) vi.stubEnv(name, "");
-  vi.stubEnv(GitHubAppSignIn.CLIENT_ID_VARIABLE, "Iv-test-client");
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -265,8 +274,8 @@ describe("GitHubAppSignIn", () => {
   });
 
   it.effect("does nothing with the app when the server has no client ID", () => {
-    vi.stubEnv(GitHubAppSignIn.CLIENT_ID_VARIABLE, "");
     const { layer, requests } = harness({
+      clientId: null,
       signIns: { "github.com": session() },
       handle: () => ({ body: { login: "octocat" } }),
     });

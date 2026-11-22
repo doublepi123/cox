@@ -1,5 +1,4 @@
 import { translate, type Language } from "../../i18n/language";
-import { isSecretsFeatureEnabled } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -52,7 +51,7 @@ export interface SettingsSearchItem {
   readonly scope?: SettingsSearchScope;
   readonly macOnly?: boolean;
   readonly windowsOnly?: boolean;
-  readonly secretsFeatureOnly?: boolean;
+  readonly secretProvidersOnly?: boolean;
   readonly environmentOnly?: boolean;
   readonly providerSettingsOnly?: boolean;
   readonly macProviderSettingsOnly?: boolean;
@@ -61,6 +60,7 @@ export interface SettingsSearchItem {
   readonly requiresThreadAutoSettlement?: boolean;
 }
 export interface SettingsSearchAvailability {
+  readonly hasSecretProvidersEnvironment?: boolean;
   readonly localEnvironmentDisabled?: boolean;
   readonly hasEnvironment: boolean;
   readonly hasProviderSettingsEnvironment: boolean;
@@ -120,16 +120,22 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Connections",
-    paths: [
-      "/settings/notifications",
-      ...(isSecretsFeatureEnabled ? ["/settings/secrets" as const] : []),
-    ],
+    paths: ["/settings/notifications", "/settings/secrets"],
   },
   {
     heading: null,
     paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
   },
 ];
+
+const SETTINGS_NAV_GROUPS_WITHOUT_SECRETS = SETTINGS_NAV_GROUPS.map((group) => ({
+  ...group,
+  paths: group.paths.filter((path) => path !== "/settings/secrets"),
+}));
+export function settingsNavGroups(hasSecretProviders: boolean) {
+  return hasSecretProviders ? SETTINGS_NAV_GROUPS : SETTINGS_NAV_GROUPS_WITHOUT_SECRETS;
+}
+
 export function keybindingSearchAnchorId<Command extends KeybindingCommand>(command: Command) {
   return `keybinding-${command}` as const;
 }
@@ -962,7 +968,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Secret providers",
     to: "/settings/secrets",
     searchTerms: ["1password vault credentials api key"],
-    secretsFeatureOnly: true,
+    secretProvidersOnly: true,
   },
   {
     id: "secret-providers-add",
@@ -970,7 +976,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/secrets",
     targetId: "secret-providers",
     searchTerms: ["new 1password vault op cli account"],
-    secretsFeatureOnly: true,
+    secretProvidersOnly: true,
   },
   {
     id: "archive",
@@ -1110,6 +1116,7 @@ export function filterAvailableSettingsSearchItems(
   const items: ReadonlyArray<SettingsSearchItem> = SETTINGS_SEARCH_ITEMS;
   return items.filter(
     (item) =>
+      (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true) &&
       (!item.environmentOnly || availability.hasEnvironment) &&
       (!item.providerSettingsOnly || availability.hasProviderSettingsEnvironment) &&
       (!item.macProviderSettingsOnly || availability.hasMacProviderSettingsEnvironment) &&
@@ -1124,7 +1131,6 @@ export function settingsForThisPlatform(
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   return items.filter(
     (item) =>
-      (!item.secretsFeatureOnly || isSecretsFeatureEnabled) &&
       (!item.macOnly || isMacPlatform(platform)) &&
       (!item.windowsOnly || isWindowsPlatform(platform)),
   );

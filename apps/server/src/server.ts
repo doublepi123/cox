@@ -1,3 +1,4 @@
+import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
 import { ScheduledTaskWebhookOrigin } from "./scheduledTasks/ScheduledTaskService.ts";
 import { validateDevUrl, validateListenHost } from "./cli/config.ts";
 import { isRemoteReachableHost } from "./auth/utils.ts";
@@ -785,6 +786,7 @@ const layerMakeServer = Layer.unwrap(
 
     return layerServerApplication.pipe(
       Layer.provideMerge(layerRuntimeServices),
+      Layer.provideMerge(FeatureFlags.layer),
       Layer.provideMerge(
         McpSessionRegistry.layer.pipe(
           Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),

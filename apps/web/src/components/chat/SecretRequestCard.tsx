@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { useId, useRef, useState, type FormEvent } from "react";
 
-import { isSecretsFeatureEnabled } from "../../env";
+import { hasFeatureFlag } from "@t3tools/client-runtime/state/server";
 import { triggerMobileHapticSelection } from "../../mobile/mobileShellBridge";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -79,7 +79,7 @@ const NO_SOURCES: ReadonlyArray<SecretRequestSource> = [];
 
 function useSecretRequestSources(environmentId: EnvironmentId) {
   const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
-  return isSecretsFeatureEnabled
+  return hasFeatureFlag(config, "secretProviders")
     ? secretRequestSources(config, config?.settings.secretProviders ?? {})
     : NO_SOURCES;
 }

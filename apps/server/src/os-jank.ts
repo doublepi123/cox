@@ -23,7 +23,7 @@ function logPathHydrationWarning(message: string, error?: unknown): void {
 // mise's record of the PATH entries it added. It must travel with the
 // shell's PATH, or `mise x` can rebuild PATH behind a same-named wrapper
 // (`exec mise x claude -- claude`) that then re-runs itself forever.
-const LOGIN_SHELL_ENVIRONMENT_NAMES = ["PATH", "__MISE_DIFF", "JAVA_HOME"];
+const LOGIN_SHELL_ENVIRONMENT_NAMES = ["PATH", "__MISE_DIFF", "JAVA_HOME", "COX_FEATURE_FLAGS"];
 const SLOW_LOGIN_SHELL_TIMEOUT_MS = 20_000;
 
 function hydratePosixPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): void {
@@ -71,6 +71,9 @@ function hydratePosixPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): vo
   // is only reachable through the JAVA_HOME the shell profile sets.
   if (!env.JAVA_HOME && shellEnvironment.JAVA_HOME) {
     env.JAVA_HOME = shellEnvironment.JAVA_HOME;
+  }
+  if (env.COX_FEATURE_FLAGS === undefined && shellEnvironment.COX_FEATURE_FLAGS) {
+    env.COX_FEATURE_FLAGS = shellEnvironment.COX_FEATURE_FLAGS;
   }
 }
 

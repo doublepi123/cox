@@ -11,6 +11,7 @@ import type * as FileSystem from "effect/FileSystem";
 import type { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
+import type * as FeatureFlags from "@t3tools/shared/FeatureFlags";
 
 import type { SourceControlDefinition } from "../shared/definition.ts";
 
@@ -75,7 +76,8 @@ export type SourceControlDriverServices =
   | SourceControlRateLimit.SourceControlRateLimit
   | HttpClient.HttpClient
   | FileSystem.FileSystem
-  | Crypto.Crypto;
+  | Crypto.Crypto
+  | FeatureFlags.FeatureFlags;
 
 export interface SourceControlDriver {
   readonly kind: SourceControlProviderKind;

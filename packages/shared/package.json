@@ -307,6 +307,10 @@
       "types": "./src/AgentScope.ts",
       "import": "./src/AgentScope.ts"
     },
+    "./FeatureFlags": {
+      "types": "./src/FeatureFlags.ts",
+      "import": "./src/FeatureFlags.ts"
+    },
     "./HostProcess": {
       "types": "./src/HostProcess.ts",
       "import": "./src/HostProcess.ts"

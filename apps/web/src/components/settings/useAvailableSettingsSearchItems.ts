@@ -1,3 +1,4 @@
+import { hasFeatureFlag } from "@t3tools/client-runtime/state/server";
 import { useEnvironments } from "~/state/environments";
 import { isProviderSettingsEnvironmentAvailable } from "./ProviderSettingsPanel.logic";
 import type { SettingsScopeSearch } from "./settingsScope";
@@ -5,6 +6,13 @@ import {
   filterAvailableSettingsSearchItems,
   getThreadAutoSettlementSearchAvailability,
 } from "./settingsSearch";
+
+export function useHasSecretProvidersEnvironment() {
+  const { environments } = useEnvironments();
+  return environments.some((environment) =>
+    hasFeatureFlag(environment.serverConfig, "secretProviders"),
+  );
+}
 
 export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch = {}) {
   const { environments } = useEnvironments();
@@ -38,5 +46,8 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
     hasMacProviderSettingsEnvironment,
 
     hasThreadAutoSettlement,
+    hasSecretProvidersEnvironment: environments.some((environment) =>
+      hasFeatureFlag(environment.serverConfig, "secretProviders"),
+    ),
   });
 }

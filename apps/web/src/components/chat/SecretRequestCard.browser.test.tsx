@@ -20,9 +20,9 @@ vi.mock(import("../../mobile/mobileShellBridge"), async (importOriginal) => ({
   triggerMobileHapticSelection: haptics.selection,
 }));
 
-vi.mock(import("../../env"), async (importOriginal) => ({
+vi.mock(import("@t3tools/client-runtime/state/server"), async (importOriginal) => ({
   ...(await importOriginal()),
-  isSecretsFeatureEnabled: true,
+  hasFeatureFlag: (_config, flag) => flag === "secretProviders",
 }));
 
 vi.mock(import("@t3tools/client-runtime/secret-request"), async (importOriginal) => {
