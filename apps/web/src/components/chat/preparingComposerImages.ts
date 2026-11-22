@@ -1,3 +1,5 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
 export interface PreparingComposerImage {
@@ -28,6 +30,25 @@ const usePreparingComposerImageStore = create<{
   readonly byTargetKey: Readonly<Record<string, ReadonlyArray<PreparingComposerImage>>>;
 }>(() => ({ byTargetKey: {} }));
 
+const movedImageThreads = new WeakMap<PreparingComposerImage, ScopedThreadRef>();
+
+export function movedPreparingImageThread(image: PreparingComposerImage) {
+  return movedImageThreads.get(image);
+}
+
+export function movePreparingComposerImagesToThread(sourceKey: string, thread: ScopedThreadRef) {
+  const images = usePreparingComposerImageStore.getState().byTargetKey[sourceKey];
+  if (!images?.length) return;
+  const targetKey = scopedThreadKey(thread);
+  for (const image of images) movedImageThreads.set(image, thread);
+  usePreparingComposerImageStore.setState(({ byTargetKey }) => {
+    const next = { ...byTargetKey };
+    delete next[sourceKey];
+    next[targetKey] = [...(next[targetKey] ?? NO_PREPARING_IMAGES), ...images];
+    return { byTargetKey: next };
+  });
+}
+
 export function usePreparingComposerImages(targetKey: string) {
   return usePreparingComposerImageStore(
     (state) => state.byTargetKey[targetKey] ?? NO_PREPARING_IMAGES,
@@ -35,7 +56,11 @@ export function usePreparingComposerImages(targetKey: string) {
 }
 
 export function countPreparingComposerImages(targetKey: string): number {
-  return usePreparingComposerImageStore.getState().byTargetKey[targetKey]?.length ?? 0;
+  return getPreparingComposerImages(targetKey).length;
+}
+
+export function getPreparingComposerImages(targetKey: string): ReadonlyArray<PreparingComposerImage> {
+  return usePreparingComposerImageStore.getState().byTargetKey[targetKey] ?? NO_PREPARING_IMAGES;
 }
 
 export function addPreparingComposerImages(

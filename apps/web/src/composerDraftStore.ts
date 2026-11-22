@@ -597,6 +597,7 @@ interface ComposerDraftStoreState {
     images: ComposerImageAttachment[],
     options?: {
       allowDuplicates?: boolean;
+      onCapacityExceeded?: (image: ComposerImageAttachment) => void;
     },
   ) => string[];
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
@@ -682,6 +683,11 @@ interface ComposerDraftStoreState {
   syncPersistedAttachments: (
     threadRef: ComposerThreadTarget,
     attachments: PersistedComposerImageAttachment[],
+  ) => Promise<void>;
+  appendPersistedAttachments: (
+    threadRef: ComposerThreadTarget,
+    images: ReadonlyArray<ComposerImageAttachment>,
+    attachments: ReadonlyArray<PersistedComposerImageAttachment>,
   ) => Promise<void>;
   clearComposerContent: (threadRef: ComposerThreadTarget) => void;
   recoverQuestionAttachments: (source: DraftId, target: ScopedThreadRef) => void;
@@ -2285,7 +2291,6 @@ function readPersistedAttachmentIdsFromStorage(threadKey: string): string[] {
 }
 function verifyPersistedAttachments(
   threadKey: string,
-  attachments: PersistedComposerImageAttachment[],
   set: (
     partial:
       | ComposerDraftStoreState
@@ -2309,7 +2314,7 @@ function verifyPersistedAttachments(
       return state;
     }
     const imageIdSet = new Set(current.images.map((image) => image.id));
-    const persistedAttachments = attachments.filter(
+    const persistedAttachments = current.persistedAttachments.filter(
       (attachment) => imageIdSet.has(attachment.id) && persistedIdSet.has(attachment.id),
     );
     const nonPersistedImageIds: string[] = [];
@@ -3230,6 +3235,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return [];
           }
           let acceptedIds: string[] = [];
+          const rejected: ComposerImageAttachment[] = [];
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
             const existingIds = new Set(existing.images.map((image) => image.id));
@@ -3254,6 +3260,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 existing.images.length + existing.files.length + dedupedIncoming.length >=
                 PROVIDER_SEND_TURN_MAX_ATTACHMENTS
               ) {
+                rejected.push(image);
                 if (!acceptedPreviewUrls.has(image.previewUrl)) {
                   revokeObjectPreviewUrl(image.previewUrl);
                 }
@@ -3278,6 +3285,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               },
             };
           });
+          for (const image of rejected) options?.onCapacityExceeded?.(image);
           return acceptedIds;
         },
         removeImage: (threadRef, imageId) => {
@@ -4019,7 +4027,22 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
           await Promise.resolve();
-          verifyPersistedAttachments(threadKey, attachments, set);
+          verifyPersistedAttachments(threadKey, set);
+        },
+        appendPersistedAttachments: async (threadRef, images, attachments) => {
+          const current = get().getComposerDraft(threadRef);
+          if (!current || attachments.length === 0) return;
+          const owned = new Set(current.images);
+          const ownedIds = new Set(images.filter((image) => owned.has(image)).map(({ id }) => id));
+          const persisted = new Map(current.persistedAttachments.map((image) => [image.id, image]));
+          for (const attachment of attachments) {
+            if (ownedIds.has(attachment.id) && !persisted.has(attachment.id)) {
+              persisted.set(attachment.id, attachment);
+            }
+          }
+          if (persisted.size > current.persistedAttachments.length) {
+            await get().syncPersistedAttachments(threadRef, [...persisted.values()]);
+          }
         },
         recoverQuestionAttachments: (source, target) => {
           const targetKey = resolveComposerDraftKey(get(), target);

@@ -1,7 +1,12 @@
 import { makeThreadRequestsResolvedAnnouncer } from "@t3tools/client-runtime/state/thread-requests";
 import { ApprovalRequestId, EnvironmentId, RuntimeRequestId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, expect, it, vi } from "vite-plus/test";
-import { useComposerDraftStore } from "./composerDraftStore";
+import { composerTargetKey, useComposerDraftStore } from "./composerDraftStore";
+import {
+  addPreparingComposerImages,
+  cancelPreparingComposerImages,
+  getPreparingComposerImages,
+} from "./components/chat/preparingComposerImages";
 import {
   questionAttachmentDraftId,
   countQuestionAttachments,
@@ -177,4 +182,40 @@ it("returns unanswered question attachments to the thread without releasing them
   expect(store.getComposerDraft(expiredKey)).toBeNull();
   expect(store.getComposerDraft(answeredKey)).toBeNull();
   expect(release.mock.calls.flat(2)).toEqual([submittedFile]);
+});
+
+it("moves preparing images from an unanswered question and drops answered ones", () => {
+  const unanswered = RuntimeRequestId.make("request");
+  const answered = RuntimeRequestId.make("request-other");
+  const target = composerTargetKey({ environmentId, threadId });
+  const cases = [
+    [threadId, unanswered, "first", "move-first"],
+    [threadId, unanswered, "second", "move-second"],
+    [threadId, answered, "first", "discard"],
+    [ThreadId.make("other-thread"), unanswered, "first", "stay"],
+  ] as const;
+  const keys = cases.map(([thread, request, question, id]) => {
+    const key = questionAttachmentDraftId(environmentId, thread, request, question);
+    addPreparingComposerImages(key, [
+      { id, name: "screenshot.png", file: new File(["image"], "screenshot.png") },
+    ]);
+    changeQuestionAttachmentPreparation(key, 1);
+    return key;
+  });
+  using _cleanup = {
+    [Symbol.dispose]: () => {
+      for (const key of [...keys, target]) cancelPreparingComposerImages(key);
+    },
+  };
+
+  const announce = makeThreadRequestsResolvedAnnouncer(environmentId, threadId);
+  announce([unanswered, answered]);
+  announce([], [unanswered]);
+
+  expect(getPreparingComposerImages(target).map(({ id }) => id)).toEqual([
+    "move-first",
+    "move-second",
+  ]);
+  expect(keys.slice(0, 3).flatMap(getPreparingComposerImages)).toEqual([]);
+  expect(getPreparingComposerImages(keys[3]!).map(({ id }) => id)).toEqual(["stay"]);
 });

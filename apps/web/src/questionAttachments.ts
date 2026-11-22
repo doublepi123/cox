@@ -6,6 +6,10 @@ import {
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { DraftId, useComposerDraftStore } from "./composerDraftStore";
+import {
+  cancelPreparingComposerImages,
+  movePreparingComposerImagesToThread,
+} from "./components/chat/preparingComposerImages";
 import { releaseDraftAttachments } from "./lib/attachmentUploadQueue";
 
 export function questionAttachmentDraftPrefix(
@@ -90,6 +94,7 @@ export function clearQuestionAttachmentDraft(key: DraftId): void {
     }
   }
   store.clearComposerContent(key);
+  cancelPreparingComposerImages(key);
   useQuestionAttachmentPreparation.setState(({ counts }) => {
     const next = { ...counts };
     delete next[key];
@@ -117,9 +122,9 @@ function pruneResolvedQuestionAttachmentDrafts(
       string,
     ];
     if (unanswered.has(requestId)) {
-      useComposerDraftStore
-        .getState()
-        .recoverQuestionAttachments(draftId, { environmentId, threadId });
+      const target = { environmentId, threadId };
+      movePreparingComposerImagesToThread(draftId, target);
+      useComposerDraftStore.getState().recoverQuestionAttachments(draftId, target);
     }
     clearQuestionAttachmentDraft(draftId);
   }
