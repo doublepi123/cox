@@ -306,6 +306,15 @@ export interface GitRemoteStatusOptions {
   readonly refreshUpstream?: boolean;
 }
 
+/**
+ * Set by a one-time reader, such as the startup automatic pull, that has no later poll to see a
+ * slow status fetch land. Its status read waits for a running fetch instead of using the last
+ * fetched references after five seconds. The fetch keeps its own safety limit.
+ */
+export const AwaitStatusFetch = Context.Reference<boolean>("cox/vcs/AwaitStatusFetch", {
+  defaultValue: () => false,
+});
+
 export const BackgroundGitWork = Context.Reference<boolean>("t3/vcs/BackgroundGitWork", {
   defaultValue: () => false,
 });
