@@ -17,6 +17,62 @@ import {
 } from "./KeybindingsSettings.logic";
 
 describe("KeybindingsSettings.logic", () => {
+  it("marks only bindings shadowed by later unconditional or matching conditions", () => {
+    const bindings = compileResolvedKeybindingsConfig([
+      { command: "sidebar.toggle", key: "mod+b" },
+      { command: "terminal.toggle", key: "meta+b", when: "true" },
+      { command: "chat.new", key: "mod+n", when: "terminalFocus" },
+      { command: "terminal.new", key: "mod+n", when: "(terminalFocus)" },
+      { command: "chat.new", key: "mod+j" },
+      { command: "terminal.toggle", key: "mod+j", when: "terminalFocus" },
+      { command: "chat.new", key: "mod+k", when: "!terminalFocus" },
+      { command: "terminal.toggle", key: "mod+k", when: "terminalFocus" },
+      { command: "chat.new", key: "mod+l", when: "terminalFocus" },
+      { command: "terminal.toggle", key: "mod+l" },
+    ]);
+    const rows = buildKeybindingRows(bindings, "MacIntel");
+    expect(rows.filter((row) => row.previewLabels.length === 0).map((row) => row.binding)).toEqual([
+      bindings[8],
+      bindings[2],
+      bindings[0],
+    ]);
+    expect(rows.filter((row) => row.previewLabels.length > 0)).toHaveLength(7);
+    const sendBindings = compileResolvedKeybindingsConfig([
+      { command: "composer.sendAlternate", key: "mod+enter" },
+      { command: "chat.new", key: "mod+enter" },
+    ]);
+    for (const sendShortcut of ["enter", "mod-enter", "mod-enter-multiline"] as const) {
+      expect(
+        buildKeybindingRows(sendBindings, "MacIntel", sendShortcut).find(
+          (row) => row.command === "composer.sendAlternate",
+        )?.previewLabels.length === 0,
+      ).toBe(sendShortcut === "enter");
+    }
+    for (const command of ["composer.sendAlternate", "composer.sendBackground"] as const) {
+      const binding = compileResolvedKeybindingsConfig([{ command, key: "mod+enter" }]);
+      const labels = (mode: "enter" | "mod-enter" | "mod-enter-multiline") =>
+        buildKeybindingRows(binding, "Win32", mode)[0]?.previewLabels;
+      expect(labels("enter")).toEqual(["Ctrl+Enter"]);
+      expect(labels("mod-enter")).toEqual([command === "composer.sendAlternate" ? "Ctrl+Shift+Enter" : "Ctrl+Enter"]);
+      expect(labels("mod-enter-multiline")).toEqual(command === "composer.sendAlternate" ? ["Ctrl+Enter", "Ctrl+Shift+Enter"] : ["Ctrl+Enter"]);
+    }
+    const shiftedBindings = compileResolvedKeybindingsConfig([
+      { command: "chat.new", key: "mod+shift+enter" },
+      { command: "composer.sendAlternate", key: "mod+enter" },
+    ]);
+    for (const sendShortcut of ["enter", "mod-enter", "mod-enter-multiline"] as const) {
+      expect(
+        buildKeybindingRows(shiftedBindings, "MacIntel", sendShortcut).find(
+          (row) => row.command === "chat.new",
+        )?.previewLabels.length === 0,
+      ).toBe(sendShortcut === "mod-enter");
+    }
+    expect(
+      buildKeybindingRows(bindings, "Win32").find((row) => row.command === "sidebar.toggle")
+        ?.previewLabels.length === 0,
+    ).toBe(false);
+  });
+
   it("keeps sibling row identities when a saved binding moves to the end", () => {
     const bindings = compileResolvedKeybindingsConfig([
       { command: "chat.new", key: "mod+n" },
