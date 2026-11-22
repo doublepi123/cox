@@ -1,3 +1,4 @@
+import { promptSuggestionToAccept } from "./usePromptSuggestion";
 import type { ChatComposerProps } from "./ChatComposer";
 import { type ComposerCommandItem } from "./ComposerCommandMenu";
 import {
@@ -269,10 +270,10 @@ export function composerCommandKeyHandler(input: {
         return true;
       }
     }
+    const acceptedSuggestion = promptSuggestionToAccept(promptSuggestion ?? null, promptRef.current);
     if (
       key === "Tab" &&
-      promptSuggestion != null &&
-      promptRef.current.length === 0 &&
+      acceptedSuggestion !== null &&
       !menuIsActive &&
       !event.shiftKey &&
       !event.altKey &&
@@ -281,7 +282,7 @@ export function composerCommandKeyHandler(input: {
       !event.isComposing &&
       event.keyCode !== 229
     ) {
-      return applyPromptReplacement(0, 0, promptSuggestion);
+      return applyPromptReplacement(0, 0, acceptedSuggestion);
     }
     if ((key === "ArrowUp" || key === "ArrowDown") && submissionIntent === null) {
       return navigatePromptHistory(key === "ArrowUp" ? "backward" : "forward", event);

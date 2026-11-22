@@ -16,6 +16,10 @@ const subscribeDismissed = (listener: () => void) => {
 const readDismissed = () => dismissedKeys;
 const dismissKey = (environmentId: EnvironmentId, runId: RunId) => `${environmentId}\u0000${runId}`;
 
+export function promptSuggestionToAccept(suggestion: string | null, draft: string): string | null {
+  return draft.length === 0 ? suggestion : null;
+}
+
 export function usePromptSuggestion(
   environmentId: EnvironmentId,
   thread: Thread | undefined,
