@@ -1,4 +1,5 @@
 export const en = {
+  "Show {label}": "Show {label}",
   "Path to the Oh My Pi binary.": "Path to the Oh My Pi binary.",
   "Oh My Pi provider ID. Leave empty to use the native configuration.":
     "Oh My Pi provider ID. Leave empty to use the native configuration.",

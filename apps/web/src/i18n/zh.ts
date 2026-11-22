@@ -1,4 +1,5 @@
 export const zh = {
+  "Show {label}": "显示{label}",
   "Path to the Oh My Pi binary.": "Oh My Pi 可执行文件的路径。",
   "Oh My Pi provider ID. Leave empty to use the native configuration.":
     "Oh My Pi 模型提供商 ID。留空使用原生配置。",

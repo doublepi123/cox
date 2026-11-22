@@ -1,4 +1,5 @@
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import type { SecretRequestItem } from "@t3tools/client-runtime/secret-request";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -155,4 +156,55 @@ it("emits mobile haptic selection for source, submit, and decline actions", asyn
 
   await userEvent.click(screen.getByRole("button", { name: "Decline" }));
   expect(haptics.selection).toHaveBeenCalledTimes(3);
+});
+
+it("shows a named public field and lets users reveal and re-mask each secret", async () => {
+  const item: SecretRequestItem = {
+    id: TurnItemId.make("secret-multi-field"),
+    runId: null,
+    nodeId: null,
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    parentItemId: null,
+    ordinal: 0,
+    status: "running",
+    title: null,
+    startedAt: null,
+    completedAt: null,
+    updatedAt: DateTime.makeUnsafe("2026-11-22T00:00:00Z"),
+    threadId: ThreadId.make("secret-multi-field-thread"),
+    type: "secret_request",
+    secretStatus: "pending",
+    label: "Staging login",
+    reason: "Configure the service",
+    delivery: "file",
+    fields: [
+      { name: "email", label: "Email", secret: false },
+      { name: "password", label: "Password" },
+    ],
+  };
+  await using screen = await render(
+    <SecretRequestCard
+      environmentId={EnvironmentId.make("local")}
+      item={item}
+      visibility="local"
+    />,
+  );
+  const email = screen.getByLabelText("Email", { exact: true });
+  const password = screen.getByLabelText("Password", { exact: true });
+  const toggle = screen.getByRole("button", { name: "Show Password" });
+  const save = screen.getByRole("button", { name: "Save securely" });
+  await expect.element(email).toHaveAttribute("type", "text");
+  await expect.element(password).toHaveAttribute("type", "password");
+  await expect.element(save).toBeDisabled();
+  await userEvent.fill(email, "qa@example.test");
+  await expect.element(save).toBeDisabled();
+  await userEvent.fill(password, "fixture-password");
+  await expect.element(save).toBeEnabled();
+  await userEvent.click(toggle);
+  await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect.element(password).toHaveAttribute("type", "text");
+  await userEvent.click(toggle);
+  await expect.element(password).toHaveAttribute("type", "password");
 });

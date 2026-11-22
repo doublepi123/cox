@@ -716,6 +716,25 @@ export const OrchestratorMcpUpdateScheduledTaskInput = Schema.Struct({
 export type OrchestratorMcpUpdateScheduledTaskInput =
   typeof OrchestratorMcpUpdateScheduledTaskInput.Type;
 
+const RequestSecretFields = Schema.Array(
+  Schema.Struct({
+    name: TrimmedNonEmptyString.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_]{0,31}$/)),
+    label: TrimmedNonEmptyString,
+    placeholder: Schema.optional(TrimmedNonEmptyString),
+    secret: Schema.optional(Schema.Boolean).annotate({
+      description: "false shows the typed value, e.g. an email.",
+    }),
+  }),
+)
+  .check(Schema.isMinLength(1), Schema.isMaxLength(8))
+  .check(
+    Schema.makeFilter((fields) =>
+      new Set(fields.map((field) => field.name)).size === fields.length
+        ? true
+        : "Field names must be unique.",
+    ),
+  );
+
 export const OrchestratorMcpRequestSecretInput = Schema.Struct({
   label: TrimmedNonEmptyString.annotate({
     description: "Card title, such as 'GitHub webhook secret'.",
@@ -735,7 +754,11 @@ export const OrchestratorMcpRequestSecretInput = Schema.Struct({
   placeholder: Schema.optional(TrimmedNonEmptyString),
   delivery: Schema.optional(Schema.Literals(["secretRef", "file"])).annotate({
     description:
-      'secretRef (default) for a T3 tool. file for a shell CLI: read the path in your command, e.g. TOKEN="$(cat <file>)" wrangler whoami.',
+      'secretRef (default) for a Cox tool. file for a shell CLI: read the path in your command, e.g. TOKEN="$(cat <file>)" wrangler whoami.',
+  }),
+  fields: Schema.optional(RequestSecretFields).annotate({
+    description:
+      'Values only the user has, in one card, e.g. email + password, with delivery "file". Returns `files` by name.',
   }),
   timeoutMs: Schema.optional(
     Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 60 * 60 * 1_000 })),
@@ -758,6 +781,12 @@ export const OrchestratorMcpRequestSecretResult = Schema.Union([
     file: Schema.String.annotate({
       description:
         "Owner-only file with the value. Read it inside commands and never print it. Deleted after 24 hours.",
+    }),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("saved"),
+    files: Schema.Record(Schema.String, Schema.String).annotate({
+      description: "One file per field name, used like `file`.",
     }),
   }),
   Schema.Struct({
