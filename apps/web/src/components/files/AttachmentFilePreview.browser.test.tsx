@@ -18,9 +18,15 @@ vi.mock(import("pdfjs-dist/build/pdf.worker.min.mjs?url"), async () => {
   };
 });
 
+const refreshers = new WeakMap<object, () => Promise<string | null>>();
 vi.mock(import("~/assets/assetUrls"), async (original) => ({
   ...(await original()),
-  useAssetUrlRefresh: () => refresh,
+  useAssetUrlRefresh: (_environmentId, resource) => {
+    if (!resource) return refresh;
+    let callback = refreshers.get(resource);
+    if (!callback) refreshers.set(resource, (callback = () => refresh()));
+    return callback;
+  },
   useAssetUrlState: assetUrlState,
 }));
 vi.mock(import("./pdfDocument"), async (original) => {
@@ -2283,20 +2289,25 @@ describe("document output sanitization", () => {
     expect(html).not.toContain("https://");
   });
 });
-it("does not refresh an attachment when its asset wrapper is recreated", async () => {
-  refresh.mockReset().mockResolvedValue("https://example.test/report.txt");
+it("keeps a PDF attachment URL when its asset wrapper is recreated", async () => {
+  const url = URL.createObjectURL(new Blob(["%PDF-1.4"], { type: "application/pdf" }));
+  refresh.mockReset().mockResolvedValue(url);
   const preview = () => (
     <AttachmentFilePreview
-      name="report.txt"
-      mimeType="text/plain"
+      name="report.pdf"
+      mimeType="application/pdf"
       sizeBytes={8}
       asset={{ environmentId: EnvironmentId.make("test"), attachmentId: "report" }}
     />
   );
-  await using screen = await render(preview());
-  await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-  await screen.rerender(preview());
-  expect(refresh).toHaveBeenCalledTimes(1);
+  try {
+    await using screen = await render(preview());
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await screen.rerender(preview());
+    expect(refresh).toHaveBeenCalledTimes(1);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 });
 
 it("opens a known empty attachment even when its range response is inaccessible", async () => {
