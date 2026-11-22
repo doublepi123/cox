@@ -255,7 +255,7 @@ import {
   type SidebarProviderEntry,
   type SidebarSweepAction,
 } from "./sidebar/SidebarThreadRow";
-import { SidebarDraftBlock, useSidebarDrafts } from "./sidebar/SidebarDraftBlock";
+import { draftTerminalLabel, SidebarDraftBlock, useDraftTerminalLabels, useSidebarDrafts } from "./sidebar/SidebarDraftBlock";
 import { useWorkingShelf } from "./sidebar/useWorkingShelf";
 import {
   SidebarProjectFolderHeader,
@@ -1168,13 +1168,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
   );
   const routeDraftIdForRows = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
+  const draftTerminalLabels = useDraftTerminalLabels();
   const visibleDraftSessionCount = useComposerDraftStore((store) => {
     let count = 0;
     for (const [draftKey, session] of Object.entries(store.draftThreadsByThreadKey)) {
       if (session.promotedTo != null) {
         continue;
       }
-      if (!composerDraftHasUserContent(store.draftsByThreadKey[draftKey])) {
+      if (
+        draftTerminalLabel(session, draftTerminalLabels) === null &&
+        !composerDraftHasUserContent(store.draftsByThreadKey[draftKey])
+      ) {
         continue;
       }
       if (
@@ -1404,7 +1408,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const threadByKeyRef = useRef(threadByKey);
   const settledThreadKeysRef = useRef(settledThreadKeys);
   const snoozedThreadKeysRef = useRef(snoozedThreadKeys);
-  const { draftIds, routeDraftComposer } = useSidebarDrafts(scopedProjectKeys, routeDraftIdForRows);
+  const { draftIds, routeDraftComposer } = useSidebarDrafts(
+    scopedProjectKeys,
+    routeDraftIdForRows,
+    draftTerminalLabels,
+  );
   const listedDraftIds = isSearchingThreads ? [] : draftIds;
   const draftIdByRowKey = new Map<string, DraftId>(
     listedDraftIds.map((id) => [`draft:${id}`, id] as const),
@@ -3480,6 +3488,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           projectDisplayNameByKey={projectDisplayNameByKey}
                           draftIds={draftIds}
                           routeDraftComposer={routeDraftComposer}
+                          terminalLabels={draftTerminalLabels}
                           jumpLabelByDraftId={draftJumpLabelById}
                           routeDraftId={routeDraftIdForRows}
                           onNavigateToDraft={navigateToDraft}
