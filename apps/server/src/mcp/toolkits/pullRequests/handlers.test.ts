@@ -134,6 +134,7 @@ function makeLink(
 }
 
 interface HarnessOptions {
+  readonly summary?: PullRequestService.PullRequestService["Service"]["summary"];
   readonly thread?: PullRequestTestThread | null;
   readonly project?: OrchestrationProjectShell | null;
   readonly reject?: (command: OrchestrationCommand) => string | null;
@@ -173,6 +174,15 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       listShells: () => Effect.succeed(options.projects ?? (project ? [project] : [])),
     }),
     Layer.mock(PullRequestService.PullRequestService)({
+      summary:
+        options.summary ??
+        (() =>
+          Effect.fail(
+            new PullRequestOperationError({
+              operation: "summary",
+              detail: "Unavailable in fixture",
+            }),
+          )),
       detail: () =>
         Effect.fail(
           new PullRequestOperationError({ operation: "detail", detail: "Unavailable in fixture" }),
@@ -299,6 +309,36 @@ describe("pull request toolkit handlers", () => {
           watching: true,
           link: { url: "https://github.com/t3tools/t3code/pull/9", source: "agent" },
         },
+      ]);
+    }),
+  );
+
+  it.effect("reports passing checks when a watch starts", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        summary: (target) =>
+          Effect.succeed({
+            provider: SourceControlProviderKind.make("github"),
+            projectId: target.projectId,
+            repository: "t3tools/t3code",
+            number: 9,
+            title: "Passing PR",
+            url: "https://github.com/t3tools/t3code/pull/9",
+            state: "open",
+            headBranch: "feature",
+            baseBranch: "main",
+            updatedAt: "2026-08-01T00:00:00.000Z",
+            checksState: "passing",
+          }),
+      });
+      const result = yield* harness.call("watch_pull_request", {
+        repository: "t3tools/t3code",
+        number: 9,
+      });
+      expect(result.checksState).toBe("passing");
+      expect(result.next).toContain("no wake will come");
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        { type: "thread.pull-request.watch", watching: true },
       ]);
     }),
   );

@@ -5,6 +5,7 @@ import {
   PositiveInt,
   PullRequestReviewGuide,
   PullRequestReviewGuideRun,
+  PullRequestChecksState,
   PullRequestState,
   ThreadPullRequestLinkSource,
   TrimmedNonEmptyString,
@@ -248,6 +249,7 @@ export const WatchPullRequestResult = Schema.Struct({
   watching: Schema.Boolean,
   wasWatching: Schema.Boolean,
   state: Schema.optional(Schema.Literals(["merged", "closed"])),
+  checksState: Schema.optional(PullRequestChecksState),
   next: Schema.optional(Schema.String),
 });
 export type WatchPullRequestResult = typeof WatchPullRequestResult.Type;

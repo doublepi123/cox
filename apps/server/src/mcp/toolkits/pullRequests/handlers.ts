@@ -275,17 +275,21 @@ const make = Effect.gen(function* () {
       next: `This PR is already ${state}, so there is nothing to watch. Report that and end your turn.`,
     });
     if (watching && before?.snapshot?.state === "merged") return alreadyEnded("merged");
-    if (watching && !wasWatching) {
-      const pullRequests = yield* PullRequestService.PullRequestService;
-      const detail = yield* pullRequests
-        .detail({ projectId: thread.projectId, ...target, allowStale: false })
-        .pipe(
-          Effect.catchTag("PullRequestOperationError", () => Effect.undefined),
-          Effect.mapError((cause) => new PullRequestWatchFailedError({ cause })),
-        );
-      if (detail?.state === "merged" || detail?.state === "closed") {
-        return alreadyEnded(detail.state);
-      }
+    const pullRequests = yield* PullRequestService.PullRequestService;
+    const summary =
+      watching && !wasWatching
+        ? yield* pullRequests
+            .summary(
+              { projectId: thread.projectId, ...target, allowStale: false },
+              { recoverTransientFailure: false },
+            )
+            .pipe(
+              Effect.catchTag("PullRequestOperationError", () => Effect.undefined),
+              Effect.mapError((cause) => new PullRequestWatchFailedError({ cause })),
+            )
+        : undefined;
+    if (summary?.state === "merged" || summary?.state === "closed") {
+      return alreadyEnded(summary.state);
     }
     yield* engine
       .dispatch({
@@ -307,6 +311,12 @@ const make = Effect.gen(function* () {
       url: target.url,
       watching: watchedLink(after)?.watch !== undefined,
       wasWatching,
+      ...(summary?.checksState == null ? {} : { checksState: summary.checksState }),
+      ...(summary?.checksState === "passing"
+        ? {
+            next: "Checks already pass on this head, so no wake will come for them. Act on that now; the watch still wakes you on later changes.",
+          }
+        : {}),
     };
   });
 
