@@ -18,12 +18,15 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
@@ -311,6 +314,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
                     ),
                   )
                 : Layer.mock(CheckpointService.CheckpointServiceV2)({
+                    capturesSoFar: () => Effect.succeed(0),
                     repositoryScopes: () => Effect.succeed([]),
                     materializeBaselineCheckpoint: () =>
                       Effect.die(
@@ -497,9 +501,13 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
     }),
   );
 
-  it.effect.each([1, 2])(
-    "attributes the baselines a late capture materializes to the stopped run %i",
-    (ordinal) =>
+  it.effect.each([
+    { ordinal: 1, waitsForTimeout: false },
+    { ordinal: 2, waitsForTimeout: false },
+    { ordinal: 2, waitsForTimeout: true },
+  ])(
+    "attributes the baselines a late capture materializes to stopped run $ordinal (waits for timeout: $waitsForTimeout)",
+    ({ ordinal, waitsForTimeout }) =>
       Effect.gen(function* () {
         const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
         const requestedAt = yield* DateTime.now;
@@ -648,40 +656,89 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
         });
 
         const committed = yield* Ref.make<ReadonlyArray<OrchestrationV2DomainEvent>>([]);
+        const started = yield* Deferred.make<void>();
+        let attempts = 0;
+        const layerCheckpoints = CheckpointService.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              IdAllocator.layer,
+              NodeCrypto.layer,
+              layerNoTrackedFolders,
+              Layer.mock(CheckpointStore.CheckpointStore)({
+                isGitRepository: () => Effect.succeed(true),
+                hasCheckpointRef: () => Effect.succeed(true),
+                captureCheckpoint: ({ cwd }) =>
+                  Effect.gen(function* () {
+                    attempts++;
+                    if (!waitsForTimeout) return;
+                    yield* Deferred.succeed(started, undefined);
+                    yield* Effect.sleep("30 seconds");
+                    return yield* new VcsProcessTimeoutError({
+                      operation: "GitVcsDriver.checkpoints.captureCheckpoint",
+                      command: "git",
+                      cwd,
+                      timeoutMs: 30_000,
+                    });
+                  }),
+                diffCheckpoints: () => Effect.succeed(""),
+                listAuthoredPaths: () => Effect.succeed(null),
+              }),
+            ),
+          ),
+        );
         const layerCapture = CheckpointCaptureService.layer.pipe(
           Layer.provide(
             Layer.mergeAll(
               IdAllocator.layer,
-              CheckpointService.layer.pipe(
-                Layer.provide(
-                  Layer.mergeAll(
-                    IdAllocator.layer,
-                    NodeCrypto.layer,
-                    layerNoTrackedFolders,
-                    Layer.mock(CheckpointStore.CheckpointStore)({
-                      isGitRepository: () => Effect.succeed(true),
-                      hasCheckpointRef: () => Effect.succeed(true),
-                      captureCheckpoint: () => Effect.void,
-                      diffCheckpoints: () => Effect.succeed(""),
-                      listAuthoredPaths: () => Effect.succeed(null),
-                    }),
-                  ),
-                ),
-              ),
               Layer.mock(EventSink.EventSinkV2)({
                 commitCommand: (input) =>
                   Ref.set(committed, input.events).pipe(Effect.as({ committed: true } as never)),
               }),
             ),
           ),
+          Layer.provideMerge(layerCheckpoints),
         );
-        yield* CheckpointCaptureService.CheckpointCaptureServiceV2.use((service) =>
-          service.execute({ threadId: lateThreadId, runId: lateRunId, scopeId: lateScopeId }),
-        ).pipe(Effect.provide(layerCapture));
+        yield* Effect.gen(function* () {
+          const service = yield* CheckpointCaptureService.CheckpointCaptureServiceV2;
+          const execute = service.execute({
+            threadId: lateThreadId,
+            runId: lateRunId,
+            scopeId: lateScopeId,
+          });
+          if (!waitsForTimeout) return yield* execute;
 
-        const baselines = (yield* Ref.get(committed)).flatMap((event) =>
-          event.type === "checkpoint.captured" && event.payload.runId === null ? [event] : [],
+          const { scope } = yield* projectionStore.getCheckpointCaptureContext(lateThreadId, {
+            runId: lateRunId,
+            scopeId: lateScopeId,
+          });
+          assert.isDefined(scope);
+          const checkpoints = yield* CheckpointService.CheckpointServiceV2;
+          const first = yield* checkpoints
+            .capture({
+              scope: { ...scope, id: CheckpointScopeId.make("scope:shared-folder:first") },
+              runId: nextRunId,
+              nodeId: nextRootNodeId,
+              ordinalWithinScope: ordinal,
+              appRunOrdinal: ordinal,
+              capturedAt: rescopedAt,
+            })
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(started);
+          const waiting = yield* execute.pipe(Effect.forkChild);
+          yield* TestClock.adjust("60 seconds");
+          assert.equal((yield* Fiber.join(first)).status, "error");
+          yield* Fiber.join(waiting);
+        }).pipe(Effect.provide(layerCapture));
+
+        assert.equal(attempts, 1, "the root capture retried after waiting on its baseline");
+        const checkpointEvents = (yield* Ref.get(committed)).filter(
+          (event) => event.type === "checkpoint.captured",
         );
+        assert.equal(
+          checkpointEvents.find((event) => event.payload.runId === lateRunId)?.payload.status,
+          waitsForTimeout ? "error" : "ready",
+        );
+        const baselines = checkpointEvents.filter((event) => event.payload.runId === null);
         assert.deepEqual(
           baselines.map((event) => event.payload.ordinalWithinScope),
           ordinal === 1 ? [0] : [0, 1],
@@ -893,6 +950,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
               repositoryScopes: () => Effect.succeed([]),
               materializeBaselineCheckpoint: () =>
                 Effect.die("baseline materialization must be skipped when ordinal 0 is ready"),
+              capturesSoFar: () => Effect.succeed(0),
               capture: () => Effect.succeed(captured),
             }),
             Layer.mock(EventSink.EventSinkV2)({
