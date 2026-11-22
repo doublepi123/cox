@@ -1,5 +1,6 @@
 import {
   type ModelCapabilities,
+  type ProviderOptionDescriptor,
   type ServerProviderModel,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
@@ -12,7 +13,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
-import { createModelCapabilities } from "@t3tools/shared/model";
+import { createModelCapabilities, DEFAULT_VARIANT_CHOICE_ID } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import {
   buildServerProvider,
@@ -201,6 +202,32 @@ function inferDefaultVariant(
   return undefined;
 }
 
+/** Without an inferable default, a Default choice lets the user go back to sending no variant. */
+function openCodeVariantDescriptors(
+  providerID: string,
+  variants: ReadonlyArray<string>,
+): Array<ProviderOptionDescriptor> {
+  if (variants.length === 0) return [];
+  const inferred = inferDefaultVariant(providerID, variants);
+  const options = variants.map((id) => ({
+    id,
+    label: reasoningVariantLabel(id),
+    ...(id === inferred ? { isDefault: true } : {}),
+  }));
+  return [
+    {
+      id: "variant",
+      label: "Reasoning",
+      type: "select",
+      options:
+        inferred === undefined
+          ? [{ id: DEFAULT_VARIANT_CHOICE_ID, label: "Default" }, ...options]
+          : options,
+      currentValue: inferred ?? DEFAULT_VARIANT_CHOICE_ID,
+    },
+  ];
+}
+
 function inferDefaultAgent(agents: ReadonlyArray<Agent>): string | undefined {
   return agents.find((agent) => agent.name === "build")?.name ?? agents[0]?.name ?? undefined;
 }
@@ -237,15 +264,7 @@ function openCodeCapabilitiesForModel(input: {
   readonly model: ProviderListResponse["all"][number]["models"][string];
   readonly agents: ReadonlyArray<Agent>;
 }): ModelCapabilities {
-  const rawVariantValues = Object.keys(input.model.variants ?? {});
-  const variantValues =
-    rawVariantValues.length > 0 ? rawVariantValues : ["low", "medium", "high", "xhigh"];
-  const defaultVariant = inferDefaultVariant(input.providerID, variantValues);
-  const variantOptions = variantValues.map((value) =>
-    defaultVariant === value
-      ? { id: value, label: reasoningVariantLabel(value), isDefault: true as const }
-      : { id: value, label: reasoningVariantLabel(value) },
-  );
+  const variantValues = Object.keys(input.model.variants ?? {});
   const primaryAgents = input.agents.filter(
     (agent) => !agent.hidden && (agent.mode === "primary" || agent.mode === "all"),
   );
@@ -257,17 +276,7 @@ function openCodeCapabilitiesForModel(input: {
   );
   return createModelCapabilities({
     optionDescriptors: [
-      ...(variantOptions.length > 0
-        ? [
-            {
-              id: "variant",
-              label: "Reasoning",
-              type: "select" as const,
-              options: variantOptions,
-              ...(defaultVariant ? { currentValue: defaultVariant } : {}),
-            },
-          ]
-        : []),
+      ...openCodeVariantDescriptors(input.providerID, variantValues),
       ...(agentOptions.length > 0
         ? [
             {
@@ -620,25 +629,11 @@ const OPENCODE_2_PRESENTATION = {
 } as const;
 
 function openCode2ModelCapabilities(model: OpenCode2Model): ModelCapabilities {
-  const variants = model.variants.map((variant) => variant.id);
-  const defaultVariant = inferDefaultVariant(model.providerID, variants);
   return createModelCapabilities({
-    optionDescriptors:
-      variants.length === 0
-        ? []
-        : [
-            {
-              id: "variant",
-              label: "Reasoning",
-              type: "select",
-              options: variants.map((id) => ({
-                id,
-                label: reasoningVariantLabel(id),
-                ...(id === defaultVariant ? { isDefault: true } : {}),
-              })),
-              ...(defaultVariant === undefined ? {} : { currentValue: defaultVariant }),
-            },
-          ],
+    optionDescriptors: openCodeVariantDescriptors(
+      model.providerID,
+      model.variants.map((variant) => variant.id),
+    ),
   });
 }
 

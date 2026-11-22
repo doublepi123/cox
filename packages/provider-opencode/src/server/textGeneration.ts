@@ -1,9 +1,9 @@
 import * as Effect from "effect/Effect";
+import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, settingsSecretLiteral, TextGenerationError } from "@t3tools/contracts";
 import type { OpenCodeSettings } from "../settings.ts";
-import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
@@ -238,7 +238,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
           ).pipe(Effect.timeout("5 seconds"), Effect.ignore({ log: "Warn" })),
         );
         const selectedAgent = getModelSelectionStringOptionValue(input.modelSelection, "agent");
-        const selectedVariant = getModelSelectionStringOptionValue(input.modelSelection, "variant");
+        const selectedVariant = OpenCodeRuntime.openCodeVariant(input.modelSelection);
         const promptContext = {
           operation: input.operation,
           cwd: input.cwd,

@@ -29,6 +29,7 @@ import {
   derivePendingBackgroundWork,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
+  DEFAULT_VARIANT_CHOICE_ID,
   getModelSelectionStringOptionValue,
   getProviderOptionCurrentLabel,
   getProviderOptionStatedValue,
@@ -291,7 +292,7 @@ export function readSelectedEffortValue(
   return (
     ids
       .map((id) => getModelSelectionStringOptionValue(selection, id))
-      .find(Boolean) ?? null
+      .find((value) => value && value !== DEFAULT_VARIANT_CHOICE_ID) ?? null
   );
 }
 

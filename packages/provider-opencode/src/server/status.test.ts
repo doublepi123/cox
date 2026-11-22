@@ -33,6 +33,7 @@ import {
   OPENCODE_2_RESPONSES,
   replayOpenCodeServer,
 } from "./probeResponses.fixture.ts";
+import { buildProviderOptionSelectionsFromDescriptors, DEFAULT_VARIANT_CHOICE_ID } from "@t3tools/shared/model";
 const decodeOpenCodeSettings = Schema.decodeSync(OpenCodeSettings);
 
 const DEFAULT_VERSION_STDOUT = "opencode 1.14.19\n";
@@ -718,6 +719,114 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
         agentDescriptor.options.find((option) => option.isDefault === true)?.id,
         "build",
       );
+    }),
+  );
+
+  it.effect.each(["1.x", "2.x"] as const)(
+    "offers a Default reasoning choice for a %s custom model with no inferable default",
+    (generation) =>
+      Effect.gen(function* () {
+        const variants = ["low", "medium", "high"];
+        runtimeMock.state.versionStdout =
+          generation === "2.x" ? "opencode v2.0.18\n" : DEFAULT_VERSION_STDOUT;
+        runtimeMock.state.inventory = {
+          providerList: {
+            connected: ["acme"],
+            all: [
+              {
+                id: "acme",
+                name: "Acme",
+                models: {
+                  "acme-chat": {
+                    id: "acme-chat",
+                    name: "Acme Chat",
+                    variants: Object.fromEntries(variants.map((id) => [id, {}])),
+                  },
+                },
+              },
+            ],
+            default: {},
+          },
+          agents: [],
+        };
+
+        const snapshot = yield* checkProvider(
+          makeOpenCodeSettings(),
+          process.cwd(),
+          undefined,
+          undefined,
+          Effect.succeed([
+            {
+              providerID: "acme",
+              id: "acme-chat",
+              name: "Acme Chat",
+              variants: variants.map((id) => ({ id })),
+            },
+          ]),
+        );
+        const variant = snapshot.models
+          .find((model) => model.slug === "acme/acme-chat")
+          ?.capabilities?.optionDescriptors?.find((descriptor) => descriptor.id === "variant");
+
+        NodeAssert.ok(variant?.type === "select");
+        NodeAssert.deepEqual(
+          variant.options.find((option) => option.id === DEFAULT_VARIANT_CHOICE_ID),
+          { id: DEFAULT_VARIANT_CHOICE_ID, label: "Default" },
+          "OpenCode cannot infer a default variant, so the picker needs a choice that sends none",
+        );
+        NodeAssert.equal(variant.currentValue, DEFAULT_VARIANT_CHOICE_ID);
+        NodeAssert.deepEqual(
+          variant.options
+            .map((option) => option.id)
+            .filter((id) => id !== DEFAULT_VARIANT_CHOICE_ID),
+          variants,
+        );
+      }),
+  );
+
+  it.effect("keeps Agent without inventing Reasoning for models with no variants", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: ["opencode"],
+          all: [
+            {
+              id: "opencode",
+              name: "OpenCode Zen",
+              models: {
+                "big-pickle": { id: "big-pickle", name: "Big Pickle", variants: {} },
+                "glm-5": { id: "glm-5", name: "GLM-5" },
+              },
+            },
+          ],
+          default: {},
+        },
+        agents: [
+          { name: "build", hidden: false, mode: "primary" },
+          { name: "plan", hidden: false, mode: "primary" },
+        ],
+      };
+      const snapshot = yield* checkProvider(makeOpenCodeSettings());
+      for (const slug of ["opencode/big-pickle", "opencode/glm-5"]) {
+        const model = snapshot.models.find((entry) => entry.slug === slug);
+        NodeAssert.ok(model);
+        const descriptors = model.capabilities?.optionDescriptors;
+        NodeAssert.deepEqual(descriptors, [
+          {
+            id: "agent",
+            label: "Agent",
+            type: "select",
+            options: [
+              { id: "build", label: "Build", isDefault: true },
+              { id: "plan", label: "Plan" },
+            ],
+            currentValue: "build",
+          },
+        ]);
+        NodeAssert.deepEqual(buildProviderOptionSelectionsFromDescriptors(descriptors), [
+          { id: "agent", value: "build" },
+        ]);
+      }
     }),
   );
 

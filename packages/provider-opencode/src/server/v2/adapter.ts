@@ -62,6 +62,7 @@ import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as OpenCode2Client from "./OpenCode2Client.ts";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
+import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { loadOpenCode2Agents } from "../openCode2Agents.ts";
 import { parseClaudeUsageLimit, readableProviderErrorMessage } from "../providerErrorMessage.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -70,7 +71,7 @@ import { t3OrchestrationSystemPrompt } from "@t3tools/provider-core/server/orche
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
-import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
+import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { causeErrorTag } from "@t3tools/shared/observability";
 
 import {
@@ -692,7 +693,7 @@ const modelRef = (
 ) => {
   const parsed = OpenCodeRuntime.parseOpenCodeModelSlug(selection.model);
   if (parsed === null) return undefined;
-  const selected = getModelSelectionStringOptionValue(selection, "variant");
+  const selected = OpenCodeRuntime.openCodeVariant(selection);
   const variant =
     selected === undefined || listedVariants === undefined || listedVariants.has(selected)
       ? selected
@@ -705,6 +706,7 @@ const modelRef = (
 };
 const malformedModel = (model: string) =>
   `OpenCode model '${model}' must use provider/model format`;
+// OpenCode 2 reports a session created without a variant as variant "default".
 const sameModel = (left: ModelRef, right: ModelRef | undefined) =>
   left.providerID === right?.providerID &&
   left.id === right?.id &&

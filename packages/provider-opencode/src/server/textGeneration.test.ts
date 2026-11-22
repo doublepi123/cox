@@ -19,12 +19,14 @@ import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
 import * as OpenCodeTextGeneration from "./textGeneration.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
+import { DEFAULT_VARIANT_CHOICE_ID } from "@t3tools/shared/model";
 
 const runtimeMock = {
   state: {
     startCalls: [] as string[],
     promptUrls: [] as string[],
     promptParts: [] as ReadonlyArray<unknown>[],
+    promptVariants: [] as Array<string | undefined>,
     authHeaders: [] as Array<string | null>,
     closeCalls: [] as string[],
     sessionCreateCalls: 0,
@@ -46,6 +48,7 @@ const runtimeMock = {
     this.state.startCalls.length = 0;
     this.state.promptUrls.length = 0;
     this.state.promptParts.length = 0;
+    this.state.promptVariants.length = 0;
     this.state.authHeaders.length = 0;
     this.state.closeCalls.length = 0;
     this.state.sessionCreateCalls = 0;
@@ -130,11 +133,12 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntime.OpenCodeRuntime["Service"] = {
           return { data: true };
         },
         prompt: async (
-          input: { readonly parts: ReadonlyArray<unknown> },
+          input: { readonly parts: ReadonlyArray<unknown>; readonly variant?: string },
           options?: { readonly signal?: AbortSignal },
         ) => {
           runtimeMock.state.promptUrls.push(baseUrl);
           runtimeMock.state.promptParts.push(input.parts);
+          runtimeMock.state.promptVariants.push(input.variant);
           runtimeMock.state.authHeaders.push(
             serverPassword ? `Basic ${btoa(`opencode:${serverPassword}`)}` : null,
           );
@@ -532,6 +536,30 @@ it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
         expect(runtimeMock.state.sessionCalls).toEqual(["delete http://127.0.0.1:4301/session"]);
       }),
     ),
+  );
+
+  it.effect(
+    "sends no variant for a custom model's Default choice and keeps a variant named default",
+    () =>
+      withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
+        Effect.gen(function* () {
+          for (const value of [DEFAULT_VARIANT_CHOICE_ID, "default"]) {
+            yield* textGeneration.generateCommitMessage({
+              ...DEFAULT_COMMIT_MESSAGE_INPUT,
+              modelSelection: {
+                ...DEFAULT_TEST_MODEL_SELECTION,
+                model: "acme/custom-chat",
+                options: [{ id: "variant", value }],
+              },
+            });
+          }
+
+          expect(runtimeMock.state.promptVariants).toEqual([
+            undefined,
+            "default",
+          ]);
+        }),
+      ),
   );
 
   it.effect("parses JSON returned as plain text output", () =>
