@@ -377,14 +377,18 @@ export const makeCliproxyApi = Effect.gen(function* () {
       };
     });
     return yield* read.pipe(
-      Effect.orElseSucceed(() => ({
-        ...base,
-        usageLimits: makeUnavailableUsageLimits({
-          checkedAt,
-          reason: "probeFailed",
-          message: "The hub could not read this account's usage.",
+      Effect.catch((error) =>
+        Effect.succeed({
+          ...base,
+          usageLimits: makeUnavailableUsageLimits({
+            checkedAt,
+            reason: "probeFailed",
+            message: isUsageLimitSourceError(error)
+              ? error.detail
+              : "The hub could not read this account's usage.",
+          }),
         }),
-      })),
+      ),
     );
   });
 
