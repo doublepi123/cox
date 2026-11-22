@@ -249,6 +249,27 @@ describe("command permissions", () => {
         }),
       ),
   );
+  it.effect.each([WS_METHODS.providerMcpSignInStart, WS_METHODS.providerMcpSignInComplete])(
+    "requires provider management for %s",
+    (method) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* setup;
+          const command = createCommandPermissions(runtime, method);
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+          expect(registry.get(command.permissionAtom(env))).toBe(false);
+          registry.set(
+            sessions(env),
+            AsyncResult.success({
+              ...grant(false),
+              scopes: [AuthProvidersManageScope],
+              permissions: [AuthProvidersManageScope],
+            }),
+          );
+          yield* command.authorize(registry, env);
+        }),
+      ),
+  );
 });
 
 it.effect(
