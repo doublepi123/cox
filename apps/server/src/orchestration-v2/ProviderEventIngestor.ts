@@ -1,3 +1,4 @@
+import { UsageLimitResetFallback } from "../usage/UsageLimitSources.ts";
 import {
   NodeId,
   CommandId,
@@ -345,6 +346,7 @@ export const layer: Layer.Layer<
     const analytics = yield* ProviderTurnAnalytics;
     const agentScope = yield* AgentScope;
     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+    const hubResets = yield* UsageLimitResetFallback;
     const scope = yield* Effect.scope;
     const completedTurnAnalytics = new Set<string>();
     const omoChildThreadId = (task: OrchestrationV2Subagent) =>
@@ -1097,9 +1099,31 @@ export const layer: Layer.Layer<
                 return dismissed;
               }
               const occurredAt = yield* DateTime.now;
-              const failure = (yield* agentScope.oomKilled(input.threadId))
+              const reported = (yield* agentScope.oomKilled(input.threadId))
                 ? { ...input.event.failure, message: "Killed: out of memory.", code: "oom_kill" }
                 : input.event.failure;
+              let failure = reported;
+              if (reported.class === "usage_limit" && reported.resetAt == null) {
+                const instance = yield* instances.getInstance(input.providerInstanceId);
+                const snapshot = instance ? yield* instance.snapshot.getSnapshot : undefined;
+                const endpoint = snapshot?.auth.endpoint;
+                if (endpoint) {
+                  const model = yield* Effect.gen(function* () {
+                    const records =
+                      input.runId === undefined
+                        ? null
+                        : yield* projections.getThreadRecords(input.threadId, ["runs"], {
+                            runIds: [input.runId],
+                          });
+                    return (
+                      records?.runs[0]?.modelSelection ??
+                      (yield* projections.getThread(input.threadId)).modelSelection
+                    ).model;
+                  }).pipe(Effect.orElseSucceed(() => null));
+                  const resetAt = yield* hubResets.resetAt(input.event.driver, endpoint, model);
+                  if (resetAt !== null) failure = { ...reported, resetAt };
+                }
+              }
               return [
                 ...dismissed,
                 yield* makeDomainEvent(input, {

@@ -56,6 +56,7 @@ export type ServerProviderAuthStatus = typeof ServerProviderAuthStatus.Type;
 
 export const ServerProviderAuth = Schema.Struct({
   status: ServerProviderAuthStatus,
+  endpoint: Schema.optional(TrimmedNonEmptyString),
   type: Schema.optional(TrimmedNonEmptyString),
   label: Schema.optional(TrimmedNonEmptyString),
   email: Schema.optional(TrimmedNonEmptyString),
