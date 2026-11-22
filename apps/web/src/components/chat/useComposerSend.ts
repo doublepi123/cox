@@ -66,7 +66,8 @@ import { type ChatMessage } from "../../types";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
-import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { useStableCallback } from "../../hooks/useStableCallback";
+import { readPendingWorkspaceDefault, useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   beginBackgroundDraftSubmissionByRef,
@@ -1588,5 +1589,22 @@ export function useComposerSend(input: ComposerSendInput) {
     }
   };
 
-  return { onSend };
+  const sendLatest = useStableCallback(onSend);
+  return {
+    onSend: async (...args: Parameters<typeof onSend>) => {
+      const workspaceDefault =
+        draftId && !args[3] && !sendInFlightRef.current
+          ? readPendingWorkspaceDefault(draftId)
+          : null;
+      if (workspaceDefault === null) return onSend(...args);
+      args[0]?.preventDefault();
+      sendInFlightRef.current = true;
+      try {
+        await workspaceDefault;
+      } finally {
+        sendInFlightRef.current = false;
+      }
+      return sendLatest(...args);
+    },
+  };
 }

@@ -2,9 +2,18 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { RuntimeMode } from "@t3tools/contracts";
 
 const testState = vi.hoisted(() => {
-  let completeProjectFileRead: (value: null) => void = () => undefined;
-  let projectFileRead = Promise.resolve<null>(null);
+  type ProjectFile = { readonly defaultThreadEnvMode?: "local" | "worktree" } | null;
+  let completeProjectFileRead: (value: ProjectFile) => void = () => undefined;
+  let projectFileRead = Promise.resolve<ProjectFile>(null);
+  let draftSession = {
+    envMode: "local",
+    environmentId: "environment-ssh",
+    projectId: "project-remote",
+    worktreePath: null,
+    branch: null as string | null,
+  };
   let projectRemoved = false;
+  let draftsWithUserText = new Set<string>();
   let connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
   let targetSettings = {
     defaultThreadEnvMode: "local" as "local" | "worktree" | null,
@@ -19,7 +28,6 @@ const testState = vi.hoisted(() => {
     readonly threadId: string;
   } | null = null;
   let openDraftRoute: { readonly kind: "draft"; readonly draftId: string } | null = null;
-  let draftsWithUserText = new Set<string>();
   const router = {
     state: {
       location: { href: "/" },
@@ -34,7 +42,7 @@ const testState = vi.hoisted(() => {
     getDraftSessionByLogicalProjectKey: vi.fn(() => storedDraft),
     getDraftSession: vi.fn(() =>
       openDraftRoute === null
-        ? null
+        ? { ...draftSession, promotedTo: null, startFromOrigin: false }
         : {
             logicalProjectKey: "remote-project",
             promotedTo: null,
@@ -53,27 +61,30 @@ const testState = vi.hoisted(() => {
   };
 
   return {
-    completeProjectFileRead: (value: null) => completeProjectFileRead(value),
-    draftStore,
-    get projectFileRead() {
-      return projectFileRead;
+    completeProjectFileRead: (value: ProjectFile) => completeProjectFileRead(value),
+    pickBranch(branch: string) {
+      draftSession = { ...draftSession, branch };
+    },
+    removeProject() {
+      projectRemoved = true;
     },
     get projectRemoved() {
       return projectRemoved;
+    },
+    hasUserText: (draft: { readonly draftId?: string } | null | undefined) =>
+      draft?.draftId !== undefined && draftsWithUserText.has(draft.draftId),
+    giveUserText(draftId: string) {
+      draftsWithUserText.add(draftId);
+    },
+    draftStore,
+    get projectFileRead() {
+      return projectFileRead;
     },
     get connectedEnvironmentIds() {
       return connectedEnvironmentIds;
     },
     disconnect(environmentId: string) {
       connectedEnvironmentIds = connectedEnvironmentIds.filter((id) => id !== environmentId);
-    },
-    removeProject() {
-      projectRemoved = true;
-    },
-    hasUserText: (draft: { readonly draftId?: string } | null | undefined) =>
-      draft?.draftId !== undefined && draftsWithUserText.has(draft.draftId),
-    giveUserText(draftId: string) {
-      draftsWithUserText = new Set([...draftsWithUserText, draftId]);
     },
     get openDraftRoute() {
       return openDraftRoute;
@@ -92,9 +103,16 @@ const testState = vi.hoisted(() => {
       },
     ) {
       storedDraft = nextStoredDraft;
-      openDraftRoute = null;
-      draftsWithUserText = new Set();
       projectRemoved = false;
+      draftsWithUserText = new Set();
+      openDraftRoute = null;
+      draftSession = {
+        envMode: "local",
+        environmentId: "environment-ssh",
+        projectId: "project-remote",
+        worktreePath: null,
+        branch: null,
+      };
       connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
       targetSettings = {
         defaultThreadEnvMode: workspaceDefaults.envMode,
@@ -107,7 +125,7 @@ const testState = vi.hoisted(() => {
       draftStore.setDraftThreadContext.mockClear();
       draftStore.setLogicalProjectDraftThreadId.mockClear();
       draftStore.setPrompt.mockClear();
-      projectFileRead = new Promise<null>((resolve) => {
+      projectFileRead = new Promise<ProjectFile>((resolve) => {
         completeProjectFileRead = resolve;
       });
     },
@@ -179,6 +197,7 @@ vi.mock("@tanstack/react-router", () => ({
   useParams: () => null,
   useRouter: () => testState.router,
 }));
+vi.mock("react-dom", () => ({ flushSync: (update: () => void) => update() }));
 vi.mock("react", () => ({
   useCallback: <T>(callback: T) => callback,
   useMemo: <T>(factory: () => T) => factory(),
@@ -189,8 +208,7 @@ vi.mock("../composerDraftStore", () => {
     getState: () => testState.draftStore,
   });
   return {
-    composerDraftHasUserContent: (draft: { readonly draftId?: string } | null | undefined) =>
-      testState.hasUserText(draft),
+    composerDraftHasUserContent: testState.hasUserText,
     markPromotedDraftThreadByRef: vi.fn(),
     useComposerDraftStore,
   };
@@ -203,6 +221,7 @@ vi.mock("../lib/chatThreadActions", async (importOriginal) => ({
 vi.mock("../providerInstances", () => ({ resolveDefaultProviderModelSelection: () => null }));
 vi.mock("../lib/t3ProjectFileDefaults", () => ({
   readT3ProjectFile: () => testState.projectFileRead,
+  peekT3ProjectFile: () => undefined,
 }));
 vi.mock("../lib/utils", () => ({
   newDraftId: () => "draft-delayed",
@@ -247,7 +266,7 @@ vi.mock("../uiStateStore", () => ({
 }));
 vi.mock("./useSettings", () => ({ getClientSettings: () => ({}) }));
 
-import { useNewThreadHandler } from "./useHandleNewThread";
+import { readPendingWorkspaceDefault, useNewThreadHandler } from "./useHandleNewThread";
 
 describe.each([
   ["new", null],
@@ -261,32 +280,88 @@ describe.each([
     },
   ],
 ])("useNewThreadHandler with a %s draft", (_, draft) => {
-  it("abandons a delayed draft open when the user navigates elsewhere", async () => {
-    testState.reset(draft);
-    const openThread = useNewThreadHandler();
-    const pendingOpen = openThread(
-      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
-      { replace: true },
+  it("opens the draft before the project file is read, then applies its workspace default", async () => {
+    testState.reset(draft, { envMode: null, startFromOrigin: false });
+    const opened = await useNewThreadHandler()({
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+    } as never);
+
+    expect(testState.router.navigate).toHaveBeenCalledOnce();
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      expect.anything(),
+      opened?.draftId,
+      expect.objectContaining({ envMode: "local" }),
     );
+    testState.draftStore.setDraftThreadContext.mockClear();
 
+    const pendingDefault = readPendingWorkspaceDefault(opened!.draftId);
+    expect(pendingDefault).not.toBeNull();
+    testState.completeProjectFileRead({ defaultThreadEnvMode: "worktree" });
+    await pendingDefault;
+
+    expect(readPendingWorkspaceDefault(opened!.draftId)).toBeNull();
+
+    expect(testState.draftStore.setDraftThreadContext).toHaveBeenCalledWith(opened?.draftId, {
+      envMode: "worktree",
+      startFromOrigin: false,
+    });
+  });
+
+  it("does not return to the draft after the user navigates away", async () => {
+    testState.reset(draft, { envMode: null, startFromOrigin: false });
+    const opened = await useNewThreadHandler()({
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+    } as never);
+    const pending = readPendingWorkspaceDefault(opened!.draftId);
+    expect(pending).not.toBeNull();
     testState.router.state.location.href = "/usage";
-    testState.completeProjectFileRead(null);
-    await pendingOpen;
-
+    testState.completeProjectFileRead({ defaultThreadEnvMode: "worktree" });
+    await pending;
     expect(testState.router.state.location.href).toBe("/usage");
-    expect(testState.router.navigate).not.toHaveBeenCalled();
-    expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
+    expect(testState.router.navigate).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a late default for a project that was removed", async () => {
+    testState.reset(draft, { envMode: null, startFromOrigin: false });
+    const opened = await useNewThreadHandler()({
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+    } as never);
+    testState.draftStore.setDraftThreadContext.mockClear();
+
+    const pendingDefault = readPendingWorkspaceDefault(opened!.draftId);
+    expect(pendingDefault).not.toBeNull();
+    testState.removeProject();
+    testState.completeProjectFileRead({ defaultThreadEnvMode: "worktree" });
+    await pendingDefault;
+    expect(testState.draftStore.setDraftThreadContext).not.toHaveBeenCalled();
+  });
+
+  it("keeps a branch the user picked while the project file loaded", async () => {
+    testState.reset(draft, { envMode: null, startFromOrigin: false });
+    const opened = await useNewThreadHandler()({
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+    } as never);
+    testState.draftStore.setDraftThreadContext.mockClear();
+
+    testState.pickBranch("feature");
+    expect(readPendingWorkspaceDefault(opened!.draftId)).toBeNull();
+    testState.completeProjectFileRead({ defaultThreadEnvMode: "worktree" });
+    await testState.projectFileRead;
+
+    expect(testState.draftStore.setDraftThreadContext).not.toHaveBeenCalled();
   });
 
   it("sets the prompt before the draft shows", async () => {
     testState.reset(draft);
-    const pendingOpen = useNewThreadHandler()(
+    const opened = await useNewThreadHandler()(
       { environmentId: "environment-ssh", projectId: "project-remote" } as never,
       { prompt: "Read the playbook. " },
     );
-
-    testState.completeProjectFileRead(null);
-    const opened = await pendingOpen;
 
     expect(testState.draftStore.setPrompt).toHaveBeenCalledWith(
       opened?.draftId,
@@ -295,21 +370,6 @@ describe.each([
     expect(testState.draftStore.setPrompt.mock.invocationCallOrder[0]).toBeLessThan(
       testState.router.navigate.mock.invocationCallOrder[0] ?? 0,
     );
-  });
-
-  it("abandons a delayed draft open when the project is removed meanwhile", async () => {
-    testState.reset(draft);
-    const pendingOpen = useNewThreadHandler()(
-      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
-      { replace: true },
-    );
-
-    testState.removeProject();
-    testState.completeProjectFileRead(null);
-
-    await expect(pendingOpen).resolves.toBeNull();
-    expect(testState.router.navigate).not.toHaveBeenCalled();
-    expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
   });
 });
 
