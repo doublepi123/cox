@@ -30,6 +30,7 @@ import {
 } from "react";
 
 import { ensureLocalApi } from "../../localApi";
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
@@ -138,19 +139,18 @@ function SegmentPopover({
   account,
   window,
   reset,
-  now,
   redeem,
   onRedeem,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
   readonly reset: LimitPoolWindow["resets"][number] | undefined;
-  readonly now: number;
   readonly redeem: ReturnType<typeof useResetCredit> | null;
   readonly onRedeem: () => void;
 }) {
   const { t } = useTranslation();
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
+  const now = Date.parse(`${useNowMinute()}Z`);
   const remaining = remainingPercent(window);
   const timeLeft = paceRemainingPercent(window, now);
   const resetsIn = formatResetsIn(window, now);
@@ -224,7 +224,7 @@ function SegmentPopover({
  * segment moves it instead of opening a second one. The payload is the segment
  * it currently describes.
  */
-type SegmentPayload = Omit<Parameters<typeof SegmentPopover>[0], "now" | "onRedeem">;
+type SegmentPayload = Omit<Parameters<typeof SegmentPopover>[0], "onRedeem">;
 const SegmentPopoverContext = createContext<ReturnType<
   typeof PopoverCreateHandle<SegmentPayload>
 > | null>(null);
@@ -234,13 +234,11 @@ function ActiveSegmentPopover({
   actions,
   payload,
   pools,
-  now,
 }: {
   readonly handle: ReturnType<typeof PopoverCreateHandle<SegmentPayload>>;
   readonly actions: RefObject<PopoverPrimitive.Root.Actions | null>;
   readonly payload: SegmentPayload;
   readonly pools: readonly LimitPool[];
-  readonly now: number;
 }) {
   const available = pools.some((pool) =>
     displayLimitWindows(pool).some((window) =>
@@ -266,7 +264,6 @@ function ActiveSegmentPopover({
     <PopoverPopup side="top" sideOffset={6}>
       <SegmentPopover
         {...payload}
-        now={now}
         onRedeem={() => {
           handle.close();
           payload.redeem?.setConfirming(true);
@@ -652,7 +649,6 @@ export function UsageLimitsPooled({
               actions={segmentPopoverActions}
               payload={payload}
               pools={pools}
-              now={now}
             />
           ) : null
         }
