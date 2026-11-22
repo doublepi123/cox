@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
-import type { OpenCode2Model } from "./status.ts";
+import { openCodePrice, type OpenCode2Model } from "./status.ts";
 
 // Cold catalogs take seconds; model reads already retry empty catalogs.
 const PROVIDER_NAME_TIMEOUT = "3 seconds";
@@ -32,6 +32,7 @@ export const loadOpenCode2Catalog = (
       );
       return models.data.map((model) => {
         const providerName = providerNames.get(model.providerID);
+        const baseCost = model.cost.find((cost) => cost.tier === undefined);
         return {
           providerID: model.providerID,
           id: model.id,
@@ -41,6 +42,7 @@ export const loadOpenCode2Catalog = (
           family: model.family,
           released: model.time.released,
           deprecated: model.status === "deprecated",
+          ...(baseCost ? { price: openCodePrice(baseCost) } : {}),
         };
       });
     }),
