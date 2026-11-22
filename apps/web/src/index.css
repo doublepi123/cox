@@ -2742,6 +2742,13 @@ code {
   }
 }
 
+/* Chromium reshapes the whole text run with non-zero word spacing, keeping contextual ligatures visible. */
+.composer-tiptap.ProseMirror {
+  font-variant-ligatures: normal;
+  font-feature-settings: normal;
+  word-spacing: 0.01px;
+}
+
 .composer-tiptap p {
   margin: 0;
 }
