@@ -2087,6 +2087,7 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__cox__list_scheduled_tasks",
   "mcp__cox__cox_thread_list",
   "mcp__cox__cox_thread_wait",
+  "mcp__cox__cox_background_wait",
   "mcp__cox__cox_worktree_status",
   "mcp__cox__cox_worktree_list",
   "mcp__cox__cox_project_list",
