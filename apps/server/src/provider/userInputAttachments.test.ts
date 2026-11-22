@@ -939,9 +939,24 @@ describe("question answer paths", () => {
           ext: "odt",
           parts: {
             "content.xml":
-              '<office:document><text:h text:outline-level="2">Orchard</text:h><text:p>19<text:s text:c="3"/>violet<text:s/>crates</text:p></office:document>',
+              '<office:document><text:h text:outline-level="2">Orchard</text:h><text:p>19<text:s text:c="3"/>violet<text:s/>crates</text:p>' +
+              [
+                "table-of-content",
+                "illustration-index",
+                "table-index",
+                "object-index",
+                "user-index",
+                "alphabetical-index",
+                "bibliography",
+              ]
+                .map(
+                  (name) =>
+                    `<text:${name}><text:${name}-source><text:index-title-template>Contents</text:index-title-template><text:${name}-entry-template><text:index-entry-span>: </text:index-entry-span></text:${name}-entry-template></text:${name}-source><text:index-body><text:index-title><text:p>Contents</text:p></text:index-title><text:p>Orchard 1</text:p></text:index-body></text:${name}>`,
+                )
+                .join("") +
+              "</office:document>",
           },
-          expected: ["## Orchard", "19   violet crates"],
+          expected: ["## Orchard", "19   violet crates", "Contents\nOrchard 1" + "\nContents\nOrchard 1".repeat(6)],
         },
         {
           ext: "ods",

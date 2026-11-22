@@ -25,6 +25,14 @@ const HIDDEN_XML_NODES = new Set([
   "delInstrText",
   "tracked-changes",
   "pPr",
+  // An OpenDocument index keeps its templates beside the generated index; only the latter is content.
+  "table-of-content-source",
+  "illustration-index-source",
+  "table-index-source",
+  "object-index-source",
+  "user-index-source",
+  "alphabetical-index-source",
+  "bibliography-source",
 ]);
 
 class Truncation extends Error {}
