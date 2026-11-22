@@ -6261,6 +6261,23 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       expectedMessage: "Usage settings",
     },
     {
+      name: "invalid-encrypted-history",
+      code: "other",
+      message: JSON.stringify({
+        error: {
+          type: "invalid_request_error",
+          code: "invalid_encrypted_content",
+          message: "Encrypted content could not be decrypted or parsed.",
+        },
+        headers: { "x-codex-turn-state": "dummy-sensitive" },
+        status: 400,
+      }),
+      notification: true,
+      expectedClass: "provider_error",
+      expectedCode: "invalid_encrypted_content",
+      expectedMessage: "encrypted conversation history",
+    },
+    {
       name: "terminal-disconnect-without-http-status",
       code: "responseStreamDisconnected",
       errorInfo: { responseStreamDisconnected: { httpStatusCode: null } },

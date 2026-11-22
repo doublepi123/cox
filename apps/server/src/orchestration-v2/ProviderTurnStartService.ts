@@ -1,3 +1,4 @@
+import { classifyCodexManagedError } from "../provider/CodexManagedErrors.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
@@ -1200,8 +1201,73 @@ export const layer: Layer.Layer<
               turnItemRunIds: [previousCodexRun.id],
             })).turnItems,
           )?.code === "subscription_sharing_unsupported_capability";
+        const rejectedHistory = yield* Effect.gen(function* () {
+          if (session.driver !== "codex") return false;
+          const acceptedAttemptIds = new Set(
+            projection.providerTurns.map((turn) => turn.runAttemptId),
+          );
+          const previous = projection.runs.findLast(
+            (source) =>
+              source.providerThreadId === providerThread.id &&
+              source.ordinal < run.ordinal &&
+              source.activeAttemptId !== null &&
+              acceptedAttemptIds.has(source.activeAttemptId),
+          );
+          if (
+            previous === undefined ||
+            (previous.status !== "failed" &&
+              previous.status !== "interrupted" &&
+              previous.status !== "cancelled")
+          )
+            return false;
+          const previousAttempt = projection.attempts.find(
+            (source) => source.id === previous.activeAttemptId,
+          );
+          if (previousAttempt === undefined) return false;
+          if (previousAttempt.nativeThreadId !== undefined) {
+            if (previousAttempt.nativeThreadId !== providerThread.nativeThreadRef?.nativeId)
+              return false;
+          } else if (
+            projection.contextHandoffs.some(
+              (handoff) =>
+                handoff.toProviderThreadId === providerThread.id &&
+                handoff.strategy === "full_thread_summary" &&
+                handoff.delivery?.nativeThreadId === providerThread.nativeThreadRef?.nativeId &&
+                handoff.coveredRunOrdinals.to >= previous.ordinal,
+            )
+          )
+            return false;
+          // The native resume RPC can succeed while persisted input still rejects every turn.
+          return (yield* projectionStore.getTurnStartHistory(input.threadId, [previous.id])).some(
+            (item) =>
+              item.type === "error" &&
+              item.nodeId === previous.rootNodeId &&
+              (item.failure.code === "invalid_encrypted_content" ||
+                classifyCodexManagedError(item.failure.message)?.code ===
+                  "invalid_encrypted_content"),
+          );
+        });
+        // A fresh session would orphan background work still running on the native thread.
+        const hasPendingWork = (thread: OrchestrationV2ProviderThread) =>
+          session.hasPendingBackgroundWorkForThread?.(thread, { includeSubagents: true }) ??
+          session.hasPendingBackgroundWork ??
+          Effect.succeed(false);
+        const failForPendingWork = loadFromProvider(
+          Effect.fail(
+            new ProviderAdapter.ProviderAdapterTurnStartError({
+              driver: session.driver,
+              threadId: projection.thread.id,
+              providerThreadId: providerThread.id,
+              runId,
+              cause: new ContextHandoffBackgroundWorkError(),
+            }),
+          ),
+        );
+        if (rejectedHistory && (yield* hasPendingWork(providerThread))) {
+          return yield* failForPendingWork;
+        }
         const resumed = yield* Effect.result(
-          uncertainDelivery || incompatibleCodexHistory
+          uncertainDelivery || incompatibleCodexHistory || rejectedHistory
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
@@ -1210,7 +1276,9 @@ export const layer: Layer.Layer<
                   runId,
                   cause: incompatibleCodexHistory
                     ? "ChatGPT sharing rejected the native conversation history"
-                    : "Uncertain native history injection",
+                    : rejectedHistory
+                      ? "Rejected native history"
+                      : "Uncertain native history injection",
                 }),
               )
             : session.resumeThread({
@@ -1251,26 +1319,7 @@ export const layer: Layer.Layer<
             Effect.catchTags({ ContextHandoffBudgetError: () => Effect.succeed(false) }),
           );
           if (!fitsFresh) return resumed.success;
-          const hasPendingWork = yield* (
-            session.hasPendingBackgroundWorkForThread?.(resumed.success, {
-              includeSubagents: true,
-            }) ??
-              session.hasPendingBackgroundWork ??
-              Effect.succeed(false)
-          );
-          if (hasPendingWork) {
-            return yield* loadFromProvider(
-              Effect.fail(
-                new ProviderAdapter.ProviderAdapterTurnStartError({
-                  driver: session.driver,
-                  threadId: projection.thread.id,
-                  providerThreadId: providerThread.id,
-                  runId,
-                  cause: new ContextHandoffBackgroundWorkError(),
-                }),
-              ),
-            );
-          }
+          if (yield* hasPendingWork(resumed.success)) return yield* failForPendingWork;
         }
         resumedHandoffContext = undefined;
         resumedRetryHandoff = { handoffs: [], attachments: [] };
@@ -1282,7 +1331,9 @@ export const layer: Layer.Layer<
           runId,
           reason: incompatibleCodexHistory
             ? "unsupported_chatgpt_history"
-            : uncertainDelivery
+            : rejectedHistory
+              ? "rejected_native_history"
+              : uncertainDelivery
               ? "uncertain_history_delivery"
               : resumed._tag === "Success"
                 ? "handoff_budget_exhausted"
