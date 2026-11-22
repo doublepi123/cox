@@ -345,10 +345,34 @@ function* notebook(source: string): Generator<string, void> {
   }
 }
 
+// Per-byte decoding only supports the single-byte \fcharset values.
+const FONT_CODE_PAGES = new Map([
+  [77, "macintosh"],
+  [161, "windows-1253"],
+  [162, "windows-1254"],
+  [163, "windows-1258"],
+  [177, "windows-1255"],
+  [178, "windows-1256"],
+  [186, "windows-1257"],
+  [204, "windows-1251"],
+  [222, "windows-874"],
+  [238, "windows-1250"],
+]);
+
 function* rtf(source: string): Generator<string, void> {
   if (!source.startsWith("{\\rtf")) throw new Error("Invalid RTF document");
-  let state = { skip: false, uc: 1, decoder: new TextDecoder("windows-1252") };
+  let state = {
+    skip: false,
+    uc: 1,
+    font: 0,
+    fontTable: false,
+    decoder: new TextDecoder("windows-1252"),
+  };
   const stack: Array<typeof state> = [];
+  // A font's \fcharset, not the document code page, encodes the bytes written in that font.
+  const fonts = new Map<number, typeof state.decoder>();
+  let defaultFont = 0;
+  const decoder = () => fonts.get(state.font) ?? state.decoder;
   const symbols = new Map([
     ["endash", "–"],
     ["emdash", characterEntities.mdash],
@@ -379,7 +403,7 @@ function* rtf(source: string): Generator<string, void> {
       if (hex) {
         if (fallback) fallback--;
         else if (!state.skip)
-          yield state.decoder.decode(Uint8Array.of(Number.parseInt(hex[1]!, 16)));
+          yield decoder().decode(Uint8Array.of(Number.parseInt(hex[1]!, 16)));
         i += 3;
       } else if (word) {
         i += word[0].length;
@@ -408,6 +432,16 @@ function* rtf(source: string): Generator<string, void> {
           ].includes(control)
         )
           state.skip = true;
+        if (control === "fonttbl") state.fontTable = true;
+        else if (control === "deff") state.font = defaultFont = value;
+        else if (control === "f") {
+          state.font = value;
+          if (state.fontTable) fonts.delete(value);
+        } else if (control === "fcharset" && state.fontTable) {
+          const codePage = FONT_CODE_PAGES.get(value);
+          if (codePage) fonts.set(state.font, new TextDecoder(codePage));
+        }
+        if (control === "plain") state.font = defaultFont;
         if (control === "ansicpg") {
           // Per-byte decoding only supports single-byte Windows code pages.
           if (value !== 874 && (value < 1250 || value > 1258))
@@ -436,7 +470,7 @@ function* rtf(source: string): Generator<string, void> {
       else
         yield char.charCodeAt(0) < 128
           ? char
-          : state.decoder.decode(Uint8Array.of(char.charCodeAt(0)));
+          : decoder().decode(Uint8Array.of(char.charCodeAt(0)));
     }
   }
 }
