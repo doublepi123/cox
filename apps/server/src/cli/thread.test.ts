@@ -42,6 +42,31 @@ it.effect("--wait follows the sent run to its continuation's terminal status", (
   }),
 );
 
+it.effect("--wait keeps typed output submitted after the requested turn completed", () =>
+  Effect.gen(function* () {
+    const { tools, calls } = scriptedTools({
+      cox_thread_wait: [
+        { threadId, runId, status: "completed", timedOut: true },
+        { threadId, runId, status: "completed", timedOut: false, output: { head: "abc" } },
+      ],
+      cox_thread_read: [{ thread: { pendingRequestCount: 0 } }],
+    });
+    assert.deepStrictEqual(yield* waitForRun(tools, threadId, runId, true), {
+      type: "ended",
+      runId,
+      status: "completed",
+      output: { head: "abc" },
+    });
+    assert.deepStrictEqual(
+      calls.filter(({ tool }) => tool === "cox_thread_wait").map(({ args }) => args),
+      [
+        { threadId, runId, timeoutMs: 15_000, untilOutput: true },
+        { threadId, runId, timeoutMs: 15_000, untilOutput: true },
+      ],
+    );
+  }),
+);
+
 it.effect("--wait stops when the thread waits for an answer instead of polling forever", () =>
   Effect.gen(function* () {
     const { tools } = scriptedTools({
