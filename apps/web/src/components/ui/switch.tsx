@@ -1,4 +1,5 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
+import { useRef } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -6,8 +7,10 @@ function Switch({
   className,
   size = "default",
   mixed = false,
+  onCheckedChange,
   ...props
 }: SwitchPrimitive.Root.Props & { size?: "default" | "sm" | "compact"; mixed?: boolean }) {
+  const lastPicked = useRef(false);
   return (
     <SwitchPrimitive.Root
       className={cn(
@@ -19,6 +22,11 @@ function Switch({
             : "[--thumb-size:--spacing(5)] sm:[--thumb-size:--spacing(4)]",
         className,
       )}
+      onCheckedChange={(checked, details) => {
+        const next = mixed ? !lastPicked.current : checked;
+        lastPicked.current = next;
+        onCheckedChange?.(next, details);
+      }}
       data-size={size}
       data-slot="switch"
       data-mixed={mixed ? "" : undefined}
