@@ -3,6 +3,8 @@ import type {
   DesktopWindowState,
   DesktopBackendUpdateState,
   DesktopClientUpdateState,
+  DesktopComputerPermission,
+  DesktopComputerUseState,
 } from "@t3tools/contracts";
 import type { RemoteConnectionProfile } from "./connections.ts";
 
@@ -52,6 +54,24 @@ const bridge: DesktopShellBridge = process.argv.includes("--cox-remote=true")
   ? shellBridge
   : {
       ...shellBridge,
+      ...(process.platform === "darwin"
+        ? {
+            onComputerUse: (listener: (state: DesktopComputerUseState) => void) => {
+              const handler = (_event: Electron.IpcRendererEvent, state: DesktopComputerUseState) =>
+                listener(state);
+              ipcRenderer.on("cox:computer-use", handler);
+              return () => ipcRenderer.removeListener("cox:computer-use", handler);
+            },
+            getComputerUse: () => ipcRenderer.invoke("cox:computer-use-state"),
+            setComputerUseEnabled: (enabled: boolean) =>
+              ipcRenderer.invoke("cox:computer-use-enabled", enabled),
+            recheckComputerUse: () => ipcRenderer.invoke("cox:computer-use-recheck"),
+            openComputerUseSettings: (permission: DesktopComputerPermission) =>
+              ipcRenderer.invoke("cox:computer-use-settings", permission),
+            restartForComputerUse: () => ipcRenderer.invoke("cox:computer-use-restart"),
+            resumeComputerUse: () => ipcRenderer.invoke("cox:computer-use-resume"),
+          }
+        : {}),
       checkUpdates: () => ipcRenderer.invoke("cox:updates-check"),
       downloadUpdates: () => ipcRenderer.invoke("cox:updates-download"),
       applyUpdates: () => ipcRenderer.invoke("cox:updates-apply"),
@@ -82,7 +102,15 @@ const bridge: DesktopShellBridge = process.argv.includes("--cox-remote=true")
         return () => ipcRenderer.removeListener("cox:client-update", handler);
       },
     };
-contextBridge.exposeInMainWorld("coxDesktop", bridge);
+if (process.argv.includes("--cox-computer-overlay=true")) {
+  contextBridge.exposeInMainWorld("coxComputerOverlay", {
+    action: (action: "stop" | "resume" | "settings" | "dismiss") =>
+      ipcRenderer.invoke("cox:computer-overlay-action", action),
+    navigate: (path: string) => ipcRenderer.invoke("cox:computer-overlay-navigate", path),
+    collapse: (collapsed: boolean) =>
+      ipcRenderer.invoke("cox:computer-overlay-collapse", collapsed),
+  });
+} else contextBridge.exposeInMainWorld("coxDesktop", bridge);
 
 if (window.location.protocol === "data:") {
   const connections = {

@@ -35,6 +35,7 @@ import {
 } from "./remote.ts";
 import { trustedWindowAccess, type WindowAccess } from "./window-access.ts";
 import type { DesktopBackendUpdateState, DesktopClientUpdateState } from "@t3tools/contracts";
+import type { DesktopComputerUseState, DesktopComputerPermission } from "@t3tools/contracts";
 import {
   backendEnvironment,
   isBackendNavigation,
@@ -43,6 +44,20 @@ import {
   usageWindowUrl,
 } from "./config.ts";
 import { desktopConnectionError, desktopText } from "./native-text.ts";
+import {
+  acquireComputerEngine,
+  COMPUTER_ENGINE_RELEASE,
+  engineCachePaths,
+  findEngine,
+  openEngine,
+} from "./computer/engine.ts";
+import {
+  captureImage,
+  ComputerExecutor,
+  initialComputerState,
+  permissionState,
+} from "./computer/executor.ts";
+import { createComputerOverlayPage, type ComputerOverlayState } from "./computer/overlay-page.ts";
 import { createDesktopMenuTemplate } from "./native-menu.ts";
 import {
   InstanceOwnership,
@@ -848,6 +863,8 @@ function signInToGateway(partition: string, serverOrigin: string): Promise<void>
 
 async function start() {
   const electron = await import("electron");
+  const systemPreferences =
+    "systemPreferences" in electron ? electron.systemPreferences : undefined;
   writeClipboardText = (value) => electron.clipboard.writeText(value);
   overlayImage = (bitmap) =>
     electron.nativeImage.createFromBitmap(bitmap, { width: 16, height: 16 });
@@ -922,6 +939,352 @@ async function start() {
     const target = senderWindow(event);
     return target !== undefined && accessForWindow(target)?.kind === "local";
   };
+  let computerEngine: Awaited<ReturnType<typeof openEngine>> | undefined;
+  let computerExecutor: ComputerExecutor | undefined;
+  const launchScreen =
+    process.platform === "darwin"
+      ? (systemPreferences?.getMediaAccessStatus("screen") ?? "unknown")
+      : "unknown";
+  const launchInput = "unknown";
+  let launchInputDenied = false;
+  const appExecutable = process.platform === "darwin" ? (app.getPath?.("exe") ?? "") : "";
+  const appBundleIndex = appExecutable.indexOf(".app");
+  const computerAppPath = appBundleIndex >= 0 ? appExecutable.slice(0, appBundleIndex + 4) : null;
+  let computerState: DesktopComputerUseState = initialComputerState(
+    process.platform === "darwin",
+    computerUseEnabled,
+    "missing",
+    {
+      screenRecording:
+        launchScreen === "granted" ? "granted" : launchScreen === "denied" ? "denied" : "unknown",
+      accessibility:
+        process.platform === "darwin" &&
+        (systemPreferences?.isTrustedAccessibilityClient(false) ?? false)
+          ? "granted"
+          : "unknown",
+      input: launchInput,
+    },
+    computerAppPath,
+    process.platform === "darwin" ? (process.getSystemVersion?.() ?? null) : null,
+  );
+  let computerOverlayWindow: BrowserWindow | undefined;
+  let computerOverlayState: ComputerOverlayState | undefined;
+  const computerThreadMeta = new Map<
+    string,
+    Pick<ComputerOverlayState, "environmentId" | "threadTitle" | "agent">
+  >();
+  const publishComputerOverlay = (state: ComputerOverlayState) => {
+    computerOverlayState = state;
+    if (!computerOverlayWindow || computerOverlayWindow.isDestroyed()) {
+      const area = screen.getPrimaryDisplay().workArea;
+      computerOverlayWindow = new BrowserWindow({
+        x: area.x + area.width - 370,
+        y: area.y + 18,
+        width: 350,
+        height: state.image ? 314 : 164,
+        minWidth: 260,
+        minHeight: 52,
+        frame: false,
+        transparent: true,
+        resizable: false,
+        movable: true,
+        alwaysOnTop: true,
+        show: true,
+        webPreferences: {
+          preload: join(import.meta.dirname, "preload.cjs"),
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          additionalArguments: ["--cox-computer-overlay=true"],
+        },
+      });
+      computerOverlayWindow.on("closed", () => {
+        computerOverlayWindow = undefined;
+      });
+    }
+    if (computerOverlayWindow.isMinimized()) computerOverlayWindow.restore();
+    computerOverlayWindow.setSize(350, state.image ? 314 : 164);
+    computerOverlayWindow.showInactive();
+    void computerOverlayWindow.loadURL(
+      "data:text/html;charset=utf-8," +
+        encodeURIComponent(createComputerOverlayPage(systemLocale(), state)),
+    );
+    if (state.state === "completed")
+      setTimeout(() => {
+        if (
+          computerOverlayState?.threadId === state.threadId &&
+          computerOverlayState.state === "completed"
+        )
+          computerOverlayWindow?.hide();
+      }, 4_000).unref();
+  };
+  const publishComputerState = () => {
+    const missing = Object.entries(computerState.permissions)
+      .filter(([, status]) => status !== "granted")
+      .map(([permission]) => permission);
+    backend?.publishComputerAvailability({
+      enabled: computerState.enabled,
+      ready: computerState.ready,
+      missing,
+    });
+    if (window && !window.isDestroyed() && connectionMode === "local")
+      window.webContents.send("cox:computer-use", computerState);
+  };
+  const refreshComputerState = async () => {
+    if (computerEngine) {
+      const [capabilities, stopPath] = await Promise.all([
+        computerEngine.client.request<Record<string, unknown>>("capabilities"),
+        computerEngine.client.request<Record<string, unknown>>("stopPath.status"),
+      ]);
+      const stop = stopPath.globalLive === true;
+      const permissions = permissionState(capabilities, stop);
+      if (launchInputDenied === false && permissions.input === "denied") launchInputDenied = true;
+      const refreshedPermissions = permissions;
+      computerState = initialComputerState(
+        process.platform === "darwin",
+        computerUseEnabled,
+        "ready",
+        refreshedPermissions,
+        computerState.appPath,
+        computerState.macosVersion,
+        computerExecutor ? computerExecutor.isStopped : false,
+      );
+      computerState = {
+        ...computerState,
+        restartRequired:
+          (launchScreen === "denied" && refreshedPermissions.screenRecording === "granted") ||
+          (launchInputDenied && refreshedPermissions.input === "granted"),
+      };
+    } else {
+      const screenStatus = systemPreferences?.getMediaAccessStatus("screen") ?? "unknown";
+      const accessibility = systemPreferences?.isTrustedAccessibilityClient(false) ?? false;
+      const permissions = {
+        screenRecording:
+          screenStatus === "granted"
+            ? ("granted" as const)
+            : screenStatus === "denied"
+              ? ("denied" as const)
+              : ("unknown" as const),
+        accessibility: accessibility ? ("granted" as const) : ("unknown" as const),
+        input: "unknown" as const,
+      };
+      computerState = {
+        ...initialComputerState(
+          process.platform === "darwin",
+          computerUseEnabled,
+          computerState.engine,
+          permissions,
+          computerState.appPath,
+          computerState.macosVersion,
+        ),
+        restartRequired: launchScreen === "denied" && permissions.screenRecording === "granted",
+      };
+    }
+    publishComputerState();
+    return computerState;
+  };
+  const enableComputerUse = async (enabled: boolean) => {
+    computerUseEnabled = enabled;
+    const staged = computerUsePreference + "." + randomUUID();
+    writeFileSync(staged, JSON.stringify(enabled) + "\n", { mode: 0o600, flag: "wx" });
+    renameSync(staged, computerUsePreference);
+    if (!enabled) {
+      await computerEngine?.client.close();
+      computerEngine = undefined;
+      computerExecutor = undefined;
+      computerState = { ...computerState, enabled: false, ready: false, engine: "missing" };
+    } else {
+      computerState = {
+        ...computerState,
+        enabled: true,
+        engine: "downloading",
+        engineMessage: null,
+        ready: false,
+      };
+      publishComputerState();
+      try {
+        const paths = engineCachePaths(
+          home,
+          COMPUTER_ENGINE_RELEASE,
+          process.arch === "arm64" ? "arm64" : "x64",
+          !app.isPackaged,
+        );
+        let binary = await findEngine(paths);
+        if (!binary)
+          binary = await acquireComputerEngine(
+            paths[0]!,
+            process.arch === "arm64" ? "arm64" : "x64",
+          );
+        computerEngine = await openEngine(binary);
+        computerEngine.client.onClose((error) => {
+          computerState = {
+            ...computerState,
+            engine: "error",
+            engineMessage: error.message,
+            ready: false,
+          };
+          publishComputerState();
+        });
+        await computerEngine.client
+          .request("stopPath.start", { chord: "ctrl+alt+cmd+escape" })
+          .catch((error: unknown) => {
+            process.stderr.write(
+              `Computer control stop shortcut is unavailable: ${String(error)}\n`,
+            );
+          });
+        computerEngine.client.onNotification((method, params) => {
+          if (
+            method === "stopPath.changed" &&
+            typeof params === "object" &&
+            params !== null &&
+            "suspended" in params &&
+            params.suspended === true
+          ) {
+            computerExecutor?.latchFromEngine();
+            computerState = { ...computerState, stopped: true, ready: false };
+            if (computerOverlayState)
+              publishComputerOverlay({ ...computerOverlayState, state: "stopped" });
+            publishComputerState();
+          }
+        });
+        computerExecutor = new ComputerExecutor(computerEngine.client, computerEngine.resumeToken, {
+          state: () => computerState,
+          confirmForeground: async ({ agent, threadTitle, windowId, reason }) =>
+            (
+              await dialog.showMessageBox(window!, {
+                type: "question",
+                message: text("Allow foreground computer control?"),
+                detail: `${agent} · ${threadTitle} · ${windowId}\n${reason}`,
+                buttons: [text("Cancel"), text("Allow")],
+                cancelId: 0,
+                defaultId: 0,
+              })
+            ).response === 1,
+          showOperation: (input) => {
+            const meta = computerThreadMeta.get(input.threadId) ?? computerOverlayState;
+            if (meta)
+              publishComputerOverlay({
+                ...meta,
+                threadId: input.threadId || computerOverlayState?.threadId || "",
+                step: input.step,
+                state: input.state as ComputerOverlayState["state"],
+              });
+          },
+          refreshState: refreshComputerState,
+        });
+        await refreshComputerState();
+      } catch (error) {
+        computerState = {
+          ...computerState,
+          engine: "error",
+          engineMessage: String(error),
+          ready: false,
+        };
+      }
+    }
+    publishComputerState();
+    return computerState;
+  };
+  for (const [channel, action] of [
+    ["cox:computer-use-state", async () => computerState],
+    ["cox:computer-use-recheck", refreshComputerState],
+    [
+      "cox:computer-use-resume",
+      async () => (computerExecutor ? computerExecutor.resume() : computerState),
+    ],
+  ] as const)
+    ipcMain.handle(channel, (event) => {
+      if (!isTrustedLocalSender(event) || process.platform !== "darwin")
+        throw new Error("Untrusted computer control request.");
+      return action();
+    });
+  ipcMain.handle("cox:computer-use-enabled", (event, enabled: unknown) => {
+    if (
+      !isTrustedLocalSender(event) ||
+      process.platform !== "darwin" ||
+      typeof enabled !== "boolean"
+    )
+      throw new Error("Invalid computer control request.");
+    return enableComputerUse(enabled);
+  });
+  ipcMain.handle("cox:computer-use-settings", (event, permission: unknown) => {
+    if (!isTrustedLocalSender(event) || process.platform !== "darwin")
+      throw new Error("Untrusted computer permission request.");
+    const urls: Record<string, string> = {
+      screenRecording:
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+      accessibility:
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+      input: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+    };
+    const url = typeof permission === "string" ? urls[permission] : undefined;
+    if (!url) throw new Error("Invalid computer permission.");
+    return shell.openExternal(url);
+  });
+  ipcMain.handle("cox:computer-use-restart", (event) => {
+    if (!isTrustedLocalSender(event) || process.platform !== "darwin")
+      throw new Error("Untrusted restart request.");
+    restartAfterQuit = true;
+    quitPending = true;
+    return finishQuit();
+  });
+  ipcMain.handle("cox:computer-overlay-action", async (event, action: unknown) => {
+    if (
+      !computerOverlayWindow ||
+      event.sender !== computerOverlayWindow.webContents ||
+      !event.senderFrame ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      throw new Error("Untrusted computer overlay request.");
+    if (action === "stop") {
+      await computerExecutor?.stop();
+      computerState = { ...computerState, stopped: true, ready: false };
+      if (computerOverlayState)
+        publishComputerOverlay({ ...computerOverlayState, state: "stopped" });
+      publishComputerState();
+      return computerState;
+    }
+    if (action === "resume") {
+      const state = await computerExecutor?.resume();
+      if (computerOverlayState)
+        publishComputerOverlay({ ...computerOverlayState, state: "waiting-model" });
+      return state;
+    }
+    if (action === "settings") {
+      if (computerOverlayState?.state === "failed")
+        void openSettings("/settings/labs", true, window).catch(() => {});
+      return;
+    }
+    if (action === "dismiss") {
+      computerOverlayWindow.hide();
+      return;
+    }
+    throw new Error("Invalid computer overlay action.");
+  });
+  ipcMain.handle("cox:computer-overlay-navigate", (event, path: unknown) => {
+    if (
+      !computerOverlayWindow ||
+      event.sender !== computerOverlayWindow.webContents ||
+      !event.senderFrame ||
+      event.senderFrame !== event.sender.mainFrame ||
+      typeof path !== "string" ||
+      !computerOverlayState ||
+      path !== `/${computerOverlayState.environmentId}/${computerOverlayState.threadId}`
+    )
+      throw new Error("Untrusted computer overlay navigation.");
+    window?.webContents.send("cox:navigate", path);
+    window?.show();
+    window?.focus();
+  });
+  ipcMain.handle("cox:computer-overlay-collapse", (event, collapsed: unknown) => {
+    if (
+      !computerOverlayWindow ||
+      event.sender !== computerOverlayWindow.webContents ||
+      typeof collapsed !== "boolean"
+    )
+      throw new Error("Untrusted computer overlay request.");
+    computerOverlayWindow.setSize(350, collapsed ? 44 : computerOverlayState?.image ? 314 : 164);
+  });
   const checkActiveUpdates = async () => {
     if (isRemoteContext()) await clientUpdates?.check();
     else await softwareUpdates?.check();
@@ -948,6 +1311,7 @@ async function start() {
       target.webContents.send("cox:navigate", page.navigation);
       page.navigation = undefined;
     }
+    if (target === window && connectionMode === "local") publishComputerState();
     if (connectionMode === "local" && updates) publishBackendUpdate(updates.getState());
     if (connectionMode === "local" && clientUpdates) publishClientUpdate(clientUpdates.getState());
     if ((target === window || remoteWindows.has(target)) && updates) {
@@ -1670,46 +2034,28 @@ async function start() {
           });
         });
     },
-    openComputerUse: async () => {
-      const owner = mainOwner(BrowserWindow.getFocusedWindow());
-      if (!owner || accessForWindow(owner)?.kind !== "local" || !desktopReady) {
-        await dialog.showMessageBox({
-          message: text("Open the local Cox workspace to set up computer use."),
-        });
-        return;
-      }
-      const enable = !computerUseEnabled;
-      const result = await dialog.showMessageBox(owner, {
-        message: text(enable ? "Enable OMO computer use?" : "Disable OMO computer use?"),
-        detail: text(
-          enable
-            ? "OMO can capture and operate Mac windows. Grant Cox Screen Recording and Accessibility in System Settings, then quit and reopen Cox. Press Control+Option+Command+Escape to stop input. Restarting interrupts local tasks and terminals."
-            : "Restarting removes the computer tool from local OMO sessions and interrupts local tasks and terminals.",
-        ),
-        buttons: [text("Cancel"), text(enable ? "Enable and restart" : "Disable and restart")],
-        cancelId: 0,
-        defaultId: 0,
-        noLink: true,
+    openComputerUse: () => {
+      const owner = mainOwner(BrowserWindow.getFocusedWindow() ?? window);
+      if (owner && accessForWindow(owner)?.kind === "local")
+        void openSettings("/settings/labs", true, owner).catch(() => {});
+    },
+    stopComputerControl: () => {
+      void computerExecutor?.stop().then(() => {
+        computerState = { ...computerState, stopped: true, ready: false };
+        publishComputerOverlay(
+          computerOverlayState
+            ? { ...computerOverlayState, state: "stopped" }
+            : {
+                threadId: "",
+                environmentId: "",
+                threadTitle: "",
+                agent: "",
+                step: "",
+                state: "stopped",
+              },
+        );
+        publishComputerState();
       });
-      if (
-        result.response !== 1 ||
-        approvedQuit ||
-        quitPending ||
-        accessForWindow(owner)?.kind !== "local"
-      )
-        return;
-      try {
-        const temporary = computerUsePreference + "." + randomUUID();
-        writeFileSync(temporary, JSON.stringify(enable) + "\n", { mode: 0o600, flag: "wx" });
-        renameSync(temporary, computerUsePreference);
-      } catch (error) {
-        dialog.showErrorBox(text("OMO Computer Use"), String(error));
-        return;
-      }
-      computerUseEnabled = enable;
-      restartAfterQuit = true;
-      quitPending = true;
-      await finishQuit();
     },
     openLogs: () => {
       void shell.openPath(dirname(logPath));
@@ -1864,7 +2210,136 @@ async function start() {
       homeDirectory: home,
       cwd: homedir(),
       environment,
-      computerUseEnabled,
+      computerAvailability: {
+        enabled: computerState.enabled,
+        ready: computerState.ready,
+        missing: Object.entries(computerState.permissions)
+          .filter(([, status]) => status !== "granted")
+          .map(([permission]) => permission),
+      },
+      onComputerRequest: async (request) => {
+        computerThreadMeta.set(request.threadId, {
+          environmentId: request.environmentId,
+          threadTitle: request.threadTitle,
+          agent: request.agent,
+        });
+        if (!computerExecutor)
+          return {
+            type: "cox:computer-reply",
+            id: request.id,
+            ok: false,
+            error: {
+              code: computerState.enabled ? "unavailable" : "disabled",
+              message: "Computer control is unavailable.",
+            },
+          };
+        try {
+          const result = await computerExecutor.execute(request);
+          const capturedImage =
+            request.action.kind === "screenshot" ? captureImage(result) : undefined;
+          const targetId = "windowId" in request.action ? request.action.windowId : undefined;
+          if (targetId) {
+            try {
+              const image = capturedImage ?? (await computerExecutor.preview(targetId));
+              if (image)
+                publishComputerOverlay({
+                  threadId: request.threadId,
+                  environmentId: request.environmentId,
+                  threadTitle: request.threadTitle,
+                  agent: request.agent,
+                  step: request.action.kind,
+                  state: "waiting-model",
+                  image: `data:${image.mimeType};base64,${image.data}`,
+                });
+            } catch {
+              publishComputerOverlay({
+                threadId: request.threadId,
+                environmentId: request.environmentId,
+                threadTitle: request.threadTitle,
+                agent: request.agent,
+                step: request.action.kind,
+                state: "waiting-model",
+              });
+            }
+          } else
+            publishComputerOverlay({
+              threadId: request.threadId,
+              environmentId: request.environmentId,
+              threadTitle: request.threadTitle,
+              agent: request.agent,
+              step: request.action.kind,
+              state: "waiting-model",
+            });
+          if (capturedImage)
+            return {
+              type: "cox:computer-reply",
+              id: request.id,
+              ok: true,
+              result: {
+                frameId: capturedImage.frameId,
+                width: capturedImage.width,
+                height: capturedImage.height,
+              },
+              image: capturedImage,
+            };
+          return { type: "cox:computer-reply", id: request.id, ok: true, result };
+        } catch (error) {
+          const detail =
+            typeof error === "object" && error !== null
+              ? (error as {
+                  code?: string;
+                  message?: string;
+                  missing?: DesktopComputerPermission[];
+                  recovery?: string;
+                })
+              : {};
+          publishComputerOverlay({
+            threadId: request.threadId,
+            environmentId: request.environmentId,
+            threadTitle: request.threadTitle,
+            agent: request.agent,
+            step: detail.message ?? "",
+            state: "failed",
+          });
+          return {
+            type: "cox:computer-reply",
+            id: request.id,
+            ok: false,
+            error: {
+              code: (detail.code &&
+              [
+                "disabled",
+                "unavailable",
+                "permission",
+                "stopped",
+                "cancelled",
+                "declined",
+                "background-unavailable",
+                "invalid",
+                "engine",
+              ].includes(detail.code)
+                ? detail.code
+                : "engine") as "engine",
+              message: detail.message ?? String(error),
+              ...(detail.missing ? { missing: detail.missing } : {}),
+              ...(detail.recovery ? { recovery: detail.recovery } : {}),
+            },
+          };
+        }
+      },
+      onComputerThread: (event) => {
+        void computerExecutor?.threadEvent(event.threadId, event.state).catch((error: unknown) => {
+          process.stderr.write(`Computer control thread event failed: ${String(error)}\n`);
+        });
+        const prior = computerOverlayState;
+        if (!prior || prior.threadId !== event.threadId) return;
+        if (event.state === "waiting-model")
+          publishComputerOverlay({ ...prior, state: "waiting-model" });
+        if (event.state === "completed" || event.state === "failed")
+          publishComputerOverlay({ ...prior, state: event.state });
+        if (event.state === "stopped" || event.state === "cancelled")
+          publishComputerOverlay({ ...prior, state: "stopped" });
+      },
       onLog: (message) => log.write(message),
       onUnexpectedExit: (message) => {
         if (startingBackend) return;
@@ -2052,6 +2527,16 @@ async function start() {
         );
       connectionMode = "local";
       showWindow();
+      if (computerUseEnabled && !computerEngine)
+        void enableComputerUse(true).catch((error) => {
+          computerState = {
+            ...computerState,
+            engine: "error",
+            engineMessage: String(error),
+            ready: false,
+          };
+          publishComputerState();
+        });
       if (localOrigin) {
         origin = localOrigin;
         startingBackend = false;

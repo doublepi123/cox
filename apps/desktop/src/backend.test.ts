@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
+import { watch } from "node:fs";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { BackendProcess } from "./backend.ts";
+import { BackendProcess, type BackendOptions } from "./backend.ts";
 
 const fixture = `
 import { createServer } from 'node:http';
@@ -13,8 +14,11 @@ import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home-dir') + 1];
 const mode = process.env.FIXTURE_MODE;
+if (mode === 'computer-ipc') process.on('message', message => {
+  if (message?.type === 'cox:computer-reply') writeFileSync(join(home, 'computer-reply'), JSON.stringify(message));
+  if (message?.type === 'cox:computer-availability') writeFileSync(join(home, 'computer-availability'), JSON.stringify(message));
+});
 writeFileSync(join(home, 'parent-flag'), String(process.env.COX_DESKTOP_PARENT_PID));
-writeFileSync(join(home, 'computer-use'), String(process.env.COX_OWNED_OMO_COMPUTER_USE));
 if (mode === 'exit') process.exit(7);
 const server = createServer((request, response) => {
   if (request.url === '/crash') { response.end('stopping'); setImmediate(() => process.exit(9)); return; }
@@ -36,6 +40,7 @@ server.listen(0, '127.0.0.1', () => {
     renameSync(staged, target);
   };
   if (!['late-state', 'late-wrong-owner', 'missing-state'].includes(mode)) publish();
+  if (mode === 'computer-ipc') setTimeout(() => process.send?.({ type: 'cox:computer-request', id: 'req', threadId: 'thread', threadTitle: 'Title', environmentId: 'env', agent: 'Agent', action: { kind: 'status' } }), 50);
   if (mode === 'timeout') { console.log('FIXTURE_WAITING'); return; }
   const announce = () => {
   process.stdout.write('Local UR');
@@ -55,7 +60,10 @@ server.listen(0, '127.0.0.1', () => {
 const cleanups: Array<() => Promise<unknown>> = [];
 const preload = join(import.meta.dirname, "backend-parent.ts");
 
-async function createBackend(mode = "normal", computerUseEnabled = false) {
+async function createBackend(
+  mode = "normal",
+  onComputerRequest?: BackendOptions["onComputerRequest"],
+) {
   const home = await mkdtemp(join(tmpdir(), "cox-desktop-test-"));
   cleanups.unshift(() => rm(home, { recursive: true, force: true }));
   const entry = join(home, "fixture.mjs");
@@ -68,8 +76,9 @@ async function createBackend(mode = "normal", computerUseEnabled = false) {
     preloadPath: preload,
     homeDirectory: home,
     cwd: home,
-    environment: { ...process.env, FIXTURE_MODE: mode, COX_OWNED_OMO_COMPUTER_USE: "1" },
-    computerUseEnabled,
+    environment: { ...process.env, FIXTURE_MODE: mode },
+    ...(onComputerRequest ? { onComputerRequest } : {}),
+    computerAvailability: { enabled: true, ready: false, missing: ["input"] },
     onLog,
     onUnexpectedExit,
     stopTimeoutMs: 100,
@@ -100,6 +109,43 @@ describe("desktop backend supervisor", () => {
     expect(onUnexpectedExit).not.toHaveBeenCalled();
   });
 
+  it("round-trips computer requests and publishes availability through IPC", async () => {
+    const { backend, home } = await createBackend("computer-ipc", async (request) => ({
+      type: "cox:computer-reply",
+      id: request.id,
+      ok: true,
+      result: { threadId: request.threadId },
+    }));
+    const observed = new Set<string>();
+    const received = Promise.withResolvers<void>();
+    const watcher = watch(home, (_event, filename) => {
+      const name = String(filename);
+      if (name === "computer-reply" || name === "computer-availability") observed.add(name);
+      if (observed.size === 2) received.resolve();
+    });
+    watcher.on("error", received.reject);
+    try {
+      await backend.start();
+      await received.promise;
+    } finally {
+      watcher.close();
+    }
+    const reply = JSON.parse(await readFile(join(home, "computer-reply"), "utf8")) as {
+      id: string;
+      result: { threadId: string };
+    };
+    const availability = JSON.parse(
+      await readFile(join(home, "computer-availability"), "utf8"),
+    ) as { enabled: boolean; ready: boolean; missing: string[] };
+    expect(reply).toEqual({
+      type: "cox:computer-reply",
+      id: "req",
+      ok: true,
+      result: { threadId: "thread" },
+    });
+    expect(availability).toMatchObject({ enabled: true, ready: false, missing: ["input"] });
+  });
+
   it("reports early startup failures without attaching to another service", async () => {
     const { backend, onUnexpectedExit } = await createBackend("exit");
     await expect(backend.start()).rejects.toThrow("code 7");
@@ -109,14 +155,6 @@ describe("desktop backend supervisor", () => {
   it("rejects a runtime descriptor owned by another process", async () => {
     const { backend } = await createBackend("wrong-owner");
     await expect(backend.start()).rejects.toThrow("did not publish its own loopback address");
-  });
-
-  it.each([false, true])("requires a native macOS opt-in for computer use (%s)", async (enable) => {
-    const { backend, home } = await createBackend("normal", enable);
-    await backend.start();
-    expect(await readFile(join(home, "computer-use"), "utf8")).toBe(
-      enable && process.platform === "darwin" ? "1" : "undefined",
-    );
   });
 
   it("waits for its runtime descriptor after the address is logged", async () => {

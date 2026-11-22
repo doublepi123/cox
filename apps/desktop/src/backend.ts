@@ -10,6 +10,45 @@ import { setTimeout as delay } from "node:timers/promises";
 import { backendOriginFromOutput } from "./config.ts";
 import { backendInstallerEnvironment } from "./backend-install.ts";
 import { killOwnedProcessTree, stopOwnedProcess } from "./process-tree.ts";
+import {
+  DesktopComputerReply,
+  DesktopComputerRequest,
+  DesktopComputerThreadEvent,
+} from "@t3tools/contracts";
+
+function validateComputerRequest(value: object): DesktopComputerRequest {
+  if (
+    !("id" in value) ||
+    typeof value.id !== "string" ||
+    !("threadId" in value) ||
+    typeof value.threadId !== "string" ||
+    !("action" in value) ||
+    typeof value.action !== "object" ||
+    value.action === null
+  )
+    throw new Error("Invalid computer request.");
+  return value as DesktopComputerRequest;
+}
+function validateComputerReply(value: DesktopComputerReply): DesktopComputerReply {
+  if (
+    value.type !== "cox:computer-reply" ||
+    typeof value.id !== "string" ||
+    typeof value.ok !== "boolean"
+  )
+    throw new Error("Invalid computer reply.");
+  return value;
+}
+function validateComputerThreadEvent(value: object): DesktopComputerThreadEvent {
+  if (
+    !("threadId" in value) ||
+    typeof value.threadId !== "string" ||
+    !("state" in value) ||
+    typeof value.state !== "string" ||
+    !["waiting-model", "completed", "failed", "stopped", "cancelled"].includes(value.state)
+  )
+    throw new Error("Invalid computer thread event.");
+  return value as DesktopComputerThreadEvent;
+}
 
 export interface BackendOptions {
   readonly nodePath: string;
@@ -22,7 +61,13 @@ export interface BackendOptions {
   readonly onUnexpectedExit: (message: string) => void;
   readonly startupTimeoutMs?: number;
   readonly stopTimeoutMs?: number;
-  readonly computerUseEnabled?: boolean;
+  readonly onComputerRequest?: (request: DesktopComputerRequest) => Promise<DesktopComputerReply>;
+  readonly onComputerThread?: (event: DesktopComputerThreadEvent) => void;
+  readonly computerAvailability?: {
+    readonly enabled: boolean;
+    readonly ready: boolean;
+    readonly missing: readonly string[];
+  };
 }
 
 export class BackendProcess {
@@ -61,13 +106,42 @@ export class BackendProcess {
       },
     );
     child.on("message", (message: unknown) => {
-      if (message === "cox:backend-ready-to-start" && child.connected && !this.stopping)
-        child.send(
-          this.options.computerUseEnabled === true
-            ? { type: "cox:backend-start", computerUseEnabled: true }
-            : "cox:backend-start",
-          () => {},
-        );
+      if (message === "cox:backend-ready-to-start" && child.connected && !this.stopping) {
+        child.send("cox:backend-start", () => {});
+        const availability = this.options.computerAvailability;
+        if (availability)
+          child.send({ type: "cox:computer-availability", ...availability }, () => {});
+        return;
+      }
+      if (
+        !child.connected ||
+        this.stopping ||
+        typeof message !== "object" ||
+        message === null ||
+        !("type" in message)
+      )
+        return;
+      try {
+        if (message.type === "cox:computer-request") {
+          const request = validateComputerRequest(message);
+          void (
+            this.options.onComputerRequest?.(request) ??
+            Promise.resolve({
+              type: "cox:computer-reply",
+              id: request.id,
+              ok: false,
+              error: { code: "unavailable", message: "Computer control is unavailable." },
+            } as const)
+          )
+            .then((reply) => {
+              const decoded = validateComputerReply(reply);
+              if (child.connected) child.send(decoded, () => {});
+            })
+            .catch(() => {});
+        } else if (message.type === "cox:computer-thread") {
+          this.options.onComputerThread?.(validateComputerThreadEvent(message));
+        }
+      } catch {}
     });
     this.child = child;
     this.exited = new Promise((resolve) => {
@@ -141,6 +215,9 @@ export class BackendProcess {
           this.ready = true;
           settled = true;
           clearTimeout(timeout);
+          const availability = this.options.computerAvailability;
+          if (availability && child.connected)
+            child.send({ type: "cox:computer-availability", ...availability }, () => {});
           resolve(origin);
         }, fail);
       };
@@ -187,6 +264,15 @@ export class BackendProcess {
     });
     if (!response.ok)
       throw new Error(`The local backend authentication check failed (${response.status}).`);
+  }
+
+  publishComputerAvailability(state: {
+    readonly enabled: boolean;
+    readonly ready: boolean;
+    readonly missing: readonly string[];
+  }): void {
+    if (this.child?.connected && !this.stopping)
+      this.child.send({ type: "cox:computer-availability", ...state }, () => {});
   }
 
   stop(): Promise<void> {

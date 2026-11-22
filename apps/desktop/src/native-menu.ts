@@ -41,6 +41,7 @@ type DesktopMenuActions = Readonly<
     | "checkUpdates"
     | "toggleAutomaticUpdates"
     | "openComputerUse"
+    | "stopComputerControl"
     | "openLogs",
     NonNullable<MenuItemConstructorOptions["click"]>
   >
@@ -83,7 +84,8 @@ export function createDesktopMenuTemplate(
           settings,
           connections,
           { type: "separator" },
-          { label: text("OMO Computer Use"), click: actions.openComputerUse },
+          { label: text("Computer Control…"), click: actions.openComputerUse },
+          { label: text("Stop Computer Control"), click: actions.stopComputerControl },
           ...updates,
           { type: "separator" },
           { role: "hide" },

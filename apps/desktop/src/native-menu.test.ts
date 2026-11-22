@@ -38,6 +38,7 @@ function menuActions() {
     checkUpdates: vi.fn(),
     toggleAutomaticUpdates: vi.fn(),
     openComputerUse: vi.fn(),
+    stopComputerControl: vi.fn(),
     openLogs: vi.fn(),
   };
 }
