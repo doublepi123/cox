@@ -229,6 +229,9 @@
         />
         <circle fill="currentColor" stroke="none" cx="12" cy="19.5" r="1.4" />
       </symbol>
+      <symbol id="i-pointer" viewBox="0 0 24 24">
+        <path d="M5 3.5l13 7.2-5.6 1.6 3.4 6.2-2.6 1.4-3.4-6.2L5.5 18z" />
+      </symbol>
       <symbol id="i-battery" viewBox="0 0 24 24">
         <rect x="2.5" y="7" width="17" height="10" rx="2.6" />
         <path d="M22 10.5v3" />
@@ -310,7 +313,7 @@
           </div>
           <div class="hero-side">
             <p class="hero-lead" data-i18n="hero.description">
-              在同一个工作台里切换 OMO Native、Codex、Claude Code
+              在同一个工作台里切换 OMO Native、Codex、Claude Code、Cursor
               等智能体，随时查看任务和代码变更。对话、终端和检查点都留在运行 Cox 的机器上。
             </p>
             <div class="hero-actions">
@@ -740,10 +743,11 @@
                     ><svg class="icon" aria-hidden="true"><use href="#i-branch" /></svg></span
                   ><span class="card-tag">Git / Checkpoints</span>
                 </div>
-                <h3 data-i18n="caps.git.title">检查点、工作树与​线程迁移</h3>
+                <h3 data-i18n="caps.git.title">多仓库项目、检查点与​线程迁移</h3>
                 <p data-i18n="caps.git.description">
-                  每一轮都可以回到检查点；Git 工作树隔离并行任务；把线程移动到另一个项目时，保留原
-                  ID 和完整历史。
+                  一个项目可以包含多个仓库，每个仓库有独立的工作树、Git
+                  操作和检查点。每一轮都可以回到检查点；把线程移动到另一个项目时，保留原 ID
+                  和完整历史。
                 </p>
               </div>
               <div class="timeline" aria-hidden="true">
@@ -812,7 +816,13 @@
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg
-                  ><span data-i18n="caps.more.schedule">单次与周期定时任务，联动 OMO 调度</span>
+                  ><span data-i18n="caps.more.schedule">单次与周期定时任务，可按指定时区运行</span>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow-down" /></svg
+                  ><span data-i18n="caps.more.updates"
+                    >每小时检查新版本，在“关于”中一键升级服务</span
+                  >
                 </li>
                 <li>
                   <svg class="icon" aria-hidden="true"><use href="#i-gauge" /></svg
@@ -979,7 +989,7 @@
                       ><svg class="icon"><use href="#i-agent-cursor" /></svg></span
                     ><span class="instance-name">Cursor</span
                     ><span class="instance-kind" data-i18n="feature.providers.kind4"
-                      >Cursor 账号</span
+                      >Cursor SDK / CLI</span
                     ><span class="instance-status" data-i18n="feature.providers.ready">可用</span>
                   </div>
                   <div class="instance">
@@ -992,7 +1002,7 @@
                   <div class="view-footnote">
                     <svg class="icon"><use href="#i-plus" /></svg
                     ><span data-i18n="feature.providers.add"
-                      >支持实例拖拽排序、删除与自定义模型</span
+                      >不预置任何智能体：按需添加、排序、删除，并配置自定义模型</span
                     >
                   </div>
                 </div>
@@ -1492,8 +1502,20 @@
               <div>
                 <h3 data-i18n="desktop.feature2.title">后端更新支持备份和回滚</h3>
                 <p data-i18n="desktop.feature2.description">
-                  桌面端的本地后端仅监听回环地址。更新会校验安装包并备份数据，失败时恢复旧版本。Linux
-                  上由 systemd 管理的 Cox 服务也可单独启用此功能。
+                  桌面端的本地后端仅监听回环地址。更新会校验安装包并备份设置，失败时恢复旧版本。Linux
+                  上由 systemd 管理的 Cox 服务同样可以在“关于”中升级。
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <span class="card-icon"
+                ><svg class="icon" aria-hidden="true"><use href="#i-pointer" /></svg
+              ></span>
+              <div>
+                <h3 data-i18n="desktop.feature4.title">macOS 电脑操控（实验室）</h3>
+                <p data-i18n="desktop.feature4.description">
+                  在“实验室”中启用后，支持 MCP
+                  工具的智能体可以截屏、操作窗口和输入。设置页逐项引导屏幕录制与辅助功能权限，每个操作归属于各自的线程，可随时统一停止。
                 </p>
               </div>
             </article>
@@ -1616,7 +1638,8 @@
                 <div>
                   <h3 data-i18n="step2.title">连接智能体</h3>
                   <p data-i18n="step2.description">
-                    在设置中添加智能体。CLI 型智能体需在本机安装并完成登录；也可以绑定模型服务。
+                    Cox 不会默认创建智能体。在引导或设置中添加你要用的智能体；CLI
+                    型智能体需在本机安装并完成登录，也可以绑定模型服务。
                   </p>
                 </div>
               </li>

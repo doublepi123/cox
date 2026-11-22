@@ -18,7 +18,7 @@ export const messages = {
     "hero.line1a": "你的智能体",
     "hero.line1b": "同一个​本地驾驶舱",
     "hero.description":
-      "在同一个工作台里切换 OMO Native、Codex、Claude Code 等智能体，随时查看任务和代码变更。对话、终端和检查点都留在运行 Cox 的机器上。",
+      "在同一个工作台里切换 OMO Native、Codex、Claude Code、Cursor 等智能体，随时查看任务和代码变更。对话、终端和检查点都留在运行 Cox 的机器上。",
     "hero.cta": "下载桌面版",
     "hero.mobileCta": "iOS 与 Android 客户端",
     "hero.source": "在 GitHub 查看",
@@ -81,9 +81,9 @@ export const messages = {
     "caps.queue.item1": "先把核心逻辑做好",
     "caps.queue.item2": "再补上测试和文档",
     "caps.queue.steer": "立即引导",
-    "caps.git.title": "检查点、工作树与​线程迁移",
+    "caps.git.title": "多仓库项目、检查点与​线程迁移",
     "caps.git.description":
-      "每一轮都可以回到检查点；Git 工作树隔离并行任务；把线程移动到另一个项目时，保留原 ID 和完整历史。",
+      "一个项目可以包含多个仓库，每个仓库有独立的工作树、Git 操作和检查点。每一轮都可以回到检查点；把线程移动到另一个项目时，保留原 ID 和完整历史。",
     "caps.git.move": "移动到项目",
     "caps.git.kept": "历史保留",
     "caps.local.title": "默认只监听本机",
@@ -97,7 +97,8 @@ export const messages = {
     "caps.more.notify": "端到端加密 Web Push 与 Webhook 通知",
     "caps.more.language": "中英双语界面，切换不丢草稿",
     "caps.more.usage": "订阅用量与重置时间",
-    "caps.more.schedule": "单次与周期定时任务，联动 OMO 调度",
+    "caps.more.schedule": "单次与周期定时任务，可按指定时区运行",
+    "caps.more.updates": "每小时检查新版本，在“关于”中一键升级服务",
     "caps.more.themes": "深浅主题与自定义快捷键",
     "workflow.title": "从一个想法，到一处​可审阅的变更",
     "workflow.description":
@@ -113,12 +114,12 @@ export const messages = {
     "feature.providers.kind1": "ChatGPT 订阅",
     "feature.providers.kind2": "Claude 订阅",
     "feature.providers.kind3": "绑定模型服务",
-    "feature.providers.kind4": "Cursor 账号",
+    "feature.providers.kind4": "Cursor SDK / CLI",
     "feature.providers.kind5": "本地配置",
     "feature.providers.kind6": "原生 RPC · 受管 Bun",
     "feature.providers.ready": "可用",
     "feature.providers.viewTitle": "智能体实例",
-    "feature.providers.add": "支持实例拖拽排序、删除与自定义模型",
+    "feature.providers.add": "不预置任何智能体：按需添加、排序、删除，并配置自定义模型",
     "feature.queue.title": "不必等待，随时引导",
     "feature.queue.description":
       "智能体工作时，新消息先排队；需要时立即引导。调整顺序，让任务跟上思路。",
@@ -204,7 +205,10 @@ export const messages = {
       "两种安装包都不需要全局安装 Node 或 Cox。桌面数据保存在 ~/.cox/desktop，与 CLI 数据分开。",
     "desktop.feature2.title": "后端更新支持备份和回滚",
     "desktop.feature2.description":
-      "桌面端的本地后端仅监听回环地址。更新会校验安装包并备份数据，失败时恢复旧版本。Linux 上由 systemd 管理的 Cox 服务也可单独启用此功能。",
+      "桌面端的本地后端仅监听回环地址。更新会校验安装包并备份设置，失败时恢复旧版本。Linux 上由 systemd 管理的 Cox 服务同样可以在“关于”中升级。",
+    "desktop.feature4.title": "macOS 电脑操控（实验室）",
+    "desktop.feature4.description":
+      "在“实验室”中启用后，支持 MCP 工具的智能体可以截屏、操作窗口和输入。设置页逐项引导屏幕录制与辅助功能权限，每个操作归属于各自的线程，可随时统一停止。",
     "desktop.feature3.title": "HTTPS 与 Cloudflare Access 远程连接",
     "desktop.feature3.description":
       "连接自建 Cox 服务器要求 HTTPS 与密码，兼容 Cloudflare Access 身份验证。每个服务器拥有独立浏览器配置，可同时连接与单独断开。",
@@ -234,7 +238,7 @@ export const messages = {
     "step1.description": "在终端运行启动命令。如果浏览器没有自动打开，按终端提示访问本地地址。",
     "step2.title": "连接智能体",
     "step2.description":
-      "在设置中添加智能体。CLI 型智能体需在本机安装并完成登录；也可以绑定模型服务。",
+      "Cox 不会默认创建智能体。在引导或设置中添加你要用的智能体；CLI 型智能体需在本机安装并完成登录，也可以绑定模型服务。",
     "step3.title": "打开项目，开始构建",
     "step3.description": "添加本地项目目录，新建对话并选择模型，然后说出你的第一个想法。",
     "start.docs": "完整使用说明",
@@ -280,7 +284,7 @@ export const messages = {
     "hero.line1a": "Your agents.",
     "hero.line1b": "One local cockpit.",
     "hero.description":
-      "Switch between OMO Native, Codex, Claude Code, and more from one workspace. Review tasks and code changes as they happen. Threads, terminals, and checkpoints stay on the machine running Cox.",
+      "Switch between OMO Native, Codex, Claude Code, Cursor, and more from one workspace. Review tasks and code changes as they happen. Threads, terminals, and checkpoints stay on the machine running Cox.",
     "hero.cta": "Download for desktop",
     "hero.mobileCta": "iOS & Android clients",
     "hero.source": "View on GitHub",
@@ -351,9 +355,9 @@ export const messages = {
     "caps.queue.item1": "Get the core logic right",
     "caps.queue.item2": "Then add tests and docs",
     "caps.queue.steer": "Steer now",
-    "caps.git.title": "Checkpoints, worktrees, and thread moves",
+    "caps.git.title": "Multi-repo projects, checkpoints, and thread moves",
     "caps.git.description":
-      "Return to any turn’s checkpoint, isolate parallel work in Git worktrees, and move a thread to another project with its ID and full history intact.",
+      "A project can span several repositories, each with its own worktrees, Git actions, and checkpoints. Return to any turn’s checkpoint, and move a thread to another project with its ID and full history intact.",
     "caps.git.move": "Move to project",
     "caps.git.kept": "History kept",
     "caps.local.title": "Loopback by default",
@@ -367,7 +371,8 @@ export const messages = {
     "caps.more.notify": "End-to-end encrypted Web Push and webhooks",
     "caps.more.language": "Chinese and English UI, drafts kept on switch",
     "caps.more.usage": "Subscription usage and reset times",
-    "caps.more.schedule": "One-shot and recurring tasks wired to OMO",
+    "caps.more.schedule": "One-shot and recurring tasks in a chosen time zone",
+    "caps.more.updates": "Hourly update checks and one-click upgrades from About",
     "caps.more.themes": "Light/dark themes and custom keybindings",
     "workflow.title": "From an idea to a reviewable change",
     "workflow.description":
@@ -383,12 +388,13 @@ export const messages = {
     "feature.providers.kind1": "ChatGPT subscription",
     "feature.providers.kind2": "Claude subscription",
     "feature.providers.kind3": "Bound model service",
-    "feature.providers.kind4": "Cursor account",
+    "feature.providers.kind4": "Cursor SDK / CLI",
     "feature.providers.kind5": "Local configuration",
     "feature.providers.kind6": "Native RPC · Managed Bun",
     "feature.providers.ready": "Ready",
     "feature.providers.viewTitle": "Agent instances",
-    "feature.providers.add": "Reorder, remove, or add instances and custom models",
+    "feature.providers.add":
+      "Nothing preinstalled: add, reorder, or remove agents and custom models",
     "feature.queue.title": "Queue follow-ups or steer live",
     "feature.queue.description":
       "Follow-ups queue while an agent works, or steer right away. Reorder pending messages as your thinking evolves.",
@@ -479,7 +485,10 @@ export const messages = {
       "Neither installer needs a global Node or Cox install. Desktop data lives in ~/.cox/desktop, separate from CLI data.",
     "desktop.feature2.title": "Backend updates with backups and rollback",
     "desktop.feature2.description":
-      "The desktop backend listens on loopback. Updates verify the package, back up data, and roll back on failure. Linux servers managed by systemd can opt into this separately.",
+      "The desktop backend listens on loopback. Updates verify the package, back up settings, and roll back on failure. Linux servers managed by systemd upgrade from About the same way.",
+    "desktop.feature4.title": "macOS computer control (Labs)",
+    "desktop.feature4.description":
+      "Turn it on in Labs and agents with MCP tools can take screenshots, work with windows, and type. Settings walk you through Screen Recording and Accessibility, each action belongs to its thread, and one stop ends them all.",
     "desktop.feature3.title": "HTTPS and Cloudflare Access remote servers",
     "desktop.feature3.description":
       "Connect to self-hosted Cox servers over HTTPS with a password and optional Cloudflare Access SSO. Each server stays in an isolated profile and disconnects independently.",
@@ -511,7 +520,7 @@ export const messages = {
       "Run the launch command. If your browser doesn’t open, follow the local address printed in the terminal.",
     "step2.title": "Connect an agent",
     "step2.description":
-      "Add an agent in Settings. CLI-based agents must be installed and signed in locally; you can also bind a model service.",
+      "Cox creates no agents by default. Add the ones you use during onboarding or in Settings. CLI-based agents must be installed and signed in locally; you can also bind a model service.",
     "step3.title": "Open a project and build",
     "step3.description":
       "Add a local project folder, start a thread, pick a model, and describe your first idea.",
