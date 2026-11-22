@@ -42,6 +42,7 @@ import {
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { WindowsShellEnvironment } from "@t3tools/shared/shell";
 import { deepMerge } from "@t3tools/shared/Struct";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
@@ -429,6 +430,8 @@ const layerTestNodeServices = Layer.mergeAll(
   Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
     getEnvironmentId: Effect.succeed(EnvironmentId.make("00000000-0000-4000-8000-000000000001")),
   }),
+  // A login shell that prints nothing, so refreshes never take PATH from the developer’s profile.
+  Layer.succeed(HostProcess.Environment, { ...process.env, SHELL: "/usr/bin/true" }),
   // An empty home, so the developer's own Claude settings never reach provider probes.
   Layer.effect(
     HostProcess.HomeDirectory,
@@ -2093,6 +2096,121 @@ it.layer(
           assert.deepStrictEqual(recovered?.slashCommands, [COMPACT_SLASH_COMMAND]);
           assert.strictEqual(recovered?.slashCommandsPending, undefined);
         }).pipe(Effect.provide(runtimeServices));
+      }),
+    );
+
+    // A login shell stand-in that prints the capture with one more PATH entry, as a profile edited
+    // after launch would.
+    const withLateLoginShell = <A, E, R>(effect: (shell: string) => Effect.Effect<A, E, R>) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-login-shell-" });
+        const shell = `${dir}/sh`;
+        yield* fs.writeFileString(
+          shell,
+          '#!/bin/sh\nPATH=/opt/late:/usr/bin exec /bin/sh -c "$2"\n',
+        );
+        yield* fs.chmod(shell, 0o755);
+        return yield* effect(shell);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+    it.effect.each([
+      {
+        name: "Windows PATH",
+        platform: "win32" as const,
+        path: "C:\\Windows",
+        expectedPath: "C:\\Windows;C:\\Tools",
+      },
+      {
+        name: "login-shell PATH",
+        platform: "linux" as const,
+        path: "/usr/bin",
+        expectedPath: "/opt/late:/usr/bin",
+      },
+    ])("rebuilds only instances missing their CLI when a refresh finds a new $name", (host) =>
+      withLateLoginShell((shell) => {
+        const env: NodeJS.ProcessEnv = { PATH: host.path, SHELL: shell };
+        return Effect.gen(function* () {
+          const driver = ProviderDriverKind.make("codex");
+          const makeInstance = (id: string, installed: boolean): ProviderInstance => {
+            const instanceId = ProviderInstanceId.make(id);
+            const provider = {
+              instanceId,
+              driver,
+              status: installed ? "ready" : "error",
+              enabled: true,
+              installed,
+              auth: { status: "unknown" },
+              checkedAt: "1970-01-01T00:00:00.000Z",
+              version: null,
+              models: [],
+              slashCommands: [],
+              skills: [],
+            } as const satisfies ServerProvider;
+            return {
+              instanceId,
+              driverKind: driver,
+              continuationIdentity: { driverKind: driver, continuationKey: `codex:${id}` },
+              displayName: undefined,
+              enabled: true,
+              snapshot: {
+                resolveMaintenance: () =>
+                  Effect.succeed(
+                    makeManualOnlyProviderMaintenanceCapabilities({
+                      provider: driver,
+                      packageName: null,
+                    }),
+                  ),
+                getSnapshot: Effect.succeed(provider),
+                refresh: Effect.succeed(provider),
+                streamChanges: Stream.empty,
+                applyUsageLimits: () => Effect.void,
+              },
+              orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+              textGeneration: {} as ProviderInstance["textGeneration"],
+            };
+          };
+          const instances = [makeInstance("present", true), makeInstance("missing", false)];
+          const rebuilt: Array<ReadonlyArray<ProviderInstanceId>> = [];
+          const changes = yield* PubSub.unbounded<void>();
+          const registry = yield* ProviderRegistry.ProviderRegistry.pipe(
+            Effect.provide(
+              ProviderRegistry.layer.pipe(
+                Layer.provide(
+                  Layer.mock(ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator)({
+                    rebuild: (ids) => Effect.sync(() => void rebuilt.push(ids)),
+                  }),
+                ),
+                Layer.provideMerge(
+                  Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
+                    getInstance: (id) => Effect.succeed(instances.find((i) => i.instanceId === id)),
+                    listInstances: Effect.succeed(instances),
+                    listUnavailable: Effect.succeed([]),
+                    streamChanges: Stream.fromPubSub(changes),
+                    subscribeChanges: PubSub.subscribe(changes),
+                  }),
+                ),
+                Layer.provideMerge(
+                  ServerConfig.layerTest(process.cwd(), {
+                    prefix: "cox-provider-registry-path-",
+                  }),
+                ),
+                Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+              ),
+            ),
+          );
+
+          yield* registry.refresh();
+
+          assert.strictEqual(env.PATH, host.expectedPath);
+          assert.deepStrictEqual(rebuilt, [[ProviderInstanceId.make("missing")]]);
+        }).pipe(
+          Effect.provideService(HostProcess.Platform, host.platform),
+          Effect.provideService(HostProcess.Environment, env),
+          Effect.provideService(WindowsShellEnvironment, () =>
+            Effect.succeed({ PATH: "C:\\Windows;C:\\Tools" }),
+          ),
+        );
       }),
     );
 

@@ -354,10 +354,10 @@ export const CommandAvailability = Context.Reference<CommandAvailabilityChecker>
   },
 );
 
-const execWindowsEnvironmentProbe = (
+const execEnvironmentProbe = (
   file: string,
   args: ReadonlyArray<string>,
-  options: { encoding: "utf8"; timeout: number },
+  options: { encoding: "utf8"; timeout: number; killSignal?: "SIGKILL" },
 ) =>
   Effect.callback<Option.Option<string>>((resume) => {
     let child: NodeChildProcess.ChildProcess;
@@ -375,15 +375,32 @@ const execWindowsEnvironmentProbe = (
       return;
     }
     return Effect.sync(() => {
-      child.kill();
+      child.kill(options.killSignal);
     });
   });
+
+export const readEnvironmentFromLoginShellEffect = Effect.fn("shell.readEnvironmentFromLoginShell")(
+  function* (shell: string, names: ReadonlyArray<string>) {
+    const output = yield* execEnvironmentProbe(
+      shell,
+      ["-ilc", buildEnvironmentCaptureCommand(shell, names)],
+      { encoding: "utf8", timeout: 5_000, killSignal: "SIGKILL" },
+    );
+    if (Option.isNone(output)) return {};
+    const environment: Partial<Record<string, string>> = {};
+    for (const name of names) {
+      const value = extractEnvironmentValue(output.value, name);
+      if (value !== undefined) environment[name] = value;
+    }
+    return environment;
+  },
+);
 
 export const readEnvironmentFromWindowsShell = Effect.fn("shell.readEnvironmentFromWindowsShell")(
   function* (
     names: ReadonlyArray<string>,
     options: WindowsEnvironmentProbeOptions = {},
-    execFile: typeof execWindowsEnvironmentProbe = execWindowsEnvironmentProbe,
+    execFile: typeof execEnvironmentProbe = execEnvironmentProbe,
   ) {
     if (names.length === 0) return {};
 

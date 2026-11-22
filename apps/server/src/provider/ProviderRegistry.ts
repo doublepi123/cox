@@ -6,6 +6,7 @@ import {
   type ServerProvider,
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -27,6 +28,7 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import * as ModelManifest from "./ModelManifest.ts";
 import { applyProviderCompatibility } from "./providerCompatibility.ts";
 import * as ServerConfig from "../config.ts";
+import { refreshHostPath } from "../os-jank.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
 import * as ProviderInstanceRegistryMutator from "./ProviderInstanceRegistryMutator.ts";
 import {
@@ -686,6 +688,28 @@ export const layer = Layer.effect(
       return yield* syncProvider(instance, nextProvider);
     });
 
+    // Drivers copy the environment when built, so instances still missing their CLI are rebuilt
+    // on the new PATH. They cannot have live sessions, and installed ones keep theirs.
+    const hostEnvironment = yield* HostProcess.Environment;
+    const readHostPath = () => hostEnvironment.PATH ?? hostEnvironment.Path ?? hostEnvironment.path;
+    const lastHostPathRef = yield* Ref.make(readHostPath());
+    const refreshCliPath = yield* refreshHostPath().pipe(
+      Effect.andThen(Effect.suspend(() => Ref.getAndSet(lastHostPathRef, readHostPath()))),
+      Effect.flatMap((last) =>
+        last === readHostPath()
+          ? Effect.void
+          : Ref.get(providersRef).pipe(
+              Effect.flatMap((providers) => {
+                const missing = providers
+                  .filter((provider) => provider.enabled && !provider.installed)
+                  .map((provider) => provider.instanceId);
+                return missing.length ? instanceRegistryMutator.rebuild(missing) : Effect.void;
+              }),
+            ),
+      ),
+      Effect.cachedWithTTL("10 seconds"),
+    );
+
     type RefreshAllCompletion = Deferred.Deferred<ReadonlyArray<ServerProvider>>;
     const refreshAllInFlightRef = yield* Ref.make<Option.Option<RefreshAllCompletion>>(
       Option.none(),
@@ -712,7 +736,8 @@ export const layer = Layer.effect(
       if (claimed.owner) {
         // Detach shared passes so the first caller's interruption cannot cancel other callers' work.
         // Syncing first keeps a refresh right after a rebuild from probing the replaced instance.
-        yield* manifestService.current.pipe(
+        yield* refreshCliPath.pipe(
+          Effect.andThen(manifestService.current),
           Effect.flatMap(({ updatedAt }) =>
             syncLiveSourcesAndContinue.pipe(
               Effect.andThen(Ref.get(liveSubsRef)),
@@ -741,16 +766,13 @@ export const layer = Layer.effect(
       if (provider === undefined) {
         return yield* refreshAll();
       }
-      const instance = (yield* Ref.get(liveSubsRef)).get(defaultInstanceIdForDriver(provider));
-      if (!instance) {
-        return yield* Ref.get(providersRef);
-      }
-      return yield* refreshOneSource(instance);
+      return yield* refreshInstance(defaultInstanceIdForDriver(provider));
     });
 
     const refreshInstance = Effect.fn("refreshInstance")(function* (
       instanceId: ProviderInstanceId,
     ) {
+      yield* refreshCliPath;
       yield* syncLiveSourcesAndContinue;
       const instance = (yield* Ref.get(liveSubsRef)).get(instanceId);
       if (!instance) {

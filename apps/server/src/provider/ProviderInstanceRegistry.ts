@@ -608,6 +608,13 @@ export const makeProviderInstanceRegistry = Effect.fn(
   const mutator: ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutatorShape = {
     reconcile,
     reloadSecrets,
+    rebuild: (instanceIds) =>
+      semaphore.withPermits(1)(
+        Ref.get(configMapRef).pipe(
+          Effect.flatMap((configMap) => reconcileWithR(configMap, new Set(instanceIds))),
+          Effect.provideContext(driverContext),
+        ),
+      ),
   };
 
   return { registry, mutator };

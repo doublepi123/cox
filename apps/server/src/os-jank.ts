@@ -2,10 +2,13 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   listLoginShellCandidates,
   mergePathEntries,
+  mergePathValues,
   readEnvironmentFromLoginShell,
+  readEnvironmentFromLoginShellEffect,
   readPathFromLaunchctl,
   resolveWindowsEnvironment,
   setWindowsPath,
+  WindowsShellEnvironment,
 } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -58,8 +61,18 @@ function hydratePosixPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): vo
     if (shellEnvironment.PATH) break;
   }
 
+  const launchctlPath =
+    platform === "darwin" && !shellEnvironment.PATH ? readPathFromLaunchctl() : undefined;
+  applyLoginShellEnvironment(env, platform, shellEnvironment, launchctlPath);
+}
+
+function applyLoginShellEnvironment(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  shellEnvironment: Partial<Record<string, string>>,
+  launchctlPath?: string,
+): void {
   const shellPath = shellEnvironment.PATH;
-  const launchctlPath = platform === "darwin" && !shellPath ? readPathFromLaunchctl() : undefined;
   const mergedPath = mergePathEntries(shellPath ?? launchctlPath, env.PATH, platform);
   if (mergedPath) {
     env.PATH = mergedPath;
@@ -134,6 +147,27 @@ export const fixPath = Effect.fn("fixPath")(function* (options?: {
       }),
     ),
   );
+});
+
+export const refreshHostPath = Effect.fn("refreshHostPath")(function* () {
+  const platform = yield* HostProcess.Platform;
+  const env = yield* HostProcess.Environment;
+  if (platform === "win32") {
+    const readEnvironment = yield* WindowsShellEnvironment;
+    const { PATH: registryPath } = yield* readEnvironment(["PATH"], { loadProfile: false });
+    const currentPath = env.PATH ?? env.Path ?? env.path;
+    const mergedPath = mergePathValues(currentPath, registryPath, "win32");
+    if (mergedPath && mergedPath !== currentPath) setWindowsPath(env, mergedPath);
+    return;
+  }
+  if (platform !== "darwin" && platform !== "linux") return;
+  const [shell] = listLoginShellCandidates(platform, env.SHELL);
+  if (!shell) return;
+  const shellEnvironment = yield* readEnvironmentFromLoginShellEffect(
+    shell,
+    LOGIN_SHELL_ENVIRONMENT_NAMES,
+  );
+  if (shellEnvironment.PATH) applyLoginShellEnvironment(env, platform, shellEnvironment);
 });
 
 export const expandHomePath = Effect.fn(function* (input: string) {
