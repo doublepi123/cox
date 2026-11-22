@@ -132,6 +132,21 @@ function renderText(text: string, props: Partial<Parameters<typeof ChatMarkdown>
   return render(<ChatMarkdown cwd="/tmp/project" text={text} {...props} />);
 }
 
+it("typesets Words inline and display equations in chat", async () => {
+  setup();
+  settingsOverrides.mathRenderingEnabled = true;
+  await using screen = await renderText("Inline $x^2$.\n\n$$\n\\frac{1}{2}\n$$");
+
+  await expect.element(screen.getByRole("group", { name: "Inline equation" })).toBeVisible();
+  await expect.element(screen.getByRole("group", { name: "Display equation" })).toBeVisible();
+  await vi.waitFor(() => {
+    expect(screen.container.querySelector('[data-markdown-math="inline"] .katex')).not.toBeNull();
+    expect(
+      screen.container.querySelector('[data-markdown-math="display"] .katex-display'),
+    ).not.toBeNull();
+  });
+});
+
 it("explains why a host video cannot be played when file access is missing", async () => {
   setup();
   await using screen = await renderText("![Demo](/tmp/demo.mp4)", {

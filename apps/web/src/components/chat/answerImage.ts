@@ -54,7 +54,6 @@ export function answerImageFileName(messageId: string): string {
 }
 
 async function waitForAnswerImage(node: HTMLElement, signal: AbortSignal) {
-  await import("./MathTypeset");
   signal.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const started = performance.now();
@@ -76,7 +75,7 @@ async function waitForAnswerImage(node: HTMLElement, signal: AbortSignal) {
       }
       const pending =
         document.fonts.status === "loading" ||
-        node.querySelector('pre.invisible, [role="status"]') !== null ||
+        node.querySelector('pre.invisible, [role="status"], [data-markdown-pending]') !== null ||
         [...node.querySelectorAll("img")].some((image) => !image.complete);
       if (!pending && performance.now() - changedAt >= 250) finish();
       else if (performance.now() - started > 12_000) {

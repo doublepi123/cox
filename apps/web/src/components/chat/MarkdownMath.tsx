@@ -7,7 +7,7 @@ import { RenderErrorBoundary } from "../RenderErrorBoundary";
 const MathTypeset = lazy(() => import("./MathTypeset"));
 
 /**
- * One formula from `remark-math`. Shows its TeX until KaTeX loads, and
+ * Shows a formula's TeX until KaTeX loads, and
  * keeps showing it when KaTeX cannot parse it, such as mid-stream. Copying
  * any part of a formula copies its whole TeX source.
  */
@@ -68,7 +68,13 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
           className={props.display ? "inline-block w-max min-w-full" : "inline-block w-max"}
         >
           <RenderErrorBoundary resetKeys={[tex]} fallback={fallback}>
-            <Suspense fallback={fallback}>
+            <Suspense
+              fallback={
+                <span className="whitespace-pre-wrap" data-markdown-pending="">
+                  {source}
+                </span>
+              }
+            >
               <MathTypeset tex={tex} display={props.display} fallback={fallback} />
             </Suspense>
           </RenderErrorBoundary>

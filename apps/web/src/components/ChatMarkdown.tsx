@@ -1305,6 +1305,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
       </span>
     );
   },
+  span: function MarkdownSpan({ node, children, ...props }) {
+    const { inline } = use(ChatMarkdownRendererContext);
+    const math = node?.properties.dataMarkdownMath;
+    const svg = node?.children[0];
+    if ((math === "inline" || math === "display") && svg?.type === "element") {
+      return (
+        <MarkdownMath
+          tex={String(svg.properties.ariaLabel ?? "")}
+          display={math === "display"}
+          focusable={!inline}
+        />
+      );
+    }
+    return <span {...props}>{children}</span>;
+  },
   code: function MarkdownCode({ node, children, className, ...props }) {
     const { cwd, imageBaseDir, inlineCodeFileLinkMetaByText, fileLinkChip, mathEnabled, inline } =
       use(ChatMarkdownRendererContext);
@@ -1712,6 +1727,8 @@ function markdownIslandOptions(state: ChatMarkdownComponentState): MarkdownIslan
           return node.properties.type === "checkbox" && onTaskListChange !== undefined;
         case "code":
           return node.properties.dataInlineCode != null;
+        case "span":
+          return node.properties.dataMarkdownMath != null;
         case "p":
         case "li":
           return hastTextHasChip(node, skills);
