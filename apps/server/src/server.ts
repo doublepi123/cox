@@ -680,7 +680,6 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.provide(layerCommandReadiness),
   Layer.provide(ServerHttp.layerBrowserApiCors),
   Layer.provide(ServerHttp.layerHttpCompression),
-  Layer.provide(ServerHttp.layerUnloggedSignedRequests),
 );
 
 const layerMakeServer = Layer.unwrap(
@@ -766,7 +765,8 @@ const layerMakeServer = Layer.unwrap(
     );
 
     const layerRoutes = HttpRouter.serve(layerMakeRoutes, {
-      disableLogger: !config.logWebSocketEvents,
+      disableLogger: true,
+      middleware: ServerHttp.requestObservability(config.logWebSocketEvents),
       routerConfig: HTTP_ROUTER_CONFIG,
     }).pipe(
       withUntracedRequests,

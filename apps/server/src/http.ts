@@ -397,27 +397,37 @@ const requestPath = (request: HttpServerRequest.HttpServerRequest) => {
 };
 
 // Signed URLs carry bearer tokens in the path, which URL param redaction cannot reach.
-const isSignedUrlRequest = (request: HttpServerRequest.HttpServerRequest) => {
-  const path = requestPath(request);
-  return (
-    path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`) ||
-    path.startsWith(`${ASSET_ROUTE_PREFIX}/`) ||
-    path.startsWith(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/`)
-  );
+const redactedSignedPath = (path: string) => {
+  for (const prefix of [ASSET_ROUTE_PREFIX, ATTACHMENT_UPLOAD_ROUTE_PREFIX]) {
+    if (path.startsWith(prefix + "/")) return prefix + "/REDACTED";
+  }
+  if (!path.startsWith(WEBHOOK_ROUTE_PREFIX + "/")) return undefined;
+  const hookId = path.slice(WEBHOOK_ROUTE_PREFIX.length + 1).split("/", 1)[0];
+  return WEBHOOK_ROUTE_PREFIX + "/" + hookId + "/REDACTED";
 };
 
 // HttpRouter.serve builds routes privately; provide the server-wide TracerDisabledWhen to the served layer.
 const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)(
-  (request) => requestPath(request) === OTLP_TRACES_PROXY_PATH || isSignedUrlRequest(request),
+  (request) =>
+    requestPath(request) === OTLP_TRACES_PROXY_PATH ||
+    redactedSignedPath(requestPath(request)) !== undefined,
 );
 
-export const layerUnloggedSignedRequests = HttpRouter.middleware(
-  (httpEffect) =>
-    Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
-      isSignedUrlRequest(request) ? HttpMiddleware.withLoggerDisabled(httpEffect) : httpEffect,
-    ),
-  { global: true },
-);
+export const requestObservability = (logRequests: boolean) =>
+  <E, R>(httpEffect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) =>
+    Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
+      const redactedPath = redactedSignedPath(requestPath(request));
+      if (redactedPath === undefined) {
+        return logRequests ? HttpMiddleware.logger(httpEffect) : httpEffect;
+      }
+
+      const original = Effect.provideService(httpEffect, HttpServerRequest.HttpServerRequest, request);
+      const logged = logRequests ? HttpMiddleware.logger(original) : original;
+      return HttpMiddleware.tracer(logged).pipe(
+        Effect.provideService(HttpServerRequest.HttpServerRequest, request.modify({ url: redactedPath })),
+        Effect.provideService(HttpMiddleware.TracerDisabledWhen, () => false),
+      );
+    });
 
 export const withUntracedRequests = Layer.provide(layerUntracedRequests);
 

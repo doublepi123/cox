@@ -10,6 +10,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as References from "effect/References";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
@@ -18,6 +20,7 @@ import { HttpClient, HttpClientRequest, HttpRouter, HttpServerResponse } from "e
 import { ASSET_ROUTE_PREFIX } from "./assets/AssetAccess.ts";
 import { ATTACHMENT_UPLOAD_ROUTE_PREFIX } from "./assets/AttachmentUpload.ts";
 import { openMediaFile } from "./assets/MediaFile.ts";
+import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
 
 import {
   injectMcpAppCsp,
@@ -143,17 +146,26 @@ describe("browser API CORS", () => {
 });
 
 describe("untraced requests", () => {
-  it.effect("keeps signed asset and upload URLs out of HTTP server spans", () =>
+  it.effect("redacts signed asset, upload and webhook URLs in HTTP spans and logs", () =>
     Effect.gen(function* () {
-      const serverSpans: Array<string> = [];
+      const serverSpans: Array<Tracer.NativeSpan> = [];
+      const loggedUrls: Array<unknown> = [];
       const layerTracer = Layer.succeed(
         Tracer.Tracer,
         Tracer.make({
           span: (options) => {
-            if (options.kind === "server") serverSpans.push(options.name);
-            return new Tracer.NativeSpan(options);
+            const span = new Tracer.NativeSpan(options);
+            if (options.kind === "server") serverSpans.push(span);
+            return span;
           },
         }),
+      );
+      const layerLogger = Logger.layer(
+        [Logger.make(({ fiber }) => {
+          const url = fiber.getRef(References.CurrentLogAnnotations)["http.url"];
+          if (url !== undefined) loggedUrls.push(url);
+        })],
+        { mergeWithExisting: false },
       );
       const layerRoutes = Layer.effectDiscard(
         Effect.gen(function* () {
@@ -164,14 +176,20 @@ describe("untraced requests", () => {
             `${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/*`,
             HttpServerResponse.empty(),
           );
+          yield* router.add("POST", `${WEBHOOK_ROUTE_PREFIX}/*`, HttpServerResponse.empty());
           yield* router.add("GET", "/api/environment", HttpServerResponse.empty());
         }),
       );
       const services = yield* Layer.build(
-        HttpRouter.serve(layerRoutes, { disableListenLog: true, disableLogger: true }).pipe(
+        HttpRouter.serve(layerRoutes, {
+          disableListenLog: true,
+          disableLogger: true,
+          middleware: ServerHttp.requestObservability(true),
+        }).pipe(
           ServerHttp.withUntracedRequests,
           Layer.provideMerge(NodeHttpServer.layerTest),
           Layer.provide(layerTracer),
+          Layer.provide(layerLogger),
         ),
       );
       const client = Context.get(services, HttpClient.HttpClient);
@@ -183,13 +201,21 @@ describe("untraced requests", () => {
         HttpClientRequest.post(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/payload.signature`),
         HttpClientRequest.post(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/payload.signature?v=1`),
         HttpClientRequest.head(`${ASSET_ROUTE_PREFIX}/payload.signature/image.png`),
+        HttpClientRequest.post(`${WEBHOOK_ROUTE_PREFIX}/hook-id/webhook-token`),
       ]) {
         expect((yield* client.execute(request)).status).toBe(204);
       }
-      expect(serverSpans).toEqual([]);
+      const redactedPaths = [
+        ...Array<string>(2).fill(ASSET_ROUTE_PREFIX + "/REDACTED"),
+        ...Array<string>(2).fill(ATTACHMENT_UPLOAD_ROUTE_PREFIX + "/REDACTED"),
+        ASSET_ROUTE_PREFIX + "/REDACTED",
+        WEBHOOK_ROUTE_PREFIX + "/hook-id/REDACTED",
+      ];
+      expect(serverSpans.map((span) => span.attributes.get("url.path"))).toEqual(redactedPaths);
+      expect(loggedUrls).toEqual(redactedPaths);
 
       expect((yield* client.execute(HttpClientRequest.get("/api/environment"))).status).toBe(204);
-      expect(serverSpans).toEqual(["GET"]);
+      expect(serverSpans.at(-1)?.attributes.get("url.path")).toBe("/api/environment");
 
       for (const path of [
         `${ASSET_ROUTE_PREFIX}-other/file`,
@@ -197,7 +223,7 @@ describe("untraced requests", () => {
       ]) {
         expect((yield* client.execute(HttpClientRequest.get(path))).status).toBe(404);
       }
-      expect(serverSpans).toEqual(["GET", "GET", "GET"]);
+      expect(serverSpans.slice(-2).map((span) => span.name)).toEqual(["GET", "GET"]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
