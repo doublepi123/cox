@@ -255,19 +255,24 @@ export const zh = {
   "Remove connection": "移除连接",
   "Test all models": "一键测试模型",
   "Stop remaining tests": "停止后续测试",
-  "Ignore failed models ({count})": "忽略失败模型（{count}）",
-  "Restore model": "恢复模型",
-  "Ignore model": "忽略模型",
-  "Ignore model {model}": "忽略模型 {model}",
-  "Restore model {model}": "恢复模型 {model}",
+  "Review failed models ({count})": "检查失败模型（{count}）",
+  "Delete failed model?": "删除这个测试失败的模型？",
+  "Keeping one model required by an agent binding.": "将保留一个 Agent 绑定仍依赖的模型。",
+  "Deleted one failed model.": "已删除一个测试失败的模型。",
+  "Delete {count} failed models?": "删除 {count} 个测试失败的模型？",
+  "Delete only the models listed below from the local catalog. You can import them again if the service still lists them.":
+    "将从本地目录删除下方列出的模型。若服务仍提供这些模型，可以重新导入。",
+  "These models are required by agent bindings. Change the bindings before deleting them.":
+    "这些模型仍被 Agent 绑定依赖，请先调整绑定再删除。",
+  "Deleted {count} failed models.": "已删除 {count} 个测试失败的模型。",
+  "This model is missing or unavailable.": "此模型不存在或不可用。",
   "Model actions for {model}": "模型 {model} 的更多操作",
-  Ignored: "已忽略",
   "Testing…": "正在测试…",
   "Test passed ({duration} ms)": "测试通过（{duration} 毫秒）",
   "Tested {completed}/{total}: {passed} passed, {failed} failed.":
     "已测试 {completed}/{total}：{passed} 个通过，{failed} 个失败。",
-  "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.":
-    "测试使用已保存的配置发送少量请求，可能产生服务商费用。已忽略的模型会跳过。",
+  "Testing sends small requests using saved settings and may incur provider charges.":
+    "测试使用已保存的配置发送少量请求，可能产生服务商费用。",
   "The model test could not finish. Check the connection and saved settings, then retry.":
     "模型测试未能完成，请检查连接和已保存的配置后重试。",
   "The model test timed out or could not reach the service.": "模型测试超时或无法连接服务。",
@@ -626,8 +631,8 @@ export const zh = {
   "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.":
     "没有可清理的模型，它们可能已恢复上架或被 Agent 绑定依赖。",
   'Delete model "{model}"?': "删除模型“{model}”？",
-  "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.":
-    "将从本地模型目录移除此模型。若上游服务仍提供该模型，刷新模型时可能重新添加。",
+  "This removes the model from the local catalog. You can import it again if the service still lists it.":
+    "将从本地模型目录移除此模型。若服务仍提供该模型，可以重新导入。",
   "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.":
     "以下 Agent 已选择或仍依赖此模型：{agents}。请先调整它们的模型绑定，再删除。",
   "Fetching models does not send a generation request. Unknown capabilities remain unknown.":
@@ -646,8 +651,8 @@ export const zh = {
   "Edit model {model}": "编辑模型 {model}",
   "Clear models": "清空模型",
   "Clear all {count} models?": "清空全部 {count} 个模型？",
-  "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.":
-    "清空此服务本地目录中的全部模型，包括手动添加和已忽略的模型。保留服务地址、凭据及其他服务。刷新后可重新获取服务列出的模型。",
+  "Remove all models from this service's local catalog, including manual models. You can import advertised models again.":
+    "清空此服务本地目录中的全部模型，包括手动添加的模型。仍可重新导入服务列出的模型。",
   "These agents use this service: {agents}. Unbind them before clearing its models.":
     "这些助手正在使用此服务：{agents}。清空模型前，请先解除它们的绑定。",
   "Image input": "图片输入",

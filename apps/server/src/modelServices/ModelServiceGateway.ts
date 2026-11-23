@@ -965,7 +965,7 @@ export const make = Effect.gen(function* () {
       (incoming === "gemini"
         ? targets.find((entry) => entry.id === `models/${requested}`)
         : undefined);
-    if (!target || target.model.ignored === true || target.model.supportsTools === false)
+    if (!target || target.model.supportsTools === false)
       return gatewayErrorResponse(incoming, 403, {
         message: "This model is not allowed by the agent binding.",
       });

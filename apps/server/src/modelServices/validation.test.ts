@@ -25,7 +25,6 @@ const service = Schema.decodeSync(ModelServiceConfig)({
     { id: "Vendor/Exact" },
     { id: "other" },
     { id: "unavailable", available: false },
-    { id: "ignored", ignored: true },
     { id: "no-tools", supportsTools: false },
     { id: "wrong-protocol", protocols: ["gemini"] },
   ],
@@ -83,7 +82,7 @@ describe("OMO model service validation", () => {
         "OMO role models",
       );
   });
-  it.each(["cox/unavailable", "cox/ignored", "cox/no-tools", "cox/wrong-protocol"])(
+  it.each(["cox/unavailable", "cox/no-tools", "cox/wrong-protocol"])(
     "preserves role selection when model availability changes: %s",
     (slug) => {
       for (const field of ["agentModels", "categoryModels"])

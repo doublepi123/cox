@@ -73,7 +73,11 @@ import {
   ensureModelServiceRevisions,
   resolveModelServiceImport,
 } from "./modelServices/validation.ts";
-import { migrateSingleModelServices, splitModelService } from "./modelServices/migration.ts";
+import {
+  migrateIgnoredModelServiceModels,
+  migrateSingleModelServices,
+  splitModelService,
+} from "./modelServices/migration.ts";
 
 export {
   resolveReviewGuideModelSelection,
@@ -451,14 +455,28 @@ const ServerSettingsJson = fromLenientJson(
   }),
 );
 const decodeServerSettingsJsonExit = Schema.decodeUnknownExit(ServerSettingsJson);
-const LegacyProviderSettingsJson = fromLenientJson(
+const LegacySettingsJson = fromLenientJson(
   Schema.Struct({
     providers: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
     bitbucket: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
     github: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+    modelServices: Schema.optionalKey(
+      Schema.Record(
+        Schema.String,
+        Schema.Struct({
+          models: Schema.optionalKey(
+            Schema.Array(
+              Schema.Struct({
+                ignored: Schema.optionalKey(Schema.Boolean),
+              }),
+            ),
+          ),
+        }),
+      ),
+    ),
   }),
 );
-const decodeLegacyProviderSettingsJsonExit = Schema.decodeUnknownExit(LegacyProviderSettingsJson);
+const decodeLegacySettingsJsonExit = Schema.decodeUnknownExit(LegacySettingsJson);
 
 const LEGACY_BITBUCKET_SECRET_NAMES: Readonly<Record<string, string>> = {
   accessToken: "bitbucket-access-token",
@@ -834,15 +852,17 @@ const make = Effect.gen(function* () {
   const loadSettingsFromDisk = Effect.gen(function* () {
     let settings = DEFAULT_SERVER_SETTINGS;
     let legacyProviders: Readonly<Record<string, unknown>> | undefined;
+    let legacyModelServices: typeof LegacySettingsJson.Type.modelServices;
     let legacySourceControl: Parameters<typeof migrateLegacySourceControlSettings>[1] = {};
     let parseFailure = Option.none<unknown>();
 
     if (yield* readConfigExists) {
       const raw = yield* readRawConfig;
       const decoded = decodeServerSettingsJsonExit(raw);
-      const legacySettings = decodeLegacyProviderSettingsJsonExit(raw);
+      const legacySettings = decodeLegacySettingsJsonExit(raw);
       if (legacySettings._tag === "Success") {
         legacyProviders = legacySettings.value.providers;
+        legacyModelServices = legacySettings.value.modelServices;
         legacySourceControl = {
           bitbucket: legacySettings.value.bitbucket,
           github: legacySettings.value.github,
@@ -931,7 +951,10 @@ const make = Effect.gen(function* () {
       ),
     );
     const folded = settingsFileTrusted
-      ? migrateSingleModelServices(foldLegacyProjectSettings(loaded, legacyProjectRows))
+      ? migrateIgnoredModelServiceModels(
+          migrateSingleModelServices(foldLegacyProjectSettings(loaded, legacyProjectRows)),
+          legacyModelServices ?? {},
+        )
       : loaded;
     // Remove retired keys only after copying secrets and writing the new file; failures retry on next load.
     const legacySecretsCopied = yield* Effect.forEach(

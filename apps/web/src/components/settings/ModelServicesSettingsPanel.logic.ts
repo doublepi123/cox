@@ -65,13 +65,24 @@ export function unlistedModelRemovalPlan(
   service: ModelServiceConfig,
   instances: ProviderInstanceConfigMap,
   services: ServerSettings["modelServices"] = { [serviceId]: service },
+) {
+  const unlisted = service.models.filter(
+    (model) => model.available === false && model.source !== "manual",
+  );
+  return modelRemovalPlan(serviceId, service, unlisted, instances, services);
+}
+
+export function modelRemovalPlan(
+  serviceId: ModelServiceId,
+  service: ModelServiceConfig,
+  candidates: readonly ModelServiceModel[],
+  instances: ProviderInstanceConfigMap,
+  services: ServerSettings["modelServices"] = { [serviceId]: service },
 ): {
   readonly removable: readonly ModelServiceModel[];
   readonly protected: readonly ModelServiceModel[];
 } {
-  const unlisted = service.models.filter(
-    (model) => model.available === false && model.source !== "manual",
-  );
+  if (!candidates.length) return { removable: [], protected: [] };
   const selectedIds = new Set(
     Object.values(instances).flatMap((instance) => {
       const binding = instance.modelService;
@@ -91,12 +102,12 @@ export function unlistedModelRemovalPlan(
       ];
     }),
   );
-  const removable = unlisted.filter((model) => !selectedIds.has(model.id));
+  const removable = candidates.filter((model) => !selectedIds.has(model.id));
   const removedIds = new Set(removable.map((model) => model.id));
   if (modelsRemovalBlockingAgents(serviceId, service, removedIds, instances, services).length > 0)
-    return { removable: [], protected: unlisted };
+    return { removable: [], protected: candidates };
   return {
     removable,
-    protected: unlisted.filter((model) => !removedIds.has(model.id)),
+    protected: candidates.filter((model) => !removedIds.has(model.id)),
   };
 }

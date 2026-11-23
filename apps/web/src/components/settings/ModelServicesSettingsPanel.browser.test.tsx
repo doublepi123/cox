@@ -371,7 +371,6 @@ describe("model services settings", () => {
       id: "Vendor/OtherOld",
       source: "discovered" as const,
       available: false,
-      ignored: true,
       capabilities: null,
     },
   ];
@@ -671,62 +670,21 @@ describe("model services settings", () => {
     },
   );
 
-  it("ignores one model without testing or removing it and can restore its full configuration", async () => {
-    const otherService = ModelServiceId.make("other");
-    const keep = { id: "Vendor/Keep", name: "Keep model", capabilities: null };
-    setup({
-      [id]: { ...configured, models: [...configured.models, keep] },
-      [otherService]: { ...configured, name: "Other service" },
-    });
-    await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
-    const ignore = screen.getByRole("button", { name: "Ignore model Exact model", exact: true });
-    await expect.element(ignore).toHaveTextContent("Ignore model");
-    await expect
-      .element(screen.getByRole("button", { name: "Edit model Exact model", exact: true }))
-      .toBeVisible();
-    await ignore.click();
-    await expect
-      .element(screen.getByRole("button", { name: "Restore model Exact model", exact: true }))
-      .toBeVisible();
-    await expect.element(screen.getByText("Ignored", { exact: true })).toBeVisible();
-    expect(state.settings.modelServices[id]?.models).toEqual([
-      { ...configured.models[0]!, ignored: true },
-      keep,
-    ]);
-    expect(state.settings.modelServices[otherService]).toEqual({
-      ...configured,
-      name: "Other service",
-    });
-    expect(state.save).toHaveBeenCalledOnce();
-    expect(state.discover).not.toHaveBeenCalled();
-    expect(state.testModel).not.toHaveBeenCalled();
-    await screen.getByRole("button", { name: "Test all models", exact: true }).click();
-    expect(state.testModel).toHaveBeenCalledOnce();
-    expect(state.testModel.mock.calls[0]![0].input.modelId).toBe(keep.id);
-    await screen.getByRole("button", { name: "Restore model Exact model", exact: true }).click();
-    await expect
-      .element(screen.getByRole("button", { name: "Ignore model Exact model", exact: true }))
-      .toBeVisible();
-    expect(state.settings.modelServices[id]?.models).toEqual([
-      { ...configured.models[0]!, ignored: false },
-      keep,
-    ]);
-  });
-
-  it("retains a model's previous state when ignoring fails and allows retry", async () => {
+  it("retains the selected model when deletion fails and allows retry in the dialog", async () => {
     setup({ [id]: configured });
-    state.save.mockRejectedValueOnce(new Error("controlled ignore failure"));
+    state.save.mockRejectedValueOnce(new Error("controlled deletion failure"));
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
-    await screen.getByRole("button", { name: "Ignore model Exact model", exact: true }).click();
+    await requestModelDeletion(screen);
+    const dialog = page.getByRole("alertdialog");
+    const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
+    await confirm.click();
     await expect
-      .element(screen.getByRole("alert"))
+      .element(dialog.getByRole("alert"))
       .toHaveTextContent("The model service operation failed.");
     expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
-    await screen.getByRole("button", { name: "Ignore model Exact model", exact: true }).click();
-    await expect
-      .element(screen.getByRole("button", { name: "Restore model Exact model", exact: true }))
-      .toBeVisible();
-    expect(state.settings.modelServices[id]?.models[0]?.ignored).toBe(true);
+    await confirm.click();
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(state.settings.modelServices[id]?.models).toEqual([]);
   });
 
   it("confirms model removal with cancel focused and keeps cancellation side-effect free", async () => {
@@ -735,7 +693,7 @@ describe("model services settings", () => {
     await requestModelDeletion(screen);
     await expect.element(page.getByRole("alertdialog")).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
-    await expect.element(page.getByText(/Refreshing models may add it again/)).toBeVisible();
+    await expect.element(page.getByText(/You can import it again/)).toBeVisible();
     expect(state.save).not.toHaveBeenCalled();
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
@@ -879,7 +837,7 @@ describe("model services settings", () => {
       const other = ModelServiceId.make("other");
       const models = [
         { ...configured.models[0]!, source: "manual" as const },
-        { id: "discovered", ignored: true, source: "discovered" as const, capabilities: null },
+        { id: "discovered", source: "discovered" as const, capabilities: null },
       ];
       setup({ [id]: { ...configured, models }, [other]: { ...configured, name: "Other" } });
       const originalWidth = window.innerWidth,
@@ -1268,34 +1226,43 @@ describe("model services settings", () => {
     }
   });
 
-  it("tests the current models, ignores failures without deleting them and allows restoring one", async () => {
-    setup({
-      [id]: {
-        ...configured,
-        models: [
-          { id: "good", capabilities: null },
-          { id: "bad", capabilities: null },
-        ],
+  it("deletes only confirmed failed models that are not required by agents", async () => {
+    const models = [
+      { id: "good", capabilities: null },
+      { id: "bad", capabilities: null },
+      { id: "bad-bound", capabilities: null },
+    ];
+    setup({ [id]: { ...configured, models } });
+    state.settings = {
+      ...state.settings,
+      providerInstances: {
+        [ProviderInstanceId.make("work")]: {
+          driver: ProviderDriverKind.make("codex"),
+          modelService: { serviceId: id, modelIds: ["bad-bound"] },
+        },
       },
-    });
+    };
     await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
     await screen.getByRole("button", { name: "Test all models", exact: true }).click();
+    const review = screen.getByRole("button", { name: "Review failed models (2)" });
+    await expect.element(review).toBeEnabled();
+    await review.click();
+    const dialog = page.getByRole("alertdialog");
+    const deletionList = dialog.getByRole("list", { name: "Models to delete" });
+    await expect.element(deletionList).toBeVisible();
+    expect(deletionList.element().textContent).toBe("bad");
     await expect
-      .element(screen.getByRole("button", { name: "Ignore failed models (1)" }))
-      .toBeEnabled();
-    expect(state.testModel).toHaveBeenCalledTimes(2);
-    await screen.getByRole("button", { name: "Ignore failed models (1)" }).click();
-    await expect
-      .element(screen.getByRole("button", { name: "Restore model bad", exact: true }))
+      .element(dialog.getByText("Keeping one model required by an agent binding."))
       .toBeVisible();
-    expect(state.settings.modelServices[id]?.models).toMatchObject([
-      { id: "good" },
-      { id: "bad", ignored: true },
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(state.settings.modelServices[id]?.models).toEqual(models);
+    await review.click();
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(state.settings.modelServices[id]?.models.map((model) => model.id)).toEqual([
+      "good",
+      "bad-bound",
     ]);
-    await screen.getByRole("button", { name: "Restore model bad", exact: true }).click();
-    expect(
-      state.settings.modelServices[id]?.models.find((model) => model.id === "bad")?.ignored,
-    ).toBe(false);
   });
 
   it("does not offer tests with unsaved credentials or without management permission", async () => {
@@ -1465,20 +1432,21 @@ describe("model services settings", () => {
       }
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
       expect(screen.container.scrollWidth).toBeLessThanOrEqual(width);
-      await screen
+      const sync = screen
         .getByRole("button", {
-          name: language === "zh" ? "忽略模型 Exact model" : "Ignore model Exact model",
-          exact: true,
+          name:
+            language === "zh"
+              ? "从 models.dev 同步价格和参数"
+              : "Sync prices and metadata from models.dev",
         })
-        .click();
-      await expect
-        .element(
-          screen.getByRole("button", {
-            name: language === "zh" ? "恢复模型 Exact model" : "Restore model Exact model",
-            exact: true,
-          }),
-        )
-        .toBeVisible();
+        .element();
+      const toolbar = screen
+        .getByRole("heading", { name: /^Models \(|^模型（|^模型 \(/ })
+        .element().parentElement;
+      if (!toolbar) throw new Error("Missing model toolbar");
+      expect(sync.getBoundingClientRect().right).toBeLessThanOrEqual(
+        toolbar.getBoundingClientRect().right,
+      );
       await requestModelDeletion(screen, "Exact model", language);
       const confirmation = page.getByRole("alertdialog").element();
       expect(confirmation.scrollWidth).toBeLessThanOrEqual(confirmation.clientWidth);
@@ -1544,7 +1512,6 @@ describe("model services settings", () => {
     expect(state.settings.modelServices[serviceId]?.models.map((model) => model.id)).toEqual([
       "New/Model",
     ]);
-    expect(state.settings.modelServices[serviceId]?.models[0]?.ignored).toBeUndefined();
     await expect.element(screen.getByLabelText("API key", { exact: true })).toHaveValue("");
     expect(
       (
@@ -1901,9 +1868,6 @@ describe("model services settings", () => {
     await expect.element(screen.getByLabelText("API URL", { exact: true })).toBeDisabled();
     await expect
       .element(screen.getByRole("button", { name: /^Delete model / }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: /^Ignore model / }))
       .not.toBeInTheDocument();
     await expect
       .element(screen.getByRole("button", { name: /^Model actions for / }))

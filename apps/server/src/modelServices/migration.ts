@@ -40,6 +40,89 @@ export function migrateSingleModelServices(settings: ServerSettings): ServerSett
   return changed ? { ...settings, modelServices, providerInstances } : settings;
 }
 
+export function migrateIgnoredModelServiceModels(
+  settings: ServerSettings,
+  legacyServices: Readonly<
+    Record<string, { readonly models?: readonly { readonly ignored?: boolean }[] }>
+  >,
+): ServerSettings {
+  const modelServices = { ...settings.modelServices };
+  const removed = new Map<string, Set<string>>();
+  let changed = false;
+  for (const id of Object.keys(modelServices) as ModelServiceId[]) {
+    const service = modelServices[id];
+    const legacyModels = legacyServices[id]?.models;
+    if (!service || !legacyModels?.some((model) => model.ignored !== undefined)) continue;
+    changed = true;
+    const removedIds = new Set<string>();
+    const models = service.models.filter((model, index) => {
+      if (legacyModels[index]?.ignored !== true) return true;
+      removedIds.add(model.id);
+      return false;
+    });
+    if (removedIds.size) {
+      removed.set(id, removedIds);
+      modelServices[id] = { ...service, models, revision: service.revision + 1 };
+    }
+  }
+  if (!changed) return settings;
+
+  const providerInstances = { ...settings.providerInstances };
+  for (const id of Object.keys(providerInstances) as Array<keyof typeof providerInstances>) {
+    const instance = providerInstances[id];
+    const binding = instance?.modelService;
+    if (!instance || !binding) continue;
+    const removedTargets = modelServiceTargets(settings.modelServices, binding).filter(({ ref }) =>
+      removed.get(ref.serviceId)?.has(ref.modelId),
+    );
+    if (!removedTargets.length) continue;
+    const normalized = multiSourceModelServiceBinding(binding, settings.modelServices);
+    const [first, ...rest] = modelServiceSources(normalized).flatMap((source) => {
+      const removedIds = removed.get(source.serviceId);
+      if (!removedIds) return [source];
+      const modelIds = source.modelIds.filter((modelId) => !removedIds.has(modelId));
+      if (source.modelIds.length && !modelIds.length) return [];
+      return [{ ...source, modelIds }];
+    });
+    const { modelService: _binding, ...unbound } = instance;
+    const { defaultModelRef, ...remainingBinding } = normalized;
+    const nextBinding = first && {
+      ...remainingBinding,
+      sources: [first, ...rest] as const,
+      ...(defaultModelRef && !removed.get(defaultModelRef.serviceId)?.has(defaultModelRef.modelId)
+        ? { defaultModelRef }
+        : {}),
+    };
+    let config = instance.config;
+    if (
+      instance.driver === "omo" &&
+      config &&
+      typeof config === "object" &&
+      !Array.isArray(config)
+    ) {
+      const retiredSlugs = new Set(removedTargets.map(({ id }) => "cox/" + id));
+      const nextConfig: Record<string, unknown> = { ...config };
+      for (const field of ["agentModels", "categoryModels"]) {
+        const roles = nextConfig[field];
+        if (roles && typeof roles === "object" && !Array.isArray(roles)) {
+          nextConfig[field] = Object.fromEntries(
+            Object.entries(roles).filter(
+              ([, slug]) => typeof slug !== "string" || !retiredSlugs.has(slug),
+            ),
+          );
+        }
+      }
+      config = nextConfig;
+    }
+    const updated = { ...unbound, ...(config !== undefined ? { config } : {}) };
+    providerInstances[id] =
+      nextBinding && modelServiceTargets(modelServices, nextBinding).length
+        ? { ...updated, modelService: nextBinding }
+        : { ...updated, enabled: false };
+  }
+  return { ...settings, modelServices, providerInstances };
+}
+
 export const splitModelService = Effect.fn("splitModelService")(function* (
   settings: ServerSettings,
   input: NonNullable<ServerSettingsPatch["splitModelService"]>,

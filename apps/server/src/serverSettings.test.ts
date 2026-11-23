@@ -2546,6 +2546,74 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("deletes ignored catalog models from disk and repairs their agent bindings", () =>
+    Effect.gen(function* () {
+      const { settingsPath } = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const settings = yield* ServerSettingsModule.ServerSettingsService;
+      const id = ModelServiceId.make("retired-ignore");
+      const omoId = ProviderInstanceId.make("affected-omo");
+      const codexId = ProviderInstanceId.make("affected-codex");
+      yield* fs.writeFileString(
+        settingsPath,
+        JSON.stringify({
+          projectSettingsFolded: true,
+          modelServices: {
+            [id]: {
+              name: "Legacy models",
+              baseUrl: "https://models.test/v1",
+              protocol: "openai-chat",
+              models: [
+                { id: "old", ignored: true },
+                { id: "kept", ignored: false },
+                { id: "manual", source: "manual" },
+              ],
+            },
+          },
+          providerInstances: {
+            [omoId]: {
+              driver: "omo",
+              modelService: { serviceId: id, modelIds: ["old", "kept"], defaultModel: "old" },
+              config: { agentModels: { oracle: "cox/old", librarian: "cox/kept" } },
+            },
+            [codexId]: {
+              driver: "codex",
+              enabled: true,
+              modelService: { modelIds: [], sources: [{ serviceId: id, modelIds: ["old"] }] },
+            },
+          },
+        }),
+      );
+
+      const migrated = yield* settings.getSettings;
+
+      assert.deepEqual(
+        migrated.modelServices[id]?.models.map((model) => model.id),
+        ["kept", "manual"],
+      );
+      const omo = migrated.providerInstances[omoId];
+      assert.deepEqual(omo?.modelService?.sources, [{ serviceId: id, modelIds: ["kept"] }]);
+      assert.isUndefined(omo?.modelService?.defaultModelRef);
+      assert.deepEqual(omo?.config, { agentModels: { librarian: "cox/kept" } });
+      assert.isFalse(migrated.providerInstances[codexId]?.enabled);
+      assert.isUndefined(migrated.providerInstances[codexId]?.modelService);
+      const raw = yield* fs.readFileString(settingsPath);
+      assert.notInclude(raw, '"ignored"');
+      const reloaded = yield* Effect.gen(function* () {
+        const fresh = yield* ServerSettingsModule.ServerSettingsService;
+        return yield* fresh.getSettings;
+      }).pipe(
+        Effect.provide(
+          Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
+        ),
+      );
+      assert.deepEqual(reloaded.modelServices, migrated.modelServices);
+      assert.deepEqual(reloaded.providerInstances, migrated.providerInstances);
+      assert.equal(yield* fs.readFileString(settingsPath), raw);
+      yield* settings.updateSettings({ defaultAutoPull: true });
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("leaves an unreadable settings.json untouched instead of folding over it", () =>
     Effect.gen(function* () {
       const serverConfig = yield* ServerConfig.ServerConfig;

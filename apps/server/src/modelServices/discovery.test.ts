@@ -114,36 +114,45 @@ describe("model service discovery", () => {
       ),
   );
 
-  it.effect("retains explicit ignored models when the upstream advertises them again", () =>
-    Effect.gen(function* () {
-      const http = HttpClient.make((request) =>
-        Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            Response.json(
-              request.url === "https://models.dev/api.json" ? {} : { data: [{ id: "ignored" }] },
+  it.effect(
+    "retains explicit reasoning replay options when the upstream advertises them again",
+    () =>
+      Effect.gen(function* () {
+        const http = HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                request.url === "https://models.dev/api.json" ? {} : { data: [{ id: "override" }] },
+              ),
             ),
           ),
+        );
+        const result = yield* discoverModelService({ serviceId: id }).pipe(
+          Effect.provideService(HttpClient.HttpClient, http),
+        );
+        expect(result.models.find((model) => model.id === "override")).toMatchObject({
+          encryptedReasoningReplay: "omit",
+          available: true,
+        });
+      }).pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            modelServices: {
+              [id]: config({
+                models: [
+                  {
+                    id: "override",
+                    encryptedReasoningReplay: "omit",
+                    source: "discovered",
+                    capabilities: null,
+                  },
+                ],
+              }),
+            },
+          }),
         ),
-      );
-      const result = yield* discoverModelService({ serviceId: id }).pipe(
-        Effect.provideService(HttpClient.HttpClient, http),
-      );
-      expect(result.models.find((model) => model.id === "ignored")).toMatchObject({
-        ignored: true,
-        available: true,
-      });
-    }).pipe(
-      Effect.provide(
-        ServerSettingsService.layerTest({
-          modelServices: {
-            [id]: config({
-              models: [{ id: "ignored", ignored: true, source: "discovered", capabilities: null }],
-            }),
-          },
-        }),
       ),
-    ),
   );
   it.effect("previews advertised models without changing the saved catalog", () =>
     Effect.gen(function* () {
@@ -168,7 +177,7 @@ describe("model service discovery", () => {
       );
       expect(result.revision).toBe(7);
       expect(result.models.map((model) => model.id)).toEqual(["override", "new"]);
-      expect(result.models[0]).toMatchObject({ ignored: true, available: true });
+      expect(result.models[0]).toMatchObject({ id: "override", available: true });
       expect(metadataRequests).toBe(0);
       expect((yield* settings.getSettings).modelServices[id]).toEqual(before);
     }).pipe(
@@ -180,7 +189,6 @@ describe("model service discovery", () => {
               models: [
                 {
                   id: "override",
-                  ignored: true,
                   source: "discovered",
                   capabilities: null,
                 },
@@ -794,7 +802,6 @@ describe("model service discovery", () => {
         );
         expect(first.models.find((model) => model.id === "removed")).toMatchObject({
           available: false,
-          ignored: true,
         });
         expect(first.models.find((model) => model.id === "manual")).toMatchObject({
           source: "manual",
@@ -805,7 +812,6 @@ describe("model service discovery", () => {
         );
         expect(next.models.find((model) => model.id === "removed")).toMatchObject({
           available: true,
-          ignored: true,
         });
       }).pipe(
         Effect.provide(
@@ -813,7 +819,7 @@ describe("model service discovery", () => {
             modelServices: {
               [id]: config({
                 models: [
-                  { id: "removed", source: "discovered", ignored: true, capabilities: null },
+                  { id: "removed", source: "discovered", capabilities: null },
                   { id: "manual", source: "manual", capabilities: null },
                 ],
               }),

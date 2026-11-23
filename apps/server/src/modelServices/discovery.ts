@@ -321,7 +321,6 @@ export const discoverModelService = Effect.fn("discoverModelService")(
       } else
         models.set(model.id, {
           ...models.get(model.id)!,
-          ...(model.ignored !== undefined ? { ignored: model.ignored } : {}),
           ...(model.price ? { price: model.price } : {}),
           ...(model.modelsDevPrice ? { modelsDevPrice: model.modelsDevPrice } : {}),
           ...(model.encryptedReasoningReplay !== undefined

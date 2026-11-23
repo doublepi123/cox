@@ -347,19 +347,25 @@ export const en = {
   "Remove connection": "Remove connection",
   "Test all models": "Test all models",
   "Stop remaining tests": "Stop remaining tests",
-  "Ignore failed models ({count})": "Ignore failed models ({count})",
-  "Restore model": "Restore model",
-  "Ignore model": "Ignore model",
-  "Ignore model {model}": "Ignore model {model}",
-  "Restore model {model}": "Restore model {model}",
+  "Review failed models ({count})": "Review failed models ({count})",
+  "Delete failed model?": "Delete failed model?",
+  "Keeping one model required by an agent binding.":
+    "Keeping one model required by an agent binding.",
+  "Deleted one failed model.": "Deleted one failed model.",
+  "Delete {count} failed models?": "Delete {count} failed models?",
+  "Delete only the models listed below from the local catalog. You can import them again if the service still lists them.":
+    "Delete only the models listed below from the local catalog. You can import them again if the service still lists them.",
+  "These models are required by agent bindings. Change the bindings before deleting them.":
+    "These models are required by agent bindings. Change the bindings before deleting them.",
+  "Deleted {count} failed models.": "Deleted {count} failed models.",
+  "This model is missing or unavailable.": "This model is missing or unavailable.",
   "Model actions for {model}": "Model actions for {model}",
-  Ignored: "Ignored",
   "Testing…": "Testing…",
   "Test passed ({duration} ms)": "Test passed ({duration} ms)",
   "Tested {completed}/{total}: {passed} passed, {failed} failed.":
     "Tested {completed}/{total}: {passed} passed, {failed} failed.",
-  "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.":
-    "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.",
+  "Testing sends small requests using saved settings and may incur provider charges.":
+    "Testing sends small requests using saved settings and may incur provider charges.",
   "The model test could not finish. Check the connection and saved settings, then retry.":
     "The model test could not finish. Check the connection and saved settings, then retry.",
   "The model test timed out or could not reach the service.":
@@ -743,8 +749,8 @@ export const en = {
   "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.":
     "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.",
   'Delete model "{model}"?': 'Delete model "{model}"?',
-  "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.":
-    "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.",
+  "This removes the model from the local catalog. You can import it again if the service still lists it.":
+    "This removes the model from the local catalog. You can import it again if the service still lists it.",
   "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.":
     "This model is selected or required by these agents: {agents}. Change their model bindings before deleting it.",
   "Fetching models does not send a generation request. Unknown capabilities remain unknown.":
@@ -763,8 +769,8 @@ export const en = {
   "Edit model {model}": "Edit model {model}",
   "Clear models": "Clear models",
   "Clear all {count} models?": "Clear all {count} models?",
-  "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.":
-    "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.",
+  "Remove all models from this service's local catalog, including manual models. You can import advertised models again.":
+    "Remove all models from this service's local catalog, including manual models. You can import advertised models again.",
   "These agents use this service: {agents}. Unbind them before clearing its models.":
     "These agents use this service: {agents}. Unbind them before clearing its models.",
   "Image input": "Image input",

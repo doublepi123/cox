@@ -95,10 +95,8 @@ export const testModelService = Effect.fn("testModelService")(
         detail: "The model service changed. Test its current settings again.",
       });
     const model = service.models.find((candidate) => candidate.id === input.modelId);
-    if (!model || model.ignored || model.available === false)
-      return yield* new ModelServiceError({
-        detail: "This model is missing, unavailable or ignored.",
-      });
+    if (!model || model.available === false)
+      return yield* new ModelServiceError({ detail: "This model is missing or unavailable." });
     const http = yield* HttpClient.HttpClient;
     const started = yield* Clock.currentTimeMillis;
     let result: Pick<ModelServiceTestResult, "ok" | "protocol" | "message"> = {

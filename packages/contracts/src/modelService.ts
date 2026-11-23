@@ -45,7 +45,6 @@ export const ModelServiceBaseUrl = TrimmedNonEmptyString.check(
 export const ModelServiceModel = Schema.Struct({
   id: TrimmedNonEmptyString,
   available: Schema.optionalKey(Schema.Boolean),
-  ignored: Schema.optionalKey(Schema.Boolean),
   name: Schema.optionalKey(TrimmedNonEmptyString),
   protocols: Schema.optionalKey(Schema.Array(ModelServiceProtocol)),
   capabilities: Schema.NullOr(ModelCapabilities).pipe(

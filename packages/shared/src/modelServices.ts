@@ -131,7 +131,6 @@ export function isBoundModelServiceModelAllowed(
   model: ModelServiceModel,
 ): boolean {
   return (
-    model.ignored !== true &&
     (binding.modelIds.length === 0 || binding.modelIds.includes(model.id)) &&
     model.supportsTools !== false
   );
@@ -261,7 +260,6 @@ export function isModelServiceTargetAvailable(target: ModelServiceTarget): boole
 export function isModelServiceTargetCompatible(target: ModelServiceTarget): boolean {
   return (
     target.service.enabled &&
-    target.model.ignored !== true &&
     target.model.supportsTools !== false &&
     modelServiceUpstreamProtocol(target.service, target.model) !== undefined
   );

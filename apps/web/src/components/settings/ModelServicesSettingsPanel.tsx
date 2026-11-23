@@ -69,6 +69,7 @@ import { ModelServiceRecoverySettings } from "./ModelServiceRecoverySettings";
 import { ModelImportDialog } from "./ModelImportDialog";
 import {
   modelRemovalBlockingAgents,
+  modelRemovalPlan,
   modelsRemovalBlockingAgents,
   unlistedModelRemovalPlan,
 } from "./ModelServicesSettingsPanel.logic";
@@ -390,17 +391,21 @@ function ModelServiceEditor({
     [],
   );
   const [removingModel, setRemovingModel] = useState<ModelServiceModel | null>(null);
-  const [removingUnlisted, setRemovingUnlisted] = useState<{
+  const [bulkRemoval, setBulkRemoval] = useState<{
+    readonly kind: "unlisted" | "failed";
     readonly modelIds: readonly string[];
     readonly revision: number;
   } | null>(null);
-  const [cleanupResult, setCleanupResult] = useState<number | null>(null);
+  const [cleanupResult, setCleanupResult] = useState<{
+    count: number;
+    kind: "unlisted" | "failed";
+  } | null>(null);
   const [clearingModels, setClearingModels] = useState<{
     readonly revision: number;
     readonly modelIds: readonly string[];
   } | null>(null);
   const cancelModelRemoval = useRef<HTMLButtonElement>(null);
-  const cancelUnlistedRemoval = useRef<HTMLButtonElement>(null);
+  const cancelBulkRemoval = useRef<HTMLButtonElement>(null);
   const cancelClearModels = useRef<HTMLButtonElement>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [splitRevision, setSplitRevision] = useState<number | null>(null);
@@ -416,11 +421,6 @@ function ModelServiceEditor({
     ? unlistedModelRemovalPlan(id, service, settings.providerInstances, settings.modelServices)
     : { removable: [], protected: [] };
   const unlistedCount = cleanup.removable.length + cleanup.protected.length;
-  const cleanupModels = cleanup.removable.filter((model) =>
-    removingUnlisted?.modelIds.includes(model.id),
-  );
-  const cleanupChanged =
-    removingUnlisted !== null && service?.revision !== removingUnlisted.revision;
   const removalBlockers =
     service && removingModel
       ? modelRemovalBlockingAgents(
@@ -455,6 +455,18 @@ function ModelServiceEditor({
       .filter(([, result]) => !result.ok && result.revision === service?.revision)
       .map(([modelId]) => modelId),
   );
+  const failedPlan = service
+    ? modelRemovalPlan(
+        id,
+        service,
+        models.filter((model) => failed.has(model.id)),
+        settings.providerInstances,
+        settings.modelServices,
+      )
+    : { removable: [], protected: [] };
+  const bulkPlan = bulkRemoval?.kind === "failed" ? failedPlan : cleanup;
+  const bulkModels = bulkPlan.removable.filter((model) => bulkRemoval?.modelIds.includes(model.id));
+  const bulkChanged = bulkRemoval !== null && service?.revision !== bulkRemoval.revision;
   const connectionChanged = Boolean(
     !service ||
     baseUrl !== service.baseUrl ||
@@ -814,7 +826,7 @@ function ModelServiceEditor({
       {error &&
       !importPreview &&
       !removingModel &&
-      !removingUnlisted &&
+      !bulkRemoval &&
       !clearingModels &&
       !modelEditor ? (
         <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
@@ -921,7 +933,7 @@ function ModelServiceEditor({
           {t("Models")} ({models.length})
         </h3>
         {service && !readOnly ? (
-          <div className="flex flex-wrap gap-2 max-sm:[&_button]:min-h-11">
+          <div className="flex min-w-0 max-w-full flex-wrap gap-2 max-sm:[&_button]:min-h-11">
             {previewing ? (
               <Button size="sm" variant="outline" onClick={() => previewRequest.current?.cancel()}>
                 {t("Cancel fetch")}
@@ -947,16 +959,11 @@ function ModelServiceEditor({
                 size="sm"
                 variant="outline"
                 disabled={
-                  busy ||
-                  !enabled ||
-                  changed ||
-                  !models.some((model) => !model.ignored && model.available !== false)
+                  busy || !enabled || changed || !models.some((model) => model.available !== false)
                 }
                 onClick={() => {
                   void tester.run(
-                    models
-                      .filter((model) => !model.ignored && model.available !== false)
-                      .map((model) => model.id),
+                    models.filter((model) => model.available !== false).map((model) => model.id),
                     service.revision,
                     async (modelId) => {
                       const result = await testModel({
@@ -972,53 +979,26 @@ function ModelServiceEditor({
                 {t("Test all models")}
               </Button>
             )}
-            {failed.size > 0 && (
+            <div className="flex min-w-0 max-w-full">
               <Button
-                size="sm"
+                size="sm-multiline"
+                fill
                 variant="outline"
-                disabled={busy}
+                disabled={busy || !enabled || !models.length}
                 onClick={() =>
                   void run(async () =>
                     commandError(
-                      await update({
+                      await discover({
                         environmentId,
-                        input: {
-                          patch: {
-                            modelServices: {
-                              [id]: {
-                                ...service,
-                                models: models.map((model) =>
-                                  failed.has(model.id) ? { ...model, ignored: true } : model,
-                                ),
-                              },
-                            },
-                          },
-                        },
+                        input: { serviceId: id, metadataOnly: true },
                       }),
                     ),
                   )
                 }
               >
-                {t("Ignore failed models ({count})", { count: failed.size })}
+                {t("Sync prices and metadata from models.dev")}
               </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || !enabled || !models.length}
-              onClick={() =>
-                void run(async () =>
-                  commandError(
-                    await discover({
-                      environmentId,
-                      input: { serviceId: id, metadataOnly: true },
-                    }),
-                  ),
-                )
-              }
-            >
-              {t("Sync prices and metadata from models.dev")}
-            </Button>
+            </div>
             <Button
               size="sm"
               variant="outline"
@@ -1079,7 +1059,8 @@ function ModelServiceEditor({
               title={changed ? t("Save changes before cleaning up models") : undefined}
               onClick={() => {
                 setError(null);
-                setRemovingUnlisted({
+                setBulkRemoval({
+                  kind: "unlisted",
                   modelIds: cleanup.removable.map((model) => model.id),
                   revision: service.revision,
                 });
@@ -1092,13 +1073,18 @@ function ModelServiceEditor({
         ) : null}
         {cleanupResult !== null ? (
           <p role="status" className="text-xs text-muted-foreground">
-            {t("Deleted {count} unlisted models.", { count: cleanupResult })}
+            {t(
+              cleanupResult.kind === "failed"
+                ? cleanupResult.count === 1
+                  ? "Deleted one failed model."
+                  : "Deleted {count} failed models."
+                : "Deleted {count} unlisted models.",
+              { count: cleanupResult.count },
+            )}
           </p>
         ) : null}
         <p className="text-xs leading-relaxed text-muted-foreground">
-          {t(
-            "Testing sends small requests using saved settings and may incur provider charges. Ignored models are skipped.",
-          )}
+          {t("Testing sends small requests using saved settings and may incur provider charges.")}
         </p>
         {tests.total > 0 && (
           <p role="status" className="text-xs text-muted-foreground">
@@ -1110,6 +1096,23 @@ function ModelServiceEditor({
             })}
           </p>
         )}
+        {service && !readOnly && !tests.running && failed.size > 0 ? (
+          <Button
+            size="sm-multiline"
+            variant="outline"
+            disabled={busy || changed}
+            onClick={() => {
+              setError(null);
+              setBulkRemoval({
+                kind: "failed",
+                modelIds: failedPlan.removable.map((model) => model.id),
+                revision: service.revision,
+              });
+            }}
+          >
+            {t("Review failed models ({count})", { count: failed.size })}
+          </Button>
+        ) : null}
         {tests.error && (
           <p role="alert" className="text-xs text-destructive">
             {t(tests.error)}
@@ -1234,9 +1237,6 @@ function ModelServiceEditor({
                         {t("No longer advertised by the service")}
                       </p>
                     ) : null}
-                    {model.ignored && (
-                      <p className="text-xs text-muted-foreground">{t("Ignored")}</p>
-                    )}
                     {tests.active.has(model.id) && (
                       <p className="text-xs text-muted-foreground">{t("Testing…")}</p>
                     )}
@@ -1305,47 +1305,6 @@ function ModelServiceEditor({
                         {model.outputModalities?.join(" / ") ?? t("Unknown")}
                       </p>
                     ) : null}
-                    {!readOnly ? (
-                      <div className="flex justify-end">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy}
-                          aria-label={t(
-                            model.ignored ? "Restore model {model}" : "Ignore model {model}",
-                            {
-                              model: model.name ?? model.id,
-                            },
-                          )}
-                          onClick={() => {
-                            if (readOnly || !service) return;
-                            void run(async () =>
-                              commandError(
-                                await update({
-                                  environmentId,
-                                  input: {
-                                    patch: {
-                                      modelServices: {
-                                        [id]: {
-                                          ...service!,
-                                          models: models.map((entry) =>
-                                            entry.id === model.id
-                                              ? { ...entry, ignored: model.ignored !== true }
-                                              : entry,
-                                          ),
-                                        },
-                                      },
-                                    },
-                                  },
-                                }),
-                              ),
-                            );
-                          }}
-                        >
-                          {t(model.ignored ? "Restore model" : "Ignore model")}
-                        </Button>
-                      </div>
-                    ) : null}
                   </div>
                 </div>
                 {modelEditor !== null &&
@@ -1388,7 +1347,7 @@ function ModelServiceEditor({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                "Remove all models from this service's local catalog, including manual and ignored models. The service URL, credentials and other services are kept. Refreshing can add advertised models again.",
+                "Remove all models from this service's local catalog, including manual models. You can import advertised models again.",
               )}
             </AlertDialogDescription>
             {clearBlockers.length > 0 ? (
@@ -1474,7 +1433,7 @@ function ModelServiceEditor({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                "This removes the model from the local catalog. Refreshing models may add it again if the service still advertises it.",
+                "This removes the model from the local catalog. You can import it again if the service still lists it.",
               )}
             </AlertDialogDescription>
             {removalBlockers.length > 0 ? (
@@ -1533,46 +1492,66 @@ function ModelServiceEditor({
         </AlertDialogPopup>
       </AlertDialog>
       <AlertDialog
-        open={removingUnlisted !== null}
+        open={bulkRemoval !== null}
         onOpenChange={(open) => {
-          if (!open && !busy) setRemovingUnlisted(null);
+          if (!open && !busy) setBulkRemoval(null);
         }}
       >
-        <AlertDialogPopup initialFocus={cancelUnlistedRemoval} bottomStickOnMobile={false}>
+        <AlertDialogPopup initialFocus={cancelBulkRemoval} bottomStickOnMobile={false}>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("Delete {count} unlisted models?", { count: cleanupModels.length })}
+              {t(
+                bulkRemoval?.kind === "failed"
+                  ? bulkModels.length
+                    ? bulkModels.length === 1
+                      ? "Delete failed model?"
+                      : "Delete {count} failed models?"
+                    : "Review failed models ({count})"
+                  : "Delete {count} unlisted models?",
+                { count: bulkModels.length || (bulkRemoval?.kind === "failed" ? failed.size : 0) },
+              )}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                "Only models no longer listed by the service will be removed from the local catalog. Manual models and models selected or required by agents are kept. Refreshing models can add them back if the service lists them again.",
+                bulkRemoval?.kind === "failed"
+                  ? bulkModels.length
+                    ? "Delete only the models listed below from the local catalog. You can import them again if the service still lists them."
+                    : "These models are required by agent bindings. Change the bindings before deleting them."
+                  : "Only models no longer listed by the service will be removed from the local catalog. Manual models and models selected or required by agents are kept. Refreshing models can add them back if the service lists them again.",
               )}
             </AlertDialogDescription>
-            <ul
-              aria-label={t("Models to delete")}
-              className="max-h-48 overflow-y-auto rounded-md border border-border p-3 text-left text-xs"
-            >
-              {cleanupModels.map((model) => (
-                <li key={model.id} className="break-all font-mono">
-                  {model.id}
-                </li>
-              ))}
-            </ul>
-            {cleanup.protected.length > 0 ? (
+            {bulkModels.length > 0 ? (
+              <ul
+                aria-label={t("Models to delete")}
+                className="max-h-48 overflow-y-auto rounded-md border border-border p-3 text-left text-xs"
+              >
+                {bulkModels.map((model) => (
+                  <li key={model.id} className="break-all font-mono">
+                    {model.id}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {bulkPlan.protected.length > 0 ? (
               <p className="text-xs text-muted-foreground">
-                {t("Keeping {count} models required by agent bindings.", {
-                  count: cleanup.protected.length,
-                })}
+                {t(
+                  bulkRemoval?.kind === "failed" && bulkPlan.protected.length === 1
+                    ? "Keeping one model required by an agent binding."
+                    : "Keeping {count} models required by agent bindings.",
+                  {
+                    count: bulkPlan.protected.length,
+                  },
+                )}
               </p>
             ) : null}
-            {cleanupChanged || changed ? (
+            {bulkChanged || changed ? (
               <p role="alert" className="text-sm text-destructive">
                 {t(
                   "The model catalog or connection changed. Close this dialog and review the cleanup again.",
                 )}
               </p>
             ) : null}
-            {!cleanupModels.length && !cleanupChanged && !changed ? (
+            {!bulkModels.length && !bulkChanged && !changed && bulkRemoval?.kind === "unlisted" ? (
               <p role="alert" className="text-sm text-destructive">
                 {t(
                   "No unlisted models can be deleted. They may have been refreshed or are required by agent bindings.",
@@ -1587,17 +1566,24 @@ function ModelServiceEditor({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose
-              render={<Button ref={cancelUnlistedRemoval} variant="outline" disabled={busy} />}
+              render={<Button ref={cancelBulkRemoval} variant="outline" disabled={busy} />}
             >
               {t("Cancel")}
             </AlertDialogClose>
             <Button
               variant="destructive"
-              disabled={busy || readOnly || changed || cleanupChanged || !cleanupModels.length}
+              disabled={busy || readOnly || changed || bulkChanged || !bulkModels.length}
               onClick={() => {
-                if (!service || readOnly || changed || cleanupChanged || !cleanupModels.length)
+                if (
+                  !service ||
+                  !bulkRemoval ||
+                  readOnly ||
+                  changed ||
+                  bulkChanged ||
+                  !bulkModels.length
+                )
                   return;
-                const removedIds = new Set(cleanupModels.map((model) => model.id));
+                const removedIds = new Set(bulkModels.map((model) => model.id));
                 void run(async () => {
                   const problem = commandError(
                     await update({
@@ -1617,8 +1603,9 @@ function ModelServiceEditor({
                   if (!problem) {
                     if (modelEditor && modelEditor !== "new" && removedIds.has(modelEditor.id))
                       setModelEditor(null);
-                    setRemovingUnlisted(null);
-                    setCleanupResult(removedIds.size);
+                    setBulkRemoval(null);
+                    setCleanupResult({ count: removedIds.size, kind: bulkRemoval.kind });
+                    if (bulkRemoval.kind === "failed") tester.clear();
                   }
                   return problem;
                 });
@@ -1790,7 +1777,6 @@ function ModelEditor({
           });
         }
         onSave({
-          ...(model?.ignored !== undefined ? { ignored: model.ignored } : {}),
           ...(encryptedReasoningReplay !== undefined ? { encryptedReasoningReplay } : {}),
           ...(model?.id === id.trim() && model.inputModalities
             ? { inputModalities: model.inputModalities }

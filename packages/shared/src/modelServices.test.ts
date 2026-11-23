@@ -76,17 +76,17 @@ describe("central model settings", () => {
       options: [{ id: "off" }, { id: "minimal" }, { id: "max" }],
     });
   });
-  it("keeps ignored models out of agent bindings while preserving their configuration", () => {
+  it("keeps models without tool support out of agent bindings while preserving their configuration", () => {
     const config = {
       ...service,
-      models: [...service.models, { id: "ignored", ignored: true, capabilities: null }],
+      models: [...service.models, { id: "no-tools", supportsTools: false, capabilities: null }],
     };
     expect(
       boundModelServiceModels(config, { serviceId: id, modelIds: [] }).some(
-        (model) => model.id === "ignored",
+        (model) => model.id === "no-tools",
       ),
     ).toBe(false);
-    expect(config.models.some((model) => model.id === "ignored")).toBe(true);
+    expect(config.models.some((model) => model.id === "no-tools")).toBe(true);
   });
   it("retains OpenCode agent and variant descriptors when binding a model service", () => {
     const descriptors = [

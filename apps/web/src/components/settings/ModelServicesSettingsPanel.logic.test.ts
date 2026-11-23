@@ -75,12 +75,12 @@ describe("unlisted model cleanup", () => {
     capabilities: null,
   };
 
-  it("only removes confirmed missing non-manual entries, including legacy and ignored entries", () => {
+  it("only removes confirmed missing non-manual entries, including legacy entries", () => {
     const models: readonly ModelServiceModel[] = [
       active,
       stale,
       { ...stale, id: "manual", source: "manual" },
-      { ...anotherStale, ignored: true },
+      anotherStale,
       { id: "unknown", capabilities: null },
       { id: "legacy", available: false, capabilities: null },
     ];
@@ -206,7 +206,6 @@ describe("model removal binding protection", () => {
   });
 
   it.each([
-    { ignored: true },
     { available: false },
     { supportsTools: false },
     { protocols: ["gemini"] },
@@ -231,7 +230,7 @@ describe("model removal binding protection", () => {
     expect(
       modelRemovalBlockingAgents(
         serviceId,
-        { ...service, models: [{ id: "remove", ignored: true, capabilities: null }] },
+        { ...service, models: [{ id: "remove", available: false, capabilities: null }] },
         "remove",
         { [instanceId]: { ...instance(), displayName: undefined } },
       ),
