@@ -2,6 +2,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 
 import { resetBrowserHistoryForTests, useBrowserHistoryStore } from "./browserHistoryStore";
+import { createBrowserHistoryStore } from "./browserHistoryState";
 
 const storageKey = "cox:browser-history:v1";
 const oldEntry = { url: "http://example.test/removed", lastVisitedAt: 1 };
@@ -117,8 +118,7 @@ it("refreshes the open history when another document adds a visit", async () => 
       JSON.stringify({ state: { byProjectKey: { a: [page] } }, version: 1 }),
     );
 
-    using documents = new DisposableStack();
-    const otherStore = await openHistoryDocument(documents);
+    const otherStore = await openHistoryDocument();
     await vi.waitFor(() => expect(otherStore.getState().byProjectKey).toEqual({ a: [page] }));
     otherStore.getState().recordVisit("a", page.url, page.lastVisitedAt);
 
@@ -164,33 +164,10 @@ it("bounds saved thread mappings while keeping live registrations", async () => 
   }
 });
 
-async function openHistoryDocument(
-  disposables: DisposableStack,
-  { withoutIndexedDB = false } = {},
-) {
-  const source = new URL(import.meta.url);
-  source.pathname = source.pathname.replace(/Store\.browser\.test\.ts$/, "State.ts");
-  source.search = "";
-  const frame = document.createElement("iframe");
-  disposables.defer(() => frame.remove());
-  frame.srcdoc = `${withoutIndexedDB ? '<script>Object.defineProperty(window, "indexedDB", { value: { open() { throw new Error("blocked"); } } });</script>' : ""}
-    <script type="module">
-      import { createBrowserHistoryStore } from ${JSON.stringify(source.href)};
-      const { store, ready } = createBrowserHistoryStore();
-      window.historyStore = { store, ready };
-    </script>`;
-  await new Promise<void>((resolve) => {
-    frame.onload = () => resolve();
-    document.body.append(frame);
-  });
-  const store = (
-    frame.contentWindow as
-      | (Window & { historyStore?: { store: typeof useBrowserHistoryStore; ready: Promise<void> } })
-      | null
-  )?.historyStore;
-  if (!store) throw new Error("The history document did not load.");
-  await store.ready;
-  return store.store;
+async function openHistoryDocument() {
+  const { store, ready } = createBrowserHistoryStore();
+  await ready;
+  return store;
 }
 
 function deleteHistoryDatabase() {
@@ -214,22 +191,13 @@ it("moves the legacy snapshot into the shared database", async () => {
     JSON.stringify({ state: { byProjectKey: { a: [page] } }, version: 1 }),
   );
   try {
-    using documents = new DisposableStack();
-    const first = await openHistoryDocument(documents);
+    const first = await openHistoryDocument();
     expect(first.getState().byProjectKey).toEqual({ a: [page] });
     expect(localStorage.getItem(storageKey)).toBeNull();
-    const saved = new Promise<ReturnType<typeof first.getState>["byProjectKey"]>((resolve) => {
-      const unsubscribe = first.subscribe((state, previous) => {
-        if (state.byProjectKey === previous.byProjectKey) return;
-        unsubscribe();
-        resolve(state.byProjectKey);
-      });
-      documents.defer(unsubscribe);
-    });
     first.getState().recordVisit("b", otherEntry.url, otherEntry.lastVisitedAt);
-    expect((await saved).b).toEqual([otherEntry]);
+    await vi.waitFor(() => expect(first.getState().byProjectKey.b).toEqual([otherEntry]));
 
-    const reopened = await openHistoryDocument(documents);
+    const reopened = await openHistoryDocument();
     expect(reopened.getState().byProjectKey).toEqual({ a: [page], b: [otherEntry] });
   } finally {
     await resetHistoryFixture();
@@ -243,8 +211,7 @@ it("persists new visits from an open document after its history database is dele
     JSON.stringify({ state: { byProjectKey: { a: [page] } }, version: 1 }),
   );
   try {
-    using documents = new DisposableStack();
-    const first = await openHistoryDocument(documents);
+    const first = await openHistoryDocument();
     await vi.waitFor(() => expect(first.getState().byProjectKey).toEqual({ a: [page] }));
     first.getState().removeUrl("a", page.url);
     await vi.waitFor(() => expect(first.getState().byProjectKey).toEqual({}));
@@ -253,7 +220,7 @@ it("persists new visits from an open document after its history database is dele
     first.getState().recordVisit("b", otherEntry.url, otherEntry.lastVisitedAt);
     await vi.waitFor(() => expect(first.getState().byProjectKey.b).toEqual([otherEntry]));
 
-    const reopened = await openHistoryDocument(documents);
+    const reopened = await openHistoryDocument();
     await vi.waitFor(() => expect(reopened.getState().byProjectKey).toEqual({ b: [otherEntry] }));
   } finally {
     await resetHistoryFixture();
@@ -267,11 +234,7 @@ it("keeps overlapping visits from independent documents", async () => {
     JSON.stringify({ state: { byProjectKey: { a: [page] } }, version: 1 }),
   );
   try {
-    using documents = new DisposableStack();
-    const [first, second] = await Promise.all([
-      openHistoryDocument(documents),
-      openHistoryDocument(documents),
-    ]);
+    const [first, second] = await Promise.all([openHistoryDocument(), openHistoryDocument()]);
     first.getState().recordVisit("a", oldEntry.url, oldEntry.lastVisitedAt);
     second.getState().recordVisit("b", otherEntry.url, otherEntry.lastVisitedAt);
     const expected = { a: [page, oldEntry], b: [otherEntry] };
@@ -282,7 +245,7 @@ it("keeps overlapping visits from independent documents", async () => {
 
     // A fresh document should read the committed visits even after the legacy seed is gone.
     localStorage.removeItem(storageKey);
-    const reopened = await openHistoryDocument(documents);
+    const reopened = await openHistoryDocument();
     await vi.waitFor(() => expect(reopened.getState().byProjectKey).toEqual(expected));
   } finally {
     await resetHistoryFixture();
@@ -292,16 +255,21 @@ it("keeps overlapping visits from independent documents", async () => {
 it("keeps visits saved while IndexedDB could not open", async () => {
   await resetHistoryFixture();
   try {
-    using documents = new DisposableStack();
-    const db = await openHistoryFixture(documents);
+    using fixture = new DisposableStack();
+    const db = await openHistoryFixture(fixture);
     await writeHistoryFixture(db, { byProjectKey: { a: [page] }, projectKeyByThreadKey: {} });
-    const offline = await openHistoryDocument(documents, { withoutIndexedDB: true });
-    offline.getState().recordVisit("b", otherEntry.url, otherEntry.lastVisitedAt);
-    await vi.waitFor(() =>
-      expect(storedHistory()).toHaveProperty("byProjectKey", { b: [otherEntry] }),
-    );
+    {
+      using _blocked = vi.spyOn(indexedDB, "open").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      const offline = await openHistoryDocument();
+      offline.getState().recordVisit("b", otherEntry.url, otherEntry.lastVisitedAt);
+      await vi.waitFor(() =>
+        expect(storedHistory()).toHaveProperty("byProjectKey", { b: [otherEntry] }),
+      );
+    }
 
-    const online = await openHistoryDocument(documents);
+    const online = await openHistoryDocument();
     await vi.waitFor(() =>
       expect(online.getState().byProjectKey).toEqual({ a: [page], b: [otherEntry] }),
     );
