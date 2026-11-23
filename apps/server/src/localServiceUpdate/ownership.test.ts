@@ -425,6 +425,32 @@ describe("local service update transaction", () => {
     await expect(stat(join(directory, "statev2.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("prepares a schema migration with a database backup even when not requested", async () => {
+    await using harness = await makeService();
+    mocks.inspectCandidateMigration.mockResolvedValue(2);
+
+    const update = await harness.runtime.runPromise(harness.service.download());
+
+    expect(update).toMatchObject({ status: "ready", message: null });
+    const directory = update.backup?.directory ?? "";
+    expect(update.backup?.database).toBe(join(directory, "statev2.sqlite"));
+    expect((await stat(join(directory, "statev2.sqlite"))).isFile()).toBe(true);
+    expect(JSON.parse(await readFile(join(directory, "..", "plan.json"), "utf8"))).toMatchObject({
+      backupDatabase: true,
+      migrateDatabase: true,
+    });
+  });
+
+  it("refuses an update that would downgrade the database schema", async () => {
+    await using harness = await makeService();
+    mocks.databaseMigrationHead.mockReturnValue(2);
+
+    expect(await harness.runtime.runPromise(harness.service.download())).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("downgrade the database schema"),
+    });
+  });
+
   it("returns a launch failure and allows a fresh apply retry", async () => {
     await using harness = await makeService();
     await harness.runtime.runPromise(harness.service.state);

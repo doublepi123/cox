@@ -209,7 +209,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
             current = { ...current, progress };
           },
         });
-        await run(
+        const migrateDatabase = await run(
           Effect.gen(function* () {
             const actual = yield* Effect.sync(() => databaseMigrationHead(config.dbPath));
             if (actual === undefined)
@@ -233,10 +233,7 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
               return yield* Effect.fail(
                 "The update would downgrade the database schema. Use a manual backup and upgrade.",
               );
-            if (targetHead !== actual)
-              return yield* Effect.fail(
-                "The update would change the database schema. Use a manual backup and upgrade.",
-              );
+            return targetHead > actual;
           }).pipe(Effect.mapError((cause) => new LocalServiceUpdateError(String(cause)))),
         );
         const suffix = await run(
@@ -260,7 +257,8 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
           baseDir: config.baseDir,
           stateDir: config.stateDir,
           databasePath: config.dbPath,
-          backupDatabase,
+          backupDatabase: backupDatabase || migrateDatabase,
+          ...(migrateDatabase && { migrateDatabase }),
           runtimeStatePath: config.serverRuntimeStatePath,
           environmentId,
           operation: path.join(directory, "operations", suffix),
@@ -283,7 +281,9 @@ export const make = Effect.fn("localServiceUpdate.make")(function* () {
           progress: null,
           backup: {
             directory: backupDirectory,
-            database: backupDatabase ? path.join(backupDirectory, "statev2.sqlite") : null,
+            database: preparedPlan.backupDatabase
+              ? path.join(backupDirectory, "statev2.sqlite")
+              : null,
           },
         };
       } catch (error) {

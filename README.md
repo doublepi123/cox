@@ -117,8 +117,10 @@ updates the unit through `90-cox-update.conf`, retaining its working directory, 
 Cox arguments. A transient user service checks that the new server is healthy and restores the
 previous startup command if it fails. When managing the npm installation manually again, remove
 that Cox-created override so the unit starts from its original command. Finish active agent turns
-before restarting. Releases that change the database schema still require the manual stopped-server
-backup and upgrade procedure above.
+before restarting. When a release changes the database schema, Cox always backs up the database,
+stops the service to take a final consistent snapshot before the new version migrates it, and
+restores that snapshot if the new version does not become healthy. Releases that would downgrade
+the database schema still require the manual stopped-server backup and upgrade procedure above.
 
 ## Scope
 

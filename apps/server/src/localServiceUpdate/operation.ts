@@ -29,6 +29,7 @@ export interface LocalServiceUpdatePlan {
   readonly stateDir: string;
   readonly databasePath: string;
   readonly backupDatabase?: boolean;
+  readonly migrateDatabase?: boolean;
   readonly runtimeStatePath: string;
   readonly environmentId: string;
   readonly operation: string;
@@ -245,6 +246,15 @@ async function writeDropIn(path: string, contents: string | null): Promise<void>
   }
 }
 
+async function copyDatabase(source: string, destination: string): Promise<void> {
+  const database = new DatabaseSync(source, { readOnly: true });
+  try {
+    await backup(database, destination);
+  } finally {
+    database.close();
+  }
+}
+
 export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): Promise<void> {
   const receiptPath = join(plan.operation, "receipt.json");
   const backupDirectory = join(plan.operation, "backup");
@@ -269,6 +279,7 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
   await Effect.runPromise(Effect.sleep("1 second"));
   let previous: string | null = null;
   let replacementStarted = false;
+  let restoreDatabaseFrom: string | null = null;
   try {
     if (!(await lstat(plan.entry)).isFile())
       throw new Error("The staged Cox entrypoint is missing.");
@@ -280,6 +291,8 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
       throw new Error("The staged Cox entrypoint is invalid.");
     if (databaseBackup !== null && !(await lstat(databaseBackup)).isFile())
       throw new Error("The Cox database backup is missing.");
+    if (plan.migrateDatabase && databaseBackup === null)
+      throw new Error("A database backup is required before a schema migration.");
     await assertLocalServiceMainPid(plan.serviceUnit, plan.pid);
     previous = await readDropIn(plan.dropIn);
     if (previous !== null) {
@@ -289,7 +302,14 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
     replacementStarted = true;
     await run("systemctl", ["--user", "daemon-reload"]);
     await verifyLocalServiceSystemdUpdate(plan);
-    await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
+    if (plan.migrateDatabase && databaseBackup !== null) {
+      await run("systemctl", ["--user", "stop", plan.serviceUnit], 150_000);
+      await copyDatabase(plan.databasePath, databaseBackup);
+      restoreDatabaseFrom = databaseBackup;
+      await run("systemctl", ["--user", "start", plan.serviceUnit], 150_000);
+    } else {
+      await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
+    }
     await waitForVersion(plan, plan.targetVersion);
     await writeJson(receiptPath, receipt("healthy", null));
     await writeJson(
@@ -316,6 +336,10 @@ export async function activateLocalServiceUpdate(plan: LocalServiceUpdatePlan): 
         plan.serviceUnit,
       ]);
       if (mainPid.trim() !== String(plan.pid)) {
+        if (restoreDatabaseFrom !== null) {
+          await run("systemctl", ["--user", "stop", plan.serviceUnit], 150_000);
+          await copyDatabase(restoreDatabaseFrom, plan.databasePath);
+        }
         await run("systemctl", ["--user", "reset-failed", plan.serviceUnit]);
         await run("systemctl", ["--user", "restart", plan.serviceUnit], 150_000);
         await waitForVersion(plan, plan.fromVersion);
