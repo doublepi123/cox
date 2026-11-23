@@ -2723,6 +2723,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                 isRegeneratingTitle,
                 isRunning: !threadRuntimeCanArchive(thread.runtime),
+                hasCompletedRun: thread.latestRun?.completedAt != null,
                 canTurnIntoProject: canTurnThreadIntoProject(threadRef),
                 canMoveToProject:
                   serverConfigs.get(thread.environmentId)?.environment.capabilities

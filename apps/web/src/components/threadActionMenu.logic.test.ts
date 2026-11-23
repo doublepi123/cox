@@ -18,6 +18,7 @@ const baseState: ThreadActionMenuState = {
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
+  hasCompletedRun: true,
   supports: {
     settlement: true,
     autoSettleOptOut: true,
@@ -184,4 +185,12 @@ describe("snooze label localization", () => {
     expect(formatSnoozePresetMenuLabel(preset, "zh")).toBe(`${translated} (3:00 PM)`);
     expect(formatSnoozePresetMenuLabel(preset, "en")).toBe(`${label} (3:00 PM)`);
   });
+});
+
+it.each([
+  ["while the thread is running", { isRunning: true }],
+  ["before any run has completed", { hasCompletedRun: false }],
+])("omits mark unread %s", (_, overrides) => {
+  const items = buildThreadActionMenuItems({ ...baseState, ...overrides });
+  expect(items.map((item) => item.id)).not.toContain("mark-unread");
 });
