@@ -323,6 +323,7 @@ export function startThreadNotifications(
       });
     }
     if (hasNotificationSound(nextMode)) {
+      if (window.coxDesktop) unlockNotificationAudio();
       document.addEventListener("pointerdown", unlockNotificationAudio);
       document.addEventListener("keydown", unlockNotificationAudio);
       stops.push(() => {

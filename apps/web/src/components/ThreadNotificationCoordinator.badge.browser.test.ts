@@ -9,6 +9,7 @@ import { expect, it, vi } from "vite-plus/test";
 import { fakeTimers, stubGlobal } from "../../test/render";
 
 const state = vi.hoisted(() => ({
+  unlock: vi.fn(),
   mode: "notifications",
   inApp: false,
   toast: vi.fn(),
@@ -72,7 +73,7 @@ vi.mock(import("../hooks/useSettings"), async (original) => ({
 vi.mock(import("../threadNotifications"), async (original) => ({
   ...(await original()),
   playNotificationSound: state.sound,
-  unlockNotificationAudio: vi.fn(),
+  unlockNotificationAudio: state.unlock,
   setNotificationBadge: state.badge,
 }));
 
@@ -330,3 +331,16 @@ it.each([false, true])(
     );
   },
 );
+
+it.each([
+  { client: "desktop app", when: "at startup", bridge: {}, beforeGesture: 1 },
+  { client: "browser", when: "on the first gesture", bridge: undefined, beforeGesture: 0 },
+])("readies notification sound in the $client $when", async ({ bridge, beforeGesture }) => {
+  await using app = setup();
+  using _bridge = stubGlobal("coxDesktop", bridge);
+  state.mode = "sound";
+  app.start();
+  expect(state.unlock).toHaveBeenCalledTimes(beforeGesture);
+  document.dispatchEvent(new Event("pointerdown"));
+  expect(state.unlock).toHaveBeenCalledTimes(beforeGesture + 1);
+});
