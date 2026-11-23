@@ -21,7 +21,8 @@ Ordinary coding tasks need no Cox tools. Cox controls this local machine only; r
   `### Visuals and preview
 
 - Answer data with a trend or comparison with a chart, and show any visual the user asks for here: pass the path to an HTML file, or inline HTML to \`html_preview\`, then \`html_render\`. A screenshot on disk or a text description does not show it. Never start a server for it. Tools a web page exposes give data only. Never use them to show results. Asked for an image to post, send, or use elsewhere: a \`.png\` file and its path, never \`html_render\`.
-- Never use \`preview_*\` unasked to verify or show your own edit. Use them when the current request asks for browser work, including recording edits, or names a page or tab. Do not repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then preview tools only, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
+- \`preview_*\` is Cox's built-in browser, not the user's own Chrome or other browser. When the user names their own browser (Chrome, Safari, Edge, Arc, Firefox), their computer, desktop or screen, computer use, or a tab they already have open, operate it with computer-use tools (Cox \`computer_*\` or your own) and call no \`preview_*\` first.
+- Never use \`preview_*\` unasked to verify or show your own edit. Otherwise use them when the current request asks for browser work, including recording edits, or names a page or tab. Do not repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then the browser above, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
 ];
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
@@ -44,7 +45,7 @@ export const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `
 
 ## Cox browser
 
-When browser work was asked, \`preview_*\` is the browser you share with the user: \`preview_status\` first, then \`preview_open\` if no tab can be automated. Prefer snapshot locators over coordinates. Switch browsers only if the tools are absent or \`preview_open\` says unsupported, the user asks, or two preview calls fail on one step. Then quote the error and switch.
+\`preview_*\` is Cox's built-in browser, not the user's own Chrome, Safari or other browser. If the user names their own browser, their computer, desktop or screen, computer use, or a tab they already have open, operate it with computer-use tools (Cox \`computer_*\` or your own) and call no \`preview_*\` first. For other browser work, use \`preview_*\`: \`preview_status\` first, then \`preview_open\` if no tab can be automated. Prefer snapshot locators over coordinates. Switch browsers when the tools are absent, \`preview_open\` says unsupported, the user asks, or two preview calls fail on one step: quote the error and switch. After two failures in a row Cox refuses further preview calls on that tab for five minutes.
 `;
 
 const T3_CODE_ACP_MCP_FALLBACK_INSTRUCTIONS = `ACP fallback: if the Cox tools are absent and \`T3_ACP_MCP_NODE\` is present, call them through the terminal: \`"$T3_ACP_MCP_NODE" \${T3_ACP_MCP_ENTRYPOINT:+"$T3_ACP_MCP_ENTRYPOINT"} acp-mcp-call orchestrator_capabilities '{}'\` (\`T3_ACP_MCP_ENTRYPOINT\` is unset for a standalone executable). Delegate with \`acp-mcp-call delegate_task '{"task":"...","target":{"providerInstanceId":"...","model":"..."},"mode":"async","clientRequestId":"..."}'\`. On Windows, run \`COX_ACP_MCP_CALL\` instead and pipe the JSON to stdin, as in PowerShell \`'{}' | & $env:COX_ACP_MCP_CALL orchestrator_capabilities -\`, writing non-ASCII characters as \`\\uXXXX\` escapes.`;

@@ -951,6 +951,23 @@ export class PreviewAutomationRecordingDeadlineExpiredError extends Schema.Tagge
   }
 }
 
+export class PreviewAutomationRepeatedFailureError extends Schema.TaggedError<PreviewAutomationRepeatedFailureError>()(
+  "PreviewAutomationRepeatedFailureError",
+  {
+    operation: PreviewAutomationOperation,
+    tabId: Schema.optional(PreviewTabId),
+    failures: Schema.Int.check(Schema.isGreaterThanOrEqualTo(2)),
+    lastErrorTag: Schema.String,
+    lastErrorMessage: Schema.String,
+    retryAfterMs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    guidance: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `${this.lastErrorMessage} ${this.guidance}`;
+  }
+}
+
 export const PreviewAutomationError = Schema.Union([
   PreviewAutomationRecordingTransferError,
   PreviewAutomationRecordingTooLargeError,
@@ -969,6 +986,7 @@ export const PreviewAutomationError = Schema.Union([
   PreviewAutomationRequestQueueClosedError,
   PreviewAutomationRemoteUnavailableError,
   PreviewAutomationMalformedResponseError,
+  PreviewAutomationRepeatedFailureError,
 ]);
 export type PreviewAutomationError = typeof PreviewAutomationError.Type;
 

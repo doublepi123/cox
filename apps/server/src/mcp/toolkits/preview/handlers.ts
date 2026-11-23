@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Record from "effect/Record";
@@ -8,6 +9,7 @@ import {
   PreviewAutomationRecordingTransferError,
   PreviewAutomationRecordingArtifact,
   PreviewAutomationActInputs,
+  PreviewAutomationRepeatedFailureError,
   OrchestratorMcpFailure,
   type ToolActivityIcon,
   type ThreadId,
@@ -48,6 +50,41 @@ function normalizePreviewOpenInput(input: PreviewAutomationOpenInput): PreviewAu
   };
 }
 
+export const PREVIEW_FAILURE_LIMIT = 2;
+export const PREVIEW_FAILURE_COOLDOWN_MS = 5 * 60_000;
+const PREVIEW_FAILURE_GUIDANCE =
+  "Preview calls failed twice in a row on this tab, so Cox refuses further preview calls here for now. Stop using preview_* for this step: quote the error, then use the user's own browser through computer-use tools (Cox computer_* or your own) or another browser tool you have.";
+
+interface PreviewFailureRecord {
+  readonly count: number;
+  readonly lastAt: number;
+  readonly lastErrorTag: string;
+  readonly lastErrorMessage: string;
+}
+
+const previewFailureLedgers = new WeakMap<object, Map<string, PreviewFailureRecord>>();
+
+const previewFailuresFor = (broker: object) => {
+  const existing = previewFailureLedgers.get(broker);
+  if (existing !== undefined) return existing;
+  const created = new Map<string, PreviewFailureRecord>();
+  previewFailureLedgers.set(broker, created);
+  return created;
+};
+
+const PREVIEW_CLEANUP_OPERATIONS: ReadonlySet<PreviewAutomationOperation> = new Set([
+  "dialog",
+  "close",
+  "recordingStop",
+]);
+
+const countsAsPreviewFailure = (error: { readonly _tag: string }) =>
+  error._tag !== "PreviewAutomationInvalidSelectorError" &&
+  error._tag !== "PreviewAutomationUnavailableError" &&
+  error._tag !== "PreviewAutomationControlInterruptedError" &&
+  error._tag !== "PreviewAutomationTabNotFoundError" &&
+  error._tag !== "PreviewAutomationRepeatedFailureError";
+
 const invoke = Effect.fn("PreviewToolkit.invoke")(function* <A>(
   operation: PreviewAutomationOperation,
   input: unknown,
@@ -60,17 +97,63 @@ const invoke = Effect.fn("PreviewToolkit.invoke")(function* <A>(
 > {
   const scope = yield* McpInvocationContext.requireThreadMcpCapability("preview");
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+  const previewFailures = previewFailuresFor(broker);
+  const failureKey = `${scope.thread.threadId}\u0000${tabId ?? ""}`;
+  const guarded = !PREVIEW_CLEANUP_OPERATIONS.has(operation);
+  const blocked = guarded ? previewFailures.get(failureKey) : undefined;
+  if (blocked !== undefined && blocked.count >= PREVIEW_FAILURE_LIMIT) {
+    const now = yield* Clock.currentTimeMillis;
+    const remaining = blocked.lastAt + PREVIEW_FAILURE_COOLDOWN_MS - now;
+    if (remaining > 0)
+      return yield* new PreviewAutomationRepeatedFailureError({
+        operation,
+        ...(tabId === undefined ? {} : { tabId }),
+        failures: blocked.count,
+        lastErrorTag: blocked.lastErrorTag,
+        lastErrorMessage: blocked.lastErrorMessage,
+        retryAfterMs: remaining,
+        guidance: PREVIEW_FAILURE_GUIDANCE,
+      });
+    previewFailures.delete(failureKey);
+  }
   let targetTabId = tabId;
-  const result = yield* broker.invoke<A>({
-    onTargetTab: (resolvedTabId) => {
-      targetTabId = resolvedTabId;
-    },
-    scope,
-    operation,
-    input,
-    ...(timeoutMs === undefined ? {} : { timeoutMs }),
-    ...(tabId === undefined ? {} : { tabId }),
-  });
+  const result = yield* broker
+    .invoke<A>({
+      onTargetTab: (resolvedTabId) => {
+        targetTabId = resolvedTabId;
+      },
+      scope,
+      operation,
+      input,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(tabId === undefined ? {} : { tabId }),
+    })
+    .pipe(
+      Effect.tap(() => Effect.sync(() => previewFailures.delete(failureKey))),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          if (!guarded || !countsAsPreviewFailure(error)) return yield* error;
+          const now = yield* Clock.currentTimeMillis;
+          const count = (previewFailures.get(failureKey)?.count ?? 0) + 1;
+          previewFailures.set(failureKey, {
+            count,
+            lastAt: now,
+            lastErrorTag: error._tag,
+            lastErrorMessage: error.message,
+          });
+          if (count < PREVIEW_FAILURE_LIMIT) return yield* error;
+          return yield* new PreviewAutomationRepeatedFailureError({
+            operation,
+            ...(tabId === undefined ? {} : { tabId }),
+            failures: count,
+            lastErrorTag: error._tag,
+            lastErrorMessage: error.message,
+            retryAfterMs: PREVIEW_FAILURE_COOLDOWN_MS,
+            guidance: PREVIEW_FAILURE_GUIDANCE,
+          });
+        }),
+      ),
+    );
   if (["status", "open", "navigate", "snapshot"].includes(operation)) return { result };
   const statusTabId =
     (operation !== "evaluate" && typeof result === "object" && result !== null
